@@ -23,7 +23,17 @@ from diffusers.modular_pipelines import (
     MiniMaxH3Ref2VABlocks,
     MiniMaxH3Ref2VAModularPipeline,
 )
-from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3Reference, packing, packing_ref2va
+from diffusers.modular_pipelines.minimax_h3 import (
+    MiniMaxH3AudioReference,
+    MiniMaxH3ImageReference,
+    MiniMaxH3Ref2VALoadReferencesStep,
+    MiniMaxH3VideoReference,
+    decode_reference_audio,
+    decode_reference_video,
+    packing,
+    packing_ref2va,
+    reference_loading,
+)
 from diffusers.modular_pipelines.minimax_h3.before_encoder import MiniMaxH3Ref2VASetupStep
 from diffusers.modular_pipelines.minimax_h3.encoders import MiniMaxH3Ref2VATextEncoderStep, MiniMaxH3TextEncoderStep
 
@@ -98,14 +108,14 @@ def _waveform(duration: float) -> torch.Tensor:
     return torch.rand(2, round(duration * AUDIO_SAMPLE_RATE), generator=torch.Generator("cpu").manual_seed(1)) * 2 - 1
 
 
-def _reference_video(num_frames: int, size: int) -> MiniMaxH3Reference:
+def _reference_video(num_frames: int, size: int) -> MiniMaxH3VideoReference:
     """A silent video reference at MiniMax-H3's own 24 fps."""
-    return MiniMaxH3Reference(video=_video_frames(num_frames, size), fps=float(packing.MINIMAX_H3_FPS))
+    return MiniMaxH3VideoReference(frames=_video_frames(num_frames, size), fps=float(packing.MINIMAX_H3_FPS))
 
 
-def _reference_audio(duration: float) -> MiniMaxH3Reference:
+def _reference_audio(duration: float) -> MiniMaxH3AudioReference:
     """A standalone audio reference at the tiny audio VAE's own sample rate."""
-    return MiniMaxH3Reference(audio=_waveform(duration), sample_rate=AUDIO_SAMPLE_RATE)
+    return MiniMaxH3AudioReference(audio=_waveform(duration), sample_rate=AUDIO_SAMPLE_RATE)
 
 
 # The synthesized media fixtures the file-decoding tests are built from: a tiny 8 fps clip with a stereo soundtrack.
@@ -386,7 +396,15 @@ class TestMiniMaxH3ModularPipelineFast(MiniMaxH3ModularTesterBase):
         keyframe = Image.fromarray((np.random.default_rng(0).random((32, 32, 3)) * 255).astype("uint8"))
 
         prompt_embeds, text_token_tags = MiniMaxH3TextEncoderStep.encode_prompt(
-            pipe, "a robot dancing", [keyframe] * num_keyframes, device=torch_device
+            pipe.text_encoder,
+            pipe.tokenizer,
+            pipe.processor,
+            "a robot dancing",
+            [keyframe] * num_keyframes,
+            text_encoder_layer=pipe.text_encoder_layer,
+            text_tag=pipe.text_tag,
+            video_tag=pipe.video_tag,
+            device=torch_device,
         )
 
         assert prompt_embeds.shape[0] == 1
@@ -471,7 +489,7 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
     def get_dummy_inputs(self, seed=0):
         return {
             "prompt": "a robot dancing",
-            "references": [MiniMaxH3Reference(image=Image.new("RGB", (48, 80)))],
+            "references": [MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80)))],
             "generator": self.get_generator(seed),
             "num_inference_steps": 2,
             "height": RESOLUTION,
@@ -566,10 +584,10 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         them.
         """
         media = {
-            "image": MiniMaxH3Reference(image=Image.new("RGB", (48, 80))),
+            "image": MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80))),
             # A one-second video reference, soundtrack included, and a six-second standalone soundtrack.
-            "video": MiniMaxH3Reference(
-                video=_video_frames(packing.MINIMAX_H3_FPS, 64),
+            "video": MiniMaxH3VideoReference(
+                frames=_video_frames(packing.MINIMAX_H3_FPS, 64),
                 fps=float(packing.MINIMAX_H3_FPS),
                 audio=_waveform(1.0),
                 sample_rate=AUDIO_SAMPLE_RATE,
@@ -608,11 +626,19 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         the vision pad ids. A video reference contributes one timestamped block per merged frame pair.
         """
         pipe = self.get_pipeline()
-        media = {"image": MiniMaxH3Reference(image=Image.new("RGB", (48, 80))), "video": _reference_video(25, 32)}
+        media = {"image": MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80))), "video": _reference_video(25, 32)}
         references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(pipe, [media[kind] for kind in kinds], NUM_FRAMES)
 
         prompt_embeds, text_token_tags = MiniMaxH3Ref2VATextEncoderStep.encode_prompt(
-            pipe, "a robot dancing", references, device=torch_device
+            pipe.text_encoder,
+            pipe.tokenizer,
+            pipe.processor,
+            "a robot dancing",
+            references,
+            text_encoder_layer=pipe.text_encoder_layer,
+            text_tag=pipe.text_tag,
+            video_tag=pipe.video_tag,
+            device=torch_device,
         )
 
         assert prompt_embeds.shape[0] == 1
@@ -621,10 +647,6 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         assert torch.isfinite(prompt_embeds).all()
         # `0` tags a row of a vision block and `1` a text row, and every reference here carries a vision block.
         assert set(text_token_tags.tolist()) == {0, 1}
-        # A 25 frame reference decoded at 24 fps is read at 2 fps, so it is three frames merged into two blocks.
-        for reference in references:
-            if reference.kind == "video":
-                assert reference.block_timestamps == [0.25, 1.0]
 
     @pytest.mark.parametrize("media_type", ["pil", "np", "pt"], ids=["pil", "numpy", "torch"])
     def test_reference_media_layouts(self, media_type):
@@ -645,7 +667,7 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
 
         references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(
             pipe,
-            [MiniMaxH3Reference(image=image), MiniMaxH3Reference(video=frames, fps=float(packing.MINIMAX_H3_FPS))],
+            [MiniMaxH3ImageReference(image=image), MiniMaxH3VideoReference(frames=frames, fps=float(packing.MINIMAX_H3_FPS))],
             NUM_FRAMES,
         )
 
@@ -662,11 +684,11 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         waveform = _waveform(2.0)
 
         references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(
-            pipe, [MiniMaxH3Reference(video=frames), MiniMaxH3Reference(audio=waveform)], NUM_FRAMES
+            pipe, [MiniMaxH3VideoReference(frames=frames), MiniMaxH3AudioReference(audio=waveform)], NUM_FRAMES
         )
 
         assert np.shares_memory(references[0].frames, frames)
-        assert torch.equal(references[1].waveform, waveform)
+        assert torch.equal(references[1].audio, waveform)
 
     def test_reference_sample_rate_override_resamples(self):
         r"""A waveform that says it carries another rate is resampled onto the audio VAE's own."""
@@ -676,14 +698,14 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(
             pipe,
             [
-                MiniMaxH3Reference(image=Image.new("RGB", (48, 80))),
-                MiniMaxH3Reference(audio=waveform, sample_rate=AUDIO_SAMPLE_RATE // 2),
+                MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80))),
+                MiniMaxH3AudioReference(audio=waveform, sample_rate=AUDIO_SAMPLE_RATE // 2),
             ],
             NUM_FRAMES,
         )
 
         # Half the audio VAE's rate, so the same samples span twice as many of the VAE's own.
-        assert references[1].waveform.shape == (2, 2 * waveform.shape[-1])
+        assert references[1].audio.shape == (2, 2 * waveform.shape[-1])
 
     def test_num_frames_left_open_needs_exactly_one_audio_reference(self):
         r"""Leaving `num_frames` out is ambiguous unless exactly one reference carries audio."""
@@ -706,7 +728,7 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
 
         inputs = self.get_dummy_inputs()
         inputs["num_frames"] = None
-        inputs["references"] = [MiniMaxH3Reference(image=Image.new("RGB", (48, 80))), _reference_audio(14.99)]
+        inputs["references"] = [MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80))), _reference_audio(14.99)]
 
         with pytest.raises(ValueError, match="rounds up to 362 frames"):
             pipe(**inputs)
@@ -716,12 +738,12 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         [
             ([], "at least one reference"),
             ([_reference_audio(6.0)], "cannot be used"),
-            ([MiniMaxH3Reference(image=Image.new("RGB", (32, 32)))] * 10, "at most 9 image references"),
+            ([MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32)))] * 10, "at most 9 image references"),
             (
-                [MiniMaxH3Reference(image=Image.new("RGB", (32, 32)))] + [_reference_video(2, 32)] * 4,
+                [MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32)))] + [_reference_video(2, 32)] * 4,
                 "at most 3 video references",
             ),
-            ([{"image": Image.new("RGB", (32, 32))}], "must be a \\[`MiniMaxH3Reference`\\]"),
+            ([{"image": Image.new("RGB", (32, 32))}], "must be a \\[`MiniMaxH3ImageReference`\\]"),
         ],
         ids=["no_references", "audio_alone", "too_many_images", "too_many_videos", "dict_entry"],
     )
@@ -737,100 +759,144 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
 
 class TestMiniMaxH3Reference:
     """
-    [`MiniMaxH3Reference`] resolves a request's media at construction, before any block sees it.
+    The three reference dataclasses, which hold in-memory media and the rate it carries.
 
-    None of this needs a pipeline: a reference validates its own modality, decodes a path with PyAV and carries the
-    rates that come with it, which is exactly what makes the blocks able to assume in-memory media throughout.
+    Each knows its own modality, so nothing has to derive it from which fields happen to be set, and the fields a
+    modality has no use for do not exist on it.
     """
 
-    @pytest.mark.parametrize(
-        "kwargs,message",
-        [
-            ({}, "exactly one of"),
-            ({"image": Image.new("RGB", (32, 32)), "video": _video_frames(2, 32)}, "exactly one of"),
-            ({"image": Image.new("RGB", (32, 32)), "audio": _waveform(1.0)}, "exactly one of"),
-            ({"image": "astronaut.png"}, "not a valid path"),
-            ({"video": "motion.mp4"}, "not a valid path"),
-            ({"audio": "voice.wav"}, "not a valid path"),
-        ],
-        ids=[
-            "no_medium",
-            "image_and_video",
-            "image_and_audio",
-            "missing_image_file",
-            "missing_video_file",
-            "missing_audio_file",
-        ],
-    )
-    def test_reference_construction(self, kwargs, message):
+    def test_reference_defaults(self):
+        r"""A reference knows its own modality, and defaults to MiniMax-H3's own frame rate for its frames."""
+        assert MiniMaxH3VideoReference(frames=_video_frames(2, 32)).fps == float(packing.MINIMAX_H3_FPS)
+        assert MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32))).kind == "image"
+        assert not MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32))).has_audio
+        assert _reference_video(2, 32).kind == "video"
+        assert not _reference_video(2, 32).has_audio
+        assert _reference_audio(6.0).kind == "audio"
+        assert _reference_audio(6.0).has_audio
+
+    def test_video_reference_has_audio_follows_its_soundtrack(self):
+        r"""A video reference contributes audio rows exactly when it was given a soundtrack of its own."""
+        frames = _video_frames(2, 32)
+
+        assert not MiniMaxH3VideoReference(frames=frames).has_audio
+        assert MiniMaxH3VideoReference(frames=frames, audio=_waveform(1.0)).has_audio
+
+    def test_a_modality_only_carries_its_own_fields(self):
         r"""
-        A reference resolves itself at construction: exactly one medium, bar a video's own soundtrack, and a path that
-        names a file it can actually open.
+        The fields that used to be dead weight are gone: an image reference has no rates, and no reference can be
+        built holding two media at once.
         """
-        with pytest.raises(ValueError, match=message):
-            MiniMaxH3Reference(**kwargs)
+        image = MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32)))
 
-    def test_reference_decodes_files(self, tmp_path):
+        assert not hasattr(image, "fps") and not hasattr(image, "sample_rate")
+        with pytest.raises(TypeError):
+            MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32)), audio=_waveform(1.0))
+        with pytest.raises(TypeError):
+            MiniMaxH3AudioReference(audio=_waveform(1.0), frames=_video_frames(2, 32))
+
+
+class TestMiniMaxH3ReferenceLoading:
+    """
+    Decoding references off the filesystem, which is the caller's job rather than the blocks'.
+
+    None of this needs a checkpoint: [`decode_reference_video`] and [`decode_reference_audio`] read a container with
+    PyAV and return a reference carrying the rates it reports, and [`MiniMaxH3Ref2VALoadReferencesStep`] is the block
+    that does the same for a whole ordered request.
+    """
+
+    def test_decode_video_carries_frames_rate_and_soundtrack(self, tmp_path):
         r"""
-        A reference takes a path as well as in-memory media, and decodes it as it is built: the frames and the samples
-        themselves, plus the rates the container reports, which is what the model conditions on.
+        A decoded video brings the three things the model conditions on: the frames, the rate they were shot at, and
+        the container's soundtrack as this reference's own.
         """
-        video_path, image_path, audio_path = _media_fixtures(tmp_path)
+        video_path, _, _ = _media_fixtures(tmp_path)
 
-        video = MiniMaxH3Reference(video=str(video_path))
-        image = MiniMaxH3Reference(image=str(image_path))
-        audio = MiniMaxH3Reference(audio=str(audio_path))
+        video = decode_reference_video(video_path)
 
-        assert video.kind == "video"
-        assert video.video.shape == (FIXTURE_NUM_FRAMES, 32, 64, 3) and video.video.dtype == np.uint8
+        assert isinstance(video, MiniMaxH3VideoReference) and video.kind == "video"
+        assert video.frames.shape == (FIXTURE_NUM_FRAMES, 32, 64, 3) and video.frames.dtype == np.uint8
         assert video.fps == FIXTURE_FPS
-        # The container carries a soundtrack, which a video reference conditions on as its own.
         assert video.has_audio and video.audio.shape[0] == 2 and video.sample_rate == FIXTURE_SAMPLE_RATE
-        assert image.kind == "image" and image.image.size == (64, 32)
-        assert audio.kind == "audio" and audio.audio.shape[0] == 2 and audio.sample_rate == FIXTURE_SAMPLE_RATE
-        assert audio.audio.dtype == torch.float32
 
-    def test_reference_silent_file_carries_no_soundtrack(self, tmp_path):
+    def test_decode_audio_carries_the_sample_rate(self, tmp_path):
+        r"""A decoded audio file brings the rate its samples are at, which is what they are resampled from."""
+        _, _, audio_path = _media_fixtures(tmp_path)
+
+        audio = decode_reference_audio(audio_path)
+
+        assert isinstance(audio, MiniMaxH3AudioReference) and audio.kind == "audio"
+        assert audio.audio.shape[0] == 2 and audio.audio.dtype == torch.float32
+        assert audio.sample_rate == FIXTURE_SAMPLE_RATE
+
+    def test_decoded_rates_can_be_corrected(self, tmp_path):
+        r"""A container whose metadata is wrong is corrected on the reference the decode returned."""
+        video_path, _, _ = _media_fixtures(tmp_path)
+
+        video = decode_reference_video(video_path)
+        video.fps = 12.0
+
+        assert video.fps == 12.0 and video.sample_rate == FIXTURE_SAMPLE_RATE
+
+    def test_decode_silent_video_carries_no_soundtrack(self, tmp_path):
         r"""There is nothing to adopt from a container without an audio stream."""
         silent_path = tmp_path / "silent.mp4"
         _write_video(silent_path, with_audio=False)
 
-        reference = MiniMaxH3Reference(video=str(silent_path))
+        reference = decode_reference_video(silent_path)
 
         assert not reference.has_audio and reference.sample_rate is None
         assert reference.fps == FIXTURE_FPS
 
-    def test_reference_rates_override_the_container(self, tmp_path):
-        r"""A rate the request passes wins over the one the container reports, whose metadata may be wrong."""
-        video_path, _, audio_path = _media_fixtures(tmp_path)
-
-        video = MiniMaxH3Reference(video=str(video_path), fps=12.0, sample_rate=16000)
-        audio = MiniMaxH3Reference(audio=str(audio_path), sample_rate=16000)
-
-        # The container reports `FIXTURE_FPS` and `FIXTURE_SAMPLE_RATE`, and the request overrides both.
-        assert video.fps == 12.0 and video.sample_rate == 16000
-        assert audio.sample_rate == 16000
-
-    def test_reference_file_needs_pyav(self, tmp_path, monkeypatch):
+    def test_decoding_needs_pyav(self, tmp_path, monkeypatch):
         r"""Decoding a video or an audio file is a PyAV job, and says so when PyAV is not installed."""
+        video_path, _, audio_path = _media_fixtures(tmp_path)
+        monkeypatch.setattr(reference_loading, "is_av_available", lambda: False)
+
+        with pytest.raises(ImportError, match="pip install av"):
+            decode_reference_video(video_path)
+        with pytest.raises(ImportError, match="pip install av"):
+            decode_reference_audio(audio_path)
+
+    def test_load_references_block_decodes_a_request_in_order(self, tmp_path):
+        r"""
+        The block turns an ordered list of named media into the references the `ref2va` blocks take.
+
+        Order is preserved because it is semantic: it labels the references in the prompt presentation and lays them
+        out on the shared rotary clock.
+        """
         video_path, image_path, audio_path = _media_fixtures(tmp_path)
-        monkeypatch.setattr(packing_ref2va, "is_av_available", lambda: False)
+        pipe = MiniMaxH3Ref2VALoadReferencesStep().init_pipeline()
 
-        with pytest.raises(ImportError, match="pip install av"):
-            MiniMaxH3Reference(video=str(video_path))
-        with pytest.raises(ImportError, match="pip install av"):
-            MiniMaxH3Reference(audio=str(audio_path))
-        # An image never needs it.
-        assert MiniMaxH3Reference(image=str(image_path)).image.size == (64, 32)
+        references = pipe(
+            reference_media=[{"image": image_path}, {"video": video_path}, {"audio": audio_path}],
+            output="references",
+        )
 
-    def test_reference_defaults(self):
-        r"""A reference knows its own modality, and defaults to MiniMax-H3's own frame rate for its frames."""
-        assert MiniMaxH3Reference(video=_video_frames(2, 32)).fps == float(packing.MINIMAX_H3_FPS)
-        assert MiniMaxH3Reference(image=Image.new("RGB", (32, 32))).kind == "image"
-        assert not MiniMaxH3Reference(image=Image.new("RGB", (32, 32))).has_audio
-        assert _reference_video(2, 32).kind == "video"
-        assert _reference_audio(6.0).kind == "audio"
-        assert _reference_audio(6.0).has_audio
+        assert [reference.kind for reference in references] == ["image", "video", "audio"]
+        assert references[0].image.size == (64, 32)
+        assert references[1].fps == FIXTURE_FPS and references[1].sample_rate == FIXTURE_SAMPLE_RATE
+        assert references[2].sample_rate == FIXTURE_SAMPLE_RATE
+
+    @pytest.mark.parametrize(
+        "entry,message",
+        [
+            ({}, "must name exactly one medium"),
+            ({"image": "a.png", "video": "b.mp4"}, "must name exactly one medium"),
+            ({"picture": "a.png"}, "must name exactly one medium"),
+            ("a.png", "must name exactly one medium"),
+            ({"image": "missing.png"}, "not a valid path"),
+            ({"video": "missing.mp4"}, "not a valid path"),
+            ({"audio": "missing.wav"}, "not a valid path"),
+        ],
+        ids=["empty", "two_media", "unknown_medium", "bare_path", "missing_image", "missing_video", "missing_audio"],
+    )
+    def test_load_references_block_rejects(self, entry, message):
+        r"""The medium is named rather than guessed from the file, and the path has to name a file it can open."""
+        pipe = MiniMaxH3Ref2VALoadReferencesStep().init_pipeline()
+
+        with pytest.raises(ValueError, match=message):
+            pipe(reference_media=[entry])
 
 
 class TestMiniMaxH3ReferenceGeometry:
@@ -840,6 +906,18 @@ class TestMiniMaxH3ReferenceGeometry:
     These are the passes `MiniMaxH3Ref2VASetupStep` runs a reference through before any VAE sees it.
     """
 
+    def test_video_reference_vision_blocks(self):
+        r"""
+        The conditioner reads a reference video at 2 fps and Qwen3-VL merges every two of those frames into one
+        vision block, labelled with the mean timestamp of the pair.
+
+        A 25 frame reference at 24 fps samples three frames, which merge into two blocks at 0.25 and 1.0 seconds.
+        """
+        frames, timestamps = packing_ref2va.sample_reference_video_frames(_video_frames(25, 32))
+
+        assert len(frames) == 3
+        assert timestamps == [0.25, 1.0]
+
     def test_reference_image_geometry(self, monkeypatch):
         r"""
         A reference image is encoded at a 2048 pixel short edge, both axes rounded to a multiple of 32, with no area
@@ -847,8 +925,8 @@ class TestMiniMaxH3ReferenceGeometry:
         """
         monkeypatch.setattr(packing_ref2va, "MINIMAX_H3_REFERENCE_IMAGE_SHORT_EDGE", 2048)
 
-        assert packing_ref2va.resolve_reference_image_size(80, 48) == (2048, 3424)
-        assert packing_ref2va.resolve_reference_image_size(48, 80) == (3424, 2048)
+        assert packing_ref2va.resolve_reference_image_size(80, 48, 32) == (2048, 3424)
+        assert packing_ref2va.resolve_reference_image_size(48, 80, 32) == (3424, 2048)
 
     def test_video_reference_resampled_to_the_model_frame_rate(self):
         r"""

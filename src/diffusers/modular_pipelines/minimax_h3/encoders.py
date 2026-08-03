@@ -21,16 +21,8 @@ from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
-from .packing import (
-    MINIMAX_H3_KEYFRAME_ENCODE_SEED,
-    MINIMAX_H3_PIXEL_MEAN,
-    MINIMAX_H3_PIXEL_STD,
-    MINIMAX_H3_TEXT_ENCODER_LAYER,
-    MINIMAX_H3_TEXT_TAG,
-    MINIMAX_H3_VIDEO_TAG,
-)
 from .packing_ref2va import (
-    MiniMaxH3PreparedReference,
+    MiniMaxH3Reference,
     build_ref2va_presentation,
     sample_reference_video_frames,
     trim_reference_num_frames,
@@ -96,10 +88,12 @@ class MiniMaxH3TextEncoderStep(ModularPipelineBlocks):
         processor,
         prompt: str,
         images: list | None = None,
+        *,
+        text_encoder_layer: int,# can you set the default?
+        text_tag: int,# can you set the default?
+        video_tag: int, # can you set the default?
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
-        text_tag: int = MINIMAX_H3_TEXT_TAG,
-        video_tag: int = MINIMAX_H3_VIDEO_TAG,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         r"""
         Build MiniMax-H3's presentation of a request and encode it.
@@ -122,12 +116,12 @@ class MiniMaxH3TextEncoderStep(ModularPipelineBlocks):
         """
 
         num_layers = text_encoder.config.text_config.num_hidden_layers
-        if num_layers <= MINIMAX_H3_TEXT_ENCODER_LAYER:
+        if num_layers <= text_encoder_layer:
             raise ValueError(
-                f"MiniMax-H3 conditions on `hidden_states[{MINIMAX_H3_TEXT_ENCODER_LAYER}]` of its Qwen3-VL "
-                f"conditioner, which needs more than {MINIMAX_H3_TEXT_ENCODER_LAYER} decoder layers, but "
+                f"MiniMax-H3 conditions on `hidden_states[{text_encoder_layer}]` of its Qwen3-VL "
+                f"conditioner, which needs more than {text_encoder_layer} decoder layers, but "
                 f"`text_encoder` has {num_layers}. The last hidden state of a stack truncated to exactly "
-                f"{MINIMAX_H3_TEXT_ENCODER_LAYER} layers is post-norm and is not the conditioning MiniMax-H3 expects."
+                f"{text_encoder_layer} layers is post-norm and is not the conditioning MiniMax-H3 expects."
             )
 
         pixel_values, image_grid_thw = None, None
@@ -177,7 +171,7 @@ class MiniMaxH3TextEncoderStep(ModularPipelineBlocks):
             use_cache=False,
             output_hidden_states=True,
         )
-        prompt_embeds = outputs.hidden_states[MINIMAX_H3_TEXT_ENCODER_LAYER].to(device=device, dtype=dtype)
+        prompt_embeds = outputs.hidden_states[text_encoder_layer].to(device=device, dtype=dtype)
         return prompt_embeds, torch.tensor(token_tags, dtype=torch.long)
 
     @torch.no_grad()
@@ -197,6 +191,9 @@ class MiniMaxH3TextEncoderStep(ModularPipelineBlocks):
             components.processor,
             block_state.prompt,
             block_state.keyframes,
+            text_encoder_layer=components.text_encoder_layer,
+            text_tag=components.text_tag,
+            video_tag=components.video_tag,
             device=components._execution_device,
             dtype=components.text_encoder.dtype,
         )
@@ -245,7 +242,9 @@ class MiniMaxH3KeyframeVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    def encode_keyframes(vae, images: list, device: torch.device) -> list[torch.Tensor]:
+    def encode_keyframes(
+        vae, images: list, pixel_mean: tuple, pixel_std: tuple, encode_seed: int, device: torch.device
+    ) -> list[torch.Tensor]:
         r"""
         Encode the `fl2va` keyframes into normalized conditioning latents.
 
@@ -258,6 +257,9 @@ class MiniMaxH3KeyframeVaeEncoderStep(ModularPipelineBlocks):
             vae (`AutoencoderKLMiniMaxH3`): The video VAE.
             images (`list[PIL.Image.Image]`):
                 The keyframes, already prepared onto the target canvas, in packed order.
+            pixel_mean (`tuple[float, float, float]`), pixel_std (`tuple[float, float, float]`):
+                The video VAE's pixel convention, i.e. `components.pixel_mean` / `components.pixel_std`.
+            encode_seed (`int`): Seed the posterior is sampled under, i.e. `components.keyframe_encode_seed`.
             device (`torch.device`): The device to run the VAE on.
 
         Returns:
@@ -267,15 +269,15 @@ class MiniMaxH3KeyframeVaeEncoderStep(ModularPipelineBlocks):
         """
         latents_mean = torch.tensor(vae.config.latents_mean).view(1, -1, 1, 1, 1)
         latents_std = torch.tensor(vae.config.latents_std).view(1, -1, 1, 1, 1)
-        pixel_mean = torch.tensor(MINIMAX_H3_PIXEL_MEAN, device=device).view(1, -1, 1, 1, 1)
-        pixel_std = torch.tensor(MINIMAX_H3_PIXEL_STD, device=device).view(1, -1, 1, 1, 1)
+        pixel_mean = torch.tensor(pixel_mean, device=device).view(1, -1, 1, 1, 1)
+        pixel_std = torch.tensor(pixel_std, device=device).view(1, -1, 1, 1, 1)
 
         keyframe_latents = []
         for image in images:
             pixels = torch.from_numpy(np.array(image)).to(device).permute(2, 0, 1)[None, :, None]
             pixels = (pixels.to(torch.float32).div(255.0) - pixel_mean) / pixel_std
             posterior = vae.encode(pixels, return_dict=False)[0]
-            latents = posterior.sample(generator=torch.Generator().manual_seed(MINIMAX_H3_KEYFRAME_ENCODE_SEED))
+            latents = posterior.sample(generator=torch.Generator().manual_seed(encode_seed))
             # The sampled latent is rounded to float16 before it is normalized: ~11 bits of every conditioning
             # latent, so the released model's conditioning cannot be reproduced without it.
             latents = latents.to(torch.float16).float().cpu()
@@ -287,7 +289,14 @@ class MiniMaxH3KeyframeVaeEncoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        block_state.condition_latents = self.encode_keyframes(components.vae, block_state.keyframes, device)
+        block_state.condition_latents = self.encode_keyframes(
+            components.vae,
+            block_state.keyframes,
+            components.pixel_mean,
+            components.pixel_std,
+            components.keyframe_encode_seed,
+            device,
+        )
 
         self.set_block_state(state, block_state)
         return components, state
@@ -319,7 +328,7 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
             InputParam.template("prompt", description="The prompt to guide generation, a single string."),
             InputParam(
                 name="prepared_references",
-                type_hint=list[MiniMaxH3PreparedReference],
+                type_hint=list[MiniMaxH3Reference],
                 required=True,
                 description="The prepared references, in packed order.",
             ),
@@ -350,7 +359,11 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
         tokenizer,
         processor,
         prompt: str,
-        references: list[MiniMaxH3PreparedReference],
+        references: list[MiniMaxH3Reference],
+        *,
+        text_encoder_layer: int, # can you add default
+        text_tag: int, # can you add default
+        video_tag: int, # can you add default
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -366,7 +379,7 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
 
         Args:
             prompt (`str`): The prompt to encode.
-            references (`list[MiniMaxH3PreparedReference]`):
+            references (`list[MiniMaxH3Reference]`):
                 The prepared references, in packed order, as returned by
                 [`~MiniMaxH3Ref2VASetupStep.prepare_references`].
             device (`torch.device`, *optional*): The device to run the conditioner on.
@@ -378,12 +391,12 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
         """
 
         num_layers = text_encoder.config.text_config.num_hidden_layers
-        if num_layers <= MINIMAX_H3_TEXT_ENCODER_LAYER:
+        if num_layers <= text_encoder_layer:
             raise ValueError(
-                f"MiniMax-H3 conditions on `hidden_states[{MINIMAX_H3_TEXT_ENCODER_LAYER}]` of its Qwen3-VL "
-                f"conditioner, which needs more than {MINIMAX_H3_TEXT_ENCODER_LAYER} decoder layers, but "
+                f"MiniMax-H3 conditions on `hidden_states[{text_encoder_layer}]` of its Qwen3-VL "
+                f"conditioner, which needs more than {text_encoder_layer} decoder layers, but "
                 f"`text_encoder` has {num_layers}. The last hidden state of a stack truncated to exactly "
-                f"{MINIMAX_H3_TEXT_ENCODER_LAYER} layers is post-norm and is not the conditioning MiniMax-H3 expects."
+                f"{text_encoder_layer} layers is post-norm and is not the conditioning MiniMax-H3 expects."
             )
 
         merge_size = processor.image_processor.merge_size**2
@@ -394,26 +407,26 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
             pixel_values, image_grid_thw = vision["pixel_values"], vision["image_grid_thw"]
             image_token_counts = [int(grid.prod()) // merge_size for grid in image_grid_thw]
 
-        pixel_values_videos, video_grid_thw, video_block_token_counts = None, None, []
+        pixel_values_videos, video_grid_thw = None, None
+        video_block_token_counts, video_block_timestamps = [], []
         videos = [reference for reference in references if reference.kind == "video"]
         if videos:
             sampled = [sample_reference_video_frames(reference.frames) for reference in videos]
-            for reference, (_, block_timestamps) in zip(videos, sampled):
-                reference.block_timestamps = block_timestamps
+            video_block_timestamps = [timestamps for _, timestamps in sampled]
             vision = processor.video_processor(
                 videos=[np.stack(frames) for frames, _ in sampled], do_sample_frames=False, return_tensors="pt"
             )
             pixel_values_videos, video_grid_thw = vision["pixel_values_videos"], vision["video_grid_thw"]
             video_block_token_counts = [int(grid[1]) * int(grid[2]) // merge_size for grid in video_grid_thw]
-            for reference, grid in zip(videos, video_grid_thw):
-                if int(grid[0]) != len(reference.block_timestamps):
+            for timestamps, grid in zip(video_block_timestamps, video_grid_thw):
+                if int(grid[0]) != len(timestamps):
                     raise ValueError(
                         f"The processor merged a reference video into {int(grid[0])} vision blocks, but MiniMax-H3 "
-                        f"labels {len(reference.block_timestamps)} of them."
+                        f"labels {len(timestamps)} of them."
                     )
 
         token_ids, token_tags = build_ref2va_presentation(
-            tokenizer, prompt, references, image_token_counts, video_block_token_counts
+            tokenizer, prompt, references, image_token_counts, video_block_token_counts, video_block_timestamps
         )
         input_ids = torch.tensor([token_ids], dtype=torch.long, device=device)
         # Qwen3-VL lays its 3D rotary positions out per modality run, which it reads off the token type ids the
@@ -446,7 +459,7 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
             use_cache=False,
             output_hidden_states=True,
         )
-        prompt_embeds = outputs.hidden_states[MINIMAX_H3_TEXT_ENCODER_LAYER].to(device=device, dtype=dtype)
+        prompt_embeds = outputs.hidden_states[text_encoder_layer].to(device=device, dtype=dtype)
         return prompt_embeds, torch.tensor(token_tags, dtype=torch.long)
 
     @torch.no_grad()
@@ -466,6 +479,9 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
             components.processor,
             block_state.prompt,
             block_state.prepared_references,
+            text_encoder_layer=components.text_encoder_layer,
+            text_tag=components.text_tag,
+            video_tag=components.video_tag,
             device=components._execution_device,
             dtype=components.text_encoder.dtype,
         )
@@ -499,9 +515,9 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
         return [
             InputParam(
                 name="prepared_references",
-                type_hint=list[MiniMaxH3PreparedReference],
+                type_hint=list[MiniMaxH3Reference],
                 required=True,
-                description="The prepared references, in packed order. Their latent geometry is filled in here.",
+                description="The references normalized by the setup step, in packed order.",
             ),
         ]
 
@@ -519,20 +535,22 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
             ),
             OutputParam(
                 "audio_condition_latents",
-                type_hint=torch.Tensor,
+                type_hint=list[torch.Tensor],
                 description=(
-                    "The clean audio conditioning rows of the reference soundtracks, in packed order, or None when "
-                    "the references carry none."
+                    "The clean audio conditioning rows of the reference soundtracks, one `(num_audio_latents * 2, "
+                    "audio_latent_channels)` tensor per audio-bearing reference in packed order. One entry per "
+                    "reference rather than one concatenated block, because the packed layout is built from the row "
+                    "count of each."
                 ),
             ),
         ]
 
     @staticmethod
     def encode_references(
-        components, references: list[MiniMaxH3PreparedReference], device: torch.device | None = None
-    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        components, references: list[MiniMaxH3Reference], device: torch.device | None = None
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
         r"""
-        Encode the references into packed conditioning rows, and resolve their latent geometry.
+        Encode the references into conditioning latents.
 
         Image and video references go through the video VAE with the same recipe the `fl2va` keyframes use: the
         posterior is *sampled* under a generator seeded with 42 independently of the request seed, and the sampled
@@ -540,20 +558,23 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
         encoder alone, while a video reference goes through the 17-frames-per-5-latents temporal chunking. Reference
         soundtracks instead take the posterior *mean*, and are never sampled.
 
+        The latent geometry every later block keys off is the shape of what this returns, so nothing has to be
+        written back onto the references.
+
         Args:
-            references (`list[MiniMaxH3PreparedReference]`):
-                The prepared references, in packed order. Their latent geometry is filled in here.
+            references (`list[MiniMaxH3Reference]`):
+                The references normalized by the setup step, in packed order.
             device (`torch.device`, *optional*): The device to run the VAEs on.
 
         Returns:
-            `tuple[torch.Tensor, torch.Tensor]`: the `(num_condition_video_rows, latent_channels * prod(patch_size))`
-            video rows and the `(num_condition_audio_rows, audio_latent_channels)` audio rows, both float32 on CPU and
-            both `None` when the references carry no such rows.
+            `tuple[list[torch.Tensor], list[torch.Tensor]]`: one `(1, latent_channels, num_latent_frames,
+            latent_height, latent_width)` tensor per image and video reference, and one `(num_audio_latents * 2,
+            audio_latent_channels)` tensor per audio-bearing reference, both in packed order and float32 on CPU.
         """
         latents_mean = torch.tensor(components.vae.config.latents_mean).view(1, -1, 1, 1, 1)
         latents_std = torch.tensor(components.vae.config.latents_std).view(1, -1, 1, 1, 1)
-        pixel_mean = torch.tensor(MINIMAX_H3_PIXEL_MEAN, device=device).view(1, -1, 1, 1, 1)
-        pixel_std = torch.tensor(MINIMAX_H3_PIXEL_STD, device=device).view(1, -1, 1, 1, 1)
+        pixel_mean = torch.tensor(components.pixel_mean, device=device).view(1, -1, 1, 1, 1)
+        pixel_std = torch.tensor(components.pixel_std, device=device).view(1, -1, 1, 1, 1)
         audio_latents_mean = torch.tensor(components.audio_vae.config.latents_mean).view(1, 1, -1)
         audio_latents_std = torch.tensor(components.audio_vae.config.latents_std).view(1, 1, -1)
 
@@ -575,23 +596,22 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
                 # A single frame is encoded by the (tiled) spatial encoder alone; a video goes through the temporal
                 # chunking, which is what turns `17 * n + 5` frames into `5 * n + 2` latent frames.
                 posterior = components.vae.encode(pixels, return_dict=False)[0]
-                latents = posterior.sample(generator=torch.Generator().manual_seed(MINIMAX_H3_KEYFRAME_ENCODE_SEED))
+                latents = posterior.sample(
+                    generator=torch.Generator().manual_seed(components.keyframe_encode_seed)
+                )
                 # The sampled latent is rounded to float16 before it is normalized: ~11 bits of every conditioning
                 # latent, so the released model's conditioning cannot be reproduced without it.
                 latents = latents.to(torch.float16).float().cpu()
-                reference.num_latent_frames = latents.shape[2]
-                reference.latent_height, reference.latent_width = latents.shape[3], latents.shape[4]
                 video_latents.append((latents - latents_mean) / latents_std)
 
             if reference.has_audio:
-                posterior = components.audio_vae.encode(reference.waveform.to(device)[:, None], return_dict=False)[0]
+                posterior = components.audio_vae.encode(reference.audio.to(device)[:, None], return_dict=False)[0]
                 # Channel-major rows: the two stereo channels are two batch items of the mono audio VAE.
                 latents = posterior.mode().float().cpu().transpose(1, 2)
-                reference.num_audio_latents = latents.shape[1]
                 normalized = (latents - audio_latents_mean) / audio_latents_std
                 audio_rows.append(normalized.reshape(-1, components.audio_latent_channels))
 
-        return video_latents or None, torch.cat(audio_rows) if audio_rows else None
+        return video_latents, audio_rows
 
     @torch.no_grad()
     def __call__(self, components: MiniMaxH3Ref2VAModularPipeline, state: PipelineState) -> PipelineState:

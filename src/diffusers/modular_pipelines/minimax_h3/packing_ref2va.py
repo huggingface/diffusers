@@ -32,32 +32,24 @@ Unlike a `fl2va` keyframe, a reference never binds the target geometry: every re
 resolution (2048 pixel short edge for images, MiniMax-H3's 768 pixel canvas for videos) and carries its own
 aspect-normalized spatial grid.
 
-References reach the blocks as in-memory media: a video is decoded frames plus the `fps` they carry, and a soundtrack
-a waveform plus its sample rate. A [`MiniMaxH3Reference`] takes a path or a URL too, but it decodes it when it is
-built, so that no block of this model ever opens a media file.
+References reach the blocks as in-memory media, one dataclass per modality: a [`MiniMaxH3VideoReference`] is decoded
+frames plus the `fps` they carry, a [`MiniMaxH3AudioReference`] a waveform plus its sample rate, and a
+[`MiniMaxH3ImageReference`] a single image. No block of this model opens a media file; decoding a path is the caller's
+job, and [`~modular_pipelines.minimax_h3.reference_loading`] is the convenience for doing it.
 """
 
-import contextlib
 import math
-import os
-import tempfile
-from dataclasses import dataclass, field
-from typing import Any
-from urllib.parse import unquote, urlparse
+from dataclasses import dataclass
 
 import numpy as np
-import requests
 import torch
 from PIL import Image
 
-from ...utils import is_av_available, load_image
-from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from .packing import (
     _ROPE_FRAME_RESCALE,
     _ROPE_FRAMES_PER_LATENT,
     MINIMAX_H3_AUDIO_CHANNELS,
     MINIMAX_H3_AUDIO_TAG,
-    MINIMAX_H3_CANVAS_MULTIPLE,
     MINIMAX_H3_FPS,
     MINIMAX_H3_TEXT_TAG,
     MINIMAX_H3_VIDEO_TAG,
@@ -83,302 +75,121 @@ MINIMAX_H3_MAX_REFERENCE_AUDIOS = 3
 MINIMAX_H3_MAX_REFERENCES = 12
 
 
-@contextlib.contextmanager
-def _local_media_file(media):
-    r"""The reference media as a local file: a URL is downloaded to a temporary file, removed on the way out."""
-    path = str(media)
-    if not path.startswith(("http://", "https://")):
-        if not os.path.isfile(path):
-            raise ValueError(
-                f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {path} is not a valid path."
-            )
-        yield path
-        return
-
-    response = requests.get(path, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT)
-    if response.status_code != 200:
-        raise ValueError(f"Failed to download {path}. Status code: {response.status_code}")
-    suffix = os.path.splitext(os.path.basename(unquote(urlparse(path).path)))[1]
-    download = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    try:
-        with download as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-        yield download.name
-    finally:
-        os.remove(download.name)
-
-
-def _import_av():
-    r"""PyAV, the soft dependency a reference decodes a media file with."""
-    if not is_av_available():
-        raise ImportError(
-            "Decoding a MiniMax-H3 reference from a file needs PyAV. You can install it with `pip install av`, or "
-            "pass the decoded media itself: frames and the `fps` they carry for a video, a `(channels, num_samples)` "
-            "waveform and its `sample_rate` for audio."
-        )
-
-    import av
-
-    return av
-
-
-def _decode_reference_soundtrack(av, container, stream) -> tuple[torch.Tensor, int]:
-    r"""
-    An audio stream's samples as a `(channels, num_samples)` float32 waveform, at the rate the container carries them.
-
-    Args:
-        av (`module`): PyAV.
-        container (`av.container.InputContainer`): The open container.
-        stream (`av.audio.stream.AudioStream`): The stream to decode.
-
-    Returns:
-        `tuple[torch.Tensor, int]`: the waveform and its sample rate.
-    """
-    sample_rate = int(stream.codec_context.sample_rate)
-    # Planar float is a format conversion only: the sample rate and the channel layout stay the container's own, and a
-    # mono soundtrack is upmixed later, by `prepare_reference_waveform`.
-    resampler = av.audio.resampler.AudioResampler(format="fltp", layout=stream.layout, rate=sample_rate)
-    chunks = []
-    for frame in container.decode(stream):
-        chunks += [torch.from_numpy(resampled.to_ndarray()) for resampled in resampler.resample(frame)]
-    # Whatever the resampler is still holding.
-    chunks += [torch.from_numpy(resampled.to_ndarray()) for resampled in resampler.resample(None)]
-    return torch.cat(chunks, dim=-1).to(torch.float32), sample_rate
-
-
-def decode_reference_video(media) -> tuple[np.ndarray, float, tuple[torch.Tensor, int] | None]:
-    r"""
-    Decode a reference video file into `uint8` RGB frames, at the resolution and the frame rate it carries.
-
-    Args:
-        media (`str` or `os.PathLike`): Path or URL of the video.
-
-    Returns:
-        `tuple[np.ndarray, float, tuple[torch.Tensor, int]]`: the `(num_frames, height, width, 3)` frames, the frame
-        rate the container reports, and its soundtrack with that soundtrack's own sample rate, `None` when the
-        container carries no audio stream.
-    """
-    av = _import_av()
-    with _local_media_file(media) as path, av.open(path) as container:
-        stream = container.streams.video[0]
-        frames, rotation = [], 0.0
-        for frame in container.decode(stream):
-            # The display matrix rotation belongs to the stream, and PyAV surfaces it on every frame of it.
-            rotation = frame.rotation
-            frames.append(frame.to_ndarray(format="rgb24"))
-        frame_rate = float(stream.average_rate or stream.guessed_rate)
-        soundtrack = None
-        if container.streams.audio:
-            # Decoding the frames drained the container, so the soundtrack is read in a second pass over it.
-            container.seek(0)
-            soundtrack = _decode_reference_soundtrack(av, container, container.streams.audio[0])
-
-    if not frames:
-        raise ValueError(f"No video frames to decode in {media}.")
-    frames = np.stack(frames)
-    # `ffmpeg` displays a frame upright by undoing the counterclockwise rotation the display matrix carries, which is
-    # what this reproduces, snapped to the nearest quarter turn. A non-square pixel aspect ratio is left alone: the
-    # reference implementation resolved a reference's canvas from its *display* geometry, so a stream that carries a
-    # sample aspect ratio is conditioned on at the wrong shape, and correcting it is untested guesswork here.
-    turns = round(rotation / 90.0) % 4
-    if turns:
-        frames = np.ascontiguousarray(np.rot90(frames, k=-turns, axes=(1, 2)))
-    return frames, frame_rate, soundtrack
-
-
-def decode_reference_audio(media) -> tuple[torch.Tensor, int]:
-    r"""
-    Decode a reference audio file into a waveform, at the sample rate it carries.
-
-    Args:
-        media (`str` or `os.PathLike`): Path or URL of the audio, or of a video whose soundtrack is taken.
-
-    Returns:
-        `tuple[torch.Tensor, int]`: the `(channels, num_samples)` float32 waveform and its sample rate.
-    """
-    av = _import_av()
-    with _local_media_file(media) as path, av.open(path) as container:
-        if not container.streams.audio:
-            raise ValueError(f"No audio stream to decode in {media}.")
-        return _decode_reference_soundtrack(av, container, container.streams.audio[0])
-
-
 @dataclass
 class MiniMaxH3Reference:
     r"""
-    One omni-reference of a [`MiniMaxH3Ref2VABlocks`] request: an image, a video, or an audio clip.
+    Base class of the three references a [`MiniMaxH3Ref2VABlocks`] request conditions on:
+    [`MiniMaxH3ImageReference`], [`MiniMaxH3VideoReference`] and [`MiniMaxH3AudioReference`].
 
-    A reference carries exactly one medium — plus, for a video, the `audio` of its own soundtrack, which is then
-    conditioned on as that reference's own. References are passed to the blocks as a list, **in the order the model
-    should read them**: the order labels them in the prompt presentation and lays them out on the shared rotary clock,
-    so a different order is a different request.
+    References are passed to the blocks as a list, **in the order the model should read them**: the order labels them
+    in the prompt presentation and lays them out on the shared rotary clock, so a different order is a different
+    request.
 
-    Every medium may be a path or a URL as well as in-memory media. A path is decoded here, when the reference is
-    built, and with it the rates that come with it: no MiniMax-H3 block opens a media file. Decoding a video or an
-    audio file needs [PyAV](https://github.com/PyAV-Org/PyAV).
+    Every reference holds in-memory media, and the rate that media carries where there is one — MiniMax-H3 resamples a
+    reference onto its own 24 fps and onto the audio VAE's sample rate, so a rate lost on the way in is a request
+    conditioned at the wrong speed. Decoding a file is the caller's job:
+    [`~modular_pipelines.minimax_h3.decode_reference_video`] and
+    [`~modular_pipelines.minimax_h3.decode_reference_audio`] do it along with the rates, and
+    [`MiniMaxH3Ref2VALoadReferencesStep`] wraps them in a block.
 
     ```py
-    >>> from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3Reference
+    >>> import numpy as np
+    >>> from diffusers.utils import load_image
+    >>> from diffusers.modular_pipelines.minimax_h3 import (
+    ...     MiniMaxH3AudioReference,
+    ...     MiniMaxH3ImageReference,
+    ...     MiniMaxH3VideoReference,
+    ...     decode_reference_audio,
+    ...     decode_reference_video,
+    ... )
 
-    >>> # A file or a URL is decoded on the spot, at the rate the container reports.
     >>> references = [
-    ...     MiniMaxH3Reference(video="motion_ref.mp4"),
-    ...     MiniMaxH3Reference(image="subject.png"),
-    ...     MiniMaxH3Reference(audio="voice.wav"),
+    ...     MiniMaxH3ImageReference(image=load_image("subject.png")),
+    ...     decode_reference_video("motion_ref.mp4"),  # frames, their `fps`, and the soundtrack
+    ...     decode_reference_audio("voice.wav"),  # waveform and its `sample_rate`
     ... ]
 
-    >>> # In-memory media instead carries the rates it was produced at, MiniMax-H3's own by default.
-    >>> import numpy as np
-
+    >>> # Media a request produced itself declares the rate it was produced at.
     >>> frames = np.zeros((30, 480, 854, 3), dtype="uint8")
-    >>> reference = MiniMaxH3Reference(video=frames, fps=30.0)
+    >>> reference = MiniMaxH3VideoReference(frames=frames, fps=30.0)
     ```
-
-    Attributes:
-        image (`str`, `os.PathLike`, `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`, *optional*):
-            A subject, style or scene reference: at most 9 per request. A path or a URL, which is read with
-            [`~utils.load_image`], a `(height, width, 3)` array or a `(3, height, width)` tensor, `uint8` or floating
-            point over `[0, 1]`. Mutually exclusive with `video`.
-        video (`str`, `os.PathLike`, `list[PIL.Image.Image]`, `np.ndarray` or `torch.Tensor`, *optional*):
-            A motion and camera reference: at most 3 per request. A path or a URL, which PyAV decodes into frames, a
-            list of images, a `(num_frames, height, width, 3)` array or a `(num_frames, 3, height, width)` tensor.
-            Mutually exclusive with `image`. A decoded file brings its soundtrack along, as this reference's own, so
-            conditioning on a file's motion alone means decoding its frames first, with [`~utils.load_video`].
-        fps (`float`, *optional*):
-            The frame rate `video` carries its frames at, which is what places its vision blocks on the conditioner's
-            2 fps grid. Left out, it is the rate the container reports for a decoded file and MiniMax-H3's own 24 fps
-            for in-memory frames, and `fps` holds that resolved rate once the reference is built. Passing it wins over
-            both, which is only needed when a container's metadata is wrong. MiniMax-H3's clock is 24 fps, so any other
-            rate is resampled onto it by dropping and duplicating whole frames.
-        audio (`str`, `os.PathLike` or `torch.Tensor` of shape `(channels, num_samples)`, *optional*):
-            A voice or music reference, mono or stereo: at most 3 per request, and never on its own — an audio
-            reference has to be paired with at least one image or video reference. A path or a URL, which PyAV decodes
-            into a waveform, or the waveform itself. Passed next to `video`, it is that video's soundtrack instead of a
-            reference of its own. An audio reference never reaches the conditioner and is encoded by the audio VAE
-            alone.
-        sample_rate (`int`, *optional*):
-            The rate `audio` carries its samples at. Left out, it is the rate the container reports for a decoded file,
-            and for an in-memory waveform the audio VAE's own, which leaves the samples untouched. Passing it wins over
-            both, which is only needed when a container's metadata is wrong. Any other rate is resampled onto the audio
-            VAE's own.
     """
 
-    image: str | os.PathLike | Image.Image | np.ndarray | torch.Tensor | None = None
-    video: str | os.PathLike | list[Image.Image] | np.ndarray | torch.Tensor | None = None
+
+@dataclass
+class MiniMaxH3ImageReference(MiniMaxH3Reference):
+    r"""
+    A subject, style or scene reference: at most 9 per request.
+
+    Attributes:
+        image (`PIL.Image.Image`):
+            The reference image. It never binds the generated geometry — it is encoded at a 2048 pixel short edge of
+            its own aspect ratio, whatever canvas the request generates at.
+    """
+
+    image: Image.Image
+
+    kind = "image"
+    has_audio = False
+
+
+@dataclass
+class MiniMaxH3VideoReference(MiniMaxH3Reference):
+    r"""
+    A motion and camera reference: at most 3 per request, conditioned on together with its own soundtrack.
+
+    Attributes:
+        frames (`list[PIL.Image.Image]`, `np.ndarray` or `torch.Tensor`):
+            The reference frames: a list of images, a `(num_frames, height, width, 3)` array or a `(num_frames, 3,
+            height, width)` tensor, `uint8` or floating point over `[0, 1]`.
+        fps (`float`, *optional*, defaults to 24.0):
+            The frame rate `frames` carries, which is what places the reference's vision blocks on the conditioner's 2
+            fps grid. MiniMax-H3's own clock is 24 fps, so any other rate is resampled onto it by dropping and
+            duplicating whole frames — which makes this the field to get right when the frames came from a file.
+        audio (`torch.Tensor` of shape `(channels, num_samples)`, *optional*):
+            This video's soundtrack, mono or stereo, conditioned on as the reference's own rather than as a reference
+            of its own. Left out, the reference conditions on motion alone.
+        sample_rate (`int`, *optional*):
+            The rate `audio` carries its samples at. Left out, it is the audio VAE's own, which leaves the samples
+            untouched; any other rate is resampled onto it.
+    """
+
+    frames: list[Image.Image] | np.ndarray | torch.Tensor
     fps: float | None = None
-    audio: str | os.PathLike | torch.Tensor | None = None
+    audio: torch.Tensor | None = None
     sample_rate: int | None = None
 
-    def __post_init__(self):
-        # A video reference conditions on its soundtrack too, so `audio` is a second medium of a video reference.
-        media = [name for name in ("image", "video", "audio") if getattr(self, name) is not None]
-        if media not in (["image"], ["video"], ["audio"], ["video", "audio"]):
-            raise ValueError(
-                "A `MiniMaxH3Reference` must carry exactly one of `image`, `video` or `audio` — plus, for a video, "
-                f"the `audio` of its soundtrack — got {media if media else 'none of them'}."
-            )
+    kind = "video"
 
-        # A path is decoded on the spot, so that the blocks only ever see in-memory media. A rate the request
-        # passed explicitly wins over the one the container reports, for a container whose metadata is wrong.
-        if isinstance(self.image, (str, os.PathLike)):
-            self.image = load_image(str(self.image))
-        if isinstance(self.video, (str, os.PathLike)):
-            frames, frame_rate, soundtrack = decode_reference_video(self.video)
-            self.video = frames
-            self.fps = frame_rate if self.fps is None else self.fps
-            if soundtrack is not None and self.audio is None:
-                self.audio, soundtrack_sample_rate = soundtrack
-                self.sample_rate = soundtrack_sample_rate if self.sample_rate is None else self.sample_rate
-        if isinstance(self.audio, (str, os.PathLike)):
-            self.audio, sample_rate = decode_reference_audio(self.audio)
-            self.sample_rate = sample_rate if self.sample_rate is None else self.sample_rate
+    def __post_init__(self):
         if self.fps is None:
             self.fps = float(MINIMAX_H3_FPS)
 
     @property
-    def kind(self) -> str:
-        r"""The modality this reference is packed as: `"image"`, `"video"` or `"audio"`."""
-        if self.image is not None:
-            return "image"
-        return "video" if self.video is not None else "audio"
-
-    @property
     def has_audio(self) -> bool:
-        r"""Whether this reference contributes audio rows, i.e. whether it carries a waveform."""
+        r"""Whether this reference contributes audio rows, i.e. whether it carries a soundtrack."""
         return self.audio is not None
 
 
-def reference_kind(index: int, entry: Any) -> str:
-    r"""
-    The modality of one `references` entry, which the [`MiniMaxH3Reference`] validated at construction.
-    """
-    if not isinstance(entry, MiniMaxH3Reference):
-        raise ValueError(
-            f"`references[{index}]` must be a [`MiniMaxH3Reference`], got {type(entry)}. A request is built from "
-            "the dataclass: `MiniMaxH3Reference(image=...)`, `MiniMaxH3Reference(video=...)` or "
-            "`MiniMaxH3Reference(audio=...)`."
-        )
-    # A reference decodes a path when it is built, so the blocks only ever see in-memory media.
-    for name in ("image", "video", "audio"):
-        if isinstance(getattr(entry, name), (str, os.PathLike)):
-            raise ValueError(
-                f"`references[{index}].{name}` is a path. MiniMax-H3 blocks never open media files: rebuild "
-                "the reference, which decodes a path as it is built."
-            )
-    return entry.kind
-
-
 @dataclass
-class MiniMaxH3PreparedReference:
+class MiniMaxH3AudioReference(MiniMaxH3Reference):
     r"""
-    One `ref2va` reference prepared for packing, in packed order.
-
-    A [`MiniMaxH3Reference`] is resolved in three passes: the blocks read the modality off the request (`kind`,
-    `has_audio`), prepares the pixels or samples (`image`, `frames`, `waveform`), and finally encodes them, which is
-    what fixes the latent geometry (`num_latent_frames`, `latent_height`, `latent_width`, `num_audio_latents`) the
-    packed layout is built from.
+    A voice or music reference: at most 3 per request, and never on its own — an audio reference has to be paired with
+    at least one image or video reference. It never reaches the conditioner and is encoded by the audio VAE alone.
 
     Attributes:
-        kind (`str`):
-            `"image"`, `"video"` or `"audio"`.
-        has_audio (`bool`):
-            Whether this reference contributes audio rows. Always `True` for `"audio"`, and `True` for a `"video"` the
-            request passed a soundtrack with.
-        image (`PIL.Image.Image`):
-            The prepared reference image.
-        frames (`np.ndarray` of shape `(num_frames, height, width, 3)`):
-            The prepared reference video, `uint8` RGB at 24 fps.
-        waveform (`torch.Tensor` of shape `(2, num_samples)`):
-            The prepared soundtrack, stereo at the audio VAE's sample rate.
-        block_timestamps (`list[float]`):
-            The timestamp of every vision block the conditioner sees for a video reference.
-        num_latent_frames (`int`), latent_height (`int`), latent_width (`int`):
-            Latent geometry of the visual rows.
-        num_audio_latents (`int`):
-            Number of audio latents per channel.
+        audio (`torch.Tensor` of shape `(channels, num_samples)`):
+            The reference waveform, mono or stereo.
+        sample_rate (`int`, *optional*):
+            The rate `audio` carries its samples at. Left out, it is the audio VAE's own, which leaves the samples
+            untouched; any other rate is resampled onto it.
     """
 
-    kind: str
-    has_audio: bool = False
-    image: Any = None
-    frames: Any = None
-    waveform: torch.Tensor | None = None
-    block_timestamps: list[float] = field(default_factory=list)
-    num_latent_frames: int = 1
-    latent_height: int = 0
-    latent_width: int = 0
-    num_audio_latents: int = 0
+    audio: torch.Tensor
+    sample_rate: int | None = None
 
-    @property
-    def num_video_rows(self) -> int:
-        r"""The number of packed video rows, for the `(1, 2, 2)` patch MiniMax-H3 packs video latents with."""
-        return self.num_latent_frames * (self.latent_height // 2) * (self.latent_width // 2)
-
-    @property
-    def num_audio_rows(self) -> int:
-        r"""The number of packed audio rows: one per latent and per stereo channel."""
-        return self.num_audio_latents * MINIMAX_H3_AUDIO_CHANNELS
+    kind = "audio"
+    has_audio = True
 
 
 def _temporal_position_span(num_latent_frames: int) -> float:
@@ -431,7 +242,9 @@ def _fill_audio_positions(
 
 def build_ref2va_packed_sequence(
     text_token_tags: torch.Tensor,
-    references: list[MiniMaxH3PreparedReference],
+    references: list[MiniMaxH3Reference],
+    condition_latents: list[torch.Tensor],
+    audio_condition_latents: list[torch.Tensor],
     num_latent_frames: int,
     latent_height: int,
     latent_width: int,
@@ -445,8 +258,13 @@ def build_ref2va_packed_sequence(
         text_token_tags (`torch.Tensor` of shape `(num_text_tokens,)`):
             The modality tag of every text row. Text is tagged `1`, except for the rows of a reference's vision block,
             which MiniMax-H3 tags `0` (video).
-        references (`list[MiniMaxH3PreparedReference]`):
-            The references, in packed order, with their latent geometry already resolved.
+        references (`list[MiniMaxH3Reference]`):
+            The references, in packed order. Only their modality is read here; the geometry comes from the latents.
+        condition_latents (`list[torch.Tensor]`):
+            One `(1, channels, num_latent_frames, latent_height, latent_width)` tensor per image and video reference,
+            in packed order, as [`MiniMaxH3Ref2VAReferenceEncoderStep`] produced them.
+        audio_condition_latents (`list[torch.Tensor]`):
+            One `(num_audio_latents * 2, audio_latent_channels)` tensor per audio-bearing reference, in packed order.
         num_latent_frames (`int`): Number of target latent frames.
         latent_height (`int`): Target latent height.
         latent_width (`int`): Target latent width.
@@ -461,8 +279,17 @@ def build_ref2va_packed_sequence(
     num_text_tokens = text_token_tags.shape[0]
     num_target_video_rows = num_latent_frames * (latent_height // patch_h) * (latent_width // patch_w)
     num_target_audio_rows = num_audio_latents * MINIMAX_H3_AUDIO_CHANNELS
-    num_reference_video_rows = sum(reference.num_video_rows for reference in references if reference.kind != "audio")
-    num_reference_audio_rows = sum(reference.num_audio_rows for reference in references)
+
+    # The geometry of every reference block is the shape of what the encoder produced for it, so the two can never
+    # disagree. Both lists are in packed order but skip the references they do not apply to, so they are consumed as
+    # iterators alongside the reference list rather than indexed by it.
+    visual_geometry = iter(tuple(latents.shape[2:5]) for latents in condition_latents)
+    audio_row_counts = iter(rows.shape[0] for rows in audio_condition_latents)
+    num_reference_video_rows = sum(
+        frames * (height // patch_h) * (width // patch_w)
+        for frames, height, width in (tuple(latents.shape[2:5]) for latents in condition_latents)
+    )
+    num_reference_audio_rows = sum(rows.shape[0] for rows in audio_condition_latents)
     sequence_length = (
         num_text_tokens
         + num_reference_video_rows
@@ -482,39 +309,47 @@ def build_ref2va_packed_sequence(
     rotary_time = float(num_text_tokens)
     for reference in references:
         if reference.kind == "image":
-            rows = slice(cursor, cursor + reference.num_video_rows)
+            num_latent_frames_, reference_height, reference_width = next(visual_geometry)
+            num_video_rows = (
+                num_latent_frames_ * (reference_height // patch_h) * (reference_width // patch_w)
+            )
+            rows = slice(cursor, cursor + num_video_rows)
             cursor = rows.stop
             video_indices.append(torch.arange(rows.start, rows.stop))
-            frame_grid, _ = _frame_position_grid(reference.latent_height, reference.latent_width, patch_h, patch_w)
+            frame_grid, _ = _frame_position_grid(reference_height, reference_width, patch_h, patch_w)
             position_ids[rows, 0] = rotary_time
             position_ids[rows, 1:] = frame_grid
             # An image is a single frame and takes a single integer rotary slot, not a latent frame's 5/3 units.
             rotary_time += 1.0
         elif reference.kind == "audio":
-            rows = slice(cursor, cursor + reference.num_audio_rows)
+            num_audio_rows = next(audio_row_counts)
+            reference_audio_latents = num_audio_rows // MINIMAX_H3_AUDIO_CHANNELS
+            rows = slice(cursor, cursor + num_audio_rows)
             cursor = rows.stop
             audio_indices.append(torch.arange(rows.start, rows.stop))
-            _fill_audio_positions(position_ids, rows, reference.num_audio_latents, rotary_time, target_width_grid)
-            rotary_time += float(reference.num_audio_latents)
+            _fill_audio_positions(position_ids, rows, reference_audio_latents, rotary_time, target_width_grid)
+            rotary_time += float(reference_audio_latents)
         elif reference.kind == "video":
             # A video reference's soundtrack rows are packed immediately before its video rows and share their
             # origin, so the two are rotary-aligned exactly as the generated audio and video are.
-            audio_rows = slice(cursor, cursor + reference.num_audio_rows)
-            video_rows = slice(audio_rows.stop, audio_rows.stop + reference.num_video_rows)
+            num_audio_rows = next(audio_row_counts) if reference.has_audio else 0
+            reference_audio_latents = num_audio_rows // MINIMAX_H3_AUDIO_CHANNELS
+            num_latent_frames_, reference_height, reference_width = next(visual_geometry)
+            num_video_rows = (
+                num_latent_frames_ * (reference_height // patch_h) * (reference_width // patch_w)
+            )
+            audio_rows = slice(cursor, cursor + num_audio_rows)
+            video_rows = slice(audio_rows.stop, audio_rows.stop + num_video_rows)
             cursor = video_rows.stop
             audio_indices.append(torch.arange(audio_rows.start, audio_rows.stop))
             video_indices.append(torch.arange(video_rows.start, video_rows.stop))
 
-            frame_grid, width_grid = _frame_position_grid(
-                reference.latent_height, reference.latent_width, patch_h, patch_w
-            )
-            _fill_audio_positions(position_ids, audio_rows, reference.num_audio_latents, rotary_time, width_grid)
-            frame_time = _temporal_position_grid(reference.num_latent_frames, rotary_time)
+            frame_grid, width_grid = _frame_position_grid(reference_height, reference_width, patch_h, patch_w)
+            _fill_audio_positions(position_ids, audio_rows, reference_audio_latents, rotary_time, width_grid)
+            frame_time = _temporal_position_grid(num_latent_frames_, rotary_time)
             position_ids[video_rows, 0] = frame_time.repeat_interleave(frame_grid.shape[0])
-            position_ids[video_rows, 1:] = frame_grid.repeat(reference.num_latent_frames, 1)
-            rotary_time += max(
-                float(reference.num_audio_latents), _temporal_position_span(reference.num_latent_frames)
-            )
+            position_ids[video_rows, 1:] = frame_grid.repeat(num_latent_frames_, 1)
+            rotary_time += max(float(reference_audio_latents), _temporal_position_span(num_latent_frames_))
         else:
             raise ValueError(f"A reference must be an 'image', a 'video' or an 'audio', got {reference.kind!r}.")
 
@@ -548,14 +383,16 @@ def build_ref2va_packed_sequence(
     )
 
 
-def resolve_reference_image_size(width: int, height: int) -> tuple[int, int]:
+def resolve_reference_image_size(width: int, height: int, canvas_multiple: int) -> tuple[int, int]:
     r"""
-    Resolve the resolution a reference image is encoded at: a 2048 pixel short edge, both axes rounded to a multiple
-    of 32. Upscaling is intended, and unlike the target canvas there is no area cap.
+    Resolve the resolution a reference image is encoded at: a 2048 pixel short edge, both axes rounded to
+    `canvas_multiple`. Upscaling is intended, and unlike the target canvas there is no area cap.
 
     Args:
         width (`int`): Width of the source image.
         height (`int`): Height of the source image.
+        canvas_multiple (`int`):
+            What both axes round to, i.e. `components.canvas_multiple` — 32 for the released checkpoint.
 
     Returns:
         `tuple[int, int]`: the `(height, width)` the reference is resized to.
@@ -566,7 +403,7 @@ def resolve_reference_image_size(width: int, height: int) -> tuple[int, int]:
         raise ValueError(f"A reference image must be within 1:4 and 4:1, got {width}x{height}.")
 
     scale = MINIMAX_H3_REFERENCE_IMAGE_SHORT_EDGE / min(width, height)
-    multiple = MINIMAX_H3_CANVAS_MULTIPLE
+    multiple = canvas_multiple
     return (
         max(multiple, round(height * scale / multiple) * multiple),
         max(multiple, round(width * scale / multiple) * multiple),
@@ -648,7 +485,7 @@ def resample_reference_frames(frames: np.ndarray, fps: float) -> np.ndarray:
     return np.repeat(frames, np.diff(slots, append=math.floor(frames.shape[0] * scale + 0.5)), axis=0)
 
 
-def prepare_reference_frames(frames: np.ndarray, num_frames: int) -> np.ndarray:
+def prepare_reference_frames(frames: np.ndarray, num_frames: int, canvas_multiple: int) -> np.ndarray:
     r"""
     Put a reference video onto the canvas its own aspect ratio resolves to, and cap it at the generated frame count.
 
@@ -661,6 +498,8 @@ def prepare_reference_frames(frames: np.ndarray, num_frames: int) -> np.ndarray:
         frames (`np.ndarray` of shape `(num_frames, height, width, 3)`):
             The reference video, `uint8` RGB at 24 fps, as returned by [`resample_reference_frames`].
         num_frames (`int`): The frame count the reference is truncated to, i.e. the target's own frame count.
+        canvas_multiple (`int`):
+            What both axes of its own canvas round to, i.e. `components.canvas_multiple`.
 
     Returns:
         `np.ndarray` of shape `(num_frames, height, width, 3)`: The prepared reference.
@@ -670,7 +509,7 @@ def prepare_reference_frames(frames: np.ndarray, num_frames: int) -> np.ndarray:
             f"A reference video must be `(num_frames, height, width, 3)` RGB frames, got {tuple(frames.shape)}."
         )
     frames = frames[:num_frames]
-    height, width = resolve_canvas_size(frames.shape[2], frames.shape[1])
+    height, width = resolve_canvas_size(frames.shape[2], frames.shape[1], canvas_multiple)
     if frames.shape[1:3] == (height, width):
         return frames
     return np.stack(
@@ -753,9 +592,10 @@ def prepare_reference_waveform(
 def build_ref2va_presentation(
     tokenizer,
     prompt: str,
-    references: list[MiniMaxH3PreparedReference],
+    references: list[MiniMaxH3Reference],
     image_token_counts: list[int],
     video_block_token_counts: list[int],
+    video_block_timestamps: list[list[float]],
 ) -> tuple[list[int], list[int]]:
     r"""
     Tokenize MiniMax-H3's presentation of a `ref2va` request.
@@ -769,9 +609,10 @@ def build_ref2va_presentation(
     Args:
         tokenizer (`Qwen2TokenizerFast`): Tokenizer of the conditioner.
         prompt (`str`): The prompt, appended verbatim.
-        references (`list[MiniMaxH3PreparedReference]`): The prepared references, in packed order.
+        references (`list[MiniMaxH3Reference]`): The normalized references, in packed order.
         image_token_counts (`list[int]`): Number of vision tokens of every image reference's block.
         video_block_token_counts (`list[int]`): Number of vision tokens per block of every video reference.
+        video_block_timestamps (`list[list[float]]`): The timestamp of every vision block, per video reference.
 
     Returns:
         `tuple[list[int], list[int]]`: the token ids and their modality tags. A vision block is tagged `0` (video) and
@@ -808,7 +649,7 @@ def build_ref2va_presentation(
         elif reference.kind == "video":
             counts["video"] += 1
             emit(text(f"<Video {counts['video']}>: "))
-            for timestamp in reference.block_timestamps:
+            for timestamp in video_block_timestamps[counts["video"] - 1]:
                 # `"{:.1f}"` rounds half to even, so the mean of a 2 fps pair renders as "<0.2 seconds>".
                 emit(text(f"<{timestamp:.1f} seconds>"))
                 emit(vision("<|video_pad|>", video_block_token_counts[counts["video"] - 1]))

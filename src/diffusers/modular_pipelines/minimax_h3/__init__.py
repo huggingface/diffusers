@@ -23,7 +23,17 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_blocks_minimax_h3"] = ["MiniMaxH3Blocks", "MiniMaxH3Ref2VABlocks"]
     _import_structure["modular_pipeline"] = ["MiniMaxH3ModularPipeline", "MiniMaxH3Ref2VAModularPipeline"]
-    _import_structure["packing_ref2va"] = ["MiniMaxH3Reference"]
+    _import_structure["packing_ref2va"] = [
+        "MiniMaxH3AudioReference",
+        "MiniMaxH3ImageReference",
+        "MiniMaxH3Reference",
+        "MiniMaxH3VideoReference",
+    ]
+    _import_structure["reference_loading"] = [
+        "MiniMaxH3Ref2VALoadReferencesStep",
+        "decode_reference_audio",
+        "decode_reference_video",
+    ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -34,7 +44,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modular_blocks_minimax_h3 import MiniMaxH3Blocks, MiniMaxH3Ref2VABlocks
         from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
-        from .packing_ref2va import MiniMaxH3Reference
+        from .packing_ref2va import (
+            MiniMaxH3AudioReference,
+            MiniMaxH3ImageReference,
+            MiniMaxH3Reference,
+            MiniMaxH3VideoReference,
+        )
+        from .reference_loading import (
+            MiniMaxH3Ref2VALoadReferencesStep,
+            decode_reference_audio,
+            decode_reference_video,
+        )
 else:
     import sys
 

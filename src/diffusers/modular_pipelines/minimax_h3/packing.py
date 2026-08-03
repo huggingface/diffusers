@@ -46,35 +46,18 @@ MINIMAX_H3_TEXT_TAG = 1
 MINIMAX_H3_AUDIO_TAG = 2
 
 # MiniMax-H3 generates at a fixed 24 fps and was released for a 768 pixel short edge only, with a soft area cap of
-# 768x1344 and both axes rounded to a multiple of 32.
+# 768x1344. The multiple both axes round to is not here: it follows from the VAE and the transformer, so it is
+# `MiniMaxH3ModularPipeline.canvas_multiple` and reaches these helpers as an argument.
 MINIMAX_H3_FPS = 24
 MINIMAX_H3_SHORT_EDGE = 768
 MINIMAX_H3_MAX_PIXELS = 768 * 1344
-MINIMAX_H3_CANVAS_MULTIPLE = 32
 MINIMAX_H3_MIN_ASPECT_RATIO = 1 / 4
 MINIMAX_H3_MAX_ASPECT_RATIO = 4
-MINIMAX_H3_MIN_DURATION = 5.0
-MINIMAX_H3_MAX_DURATION = 15.0
-
-# The pixel convention of the video VAE: ImageNet-normalized RGB over a `[0, 1]` base range.
-MINIMAX_H3_PIXEL_MEAN = (0.485, 0.456, 0.406)
-MINIMAX_H3_PIXEL_STD = (0.229, 0.224, 0.225)
-
-# MiniMax-H3 conditions on the *unnormalized* hidden state its Qwen3-VL conditioner produces after the 50th of its 64
-# decoder layers, i.e. `hidden_states[50]` (`hidden_states[0]` being the embedding output).
-MINIMAX_H3_TEXT_ENCODER_LAYER = 50
 
 # The audio VAE hops 800 samples at 32 kHz, i.e. 40 latents per second. Stereo is carried as two channel-major
 # blocks of audio rows (and as two batch items at the audio VAE boundary, which is mono).
 MINIMAX_H3_AUDIO_LATENTS_PER_SECOND = 40
 MINIMAX_H3_AUDIO_CHANNELS = 2
-
-# Conditioning rows are not fully clean: the released model noises keyframe latents to `t = 0.999` and runs them at
-# that timestep for every denoising step.
-MINIMAX_H3_KEYFRAME_NOISE_AUG = 0.999
-
-# The seeded posterior sample of the keyframe VAE encode. Fixed at 42 independently of the request seed.
-MINIMAX_H3_KEYFRAME_ENCODE_SEED = 42
 
 # Rotary-time constants. One latent frame spans `5/3 * frames_per_latent` rotary units, where the pattern
 # `(1, 4, 4, 4, 4)` mirrors the VAE's 17-pixel-frames-to-5-latent-frames grouping; the spatial axes are normalized
@@ -84,17 +67,19 @@ _ROPE_FRAMES_PER_LATENT = (1, 4, 4, 4, 4)
 _ROPE_SPATIAL_SCALE = 32
 
 
-def resolve_canvas_size(aspect_width: float, aspect_height: float) -> tuple[int, int]:
+def resolve_canvas_size(aspect_width: float, aspect_height: float, canvas_multiple: int) -> tuple[int, int]:
     r"""
     Resolve a display aspect ratio into a MiniMax-H3 canvas.
 
     The short edge starts at 768, the area is capped at `768 * 1344` and both axes are then rounded to the nearest
-    multiple of 32 — so the final area may end up slightly above the pre-rounding budget. Only the ratio of the two
+    `canvas_multiple` — so the final area may end up slightly above the pre-rounding budget. Only the ratio of the two
     arguments matters; pass either the aspect ratio (`16, 9`) or the source dimensions of a keyframe.
 
     Args:
         aspect_width (`float`): Width of the target ratio.
         aspect_height (`float`): Height of the target ratio.
+        canvas_multiple (`int`):
+            What both axes round to, i.e. `components.canvas_multiple` — 32 for the released checkpoint.
 
     Returns:
         `tuple[int, int]`: the `(height, width)` of the canvas.
@@ -118,7 +103,7 @@ def resolve_canvas_size(aspect_width: float, aspect_height: float) -> tuple[int,
         scale = (MINIMAX_H3_MAX_PIXELS / area) ** 0.5
         width, height = width * scale, height * scale
 
-    multiple = MINIMAX_H3_CANVAS_MULTIPLE
+    multiple = canvas_multiple
     return max(multiple, round(height / multiple) * multiple), max(multiple, round(width / multiple) * multiple)
 
 

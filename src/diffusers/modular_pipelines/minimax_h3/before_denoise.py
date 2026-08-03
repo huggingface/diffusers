@@ -21,12 +21,6 @@ from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
 from .packing import (
-    MINIMAX_H3_AUDIO_CHANNELS,
-    MINIMAX_H3_CANVAS_MULTIPLE,
-    MINIMAX_H3_FPS,
-    MINIMAX_H3_KEYFRAME_NOISE_AUG,
-    MINIMAX_H3_MAX_DURATION,
-    MINIMAX_H3_MIN_DURATION,
     align_num_frames,
     audio_latent_num_frames,
     build_packed_sequence,
@@ -35,7 +29,7 @@ from .packing import (
     resolve_canvas_size,
     video_latent_num_frames,
 )
-from .packing_ref2va import MiniMaxH3PreparedReference, build_ref2va_packed_sequence
+from .packing_ref2va import MiniMaxH3Reference, build_ref2va_packed_sequence
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -143,10 +137,10 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
 
         # Without a keyframe to take the aspect ratio from, MiniMax-H3 generates on its own 16:9 canvas.
         if block_state.height is None:
-            block_state.height, block_state.width = resolve_canvas_size(16, 9)
-        if block_state.height % MINIMAX_H3_CANVAS_MULTIPLE or block_state.width % MINIMAX_H3_CANVAS_MULTIPLE:
+            block_state.height, block_state.width = resolve_canvas_size(16, 9, components.canvas_multiple)
+        if block_state.height % components.canvas_multiple or block_state.width % components.canvas_multiple:
             raise ValueError(
-                f"`height` and `width` must be multiples of {MINIMAX_H3_CANVAS_MULTIPLE}, got "
+                f"`height` and `width` must be multiples of {components.canvas_multiple}, got "
                 f"{block_state.height}x{block_state.width}."
             )
 
@@ -161,13 +155,13 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
             block_state.num_frames = aligned_num_frames
         # The duration the request generates is the one of the *aligned* frame count, so that is what the ceiling has
         # to hold for: 346 frames would otherwise pass the check and then be rounded up to 362, i.e. 15.083 seconds.
-        duration = block_state.num_frames / MINIMAX_H3_FPS
-        if not MINIMAX_H3_MIN_DURATION <= duration <= MINIMAX_H3_MAX_DURATION:
+        duration = block_state.num_frames / components.fps
+        if not components.min_duration <= duration <= components.max_duration:
             raise ValueError(
-                f"MiniMax-H3 generates between {MINIMAX_H3_MIN_DURATION} and {MINIMAX_H3_MAX_DURATION} seconds at "
-                f"{MINIMAX_H3_FPS} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE can "
-                f"encode, must be between {int(MINIMAX_H3_MIN_DURATION * MINIMAX_H3_FPS)} and "
-                f"{int(MINIMAX_H3_MAX_DURATION * MINIMAX_H3_FPS)}, got {block_state.num_frames}."
+                f"MiniMax-H3 generates between {components.min_duration} and {components.max_duration} seconds "
+                f"at {components.fps} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE "
+                f"can encode, must be between {int(components.min_duration * components.fps)} and "
+                f"{int(components.max_duration * components.fps)}, got {block_state.num_frames}."
             )
 
         ratio = components.vae_spatial_compression_ratio
@@ -227,9 +221,24 @@ class MiniMaxH3Ref2VAPrepareLayoutStep(ModularPipelineBlocks):
             ),
             InputParam(
                 name="prepared_references",
-                type_hint=list[MiniMaxH3PreparedReference],
+                type_hint=list[MiniMaxH3Reference],
                 required=True,
-                description="The prepared references, in packed order, with their latent geometry filled in.",
+                description="The references normalized by the setup step, in packed order.",
+            ),
+            InputParam(
+                name="condition_latents",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description=(
+                    "The encoded video conditioning latents, one per image and video reference in packed order. "
+                    "Their shape is where every reference block's geometry comes from."
+                ),
+            ),
+            InputParam(
+                name="audio_condition_latents",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description="The encoded audio conditioning rows, one per audio-bearing reference in packed order.",
             ),
             InputParam.template("height", required=True, description="Height of the generated video in pixels."),
             InputParam.template("width", required=True, description="Width of the generated video in pixels."),
@@ -321,6 +330,8 @@ class MiniMaxH3Ref2VAPrepareLayoutStep(ModularPipelineBlocks):
         ) = build_ref2va_packed_sequence(
             block_state.text_token_tags,
             block_state.prepared_references,
+            block_state.condition_latents,
+            block_state.audio_condition_latents,
             block_state.num_latent_frames,
             block_state.latent_height,
             block_state.latent_width,
@@ -402,8 +413,11 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
             ),
             InputParam(
                 name="audio_condition_latents",
-                type_hint=torch.Tensor,
-                description="The audio conditioning rows to prepend, or None for a request that has none.",
+                type_hint=list[torch.Tensor],
+                description=(
+                    "The audio conditioning rows to prepend, one tensor per audio-bearing reference in packed "
+                    "order. Empty for a request that has none, which is every `t2va` and `fl2va` one."
+                ),
             ),
         ]
 
@@ -433,7 +447,7 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
         # noise directly in row layout. Passing `latents` or `audio_latents` skips its draw and shifts the ones after
         # it.
         condition_rows = None
-        if block_state.condition_latents is not None:
+        if block_state.condition_latents:
             # One draw per condition, in packed order. Each is packed on its own because `ref2va` references are
             # encoded at their own resolutions, so their latents do not share a shape.
             packed = []
@@ -443,7 +457,7 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
                 )
                 # The anchors are not fully clean: the released model noises them to `t = 0.999` and holds them there
                 # for every step. Mixing before the patchify is the same arithmetic, since patchify only permutes.
-                noised = components.scheduler.scale_noise(condition.to(device), MINIMAX_H3_KEYFRAME_NOISE_AUG, noise)
+                noised = components.scheduler.scale_noise(condition.to(device), components.keyframe_noise_aug, noise)
                 packed.append(patchify_video_latents(noised, patch_size))
             condition_rows = torch.cat(packed)
             # In a hand-assembled chain the canvas reaching the layout is user input, so it can disagree with the
@@ -474,7 +488,7 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
 
         if block_state.audio_latents is None:
             audio_rows = randn_tensor(
-                (block_state.num_audio_latents * MINIMAX_H3_AUDIO_CHANNELS, components.audio_latent_channels),
+                (block_state.num_audio_latents * components.audio_channels, components.audio_latent_channels),
                 generator=block_state.generator,
                 device=device,
                 dtype=torch.float32,
@@ -488,8 +502,10 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
 
         if condition_rows is not None:
             video_rows = torch.cat([condition_rows, video_rows])
-        if block_state.audio_condition_latents is not None:
-            audio_rows = torch.cat([block_state.audio_condition_latents.to(device), audio_rows])
+        if block_state.audio_condition_latents:
+            audio_rows = torch.cat(
+                [rows.to(device) for rows in block_state.audio_condition_latents] + [audio_rows]
+            )
         block_state.latents, block_state.audio_latents = video_rows, audio_rows
 
         self.set_block_state(state, block_state)
@@ -587,7 +603,7 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
                     block_state.text_indices.numel(),
                     float(timestep),
                     float(audio_timestep),
-                    max(float(timestep), MINIMAX_H3_KEYFRAME_NOISE_AUG),
+                    max(float(timestep), components.keyframe_noise_aug),
                     1.0,
                 )
             )

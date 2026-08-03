@@ -21,7 +21,6 @@ from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import MiniMaxH3ModularPipeline
-from .packing import MINIMAX_H3_AUDIO_CHANNELS, MINIMAX_H3_PIXEL_MEAN, MINIMAX_H3_PIXEL_STD
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -121,7 +120,7 @@ class MiniMaxH3AfterDenoiseStep(ModularPipelineBlocks):
 
         # Audio rows are channel-major, and the mono audio VAE takes the two stereo channels as two batch items.
         audio_rows = block_state.audio_latents[block_state.num_condition_audio_rows :]
-        audio_rows = audio_rows.reshape(MINIMAX_H3_AUDIO_CHANNELS, block_state.num_audio_latents, audio_rows.shape[-1])
+        audio_rows = audio_rows.reshape(components.audio_channels, block_state.num_audio_latents, audio_rows.shape[-1])
         block_state.audio_latents = audio_rows.permute(0, 2, 1).contiguous()
 
         self.set_block_state(state, block_state)
@@ -181,8 +180,8 @@ class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
 
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type == "cuda"):
             video = components.vae.decode(latents, return_dict=False)[0]
-        pixel_mean = torch.tensor(MINIMAX_H3_PIXEL_MEAN, device=device).view(1, -1, 1, 1, 1)
-        pixel_std = torch.tensor(MINIMAX_H3_PIXEL_STD, device=device).view(1, -1, 1, 1, 1)
+        pixel_mean = torch.tensor(components.pixel_mean, device=device).view(1, -1, 1, 1, 1)
+        pixel_std = torch.tensor(components.pixel_std, device=device).view(1, -1, 1, 1, 1)
         video = (video.float() * pixel_std + pixel_mean).clamp(0, 1)
         block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
 

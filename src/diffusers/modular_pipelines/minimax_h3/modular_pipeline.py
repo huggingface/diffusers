@@ -14,6 +14,12 @@
 
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
+from .packing import (
+    MINIMAX_H3_AUDIO_CHANNELS,
+    MINIMAX_H3_FPS,
+    MINIMAX_H3_TEXT_TAG,
+    MINIMAX_H3_VIDEO_TAG,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -91,6 +97,82 @@ class MiniMaxH3ModularPipeline(ModularPipeline):
         if getattr(self, "transformer", None) is not None:
             return tuple(self.transformer.config.patch_size)
         return (1, 2, 2)
+
+    @property
+    def canvas_multiple(self):
+        r"""What the generated height and width have to be a multiple of, 32 for the released checkpoint."""
+        # A canvas has to survive the VAE's spatial compression and still be a whole number of patch rows wide, so
+        # the multiple is the product of the two.
+        return self.vae_spatial_compression_ratio * self.patch_size[2]
+
+    @property
+    def fps(self):
+        r"""MiniMax-H3's own frame rate. Everything it generates and conditions on is resampled onto it."""
+        return MINIMAX_H3_FPS
+
+    @property
+    def min_duration(self):
+        r"""Shortest video MiniMax-H3 generates, in seconds."""
+        return 5.0
+
+    @property
+    def max_duration(self):
+        r"""Longest video MiniMax-H3 generates, in seconds."""
+        return 15.0
+
+    @property
+    def audio_channels(self):
+        r"""Channels of the generated soundtrack: MiniMax-H3 is stereo, packed channel-major."""
+        return MINIMAX_H3_AUDIO_CHANNELS
+
+    @property
+    def text_encoder_layer(self):
+        r"""
+        Which Qwen3-VL hidden state conditions the transformer.
+
+        MiniMax-H3 reads `hidden_states[50]`, not the final one: the last layer is post-norm and is not the
+        conditioning the released weights were trained against.
+        """
+        return 50
+
+    @property
+    def pixel_mean(self):
+        r"""Per-channel mean the video VAE's input is normalized by, ImageNet's."""
+        return (0.485, 0.456, 0.406)
+
+    @property
+    def pixel_std(self):
+        r"""Per-channel standard deviation the video VAE's input is normalized by, ImageNet's."""
+        return (0.229, 0.224, 0.225)
+
+    @property
+    def keyframe_encode_seed(self):
+        r"""
+        Seed the conditioning posterior is sampled under, independently of the request's own generator.
+
+        Fixed at 42 in the reference implementation, so the same keyframe always encodes to the same anchor.
+        """
+        return 42
+
+    @property
+    def keyframe_noise_aug(self):
+        r"""
+        The `t` a visual conditioning anchor is held at: 0.999, just short of clean.
+
+        The released model was trained with its anchors very slightly noised, so conditioning on exactly `t = 1.0`
+        is off-distribution.
+        """
+        return 0.999
+
+    @property
+    def text_tag(self):
+        r"""The modality tag of a text row of the packed sequence."""
+        return MINIMAX_H3_TEXT_TAG
+
+    @property
+    def video_tag(self):
+        r"""The modality tag of a video row of the packed sequence, which a vision block's rows also carry."""
+        return MINIMAX_H3_VIDEO_TAG
 
 
 class MiniMaxH3Ref2VAModularPipeline(MiniMaxH3ModularPipeline):
