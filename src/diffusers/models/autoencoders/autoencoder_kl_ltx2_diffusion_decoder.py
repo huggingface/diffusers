@@ -685,6 +685,8 @@ class AutoencoderKLLTX2VideoDiffusionDecoder(
 
         self.spatial_compression_ratio = spatial_compression_ratio
         self.temporal_compression_ratio = temporal_compression_ratio
+        # Batch slicing is supported (`enable_slicing`); tiling is not — see `enable_tiling`.
+        self.use_slicing = False
 
         latents_mean = torch.zeros((latent_channels,), requires_grad=False)
         latents_std = torch.ones((latent_channels,), requires_grad=False)
