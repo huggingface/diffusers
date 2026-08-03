@@ -23,7 +23,7 @@ import yaml
 from huggingface_hub import snapshot_download
 from safetensors.torch import load_file
 
-from diffusers import __version__
+from diffusers import FlowMatchEulerDiscreteScheduler, __version__
 from diffusers.models import SeFiTransformer2DModel
 
 
@@ -107,6 +107,16 @@ def parse_args():
     parser.add_argument("--cache-dir", default=None, help="Optional Hugging Face cache directory.")
     parser.add_argument("--token", default=None, help="Optional Hugging Face token for gated checkpoints.")
     parser.add_argument(
+        "--source-repo-id",
+        default=None,
+        help="Original Hub repo id to record in the converted model card when converting a local checkpoint.",
+    )
+    parser.add_argument(
+        "--target-repo-id",
+        default=None,
+        help="Converted Hub repo id to use in the generated model card example.",
+    )
+    parser.add_argument(
         "--variant",
         choices=["base", "rl", "turbo"],
         default=None,
@@ -144,6 +154,66 @@ def save_json(path: Path, payload: dict):
         handle.write("\n")
 
 
+def save_model_card(output: Path, source_repo_id: str | None, target_repo_id: str, variant: str):
+    metadata = [
+        "---",
+        "license: cc-by-nc-4.0",
+        "library_name: diffusers",
+        "pipeline_tag: text-to-image",
+        "gated: true",
+        "tags:",
+        "- sefi-image",
+        "- semantic-first-diffusion",
+        "- safetensors",
+    ]
+    if source_repo_id is not None:
+        metadata.append(f"base_model: {source_repo_id}")
+    metadata.append("---")
+
+    source_link = (
+        f"[`{source_repo_id}`](https://huggingface.co/{source_repo_id})"
+        if source_repo_id is not None
+        else "the original SeFi-Image checkpoint"
+    )
+    inference_call = (
+        """image = pipe(
+    \"A red apple on a wooden table.\",
+    num_inference_steps=4,
+    guidance_scale=1.0,
+).images[0]"""
+        if variant == "turbo"
+        else 'image = pipe("A red apple on a wooden table.").images[0]'
+    )
+    card = (
+        "\n".join(metadata)
+        + f"""
+
+# SeFi-Image Diffusers checkpoint
+
+This repository is a Diffusers-format conversion of {source_link}. The original checkpoint is not modified by the
+conversion. Refer to the source model card for model details, limitations, and responsible-use guidance.
+
+```python
+import torch
+from diffusers import SeFiPipeline
+
+pipe = SeFiPipeline.from_pretrained(
+    \"{target_repo_id}\", dtype=torch.bfloat16
+).to(\"cuda\")
+{inference_call}
+image.save(\"sefi.png\")
+```
+
+## License
+
+The checkpoint is distributed under the Creative Commons Attribution-NonCommercial 4.0 International license
+(CC BY-NC 4.0). It is for non-commercial use only.
+"""
+    )
+    with open(output / "README.md", "w", encoding="utf-8") as handle:
+        handle.write(card)
+
+
 def infer_variant(checkpoint: str, config: dict, explicit_variant: str | None) -> str:
     if explicit_variant is not None:
         return explicit_variant
@@ -165,9 +235,7 @@ def default_guidance_scale(variant: str) -> float:
 
 
 def texture_vae_config_path(root: Path, texture_vae_name: str) -> Path:
-    if texture_vae_name == "sd1.5":
-        return root / "vae" / "config.json"
-    if texture_vae_name in {"flux1", "flux2"}:
+    if texture_vae_name in {"sd1.5", "flux1", "flux2"}:
         return root / "vae" / "config.json"
     raise ValueError(f"Unsupported texture VAE: {texture_vae_name}")
 
@@ -198,7 +266,6 @@ def build_transformer_config(root: Path, sefi_config: dict) -> dict:
 
     transformer_config["in_channels"] = total_channels
     transformer_config["out_channels"] = total_channels
-    transformer_config["text_input_dim"] = text_dim
     if int(transformer_config["joint_attention_dim"]) != text_dim:
         raise ValueError(
             "Text dimension mismatch: "
@@ -223,6 +290,38 @@ def load_transformer_state_dict(transformer_dir: Path) -> dict[str, torch.Tensor
     if bin_path.exists():
         return torch.load(bin_path, map_location="cpu")
     raise FileNotFoundError(f"No supported transformer weights found under {transformer_dir}.")
+
+
+def convert_transformer_state_dict(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    converted = {}
+    for key, value in state_dict.items():
+        if key.startswith("backbone."):
+            converted_key = key.removeprefix("backbone.")
+        elif key.startswith("dual_time_embed."):
+            converted_key = key
+        else:
+            raise ValueError(f"Unexpected transformer key in the original SeFi checkpoint: {key}")
+
+        if converted_key in converted:
+            raise ValueError(f"Transformer key collision after conversion: {converted_key}")
+        converted[converted_key] = value
+    return converted
+
+
+def convert_scheduler(root: Path, output: Path):
+    scheduler_config = load_json(root / "scheduler" / "scheduler_config.json")
+    source_scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
+    scheduler_config["shift"] = 1.0
+    scheduler_config["use_dynamic_shifting"] = False
+    scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
+
+    torch.testing.assert_close(scheduler.sigmas, source_scheduler.sigmas, rtol=0.0, atol=0.0)
+    torch.testing.assert_close(scheduler.timesteps, source_scheduler.timesteps, rtol=0.0, atol=0.0)
+    num_train_timesteps = int(scheduler.config.num_train_timesteps)
+    expected_sigmas = torch.linspace(1.0, 1.0 / num_train_timesteps, num_train_timesteps)
+    torch.testing.assert_close(scheduler.sigmas, expected_sigmas, rtol=0.0, atol=1e-7)
+    torch.testing.assert_close(scheduler.timesteps, expected_sigmas * num_train_timesteps, rtol=0.0, atol=1e-4)
+    scheduler.save_pretrained(output / "scheduler")
 
 
 def copy_tokenizer_files(src: Path, dst: Path):
@@ -253,14 +352,28 @@ def main():
     variant = infer_variant(args.checkpoint, sefi_config, args.variant)
     transformer_config = build_transformer_config(root, sefi_config)
 
-    transformer = SeFiTransformer2DModel(**transformer_config)
-    state_dict = load_transformer_state_dict(root / "transformer")
-    missing, unexpected = transformer.load_state_dict(state_dict, strict=False)
-    if missing or unexpected:
-        raise ValueError(f"Transformer state dict mismatch. Missing={missing[:20]}, unexpected={unexpected[:20]}")
+    state_dict = convert_transformer_state_dict(load_transformer_state_dict(root / "transformer"))
+    with torch.device("meta"):
+        transformer = SeFiTransformer2DModel(**transformer_config)
+    transformer.load_state_dict(state_dict, strict=True, assign=True)
+    expected_transformer_keys = set(state_dict)
+    expected_transformer_dtypes = {key: value.dtype for key, value in state_dict.items()}
+    floating_dtypes = {value.dtype for value in state_dict.values() if value.is_floating_point()}
+    if len(floating_dtypes) != 1:
+        raise ValueError(f"Expected one floating-point transformer dtype, got {sorted(map(str, floating_dtypes))}.")
+    transformer_dtype = floating_dtypes.pop()
     transformer.save_pretrained(output / "transformer", safe_serialization=True)
+    del transformer, state_dict
 
-    copytree(root / "scheduler", output / "scheduler")
+    reloaded_transformer = SeFiTransformer2DModel.from_pretrained(output / "transformer", dtype=transformer_dtype)
+    if set(reloaded_transformer.state_dict()) != expected_transformer_keys:
+        raise ValueError("Transformer state dict keys changed after the save/load round trip.")
+    round_trip_dtypes = {key: value.dtype for key, value in reloaded_transformer.state_dict().items()}
+    if round_trip_dtypes != expected_transformer_dtypes:
+        raise ValueError("Transformer state dict dtypes changed after the save/load round trip.")
+    del reloaded_transformer
+
+    convert_scheduler(root, output)
     copytree(root / "vae", output / "vae")
 
     text_encoder_name = sefi_config["model"]["text_encoder"]["model_name"]
@@ -299,6 +412,10 @@ def main():
         "max_sequence_length": int(model_config["text_encoder"].get("max_length", 1024)),
     }
     save_json(output / "model_index.json", model_index)
+    source_repo_id = args.source_repo_id
+    if source_repo_id is None and not Path(args.checkpoint).expanduser().exists():
+        source_repo_id = args.checkpoint
+    save_model_card(output, source_repo_id, args.target_repo_id or output.name, variant)
     shutil.copy2(root / "sefi_config.yaml", output / "sefi_config.yaml")
     print(f"Saved SeFi-Image Diffusers checkpoint to {output}")
 

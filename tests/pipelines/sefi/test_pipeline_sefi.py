@@ -173,3 +173,22 @@ class SeFiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert rotary_emb.inv_freq.dtype == torch.bfloat16
         assert rotary_emb.original_inv_freq.dtype == torch.bfloat16
+
+    def test_callback_receives_scheduler_timestep(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        timesteps = []
+
+        def callback_on_step_end(pipe, _step, timestep, callback_kwargs):
+            assert pipe.current_timestep == timestep
+            timesteps.append(timestep.item())
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["output_type"] = "latent"
+        inputs["callback_on_step_end"] = callback_on_step_end
+        pipe(**inputs)
+
+        assert timesteps[0] == pipe.scheduler.timesteps[0].item()
+        assert timesteps[0] == 1000.0
+        assert pipe.current_timestep is None

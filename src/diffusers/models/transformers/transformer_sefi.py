@@ -19,10 +19,11 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput, apply_lora_scale
+from ...utils import BaseOutput
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
-from .transformer_flux2 import Flux2Transformer2DModel
+from ..normalization import AdaLayerNormContinuous
+from .transformer_flux2 import Flux2Modulation, Flux2PosEmbed, Flux2SingleTransformerBlock, Flux2TransformerBlock
 
 
 @dataclass
@@ -105,8 +106,6 @@ class SeFiTransformer2DModel(ModelMixin, ConfigMixin):
             RoPE theta.
         eps (`float`, defaults to `1e-6`):
             Normalization epsilon.
-        text_input_dim (`int`, *optional*):
-            Expected text embedding dimension. Defaults to `joint_attention_dim`.
     """
 
     _supports_gradient_checkpointing = True
@@ -130,44 +129,60 @@ class SeFiTransformer2DModel(ModelMixin, ConfigMixin):
         axes_dims_rope: tuple[int, ...] = (32, 32, 32, 32),
         rope_theta: int = 2000,
         eps: float = 1e-6,
-        text_input_dim: int | None = None,
     ):
         super().__init__()
 
-        text_input_dim = joint_attention_dim if text_input_dim is None else text_input_dim
-        if int(text_input_dim) != int(joint_attention_dim):
-            raise ValueError(
-                f"`text_input_dim` must match `joint_attention_dim`, got {text_input_dim} and {joint_attention_dim}."
-            )
-
         self.out_channels = out_channels or in_channels
         self.inner_dim = num_attention_heads * attention_head_dim
-        self.backbone = Flux2Transformer2DModel(
-            patch_size=patch_size,
-            in_channels=in_channels,
-            out_channels=out_channels,
-            num_layers=num_layers,
-            num_single_layers=num_single_layers,
-            attention_head_dim=attention_head_dim,
-            num_attention_heads=num_attention_heads,
-            joint_attention_dim=joint_attention_dim,
-            timestep_guidance_channels=timestep_guidance_channels,
-            mlp_ratio=mlp_ratio,
-            axes_dims_rope=axes_dims_rope,
-            rope_theta=rope_theta,
-            eps=eps,
-            guidance_embeds=False,
-        )
-        # The reference SeFi transformer deletes Flux2's timestep/guidance embedder and stores only the dual embedder.
-        self.backbone.time_guidance_embed = nn.Identity()
+
+        self.pos_embed = Flux2PosEmbed(theta=rope_theta, axes_dim=axes_dims_rope)
         self.dual_time_embed = SeFiDualTimestepEmbeddings(
             in_channels=timestep_guidance_channels,
             embedding_dim=self.inner_dim,
             bias=False,
         )
+
+        self.double_stream_modulation_img = Flux2Modulation(self.inner_dim, mod_param_sets=2, bias=False)
+        self.double_stream_modulation_txt = Flux2Modulation(self.inner_dim, mod_param_sets=2, bias=False)
+        self.single_stream_modulation = Flux2Modulation(self.inner_dim, mod_param_sets=1, bias=False)
+
+        self.x_embedder = nn.Linear(in_channels, self.inner_dim, bias=False)
+        self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim, bias=False)
+
+        self.transformer_blocks = nn.ModuleList(
+            [
+                Flux2TransformerBlock(
+                    dim=self.inner_dim,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
+                    mlp_ratio=mlp_ratio,
+                    eps=eps,
+                    bias=False,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        self.single_transformer_blocks = nn.ModuleList(
+            [
+                Flux2SingleTransformerBlock(
+                    dim=self.inner_dim,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
+                    mlp_ratio=mlp_ratio,
+                    eps=eps,
+                    bias=False,
+                )
+                for _ in range(num_single_layers)
+            ]
+        )
+
+        self.norm_out = AdaLayerNormContinuous(
+            self.inner_dim, self.inner_dim, elementwise_affine=False, eps=eps, bias=False
+        )
+        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=False)
+
         self.gradient_checkpointing = False
 
-    @apply_lora_scale("joint_attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -211,26 +226,26 @@ class SeFiTransformer2DModel(ModelMixin, ConfigMixin):
         timestep_tex = timestep_tex.to(hidden_states.dtype) * 1000
         temb = self.dual_time_embed(timestep_sem, timestep_tex)
 
-        double_stream_mod_img = self.backbone.double_stream_modulation_img(temb)
-        double_stream_mod_txt = self.backbone.double_stream_modulation_txt(temb)
-        single_stream_mod = self.backbone.single_stream_modulation(temb)
+        double_stream_mod_img = self.double_stream_modulation_img(temb)
+        double_stream_mod_txt = self.double_stream_modulation_txt(temb)
+        single_stream_mod = self.single_stream_modulation(temb)
 
-        hidden_states = self.backbone.x_embedder(hidden_states)
-        encoder_hidden_states = self.backbone.context_embedder(encoder_hidden_states)
+        hidden_states = self.x_embedder(hidden_states)
+        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         if img_ids.ndim == 3:
             img_ids = img_ids[0]
         if txt_ids.ndim == 3:
             txt_ids = txt_ids[0]
 
-        image_rotary_emb = self.backbone.pos_embed(img_ids)
-        text_rotary_emb = self.backbone.pos_embed(txt_ids)
+        image_rotary_emb = self.pos_embed(img_ids)
+        text_rotary_emb = self.pos_embed(txt_ids)
         concat_rotary_emb = (
             torch.cat([text_rotary_emb[0], image_rotary_emb[0]], dim=0),
             torch.cat([text_rotary_emb[1], image_rotary_emb[1]], dim=0),
         )
 
-        for block in self.backbone.transformer_blocks:
+        for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
@@ -253,7 +268,7 @@ class SeFiTransformer2DModel(ModelMixin, ConfigMixin):
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
-        for block in self.backbone.single_transformer_blocks:
+        for block in self.single_transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
                     block,
@@ -273,8 +288,8 @@ class SeFiTransformer2DModel(ModelMixin, ConfigMixin):
                 )
 
         hidden_states = hidden_states[:, num_txt_tokens:, ...]
-        hidden_states = self.backbone.norm_out(hidden_states, temb)
-        output = self.backbone.proj_out(hidden_states)
+        hidden_states = self.norm_out(hidden_states, temb)
+        output = self.proj_out(hidden_states)
 
         if not return_dict:
             return (output,)

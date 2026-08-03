@@ -17,14 +17,27 @@ It denoises a semantic latent stream slightly ahead of a texture latent stream, 
 to images.
 
 The public checkpoints on the Hub are gated and distributed under a non-commercial license. Accept the checkpoint
-license on the Hub before downloading them. Original SeFi-Image artifacts can be converted with
-`scripts/convert_sefi_to_diffusers.py` before loading them with [`SeFiPipeline`].
+license on the Hub before downloading them. Standalone Diffusers checkpoints are available for the following models:
+
+| Model | Type |
+|---|---|
+| [`SeFi-Image/SeFi-Image-1B-Base-diffusers`](https://huggingface.co/SeFi-Image/SeFi-Image-1B-Base-diffusers) | Base |
+| [`SeFi-Image/SeFi-Image-1B-turbo-diffusers`](https://huggingface.co/SeFi-Image/SeFi-Image-1B-turbo-diffusers) | Turbo |
+| [`SeFi-Image/SeFi-Image-2B-Base-diffusers`](https://huggingface.co/SeFi-Image/SeFi-Image-2B-Base-diffusers) | Base |
+| [`SeFi-Image/SeFi-Image-2B-turbo-diffusers`](https://huggingface.co/SeFi-Image/SeFi-Image-2B-turbo-diffusers) | Turbo |
+| [`SeFi-Image/SeFi-Image-5B-Base-diffusers`](https://huggingface.co/SeFi-Image/SeFi-Image-5B-Base-diffusers) | Base |
+| [`SeFi-Image/SeFi-Image-5B-turbo-diffusers`](https://huggingface.co/SeFi-Image/SeFi-Image-5B-turbo-diffusers) | Turbo |
+| [`SeFi-Image/SeFi-Image-5B-RL-diffusers`](https://huggingface.co/SeFi-Image/SeFi-Image-5B-RL-diffusers) | RL |
+
+Original SeFi-Image artifacts can also be converted with `scripts/convert_sefi_to_diffusers.py`.
 
 ```python
 import torch
 from diffusers import SeFiPipeline
 
-pipe = SeFiPipeline.from_pretrained("./sefi-1b-base-diffusers", torch_dtype=torch.bfloat16)
+pipe = SeFiPipeline.from_pretrained(
+    "SeFi-Image/SeFi-Image-1B-Base-diffusers", dtype=torch.bfloat16
+)
 pipe.to("cuda")
 
 image = pipe("A red apple on a wooden table.").images[0]

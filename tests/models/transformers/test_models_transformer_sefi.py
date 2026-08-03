@@ -80,4 +80,10 @@ class SeFiTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestSeFiTransformer(SeFiTransformerTesterConfig, ModelTesterMixin):
-    pass
+    def test_state_dict_uses_flat_diffusers_keys(self):
+        model = self.model_class(**self.get_init_dict())
+        state_dict_keys = set(model.state_dict())
+
+        assert not any(key.startswith("backbone.") for key in state_dict_keys)
+        assert "x_embedder.weight" in state_dict_keys
+        assert "dual_time_embed.semantic_embedder.linear_1.weight" in state_dict_keys
