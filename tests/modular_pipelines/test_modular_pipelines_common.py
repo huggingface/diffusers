@@ -505,6 +505,74 @@ class ModularPipelineTesterMixin:
                     f"{actual_block.__class__.__name__}, expected {expected_class_name}"
                 )
 
+    def test_from_pretrained_workflow(self):
+        blocks = self.pipeline_blocks_class()
+        if blocks._workflow_map is None:
+            pytest.skip("Skipping test as _workflow_map is not set")
+
+        for workflow_name in blocks.available_workflows:
+            # the workflow argument should be equivalent to pruning the blocks by hand
+            pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path, workflow=workflow_name)
+            ref_pipe = blocks.get_workflow(workflow_name).init_pipeline(self.pretrained_model_name_or_path)
+            assert set(pipe.component_names) == set(ref_pipe.component_names), (
+                f"Workflow '{workflow_name}': pipeline expects components {sorted(pipe.component_names)}, "
+                f"the workflow blocks expect {sorted(ref_pipe.component_names)}"
+            )
+            for name in pipe.pretrained_component_names:
+                assert pipe.get_component_spec(name) == ref_pipe.get_component_spec(name), (
+                    f"Workflow '{workflow_name}': component '{name}' has a different spec than the one "
+                    f"created from the workflow blocks"
+                )
+
+        with pytest.raises(ValueError, match="Available workflows"):
+            ModularPipeline.from_pretrained(self.pretrained_model_name_or_path, workflow="not_a_workflow")
+
+    def test_load_components_workflow(self):
+        blocks = self.pipeline_blocks_class()
+        if blocks._workflow_map is None:
+            pytest.skip("Skipping test as _workflow_map is not set")
+
+        workflow_name = blocks.available_workflows[0]
+
+        # a full pipeline restricted at load time should load the same components as a pipeline
+        # created from the pruned workflow blocks
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components(workflow=workflow_name)
+        ref_pipe = blocks.get_workflow(workflow_name).init_pipeline(self.pretrained_model_name_or_path)
+        ref_pipe.load_components()
+
+        loaded = {name for name in pipe.pretrained_component_names if pipe.components[name] is not None}
+        ref_loaded = {name for name in ref_pipe.pretrained_component_names if ref_pipe.components[name] is not None}
+        assert loaded == ref_loaded, (
+            f"Workflow '{workflow_name}': load_components(workflow=...) loaded {sorted(loaded)}, "
+            f"the pipeline created from the workflow blocks loaded {sorted(ref_loaded)}"
+        )
+
+        with pytest.raises(ValueError, match="not both"):
+            pipe.load_components(names="unet", workflow=workflow_name)
+
+    def test_unload_components(self):
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components()
+        name = next(name for name in pipe.pretrained_component_names if pipe.components.get(name) is not None)
+        spec_before = pipe._component_specs[name]
+
+        pipe.unload_components(name)
+        assert getattr(pipe, name) is None
+        # the spec survives, so the component can be loaded again
+        assert pipe._component_specs[name] is spec_before
+        pipe.load_components(names=name)
+        assert getattr(pipe, name) is not None
+
+        # with a ComponentsManager attached, unloading also removes the component from the manager
+        manager = ComponentsManager()
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path, components_manager=manager)
+        pipe.load_components(names=name)
+        assert len(manager._lookup_ids(name=name)) == 1
+        pipe.unload_components(name)
+        assert getattr(pipe, name) is None
+        assert len(manager._lookup_ids(name=name)) == 0
+
 
 class ModularGuiderTesterMixin:
     def test_guider_cfg(self, expected_max_diff=1e-2):
