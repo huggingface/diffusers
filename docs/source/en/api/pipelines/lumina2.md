@@ -37,11 +37,11 @@ from diffusers import Lumina2Transformer2DModel, Lumina2Pipeline
 
 ckpt_path = "https://huggingface.co/Alpha-VLLM/Lumina-Image-2.0/blob/main/consolidated.00-of-01.pth"
 transformer = Lumina2Transformer2DModel.from_single_file(
-    ckpt_path, torch_dtype=torch.bfloat16
+    ckpt_path, dtype=torch.bfloat16
 )
 
 pipe = Lumina2Pipeline.from_pretrained(
-    "Alpha-VLLM/Lumina-Image-2.0", transformer=transformer, torch_dtype=torch.bfloat16
+    "Alpha-VLLM/Lumina-Image-2.0", transformer=transformer, dtype=torch.bfloat16
 )
 pipe.enable_model_cpu_offload()
 image = pipe(
@@ -63,11 +63,11 @@ ckpt_path = "https://huggingface.co/calcuis/lumina-gguf/blob/main/lumina2-q4_0.g
 transformer = Lumina2Transformer2DModel.from_single_file(
     ckpt_path,
     quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 pipe = Lumina2Pipeline.from_pretrained(
-    "Alpha-VLLM/Lumina-Image-2.0", transformer=transformer, torch_dtype=torch.bfloat16
+    "Alpha-VLLM/Lumina-Image-2.0", transformer=transformer, dtype=torch.bfloat16
 )
 pipe.enable_model_cpu_offload()
 image = pipe(
