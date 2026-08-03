@@ -22,7 +22,7 @@ pipeline in the library.
 
 This module is the convenience for doing it: [`decode_reference_video`] and [`decode_reference_audio`] decode a file
 or a URL along with the rates it carries, and [`MiniMaxH3Ref2VALoadReferencesStep`] wraps them in a block that can be
-put in front of [`MiniMaxH3Ref2VABlocks`]. It is deliberately *not* one of that blockset's own steps — decoding media
+put in front of [`MiniMaxH3Blocks`]. It is deliberately *not* one of that blockset's own steps — decoding media
 is not part of generating video, and a request that already holds its media should not pay for the machinery.
 
 The rates are the reason to prefer these over a bare `load_video`: MiniMax-H3 resamples a reference onto its own 24
@@ -42,8 +42,8 @@ from ...utils import is_av_available, load_image, logging
 from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import InputParam, OutputParam
-from .modular_pipeline import MiniMaxH3Ref2VAModularPipeline
-from .packing_ref2va import (
+from .modular_pipeline import MiniMaxH3ModularPipeline
+from .references import (
     MiniMaxH3AudioReference,
     MiniMaxH3ImageReference,
     MiniMaxH3Reference,
@@ -191,17 +191,17 @@ class MiniMaxH3Ref2VALoadReferencesStep(ModularPipelineBlocks):
     r"""
     Reads `ref2va` references off the filesystem, so that a request can name its media instead of decoding it.
 
-    Not one of [`MiniMaxH3Ref2VABlocks`]' own steps — put it in front of them when the request holds paths:
+    Not one of [`MiniMaxH3Blocks`]' own steps — put it in front of them when the request holds paths:
 
     ```py
     >>> from diffusers.modular_pipelines import SequentialPipelineBlocks
     >>> from diffusers.modular_pipelines.minimax_h3 import (
-    ...     MiniMaxH3Ref2VABlocks,
+    ...     MiniMaxH3Blocks,
     ...     MiniMaxH3Ref2VALoadReferencesStep,
     ... )
 
     >>> blocks = SequentialPipelineBlocks.from_blocks_dict(
-    ...     {"load_references": MiniMaxH3Ref2VALoadReferencesStep(), "ref2va": MiniMaxH3Ref2VABlocks()}
+    ...     {"load_references": MiniMaxH3Ref2VALoadReferencesStep(), "generate": MiniMaxH3Blocks()}
     ... )
     >>> pipe = blocks.init_pipeline("MiniMaxAI/MiniMax-H3-Ref2VA-Diffusers")
     >>> output = pipe(
@@ -211,7 +211,7 @@ class MiniMaxH3Ref2VALoadReferencesStep(ModularPipelineBlocks):
     ```
     """
 
-    model_name = "minimax-h3-ref2va"
+    model_name = "minimax-h3"
 
     @property
     def description(self) -> str:
@@ -249,7 +249,7 @@ class MiniMaxH3Ref2VALoadReferencesStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3Ref2VAModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         references = []

@@ -26,7 +26,7 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
+from .modular_pipeline import MiniMaxH3ModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -34,6 +34,19 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class MiniMaxH3LoopDenoiser(ModularPipelineBlocks):
     model_name = "minimax-h3"
+
+    def __init__(self, transformer_name: str = "transformer"):
+        r"""
+        Run the one MiniMax-H3 forward pass of a denoising iteration.
+
+        Args:
+            transformer_name (`str`, defaults to `"transformer"`):
+                The component the forward runs against. One repository holds both checkpoint partitions —
+                `transformer/` for `t2va`/`fl2va` and `transformer_ref/` for `ref2va` — under different component
+                names, so which partition a loop drives is configuration, not a separate block.
+        """
+        self.transformer_name = transformer_name
+        super().__init__()
 
     @property
     def description(self) -> str:
@@ -45,7 +58,7 @@ class MiniMaxH3LoopDenoiser(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", MiniMaxH3Transformer3DModel)]
+        return [ComponentSpec(self.transformer_name, MiniMaxH3Transformer3DModel)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -96,7 +109,7 @@ class MiniMaxH3LoopDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: MiniMaxH3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        transformer = components.transformer
+        transformer = getattr(components, self.transformer_name)
         unique_timesteps, timestep_indices = block_state.row_timestep_plan[i]
         # The layout tags its outputs `denoiser_input_fields`, and their names are the transformer's own parameter
         # names, so the rows of the packed sequence are described to it without this block enumerating them.
@@ -118,89 +131,11 @@ class MiniMaxH3LoopDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
-class MiniMaxH3Ref2VALoopDenoiser(ModularPipelineBlocks):
-    model_name = "minimax-h3-ref2va"
+class MiniMaxH3Ref2VALoopDenoiser(MiniMaxH3LoopDenoiser):
+    model_name = "minimax-h3"
 
-    @property
-    def description(self) -> str:
-        return (
-            "Runs the one MiniMax-H3 forward pass of a `ref2va` denoising iteration, against the `transformer_ref` "
-            "partition of the checkpoint."
-        )
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer_ref", MiniMaxH3Transformer3DModel)]
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(
-                name="latents",
-                type_hint=torch.Tensor,
-                required=True,
-                description="The video rows of the packed sequence, conditioning rows first.",
-            ),
-            InputParam(
-                name="audio_latents",
-                type_hint=torch.Tensor,
-                required=True,
-                description="The channel-major audio rows of the packed sequence, reference rows first.",
-            ),
-            InputParam.template("prompt_embeds"),
-            InputParam(
-                name="row_timestep_plan",
-                type_hint=list,
-                required=True,
-                description="One `(timestep, timestep_indices)` pair per step.",
-            ),
-            InputParam(
-                kwargs_type="denoiser_input_fields",
-                description=(
-                    "The structural description of the packed sequence the transformer reads by name: `token_tags`, "
-                    "`position_ids` and the three row-index tensors."
-                ),
-            ),
-            InputParam.template("attention_kwargs"),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                "noise_pred",
-                type_hint=torch.Tensor,
-                description="Predicted velocity of the video rows of the sequence.",
-            ),
-            OutputParam(
-                "audio_noise_pred",
-                type_hint=torch.Tensor,
-                description="Predicted velocity of the audio rows of the sequence.",
-            ),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: MiniMaxH3Ref2VAModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        transformer = components.transformer_ref
-        unique_timesteps, timestep_indices = block_state.row_timestep_plan[i]
-        # The layout tags its outputs `denoiser_input_fields`, and their names are the transformer's own parameter
-        # names, so the rows of the packed sequence are described to it without this block enumerating them.
-        layout_kwargs = {
-            name: value
-            for name, value in block_state.denoiser_input_fields.items()
-            if name in inspect.signature(transformer.forward).parameters
-        }
-        block_state.noise_pred, block_state.audio_noise_pred = transformer(
-            hidden_states=block_state.latents[None],
-            audio_hidden_states=block_state.audio_latents[None],
-            encoder_hidden_states=block_state.prompt_embeds,
-            timestep=unique_timesteps,
-            timestep_indices=timestep_indices,
-            attention_kwargs=block_state.attention_kwargs,
-            return_dict=False,
-            **layout_kwargs,
-        )
-        return components, block_state
+    def __init__(self):
+        super().__init__(transformer_name="transformer_ref")
 
 
 class MiniMaxH3LoopSchedulerStep(ModularPipelineBlocks):
@@ -343,7 +278,7 @@ class MiniMaxH3DenoiseStep(MiniMaxH3DenoiseLoopWrapper):
 
 
 class MiniMaxH3Ref2VADenoiseStep(MiniMaxH3DenoiseLoopWrapper):
-    model_name = "minimax-h3-ref2va"
+    model_name = "minimax-h3"
     block_classes = [MiniMaxH3Ref2VALoopDenoiser, MiniMaxH3LoopSchedulerStep]
     block_names = ["denoiser", "update"]
 

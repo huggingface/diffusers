@@ -20,8 +20,6 @@ from PIL import Image
 from diffusers.modular_pipelines import (
     MiniMaxH3Blocks,
     MiniMaxH3ModularPipeline,
-    MiniMaxH3Ref2VABlocks,
-    MiniMaxH3Ref2VAModularPipeline,
 )
 from diffusers.modular_pipelines.minimax_h3 import (
     MiniMaxH3AudioReference,
@@ -30,14 +28,13 @@ from diffusers.modular_pipelines.minimax_h3 import (
     MiniMaxH3VideoReference,
     decode_reference_audio,
     decode_reference_video,
-    packing,
-    packing_ref2va,
     reference_loading,
 )
+from diffusers.modular_pipelines.minimax_h3 import modular_pipeline as minimax_h3_geometry
 from diffusers.modular_pipelines.minimax_h3.before_encoder import MiniMaxH3Ref2VASetupStep
 from diffusers.modular_pipelines.minimax_h3.encoders import MiniMaxH3Ref2VATextEncoderStep, MiniMaxH3TextEncoderStep
+from diffusers.modular_pipelines.minimax_h3.modular_pipeline import MINIMAX_H3_FPS
 
-from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin, _get_specified_components
 
 
@@ -61,41 +58,48 @@ TEST_REFERENCE_IMAGE_SHORT_EDGE = 64
 TINY_MODULAR_REPO_ID = "hf-internal-testing/tiny-minimax-h3-modular-pipe"
 
 
-T2VA_WORKFLOW = [
-    ("resize", "MiniMaxH3AutoResizeStep"),
-    ("text_encoder", "MiniMaxH3TextEncoderStep"),
-    ("prepare_layout", "MiniMaxH3PrepareLayoutStep"),
-    ("prepare_latents", "MiniMaxH3PrepareLatentsStep"),
-    ("set_timesteps", "MiniMaxH3SetTimestepsStep"),
-    ("denoise", "MiniMaxH3DenoiseStep"),
+_CORE_DENOISE = [
+    ("denoise.prepare_latents", "MiniMaxH3PrepareLatentsStep"),
+    ("denoise.set_timesteps", "MiniMaxH3SetTimestepsStep"),
+]
+_TAIL = [
+    ("after_denoise", "MiniMaxH3AfterDenoiseStep"),
     ("decode.video", "MiniMaxH3VideoDecodeStep"),
     ("decode.audio", "MiniMaxH3AudioDecodeStep"),
 ]
-# A keyframe adds the one block that encodes it; whether it anchors the first or the last frame is a matter of the
-# packed layout, not of which blocks run.
+T2VA_WORKFLOW = [
+    ("text_encoder", "MiniMaxH3TextEncoderStep"),
+    ("denoise.prepare_layout", "MiniMaxH3PrepareLayoutStep"),
+    *_CORE_DENOISE,
+    ("denoise.denoise", "MiniMaxH3DenoiseStep"),
+    *_TAIL,
+]
+# A keyframe adds the canvas block and the one block that encodes it; whether it anchors the first or the last frame
+# is a matter of the packed layout, not of which blocks run.
 FL2VA_WORKFLOW = [
-    *T2VA_WORKFLOW[:2],
+    ("before_encode", "MiniMaxH3ResizeStep"),
+    ("text_encoder", "MiniMaxH3TextEncoderStep"),
     ("vae_encoder", "MiniMaxH3KeyframeVaeEncoderStep"),
-    *T2VA_WORKFLOW[2:],
+    ("denoise.prepare_layout", "MiniMaxH3PrepareLayoutStep"),
+    *_CORE_DENOISE,
+    ("denoise.denoise", "MiniMaxH3DenoiseStep"),
+    *_TAIL,
+]
+REF2VA_WORKFLOW = [
+    ("before_encode", "MiniMaxH3Ref2VASetupStep"),
+    ("text_encoder", "MiniMaxH3Ref2VATextEncoderStep"),
+    ("vae_encoder", "MiniMaxH3Ref2VAReferenceEncoderStep"),
+    ("denoise.prepare_layout", "MiniMaxH3Ref2VAPrepareLayoutStep"),
+    *_CORE_DENOISE,
+    ("denoise.denoise", "MiniMaxH3Ref2VADenoiseStep"),
+    *_TAIL,
 ]
 MINIMAX_H3_WORKFLOWS = {
     "t2va": T2VA_WORKFLOW,
     "fl2va": FL2VA_WORKFLOW,
     "fl2va_last_frame": FL2VA_WORKFLOW,
 }
-MINIMAX_H3_REF2VA_WORKFLOWS = {
-    "ref2va": [
-        ("setup", "MiniMaxH3Ref2VASetupStep"),
-        ("text_encoder", "MiniMaxH3Ref2VATextEncoderStep"),
-        ("reference_encoder", "MiniMaxH3Ref2VAReferenceEncoderStep"),
-        ("prepare_layout", "MiniMaxH3Ref2VAPrepareLayoutStep"),
-        ("prepare_latents", "MiniMaxH3PrepareLatentsStep"),
-        ("set_timesteps", "MiniMaxH3SetTimestepsStep"),
-        ("denoise", "MiniMaxH3Ref2VADenoiseStep"),
-        ("decode.video", "MiniMaxH3VideoDecodeStep"),
-        ("decode.audio", "MiniMaxH3AudioDecodeStep"),
-    ]
-}
+MINIMAX_H3_REF2VA_WORKFLOWS = {"ref2va": REF2VA_WORKFLOW}
 
 
 def _video_frames(num_frames: int, size: int) -> np.ndarray:
@@ -110,7 +114,7 @@ def _waveform(duration: float) -> torch.Tensor:
 
 def _reference_video(num_frames: int, size: int) -> MiniMaxH3VideoReference:
     """A silent video reference at MiniMax-H3's own 24 fps."""
-    return MiniMaxH3VideoReference(frames=_video_frames(num_frames, size), fps=float(packing.MINIMAX_H3_FPS))
+    return MiniMaxH3VideoReference(frames=_video_frames(num_frames, size), fps=float(MINIMAX_H3_FPS))
 
 
 def _reference_audio(duration: float) -> MiniMaxH3AudioReference:
@@ -192,10 +196,16 @@ def small_references():
     request of this module passes `height` and `width`, so the canvas of a generated video is never derived from
     these. `TestMiniMaxH3ReferenceGeometry` restores the released value where it pins it.
     """
+    original_init = MiniMaxH3Ref2VASetupStep.__init__
+
+    def small_reference_init(self, *args, **kwargs):
+        kwargs.setdefault("reference_image_short_edge", TEST_REFERENCE_IMAGE_SHORT_EDGE)
+        original_init(self, *args, **kwargs)
+
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(packing_ref2va, "MINIMAX_H3_REFERENCE_IMAGE_SHORT_EDGE", TEST_REFERENCE_IMAGE_SHORT_EDGE)
-        patch.setattr(packing, "MINIMAX_H3_SHORT_EDGE", TEST_REFERENCE_IMAGE_SHORT_EDGE)
-        patch.setattr(packing, "MINIMAX_H3_MAX_PIXELS", TEST_REFERENCE_IMAGE_SHORT_EDGE**2 * 2)
+        patch.setattr(MiniMaxH3Ref2VASetupStep, "__init__", small_reference_init)
+        patch.setattr(minimax_h3_geometry, "MINIMAX_H3_SHORT_EDGE", TEST_REFERENCE_IMAGE_SHORT_EDGE)
+        patch.setattr(minimax_h3_geometry, "MINIMAX_H3_MAX_PIXELS", TEST_REFERENCE_IMAGE_SHORT_EDGE**2 * 2)
         yield
 
 
@@ -395,17 +405,13 @@ class TestMiniMaxH3ModularPipelineFast(MiniMaxH3ModularTesterBase):
         pipe = self.get_pipeline()
         keyframe = Image.fromarray((np.random.default_rng(0).random((32, 32, 3)) * 255).astype("uint8"))
 
-        prompt_embeds, text_token_tags = MiniMaxH3TextEncoderStep.encode_prompt(
-            pipe.text_encoder,
-            pipe.tokenizer,
-            pipe.processor,
-            "a robot dancing",
-            [keyframe] * num_keyframes,
-            text_encoder_layer=pipe.text_encoder_layer,
-            text_tag=pipe.text_tag,
-            video_tag=pipe.video_tag,
-            device=torch_device,
-        )
+        inputs = self.get_dummy_inputs()
+        if num_keyframes:
+            inputs["image"] = keyframe
+        if num_keyframes == 2:
+            inputs["last_image"] = keyframe
+        state = pipe(**inputs)
+        prompt_embeds, text_token_tags = state.get("prompt_embeds"), state.get("text_token_tags")
 
         assert prompt_embeds.shape[0] == 1
         assert prompt_embeds.shape[-1] == pipe.transformer.config.text_dim
@@ -480,8 +486,8 @@ class TestMiniMaxH3ModularPipelineFast(MiniMaxH3ModularTesterBase):
 
 
 class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
-    pipeline_class = MiniMaxH3Ref2VAModularPipeline
-    pipeline_blocks_class = MiniMaxH3Ref2VABlocks
+    pipeline_class = MiniMaxH3ModularPipeline
+    pipeline_blocks_class = MiniMaxH3Blocks
 
     params = frozenset(["prompt", "references", "height", "width", "num_frames"])
     expected_workflow_blocks = MINIMAX_H3_REF2VA_WORKFLOWS
@@ -566,7 +572,7 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
 
     @pytest.mark.parametrize(
         "kinds,num_frames",
-        [(("video",), NUM_FRAMES), (("image", "audio"), None), (("video", "image"), NUM_FRAMES)],
+        [(("video",), NUM_FRAMES), (("image", "audio"), NUM_FRAMES), (("video", "image"), NUM_FRAMES)],
         ids=["video", "image_audio", "video_image"],
     )
     def test_reference_combinations(self, kinds, num_frames):
@@ -575,9 +581,7 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
 
         A video reference conditions on its motion *and*, when the request passes one with it, on its soundtrack, so
         it contributes both visual and audio rows; an audio reference contributes audio rows alone and never reaches
-        the conditioner. The `image_audio` case also leaves `num_frames` to the references, which is admissible
-        because exactly one of them carries audio: the duration is that soundtrack's, snapped up to the next
-        `17 * n + 5` the video VAE can decode.
+        the conditioner.
 
         The reference rows are pinned for the whole loop, which is what the denoised sequence is checked against: the
         visual anchors keep their noise-augmented values and the audio anchors stay exactly as the encoder produced
@@ -587,8 +591,8 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
             "image": MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80))),
             # A one-second video reference, soundtrack included, and a six-second standalone soundtrack.
             "video": MiniMaxH3VideoReference(
-                frames=_video_frames(packing.MINIMAX_H3_FPS, 64),
-                fps=float(packing.MINIMAX_H3_FPS),
+                frames=_video_frames(MINIMAX_H3_FPS, 64),
+                fps=float(MINIMAX_H3_FPS),
                 audio=_waveform(1.0),
                 sample_rate=AUDIO_SAMPLE_RATE,
             ),
@@ -627,19 +631,10 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         """
         pipe = self.get_pipeline()
         media = {"image": MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80))), "video": _reference_video(25, 32)}
-        references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(pipe, [media[kind] for kind in kinds], NUM_FRAMES)
-
-        prompt_embeds, text_token_tags = MiniMaxH3Ref2VATextEncoderStep.encode_prompt(
-            pipe.text_encoder,
-            pipe.tokenizer,
-            pipe.processor,
-            "a robot dancing",
-            references,
-            text_encoder_layer=pipe.text_encoder_layer,
-            text_tag=pipe.text_tag,
-            video_tag=pipe.video_tag,
-            device=torch_device,
-        )
+        inputs = self.get_dummy_inputs()
+        inputs["references"] = [media[kind] for kind in kinds]
+        state = pipe(**inputs)
+        prompt_embeds, text_token_tags = state.get("prompt_embeds"), state.get("text_token_tags")
 
         assert prompt_embeds.shape[0] == 1
         assert prompt_embeds.shape[-1] == pipe.transformer_ref.config.text_dim
@@ -665,11 +660,13 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         else:
             image, frames = torch.from_numpy(pixels[0]).permute(2, 0, 1), torch.from_numpy(pixels).permute(0, 3, 1, 2)
 
-        references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(
-            pipe,
-            [MiniMaxH3ImageReference(image=image), MiniMaxH3VideoReference(frames=frames, fps=float(packing.MINIMAX_H3_FPS))],
-            NUM_FRAMES,
-        )
+        inputs = self.get_dummy_inputs()
+        inputs["references"] = [
+            MiniMaxH3ImageReference(image=image),
+            MiniMaxH3VideoReference(frames=frames, fps=float(MINIMAX_H3_FPS)),
+        ]
+        state = pipe(**inputs)
+        references = state.get("normalized_references")
 
         assert np.array_equal(np.asarray(references[0].image), pixels[0])
         assert np.array_equal(references[1].frames, pixels)
@@ -683,9 +680,10 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         frames = _video_frames(NUM_FRAMES, TEST_REFERENCE_IMAGE_SHORT_EDGE)
         waveform = _waveform(2.0)
 
-        references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(
-            pipe, [MiniMaxH3VideoReference(frames=frames), MiniMaxH3AudioReference(audio=waveform)], NUM_FRAMES
-        )
+        inputs = self.get_dummy_inputs()
+        inputs["references"] = [MiniMaxH3VideoReference(frames=frames), MiniMaxH3AudioReference(audio=waveform)]
+        state = pipe(**inputs)
+        references = state.get("normalized_references")
 
         assert np.shares_memory(references[0].frames, frames)
         assert torch.equal(references[1].audio, waveform)
@@ -695,58 +693,17 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         pipe = self.get_pipeline()
         waveform = _waveform(2.0)
 
-        references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(
-            pipe,
-            [
-                MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80))),
-                MiniMaxH3AudioReference(audio=waveform, sample_rate=AUDIO_SAMPLE_RATE // 2),
-            ],
-            NUM_FRAMES,
-        )
+        inputs = self.get_dummy_inputs()
+        inputs["references"] = [
+            MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80))),
+            MiniMaxH3AudioReference(audio=waveform, sample_rate=AUDIO_SAMPLE_RATE // 2),
+        ]
+        state = pipe(**inputs)
+        references = state.get("normalized_references")
 
         # Half the audio VAE's rate, so the same samples span twice as many of the VAE's own.
         assert references[1].audio.shape == (2, 2 * waveform.shape[-1])
 
-    def test_num_frames_left_open_needs_exactly_one_audio_reference(self):
-        r"""Leaving `num_frames` out is ambiguous unless exactly one reference carries audio."""
-        pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        inputs["num_frames"] = None
-
-        with pytest.raises(ValueError, match="may only be left to the references"):
-            pipe(**inputs)
-
-    def test_num_frames_left_open_holds_the_ceiling_for_the_aligned_count(self):
-        r"""
-        A soundtrack just under 15 seconds is rejected rather than silently stretched past the ceiling.
-
-        14.99 seconds round to 360 frames, which the video VAE's `17 * n + 5` grid rounds up to 362, i.e. 15.083
-        seconds. The duration the request generates is the aligned one, so that is what the bound holds for.
-        """
-        pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        inputs["num_frames"] = None
-        inputs["references"] = [MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80))), _reference_audio(14.99)]
-
-        with pytest.raises(ValueError, match="rounds up to 362 frames"):
-            pipe(**inputs)
-
-    @pytest.mark.parametrize(
-        "references,message",
-        [
-            ([], "at least one reference"),
-            ([_reference_audio(6.0)], "cannot be used"),
-            ([MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32)))] * 10, "at most 9 image references"),
-            (
-                [MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32)))] + [_reference_video(2, 32)] * 4,
-                "at most 3 video references",
-            ),
-            ([{"image": Image.new("RGB", (32, 32))}], "must be a \\[`MiniMaxH3ImageReference`\\]"),
-        ],
-        ids=["no_references", "audio_alone", "too_many_images", "too_many_videos", "dict_entry"],
-    )
     def test_check_inputs_references(self, references, message):
         pipe = self.get_pipeline()
 
@@ -767,7 +724,7 @@ class TestMiniMaxH3Reference:
 
     def test_reference_defaults(self):
         r"""A reference knows its own modality, and defaults to MiniMax-H3's own frame rate for its frames."""
-        assert MiniMaxH3VideoReference(frames=_video_frames(2, 32)).fps == float(packing.MINIMAX_H3_FPS)
+        assert MiniMaxH3VideoReference(frames=_video_frames(2, 32)).fps == float(MINIMAX_H3_FPS)
         assert MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32))).kind == "image"
         assert not MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32))).has_audio
         assert _reference_video(2, 32).kind == "video"
@@ -901,7 +858,7 @@ class TestMiniMaxH3ReferenceLoading:
 
 class TestMiniMaxH3ReferenceGeometry:
     """
-    How a reference is prepared, which is pure geometry over the packing module and needs no components.
+    How a reference is prepared, which is pure geometry and needs no checkpoint.
 
     These are the passes `MiniMaxH3Ref2VASetupStep` runs a reference through before any VAE sees it.
     """
@@ -913,20 +870,28 @@ class TestMiniMaxH3ReferenceGeometry:
 
         A 25 frame reference at 24 fps samples three frames, which merge into two blocks at 0.25 and 1.0 seconds.
         """
-        frames, timestamps = packing_ref2va.sample_reference_video_frames(_video_frames(25, 32))
+        frames, timestamps = MiniMaxH3Ref2VATextEncoderStep._sample_video_condition_frames(
+            _video_frames(25, 32), fps=24.0, sample_fps=2.0, temporal_patch=2
+        )
 
         assert len(frames) == 3
         assert timestamps == [0.25, 1.0]
 
-    def test_reference_image_geometry(self, monkeypatch):
+    def test_reference_image_geometry(self):
         r"""
         A reference image is encoded at a 2048 pixel short edge, both axes rounded to a multiple of 32, with no area
-        cap. The `small_references` fixture shrinks that short edge for every other test, so restore it here.
+        cap — the released geometry, so the setup step is constructed explicitly rather than through the
+        `small_references` fixture's shrunken default.
         """
-        monkeypatch.setattr(packing_ref2va, "MINIMAX_H3_REFERENCE_IMAGE_SHORT_EDGE", 2048)
+        pipe = MiniMaxH3Ref2VASetupStep(reference_image_short_edge=2048).init_pipeline()
 
-        assert packing_ref2va.resolve_reference_image_size(80, 48, 32) == (2048, 3424)
-        assert packing_ref2va.resolve_reference_image_size(48, 80, 32) == (3424, 2048)
+        references = pipe(
+            references=[MiniMaxH3ImageReference(image=Image.new("RGB", (80, 48)))],
+            num_frames=124,
+            output="normalized_references",
+        )
+
+        assert references[0].image.size == (3424, 2048)
 
     def test_video_reference_resampled_to_the_model_frame_rate(self):
         r"""
@@ -935,12 +900,20 @@ class TestMiniMaxH3ReferenceGeometry:
         output slot is dropped, so a 30 fps reference loses one frame in five, the later of the two that tie for a
         slot. Frames already at 24 fps are returned as they are, without a copy.
         """
-        # Every frame carries its own index as its pixel value, so the resampled frames name the ones that survived.
-        frames = np.arange(30, dtype="uint8").reshape(-1, 1, 1, 1) * np.ones((1, 2, 2, 3), dtype="uint8")
+        # Every frame carries its own index as its pixel value, so the resampled frames name the ones that
+        # survived. The frames sit at the canvas their aspect resolves to under the `small_references` fixture, so
+        # the resize pass is a no-op and the 24 fps route returns the input without a copy.
+        size = TEST_REFERENCE_IMAGE_SHORT_EDGE
+        frames = np.arange(30, dtype="uint8").reshape(-1, 1, 1, 1) * np.ones((1, size, size, 3), dtype="uint8")
 
-        resampled = packing_ref2va.resample_reference_frames(frames, 30.0)
+        resampled = MiniMaxH3Ref2VASetupStep._normalize_video_condition(
+            frames, fps=30.0, num_frames=NUM_FRAMES, canvas_multiple=32
+        )
 
         assert [int(frame[0, 0, 0]) for frame in resampled] == [
             index for index in range(30) if index not in (2, 7, 12, 17, 22, 27)
         ]
-        assert packing_ref2va.resample_reference_frames(frames, float(packing.MINIMAX_H3_FPS)) is frames
+        untouched = MiniMaxH3Ref2VASetupStep._normalize_video_condition(
+            frames, fps=float(MINIMAX_H3_FPS), num_frames=NUM_FRAMES, canvas_multiple=32
+        )
+        assert np.shares_memory(untouched, frames)

@@ -27,32 +27,29 @@ MiniMax-H3 is integrated as [Modular Diffusers](../../modular_diffusers/overview
 
 MiniMax-H3 was released as two checkpoint partitions that share every component except the transformer, so the diffusers conversion puts both in **one repository**:
 
-| Subfolder | Blocks | Tasks |
-|---|---|---|
-| `transformer/` | [`MiniMaxH3Blocks`] | `t2va` (text only) and `fl2va` (first and/or last keyframe) |
-| `transformer_ref/` | [`MiniMaxH3Ref2VABlocks`] | `ref2va` (an ordered mix of image, video and audio references) |
+| Subfolder | Workflows |
+|---|---|
+| `transformer/` | `t2va` (text only), `fl2va` and `fl2va_last_frame` (first and/or last keyframe) |
+| `transformer_ref/` | `ref2va` (an ordered mix of image, video and audio references) |
 
 Everything but the transformer, i.e. the video VAE, the audio VAE, the Qwen3-VL conditioner, its tokenizer and processor, and the two schedulers, is shared and stored once.
 
-The repository carries one `modular_model_index.json`, which names every component of both halves with its own loading spec. Each blockset declares only the components it runs, and `load_components` fetches exactly those subfolders: loading the `t2va` / `fl2va` half never touches `transformer_ref/`, and loading the `ref2va` half never touches `transformer/`. Nothing else in the repository is fetched either, which is what lets one repository carry the two partitions, and the original checkpoint folders next to the converted ones.
-
-`modular_model_index.json` names the `t2va` / `fl2va` half as its own class, so [`~ModularPipeline.from_pretrained`] resolves that half. The `ref2va` half reads the very same file through its own blocks:
+All four tasks are workflows of the one [`MiniMaxH3Blocks`], and the repository carries one `modular_model_index.json` naming every component with its own loading spec. Selecting a workflow prunes the blocks to that task's own, and `load_components` then fetches exactly the subfolders they declare: a `t2va` / `fl2va` request never touches `transformer_ref/`, a `ref2va` request never touches `transformer/`.
 
 ```py
 import torch
 from diffusers import ModularPipeline
-from diffusers.modular_pipelines import MiniMaxH3Ref2VABlocks
 
 # `t2va` / `fl2va`: loads `transformer/`, and never `transformer_ref/`.
-pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="t2va")
 
 # `ref2va`: loads `transformer_ref/`, and never `transformer/`, out of the same repository.
-pipe = MiniMaxH3Ref2VABlocks().init_pipeline("MiniMaxAI/MiniMax-H3")
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="ref2va")
 
 pipe.load_components(dtype=torch.bfloat16)
 ```
 
-Each blockset also carries the workflows it serves — `t2va`, `fl2va` and `fl2va_last_frame` for [`MiniMaxH3Blocks`], `ref2va` for [`MiniMaxH3Ref2VABlocks`] — which name the inputs each task requires.
+Without a `workflow=`, the blocks keep every branch and `load_components` pulls **both** 61.7GB transformer partitions — pass one to load only what the task needs.
 
 The conditioner is a `Qwen3VLForConditionalGeneration`, and MiniMax-H3 reads the *unnormalized* hidden state after its 50th decoder layer rather than the last one, so the full released checkpoint is used with its language-model head unused.
 
@@ -193,22 +190,37 @@ Video and audio are generated jointly and come out of the call as separate outpu
 
 ## Omni-references
 
-[`MiniMaxH3Ref2VABlocks`] conditions on an ordered list of references: up to 9 images, 3 videos and 3 audio clips, 12 in total. The order is semantic. It labels the references in the prompt presentation (`"<Picture 1>"`, `"<Audio 1>"`, `"<Video 1>"`) and it advances the shared audio/video rotary clock, so reordering the same references is a different request.
+The `ref2va` workflow conditions on an ordered list of references: up to 9 images, 3 videos and 3 audio clips, 12 in total. The order is semantic. It labels the references in the prompt presentation (`"<Picture 1>"`, `"<Audio 1>"`, `"<Video 1>"`) and it advances the shared audio/video rotary clock, so reordering the same references is a different request.
 
 Unlike the keyframes above, references do not bind the generated geometry: they are encoded at their own resolution and the target canvas defaults to MiniMax-H3's 16:9.
 
-Every reference is a [`~modular_pipelines.minimax_h3.MiniMaxH3Reference`], and it takes a path or a URL as well as in-memory media: a path is decoded when the reference is built, with [`~utils.load_image`] for an image and [PyAV](https://github.com/PyAV-Org/PyAV) for a video or an audio file, so the blocks themselves never open a media file. Decoding brings the rates along, which is what the model needs: a video reference reads its frame rate off the container and adopts the container's soundtrack when it has one, and an audio reference its sample rate.
+There is one reference class per modality, each holding in-memory media and the rate that media carries:
 
-In-memory media declares the rates it carries instead, defaulting to MiniMax-H3's own: `fps=24.0` and the audio VAE's sample rate, so only self-generated data at another rate has to say so. An explicit `fps` or `sample_rate` also wins over a container whose metadata is wrong. Frames are resampled onto MiniMax-H3's own 24 fps by dropping and duplicating whole frames, and a waveform onto the audio VAE's sample rate. A video reference conditions on its motion **and**, when it carries an `audio` waveform, on that soundtrack, which is then packed as this reference's own.
+| reference | media | rate it declares |
+| --- | --- | --- |
+| [`~modular_pipelines.minimax_h3.MiniMaxH3ImageReference`] | `image` | — |
+| [`~modular_pipelines.minimax_h3.MiniMaxH3VideoReference`] | `frames`, and `audio` for its own soundtrack | `fps`, defaulting to MiniMax-H3's 24.0, and `sample_rate` |
+| [`~modular_pipelines.minimax_h3.MiniMaxH3AudioReference`] | `audio` | `sample_rate`, defaulting to the audio VAE's own |
+
+The rates are what everything is resampled from: frames onto MiniMax-H3's own 24 fps by dropping and duplicating whole frames, a waveform onto the audio VAE's sample rate. Media at MiniMax-H3's own rates flows through untouched, so only data produced at another rate has to say so.
+
+The blocks never open a media file — decoding a path is the caller's job, as it is everywhere else in the library. [`~modular_pipelines.minimax_h3.decode_reference_video`] and [`~modular_pipelines.minimax_h3.decode_reference_audio`] do it with [PyAV](https://github.com/PyAV-Org/PyAV) and return a reference carrying the rates the container reports — a video brings its frame rate and its soundtrack along. Prefer them over [`~utils.load_video`], which drops the frame rate: a reference built from frames whose real rate was lost is conditioned on at the wrong speed, and nothing raises. For a whole request, [`~modular_pipelines.minimax_h3.MiniMaxH3Ref2VALoadReferencesStep`] is the same thing as a block you can put in front of [`MiniMaxH3Blocks`].
 
 ```py
 import torch
-from diffusers.modular_pipelines import MiniMaxH3Ref2VABlocks
-from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3Reference
+from diffusers import ModularPipeline
+from diffusers.modular_pipelines.minimax_h3 import (
+    MiniMaxH3ImageReference,
+    MiniMaxH3VideoReference,
+    decode_reference_audio,
+    decode_reference_video,
+)
 from diffusers.utils import load_image, load_video
 from diffusers.utils.export_utils import encode_video
 
-pipe = MiniMaxH3Ref2VABlocks().init_pipeline("MiniMaxAI/MiniMax-H3")
+# `ref2va` is a workflow of the one MiniMax-H3 pipeline; selecting it loads only the `transformer_ref/`
+# checkpoint partition.
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="ref2va")
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 
@@ -216,25 +228,24 @@ subject = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
 )
 
-# A reference decodes a path or a URL as it is built, rates included: the video brings its own frame rate and its
-# soundtrack, the audio clip its sample rate.
+# Decoding a file brings its rates along: the video its own frame rate and its soundtrack, the clip its sample rate.
 state = pipe(
     prompt="The character speaks in time with the reference recording, natural lip movement",
     references=[
-        MiniMaxH3Reference(image=subject),
-        MiniMaxH3Reference(
-            video="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hiker.mp4"
+        MiniMaxH3ImageReference(image=subject),
+        decode_reference_video(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hiker.mp4"
         ),
-        MiniMaxH3Reference(audio="voice.wav"),
+        decode_reference_audio("voice.wav"),
     ],
     num_frames=124,
 )
 
-# In-memory media says which rates it carries, MiniMax-H3's own by default.
+# Frames a request already holds declare the rate they carry — `load_video` does not preserve it.
 motion = load_video("motion_ref.mp4")
 state = pipe(
     prompt="The subject walks toward camera, matching the reference video's shot rhythm",
-    references=[MiniMaxH3Reference(image=subject), MiniMaxH3Reference(video=motion, fps=30.0)],
+    references=[MiniMaxH3ImageReference(image=subject), MiniMaxH3VideoReference(frames=motion, fps=30.0)],
     num_frames=124,
 )
 
@@ -247,7 +258,7 @@ encode_video(
 )
 ```
 
-`num_frames` may be left out, but only when exactly one reference carries audio: the duration is then that soundtrack's, snapped up to the next `17 * n + 5` the video VAE can decode. A soundtrack whose *aligned* duration falls outside the 5 to 15 seconds MiniMax-H3 generates is rejected rather than silently stretched, so a clip just under 15 seconds — which rounds up to 362 frames, i.e. 15.083 seconds — has to name a shorter `num_frames` explicitly.
+`num_frames` is required for `ref2va`. To generate a video exactly as long as a reference soundtrack, compute it from the clip — `round(samples / sample_rate * 24)` — and it is snapped up to the next `17 * n + 5` the video VAE can decode; the resulting duration must stay between the 5 and 15 seconds MiniMax-H3 generates.
 
 ## MiniMaxH3ModularPipeline
 
@@ -257,14 +268,18 @@ encode_video(
 
 [[autodoc]] MiniMaxH3Blocks
 
-## MiniMaxH3Ref2VAModularPipeline
+## MiniMaxH3ImageReference
 
-[[autodoc]] MiniMaxH3Ref2VAModularPipeline
+[[autodoc]] modular_pipelines.minimax_h3.MiniMaxH3ImageReference
 
-## MiniMaxH3Ref2VABlocks
+## MiniMaxH3VideoReference
 
-[[autodoc]] MiniMaxH3Ref2VABlocks
+[[autodoc]] modular_pipelines.minimax_h3.MiniMaxH3VideoReference
 
-## MiniMaxH3Reference
+## MiniMaxH3AudioReference
 
-[[autodoc]] modular_pipelines.minimax_h3.MiniMaxH3Reference
+[[autodoc]] modular_pipelines.minimax_h3.MiniMaxH3AudioReference
+
+## MiniMaxH3Ref2VALoadReferencesStep
+
+[[autodoc]] modular_pipelines.minimax_h3.MiniMaxH3Ref2VALoadReferencesStep

@@ -12,31 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
+import numpy as np
 import PIL
 import torch
-from PIL import Image, ImageOps
+from PIL import Image
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
-from .packing import (
+from .modular_pipeline import (
+    MINIMAX_H3_FPS,
+    MiniMaxH3ModularPipeline,
     align_num_frames,
     resolve_canvas_size,
 )
-from .packing_ref2va import (
+from .references import (
     MiniMaxH3AudioReference,
     MiniMaxH3ImageReference,
     MiniMaxH3Reference,
     MiniMaxH3VideoReference,
-    prepare_reference_frames,
-    prepare_reference_image,
-    prepare_reference_waveform,
-    reference_media_to_uint8,
-    resample_reference_frames,
-    resolve_reference_image_size,
 )
 
 
@@ -119,9 +117,7 @@ class MiniMaxH3ResizeStep(ModularPipelineBlocks):
             if keyframe is not None
         )
         if block_state.height is None:
-            block_state.height, block_state.width = resolve_canvas_size(
-                *keyframes[0].size, components.canvas_multiple
-            )
+            block_state.height, block_state.width = resolve_canvas_size(*keyframes[0].size, components.canvas_multiple)
 
         prepared = []
         for index, keyframe in enumerate(keyframes):
@@ -155,96 +151,55 @@ class MiniMaxH3ResizeStep(ModularPipelineBlocks):
 
 
 class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
-    model_name = "minimax-h3-ref2va"
+    model_name = "minimax-h3"
 
     def __init__(
-        self, max_images: int = 9, max_videos: int = 3, max_audios: int = 3, max_references: int = 12
+        self,
+        max_images: int = 9,
+        max_videos: int = 3,
+        max_audios: int = 3,
+        max_references: int = 12,
+        reference_image_short_edge: int = 2048,
     ):
         r"""
-        Resolve a `ref2va` request's plan.
+        Resolve a `ref2va` request's plan and normalize its references onto MiniMax-H3's own rates and resolutions.
 
         Args:
             max_images (`int`, defaults to 9): Image references a request may carry.
             max_videos (`int`, defaults to 3): Video references a request may carry.
             max_audios (`int`, defaults to 3): Audio references a request may carry.
             max_references (`int`, defaults to 12): References of any modality a request may carry in total.
+            reference_image_short_edge (`int`, defaults to 2048):
+                The short edge an image reference is resized to, upscaling included.
 
-        The four limits are what MiniMax-H3 documents for the released checkpoint; they bound nothing but this
-        block's own validation, so a fine-tune that packs more can raise them.
+        The limits are what MiniMax-H3 documents for the released checkpoint; they bound nothing but this block's own
+        validation, so a fine-tune that packs more can raise them.
         """
         self.max_images = max_images
         self.max_videos = max_videos
         self.max_audios = max_audios
         self.max_references = max_references
+        self.reference_image_short_edge = reference_image_short_edge
         super().__init__()
 
     @property
     def description(self) -> str:
         return (
-            "Resolves the `ref2va` plan: the canvas (MiniMax-H3's own 16:9 unless asked otherwise — references never "
-            "bind the generated geometry), the references prepared at their own resolutions, the frame count they "
-            "imply when it was left open, and the latent geometry every later block keys off."
+            "Resolves the `ref2va` plan — the canvas (MiniMax-H3's own 16:9 unless asked otherwise; references never "
+            "bind the generated geometry) and the `17 * n + 5` frame count — and normalizes every reference onto "
+            "MiniMax-H3's own rates and resolutions."
         )
 
-    def _check_inputs(self, components, block_state) -> None:
-        if (block_state.height is None) != (block_state.width is None):
-            raise ValueError("`height` and `width` have to be passed together, or neither of them.")
-        multiple = components.canvas_multiple
-        if block_state.height is not None and (block_state.height % multiple or block_state.width % multiple):
-            raise ValueError(
-                f"`height` and `width` must be multiples of {multiple}, got "
-                f"{block_state.height}x{block_state.width}."
-            )
-        # The duration the request generates is the one of the *aligned* frame count, so that is what the ceiling has
-        # to hold for: 346 frames would otherwise pass the check and then be rounded up to 362, i.e. 15.083 seconds.
-        aligned_num_frames = (
-            None
-            if block_state.num_frames is None
-            else align_num_frames(
-                block_state.num_frames, components.vae_frames_per_chunk, components.vae_latents_per_chunk
-            )
-        )
-        duration = None if aligned_num_frames is None else aligned_num_frames / components.fps
-        if duration is not None and not components.min_duration <= duration <= components.max_duration:
-            raise ValueError(
-                f"MiniMax-H3 generates between {components.min_duration} and {components.max_duration} seconds at "
-                f"{components.fps} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE can "
-                f"encode, must be between {int(components.min_duration * components.fps)} and "
-                f"{int(components.max_duration * components.fps)}, got {block_state.num_frames} (rounded up to "
-                f"{aligned_num_frames})."
-            )
-
-        if not block_state.references:
-            raise ValueError(
-                "`ref2va` needs at least one reference; use `MiniMaxH3ModularPipeline` for text-only requests."
-            )
-        for index, entry in enumerate(block_state.references):
-            if not isinstance(entry, MiniMaxH3Reference):
-                raise ValueError(
-                    f"`references[{index}]` must be a [`MiniMaxH3ImageReference`], [`MiniMaxH3VideoReference`] or "
-                    f"[`MiniMaxH3AudioReference`], got {type(entry)}. MiniMax-H3 blocks never open media files, so a "
-                    "request that holds paths decodes them first — with "
-                    "[`~modular_pipelines.minimax_h3.decode_reference_video`] and "
-                    "[`~modular_pipelines.minimax_h3.decode_reference_audio`], or by putting a "
-                    "[`MiniMaxH3Ref2VALoadReferencesStep`] in front of these blocks."
-                )
-        kinds = [entry.kind for entry in block_state.references]
-        for kind, limit in (
-            ("image", self.max_images),
-            ("video", self.max_videos),
-            ("audio", self.max_audios),
-        ):
-            if kinds.count(kind) > limit:
-                raise ValueError(f"MiniMax-H3 accepts at most {limit} {kind} references, got {kinds.count(kind)}.")
-        if len(kinds) > self.max_references:
-            raise ValueError(
-                f"MiniMax-H3 accepts at most {self.max_references} references in total, got {len(kinds)}."
-            )
-        if set(kinds) == {"audio"}:
-            raise ValueError(
-                "An audio reference has to be paired with at least one image or video reference and cannot be used "
-                "on its own."
-            )
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -271,10 +226,11 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
             InputParam(
                 name="num_frames",
                 type_hint=int,
+                required=True,
                 description=(
                     "Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video "
-                    "VAE can decode. May be left out, but only when exactly one reference carries audio, in which "
-                    "case the duration is that soundtrack's."
+                    "VAE can decode; the resulting duration must stay between 5 and 15 seconds. To generate a video "
+                    "as long as a reference soundtrack, pass `round(samples / sample_rate * 24)`."
                 ),
             ),
         ]
@@ -286,133 +242,222 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
             OutputParam("width", type_hint=int, description="Resolved width of the generated video in pixels."),
             OutputParam("num_frames", type_hint=int, description="Resolved number of frames, of the form 17 * n + 5."),
             OutputParam(
-                "prepared_references",
+                "normalized_references",
                 type_hint=list[MiniMaxH3Reference],
                 description=(
                     "The references normalized onto MiniMax-H3's own rates and resolutions, in packed order: the "
-                    "same public reference types the request passed in, with an image resized to its own 2048 pixel "
-                    "short edge, a video resampled onto 24 fps and onto the canvas its own aspect ratio resolves "
-                    "to, and a soundtrack put on the audio VAE's sample rate and truncated to the generated "
+                    "same public reference types the request passed in, with an image resized to its own "
+                    "2048 pixel short edge, a video resampled onto 24 fps and onto the canvas its own aspect ratio "
+                    "resolves to, and a soundtrack put on the audio VAE's sample rate and truncated to the generated "
                     "duration."
                 ),
             ),
         ]
 
     @staticmethod
-    def prepare_references(
-        components, references: list[MiniMaxH3Reference], num_frames: int | None
-    ) -> tuple[list[MiniMaxH3Reference], int]:
+    def _normalize_video_condition(frames, fps: float, num_frames: int, canvas_multiple: int) -> np.ndarray:
         r"""
-        Resolve the references and, if it was left open, the duration they imply.
+        Normalize a video reference's frames: any accepted layout, onto `uint8` at 24 fps, truncated to the generated
+        frame count, on the canvas its own aspect ratio resolves to.
 
-        Every reference is prepared at its own resolution: an image is resized to a 2048 pixel short edge, a video is
-        resampled onto MiniMax-H3's own 24 fps, rescaled onto the 768 pixel canvas of *its own* aspect ratio and
-        truncated to the generated frame count, and a soundtrack is put on the audio VAE's sample rate and truncated to
-        the generated duration. None of this touches the target canvas.
-
-        A reference that left its `fps` or its `sample_rate` out is taken to already be at MiniMax-H3's own rate, and
-        its frames or its samples then flow through untouched. Decoding a file with
-        [`~modular_pipelines.minimax_h3.decode_reference_video`] or
-        [`~modular_pipelines.minimax_h3.decode_reference_audio`] fills both in from the container.
-
-        A video reference goes through the two passes the reference implementation's `ffmpeg` decode applied, in the
-        same order: the constant frame rate resample of `resample_reference_frames` and the LANCZOS rescale of
-        `prepare_reference_frames`. Frames handed over at 24 fps and already at the canvas their own aspect ratio
-        resolves to therefore reach the VAE untouched, which is the parity-exact route.
+        The two passes reproduce the reference implementation's `ffmpeg` decode, in the same order: the constant frame
+        rate resample first (dropping and duplicating whole frames, as `ffmpeg`'s `fps` filter does), the LANCZOS
+        rescale second. Frames handed over at 24 fps and already at the canvas their own aspect ratio resolves to flow
+        through untouched, which is the parity-exact route: the reference rescaled with `ffmpeg`'s own LANCZOS while
+        decoding, so only frames decoded at the canvas reproduce its pixels bit for bit.
 
         Args:
-            references (`list[MiniMaxH3Reference]`):
-                The `references` input of a [`MiniMaxH3Ref2VABlocks`] request.
-            num_frames (`int`, *optional*):
-                The requested frame count, or `None` to derive it from the single audio-bearing reference.
+            frames (`list[PIL.Image.Image]`, `np.ndarray` or `torch.Tensor`):
+                The reference frames: a list of images, a `(num_frames, height, width, 3)` array or a
+                `(num_frames, 3, height, width)` tensor, `uint8` or floating point over `[0, 1]`.
+            fps (`float`): The frame rate `frames` carries.
+            num_frames (`int`): The generated frame count the reference is truncated to.
+            canvas_multiple (`int`): What both canvas axes round to, i.e. `components.canvas_multiple`.
 
         Returns:
-            `tuple[list[MiniMaxH3Reference], int]`: the references normalized onto MiniMax-H3's own rates and
-            resolutions, in packed order and of the same public types they came in as, and the frame count.
+            `np.ndarray` of shape `(num_frames, height, width, 3)`: the normalized `uint8` RGB frames.
         """
-        # The duration may be left open, but then exactly one reference may carry audio, or the request is ambiguous.
-        if num_frames is None:
-            audio_bearing = [index for index, reference in enumerate(references) if reference.has_audio]
-            if len(audio_bearing) != 1:
-                raise ValueError(
-                    "`num_frames` may only be left to the references when exactly one of them carries audio, got "
-                    f"{len(audio_bearing)}."
-                )
-            index = audio_bearing[0]
-            sample_rate = references[index].sample_rate
-            if sample_rate is None:
-                sample_rate = components.audio_sampling_rate
-            duration = references[index].audio.shape[-1] / sample_rate
-            if not components.min_duration <= duration <= components.max_duration:
-                raise ValueError(
-                    f"`references[{index}]` is {duration:g} seconds long, outside the "
-                    f"{components.min_duration} to {components.max_duration} seconds MiniMax-H3 generates."
-                )
-            num_frames = align_num_frames(
-                round(duration * components.fps), components.vae_frames_per_chunk, components.vae_latents_per_chunk
+        # Any accepted layout onto `uint8` THWC. A `torch.Tensor` is channels-first, as everywhere else in
+        # diffusers, and a `np.ndarray` channels-last; floating point values are read over `[0, 1]`.
+        if isinstance(frames, list):
+            frames = np.stack([np.asarray(frame.convert("RGB")) for frame in frames])
+        if isinstance(frames, torch.Tensor):
+            frames = frames.movedim(-3, -1).cpu().numpy()
+        frames = np.asarray(frames)
+        if frames.dtype != np.uint8:
+            frames = (frames * 255.0).round().clip(0, 255).astype(np.uint8)
+        if frames.ndim != 4 or frames.shape[3] != 3:
+            raise ValueError(
+                f"A reference video must be `(num_frames, height, width, 3)` RGB frames, got {tuple(frames.shape)}."
             )
-            # The duration the request generates is the one of the *aligned* frame count, so that is what the
-            # ceiling has to hold for: a 14.99 second soundtrack rounds up to 362 frames, i.e. 15.083 seconds.
-            if num_frames / components.fps > components.max_duration:
-                raise ValueError(
-                    f"`references[{index}]` is {duration:g} seconds long, which rounds up to {num_frames} frames "
-                    f"(`17 * n + 5`), i.e. {num_frames / components.fps:g} seconds — past the "
-                    f"{components.max_duration} seconds MiniMax-H3 generates. Pass `num_frames` to generate a "
-                    "shorter video from this soundtrack."
-                )
-        num_frames = align_num_frames(num_frames, components.vae_frames_per_chunk, components.vae_latents_per_chunk)
 
-        prepared = []
-        for entry in references:
+        # Onto MiniMax-H3's 24 fps grid: every frame is held until the slot of the next one, and the last one until
+        # the slot the stream's end rounds to.
+        if fps <= 0:
+            raise ValueError(f"A reference video must have a positive frame rate, got {fps}.")
+        if fps != MINIMAX_H3_FPS:
+            scale = MINIMAX_H3_FPS / fps
+            slots = np.floor(np.arange(frames.shape[0]) * scale + 0.5).astype(np.int64)
+            frames = np.repeat(frames, np.diff(slots, append=math.floor(frames.shape[0] * scale + 0.5)), axis=0)
+
+        # Truncated to the generated frame count and put on the canvas of its *own* aspect ratio — the same rule the
+        # target canvas follows, unlike an image reference.
+        frames = frames[:num_frames]
+        height, width = resolve_canvas_size(frames.shape[2], frames.shape[1], canvas_multiple)
+        if frames.shape[1:3] == (height, width):
+            return frames
+        return np.stack(
+            [np.asarray(Image.fromarray(frame).resize((width, height), Image.Resampling.LANCZOS)) for frame in frames]
+        )
+
+    @staticmethod
+    def _normalize_audio_condition(
+        waveform: torch.Tensor, sample_rate: int, target_sample_rate: int, max_duration: float
+    ) -> torch.Tensor:
+        r"""
+        Normalize a reference soundtrack onto the audio VAE's sample rate, as a stereo waveform.
+
+        The reference implementation extracts a soundtrack at a native rate, truncates it there and resamples it once,
+        in torch, which this mirrors: the truncation is applied at `sample_rate` and the resampling is a single
+        `torchaudio` pass. A mono waveform is upmixed by repeating its channel.
+
+        Args:
+            waveform (`torch.Tensor` of shape `(channels, num_samples)`): The soundtrack, mono or stereo.
+            sample_rate (`int`): The sample rate `waveform` carries its samples at.
+            target_sample_rate (`int`): The audio VAE's sample rate, i.e. what the waveform is resampled to.
+            max_duration (`float`): Truncate the reference to this many seconds.
+
+        Returns:
+            `torch.Tensor` of shape `(2, num_samples)`: the float32 waveform.
+        """
+        waveform = torch.as_tensor(waveform)
+        if waveform.ndim != 2 or waveform.shape[0] not in (1, 2):
+            raise ValueError(
+                "A reference soundtrack must be a `(channels, num_samples)` mono or stereo waveform, got "
+                f"{tuple(waveform.shape)}."
+            )
+        waveform = waveform.to(torch.float32)[:, : int(max_duration * sample_rate)]
+        if waveform.shape[0] != 2:
+            waveform = waveform.expand(2, -1).contiguous()
+        if sample_rate == target_sample_rate:
+            return waveform
+
+        try:
+            import torchaudio
+        except ImportError as error:
+            raise ImportError(
+                f"Resampling a MiniMax-H3 reference soundtrack from {sample_rate} Hz to {target_sample_rate} Hz "
+                "needs `torchaudio`. Pass a waveform already at the audio VAE's sample rate to do without it."
+            ) from error
+        return torchaudio.transforms.Resample(sample_rate, target_sample_rate)(waveform)
+
+    @torch.no_grad()
+    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        # 1. Validate the request.
+        if (block_state.height is None) != (block_state.width is None):
+            raise ValueError("`height` and `width` have to be passed together, or neither of them.")
+        multiple = components.canvas_multiple
+        if block_state.height is not None and (block_state.height % multiple or block_state.width % multiple):
+            raise ValueError(
+                f"`height` and `width` must be multiples of {multiple}, got {block_state.height}x{block_state.width}."
+            )
+        if not block_state.references:
+            raise ValueError("`ref2va` needs at least one reference; use the `t2va` workflow for text-only requests.")
+        for index, entry in enumerate(block_state.references):
+            if not isinstance(entry, MiniMaxH3Reference):
+                raise ValueError(
+                    f"`references[{index}]` must be a [`MiniMaxH3ImageReference`], [`MiniMaxH3VideoReference`] or "
+                    f"[`MiniMaxH3AudioReference`], got {type(entry)}. MiniMax-H3 blocks never open media files, so a "
+                    "request that holds paths decodes them first — with "
+                    "[`~modular_pipelines.minimax_h3.decode_reference_video`] and "
+                    "[`~modular_pipelines.minimax_h3.decode_reference_audio`], or by putting a "
+                    "[`MiniMaxH3Ref2VALoadReferencesStep`] in front of these blocks."
+                )
+        kinds = [entry.kind for entry in block_state.references]
+        for kind, limit in (("image", self.max_images), ("video", self.max_videos), ("audio", self.max_audios)):
+            if kinds.count(kind) > limit:
+                raise ValueError(f"MiniMax-H3 accepts at most {limit} {kind} references, got {kinds.count(kind)}.")
+        if len(kinds) > self.max_references:
+            raise ValueError(
+                f"MiniMax-H3 accepts at most {self.max_references} references in total, got {len(kinds)}."
+            )
+        if set(kinds) == {"audio"}:
+            raise ValueError(
+                "An audio reference has to be paired with at least one image or video reference and cannot be used "
+                "on its own."
+            )
+
+        # 2. Resolve the canvas and the frame count. The duration the request generates is the one of the *aligned*
+        # frame count, so that is what the ceiling holds for: 346 frames would otherwise pass the check and then be
+        # rounded up to 362, i.e. 15.083 seconds.
+        if block_state.height is None:
+            block_state.height, block_state.width = resolve_canvas_size(16, 9, multiple)
+        aligned_num_frames = align_num_frames(
+            block_state.num_frames, components.vae_frames_per_chunk, components.vae_latents_per_chunk
+        )
+        duration = aligned_num_frames / components.fps
+        if not components.min_duration <= duration <= components.max_duration:
+            raise ValueError(
+                f"MiniMax-H3 generates between {components.min_duration} and {components.max_duration} seconds at "
+                f"{components.fps} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE can "
+                f"encode, must be between {int(components.min_duration * components.fps)} and "
+                f"{int(components.max_duration * components.fps)}, got {block_state.num_frames} (rounded up to "
+                f"{aligned_num_frames})."
+            )
+        if aligned_num_frames != block_state.num_frames:
+            logger.warning(
+                f"`num_frames` has to be of the form 17 * n + 5 for the video VAE; rounding {block_state.num_frames} "
+                f"up to {aligned_num_frames}."
+            )
+        block_state.num_frames = aligned_num_frames
+
+        # 3. Normalize the media, in packed order.
+        normalized = []
+        for entry in block_state.references:
             waveform = None
             if entry.has_audio:
                 sample_rate = entry.sample_rate
                 if sample_rate is None:
                     sample_rate = components.audio_sampling_rate
-                waveform = prepare_reference_waveform(
+                waveform = self._normalize_audio_condition(
                     entry.audio,
                     sample_rate,
                     components.audio_sampling_rate,
-                    max_duration=num_frames / components.fps,
+                    max_duration=block_state.num_frames / components.fps,
                 )
 
             if entry.kind == "image":
-                image = ImageOps.exif_transpose(entry.image).convert("RGB")
-                height, width = resolve_reference_image_size(*image.size, components.canvas_multiple)
-                prepared.append(MiniMaxH3ImageReference(image=prepare_reference_image(image, height, width)))
+                # Images are encoded at high detail — a 2048 pixel short edge, upscaling included, with *no* area
+                # cap — unlike video references and the target itself, which share the one canvas rule. Expected in
+                # RGB, as `load_image` returns.
+                image = entry.image
+                if image.size[0] <= 0 or image.size[1] <= 0:
+                    raise ValueError(f"A reference image must have a positive size, got {image.size}.")
+                width, height = image.size
+                if width > 4 * height or height > 4 * width:
+                    raise ValueError(f"A reference image must be within 1:4 and 4:1, got {width}x{height}.")
+                scale = self.reference_image_short_edge / min(width, height)
+                target_height = max(multiple, round(height * scale / multiple) * multiple)
+                target_width = max(multiple, round(width * scale / multiple) * multiple)
+                if image.size != (target_width, target_height):
+                    image = components.image_processor.resize(image, height=target_height, width=target_width)
+                normalized.append(MiniMaxH3ImageReference(image=image))
             elif entry.kind == "video":
-                frames = resample_reference_frames(reference_media_to_uint8(entry.frames), float(entry.fps))
-                prepared.append(
+                normalized.append(
                     MiniMaxH3VideoReference(
-                        frames=prepare_reference_frames(frames, num_frames, components.canvas_multiple),
+                        frames=self._normalize_video_condition(
+                            entry.frames, float(entry.fps), block_state.num_frames, multiple
+                        ),
                         fps=float(components.fps),
                         audio=waveform,
                         sample_rate=None if waveform is None else components.audio_sampling_rate,
                     )
                 )
             else:
-                prepared.append(
-                    MiniMaxH3AudioReference(audio=waveform, sample_rate=components.audio_sampling_rate)
-                )
-        return prepared, num_frames
-
-    @torch.no_grad()
-    def __call__(self, components: MiniMaxH3Ref2VAModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-        self._check_inputs(components, block_state)
-
-        if block_state.height is None:
-            block_state.height, block_state.width = resolve_canvas_size(16, 9, components.canvas_multiple)
-
-        requested_num_frames = block_state.num_frames
-        block_state.prepared_references, block_state.num_frames = self.prepare_references(
-            components, block_state.references, block_state.num_frames
-        )
-        if requested_num_frames is not None and requested_num_frames != block_state.num_frames:
-            logger.warning(
-                f"`num_frames` has to be of the form 17 * n + 5 for the video VAE; rounding {requested_num_frames} up "
-                f"to {block_state.num_frames}."
-            )
+                normalized.append(MiniMaxH3AudioReference(audio=waveform, sample_rate=components.audio_sampling_rate))
+        block_state.normalized_references = normalized
 
         self.set_block_state(state, block_state)
         return components, state

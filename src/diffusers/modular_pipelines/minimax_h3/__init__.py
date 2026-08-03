@@ -21,9 +21,9 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modular_blocks_minimax_h3"] = ["MiniMaxH3Blocks", "MiniMaxH3Ref2VABlocks"]
-    _import_structure["modular_pipeline"] = ["MiniMaxH3ModularPipeline", "MiniMaxH3Ref2VAModularPipeline"]
-    _import_structure["packing_ref2va"] = [
+    _import_structure["modular_blocks_minimax_h3"] = ["MiniMaxH3Blocks"]
+    _import_structure["modular_pipeline"] = ["MiniMaxH3ModularPipeline"]
+    _import_structure["references"] = [
         "MiniMaxH3AudioReference",
         "MiniMaxH3ImageReference",
         "MiniMaxH3Reference",
@@ -42,18 +42,18 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modular_blocks_minimax_h3 import MiniMaxH3Blocks, MiniMaxH3Ref2VABlocks
-        from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
-        from .packing_ref2va import (
-            MiniMaxH3AudioReference,
-            MiniMaxH3ImageReference,
-            MiniMaxH3Reference,
-            MiniMaxH3VideoReference,
-        )
+        from .modular_blocks_minimax_h3 import MiniMaxH3Blocks
+        from .modular_pipeline import MiniMaxH3ModularPipeline
         from .reference_loading import (
             MiniMaxH3Ref2VALoadReferencesStep,
             decode_reference_audio,
             decode_reference_video,
+        )
+        from .references import (
+            MiniMaxH3AudioReference,
+            MiniMaxH3ImageReference,
+            MiniMaxH3Reference,
+            MiniMaxH3VideoReference,
         )
 else:
     import sys

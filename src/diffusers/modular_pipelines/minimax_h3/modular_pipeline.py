@@ -14,21 +14,131 @@
 
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
-from .packing import (
-    MINIMAX_H3_AUDIO_CHANNELS,
-    MINIMAX_H3_FPS,
-    MINIMAX_H3_TEXT_TAG,
-    MINIMAX_H3_VIDEO_TAG,
-)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# Per-row modality tags. They index the transformer's AdaLN table, so the values are a checkpoint contract.
+MINIMAX_H3_VIDEO_TAG = 0
+MINIMAX_H3_TEXT_TAG = 1
+MINIMAX_H3_AUDIO_TAG = 2
+
+# MiniMax-H3 generates at a fixed 24 fps and was released for a 768 pixel short edge only, with a soft area cap of
+# 768x1344. The multiple both axes round to follows from
+# the VAE and the transformer, so it is `MiniMaxH3ModularPipeline.canvas_multiple` below and reaches these helpers
+# as an argument.
+MINIMAX_H3_FPS = 24
+MINIMAX_H3_SHORT_EDGE = 768
+MINIMAX_H3_MAX_PIXELS = 768 * 1344
+MINIMAX_H3_MIN_ASPECT_RATIO = 1 / 4
+MINIMAX_H3_MAX_ASPECT_RATIO = 4
+
+# The audio VAE hops 800 samples at 32 kHz, i.e. 40 latents per second. Stereo is carried as two channel-major
+# blocks of audio rows (and as two batch items at the audio VAE boundary, which is mono).
+MINIMAX_H3_AUDIO_LATENTS_PER_SECOND = 40
+MINIMAX_H3_AUDIO_CHANNELS = 2
+
+
+def resolve_canvas_size(aspect_width: float, aspect_height: float, canvas_multiple: int) -> tuple[int, int]:
+    r"""
+    Resolve a display aspect ratio into a MiniMax-H3 canvas.
+
+    The short edge starts at 768, the area is capped at `768 * 1344` and both axes are then rounded to the nearest
+    `canvas_multiple` — so the final area may end up slightly above the pre-rounding budget. Only the ratio of the two
+    arguments matters; pass either the aspect ratio (`16, 9`) or the source dimensions of a keyframe.
+
+    Args:
+        aspect_width (`float`): Width of the target ratio.
+        aspect_height (`float`): Height of the target ratio.
+        canvas_multiple (`int`):
+            What both axes round to, i.e. `components.canvas_multiple` — 32 for the released checkpoint.
+
+    Returns:
+        `tuple[int, int]`: the `(height, width)` of the canvas.
+    """
+    if aspect_width <= 0 or aspect_height <= 0:
+        raise ValueError(f"The aspect ratio must be positive, got {aspect_width}:{aspect_height}.")
+
+    ratio = aspect_width / aspect_height
+    if not MINIMAX_H3_MIN_ASPECT_RATIO <= ratio <= MINIMAX_H3_MAX_ASPECT_RATIO:
+        raise ValueError(
+            f"MiniMax-H3 supports aspect ratios from 1:4 to 4:1, got {aspect_width}:{aspect_height} ({ratio:g})."
+        )
+
+    if ratio >= 1.0:
+        width, height = MINIMAX_H3_SHORT_EDGE * ratio, float(MINIMAX_H3_SHORT_EDGE)
+    else:
+        width, height = float(MINIMAX_H3_SHORT_EDGE), MINIMAX_H3_SHORT_EDGE / ratio
+
+    area = width * height
+    if area > MINIMAX_H3_MAX_PIXELS:
+        scale = (MINIMAX_H3_MAX_PIXELS / area) ** 0.5
+        width, height = width * scale, height * scale
+
+    multiple = canvas_multiple
+    return max(multiple, round(height / multiple) * multiple), max(multiple, round(width / multiple) * multiple)
+
+
+def align_num_frames(num_frames: int, frames_per_chunk: int, latents_per_chunk: int) -> int:
+    r"""
+    Snap a frame count up to the next `frames_per_chunk * n + latents_per_chunk` the video VAE can encode.
+
+    Args:
+        num_frames (`int`): The requested number of frames.
+        frames_per_chunk (`int`): Pixel frames the video VAE encodes per chunk, its `clip_length`.
+        latents_per_chunk (`int`): Latent frames a chunk keeps, the VAE's `tokens_chunk_size`.
+
+    Returns:
+        `int`: The aligned number of frames.
+    """
+    if num_frames < 1:
+        raise ValueError(f"`num_frames` must be positive, got {num_frames}.")
+    while num_frames % frames_per_chunk != latents_per_chunk:
+        num_frames += 1
+    return num_frames
+
+
+def video_latent_num_frames(num_frames: int, frames_per_chunk: int, latents_per_chunk: int) -> int:
+    r"""
+    The number of latent frames the video VAE produces for a `17 * n + 5` frame count.
+
+    Args:
+        num_frames (`int`): An aligned number of frames.
+
+    Returns:
+        `int`: The number of latent frames, `5 * n + 2`.
+    """
+    if num_frames % frames_per_chunk != latents_per_chunk:
+        raise ValueError(
+            f"`num_frames` must be of the form {frames_per_chunk} * n + {latents_per_chunk}, got {num_frames}."
+        )
+    return (num_frames - latents_per_chunk) // frames_per_chunk * latents_per_chunk + 2
+
+
+def audio_latent_num_frames(num_frames: int) -> int:
+    r"""
+    The number of audio latents that covers a video of `num_frames` frames at 24 fps.
+
+    Args:
+        num_frames (`int`): The number of video frames.
+
+    Returns:
+        `int`: The number of audio latents, rounded at the 40 Hz latent grid.
+    """
+    return int(round(num_frames / MINIMAX_H3_FPS * MINIMAX_H3_AUDIO_LATENTS_PER_SECOND))
+
+
 class MiniMaxH3ModularPipeline(ModularPipeline):
     """
-    A ModularPipeline for joint video + audio generation with MiniMax-H3, covering the `t2va` (text only) and `fl2va`
-    (first and/or last keyframe) tasks of the FL2VA checkpoint.
+    A ModularPipeline for joint video + audio generation with MiniMax-H3: the `t2va` (text only) and `fl2va` (first
+    and/or last keyframe) workflows against the `transformer/` checkpoint partition, and the `ref2va` (omni-reference)
+    workflow against `transformer_ref/`. One repository holds both partitions, and selecting a workflow loads only its
+    own:
+
+    ```py
+    pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="ref2va")
+    ```
 
     MiniMax-H3 denoises **one packed sequence** that holds the text conditioning, the keyframe conditioning latents,
     the audio latents and the video latents at once, which is why the blocks pass a row layout around rather than
@@ -39,8 +149,8 @@ class MiniMaxH3ModularPipeline(ModularPipeline):
     `negative_prompt` and no `guidance_scale`, and every step runs exactly one forward pass.
 
     MiniMax-H3 is modular only: this pipeline and its blocks are the whole integration, there is no
-    `DiffusionPipeline` half. This class carries the config-derived geometry the blocks read off the components, the
-    packed-sequence geometry lives in `modular_pipelines.minimax_h3.packing`, and the conditioning, encoding and noise
+    `DiffusionPipeline` half. This module carries the model facts every block keys off — the config-derived geometry
+    as properties, the canvas and frame-count arithmetic as functions — and the conditioning, encoding and noise
     contracts live on the blocks themselves.
 
     ```py
@@ -94,8 +204,11 @@ class MiniMaxH3ModularPipeline(ModularPipeline):
 
     @property
     def patch_size(self):
-        if getattr(self, "transformer", None) is not None:
-            return tuple(self.transformer.config.patch_size)
+        # One repository holds both checkpoint partitions — `transformer/` for `t2va`/`fl2va`, `transformer_ref/`
+        # for `ref2va` — and a workflow loads only its own, so read whichever is present.
+        for name in ("transformer", "transformer_ref"):
+            if getattr(self, name, None) is not None:
+                return tuple(getattr(self, name).config.patch_size)
         return (1, 2, 2)
 
     @property
@@ -173,37 +286,3 @@ class MiniMaxH3ModularPipeline(ModularPipeline):
     def video_tag(self):
         r"""The modality tag of a video row of the packed sequence, which a vision block's rows also carry."""
         return MINIMAX_H3_VIDEO_TAG
-
-
-class MiniMaxH3Ref2VAModularPipeline(MiniMaxH3ModularPipeline):
-    """
-    A ModularPipeline for joint video + audio generation from omni-references with MiniMax-H3, the `ref2va` task of the
-    Ref2VA checkpoint.
-
-    A request carries an ordered list of references — up to 9 images, 3 videos and 3 audio clips, 12 in total — and
-    MiniMax-H3 packs one block per reference in front of the generated rows. The order is semantic: it labels the
-    references in the prompt presentation and it advances the shared audio/video rotary clock, so reordering the same
-    references is a different request.
-
-    The transformer is registered as `transformer_ref`, so one repository can hold both checkpoint partitions
-    (`transformer/` for [`MiniMaxH3ModularPipeline`], `transformer_ref/` for this one) and either pipeline loads only
-    its own weights. One repository also means one `modular_model_index.json`, which names the `t2va` / `fl2va` half;
-    load this one through its blocks instead, which reads the very same file:
-
-    ```py
-    pipe = MiniMaxH3Ref2VABlocks().init_pipeline("MiniMaxAI/MiniMax-H3")
-    pipe.load_components(dtype=torch.bfloat16)
-    ```
-
-    The blocks carry the `ref2va` conditioning, encoding and noise contracts themselves.
-
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
-    """
-
-    default_blocks_name = "MiniMaxH3Ref2VABlocks"
-
-    @property
-    def patch_size(self):
-        if getattr(self, "transformer_ref", None) is not None:
-            return tuple(self.transformer_ref.config.patch_size)
-        return (1, 2, 2)
