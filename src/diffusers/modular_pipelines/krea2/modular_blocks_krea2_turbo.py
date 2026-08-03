@@ -53,9 +53,7 @@ class Krea2TurboAutoTextEncoderStep(AutoPipelineBlocks):
           prompt (`str`):
               The prompt or prompts to guide image generation.
           reference_image (`Image | list`, *optional*):
-              First reference image(s), or scene reference for two-reference generation.
-          reference_image_2 (`Image | list`, *optional*):
-              Optional second reference image(s), used as the subject reference.
+              A reference image or ordered list of reference images shared by all prompts in the batch.
           reference_image_encoder_resolution (`int`, *optional*, defaults to 768):
               Maximum reference-image side length used by the Qwen3-VL encoder. Use 0 for native resolution.
           max_sequence_length (`int`, *optional*, defaults to 512):
@@ -526,9 +524,7 @@ class Krea2TurboAutoBlocks(SequentialPipelineBlocks):
           prompt (`str`):
               The prompt or prompts to guide image generation.
           reference_image (`Image | list`, *optional*):
-              First reference image(s), or scene reference for two-reference generation.
-          reference_image_2 (`Image | list`, *optional*):
-              Optional second reference image(s), used as the subject reference.
+              A reference image or ordered list of reference images shared by all prompts in the batch.
           reference_image_encoder_resolution (`int`, *optional*, defaults to 768):
               Maximum reference-image side length used by the Qwen3-VL encoder. Use 0 for native resolution.
           max_sequence_length (`int`, *optional*, defaults to 512):

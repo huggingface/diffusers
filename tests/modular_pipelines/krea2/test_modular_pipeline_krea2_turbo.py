@@ -81,8 +81,8 @@ class TestKrea2TurboModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_blocks_class = Krea2TurboAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-krea2-turbo-modular-pipe"
 
-    params = frozenset(["prompt", "height", "width", "image", "mask_image", "reference_image", "reference_image_2"])
-    batch_params = frozenset(["prompt", "image", "mask_image", "reference_image", "reference_image_2"])
+    params = frozenset(["prompt", "height", "width", "image", "mask_image", "reference_image"])
+    batch_params = frozenset(["prompt", "image", "mask_image"])
     expected_workflow_blocks = KREA2_TURBO_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
@@ -127,7 +127,22 @@ class TestKrea2TurboModularPipelineFast(ModularPipelineTesterMixin):
         single_reference_output = pipe(**inputs, reference_attention_scale=2.0, output="images")
 
         inputs["generator"] = self.get_generator(0)
-        inputs["reference_image_2"] = PIL.Image.new("RGB", (32, 32), "black")
-        two_reference_output = pipe(**inputs, reference_attention_scale=[1.0, 2.0], output="images")
+        inputs["reference_image"] = [PIL.Image.new("RGB", (32, 32), "white")]
+        single_reference_list_output = pipe(**inputs, reference_attention_scale=[2.0], output="images")
+
+        inputs["generator"] = self.get_generator(0)
+        inputs["reference_image"] = [
+            PIL.Image.new("RGB", (32, 32), "white"),
+            PIL.Image.new("RGB", (32, 32), "black"),
+            PIL.Image.new("RGB", (32, 32), "gray"),
+        ]
+        multi_reference_output = pipe(**inputs, reference_attention_scale=[1.0, 2.0, 0.5], output="images")
+
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"]]
+        inputs["generator"] = [self.get_generator(0), self.get_generator(1)]
+        batched_output = pipe(**inputs, reference_attention_scale=[1.0, 2.0, 0.5], output="images")
         assert single_reference_output.shape == (1, 3, 32, 32)
-        assert not torch.allclose(single_reference_output, two_reference_output)
+        assert torch.allclose(single_reference_output, single_reference_list_output)
+        assert not torch.allclose(single_reference_output, multi_reference_output)
+        assert batched_output.shape == (2, 3, 32, 32)
+        assert (batched_output[:1] - multi_reference_output).abs().max() < 5e-3

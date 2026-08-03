@@ -143,11 +143,12 @@ class TestKrea2TransformerModel(Krea2TransformerTesterConfig, ModelTesterMixin):
                 device=torch_device,
                 dtype=self.torch_dtype,
             )
-            for _ in range(2)
+            for _ in range(3)
         ]
         position_ids = torch.cat(
             [
                 inputs["position_ids"][:text_seq_len],
+                inputs["position_ids"][text_seq_len:].clone(),
                 inputs["position_ids"][text_seq_len:].clone(),
                 inputs["position_ids"][text_seq_len:].clone(),
                 inputs["position_ids"][text_seq_len:],
@@ -155,10 +156,11 @@ class TestKrea2TransformerModel(Krea2TransformerTesterConfig, ModelTesterMixin):
         )
         position_ids[text_seq_len : text_seq_len + image_seq_len, 0] = 1
         position_ids[text_seq_len + image_seq_len : text_seq_len + 2 * image_seq_len, 0] = 2
+        position_ids[text_seq_len + 2 * image_seq_len : text_seq_len + 3 * image_seq_len, 0] = 3
         inputs["position_ids"] = position_ids
 
-        output = model(**inputs, reference_attention_scale=[1.0, 1.0]).sample
-        boosted_output = model(**inputs, reference_attention_scale=[1.0, 2.0]).sample
+        output = model(**inputs, reference_attention_scale=[1.0, 1.0, 1.0]).sample
+        boosted_output = model(**inputs, reference_attention_scale=[1.0, 2.0, 0.5]).sample
         assert output.shape == inputs["hidden_states"].shape
         assert not torch.allclose(output, boosted_output)
 

@@ -190,8 +190,7 @@ subject_image = load_image(
 )
 image = pipe(
     prompt="place the wizard cat from the second image sitting on the bench beside the dog from the first image",
-    reference_image=scene_image,
-    reference_image_2=subject_image,
+    reference_image=[scene_image, subject_image],
     height=1024,
     width=1024,
     reference_image_encoder_resolution=768,
@@ -202,12 +201,12 @@ image = pipe(
 image.save("krea2_reference.png")
 ```
 
-For two-reference generation, `reference_image` is the scene and `reference_image_2` is the subject, matching the
-adapter's training order. `reference_image_encoder_resolution` controls the maximum reference-image side length passed
-to Qwen3-VL. `reference_attention_scale` accepts either one value for all references or one value per reference; the
-example leaves scene attention unchanged and boosts subject fidelity. The adapter's recommended LoRA scale is `1.0`.
-References are resized to the requested output dimensions before VAE encoding, so use similar aspect ratios to avoid
-distortion.
+`reference_image` accepts one image or an ordered list of any length. The example passes the scene first and the subject
+second to match the adapter's training order. The same reference set is shared by every prompt in a prompt batch.
+`reference_image_encoder_resolution` controls the maximum reference-image side length passed to Qwen3-VL.
+`reference_attention_scale` accepts either one value for all references or one value per reference; the example leaves
+scene attention unchanged and boosts subject fidelity. The adapter's recommended LoRA scale is `1.0`. References are
+resized to the requested output dimensions before VAE encoding, so use similar aspect ratios to avoid distortion.
 
 We additionally provide an example for using Krea2 Turbo. The distilled checkpoint maps to its own set of blocks
 ([`Krea2TurboAutoBlocks`]): it runs guidance-free (no `guider`), takes no negative prompt, and samples in a few steps.

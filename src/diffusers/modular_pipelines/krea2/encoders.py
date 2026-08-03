@@ -318,7 +318,7 @@ class Krea2TurboTextEncoderStep(Krea2TextEncoderStep):
 # auto_docstring
 class Krea2ReferenceTextEncoderStep(ModularPipelineBlocks):
     """
-    Encode prompts together with a reference image through Qwen3-VL for reference-conditioned Krea 2 generation.
+    Encode prompts with one or more ordered reference images through Qwen3-VL for Krea 2 generation.
 
       Components:
           text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. reference_image_processor
@@ -331,9 +331,7 @@ class Krea2ReferenceTextEncoderStep(ModularPipelineBlocks):
           negative_prompt (`str`, *optional*):
               The negative prompt(s) for CFG.
           reference_image (`Image | list`):
-              First reference image(s), or scene reference for two-reference generation.
-          reference_image_2 (`Image | list`, *optional*):
-              Optional second reference image(s), used as the subject reference.
+              A reference image or ordered list of reference images shared by all prompts in the batch.
           reference_image_encoder_resolution (`int`, *optional*, defaults to 768):
               Maximum reference-image side length used by the Qwen3-VL encoder. Use 0 for native resolution.
 
@@ -352,7 +350,7 @@ class Krea2ReferenceTextEncoderStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Encode prompts together with a reference image through Qwen3-VL for reference-conditioned Krea 2 generation."
+        return "Encode prompts with one or more ordered reference images through Qwen3-VL for Krea 2 generation."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -382,12 +380,7 @@ class Krea2ReferenceTextEncoderStep(ModularPipelineBlocks):
                 name="reference_image",
                 type_hint=PIL.Image.Image | list[PIL.Image.Image],
                 required=True,
-                description="First reference image(s), or scene reference for two-reference generation.",
-            ),
-            InputParam(
-                name="reference_image_2",
-                type_hint=PIL.Image.Image | list[PIL.Image.Image],
-                description="Optional second reference image(s), used as the subject reference.",
+                description="A reference image or ordered list of reference images shared by all prompts in the batch.",
             ),
             InputParam(
                 name="reference_image_encoder_resolution",
@@ -406,25 +399,17 @@ class Krea2ReferenceTextEncoderStep(ModularPipelineBlocks):
             OutputParam.template("negative_prompt_embeds_mask"),
         ]
 
-    def _encode_prompt(self, components, prompts, reference_images, reference_images_2, encoder_resolution, device):
-        references_by_input = []
-        for name, images in (("reference_image", reference_images), ("reference_image_2", reference_images_2)):
-            if images is None:
-                continue
-            if isinstance(images, PIL.Image.Image):
-                images = [images]
-            if len(images) == 1 and len(prompts) > 1:
-                images = images * len(prompts)
-            if len(images) != len(prompts):
-                raise ValueError(
-                    f"`{name}` must contain one image or one image per prompt, but got {len(images)} images for "
-                    f"{len(prompts)} prompts."
-                )
-            references_by_input.append(images)
+    def _encode_prompt(self, components, prompts, reference_images, encoder_resolution, device):
+        if isinstance(reference_images, PIL.Image.Image):
+            reference_images = [reference_images]
+        if not isinstance(reference_images, list) or not reference_images:
+            raise ValueError("`reference_image` must be an image or a non-empty list of images.")
+        if not all(isinstance(image, PIL.Image.Image) for image in reference_images):
+            raise ValueError("Every item in `reference_image` must be a PIL image.")
 
         processed_images = []
-        for prompt_images in zip(*references_by_input):
-            for image in prompt_images:
+        for _ in prompts:
+            for image in reference_images:
                 image = image.convert("RGB")
                 if encoder_resolution and max(image.size) > encoder_resolution:
                     scale = encoder_resolution / max(image.size)
@@ -439,7 +424,7 @@ class Krea2ReferenceTextEncoderStep(ModularPipelineBlocks):
         image_token_counts = (
             image_inputs.image_grid_thw.prod(dim=1) // components.reference_image_processor.merge_size**2
         ).tolist()
-        num_references = len(references_by_input)
+        num_references = len(reference_images)
         vision_block = "<|vision_start|><|image_pad|><|vision_end|>"
         texts = []
         for prompt_index, prompt in enumerate(prompts):
@@ -476,7 +461,6 @@ class Krea2ReferenceTextEncoderStep(ModularPipelineBlocks):
             components,
             prompts,
             block_state.reference_image,
-            block_state.reference_image_2,
             block_state.reference_image_encoder_resolution,
             device,
         )
@@ -493,7 +477,6 @@ class Krea2ReferenceTextEncoderStep(ModularPipelineBlocks):
                 components,
                 negative_prompts,
                 block_state.reference_image,
-                block_state.reference_image_2,
                 block_state.reference_image_encoder_resolution,
                 device,
             )
@@ -523,7 +506,7 @@ class Krea2ReferenceTextEncoderStep(ModularPipelineBlocks):
 # auto_docstring
 class Krea2TurboReferenceTextEncoderStep(Krea2ReferenceTextEncoderStep):
     """
-    Encode prompts with a reference image for reference-conditioned Krea 2 Turbo generation.
+    Encode prompts with one or more ordered reference images for Krea 2 Turbo generation.
 
       Components:
           text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. reference_image_processor
@@ -534,9 +517,7 @@ class Krea2TurboReferenceTextEncoderStep(Krea2ReferenceTextEncoderStep):
           prompt (`str`):
               The prompt or prompts to guide image generation.
           reference_image (`Image | list`):
-              First reference image(s), or scene reference for two-reference generation.
-          reference_image_2 (`Image | list`, *optional*):
-              Optional second reference image(s), used as the subject reference.
+              A reference image or ordered list of reference images shared by all prompts in the batch.
           reference_image_encoder_resolution (`int`, *optional*, defaults to 768):
               Maximum reference-image side length used by the Qwen3-VL encoder. Use 0 for native resolution.
 
@@ -549,7 +530,7 @@ class Krea2TurboReferenceTextEncoderStep(Krea2ReferenceTextEncoderStep):
 
     @property
     def description(self) -> str:
-        return "Encode prompts with a reference image for reference-conditioned Krea 2 Turbo generation."
+        return "Encode prompts with one or more ordered reference images for Krea 2 Turbo generation."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -572,12 +553,7 @@ class Krea2TurboReferenceTextEncoderStep(Krea2ReferenceTextEncoderStep):
                 name="reference_image",
                 type_hint=PIL.Image.Image | list[PIL.Image.Image],
                 required=True,
-                description="First reference image(s), or scene reference for two-reference generation.",
-            ),
-            InputParam(
-                name="reference_image_2",
-                type_hint=PIL.Image.Image | list[PIL.Image.Image],
-                description="Optional second reference image(s), used as the subject reference.",
+                description="A reference image or ordered list of reference images shared by all prompts in the batch.",
             ),
             InputParam(
                 name="reference_image_encoder_resolution",
@@ -599,7 +575,6 @@ class Krea2TurboReferenceTextEncoderStep(Krea2ReferenceTextEncoderStep):
             components,
             prompts,
             block_state.reference_image,
-            block_state.reference_image_2,
             block_state.reference_image_encoder_resolution,
             components._execution_device,
         )
@@ -841,16 +816,14 @@ class Krea2VaeEncoderStep(ModularPipelineBlocks):
 # auto_docstring
 class Krea2ReferenceProcessImagesInputStep(ModularPipelineBlocks):
     """
-    Preprocess a reference image at the target output resolution for VAE encoding.
+    Preprocess one or more ordered reference images at the target output resolution for VAE encoding.
 
       Components:
           image_processor (`VaeImageProcessor`)
 
       Inputs:
           reference_image (`Image | list`):
-              First reference image(s), or scene reference for two-reference generation.
-          reference_image_2 (`Image | list`, *optional*):
-              Optional second reference image(s), used as the subject reference.
+              A reference image or ordered list of reference images shared by all prompts in the batch.
           height (`int`, *optional*, defaults to 1024):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 1024):
@@ -865,7 +838,7 @@ class Krea2ReferenceProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Preprocess a reference image at the target output resolution for VAE encoding."
+        return "Preprocess one or more ordered reference images at the target output resolution for VAE encoding."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -885,12 +858,7 @@ class Krea2ReferenceProcessImagesInputStep(ModularPipelineBlocks):
                 name="reference_image",
                 type_hint=PIL.Image.Image | list[PIL.Image.Image],
                 required=True,
-                description="First reference image(s), or scene reference for two-reference generation.",
-            ),
-            InputParam(
-                name="reference_image_2",
-                type_hint=PIL.Image.Image | list[PIL.Image.Image],
-                description="Optional second reference image(s), used as the subject reference.",
+                description="A reference image or ordered list of reference images shared by all prompts in the batch.",
             ),
             InputParam.template("height", default=1024),
             InputParam.template("width", default=1024),
@@ -912,9 +880,13 @@ class Krea2ReferenceProcessImagesInputStep(ModularPipelineBlocks):
         multiple = components.image_processor.config.vae_scale_factor
         if block_state.height % multiple != 0 or block_state.width % multiple != 0:
             raise ValueError(f"`height` and `width` must be divisible by {multiple} for reference conditioning.")
-        reference_images = [block_state.reference_image]
-        if block_state.reference_image_2 is not None:
-            reference_images.append(block_state.reference_image_2)
+        reference_images = block_state.reference_image
+        if isinstance(reference_images, PIL.Image.Image):
+            reference_images = [reference_images]
+        if not isinstance(reference_images, list) or not reference_images:
+            raise ValueError("`reference_image` must be an image or a non-empty list of images.")
+        if not all(isinstance(image, PIL.Image.Image) for image in reference_images):
+            raise ValueError("Every item in `reference_image` must be a PIL image.")
         block_state.processed_reference_images = [
             components.image_processor.preprocess(image=image, height=block_state.height, width=block_state.width)
             for image in reference_images

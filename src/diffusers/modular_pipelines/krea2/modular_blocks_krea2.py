@@ -60,9 +60,7 @@ class Krea2AutoTextEncoderStep(AutoPipelineBlocks):
           negative_prompt (`str`, *optional*):
               The negative prompt(s) for CFG.
           reference_image (`Image | list`, *optional*):
-              First reference image(s), or scene reference for two-reference generation.
-          reference_image_2 (`Image | list`, *optional*):
-              Optional second reference image(s), used as the subject reference.
+              A reference image or ordered list of reference images shared by all prompts in the batch.
           reference_image_encoder_resolution (`int`, *optional*, defaults to 768):
               Maximum reference-image side length used by the Qwen3-VL encoder. Use 0 for native resolution.
           max_sequence_length (`int`, *optional*, defaults to 512):
@@ -242,9 +240,7 @@ class Krea2ReferenceVaeEncoderBlocks(SequentialPipelineBlocks):
 
       Inputs:
           reference_image (`Image | list`):
-              First reference image(s), or scene reference for two-reference generation.
-          reference_image_2 (`Image | list`, *optional*):
-              Optional second reference image(s), used as the subject reference.
+              A reference image or ordered list of reference images shared by all prompts in the batch.
           height (`int`, *optional*, defaults to 1024):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 1024):
@@ -277,9 +273,7 @@ class Krea2AutoVaeEncoderStep(AutoPipelineBlocks):
 
       Inputs:
           reference_image (`Image | list`, *optional*):
-              First reference image(s), or scene reference for two-reference generation.
-          reference_image_2 (`Image | list`, *optional*):
-              Optional second reference image(s), used as the subject reference.
+              A reference image or ordered list of reference images shared by all prompts in the batch.
           height (`int`, *optional*, defaults to 1024 or None, depending on the workflow):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 1024 or None, depending on the workflow):
@@ -812,9 +806,7 @@ class Krea2AutoBlocks(SequentialPipelineBlocks):
           negative_prompt (`str`, *optional*):
               The negative prompt(s) for CFG.
           reference_image (`Image | list`, *optional*):
-              First reference image(s), or scene reference for two-reference generation.
-          reference_image_2 (`Image | list`, *optional*):
-              Optional second reference image(s), used as the subject reference.
+              A reference image or ordered list of reference images shared by all prompts in the batch.
           reference_image_encoder_resolution (`int`, *optional*, defaults to 768):
               Maximum reference-image side length used by the Qwen3-VL encoder. Use 0 for native resolution.
           max_sequence_length (`int`, *optional*, defaults to 512):
