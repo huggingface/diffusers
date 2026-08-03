@@ -2,6 +2,7 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 from transformers import AutoProcessor, Mistral3Config, Mistral3ForConditionalGeneration
 
 from diffusers import (
@@ -186,3 +187,15 @@ class Flux2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 (expected_height, expected_width),
                 f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}",
             )
+
+    def test_image_input_max_area(self):
+        # `max_area` (previously hardcoded to 1024**2) is the condition-image downscale threshold:
+        # condition images whose area exceeds it are downscaled while preserving aspect ratio.
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        height, width = inputs["height"], inputs["width"]
+
+        inputs.update({"image": Image.new("RGB", (128, 128)), "max_area": 64 * 64})
+        image = pipe(**inputs).images[0]
+        output_height, output_width, _ = image.shape
+        self.assertEqual((output_height, output_width), (height, width))
