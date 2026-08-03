@@ -634,10 +634,8 @@ class Ideogram4ApplyStrengthStep(ModularPipelineBlocks):
         if not 0.0 < block_state.strength <= 1.0:
             raise ValueError(f"`strength` must be in the interval (0, 1], but got {block_state.strength}.")
 
-        init_timestep = min(
-            int(block_state.num_inference_steps * block_state.strength), block_state.num_inference_steps
-        )
-        t_start = block_state.num_inference_steps - init_timestep
+        init_timestep = min(block_state.num_inference_steps * block_state.strength, block_state.num_inference_steps)
+        t_start = int(max(block_state.num_inference_steps - init_timestep, 0))
         begin_index = t_start * components.scheduler.order
         block_state.timesteps = block_state.timesteps[begin_index:]
         block_state.gw = block_state.gw[t_start:]
