@@ -51,6 +51,7 @@ from ..utils import (
     _add_variant,
     _get_checkpoint_shard_files,
     _get_model_file,
+    _resolve_revision,
     deprecate,
     is_accelerate_available,
     is_bitsandbytes_available,
@@ -1121,6 +1122,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "model_class": str(cls.__name__),
         }
         unused_kwargs = {}
+
+        # Resolve the revision once so that the config, the weight index and every checkpoint shard below are all
+        # downloaded from the same commit (DDUF archives are read from a single local file, nothing to resolve).
+        if dduf_entries is None:
+            revision = _resolve_revision(
+                pretrained_model_name_or_path,
+                revision=revision,
+                cache_dir=cache_dir,
+                local_files_only=local_files_only,
+                token=token,
+            )
 
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path

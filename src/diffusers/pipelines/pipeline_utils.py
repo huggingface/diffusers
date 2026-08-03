@@ -78,7 +78,12 @@ from ..utils import (
     numpy_to_pil,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
-from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import (
+    _check_legacy_sharding_variant_format,
+    _resolve_revision,
+    load_or_create_model_card,
+    populate_model_card,
+)
 from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
 
 
@@ -869,6 +874,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     f'The provided pretrained_model_name_or_path "{pretrained_model_name_or_path}"'
                     " is neither a valid local path nor a valid repo id. Please check the parameter."
                 )
+            # Resolve the revision once, so that the download below and the components loaded from the repo
+            # afterwards all target the same commit.
+            revision = _resolve_revision(
+                pretrained_model_name_or_path,
+                revision=revision,
+                cache_dir=cache_dir,
+                local_files_only=local_files_only,
+                token=token,
+            )
             cached_folder = cls.download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
@@ -1628,6 +1642,17 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 token=token,
                 revision=revision,
             )
+
+        # Resolve the revision once: the config file below and the snapshot download that follows are then pinned
+        # to the same commit, and are served from the cache without contacting the Hub again. No-op when
+        # `from_pretrained` already resolved it.
+        revision = _resolve_revision(
+            pretrained_model_name,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
 
         allow_pickle = True if (use_safetensors is None or use_safetensors is False) else False
         use_safetensors = use_safetensors if use_safetensors is not None else True
