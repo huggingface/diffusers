@@ -36,6 +36,7 @@ from ...utils import BaseOutput, is_cosmos_guardrail_available, logging
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .image_processor import Cosmos3VideoProcessor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -379,12 +380,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         enable_safety_checker: bool = True,
         default_use_system_prompt: bool = True,
         use_native_flow_schedule: bool = False,
+        native_flow_shift: float | None = None,
     ):
         super().__init__()
         self.register_to_config(
             enable_safety_checker=enable_safety_checker,
             default_use_system_prompt=default_use_system_prompt,
             use_native_flow_schedule=use_native_flow_schedule,
+            native_flow_shift=native_flow_shift,
         )
         if enable_safety_checker:
             if safety_checker is None:
@@ -408,7 +411,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         self.vae_scale_factor_temporal = (
             int(self.vae.config.scale_factor_temporal) if getattr(self, "vae", None) else 4
         )
-        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear")
+        self.video_processor = Cosmos3VideoProcessor(
+            vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear"
+        )
 
         self.llm_special_tokens = {
             "start_of_generation": text_tokenizer.convert_tokens_to_ids("<|vision_start|>"),
@@ -754,12 +759,13 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         # Video-to-video conditioning: a top-level `video` without an action run.
         has_video_condition = video is not None and action is None
 
-        # video_processor.preprocess handles PIL/np/tensor → [1, 3, H, W] in [-1, 1], resized to (height, width).
+        # Raw I2V PIL images use the Framework-compatible Cosmos3 transform; tensor/NumPy inputs retain the generic
+        # VideoProcessor contract. Both paths return [1, 3, H, W] in [-1, 1].
         conditioning_frame_2d: torch.Tensor | None = None
         if image is not None:
-            conditioning_frame_2d = self.video_processor.preprocess(image, height=height, width=width).to(
-                device=device, dtype=dtype
-            )
+            conditioning_frame_2d = self.video_processor.preprocess_conditioning_image(
+                image, height=height, width=width
+            ).to(device=device, dtype=dtype)
 
         conditioning_frames_3d: torch.Tensor | None = None
         condition_indexes_vision: tuple[int, ...] = tuple(condition_frame_indexes_vision)
@@ -1628,12 +1634,11 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         # 6. Set timesteps. UniPCMultistepScheduler keeps per-step state (_step_index,
         # model_outputs history) on the instance, so sound/action each get their own copy.
         if self.config.use_native_flow_schedule:
-            sigmas = np.linspace(
-                1.0 - 1.0 / self.scheduler.config.num_train_timesteps,
-                0.0,
-                num_inference_steps + 1,
-            )[:-1]
-            self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas)
+            self.scheduler.set_cosmos3_edge_native_flow_timesteps(
+                num_inference_steps,
+                device=device,
+                shift=self.config.native_flow_shift,
+            )
         else:
             self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps

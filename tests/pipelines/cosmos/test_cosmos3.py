@@ -15,10 +15,13 @@
 import unittest
 from unittest import mock
 
+import numpy as np
 import torch
+from PIL import Image
 from transformers import AutoTokenizer
 
 from diffusers import AutoencoderKLWan, Cosmos3OmniPipeline, Cosmos3OmniTransformer, UniPCMultistepScheduler
+from diffusers.pipelines.cosmos.image_processor import Cosmos3VideoProcessor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -129,6 +132,29 @@ class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             pipeline.tokenize_prompt("A prompt", num_frames=1, add_resolution_template=False)
 
         assert all(call.args[0][0]["role"] == "user" for call in apply_chat_template.call_args_list)
+
+    def test_cosmos3_conditioning_image_processor_matches_framework_transform(self):
+        pixels = np.array(
+            [[[x * 30 + y * 7, x * 20 + y * 11, x * 10 + y * 13] for x in range(5)] for y in range(3)],
+            dtype=np.uint8,
+        )
+        image = Image.fromarray(pixels, "RGB")
+        processor = Cosmos3VideoProcessor(vae_scale_factor=16, resample="bilinear")
+
+        actual = processor.preprocess_conditioning_image(image, height=4, width=4)
+        actual_pixels = ((actual + 1.0) * 127.5).round().to(torch.uint8)
+        expected_pixels = torch.tensor(
+            [
+                [
+                    [[39, 60, 81, 103], [43, 64, 86, 107], [48, 70, 91, 112], [53, 74, 95, 117]],
+                    [[26, 40, 54, 69], [33, 47, 61, 75], [41, 55, 69, 84], [48, 62, 76, 91]],
+                    [[13, 20, 27, 34], [21, 28, 35, 42], [31, 38, 45, 52], [39, 46, 53, 60]],
+                ]
+            ],
+            dtype=torch.uint8,
+        )
+
+        assert torch.equal(actual_pixels, expected_pixels)
 
     @unittest.skip("Cosmos3 currently supports one prompt per pipeline call.")
     def test_inference_batch_consistent(self):
