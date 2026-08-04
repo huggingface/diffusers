@@ -27,7 +27,7 @@ from diffusers import LongCatAudioDiTPipeline
 
 pipeline = LongCatAudioDiTPipeline.from_pretrained(
     "ruixiangma/LongCat-AudioDiT-1B-Diffusers",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 pipeline = pipeline.to("cuda")
 

@@ -50,6 +50,8 @@ from ..testing_utils import (
     ModelTesterMixin,
     QuantoCompileTesterMixin,
     QuantoTesterMixin,
+    SDNQCompileTesterMixin,
+    SDNQTesterMixin,
     SingleFileTesterMixin,
     TaylorSeerCacheTesterMixin,
     TensorParallelTesterMixin,
@@ -494,6 +496,46 @@ class TestFluxTransformerModelOpt(FluxTransformerTesterConfig, ModelOptTesterMix
 
 class TestFluxTransformerModelOptCompile(FluxTransformerTesterConfig, ModelOptCompileTesterMixin):
     """ModelOpt + compile tests for Flux Transformer."""
+
+
+class FluxTransformerSDNQTesterConfig(FluxTransformerTesterConfig):
+    """Shared config for SDNQ Flux Transformer tests (loads the standalone tiny transformer)."""
+
+    modules_to_not_convert_for_test = ["to_k"]
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-flux-transformer"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {}
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the tiny-flux-transformer config dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 4096, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "pooled_projections": randn_tensor(
+                (1, 768), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+            "img_ids": randn_tensor((4096, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
+            "txt_ids": randn_tensor((512, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
+            "guidance": torch.tensor([3.5]).to(torch_device, self.torch_dtype),
+        }
+
+
+class TestFluxTransformerSDNQ(FluxTransformerSDNQTesterConfig, SDNQTesterMixin):
+    """SDNQ quantization tests for Flux Transformer."""
+
+
+class TestFluxTransformerSDNQCompile(FluxTransformerSDNQTesterConfig, SDNQCompileTesterMixin):
+    """SDNQ + compile tests for Flux Transformer."""
 
 
 class TestFluxTransformerBitsAndBytesCompile(FluxTransformerTesterConfig, BitsAndBytesCompileTesterMixin):

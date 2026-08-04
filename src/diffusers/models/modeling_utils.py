@@ -103,6 +103,11 @@ logger = logging.get_logger(__name__)
 
 _REGEX_SHARD = re.compile(r"(.*?)-\d{5}-of-\d{5}")
 
+# The `user_agent` dict is flattened into a single `user-agent` HTTP header. Serializing an
+# unbounded `quantization_config` into it can exceed server header size limits, so we only
+# attach the serialized config for telemetry when it stays under this many characters.
+_MAX_QUANT_CONFIG_USER_AGENT_CHARS = 2048
+
 TORCH_INIT_FUNCTIONS = {
     "uniform_": nn.init.uniform_,
     "normal_": nn.init.normal_,
@@ -1168,7 +1173,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             # In order to ensure popular quantization methods are supported. Can be disabled with `disable_telemetry`
             user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
-            user_agent["quant_config"] = json.dumps(hf_quantizer.quantization_config.to_dict(), sort_keys=True)
+            # Attach the full serialized config for telemetry, but skip it when it is large enough to
+            # risk exceeding HTTP header size limits (see `_MAX_QUANT_CONFIG_USER_AGENT_CHARS`).
+            serialized_quant_config = json.dumps(hf_quantizer.quantization_config.to_dict(), sort_keys=True)
+            if len(serialized_quant_config) <= _MAX_QUANT_CONFIG_USER_AGENT_CHARS:
+                user_agent["quant_config"] = serialized_quant_config
 
             # Force-set to `True` for more mem efficiency
             if low_cpu_mem_usage is None:

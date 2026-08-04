@@ -33,7 +33,7 @@ generation resolution is fed into the timestep modulation so the model is aware 
 import torch
 from diffusers import PRXPixelPipeline
 
-pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", torch_dtype=torch.bfloat16)
+pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", dtype=torch.bfloat16)
 pipe.to("cuda")
 
 prompt = "A front-facing portrait of a lion in the golden savanna at sunset."
@@ -49,7 +49,7 @@ For memory-constrained environments:
 import torch
 from diffusers import PRXPixelPipeline
 
-pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", torch_dtype=torch.bfloat16)
+pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
 
 # Or use sequential CPU offload for even lower memory

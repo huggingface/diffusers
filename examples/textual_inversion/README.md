@@ -107,7 +107,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_id = "path-to-your-trained-model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id,dtype=torch.float16).to("cuda")
 
 repo_id_embeds = "path-to-your-learned-embeds"
 pipe.load_textual_inversion(repo_id_embeds)

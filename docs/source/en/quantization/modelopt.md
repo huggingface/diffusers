@@ -35,12 +35,12 @@ transformer = AutoModel.from_pretrained(
     model_id,
     subfolder="transformer",
     quantization_config=quantization_config,
-    torch_dtype=dtype,
+    dtype=dtype,
 )
 pipe = SanaPipeline.from_pretrained(
     model_id,
     transformer=transformer,
-    torch_dtype=dtype,
+    dtype=dtype,
 )
 pipe.to("cuda")
 
@@ -106,7 +106,7 @@ model = AutoModel.from_pretrained(
     model_id,
     subfolder="transformer",
     quantization_config=quant_config_fp8,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 model.save_pretrained('path/to/sana_fp8', safe_serialization=False)
 ```
@@ -125,12 +125,12 @@ transformer = AutoModel.from_pretrained(
     "path/to/sana_fp8",
     subfolder="transformer",
     quantization_config=quantization_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe = SanaPipeline.from_pretrained(
     "Efficient-Large-Model/Sana_600M_1024px_diffusers",
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.to("cuda")
 prompt = "A cat holding a sign that says hello world"
