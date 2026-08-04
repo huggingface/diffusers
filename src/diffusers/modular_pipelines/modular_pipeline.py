@@ -142,6 +142,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
+        ("pixart-alpha", _create_default_map_fn("PixArtAlphaModularPipeline")),
         ("anima", _create_default_map_fn("AnimaModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
         ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
