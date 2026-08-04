@@ -224,8 +224,8 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             confidence_threshold (`float`, *optional*, defaults to `0.005`):
                 Leave a block's denoising loop early once every example is stable (see `stability_threshold`) and the
                 mean per-token entropy of the scheduler-shaped prediction logits is below this value. Speeds up
-                generation at matched quality; the default matches the released checkpoint. Set to `None` to always
-                run all `num_inference_steps`.
+                generation at matched quality; the default matches the released checkpoint. Set to `None` to always run
+                all `num_inference_steps`.
             generator (`torch.Generator`, *optional*):
                 RNG for sampling.
             output_type (`str`, defaults to `"text"`):
