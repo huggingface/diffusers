@@ -34,7 +34,9 @@ MiniMax-H3 was released as two checkpoint partitions that share every component 
 
 Everything but the transformer, i.e. the video VAE, the audio VAE, the Qwen3-VL conditioner, its tokenizer and processor, and the two schedulers, is shared and stored once.
 
-All three tasks are workflows of the one [`MiniMaxH3Blocks`], and the repository carries one `modular_model_index.json` naming every component with its own loading spec. To serve a single task, pass the workflow to `from_pretrained`: it keeps only that workflow's blocks, so the pipeline's signature (`pipe.blocks.doc`) documents exactly that task's inputs, only that task's components are declared, and `load_components` fetches exactly their subfolders — a `t2va` / `fl2va` pipeline never touches `transformer_ref/`, a `ref2va` one never touches `transformer/`.
+The conditioner is a `Qwen3VLForConditionalGeneration`, and MiniMax-H3 reads the *unnormalized* hidden state after its 50th decoder layer rather than the last one, so the full released checkpoint is used with its language-model head unused.
+
+All three tasks are workflows of the one [`MiniMaxH3Blocks`], and the repository carries one `modular_model_index.json` naming every component with its own loading spec. To serve a single task, pass the workflow to `from_pretrained`: it keeps only that workflow's blocks, so the pipeline's signature (`pipe.doc`) documents exactly that task's inputs, only that task's components are declared, and `load_components` fetches exactly their subfolders — a `t2va` / `fl2va` pipeline never touches `transformer_ref/`, a `ref2va` one never touches `transformer/`.
 
 ```py
 import torch
@@ -44,18 +46,22 @@ pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="ref2va"
 pipe.load_components(dtype=torch.bfloat16)
 ```
 
-To keep every workflow available on one pipeline instead, load the full blockset — it picks the workflow per call from the inputs it is passed — and restrict the *loading* per workflow with `load_components(workflow=...)`:
+> [!TIP]
+> `pipe.doc` prints what the pipeline in front of you takes and returns — every input with its default, the components it expects and the outputs it produces. Pruned to one workflow it describes exactly that task, which is the quickest way to see what a request needs before making one.
+
+To keep every workflow available on one pipeline instead, leave the `workflow` argument out: the pipeline then picks the workflow per call from the inputs it is passed.
 
 ```py
 pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
+```
 
-# loads `transformer/` and every shared component — this one call serves `t2va` and `fl2va`
+The *loading* can still go one workflow at a time. This one call fetches `transformer/` and every shared component, which serves both `t2va` and `fl2va`:
+
+```py
 pipe.load_components(workflow="t2va", dtype=torch.bfloat16)
 ```
 
-A plain `load_components()` with no `workflow=` pulls **both** 61.7GB transformer partitions. That is a deliberate choice when a [`ComponentsManager`] with auto offloading manages the memory: the weights live in host RAM, the manager moves onto the accelerator just what each step needs, and switching workflows takes no extra call — when the `ref2va` denoiser wants the device, the strategy offloads the smallest set of components that frees enough room, which tends to be the idle `transformer/` partition rather than the (slightly larger) conditioner. See [Memory](#memory) for the recipes.
-
-The conditioner is a `Qwen3VLForConditionalGeneration`, and MiniMax-H3 reads the *unnormalized* hidden state after its 50th decoder layer rather than the last one, so the full released checkpoint is used with its language-model head unused.
+A plain `load_components()` with no `workflow=` pulls **both** 61.7GB transformer partitions, which is what lets one pipeline serve all three workflows without another loading call. Pair it with a [`ComponentsManager`] and auto offloading: the weights live in host RAM and the manager moves onto the accelerator just what each step needs, so when the `ref2va` denoiser wants the device the strategy offloads whatever frees enough room. See [Memory](#memory) for the recipes.
 
 ## Two schedulers
 
@@ -162,26 +168,30 @@ Two 80 GB cards run full bfloat16 this way with nothing streaming; two 48 GB car
 
 ```py
 import torch
-from diffusers import ModularPipeline
+from diffusers import ComponentsManager, ModularPipeline
 from diffusers.utils import load_image
 from diffusers.utils.export_utils import encode_video
 
-pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
+# 61.7GB of transformer and 62.1GB of conditioner do not sit on one accelerator, so the components are
+# registered in a manager that moves each one on and off as the blocks reach it. See [Memory](#memory).
+manager = ComponentsManager()
+manager.enable_auto_cpu_offload(device="cuda")
+
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", components_manager=manager)
 pipe.load_components(workflow="fl2va", dtype=torch.bfloat16)
-pipe.to("cuda")
 
 prompt = "A red fox trotting through a snowy pine forest, snow crunching underfoot"
 # `output=` returns exactly the named outputs instead of the whole pipeline state.
 outputs = ["videos", "audio", "sampling_rate"]
 
 # Text to video + audio.
-results = pipe(prompt=prompt, generator=torch.Generator().manual_seed(42), output=outputs)
+results = pipe(prompt=prompt, num_frames=124, generator=torch.Generator().manual_seed(42), output=outputs)
 
 # First frame (and optionally last frame) to video + audio. The canvas follows the first keyframe.
 image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
 )
-results = pipe(prompt=prompt, image=image, generator=torch.Generator().manual_seed(42), output=outputs)
+results = pipe(prompt=prompt, image=image, num_frames=124, generator=torch.Generator().manual_seed(42), output=outputs)
 
 encode_video(
     results["videos"][0],
@@ -216,7 +226,7 @@ The blocks never open a media file — decoding a path is the caller's job, as i
 
 ```py
 import torch
-from diffusers import ModularPipeline
+from diffusers import ComponentsManager, ModularPipeline
 from diffusers.modular_pipelines.minimax_h3 import (
     MiniMaxH3AudioReference,
     MiniMaxH3ImageReference,
@@ -226,10 +236,12 @@ from diffusers.utils import load_video
 from diffusers.utils.export_utils import encode_video
 
 # `ref2va` is a workflow of the one MiniMax-H3 pipeline; selecting it loads only the `transformer_ref/`
-# checkpoint partition.
-pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="ref2va")
+# checkpoint partition, and the manager moves each component on and off the accelerator in turn.
+manager = ComponentsManager()
+manager.enable_auto_cpu_offload(device="cuda")
+
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="ref2va", components_manager=manager)
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
 
 subject = MiniMaxH3ImageReference.from_file(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
@@ -281,11 +293,11 @@ from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3VideoReference
 manager = ComponentsManager()
 manager.enable_auto_cpu_offload(device="cuda")
 
-# The full pipeline holds every workflow and picks one per call from the inputs. Each
-# `load_components(workflow=...)` loads only what that workflow still misses — the second call adds just
-# the `transformer_ref/` partition, everything else is already there.
+# The full pipeline holds every workflow and picks one per call from the inputs. Loading without a
+# `workflow=` brings both transformer partitions in one call, so the `ref2va` request that follows the
+# `t2va` generation needs no further loading.
 pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", components_manager=manager)
-pipe.load_components(workflow="t2va", dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 
 results = pipe(
     prompt="An astronaut hiking through the mountains, humming a tune",
@@ -298,8 +310,6 @@ reference = MiniMaxH3VideoReference(
     audio=results["audio"][0],
     sample_rate=results["sampling_rate"],
 )
-
-pipe.load_components(workflow="ref2va", dtype=torch.bfloat16)
 results = pipe(
     prompt="The same astronaut now walks along a beach at sunset, humming the same tune",
     references=[reference],
