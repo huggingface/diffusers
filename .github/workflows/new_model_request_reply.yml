@@ -1,0 +1,43 @@
+name: New Model Request Reply
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  reply:
+    name: Point new model requests at Modular Diffusers
+    # Match the heading the issue form renders for its first field rather than a label: template
+    # labels are applied after the issue is created, so `github.event.issue.labels` is empty here.
+    # Keep this string in sync with .github/ISSUE_TEMPLATE/new-model-addition.yml.
+    if: >-
+      github.repository == 'huggingface/diffusers' &&
+      contains(github.event.issue.body, '### Model/Pipeline/Scheduler description')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Post Modular Diffusers guidance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          BODY: |
+            Thanks for the request!
+
+            **How new model support works in Diffusers**
+
+            We're a small team, and our review queue shouldn't be what decides whether a model is usable in Diffusers. With [Modular Diffusers](https://huggingface.co/docs/diffusers/modular_diffusers/overview), a pipeline can live as remote code in any Hub repo and load straight from there with `from_pretrained`.
+
+            🛠️ **Want to bring this model to Diffusers?**
+
+            Please start with a Hub repo — you don't need anything from us to do that, and people can use it immediately. From there we decide how to support it: we might work with the authors, upstream an existing community version, or just point people at the one on the Hub. The pipelines we integrate are usually the ones people are already running.
+
+            Tag `@asomoza` when you have something to share — we'll give feedback on the implementation, help get it in front of people, and add the ones we like to our hand-picked [Modular Pipelines](https://huggingface.co/collections/diffusers/modular-pipelines) collection. Tell us where you hit friction along the way, too: confusing APIs, missing docs, bugs. That feedback is worth as much to us as the pipeline.
+
+            👋 **Are you an author of the model?** We'd love to hear from you — comment here and we'll help you pick the path that fits.
+
+            📚 [Quickstart](https://huggingface.co/docs/diffusers/modular_diffusers/quickstart) · [Building custom blocks](https://huggingface.co/docs/diffusers/modular_diffusers/custom_blocks) — template repo, and how to publish to the Hub · [Modular Pipelines](https://huggingface.co/collections/diffusers/modular-pipelines) and [Custom Blocks](https://huggingface.co/collections/diffusers/modular-diffusers-custom-blocks) — examples to crib from
+
+            *This is an automated message.*
+        run: gh issue comment "$ISSUE_NUMBER" --body "$BODY"
