@@ -204,7 +204,8 @@ def main(args):
     std = LTX2ImageToVideoPipeline.from_pretrained(args.model_path, torch_dtype=args.dtype)
     # For now, disable shift_terminal so that num_inference_steps=1 doesn't produce nans.
     new_scheduler = FlowMatchEulerDiscreteScheduler.from_config(
-        std.scheduler.config, shift_terminal=None,
+        std.scheduler.config,
+        shift_terminal=None,
     )
     std.scheduler = new_scheduler
     if args.cpu_offload:
@@ -253,9 +254,7 @@ def main(args):
             name = phase["name"]
             if name is None or forward_captures[name]:
                 return
-            snap = {
-                k: (v.detach().float().cpu() if isinstance(v, torch.Tensor) else v) for k, v in fwd_kwargs.items()
-            }
+            snap = {k: (v.detach().float().cpu() if isinstance(v, torch.Tensor) else v) for k, v in fwd_kwargs.items()}
             snap["__out_video__"] = output[0].detach().float().cpu()
             snap["__out_audio__"] = output[1].detach().float().cpu()
             forward_captures[name].append(snap)
@@ -370,13 +369,13 @@ if __name__ == "__main__":
         "--mean_rel_tol",
         type=float,
         default=None,
-        help="Parity gate: mean abs diff relative to mean magnitude. Dtype-aware default (fp32: 1e-3, bf16: 0.15).",
+        help="Parity gate: mean abs diff relative to mean magnitude. Dtype-aware default (fp32: 2e-2, bf16: 0.15).",
     )
     parser.add_argument(
         "--max_abs_tol",
         type=float,
         default=None,
-        help="Parity gate: max abs diff ceiling. Dtype-aware default (fp32: 1e-3, bf16: 0.5).",
+        help="Parity gate: max abs diff ceiling. Dtype-aware default (fp32: 1.5e-1, bf16: 0.5).",
     )
     parser.add_argument(
         "--check_tensor_stats",
