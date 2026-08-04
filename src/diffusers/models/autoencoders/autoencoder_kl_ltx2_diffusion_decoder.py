@@ -37,8 +37,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def _patchify(x: torch.Tensor, patch_size: int) -> torch.Tensor:
     """Space-to-depth on H/W only: `(B, C, F, H, W)` -> `(B, C * patch_size**2, F, H // p, W // p)`.
 
-    The channel packing order is `(channel, width_offset, height_offset)`, matching the reference
-    implementation's `b c (f p) (h q) (w r) -> b (c p r q) f h w` with `p = 1`.
+    The channel packing order is `(channel, width_offset, height_offset)`, matching the reference implementation's `b c
+    (f p) (h q) (w r) -> b (c p r q) f h w` with `p = 1`.
     """
     batch_size, num_channels, num_frames, height, width = x.shape
     x = x.reshape(
@@ -76,9 +76,9 @@ def _neighborhood_block_mask(
 ):
     """Build a FlexAttention `BlockMask` for 3D neighborhood attention.
 
-    Each query attends to a `kernel_size` window that is centered where possible and *shifted inward* at the
-    grid boundaries so it always holds exactly `kernel_size` positions. That inward shift (rather than
-    truncating the window) is what NATTEN's `na3d` does, which is why the flex path can stand in for it.
+    Each query attends to a `kernel_size` window that is centered where possible and *shifted inward* at the grid
+    boundaries so it always holds exactly `kernel_size` positions. That inward shift (rather than truncating the
+    window) is what NATTEN's `na3d` does, which is why the flex path can stand in for it.
     """
     from torch.nn.attention.flex_attention import create_block_mask
 
@@ -107,10 +107,10 @@ def _neighborhood_block_mask(
 class LTX2VideoVaeRotaryPosEmbed3D(nn.Module):
     """Absolute 3D rotary embedding for the diffusion decoder's neighborhood attention.
 
-    `head_dim` is split into (T, H, W) chunks, each rotated by its own axis position. Positions are the
-    tensor's own 0-based indices: attention here is always a local window with no causal masking, so the
-    score between a query and a key depends only on their relative offset and a shared origin shift is a
-    no-op. Rotation is computed in fp32 and cast back to the input dtype.
+    `head_dim` is split into (T, H, W) chunks, each rotated by its own axis position. Positions are the tensor's own
+    0-based indices: attention here is always a local window with no causal masking, so the score between a query and a
+    key depends only on their relative offset and a shared origin shift is a no-op. Rotation is computed in fp32 and
+    cast back to the input dtype.
     """
 
     def __init__(self, head_dim: int, rope_dim_split: tuple[int, int, int] | None = None, base: float = 10000.0):
@@ -189,8 +189,8 @@ class LTX2VideoVaeNeighborhoodAttnProcessor:
 class LTX2VideoVaeNeighborhoodNattenProcessor:
     """Neighborhood-attention processor using NATTEN's `na3d`, which is what the reference decoder calls.
 
-    Requires the optional `natten` package and a supported GPU; `backend=None` lets NATTEN pick the fastest
-    kernel for the device. No CPU path — use [`LTX2VideoVaeNeighborhoodAttnProcessor`] elsewhere.
+    Requires the optional `natten` package and a supported GPU; `backend=None` lets NATTEN pick the fastest kernel for
+    the device. No CPU path — use [`LTX2VideoVaeNeighborhoodAttnProcessor`] elsewhere.
     """
 
     def __init__(self, backend: str | None = None):
@@ -249,8 +249,8 @@ class LTX2VideoVaeNeighborhoodAttention(nn.Module, AttentionModuleMixin):
     def project_qkv(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Q/K/V as `(B, T, H, W, heads, head_dim)`, RMS-normed, query pre-scaled, then rotated.
 
-        The query carries the `1 / sqrt(head_dim)` factor here so both processors can ask their attention
-        backend for `scale=1.0` — this is the order the reference uses (norm, scale, then rotate).
+        The query carries the `1 / sqrt(head_dim)` factor here so both processors can ask their attention backend for
+        `scale=1.0` — this is the order the reference uses (norm, scale, then rotate).
         """
         batch_size, num_frames, height, width, _ = hidden_states.shape
         shape = (batch_size, num_frames, height, width, self.heads, self.head_dim)
@@ -320,9 +320,9 @@ class LTX2VideoVaeNABlock(nn.Module):
 class LTX2VideoVaeAdaLNZero(nn.Module):
     """Shared AdaLN-Zero modulation: a timestep embedding to seven `(B, 1, 1, 1, C)` chunks.
 
-    Seven chunks (scale/shift/gate for attention and MLP, plus a context gate) is the reference's shape.
-    Only the four scale/shift chunks are consumed: the decoder's residuals are ungated, and the static
-    gates the checkpoint used to carry are folded into the following linear weights at conversion time.
+    Seven chunks (scale/shift/gate for attention and MLP, plus a context gate) is the reference's shape. Only the four
+    scale/shift chunks are consumed: the decoder's residuals are ungated, and the static gates the checkpoint used to
+    carry are folded into the following linear weights at conversion time.
     """
 
     num_chunks = 7
@@ -339,8 +339,8 @@ class LTX2VideoVaeAdaLNZero(nn.Module):
 class LTX2VideoVaeDiffusionNABlock(nn.Module):
     """Neighborhood attention + SwiGLU, modulated by the shared AdaLN-Zero scale/shift.
 
-    The decoder owns one `LTX2VideoVaeAdaLNZero`; each block adds its own `scale_shift_table` residual on
-    top of it, injects the latent context through `context_proj`, and keeps its residuals ungated.
+    The decoder owns one `LTX2VideoVaeAdaLNZero`; each block adds its own `scale_shift_table` residual on top of it,
+    injects the latent context through `context_proj`, and keeps its residuals ungated.
     """
 
     def __init__(
@@ -384,8 +384,8 @@ class LTX2VideoVaeDiffusionNABlock(nn.Module):
 class LTX2VideoVaePixelShuffleUpsampler(nn.Module):
     """Linear channel expansion followed by a channels-last pixel shuffle.
 
-    When the temporal stride is 2 the shuffle produces a duplicate leading frame, which is dropped to keep
-    the causal 1:2 (composed 1:8) frame mapping.
+    When the temporal stride is 2 the shuffle produces a duplicate leading frame, which is dropped to keep the causal
+    1:2 (composed 1:8) frame mapping.
     """
 
     def __init__(self, in_channels: int, stride: tuple[int, int, int], out_channels_reduction_factor: int = 1):
@@ -415,10 +415,10 @@ class LTX2VideoVaePixelShuffleUpsampler(nn.Module):
 class LTX2VideoDiffusionDecoder3d(nn.Module):
     """The LTX-2.4 diffusion video decoder.
 
-    Stages 1-4 deterministically upsample the latent into a context volume with neighborhood-attention
-    blocks. Stage 5 then denoises patchified pixels, conditioned on that context through AdaLN-Zero
-    scale/shift. With `model_output_type="x0"` and a single step — how LTX-2.4 ships — stage 5 runs once
-    and its prediction *is* the output; more steps add reverse Euler updates.
+    Stages 1-4 deterministically upsample the latent into a context volume with neighborhood-attention blocks. Stage 5
+    then denoises patchified pixels, conditioned on that context through AdaLN-Zero scale/shift. With
+    `model_output_type="x0"` and a single step — how LTX-2.4 ships — stage 5 runs once and its prediction *is* the
+    output; more steps add reverse Euler updates.
     """
 
     def __init__(
@@ -601,14 +601,14 @@ class AutoencoderKLLTX2VideoDiffusionDecoder(
     ModelMixin, AutoencoderMixin, AttentionMixin, ConfigMixin, FromOriginalModelMixin
 ):
     r"""
-    The LTX-2.4 video VAE: the LTX-2 causal convolutional encoder paired with the diffusion decoder used
-    from LTX-2.4 onwards.
+    The LTX-2.4 video VAE: the LTX-2 causal convolutional encoder paired with the diffusion decoder used from LTX-2.4
+    onwards.
 
-    The encoder is unchanged from [`AutoencoderKLLTX2Video`] — same weights, same latent space — so latents
-    are interchangeable between the two and either decoder can consume them.
+    The encoder is unchanged from [`AutoencoderKLLTX2Video`] — same weights, same latent space — so latents are
+    interchangeable between the two and either decoder can consume them.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods
-    implemented for all models (such as downloading or saving).
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    for all models (such as downloading or saving).
     """
 
     _supports_gradient_checkpointing = False
@@ -718,9 +718,9 @@ class AutoencoderKLLTX2VideoDiffusionDecoder(
     ) -> DecoderOutput | torch.Tensor:
         """Decode a batch of latents.
 
-        Unlike a convolutional decoder this one denoises, so it draws noise: pass `generator` for
-        reproducibility. `z` is expected to be denormalized already (the pipeline applies `latents_mean` /
-        `latents_std`), matching [`AutoencoderKLLTX2Video`].
+        Unlike a convolutional decoder this one denoises, so it draws noise: pass `generator` for reproducibility. `z`
+        is expected to be denormalized already (the pipeline applies `latents_mean` / `latents_std`), matching
+        [`AutoencoderKLLTX2Video`].
         """
         if self.use_slicing and z.shape[0] > 1:
             decoded = torch.cat(
@@ -731,6 +731,41 @@ class AutoencoderKLLTX2VideoDiffusionDecoder(
             )
         else:
             decoded = self.decoder(z, generator=generator, num_inference_steps=num_inference_steps)
+
+        if not return_dict:
+            return (decoded,)
+        return DecoderOutput(sample=decoded)
+
+    def forward(
+        self,
+        sample: torch.Tensor,
+        sample_posterior: bool = False,
+        num_inference_steps: int | None = None,
+        return_dict: bool = True,
+        generator: torch.Generator | None = None,
+    ) -> DecoderOutput | tuple[torch.Tensor]:
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the posterior.
+            num_inference_steps (`int`, *optional*):
+                Number of denoising steps the decoder takes. If `None`, falls back to the model default.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make the
+                decoder's noise — and the posterior sampling, if enabled — deterministic. The decoder denoises, so
+                without one every call returns a different result.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
+        posterior = self.encode(sample).latent_dist
+        z = posterior.sample(generator=generator) if sample_posterior else posterior.mode()
+        decoded = self.decode(z, generator=generator, num_inference_steps=num_inference_steps).sample
 
         if not return_dict:
             return (decoded,)

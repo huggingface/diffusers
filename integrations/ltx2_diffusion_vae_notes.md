@@ -163,9 +163,34 @@ guidance (max_diff < 1e-1, cosine > 0.9999). Note the input contract differs by 
 un-normalizes the latent itself, so it takes `latents.pt` as saved, while this class expects denormalized
 input.
 
-**Still to do:** model-level tests via `utils/generate_model_tests.py` (what CI runs); the modular track,
-which needs a `modular_model_index.json` repo for rc2 — the modular PR's own sample scripts are the place to
-start, since they already drive prompt enhancement and the duration head.
+**Model-level tests, what CI runs.**
+`tests/models/autoencoders/test_models_autoencoder_kl_ltx2_diffusion_decoder.py`, generated with
+`utils/generate_model_tests.py` and then filled in: `ModelTesterMixin`, `MemoryTesterMixin`,
+`AttentionTesterMixin`, and `NewAutoencoderTesterMixin` for slicing. **35 passed, 7 skipped.** Three things
+had to be decided rather than filled in:
+
+* **The class needed a `forward()`.** The mixins all call `model(**inputs)`, and only `encode`/`decode`
+  existed. It is encode → `mode()` (or `sample()`) → decode, mirroring `AutoencoderKLLTX2Video.forward` minus
+  the parameters that do not apply (`temb`, `decoder_causal`).
+* **`forward` takes a `generator`, and the tests pass a seeded one.** This decoder denoises, so it draws
+  noise: without a generator no two forward passes agree and every comparison in the suite is vacuous. This
+  is the existing convention for stochastic VAEs (`AutoencoderKLConsistencyDecoder`,
+  `NewAutoencoderTesterMixin`'s `_accepts_generator`), not a new one.
+* **`MemoryTesterMixin.test_group_offloading` had to be fixed, in `tests/models/testing_utils/memory.py`.**
+  It builds one `inputs_dict` and runs four forwards from it, so a stateful generator advanced between them
+  and the outputs could not match. `test_group_offloading_with_disk` in the same file already re-seeded for
+  exactly this reason, via a local helper; that helper is now module-level (`reseed_generator_input`) and used
+  by both. It also had to read the signature off the *class*, not the instance: `enable_group_offload`
+  replaces `model.forward` with a `(*args, **kwargs)` wrapper, so the instance lookup finds no `generator` on
+  precisely the models these tests offload. With it, all four offload modes are **bitwise identical** to the
+  un-offloaded output.
+
+The smallest dummy config the decoder admits is set by its own invariants: neighborhood attention needs every
+stage to be at least its kernel size in T/H/W, so with a kernel of 3 the smallest usable latent is 2×3×3 —
+a 9×48×48 video at 16× spatial / 8× temporal compression. The suite runs in ~20 s.
+
+**Still to do:** the modular track, which needs a `modular_model_index.json` repo for rc2 — the modular PR's
+own sample scripts are the place to start, since they already drive prompt enhancement and the duration head.
 
 ## Environment notes
 
