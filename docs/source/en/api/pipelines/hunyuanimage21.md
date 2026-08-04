@@ -38,7 +38,7 @@ from diffusers import HunyuanImagePipeline
 
 pipe = HunyuanImagePipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanImage-2.1-Diffusers", 
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipe = pipe.to("cuda")
 ``` 
@@ -83,7 +83,7 @@ from diffusers import HunyuanImagePipeline
 
 pipe = HunyuanImagePipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanImage-2.1-Diffusers", 
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipe = pipe.to("cuda")
 
@@ -113,7 +113,7 @@ use `distilled_guidance_scale` with the guidance-distilled checkpoint,
 ```py
 import torch
 from diffusers import HunyuanImagePipeline
-pipe = HunyuanImagePipeline.from_pretrained("hunyuanvideo-community/HunyuanImage-2.1-Distilled-Diffusers", torch_dtype=torch.bfloat16)
+pipe = HunyuanImagePipeline.from_pretrained("hunyuanvideo-community/HunyuanImage-2.1-Distilled-Diffusers", dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 prompt = (

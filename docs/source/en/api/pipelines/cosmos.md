@@ -30,7 +30,7 @@ from diffusers.utils import export_to_video
 
 model_id = "nvidia/Cosmos-Predict2.5-2B"
 pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(
-    model_id, revision="diffusers/base/post-trained", torch_dtype=torch.bfloat16
+    model_id, revision="diffusers/base/post-trained", dtype=torch.bfloat16
 )
 pipe.to("cuda")
 

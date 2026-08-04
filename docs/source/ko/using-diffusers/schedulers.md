@@ -43,7 +43,7 @@ import torch
 login()
 
 # Now we can download the pipeline
-pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16)
 ```
 
 다음으로, GPU로 이동합니다.

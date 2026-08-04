@@ -37,6 +37,8 @@ Strive to write code as simple and explicit as possible.
 Task-specific guides live in `.ai/skills/` and are loaded on demand by AI agents. Available skills include:
 
 - [model-integration](./skills/model-integration/SKILL.md) (adding/converting pipelines)
+- [custom-blocks](./skills/custom-blocks/SKILL.md) (packaging a `ModularPipelineBlocks` subclass for the Hub)
+- [diffusers-cli](./skills/diffusers-cli/SKILL.md) (running pipelines, inspecting schemas, and using the Diffusers CLI)
 - [self-review](./skills/self-review/SKILL.md) (pre-PR self-review against the project rules)
 
 ## Self-review before a PR

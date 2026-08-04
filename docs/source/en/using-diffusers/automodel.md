@@ -21,11 +21,11 @@ import torch
 from diffusers import AutoModel, DiffusionPipeline
 
 transformer = AutoModel.from_pretrained(
-    "Qwen/Qwen-Image", subfolder="transformer", torch_dtype=torch.bfloat16, device_map="cuda"
+    "Qwen/Qwen-Image", subfolder="transformer", dtype=torch.bfloat16, device_map="cuda"
 )
 
 text_encoder = AutoModel.from_pretrained(
-    "Qwen/Qwen-Image", subfolder="text_encoder", torch_dtype=torch.bfloat16, device_map="cuda"
+    "Qwen/Qwen-Image", subfolder="text_encoder", dtype=torch.bfloat16, device_map="cuda"
 )
 ```
 
@@ -59,7 +59,7 @@ import torch
 from diffusers import AutoModel
 
 transformer = AutoModel.from_pretrained(
-    "custom/custom-transformer-model", trust_remote_code=True, torch_dtype=torch.bfloat16, device_map="cuda"
+    "custom/custom-transformer-model", trust_remote_code=True, dtype=torch.bfloat16, device_map="cuda"
 )
 ```
 
@@ -82,7 +82,7 @@ import torch
 from diffusers import AutoModel
 
 transformer = AutoModel.from_pretrained(
-    "Overworld/Waypoint-1-Small", subfolder="transformer", trust_remote_code=True, torch_dtype=torch.bfloat16, device_map="cuda"
+    "Overworld/Waypoint-1-Small", subfolder="transformer", trust_remote_code=True, dtype=torch.bfloat16, device_map="cuda"
 )
 ```
 
