@@ -181,16 +181,16 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
                 attribute names the guiders read for each guidance pass. Each value is a 4-tuple of names indexed
                 [cond, uncond, stg, modality] -- for example {"encoder_hidden_states": ("connector_prompt_embeds",
                 "negative_connector_prompt_embeds", "connector_prompt_embeds", "connector_prompt_embeds")} reads the
-                positive embeds for the conditional/STG/modality passes and the negative embeds for the
-                unconditional pass. A guider builds only the passes it declares active, so a swapped-in guider that
-                uses fewer passes (e.g. `ClassifierFreeGuidance` -> cond/uncond) reads only the first two slots.
+                positive embeds for the conditional/STG/modality passes and the negative embeds for the unconditional
+                pass. A guider builds only the passes it declares active, so a swapped-in guider that uses fewer passes
+                (e.g. `ClassifierFreeGuidance` -> cond/uncond) reads only the first two slots.
 
         Note:
-            `audio_num_frames`, `video_coords`, and `audio_coords` reach this block via the
-            `denoiser_input_fields` tag (their producer blocks declare `kwargs_type="denoiser_input_fields"`), not
-            as named inputs. In a full pipeline they arrive automatically; when running this block standalone
-            (without those upstream blocks) they must be passed through `denoiser_input_fields={...}` -- passing
-            them as plain named kwargs is silently ignored (modular.md's `kwargs_type` standalone gotcha).
+            `audio_num_frames`, `video_coords`, and `audio_coords` reach this block via the `denoiser_input_fields` tag
+            (their producer blocks declare `kwargs_type="denoiser_input_fields"`), not as named inputs. In a full
+            pipeline they arrive automatically; when running this block standalone (without those upstream blocks) they
+            must be passed through `denoiser_input_fields={...}` -- passing them as plain named kwargs is silently
+            ignored (modular.md's `kwargs_type` standalone gotcha).
         """
         if not isinstance(guider_input_fields, dict):
             raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
