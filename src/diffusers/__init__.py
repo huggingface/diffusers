@@ -17,6 +17,7 @@ from .utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_scipy_available,
+    is_sdnq_available,
     is_sentencepiece_available,
     is_torch_available,
     is_torchao_available,
@@ -144,6 +145,18 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["quantizers.quantization_config"].append("AutoRoundConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_sdnq_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_sdnq_objects
+
+    _import_structure["utils.dummy_sdnq_objects"] = [
+        name for name in dir(dummy_sdnq_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("SDNQConfig")
 
 try:
     if not is_onnx_available():
@@ -512,6 +525,10 @@ else:
             "HunyuanVideo15ModularPipeline",
             "Ideogram4AutoBlocks",
             "Ideogram4ModularPipeline",
+            "Krea2AutoBlocks",
+            "Krea2ModularPipeline",
+            "Krea2TurboAutoBlocks",
+            "Krea2TurboModularPipeline",
             "LTXAutoBlocks",
             "LTXModularPipeline",
             "QwenImageAutoBlocks",
@@ -988,6 +1005,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import AutoRoundConfig
 
     try:
+        if not is_sdnq_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_sdnq_objects import *
+    else:
+        from .quantizers.quantization_config import SDNQConfig
+
+    try:
         if not is_onnx_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1320,6 +1345,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideo15ModularPipeline,
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,
+            Krea2AutoBlocks,
+            Krea2ModularPipeline,
+            Krea2TurboAutoBlocks,
+            Krea2TurboModularPipeline,
             LTXAutoBlocks,
             LTXModularPipeline,
             QwenImageAutoBlocks,

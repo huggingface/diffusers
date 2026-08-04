@@ -32,7 +32,7 @@ import torch
 
 from diffusers import DPMSolverMultistepScheduler, KolorsPipeline
 
-pipe = KolorsPipeline.from_pretrained("Kwai-Kolors/Kolors-diffusers", torch_dtype=torch.float16, variant="fp16")
+pipe = KolorsPipeline.from_pretrained("Kwai-Kolors/Kolors-diffusers", dtype=torch.float16, variant="fp16")
 pipe.to("cuda")
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 
@@ -67,12 +67,12 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "Kwai-Kolors/Kolors-IP-Adapter-Plus",
     subfolder="image_encoder",
     low_cpu_mem_usage=True,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     revision="refs/pr/4",
 )
 
 pipe = KolorsPipeline.from_pretrained(
-    "Kwai-Kolors/Kolors-diffusers", image_encoder=image_encoder, torch_dtype=torch.float16, variant="fp16"
+    "Kwai-Kolors/Kolors-diffusers", image_encoder=image_encoder, dtype=torch.float16, variant="fp16"
 )
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 

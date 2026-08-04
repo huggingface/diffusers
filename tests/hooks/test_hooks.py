@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import gc
+import inspect
 
 import pytest
 import torch
@@ -60,6 +61,11 @@ class DummyModel(torch.nn.Module):
             x = block(x)
         x = self.linear_2(x)
         return x
+
+
+class SignatureModel(torch.nn.Module):
+    def forward(self, hidden_states, timestep, encoder_hidden_states=None):
+        return hidden_states + timestep.sum()
 
 
 class AddHook(ModelHook):
@@ -392,3 +398,41 @@ class TestHooks:
             .replace("\n", "")
         )
         assert output == expected_invocation_order_log
+
+    def test_register_hook_preserves_forward_signature(self):
+        model = SignatureModel().to(torch_device)
+        sig_before = inspect.signature(model.forward)
+        assert list(sig_before.parameters) == ["hidden_states", "timestep", "encoder_hidden_states"]
+
+        registry = HookRegistry.check_if_exists_or_initialize(model)
+        registry.register_hook(ModelHook(), "noop")
+
+        assert inspect.signature(model.forward) == sig_before
+        assert model.forward.__name__ == "forward"
+
+        registry.register_hook(ModelHook(), "noop_2")
+        assert inspect.signature(model.forward) == sig_before
+        assert model.forward.__name__ == "forward"
+
+        registry.remove_hook("noop_2")
+        assert inspect.signature(model.forward) == sig_before
+        registry.remove_hook("noop")
+        assert inspect.signature(model.forward) == sig_before
+
+    def test_register_hook_preserves_forward_signature_torch_export(self):
+        model = SignatureModel().to(torch_device)
+        registry = HookRegistry.check_if_exists_or_initialize(model)
+        registry.register_hook(ModelHook(), "noop")
+        registry.register_hook(ModelHook(), "noop_2")
+
+        hidden_states = torch.randn(1, 4, 8, device=torch_device)
+        timestep = torch.tensor([1.0], device=torch_device)
+
+        eager_output = model(hidden_states, timestep)
+        assert tuple(eager_output.shape) == (1, 4, 8)
+
+        exported = torch.export.export(model, args=(), kwargs={"hidden_states": hidden_states, "timestep": timestep})
+        assert exported is not None
+
+        exported_output = exported.module()(hidden_states=hidden_states, timestep=timestep)
+        assert torch.allclose(exported_output, eager_output)
