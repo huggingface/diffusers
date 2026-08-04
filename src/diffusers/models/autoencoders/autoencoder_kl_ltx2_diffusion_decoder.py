@@ -18,10 +18,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import is_natten_available, logging
 from ...utils.accelerate_utils import apply_forward_hook
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaCombinedTimestepSizeEmbeddings
@@ -57,18 +56,6 @@ def _unpatchify(x: torch.Tensor, patch_size: int) -> torch.Tensor:
     x = x.reshape(batch_size, num_channels, patch_size, patch_size, num_frames, height, width)
     x = x.permute(0, 1, 4, 5, 3, 6, 2)
     return x.reshape(batch_size, num_channels, num_frames, height * patch_size, width * patch_size)
-
-
-def _default_rope_dim_split(head_dim: int) -> tuple[int, int, int]:
-    """Split `head_dim` across the (T, H, W) rotary chunks, as the reference decoder does."""
-    if head_dim % 8 != 0:
-        raise ValueError(f"head_dim must be a multiple of 8, got {head_dim}.")
-    dim_t = (head_dim // 4) // 2 * 2
-    dim_hw = (head_dim - dim_t) // 2
-    if dim_hw % 2 != 0:
-        dim_t -= 2
-        dim_hw = (head_dim - dim_t) // 2
-    return (dim_t, dim_hw, dim_hw)
 
 
 def _neighborhood_block_mask(
@@ -113,16 +100,26 @@ class LTX2VideoVaeRotaryPosEmbed3D(nn.Module):
     cast back to the input dtype.
     """
 
-    def __init__(self, head_dim: int, rope_dim_split: tuple[int, int, int] | None = None, base: float = 10000.0):
+    def __init__(self, head_dim: int, base: float = 10000.0):
         super().__init__()
-        self.rope_dim_split = rope_dim_split if rope_dim_split is not None else _default_rope_dim_split(head_dim)
-        if sum(self.rope_dim_split) != head_dim:
-            raise ValueError(f"rope_dim_split {self.rope_dim_split} must sum to head_dim {head_dim}.")
+        if head_dim % 8 != 0:
+            raise ValueError(f"head_dim must be a multiple of 8, got {head_dim}.")
+        # Split `head_dim` across the (T, H, W) chunks the way the reference decoder does: a quarter to T, the
+        # rest halved between H and W, with both halves kept even so each holds whole rotation pairs.
+        dim_t = (head_dim // 4) // 2 * 2
+        dim_hw = (head_dim - dim_t) // 2
+        if dim_hw % 2 != 0:
+            dim_t -= 2
+            dim_hw = (head_dim - dim_t) // 2
+        self.rope_dim_split = (dim_t, dim_hw, dim_hw)
         self.base = base
 
     def _inv_freqs(self, dim: int, device: torch.device) -> torch.Tensor:
-        # fp64 exponentiation then a single cast, so the frequencies match the reference bit for bit.
-        exponents = torch.arange(0, dim, 2, dtype=torch.float64, device=device) / dim
+        # The reference builds these in float64 and casts once. float64 is unsupported on some backends, so ask
+        # for the device's widest available dtype instead: the difference is at most 1.5e-08 in the frequencies
+        # and 1e-06 in the resulting angles, four orders of magnitude under bf16 resolution.
+        freqs_dtype = maybe_adjust_dtype_for_device(torch.float64, device)
+        exponents = torch.arange(0, dim, 2, dtype=freqs_dtype, device=device) / dim
         return (1.0 / self.base**exponents).to(torch.float32)
 
     def _rotate_axis(self, x: torch.Tensor, positions: torch.Tensor, inv_freqs: torch.Tensor, axis: int):
@@ -159,12 +156,27 @@ class LTX2VideoVaeNeighborhoodAttnProcessor:
 
     Runs anywhere the flex attention path runs. For bit-exact parity with the reference decoder, use
     [`LTX2VideoVaeNeighborhoodNattenProcessor`] instead.
+
+    Requires the `flex` attention backend: the neighborhood window is expressed as a
+    [`~torch.nn.attention.flex_attention.BlockMask`], which only the flex backend consumes. Switching the backend —
+    e.g. via `model.set_attention_backend("flash")` — raises a `ValueError` rather than handing the mask to a backend
+    that cannot read it.
     """
 
     _attention_backend = "flex"
     _parallel_config = None
 
+    _SUPPORTED_BACKENDS = ("flex", "_native_flex")
+
     def __call__(self, attn: "LTX2VideoVaeNeighborhoodAttention", hidden_states: torch.Tensor) -> torch.Tensor:
+        if self._attention_backend not in self._SUPPORTED_BACKENDS:
+            raise ValueError(
+                f"LTX2VideoVaeNeighborhoodAttnProcessor requires the 'flex' attention backend (got "
+                f"{self._attention_backend!r}). It builds a flex_attention.BlockMask for the neighborhood "
+                f"window, which no other backend in `dispatch_attention_fn` accepts. To use NATTEN's kernels "
+                f"instead, set LTX2VideoVaeNeighborhoodNattenProcessor via `set_attn_processor`."
+            )
+
         batch_size, num_frames, height, width, _ = hidden_states.shape
         query, key, value = attn.project_qkv(hidden_states)
 
@@ -226,7 +238,6 @@ class LTX2VideoVaeNeighborhoodAttention(nn.Module, AttentionModuleMixin):
         dim: int,
         kernel_size: tuple[int, int, int],
         head_dim: int = 64,
-        rope_dim_split: tuple[int, int, int] | None = None,
         rope_base: float = 10000.0,
     ):
         super().__init__()
@@ -243,7 +254,7 @@ class LTX2VideoVaeNeighborhoodAttention(nn.Module, AttentionModuleMixin):
         self.to_out = nn.ModuleList([nn.Linear(dim, dim, bias=True), nn.Dropout(0.0)])
         self.norm_q = nn.RMSNorm(head_dim, eps=1e-6)
         self.norm_k = nn.RMSNorm(head_dim, eps=1e-6)
-        self.rope = LTX2VideoVaeRotaryPosEmbed3D(head_dim, rope_dim_split=rope_dim_split, base=rope_base)
+        self.rope = LTX2VideoVaeRotaryPosEmbed3D(head_dim, base=rope_base)
         self.set_processor(self._default_processor_cls())
 
     def project_qkv(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -301,13 +312,10 @@ class LTX2VideoVaeNABlock(nn.Module):
         kernel_size: tuple[int, int, int],
         head_dim: int = 64,
         mlp_ratio: float = 4.0,
-        rope_dim_split: tuple[int, int, int] | None = None,
     ):
         super().__init__()
         self.norm1 = nn.RMSNorm(dim, eps=1e-6)
-        self.attn = LTX2VideoVaeNeighborhoodAttention(
-            dim, kernel_size, head_dim=head_dim, rope_dim_split=rope_dim_split
-        )
+        self.attn = LTX2VideoVaeNeighborhoodAttention(dim, kernel_size, head_dim=head_dim)
         self.norm2 = nn.RMSNorm(dim, eps=1e-6)
         self.mlp = LTX2VideoVaeSwiGLU(dim, _swiglu_hidden_dim(dim, mlp_ratio))
 
@@ -350,7 +358,6 @@ class LTX2VideoVaeDiffusionNABlock(nn.Module):
         context_channels: int,
         head_dim: int = 64,
         mlp_ratio: float = 4.0,
-        rope_dim_split: tuple[int, int, int] | None = None,
     ):
         super().__init__()
         self.context_channels = context_channels
@@ -358,9 +365,7 @@ class LTX2VideoVaeDiffusionNABlock(nn.Module):
         self.scale_shift_table = nn.Parameter(torch.zeros(LTX2VideoVaeAdaLNZero.num_chunks, dim))
 
         self.norm1 = nn.RMSNorm(dim, eps=1e-6)
-        self.attn = LTX2VideoVaeNeighborhoodAttention(
-            dim, kernel_size, head_dim=head_dim, rope_dim_split=rope_dim_split
-        )
+        self.attn = LTX2VideoVaeNeighborhoodAttention(dim, kernel_size, head_dim=head_dim)
         self.norm2 = nn.RMSNorm(dim, eps=1e-6)
         self.mlp = LTX2VideoVaeSwiGLU(dim, _swiglu_hidden_dim(dim, mlp_ratio))
 
@@ -435,7 +440,6 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         stage5_kernel: tuple[int, int, int] = (11, 11, 11),
         t_emb_dim: int = 384,
         temporal_compression_ratio: int = 8,
-        rope_dim_split: tuple[int, int, int] | None = None,
         timestep_scale_multiplier: float = 1000.0,
         model_output_type: str = "x0",
         default_num_inference_steps: int = 1,
@@ -479,7 +483,6 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
                             dim=channels,
                             kernel_size=stage_kernels[stage_idx],
                             head_dim=head_dim,
-                            rope_dim_split=rope_dim_split,
                         )
                         for _ in range(stage_depths[stage_idx])
                     ]
@@ -506,7 +509,6 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
                     kernel_size=stage5_kernel,
                     context_channels=self.context_channels,
                     head_dim=head_dim,
-                    rope_dim_split=rope_dim_split,
                 )
                 for _ in range(stage_depths[-1])
             ]
@@ -597,9 +599,7 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         return x_t
 
 
-class AutoencoderKLLTX2VideoDiffusionDecoder(
-    ModelMixin, AutoencoderMixin, AttentionMixin, ConfigMixin, FromOriginalModelMixin
-):
+class AutoencoderKLLTX2VideoDiffusionDecoder(ModelMixin, AutoencoderMixin, AttentionMixin, ConfigMixin):
     r"""
     The LTX-2.4 video VAE: the LTX-2 causal convolutional encoder paired with the diffusion decoder used from LTX-2.4
     onwards.
