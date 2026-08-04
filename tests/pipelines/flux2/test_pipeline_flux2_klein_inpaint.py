@@ -1,7 +1,6 @@
 import random
-import unittest
 
-import numpy as np
+import pytest
 import torch
 from transformers import Qwen2TokenizerFast, Qwen3Config, Qwen3ForCausalLM
 
@@ -12,27 +11,16 @@ from diffusers import (
     Flux2Transformer2DModel,
 )
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import floats_tensor, torch_device
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
-enable_full_determinism()
-
-
-class Flux2KleinInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class Flux2KleinInpaintPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = Flux2KleinInpaintPipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         ["prompt", "image", "image_reference", "mask_image", "height", "width", "guidance_scale", "prompt_embeds"]
     )
-    batch_params = frozenset(["prompt", "image", "image_reference", "mask_image"])
-
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
+    batch_input_params = frozenset(["prompt", "image", "image_reference", "mask_image"])
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -92,49 +80,47 @@ class Flux2KleinInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             "vae": vae,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        mask_image = torch.ones((1, 1, 32, 32)).to(device)
-
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
+    def get_dummy_inputs(self):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device)
+        mask_image = torch.ones((1, 1, 32, 32)).to(torch_device)
 
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "image": image,
             "mask_image": mask_image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 8.0,
             "height": 32,
             "width": 32,
             "max_sequence_length": 64,
             "strength": 0.8,
-            "output_type": "np",
             "text_encoder_out_layers": (1,),
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
         return inputs
 
-    def test_flux2_klein_inpaint_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+class TestFlux2KleinInpaintPipeline(Flux2KleinInpaintPipelineTesterConfig, PipelineTesterMixin):
+    def test_flux2_klein_inpaint_different_prompts(self):
+        pipe = self.get_pipeline().to(torch_device)
+
+        inputs = self.get_dummy_inputs()
         output_same_prompt = pipe(**inputs).images[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt"] = "a different prompt"
         output_different_prompts = pipe(**inputs).images[0]
 
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+        max_diff = (output_same_prompt - output_different_prompts).abs().max()
 
         # Outputs should be different here
-        assert max_diff > 1e-6
+        assert max_diff > 1e-6, "Outputs should be different for different prompts."
 
     def test_flux2_klein_inpaint_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (72, 56)]
         for height, width in height_width_pairs:
@@ -147,34 +133,32 @@ class Flux2KleinInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
             inputs.update({"height": height, "width": width, "image": image, "mask_image": mask_image})
             image = pipe(**inputs).images[0]
-            output_height, output_width, _ = image.shape
-            self.assertEqual(
-                (output_height, output_width),
-                (expected_height, expected_width),
-                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}",
+            _, output_height, output_width = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width), (
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}"
             )
 
     def test_flux2_klein_inpaint_strength(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
         # Test with strength=1.0 (full denoising)
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["strength"] = 1.0
         output_full_strength = pipe(**inputs).images[0]
 
         # Test with strength=0.5 (partial denoising)
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["strength"] = 0.5
         output_half_strength = pipe(**inputs).images[0]
 
-        max_diff = np.abs(output_full_strength - output_half_strength).max()
+        max_diff = (output_full_strength - output_half_strength).abs().max()
 
         # Outputs should be different with different strength values
         assert max_diff > 1e-6
 
     def test_flux2_klein_inpaint_image_reference(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
 
         # Add a reference image to the inputs
         ref_image = floats_tensor((1, 3, 32, 32), rng=random.Random(1)).to(torch_device)
@@ -185,13 +169,15 @@ class Flux2KleinInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         expected_height = inputs["height"] - inputs["height"] % (pipe.vae_scale_factor * 2)
         expected_width = inputs["width"] - inputs["width"] % (pipe.vae_scale_factor * 2)
 
-        output_height, output_width, _ = image.shape
-        self.assertEqual(
-            (output_height, output_width),
-            (expected_height, expected_width),
-            f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)} when conditioned on a reference image.",
+        _, output_height, output_width = image.shape
+        assert (output_height, output_width) == (expected_height, expected_width), (
+            f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)} when conditioned on a reference image."
         )
 
-    @unittest.skip("Needs to be revisited")
+    @pytest.mark.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):
         pass
+
+
+class TestFlux2KleinInpaintPipelineMemory(Flux2KleinInpaintPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux2 Klein inpaint pipeline."""

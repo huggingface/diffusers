@@ -30,7 +30,7 @@ import torch
 
 manager = ComponentsManager()
 pipe = ModularPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", components_manager=manager)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 ```
 
 </hfoption>
@@ -42,7 +42,7 @@ import torch
 manager = ComponentsManager()
 blocks = ModularPipelineBlocks.from_pretrained("diffusers/Florence2-image-Annotator", trust_remote_code=True)
 pipe= blocks.init_pipeline(components_manager=manager)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 ```
 
 </hfoption>
