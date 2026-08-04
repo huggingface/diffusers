@@ -787,6 +787,9 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             sample (`torch.Tensor`, *optional*):
                 A current instance of a sample created by the diffusion process.
+            noise (`torch.Tensor`, *optional*):
+                Random noise used by the stochastic (`sde-*`) solver variants. Required when `algorithm_type` is set to
+                one of them, and unused otherwise.
 
         Returns:
             `torch.Tensor`:
