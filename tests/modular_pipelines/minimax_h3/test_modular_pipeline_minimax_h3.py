@@ -34,7 +34,7 @@ from diffusers.modular_pipelines.minimax_h3.before_encoder import MiniMaxH3Ref2V
 from diffusers.modular_pipelines.minimax_h3.encoders import MiniMaxH3Ref2VATextEncoderStep, MiniMaxH3TextEncoderStep
 from diffusers.modular_pipelines.minimax_h3.modular_pipeline import MINIMAX_H3_FPS
 
-from ..test_modular_pipelines_common import REQUIRED, ModularPipelineTesterMixin, _get_specified_components
+from ..test_modular_pipelines_common import ModularPipelineTesterMixin, _get_specified_components
 
 
 # MiniMax-H3 generates 5 to 15 seconds at a fixed 24 fps, so the shortest admissible request is 124 frames
@@ -57,10 +57,6 @@ TEST_REFERENCE_IMAGE_SHORT_EDGE = 64
 TINY_MODULAR_REPO_ID = "hf-internal-testing/tiny-minimax-h3-modular-pipe"
 
 
-_CORE_DENOISE = [
-    ("denoise.prepare_latents", "MiniMaxH3PrepareLatentsStep"),
-    ("denoise.set_timesteps", "MiniMaxH3SetTimestepsStep"),
-]
 _TAIL = [
     ("denoise.after_denoise", "MiniMaxH3AfterDenoiseStep"),
     ("decode.video", "MiniMaxH3VideoDecodeStep"),
@@ -68,8 +64,10 @@ _TAIL = [
 ]
 T2VA_WORKFLOW = [
     ("text_encoder", "MiniMaxH3TextEncoderStep"),
+    ("denoise.no_keyframe_anchors", "MiniMaxH3NoKeyframeAnchorsStep"),
     ("denoise.prepare_layout", "MiniMaxH3PrepareLayoutStep"),
-    *_CORE_DENOISE,
+    ("denoise.prepare_latents", "MiniMaxH3PrepareLatentsStep"),
+    ("denoise.set_timesteps", "MiniMaxH3SetTimestepsStep"),
     ("denoise.denoise", "MiniMaxH3DenoiseStep"),
     *_TAIL,
 ]
@@ -80,7 +78,10 @@ FL2VA_WORKFLOW = [
     ("text_encoder", "MiniMaxH3FL2VATextEncoderStep"),
     ("vae_encoder", "MiniMaxH3KeyframeVaeEncoderStep"),
     ("denoise.prepare_layout", "MiniMaxH3PrepareLayoutStep"),
-    *_CORE_DENOISE,
+    ("denoise.prepare_condition_latents", "MiniMaxH3PrepareConditionLatentsStep"),
+    ("denoise.prepare_latents", "MiniMaxH3PrepareLatentsStep"),
+    ("denoise.prepare_latents_fl2va", "MiniMaxH3FL2VAPrepareLatentsStep"),
+    ("denoise.set_timesteps", "MiniMaxH3SetTimestepsStep"),
     ("denoise.denoise", "MiniMaxH3DenoiseStep"),
     *_TAIL,
 ]
@@ -89,7 +90,10 @@ REF2VA_WORKFLOW = [
     ("text_encoder", "MiniMaxH3Ref2VATextEncoderStep"),
     ("vae_encoder", "MiniMaxH3Ref2VAReferenceEncoderStep"),
     ("denoise.prepare_layout", "MiniMaxH3Ref2VAPrepareLayoutStep"),
-    *_CORE_DENOISE,
+    ("denoise.prepare_condition_latents", "MiniMaxH3PrepareConditionLatentsStep"),
+    ("denoise.prepare_latents", "MiniMaxH3PrepareLatentsStep"),
+    ("denoise.prepare_latents_ref2va", "MiniMaxH3Ref2VAPrepareLatentsStep"),
+    ("denoise.set_timesteps", "MiniMaxH3SetTimestepsStep"),
     ("denoise.denoise", "MiniMaxH3Ref2VADenoiseStep"),
     *_TAIL,
 ]
@@ -99,57 +103,52 @@ MINIMAX_H3_WORKFLOWS = {
 }
 MINIMAX_H3_REF2VA_WORKFLOWS = {"ref2va": REF2VA_WORKFLOW}
 
-# What each pruned workflow asks for, pinned explicitly: every component (each half loads its own transformer
-# partition, nothing else differs) and every input with its default.
+# What each pruned workflow asks for, pinned explicitly: every component with its class (each half loads its own
+# transformer partition, nothing else differs) and every input — the optional ones with their defaults, the
+# required ones by name. MiniMax-H3 declares no pipeline-level configs, which the omitted `configs` key asserts.
 _SHARED_COMPONENTS = {
-    "text_encoder": {},
-    "tokenizer": {},
-    "processor": {},
-    "scheduler": {},
-    "audio_scheduler": {},
-    "vae": {},
-    "audio_vae": {},
-    # the video decode block reverts the ImageNet normalization itself, so the processor must not denormalize again
-    "video_processor": {"vae_scale_factor": 16, "do_normalize": False},
+    "text_encoder": "Qwen3VLForConditionalGeneration",
+    "tokenizer": "Qwen2Tokenizer",
+    "processor": "Qwen3VLProcessor",
+    "scheduler": "MiniMaxH3Scheduler",
+    "audio_scheduler": "MiniMaxH3Scheduler",
+    "vae": "AutoencoderKLMiniMaxH3",
+    "audio_vae": "AutoencoderKLMiniMaxH3Audio",
+    "video_processor": "VideoProcessor",
 }
 _SHARED_INPUTS = {
-    "prompt": REQUIRED,
     "height": None,
     "width": None,
     "generator": None,
     "latents": None,
     "audio_latents": None,
-    "num_inference_steps": REQUIRED,
     "attention_kwargs": None,
     "output_type": "pil",
 }
 T2VA_DEFAULTS = {
-    "components": {**_SHARED_COMPONENTS, "transformer": {}},
-    "inputs": {
-        **_SHARED_INPUTS,
-        "num_frames": 124,
-        # the standalone surface of the shared layout and latents steps: with the keyframe blocks pruned, precomputed
-        # anchors and condition latents can still be fed to them directly
-        "keyframe_anchors": (),
-        "condition_latents": None,
-        "audio_condition_latents": None,
-    },
+    "components": {**_SHARED_COMPONENTS, "transformer": "MiniMaxH3Transformer3DModel"},
+    "required_inputs": ["prompt", "num_inference_steps"],
+    "inputs": {**_SHARED_INPUTS, "num_frames": 124},
 }
 FL2VA_DEFAULTS = {
-    "components": {**_SHARED_COMPONENTS, "transformer": {}, "image_processor": {"vae_scale_factor": 16}},
-    "inputs": {
-        **_SHARED_INPUTS,
-        "num_frames": 124,
-        "image": None,
-        "last_image": None,
-        "audio_condition_latents": None,
+    "components": {
+        **_SHARED_COMPONENTS,
+        "transformer": "MiniMaxH3Transformer3DModel",
+        "image_processor": "VaeImageProcessor",
     },
+    "required_inputs": ["prompt", "num_inference_steps"],
+    "inputs": {**_SHARED_INPUTS, "num_frames": 124, "image": None, "last_image": None},
 }
 REF2VA_DEFAULTS = {
-    "components": {**_SHARED_COMPONENTS, "transformer_ref": {}, "image_processor": {"vae_scale_factor": 16}},
+    "components": {
+        **_SHARED_COMPONENTS,
+        "transformer_ref": "MiniMaxH3Transformer3DModel",
+        "image_processor": "VaeImageProcessor",
+    },
     # `num_frames` cannot default on ref2va: reference soundtracks are truncated to the generated duration, so a
     # silent 124-frame default would cut them short. It is required instead.
-    "inputs": {**_SHARED_INPUTS, "references": REQUIRED, "num_frames": REQUIRED},
+    "required_inputs": ["prompt", "references", "num_frames", "num_inference_steps"],
+    "inputs": _SHARED_INPUTS,
 }
 MINIMAX_H3_WORKFLOW_DEFAULTS = {
     "t2va": T2VA_DEFAULTS,

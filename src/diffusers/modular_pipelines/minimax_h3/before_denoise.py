@@ -162,6 +162,37 @@ def _fill_audio_positions(
     )
 
 
+class MiniMaxH3NoKeyframeAnchorsStep(ModularPipelineBlocks):
+    model_name = "minimax-h3"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Declares that a `t2va` request anchors no keyframes. The layout step is the same block for `t2va` and "
+            "`fl2va` and reads the anchors the request resolved; a text-only one resolves none, and saying so here "
+            "keeps `keyframe_anchors` off the `t2va` signature."
+        )
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "keyframe_anchors",
+                type_hint=tuple,
+                description="Which end of the video every keyframe is anchored to — empty, since there are none.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        block_state.keyframe_anchors = ()
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
     model_name = "minimax-h3"
 
@@ -727,14 +758,12 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Draws every noise stream of the request and packs the video rows. MiniMax-H3 draws one condition at a "
-            "time first — noising the encoded anchors to its conditioning level — then the video noise as a latent "
-            "tensor, then the audio noise directly in row layout, all off the request's generator, in that order."
+            "Draws the noise of the generated rows and packs them: the video noise as a latent tensor first, then "
+            "the audio noise directly in row layout, both off the request's generator, in that order. Every "
+            "workflow generates the same way, so this is the same block for all of them; a request that conditions "
+            "on something noises it *before* this block — the draw order is part of what its generator reproduces — "
+            "and puts it in front of these rows after."
         )
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("scheduler", MiniMaxH3Scheduler)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -769,35 +798,6 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.",
             ),
-            InputParam(
-                name="num_condition_video_rows",
-                type_hint=int,
-                default=0,
-                description="How many conditioning rows the layout reserved, which the packed conditioning must match.",
-            ),
-            InputParam(
-                name="num_condition_audio_rows",
-                type_hint=int,
-                default=0,
-                description="How many reference audio rows the layout reserved, which the packed rows must match.",
-            ),
-            InputParam(
-                name="condition_latents",
-                type_hint=list[torch.Tensor],
-                description=(
-                    "The encoded video conditioning latents, one `(1, latent_channels, num_latent_frames, "
-                    "latent_height, latent_width)` tensor per condition in packed order, or None for a request that "
-                    "has none. Noised and packed here."
-                ),
-            ),
-            InputParam(
-                name="audio_condition_latents",
-                type_hint=list[torch.Tensor],
-                description=(
-                    "The audio conditioning rows to prepend, one tensor per audio-bearing reference in packed "
-                    "order. Empty for a request that has none, which is every `t2va` and `fl2va` one."
-                ),
-            ),
         ]
 
     @property
@@ -806,12 +806,12 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
             OutputParam(
                 "latents",
                 type_hint=torch.Tensor,
-                description="The video rows of the packed sequence, conditioning rows first.",
+                description="The generated video rows of the packed sequence.",
             ),
             OutputParam(
                 "audio_latents",
                 type_hint=torch.Tensor,
-                description="The channel-major audio rows of the packed sequence, reference rows first.",
+                description="The generated audio rows of the packed sequence, channel-major.",
             ),
         ]
 
@@ -822,33 +822,9 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
         patch_size = components.patch_size
 
         # A request draws every stream from the one generator it is given, and the order is part of what that
-        # generator reproduces: one draw per condition first, then the video noise as a latent tensor, then the audio
-        # noise directly in row layout. Passing `latents` or `audio_latents` skips its draw and shifts the ones after
-        # it.
-        condition_rows = None
-        if block_state.condition_latents:
-            # One draw per condition, in packed order. Each is packed on its own because `ref2va` references are
-            # encoded at their own resolutions, so their latents do not share a shape.
-            packed = []
-            for condition in block_state.condition_latents:
-                noise = randn_tensor(
-                    condition.shape, generator=block_state.generator, device=device, dtype=torch.float32
-                )
-                # The anchors are not fully clean: the released model noises them to `t = 0.999` and holds them there
-                # for every step. Mixing before the patchify is the same arithmetic, since patchify only permutes.
-                noised = components.scheduler.scale_noise(condition.to(device), components.keyframe_noise_aug, noise)
-                packed.append(patchify_video_latents(noised, patch_size))
-            condition_rows = torch.cat(packed)
-            # In a hand-assembled chain the canvas reaching the layout is user input, so it can disagree with the
-            # keyframes that were actually encoded. Left alone the mismatch first surfaces as an `index_copy` shape
-            # error inside the transformer, 50 layers deep.
-            if condition_rows.shape[0] != block_state.num_condition_video_rows:
-                raise ValueError(
-                    f"The layout reserved {block_state.num_condition_video_rows} conditioning rows but the encoded "
-                    f"conditioning latents pack into {condition_rows.shape[0]}. The canvas the layout was built from "
-                    "and the one the conditioning was encoded at do not agree."
-                )
-
+        # generator reproduces: any conditioning noise first (drawn before this block), then the video noise as a
+        # latent tensor, then the audio noise directly in row layout. Passing `latents` or `audio_latents` skips its
+        # draw and shifts the ones after it.
         latents = block_state.latents
         if latents is None:
             latents = randn_tensor(
@@ -879,8 +855,216 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
                 .reshape(-1, components.audio_latent_channels)
             )
 
-        if condition_rows is not None:
-            video_rows = torch.cat([condition_rows, video_rows])
+        block_state.latents, block_state.audio_latents = video_rows, audio_rows
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class MiniMaxH3PrepareConditionLatentsStep(ModularPipelineBlocks):
+    model_name = "minimax-h3"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Noises the encoded visual conditioning to MiniMax-H3's conditioning level and packs it into rows — the "
+            "`fl2va` keyframes or the `ref2va` image and video references, the same recipe either way. It runs "
+            "*before* the noise of the generated rows is drawn, because a request draws one condition at a time "
+            "first and that order is part of what its generator reproduces."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", MiniMaxH3Scheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template(
+                "generator",
+                description=(
+                    "The generator of the request. The conditioning noise is drawn from it first, one draw per "
+                    "condition, before the noise of the generated rows."
+                ),
+            ),
+            InputParam(
+                name="num_condition_video_rows",
+                type_hint=int,
+                default=0,
+                description="How many conditioning rows the layout reserved, which the packed conditioning must match.",
+            ),
+            InputParam(
+                name="condition_latents",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description=(
+                    "The encoded video conditioning latents, one `(1, latent_channels, num_latent_frames, "
+                    "latent_height, latent_width)` tensor per condition in packed order."
+                ),
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "condition_rows",
+                type_hint=torch.Tensor,
+                description="The noised conditioning, packed into the leading video rows of the sequence.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        patch_size = components.patch_size
+
+        # One draw per condition, in packed order. Each is packed on its own because `ref2va` references are encoded
+        # at their own resolutions, so their latents do not share a shape.
+        packed = []
+        for condition in block_state.condition_latents:
+            noise = randn_tensor(condition.shape, generator=block_state.generator, device=device, dtype=torch.float32)
+            # The anchors are not fully clean: the released model noises them to `t = 0.999` and holds them there
+            # for every step. Mixing before the patchify is the same arithmetic, since patchify only permutes.
+            noised = components.scheduler.scale_noise(condition.to(device), components.keyframe_noise_aug, noise)
+            packed.append(patchify_video_latents(noised, patch_size))
+        block_state.condition_rows = torch.cat(packed)
+        # In a hand-assembled chain the canvas reaching the layout is user input, so it can disagree with the
+        # conditioning that was actually encoded. Left alone the mismatch first surfaces as an `index_copy` shape
+        # error inside the transformer, 50 layers deep.
+        if block_state.condition_rows.shape[0] != block_state.num_condition_video_rows:
+            raise ValueError(
+                f"The layout reserved {block_state.num_condition_video_rows} conditioning rows but the encoded "
+                f"conditioning latents pack into {block_state.condition_rows.shape[0]}. The canvas the layout was "
+                "built from and the one the conditioning was encoded at do not agree."
+            )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class MiniMaxH3FL2VAPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "minimax-h3"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Finishes the video rows of a `fl2va` request by putting its noised keyframe conditioning in front of "
+            "the generated rows, which is where the layout reserved it. The denoising loop only ever writes the "
+            "generated rows, so the conditioning rides through every step unchanged."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                name="condition_rows",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The noised keyframe conditioning, packed into rows.",
+            ),
+            InputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The generated video rows of the packed sequence.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="The video rows of the packed sequence, conditioning rows first.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        block_state.latents = torch.cat([block_state.condition_rows, block_state.latents])
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class MiniMaxH3Ref2VAPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "minimax-h3"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Finishes both streams of a `ref2va` request by putting its conditioning in front of the generated "
+            "rows, which is where the layout reserved it: the noised image and video references on the video side, "
+            "and the reference soundtracks on the audio side. The soundtracks are never noised — a reference "
+            "soundtrack conditions at `t = 0` — and the denoising loop only ever writes the generated rows, so all "
+            "of it rides through every step unchanged."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                name="condition_rows",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The noised conditioning of the image and video references, packed into rows.",
+            ),
+            InputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The generated video rows of the packed sequence.",
+            ),
+            InputParam(
+                name="audio_condition_latents",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description=(
+                    "The audio conditioning rows to prepend, one tensor per audio-bearing reference in packed "
+                    "order. Empty for a request that has none."
+                ),
+            ),
+            InputParam(
+                name="num_condition_audio_rows",
+                type_hint=int,
+                default=0,
+                description="How many reference audio rows the layout reserved, which the packed rows must match.",
+            ),
+            InputParam(
+                name="audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The generated audio rows of the packed sequence, channel-major.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="The video rows of the packed sequence, conditioning rows first.",
+            ),
+            OutputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                description="The channel-major audio rows of the packed sequence, reference rows first.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        block_state.latents = torch.cat([block_state.condition_rows, block_state.latents])
+
         if block_state.audio_condition_latents:
             num_reference_audio_rows = sum(rows.shape[0] for rows in block_state.audio_condition_latents)
             if num_reference_audio_rows != block_state.num_condition_audio_rows:
@@ -889,8 +1073,9 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
                     f"soundtracks pack into {num_reference_audio_rows}. The references the layout was built from and "
                     "the ones the audio conditioning was encoded from do not agree."
                 )
-            audio_rows = torch.cat([rows.to(device) for rows in block_state.audio_condition_latents] + [audio_rows])
-        block_state.latents, block_state.audio_latents = video_rows, audio_rows
+            block_state.audio_latents = torch.cat(
+                [rows.to(device) for rows in block_state.audio_condition_latents] + [block_state.audio_latents]
+            )
 
         self.set_block_state(state, block_state)
         return components, state

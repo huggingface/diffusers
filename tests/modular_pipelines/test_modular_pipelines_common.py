@@ -54,16 +54,6 @@ def _get_specified_components(path_or_repo_id, cache_dir=None):
     return components
 
 
-class _RequiredInput:
-    """Sentinel for `expected_workflow_defaults`: the input has no default and must be passed."""
-
-    def __repr__(self):
-        return "REQUIRED"
-
-
-REQUIRED = _RequiredInput()
-
-
 class ModularPipelineTesterMixin:
     """
     It provides a set of common tests for each modular pipeline,
@@ -541,37 +531,48 @@ class ModularPipelineTesterMixin:
         for workflow_name, expected_defaults in self.expected_workflow_defaults.items():
             workflow_blocks = blocks.get_workflow(workflow_name)
 
-            # every component of the workflow is named, so one appearing or disappearing fails loudly
+            # components: every one of the workflow is named with its class, so one appearing, disappearing or
+            # changing type fails loudly
             component_specs = {spec.name: spec for spec in workflow_blocks.expected_components}
             expected_components = expected_defaults["components"]
             assert set(component_specs) == set(expected_components), (
                 f"Workflow '{workflow_name}' expects components {sorted(component_specs)}, "
                 f"the test expects {sorted(expected_components)}"
             )
-            for component_name, expected_config in expected_components.items():
-                config = component_specs[component_name].config or {}
-                for field, expected_value in expected_config.items():
-                    assert config.get(field) == expected_value, (
-                        f"Workflow '{workflow_name}': component '{component_name}' config '{field}' is "
-                        f"{config.get(field)}, expected {expected_value}"
-                    )
+            for component_name, expected_class_name in expected_components.items():
+                actual_class_name = component_specs[component_name].type_hint.__name__
+                assert actual_class_name == expected_class_name, (
+                    f"Workflow '{workflow_name}': component '{component_name}' is a {actual_class_name}, "
+                    f"expected {expected_class_name}"
+                )
 
-            # kwargs-style inputs (e.g. **denoiser_input_fields) have no name and no default to pin
+            # configs: the pipeline-level configs the workflow declares, with their defaults
+            config_specs = {spec.name: spec.default for spec in workflow_blocks.expected_configs}
+            expected_configs = expected_defaults.get("configs", {})
+            assert config_specs == expected_configs, (
+                f"Workflow '{workflow_name}' declares configs {config_specs}, the test expects {expected_configs}"
+            )
+
+            # inputs: `inputs` names every optional input with its default and `required_inputs` the required ones,
+            # and together they are exactly the workflow's inputs. kwargs-style inputs (e.g.
+            # **denoiser_input_fields) have no name and no default to pin
             input_params = {param.name: param for param in workflow_blocks.inputs if param.name is not None}
             expected_inputs = expected_defaults["inputs"]
-            assert set(input_params) == set(expected_inputs), (
+            expected_required = expected_defaults.get("required_inputs", [])
+            assert set(input_params) == set(expected_inputs) | set(expected_required), (
                 f"Workflow '{workflow_name}' takes inputs {sorted(input_params)}, "
-                f"the test expects {sorted(expected_inputs)}"
+                f"the test expects {sorted(set(expected_inputs) | set(expected_required))}"
             )
+            for input_name in expected_required:
+                assert input_params[input_name].required, (
+                    f"Workflow '{workflow_name}': input '{input_name}' should be required"
+                )
             for input_name, expected_default in expected_inputs.items():
                 param = input_params[input_name]
-                if expected_default is REQUIRED:
-                    assert param.required, f"Workflow '{workflow_name}': input '{input_name}' should be required"
-                else:
-                    assert not param.required and param.default == expected_default, (
-                        f"Workflow '{workflow_name}': input '{input_name}' default is "
-                        f"{param.default!r} (required={param.required}), expected {expected_default!r}"
-                    )
+                assert not param.required and param.default == expected_default, (
+                    f"Workflow '{workflow_name}': input '{input_name}' default is "
+                    f"{param.default!r} (required={param.required}), expected {expected_default!r}"
+                )
 
     def test_from_pretrained_workflow(self):
         blocks = self.pipeline_blocks_class()
