@@ -449,6 +449,8 @@
         title: AutoencoderKLHunyuanVideo15
       - local: api/models/autoencoder_kl_kvae
         title: AutoencoderKLKVAE
+      - local: api/models/autoencoder_kl_kvae_audio
+        title: AutoencoderKLKVAEAudio
       - local: api/models/autoencoder_kl_kvae_video
         title: AutoencoderKLKVAEVideo
       - local: api/models/autoencoderkl_audio_ltx_2
