@@ -24,9 +24,9 @@ import torch
 from diffusers import AutoencoderKLLTX2VideoDiffusionDecoder, LTX2Pipeline
 
 vae = AutoencoderKLLTX2VideoDiffusionDecoder.from_pretrained(
-    "Lightricks/LTX-2.4", subfolder="vae_diffusion", torch_dtype=torch.bfloat16
+    "Lightricks/LTX-2.4", subfolder="vae_diffusion", dtype=torch.bfloat16
 )
-pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2.4", vae=vae, torch_dtype=torch.bfloat16)
+pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2.4", vae=vae, dtype=torch.bfloat16)
 ```
 
 Unlike a convolutional decoder this one draws noise and denoises it, so decoding is only reproducible when a

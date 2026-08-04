@@ -1,5 +1,10 @@
 """Component parity: native LTX-2.4 `DiffusionVideoDecoder` vs diffusers `LTX2VideoDiffusionDecoder3d`.
 
+TEMPORARY / for-visibility only. This whole `integrations/` directory is meant to be committed
+transiently while the modular LTX-2 integration is under review, and removed before the final merge.
+It is NOT a pytest test and is not wired into CI — run it manually, and note that it imports the native
+`ltx_core` reference package, which is not a diffusers dependency.
+
 Both implementations are built in this one process from the same random weights and fed the same inputs,
 per the repo's parity-testing convention. Run it in an environment that has *both* the native `ltx_core`
 package and `natten` installed, e.g. the rc2 source venv:
