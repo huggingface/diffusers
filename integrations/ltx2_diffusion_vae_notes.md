@@ -227,8 +227,16 @@ The smallest dummy config the decoder admits is set by its own invariants: neigh
 stage to be at least its kernel size in T/H/W, so with a kernel of 3 the smallest usable latent is 2×3×3 —
 a 9×48×48 video at 16× spatial / 8× temporal compression. The suite runs in ~20 s.
 
-**Still to do:** the modular track, which needs a `modular_model_index.json` repo for rc2 — the modular PR's
-own sample scripts are the place to start, since they already drive prompt enhancement and the duration head.
+**Modular track, real weights.** `run_modular_diffusion_vae.py`. No `modular_model_index.json` repo was
+needed after all: `integrations/ltx2_t2v_parity.py` already builds the modular pipeline as
+`LTX2Blocks().init_pipeline()` plus `update_components(...)` fed from a standard `LTX2Pipeline.from_pretrained`,
+so the same route injects the diffusion decoder. Publishing a modular repo is about *distribution*, not about
+being able to run this. Two runs at 320×448×17 from one seed: `(17, 3, 320, 448)`, mean 0.4902 / std 0.3105,
+**max abs diff 0.000e+00** — the modular decode block passes the generator through as well.
+
+There are no `tests/modular_pipelines/ltx2/` tests on the modular branch yet (the modular PR has not added the
+harness or its tiny repo), so the modular decode branch has runtime verification but no CI coverage; the
+standard branch's `test_inference_with_diffusion_decoder_vae` covers the equivalent logic.
 
 ## Environment notes
 

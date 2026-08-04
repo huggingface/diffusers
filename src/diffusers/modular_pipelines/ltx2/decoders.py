@@ -17,7 +17,7 @@ from typing import Any
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, AutoencoderKLLTX2VideoDiffusionDecoder
 
 # NOTE (modular.md gotcha #1): `LTX2Vocoder` / `LTX2VocoderWithBWE` currently live under
 # `diffusers.pipelines.ltx2.vocoder`, and modular blocks must not import from `diffusers.pipelines.*`.
@@ -164,7 +164,10 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
         # LTX-2 applies the optional decode-time noise on the *normalized* latents, then denormalizes
         # (the reverse of LTX-1's decoder order).
         latents = latents.to(block_state.dtype)
-        if not vae.config.timestep_conditioning:
+        # LTX-2.4's diffusion decoder starts from its own noise and denoises, so it neither takes the
+        # decode-time noise below nor carries a `timestep_conditioning` config entry.
+        is_diffusion_decoder = isinstance(vae, AutoencoderKLLTX2VideoDiffusionDecoder)
+        if is_diffusion_decoder or not vae.config.timestep_conditioning:
             timestep = None
         else:
             device = latents.device
@@ -188,7 +191,11 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
 
         latents = _denormalize_latents(latents, vae.latents_mean, vae.latents_std, vae.config.scaling_factor)
         latents = latents.to(vae.dtype)
-        video = vae.decode(latents, timestep, return_dict=False)[0]
+        if is_diffusion_decoder:
+            # It samples the noise it denoises, so pass the generator to keep decoding reproducible.
+            video = vae.decode(latents, generator=block_state.generator, return_dict=False)[0]
+        else:
+            video = vae.decode(latents, timestep, return_dict=False)[0]
         block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
 
         self.set_block_state(state, block_state)
