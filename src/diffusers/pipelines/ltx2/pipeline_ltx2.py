@@ -29,7 +29,11 @@ from transformers import (
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
-from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models.autoencoders import (
+    AutoencoderKLLTX2Audio,
+    AutoencoderKLLTX2Video,
+    AutoencoderKLLTX2VideoDiffusionDecoder,
+)
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -226,7 +230,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     def __init__(
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        vae: AutoencoderKLLTX2Video,
+        vae: AutoencoderKLLTX2Video | AutoencoderKLLTX2VideoDiffusionDecoder,
         audio_vae: AutoencoderKLLTX2Audio,
         text_encoder: Gemma3ForConditionalGeneration | Gemma4UnifiedForConditionalGeneration,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
@@ -1553,7 +1557,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         else:
             latents = latents.to(prompt_embeds.dtype)
 
-            if not self.vae.config.timestep_conditioning:
+            # The diffusion decoder starts from its own noise and denoises, so it neither takes the
+            # `decode_timestep` pre-noising below nor carries a `timestep_conditioning` config entry.
+            is_diffusion_decoder = isinstance(self.vae, AutoencoderKLLTX2VideoDiffusionDecoder)
+            if is_diffusion_decoder or not self.vae.config.timestep_conditioning:
                 timestep = None
             else:
                 noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=latents.dtype)
@@ -1575,7 +1582,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             )
 
             latents = latents.to(self.vae.dtype)
-            video = self.vae.decode(latents, timestep, return_dict=False)[0]
+            if is_diffusion_decoder:
+                # It samples the noise it denoises, so pass the generator to keep decoding reproducible.
+                video = self.vae.decode(latents, generator=generator, return_dict=False)[0]
+            else:
+                video = self.vae.decode(latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
             audio_latents = audio_latents.to(self.audio_vae.dtype)

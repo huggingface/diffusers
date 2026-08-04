@@ -110,6 +110,37 @@ Result on `ltx-2.4-22b-sft-rc2.safetensors`: 309 raw decoder keys + 84 encoder k
 standalone script produced (491/491 tensors equal, identical `config.json`), which is what licensed deleting
 it.
 
+## Pipeline integration
+
+The pipeline's decode step needed a branch; this was **not** optional, and it was found by asking why the
+documented usage below had never actually been run. Every earlier real-weight run called `vae.decode()`
+directly, so it never went through `LTX2Pipeline`, and through the pipeline it did not work at all:
+
+* `if not self.vae.config.timestep_conditioning:` — the diffusion decoder has no reason to carry that entry
+  (it does its own noising), so this raised `AttributeError: 'FrozenDict' object has no attribute
+  'timestep_conditioning'` before decode was ever reached;
+* `self.vae.decode(latents, timestep, ...)` passes the timestep **positionally**, which on this class lands on
+  `generator`.
+
+The fix is in `pipeline_ltx2.py` (and the modular `decoders.py` on the modular branch): one
+`isinstance(self.vae, AutoencoderKLLTX2VideoDiffusionDecoder)` flag that skips the `decode_timestep`
+pre-noising and passes `generator=generator` instead of a timestep. **The conv path's own statements are left
+untouched** — the flag only short-circuits the condition and picks the `decode` call — so it cannot regress
+the in-flight LTX-2.4 PR.
+
+Passing the generator is what makes decoding reproducible: two full pipeline runs at 320×448×17 from the same
+seed now agree **bitwise** (`run_pipeline_diffusion_vae.py`), where a dropped generator would reseed the
+decoder's noise on every call. Covered by `test_inference_with_diffusion_decoder_vae` in
+`tests/pipelines/ltx2/test_ltx2.py`, which fails with the `AttributeError` above if the pipeline branch is
+reverted.
+
+**Real-resolution decode wants the NATTEN processor.** diffusers deliberately does not compile
+`flex_attention` (it leaves that to the user), and uncompiled it materializes the full score matrix — at
+stage 5's sequence length (17×80×112 ≈ 152k tokens at 320×448) that is not viable. So the FlexAttention
+default keeps the class importable and correct with no new dependency, which is what it is for; full-resolution
+decoding wants `natten` installed (or a compiled decoder). Both real-weight runs set the NATTEN processor
+explicitly for this reason.
+
 ## Repo layout
 
 The diffusion decoder ships as a **second subfolder beside `vae/`**, so `from_pretrained` keeps returning the
