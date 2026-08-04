@@ -30,6 +30,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
     ContextParallelTesterMixin,
+    FirstBlockCacheTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
     LoraHotSwappingForModelTesterMixin,
@@ -151,6 +152,10 @@ class TestFlux2TransformerAttention(Flux2TransformerTesterConfig, AttentionTeste
 
 class TestFlux2TransformerContextParallel(Flux2TransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux2 Transformer."""
+
+
+class TestFlux2TransformerFBCCache(Flux2TransformerTesterConfig, FirstBlockCacheTesterMixin):
+    """FirstBlockCache tests for Flux2 Transformer."""
 
 
 class TestFlux2TransformerLoRA(Flux2TransformerTesterConfig, LoraTesterMixin):

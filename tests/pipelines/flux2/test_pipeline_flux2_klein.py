@@ -23,6 +23,7 @@ from ...testing_utils import (
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    FirstBlockCacheTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
     check_qkv_fused_layers_exist,
@@ -195,6 +196,10 @@ class TestFlux2KleinPipeline(Flux2KleinPipelineTesterConfig, PipelineTesterMixin
 
 class TestFlux2KleinPipelineMemory(Flux2KleinPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux2 Klein pipeline."""
+
+
+class TestFlux2KleinPipelineFirstBlockCache(Flux2KleinPipelineTesterConfig, FirstBlockCacheTesterMixin):
+    """First Block Cache tests for the Flux2 Klein pipeline."""
 
 
 @require_torch_neuron
