@@ -145,8 +145,27 @@ decoded twice — so the decoder is the only variable. Both produced `(1, 3, 25,
 std 50.6, diffusion mean 81.3 / std 49.2. `latents.pt` is kept so the reference implementation can decode the
 identical latents instead of relying on seed-matching across implementations.
 
-**Still to do:** model-level tests via `utils/generate_model_tests.py` (what CI runs); the native reference
-decode of those saved latents; the modular track, which needs a `modular_model_index.json` repo for rc2.
+**Real weights, against the reference decoder.** `native_decode_latents.py` builds the reference
+`DiffusionVideoDecoder` from the rc2 checkpoint and decodes the *same* saved latents, in one process, so it is
+decoder-vs-decoder on production weights with nothing else varying (bf16, 512×704×25):
+
+| metric | value |
+|---|---|
+| max abs diff | 1.43e-02 |
+| mean abs diff | **5.60e-04** |
+| cosine similarity | 0.999997 |
+| native mean / std | -0.3527 / 0.3858 |
+| ours mean / std | -0.3527 / 0.3859 |
+
+The mean absolute difference matches the fused-SwiGLU kernel delta measured on random weights (5.9e-04), i.e.
+the residual at full scale has the same, understood cause. Comfortably inside the parity skill's bf16
+guidance (max_diff < 1e-1, cosine > 0.9999). Note the input contract differs by design: the reference
+un-normalizes the latent itself, so it takes `latents.pt` as saved, while this class expects denormalized
+input.
+
+**Still to do:** model-level tests via `utils/generate_model_tests.py` (what CI runs); the modular track,
+which needs a `modular_model_index.json` repo for rc2 — the modular PR's own sample scripts are the place to
+start, since they already drive prompt enhancement and the duration head.
 
 ## Environment notes
 
