@@ -288,7 +288,7 @@ class AutoencoderKLKVAEAudio(ModelMixin, AutoencoderMixin, ConfigMixin):
         if self.use_attn:
             hidden_states = hidden_states.transpose(1, 2)
             hidden_states = self.attn(hidden_states)
-            hidden_states = hidden_states.transpose(1, 2)
+            hidden_states = hidden_states.transpose(1, 2).contiguous()
 
         return self.in_proj(hidden_states)
 
