@@ -223,8 +223,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 Only used when `confidence_threshold` is set.
             confidence_threshold (`float`, *optional*, defaults to `0.005`):
                 Leave a block's denoising loop early once every example is stable (see `stability_threshold`) and the
-                mean per-token entropy of the prediction is below this value. Speeds up generation at matched quality;
-                the default matches the released checkpoint. Set to `None` to always run all `num_inference_steps`.
+                mean per-token entropy of the scheduler-shaped prediction logits is below this value. Speeds up
+                generation at matched quality; the default matches the released checkpoint. Set to `None` to always
+                run all `num_inference_steps`.
             generator (`torch.Generator`, *optional*):
                 RNG for sampling.
             output_type (`str`, defaults to `"text"`):
@@ -347,6 +348,8 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 0, text_config.vocab_size, (batch_size, canvas_length), device=device, generator=generator
             )
             self_conditioning_logits = None
+            finished_denoising = torch.zeros(batch_size, dtype=torch.bool, device=device)
+            argmax_canvas = canvas
             # Adaptive stopping history: the last `stability_threshold` argmax predictions of this block's canvas.
             argmax_history = torch.full(
                 (max(stability_threshold, 1), batch_size, canvas_length), -1, dtype=torch.long, device=device
@@ -380,7 +383,11 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 canvas = scheduler_output.prev_sample
                 # Self-condition on the logits the scheduler sampled from: temperature-shaped for the reference
                 # EntropyBound sampler, the raw denoiser logits for the others.
-                self_conditioning_logits = scheduler_output.pred_logits
+                pred_logits = scheduler_output.pred_logits
+                if finished_denoising.any():
+                    canvas = torch.where(finished_denoising[:, None], argmax_canvas, canvas)
+                    pred_logits = torch.where(finished_denoising[:, None, None], self_conditioning_logits, pred_logits)
+                self_conditioning_logits = pred_logits
 
                 # Predictor-corrector (https://huggingface.co/papers/2605.22765): a scheduler exposing `corrector_steps`
                 # + `step_correct` refines the canvas with extra Gibbs sweeps on the first `corrected_steps` predictor
@@ -408,21 +415,25 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 global_step += 1
                 progress_bar.update()
 
-                # Adaptive stopping: leave this block early once every example's argmax prediction is stable across
-                # `stability_threshold` steps and confident (mean per-token entropy below `confidence_threshold`).
+                # Adaptive stopping: freeze each example once its scheduler-shaped prediction is stable across
+                # `stability_threshold` steps and confident (mean per-token entropy below `confidence_threshold`),
+                # then leave the block once every example is finished.
                 if confidence_threshold is not None:
-                    argmax_canvas = logits.argmax(dim=-1)
-                    stable = (argmax_history == argmax_canvas[None]).all(dim=-1).all(dim=0)
+                    next_argmax_canvas = pred_logits.argmax(dim=-1)
+                    next_argmax_canvas = torch.where(finished_denoising[:, None], argmax_canvas, next_argmax_canvas)
+                    stable = (argmax_history == next_argmax_canvas[None]).all(dim=-1).all(dim=0)
                     argmax_history = torch.roll(argmax_history, shifts=-1, dims=0)
-                    argmax_history[-1] = argmax_canvas
-                    confident = torch.distributions.Categorical(logits=logits.float()).entropy().mean(-1) < (
+                    argmax_history[-1] = next_argmax_canvas
+                    confident = torch.distributions.Categorical(logits=pred_logits.float()).entropy().mean(-1) < (
                         confidence_threshold
                     )
-                    if bool((stable & confident).all()):
-                        # Commit the converged prediction. Ancestral schedulers (e.g. DiscreteDDIM) only clean the
-                        # canvas on their final step, so the in-progress canvas may still hold noise tokens; the
-                        # denoiser argmax is the converged answer (and equals the canvas for commit-style schedulers).
-                        canvas = argmax_canvas
+                    finished_denoising = finished_denoising | (stable & confident)
+                    argmax_canvas = next_argmax_canvas
+                    # Commit each converged prediction. Ancestral schedulers (e.g. DiscreteDDIM) only clean the canvas
+                    # on their final step, so the in-progress canvas may still hold noise tokens; the denoiser argmax
+                    # is the converged answer (and equals the canvas for commit-style schedulers).
+                    canvas = torch.where(finished_denoising[:, None], argmax_canvas, canvas)
+                    if bool(finished_denoising.all()):
                         break
 
             # Append the denoised canvas and extend the context for the next block.
