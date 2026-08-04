@@ -93,8 +93,8 @@ class FluxAttnProcessor:
             attn, hidden_states, encoder_hidden_states
         )
 
-        # Reshape by a fixed ``head_dim`` and let ``-1`` absorb the head count. Under tensor parallelism each rank
-        # holds a column-sharded slice (``attn.heads // tp_degree`` heads); this keeps the processor TP-agnostic.
+        # Reshape by a fixed `head_dim` and let `-1` absorb the head count. Under tensor parallelism each rank
+        # holds a column-sharded slice (`attn.heads // tp_degree` heads); this keeps the processor TP-agnostic.
         query = query.unflatten(-1, (-1, attn.head_dim))
         key = key.unflatten(-1, (-1, attn.head_dim))
         value = value.unflatten(-1, (-1, attn.head_dim))
@@ -365,7 +365,7 @@ class FluxSingleTransformerBlock(nn.Module):
         self.proj_mlp = nn.Linear(dim, self.mlp_hidden_dim)
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
-        # proj_out input concatenates the attention output (``dim``) and the MLP branch (``mlp_hidden_dim``); each is
+        # proj_out input concatenates the attention output (`dim`) and the MLP branch (`mlp_hidden_dim`); each is
         # independently column-sharded, so PackedRowwiseParallel splits its input columns along these block sizes.
         self.proj_out._tp_packed_row_blocks = [dim, self.mlp_hidden_dim]
 
@@ -581,8 +581,11 @@ class FluxTransformer2DModel(
     }
     # Tensor-parallel plan: how each block's fused/unfused Linears shard across the TP mesh. Flux1 is unfused, so
     # nearly everything is plain "colwise"/"rowwise" (torch's ColwiseParallel / RowwiseParallel). The one exception is
-    # the single-stream ``proj_out``, whose input is ``cat([attn_output, mlp_hidden_states])`` — two independently
+    # the single-stream `proj_out`, whose input is `cat([attn_output, mlp_hidden_states])` — two independently
     # column-sharded streams — so it needs PackedRowwiseParallel with block sizes stored on the Linear at init.
+    # AdaLN modulation (norm1/norm1_context, the single-block norm, norm_out) and the QK-norms stay replicated
+    # (intentionally absent here): modulation indexes the full hidden dim, and QK-norm applies over head_dim after
+    # the heads are already split, so every rank needs the whole vector.
     _tp_plan = {
         # double-stream (MMDiT) blocks
         "transformer_blocks.*.attn.to_q": "colwise",

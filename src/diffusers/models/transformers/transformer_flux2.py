@@ -344,8 +344,8 @@ class Flux2AttnProcessor:
             attn, hidden_states, encoder_hidden_states
         )
 
-        # Reshape by a fixed ``head_dim`` and let ``-1`` absorb the head count. Under tensor parallelism each rank
-        # holds a column-sharded slice (``attn.heads // tp_degree`` heads); this keeps the processor TP-agnostic.
+        # Reshape by a fixed `head_dim` and let `-1` absorb the head count. Under tensor parallelism each rank
+        # holds a column-sharded slice (`attn.heads // tp_degree` heads); this keeps the processor TP-agnostic.
         query = query.unflatten(-1, (-1, attn.head_dim))
         key = key.unflatten(-1, (-1, attn.head_dim))
         value = value.unflatten(-1, (-1, attn.head_dim))
@@ -588,7 +588,7 @@ class Flux2ParallelSelfAttnProcessor:
         hidden_states = attn.to_qkv_mlp_proj(hidden_states)
 
         # Split the fused output into its QKV and MLP halves by their global ratio, so the same code path works
-        # whether or not ``to_qkv_mlp_proj`` is column-sharded (PackedColwiseParallel shards each block, so every
+        # whether or not `to_qkv_mlp_proj` is column-sharded (PackedColwiseParallel shards each block, so every
         # rank's contiguous slice keeps the QKV and MLP chunks proportional). No tensor-parallel state is read here.
         qkv_dim = 3 * attn.inner_dim
         mlp_dim = attn.mlp_hidden_dim * attn.mlp_mult_factor
@@ -661,7 +661,7 @@ class Flux2KVParallelSelfAttnProcessor:
         hidden_states_proj = attn.to_qkv_mlp_proj(hidden_states)
 
         # Split by the global QKV:MLP ratio so the path is identical with or without column sharding (see
-        # ``Flux2ParallelSelfAttnProcessor``). No tensor-parallel state is read here.
+        # `Flux2ParallelSelfAttnProcessor`). No tensor-parallel state is read here.
         qkv_dim = 3 * attn.inner_dim
         mlp_dim = attn.mlp_hidden_dim * attn.mlp_mult_factor
         local_qkv = hidden_states_proj.shape[-1] * qkv_dim // (qkv_dim + mlp_dim)
@@ -1113,8 +1113,11 @@ class Flux2Transformer2DModel(
     # Tensor-parallel sharding plan: a flat mapping of module-name globs (relative to the model) to a
     # parallel style.  Plain strings ("colwise" / "rowwise") map to torch's ColwiseParallel /
     # RowwiseParallel.  Fused projections use PackedColwiseParallel / PackedRowwiseParallel, which
-    # take the per-block structure from either an explicit ``blocks`` argument or a
-    # ``_tp_packed_col_blocks`` / ``_tp_packed_row_blocks`` attribute stored on the Linear at init.
+    # take the per-block structure from either an explicit `blocks` argument or a
+    # `_tp_packed_col_blocks` / `_tp_packed_row_blocks` attribute stored on the Linear at init.
+    # AdaLN modulation (double_stream_modulation_img/_txt, single_stream_modulation, norm_out) and the QK-norms stay
+    # replicated (intentionally absent here): modulation indexes the full hidden dim, and QK-norm applies over
+    # head_dim after the heads are already split, so every rank needs the whole vector.
     _tp_plan = {
         # double-stream (cross-attention + FFN) blocks
         "transformer_blocks.*.attn.to_q": "colwise",

@@ -20,6 +20,8 @@ from ..utils import get_logger
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
+_SUPPORTED_TP_DEVICES = ("cuda", "neuron")
+
 
 class PackedColwiseParallel:
     """Column-wise sharding for fused projections with heterogeneous block structure.
@@ -109,7 +111,8 @@ def _styles(relative_plan: dict) -> dict:
     """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
 
     Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel` marker
-    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`.
+    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`, each subclassed to
+    reject a sharded dim that is not divisible by the TP degree.
     """
     import torch.nn as nn
     from torch.distributed.tensor import DTensor, Replicate, Shard, distribute_tensor
@@ -187,12 +190,44 @@ def _styles(relative_plan: dict) -> dict:
 
         return _PackedRowwiseImpl()
 
+    # `distribute_tensor` accepts an indivisible shard dim and just gives the trailing ranks a smaller (or empty)
+    # slice, so an uneven split does not raise here — it surfaces much later as a shape or numerics error, because
+    # the attention head split and the paired colwise/rowwise Linear both assume equal shards. Reject it up front,
+    # matching what the packed styles above and the Neuron pre-shard path already do.
+    def _make_checked_col(path: str) -> ColwiseParallel:
+        class _CheckedColwiseImpl(ColwiseParallel):
+            def _partition_linear_fn(self, name, module, device_mesh):
+                tp_size = device_mesh.size()
+                out_features = module.weight.shape[0]
+                if out_features % tp_size != 0:
+                    raise ValueError(
+                        f"Cannot colwise-shard '{path}' weight rows ({out_features}) across {tp_size} "
+                        f"tensor-parallel ranks: not divisible by {tp_size}."
+                    )
+                super()._partition_linear_fn(name, module, device_mesh)
+
+        return _CheckedColwiseImpl()
+
+    def _make_checked_row(path: str) -> RowwiseParallel:
+        class _CheckedRowwiseImpl(RowwiseParallel):
+            def _partition_linear_fn(self, name, module, device_mesh):
+                tp_size = device_mesh.size()
+                in_features = module.weight.shape[1]
+                if in_features % tp_size != 0:
+                    raise ValueError(
+                        f"Cannot rowwise-shard '{path}' weight columns ({in_features}) across {tp_size} "
+                        f"tensor-parallel ranks: not divisible by {tp_size}."
+                    )
+                super()._partition_linear_fn(name, module, device_mesh)
+
+        return _CheckedRowwiseImpl()
+
     resolved = {}
     for path, style in relative_plan.items():
         if style == "colwise":
-            resolved[path] = ColwiseParallel()
+            resolved[path] = _make_checked_col(path)
         elif style == "rowwise":
-            resolved[path] = RowwiseParallel()
+            resolved[path] = _make_checked_row(path)
         elif isinstance(style, PackedColwiseParallel):
             resolved[path] = _make_packed_col(style)
         elif isinstance(style, PackedRowwiseParallel):
@@ -210,16 +245,17 @@ def apply_tensor_parallel(
     config: TensorParallelConfig,
     tp_plan: dict,
 ) -> None:
-    """Apply tensor parallel on a model from its flat `_tp_plan`.
-
-    The backend is read straight off the TP mesh: a `DeviceMesh("neuron", ...)` routes to the Neuron pre-shard path
-    (works around the NRT consecutive-reduce-scatter bug); every other device uses `parallelize_module` directly. The
-    mesh device type is the single source of truth — it is exactly the device the model is being sharded onto, so it
-    needs no separate availability check or accelerator probe.
-    """
+    """Apply tensor parallel on a model from its flat `_tp_plan`."""
     tp_mesh = config._mesh
     if tp_mesh is None:
         raise ValueError("`config._mesh` is None. Call `config.setup(rank, world_size, device)` before applying TP.")
+
+    if tp_mesh.device_type not in _SUPPORTED_TP_DEVICES:
+        raise ValueError(
+            f"Tensor parallelism is not supported on device type '{tp_mesh.device_type}'. Supported device types are "
+            f"{list(_SUPPORTED_TP_DEVICES)}. The device type comes from the `mesh` passed to `TensorParallelConfig`, "
+            f"or from the active accelerator when the mesh is built from `tp_degree`."
+        )
 
     backend = "neuron" if tp_mesh.device_type == "neuron" else "default"
     groups = _resolve_tp_plan(model, tp_plan)

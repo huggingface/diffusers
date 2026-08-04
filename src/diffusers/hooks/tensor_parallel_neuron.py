@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Neuron backend for tensor parallelism, dispatched from ``apply_tensor_parallel`` when the TP mesh is on Neuron.
+"""Neuron backend for tensor parallelism, dispatched from `apply_tensor_parallel` when the TP mesh is on Neuron.
 
-The difference from the generic path is a workaround for a Neuron NRT bug: consecutive ``reduce_scatter`` collectives
-for large weight tensors (≥ 5120×5120) can fail when all layers are distributed in a single ``parallelize_module``
-call. The fix is to pre-shard each weight locally on CPU via ``DTensor.from_local`` *before* calling
-``parallelize_module``; the latter then sees already-placed DTensors, skips the collective for weights, but still
-registers the required input/output hooks for the forward pass.
+The difference from the generic path is a workaround for a Neuron NRT bug: consecutive `reduce_scatter` collectives for
+large weight tensors (≥ 5120×5120) can fail when all layers are distributed in a single `parallelize_module` call. The
+fix is to pre-shard each weight locally on CPU via `DTensor.from_local` *before* calling `parallelize_module`; the
+latter then sees already-placed DTensors, skips the collective for weights, but still registers the required
+input/output hooks for the forward pass.
 """
 
 import torch
@@ -27,10 +27,10 @@ import torch.nn as nn
 
 
 def _neuron_styles(relative_plan: dict) -> dict:
-    """Map a ``{relative_path: style}`` plan to no-op-partition styles for Neuron.
+    """Map a `{relative_path: style}` plan to no-op-partition styles for Neuron.
 
-    Weights (and biases) are pre-sharded in ``_pre_shard_and_tp``, so ``parallelize_module`` runs only to register the
-    forward hooks; ``_partition_linear_fn`` must not re-partition. Packed and plain styles share hook behavior, so both
+    Weights (and biases) are pre-sharded in `_pre_shard_and_tp`, so `parallelize_module` runs only to register the
+    forward hooks; `_partition_linear_fn` must not re-partition. Packed and plain styles share hook behavior, so both
     collapse onto the two no-op styles.
     """
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
@@ -66,11 +66,11 @@ def _pre_shard_and_tp(
     rank: int,
     tp_size: int,
 ) -> None:
-    """Pre-shard Linear weights via ``DTensor.from_local``, then call ``parallelize_module``.
+    """Pre-shard Linear weights via `DTensor.from_local`, then call `parallelize_module`.
 
-    Workaround for a Neuron NRT bug where consecutive ``reduce_scatter`` calls for large weight tensors (≥ 5120×5120)
-    fail when all layers are distributed in a single ``parallelize_module`` call. Pre-sharding each weight on CPU means
-    it is already an on-device DTensor when ``parallelize_module`` runs (via ``_neuron_styles``), so the collective is
+    Workaround for a Neuron NRT bug where consecutive `reduce_scatter` calls for large weight tensors (≥ 5120×5120)
+    fail when all layers are distributed in a single `parallelize_module` call. Pre-sharding each weight on CPU means
+    it is already an on-device DTensor when `parallelize_module` runs (via `_neuron_styles`), so the collective is
     skipped while the forward hooks are still registered.
     """
     from torch.distributed.tensor import DTensor, Replicate, Shard
@@ -162,12 +162,12 @@ def _apply_tp_neuron(
     tp_mesh: "torch.distributed.device_mesh.DeviceMesh",
     groups: list,
 ) -> None:
-    """Apply tensor parallelism on Neuron from resolved ``_tp_plan`` groups.
+    """Apply tensor parallelism on Neuron from resolved `_tp_plan` groups.
 
-    ``groups`` is produced by ``diffusers.hooks.tensor_parallel._resolve_tp_plan`` — the same source of truth used by
-    the generic path, so the two backends shard identical layers. For each ``(block, relative_plan)`` group this
-    pre-shards the weights via ``DTensor.from_local`` (Neuron NRT consecutive-reduce-scatter workaround), then calls
-    ``parallelize_module`` to register the forward hooks.
+    `groups` is produced by `diffusers.hooks.tensor_parallel._resolve_tp_plan` — the same source of truth used by the
+    generic path, so the two backends shard identical layers. For each `(block, relative_plan)` group this pre-shards
+    the weights via `DTensor.from_local` (Neuron NRT consecutive-reduce-scatter workaround), then calls
+    `parallelize_module` to register the forward hooks.
 
     Model weights must be on CPU when this is called.
     """

@@ -165,9 +165,9 @@ class TestFlux2TransformerTensorParallel(Flux2TransformerTesterConfig, TensorPar
 
 
 def make_neuron_tp_spec():
-    """Model spec consumed by the generic Neuron TP worker (``_neuron_tp_worker.py``).
+    """Model spec consumed by the generic Neuron TP worker (`_neuron_tp_worker.py`).
 
-    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all Flux2-specific test data lives in this file
+    Returns `(model_class, init_dict, cpu_inputs)`. Defined here so all Flux2-specific test data lives in this file
     while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest of
     the Flux2 tests.
     """
@@ -180,9 +180,9 @@ def make_neuron_tp_spec():
 class TestFlux2TransformerTensorParallelNeuron:
     """Tensor Parallel inference test for Flux2 Transformer on AWS Neuron.
 
-    Neuron TP runs through ``torchrun`` with the ``"neuron"`` distributed backend, so it cannot use the
-    ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker
-    with the Flux2 model spec (``make_neuron_tp_spec``); the worker asserts the sharded output matches a single-device
+    Neuron TP runs through `torchrun` with the `"neuron"` distributed backend, so it cannot use the
+    `torch.multiprocessing`/NCCL spawn path of `TensorParallelTesterMixin`. This launches the generic worker
+    with the Flux2 model spec (`make_neuron_tp_spec`); the worker asserts the sharded output matches a single-device
     reference, and the test checks its exit code.
     """
 

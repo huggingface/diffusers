@@ -494,9 +494,9 @@ class QwenDoubleStreamAttnProcessor2_0:
         txt_key = attn.add_k_proj(encoder_hidden_states)
         txt_value = attn.add_v_proj(encoder_hidden_states)
 
-        # Reshape by a fixed ``head_dim`` and let ``-1`` absorb the head count. Under tensor parallelism each rank
-        # holds a column-sharded slice (``attn.heads // tp_degree`` heads); this keeps the processor TP-agnostic.
-        # The shared Attention has no ``head_dim`` attribute; derive it from the unsharded ``inner_dim``/``heads``.
+        # Reshape by a fixed `head_dim` and let `-1` absorb the head count. Under tensor parallelism each rank
+        # holds a column-sharded slice (`attn.heads // tp_degree` heads); this keeps the processor TP-agnostic.
+        # The shared Attention has no `head_dim` attribute; derive it from the unsharded `inner_dim`/`heads`.
         head_dim = attn.inner_dim // attn.heads
         img_query = img_query.unflatten(-1, (-1, head_dim))
         img_key = img_key.unflatten(-1, (-1, head_dim))

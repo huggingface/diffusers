@@ -247,8 +247,8 @@ def _tensor_parallel_worker(
 ):
     """Worker function for tensor parallel inference testing.
 
-    Each rank builds the (identical, ``state_dict``-loaded) model, sets up the accelerator device, shards the model
-    with ``enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))`` and runs a forward pass. Rank 0
+    Each rank builds the (identical, `state_dict`-loaded) model, sets up the accelerator device, shards the model
+    with `enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))` and runs a forward pass. Rank 0
     reports its output so the caller can compare it against a single-device reference (TP is mathematically equivalent
     to the unsharded model up to floating-point reduction order).
     """

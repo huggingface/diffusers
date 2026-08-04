@@ -1672,20 +1672,22 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 mesh_dim_names=("tp",),
             )
 
-        # `config.setup()` is the single place the CP/TP mesh is recorded onto the config (and,
-        # for TP, `tp_degree` is synced to the actual mesh size); see `ParallelConfig.setup`.
+        # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
         config.setup(rank, world_size, device, mesh=mesh)
         self._parallel_config = config
 
-        for module in self.modules():
-            if not isinstance(module, attention_classes):
-                continue
-            processor = module.processor
-            if processor is None or not hasattr(processor, "_parallel_config"):
-                continue
-            processor._parallel_config = config
-
+        # Only context parallelism needs the config inside attention: it replaces the attention computation itself
+        # (Ulysses all-to-all / ring). Tensor parallelism only shards `Linear` weights, so each rank runs the ordinary
+        # attention op over its own heads and the processors must stay unaware of it.
         if config.context_parallel_config is not None:
+            for module in self.modules():
+                if not isinstance(module, attention_classes):
+                    continue
+                processor = module.processor
+                if processor is None or not hasattr(processor, "_parallel_config"):
+                    continue
+                processor._parallel_config = config
+
             if cp_plan is None and self._cp_plan is None:
                 raise ValueError(
                     "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
@@ -1699,7 +1701,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "`_tp_plan` must be set on the model class to use tensor parallelism. "
                     f"'{self.__class__.__name__}' does not define one."
                 )
-            tp_degree = config.tensor_parallel_config.tp_degree
+            tp_degree = config.tensor_parallel_config._tp_degree
             num_heads = getattr(self.config, "num_attention_heads", None)
             if num_heads is not None and num_heads % tp_degree != 0:
                 raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
