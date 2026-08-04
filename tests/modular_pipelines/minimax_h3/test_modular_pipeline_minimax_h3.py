@@ -34,7 +34,7 @@ from diffusers.modular_pipelines.minimax_h3.before_encoder import MiniMaxH3Ref2V
 from diffusers.modular_pipelines.minimax_h3.encoders import MiniMaxH3Ref2VATextEncoderStep, MiniMaxH3TextEncoderStep
 from diffusers.modular_pipelines.minimax_h3.modular_pipeline import MINIMAX_H3_FPS
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin, _get_specified_components
+from ..test_modular_pipelines_common import REQUIRED, ModularPipelineTesterMixin, _get_specified_components
 
 
 # MiniMax-H3 generates 5 to 15 seconds at a fixed 24 fps, so the shortest admissible request is 124 frames
@@ -62,7 +62,7 @@ _CORE_DENOISE = [
     ("denoise.set_timesteps", "MiniMaxH3SetTimestepsStep"),
 ]
 _TAIL = [
-    ("after_denoise", "MiniMaxH3AfterDenoiseStep"),
+    ("denoise.after_denoise", "MiniMaxH3AfterDenoiseStep"),
     ("decode.video", "MiniMaxH3VideoDecodeStep"),
     ("decode.audio", "MiniMaxH3AudioDecodeStep"),
 ]
@@ -77,7 +77,7 @@ T2VA_WORKFLOW = [
 # is a matter of the packed layout, not of which blocks run.
 FL2VA_WORKFLOW = [
     ("before_encode", "MiniMaxH3ResizeStep"),
-    ("text_encoder", "MiniMaxH3TextEncoderStep"),
+    ("text_encoder", "MiniMaxH3FL2VATextEncoderStep"),
     ("vae_encoder", "MiniMaxH3KeyframeVaeEncoderStep"),
     ("denoise.prepare_layout", "MiniMaxH3PrepareLayoutStep"),
     *_CORE_DENOISE,
@@ -96,9 +96,66 @@ REF2VA_WORKFLOW = [
 MINIMAX_H3_WORKFLOWS = {
     "t2va": T2VA_WORKFLOW,
     "fl2va": FL2VA_WORKFLOW,
-    "fl2va_last_frame": FL2VA_WORKFLOW,
 }
 MINIMAX_H3_REF2VA_WORKFLOWS = {"ref2va": REF2VA_WORKFLOW}
+
+# What each pruned workflow asks for, pinned explicitly: every component (each half loads its own transformer
+# partition, nothing else differs) and every input with its default.
+_SHARED_COMPONENTS = {
+    "text_encoder": {},
+    "tokenizer": {},
+    "processor": {},
+    "scheduler": {},
+    "audio_scheduler": {},
+    "vae": {},
+    "audio_vae": {},
+    # the video decode block reverts the ImageNet normalization itself, so the processor must not denormalize again
+    "video_processor": {"vae_scale_factor": 16, "do_normalize": False},
+}
+_SHARED_INPUTS = {
+    "prompt": REQUIRED,
+    "height": None,
+    "width": None,
+    "generator": None,
+    "latents": None,
+    "audio_latents": None,
+    "num_inference_steps": REQUIRED,
+    "attention_kwargs": None,
+    "output_type": "pil",
+}
+T2VA_DEFAULTS = {
+    "components": {**_SHARED_COMPONENTS, "transformer": {}},
+    "inputs": {
+        **_SHARED_INPUTS,
+        "num_frames": 124,
+        # the standalone surface of the shared layout and latents steps: with the keyframe blocks pruned, precomputed
+        # anchors and condition latents can still be fed to them directly
+        "keyframe_anchors": (),
+        "condition_latents": None,
+        "audio_condition_latents": None,
+    },
+}
+FL2VA_DEFAULTS = {
+    "components": {**_SHARED_COMPONENTS, "transformer": {}, "image_processor": {"vae_scale_factor": 16}},
+    "inputs": {
+        **_SHARED_INPUTS,
+        "num_frames": 124,
+        "image": None,
+        "last_image": None,
+        "audio_condition_latents": None,
+    },
+}
+REF2VA_DEFAULTS = {
+    "components": {**_SHARED_COMPONENTS, "transformer_ref": {}, "image_processor": {"vae_scale_factor": 16}},
+    # `num_frames` cannot default on ref2va: reference soundtracks are truncated to the generated duration, so a
+    # silent 124-frame default would cut them short. It is required instead.
+    "inputs": {**_SHARED_INPUTS, "references": REQUIRED, "num_frames": REQUIRED},
+}
+MINIMAX_H3_WORKFLOW_DEFAULTS = {
+    "t2va": T2VA_DEFAULTS,
+    "fl2va": FL2VA_DEFAULTS,
+}
+MINIMAX_H3_REF2VA_WORKFLOW_DEFAULTS = {"ref2va": REF2VA_DEFAULTS}
 
 
 def _video_frames(num_frames: int, size: int) -> np.ndarray:
@@ -287,6 +344,7 @@ class TestMiniMaxH3ModularPipelineFast(MiniMaxH3ModularTesterBase):
 
     params = frozenset(["prompt", "image", "last_image", "height", "width", "num_frames"])
     expected_workflow_blocks = MINIMAX_H3_WORKFLOWS
+    expected_workflow_defaults = MINIMAX_H3_WORKFLOW_DEFAULTS
 
     def get_dummy_inputs(self, seed=0):
         return {
@@ -490,6 +548,7 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
 
     params = frozenset(["prompt", "references", "height", "width", "num_frames"])
     expected_workflow_blocks = MINIMAX_H3_REF2VA_WORKFLOWS
+    expected_workflow_defaults = MINIMAX_H3_REF2VA_WORKFLOW_DEFAULTS
 
     def get_dummy_inputs(self, seed=0):
         return {

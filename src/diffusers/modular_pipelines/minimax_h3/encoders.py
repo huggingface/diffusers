@@ -143,7 +143,79 @@ class MiniMaxH3TextEncoderStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Encodes MiniMax-H3's presentation of a `t2va` / `fl2va` request: the prompt verbatim, preceded by a "
+            "Encodes MiniMax-H3's presentation of a `t2va` request: the prompt verbatim, with no chat template and "
+            "no special tokens. The checkpoint is guidance-distilled, so there is no negative prompt and no "
+            "unconditional branch."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("text_encoder", Qwen3VLForConditionalGeneration),
+            ComponentSpec("tokenizer", Qwen2TokenizerFast),
+            ComponentSpec("processor", Qwen3VLProcessor),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("prompt", description="The prompt to guide generation, a single string."),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam.template(
+                "prompt_embeds",
+                description=(
+                    "The hidden state MiniMax-H3 conditions on, of shape `(1, num_text_tokens, 5120)`, read after the "
+                    "50th decoder layer of the Qwen3-VL conditioner."
+                ),
+            ),
+            OutputParam(
+                "text_token_tags",
+                type_hint=torch.Tensor,
+                description=(
+                    "The per-row modality tag of every row of `prompt_embeds` — all text for this presentation."
+                ),
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        if not isinstance(block_state.prompt, str):
+            raise ValueError(
+                "MiniMax-H3 packs one request into one sequence, so `prompt` must be a single string, got "
+                f"{type(block_state.prompt)}."
+            )
+
+        token_ids = components.tokenizer(block_state.prompt, add_special_tokens=False)["input_ids"]
+
+        # One conditioner call. The block emits the conditioner's dtype, as every other model does — it has no
+        # denoiser of its own, since it is meant to run on its own.
+        block_state.prompt_embeds = get_qwen3vl_prompt_embeds(
+            components.text_encoder,
+            components.processor,
+            token_ids,
+            {},
+            text_encoder_layer=components.text_encoder_layer,
+            device=components._execution_device,
+            dtype=components.text_encoder.dtype,
+        )
+        block_state.text_token_tags = torch.full((len(token_ids),), components.text_tag, dtype=torch.long)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class MiniMaxH3FL2VATextEncoderStep(ModularPipelineBlocks):
+    model_name = "minimax-h3"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Encodes MiniMax-H3's presentation of a `fl2va` request: the prompt verbatim, preceded by a "
             '`"<Picture i>: "` label and a vision block per keyframe, with no chat template and no special tokens. '
             "The checkpoint is guidance-distilled, so there is no negative prompt and no unconditional branch."
         )
@@ -163,7 +235,7 @@ class MiniMaxH3TextEncoderStep(ModularPipelineBlocks):
             InputParam(
                 name="keyframes",
                 type_hint=list,
-                description="The keyframes put onto the target canvas, in packed order (empty or None for `t2va`).",
+                description="The keyframes put onto the target canvas, in packed order.",
             ),
         ]
 

@@ -26,6 +26,7 @@ from .before_encoder import MiniMaxH3Ref2VASetupStep, MiniMaxH3ResizeStep
 from .decoders import MiniMaxH3AfterDenoiseStep, MiniMaxH3AudioDecodeStep, MiniMaxH3VideoDecodeStep
 from .denoise import MiniMaxH3DenoiseStep, MiniMaxH3Ref2VADenoiseStep
 from .encoders import (
+    MiniMaxH3FL2VATextEncoderStep,
     MiniMaxH3KeyframeVaeEncoderStep,
     MiniMaxH3Ref2VAReferenceEncoderStep,
     MiniMaxH3Ref2VATextEncoderStep,
@@ -33,121 +34,13 @@ from .encoders import (
 )
 
 
-def _generation_outputs() -> list[OutputParam]:
-    r"""Video and audio are generated jointly; muxing them into one file is up to the caller."""
-    return [
-        OutputParam.template("videos", description="The generated video."),
-        OutputParam(
-            "audio",
-            type_hint=torch.Tensor,
-            description="The generated soundtrack, of shape `(1, 2, num_samples)`.",
-        ),
-        OutputParam("sampling_rate", type_hint=int, description="Sample rate of the generated soundtrack in Hz."),
-    ]
-
-
 # auto_docstring
-class MiniMaxH3AutoResizeStep(ConditionalPipelineBlocks):
-    """
-    Keyframe canvas block.
-       - MiniMaxH3ResizeStep runs for the `fl2va` workflow, whichever of the two keyframes is given.
-       - when neither `image` nor `last_image` is provided (`t2va`), this block is skipped and the layout step falls back to MiniMax-H3's own 16:9 canvas.
-
-      Components:
-          image_processor (`VaeImageProcessor`)
-
-      Inputs:
-          image (`Image`, *optional*):
-              Keyframe the video starts from. It is *stretched* onto the target canvas, which by default is derived from its own
-              aspect ratio.
-          last_image (`Image`, *optional*):
-              Keyframe the video ends on. Can be passed on its own to generate *up to* a frame. Combined with `image` it is the
-              follower of the two and is cover-cropped onto the canvas.
-          height (`int`, *optional*):
-              Height of the generated video in pixels, a multiple of 32.
-          width (`int`, *optional*):
-              Width of the generated video in pixels, a multiple of 32.
-
-      Outputs:
-          height (`int`):
-              Resolved height of the generated video in pixels.
-          width (`int`):
-              Resolved width of the generated video in pixels.
-          keyframes (`list`):
-              The keyframes put onto the target canvas, in packed order.
-          keyframe_anchors (`tuple`):
-              Which end of the video every keyframe is anchored to, in packed order. Positional with `keyframes`, so both are
-              resolved here.
-    """
-
-    model_name = "minimax-h3"
-    block_classes = [MiniMaxH3ResizeStep]
-    block_names = ["keyframes"]
-    block_trigger_inputs = ["image", "last_image"]
-    default_block_name = None
-
-    def select_block(self, **kwargs) -> str | None:
-        if kwargs.get("image") is not None or kwargs.get("last_image") is not None:
-            return "keyframes"
-        return None
-
-    @property
-    def description(self):
-        return (
-            "Keyframe canvas block.\n"
-            + " - MiniMaxH3ResizeStep runs for the `fl2va` workflow, whichever of the two keyframes is given.\n"
-            + " - when neither `image` nor `last_image` is provided (`t2va`), this block is skipped and the layout "
-            "step falls back to MiniMax-H3's own 16:9 canvas."
-        )
-
-
-# auto_docstring
-class MiniMaxH3AutoKeyframeVaeEncoderStep(ConditionalPipelineBlocks):
-    """
-    Keyframe conditioning block.
-       - MiniMaxH3KeyframeVaeEncoderStep runs for the `fl2va` workflow, whichever of the two keyframes is given.
-       - when neither `image` nor `last_image` is provided (`t2va`), this block is skipped.
-
-      Components:
-          vae (`AutoencoderKLMiniMaxH3`)
-
-      Inputs:
-          keyframes (`list`, *optional*):
-              The keyframes put onto the target canvas, in packed order.
-
-      Outputs:
-          condition_latents (`list`):
-              The normalized video conditioning latents, one `(1, latent_channels, 1, latent_height, latent_width)` tensor per
-              keyframe, in packed order. One entry per condition is what the prepare-latents step draws its noise against, so the
-              list is the unit the request's generator is consumed in.
-    """
-
-    model_name = "minimax-h3"
-    block_classes = [MiniMaxH3KeyframeVaeEncoderStep]
-    block_names = ["keyframes"]
-    block_trigger_inputs = ["image", "last_image"]
-    default_block_name = None
-
-    def select_block(self, **kwargs) -> str | None:
-        if kwargs.get("image") is not None or kwargs.get("last_image") is not None:
-            return "keyframes"
-        return None
-
-    @property
-    def description(self):
-        return (
-            "Keyframe conditioning block.\n"
-            + " - MiniMaxH3KeyframeVaeEncoderStep runs for the `fl2va` workflow, whichever of the two keyframes is "
-            "given.\n" + " - when neither `image` nor `last_image` is provided (`t2va`), this block is skipped."
-        )
-
-
-# auto_docstring
-class MiniMaxH3AutoBeforeEncodeStep(AutoPipelineBlocks):
+class MiniMaxH3AutoBeforeEncodeStep(ConditionalPipelineBlocks):
     """
     Media preparation block.
        - `MiniMaxH3Ref2VASetupStep` runs when `references` is provided (`ref2va`): it resolves the plan and normalizes every reference onto MiniMax-H3's own rates and resolutions.
-       - otherwise the keyframe canvas block runs, which itself is skipped for a text-only request.
+       - `MiniMaxH3ResizeStep` runs when a keyframe is provided (`fl2va`), putting the keyframes onto the target canvas.
+       - a text-only request (`t2va`) skips this block, and the layout step falls back to MiniMax-H3's own 16:9 canvas.
 
       Components:
           image_processor (`VaeImageProcessor`)
@@ -196,9 +89,17 @@ class MiniMaxH3AutoBeforeEncodeStep(AutoPipelineBlocks):
     """
 
     model_name = "minimax-h3"
-    block_classes = [MiniMaxH3Ref2VASetupStep, MiniMaxH3AutoResizeStep]
+    block_classes = [MiniMaxH3Ref2VASetupStep, MiniMaxH3ResizeStep]
     block_names = ["ref2va", "keyframes"]
-    block_trigger_inputs = ["references", None]
+    block_trigger_inputs = ["references", "image", "last_image"]
+    default_block_name = None
+
+    def select_block(self, **kwargs) -> str | None:
+        if kwargs.get("references") is not None:
+            return "ref2va"
+        if kwargs.get("image") is not None or kwargs.get("last_image") is not None:
+            return "keyframes"
+        return None
 
     @property
     def description(self):
@@ -206,16 +107,20 @@ class MiniMaxH3AutoBeforeEncodeStep(AutoPipelineBlocks):
             "Media preparation block.\n"
             + " - `MiniMaxH3Ref2VASetupStep` runs when `references` is provided (`ref2va`): it resolves the plan and "
             "normalizes every reference onto MiniMax-H3's own rates and resolutions.\n"
-            + " - otherwise the keyframe canvas block runs, which itself is skipped for a text-only request."
+            + " - `MiniMaxH3ResizeStep` runs when a keyframe is provided (`fl2va`), putting the keyframes onto the "
+            "target canvas.\n"
+            + " - a text-only request (`t2va`) skips this block, and the layout step falls back to MiniMax-H3's own "
+            "16:9 canvas."
         )
 
 
 # auto_docstring
-class MiniMaxH3AutoTextEncoderStep(AutoPipelineBlocks):
+class MiniMaxH3AutoTextEncoderStep(ConditionalPipelineBlocks):
     """
-    Text encoder block. Both branches encode MiniMax-H3's presentation of the request with the Qwen3-VL conditioner.
+    Text encoder block. Every branch encodes MiniMax-H3's presentation of the request with the Qwen3-VL conditioner.
        - `MiniMaxH3Ref2VATextEncoderStep` runs when `references` is provided (`ref2va`), labelling every reference in the presentation.
-       - `MiniMaxH3TextEncoderStep` runs otherwise, labelling the keyframes when there are any.
+       - `MiniMaxH3FL2VATextEncoderStep` runs when a keyframe is provided (`fl2va`), labelling every keyframe in the presentation.
+       - `MiniMaxH3TextEncoderStep` runs otherwise (`t2va`), presenting the prompt alone.
 
       Components:
           text_encoder (`Qwen3VLForConditionalGeneration`)
@@ -228,7 +133,7 @@ class MiniMaxH3AutoTextEncoderStep(AutoPipelineBlocks):
           normalized_references (`list`, *optional*):
               The references normalized by the setup step, in packed order.
           keyframes (`list`, *optional*):
-              The keyframes put onto the target canvas, in packed order (empty or None for `t2va`).
+              The keyframes put onto the target canvas, in packed order.
 
       Outputs:
           prompt_embeds (`Tensor`):
@@ -239,27 +144,38 @@ class MiniMaxH3AutoTextEncoderStep(AutoPipelineBlocks):
     """
 
     model_name = "minimax-h3"
-    block_classes = [MiniMaxH3Ref2VATextEncoderStep, MiniMaxH3TextEncoderStep]
-    block_names = ["ref2va", "t2va"]
-    block_trigger_inputs = ["references", None]
+    block_classes = [MiniMaxH3Ref2VATextEncoderStep, MiniMaxH3FL2VATextEncoderStep, MiniMaxH3TextEncoderStep]
+    block_names = ["ref2va", "fl2va", "t2va"]
+    block_trigger_inputs = ["references", "image", "last_image"]
+    default_block_name = "t2va"
+
+    def select_block(self, **kwargs) -> str | None:
+        if kwargs.get("references") is not None:
+            return "ref2va"
+        if kwargs.get("image") is not None or kwargs.get("last_image") is not None:
+            return "fl2va"
+        return None
 
     @property
     def description(self):
         return (
-            "Text encoder block. Both branches encode MiniMax-H3's presentation of the request with the Qwen3-VL "
+            "Text encoder block. Every branch encodes MiniMax-H3's presentation of the request with the Qwen3-VL "
             "conditioner.\n"
             + " - `MiniMaxH3Ref2VATextEncoderStep` runs when `references` is provided (`ref2va`), labelling every "
             "reference in the presentation.\n"
-            + " - `MiniMaxH3TextEncoderStep` runs otherwise, labelling the keyframes when there are any."
+            + " - `MiniMaxH3FL2VATextEncoderStep` runs when a keyframe is provided (`fl2va`), labelling every "
+            "keyframe in the presentation.\n"
+            + " - `MiniMaxH3TextEncoderStep` runs otherwise (`t2va`), presenting the prompt alone."
         )
 
 
 # auto_docstring
-class MiniMaxH3AutoVaeEncoderStep(AutoPipelineBlocks):
+class MiniMaxH3AutoVaeEncoderStep(ConditionalPipelineBlocks):
     """
     VAE encoder block.
        - `MiniMaxH3Ref2VAReferenceEncoderStep` runs when `references` is provided (`ref2va`).
-       - otherwise the keyframe conditioning block runs, which itself is skipped for a text-only request.
+       - `MiniMaxH3KeyframeVaeEncoderStep` runs when a keyframe is provided (`fl2va`).
+       - a text-only request (`t2va`) skips this block.
 
       Components:
           vae (`AutoencoderKLMiniMaxH3`)
@@ -283,23 +199,32 @@ class MiniMaxH3AutoVaeEncoderStep(AutoPipelineBlocks):
     """
 
     model_name = "minimax-h3"
-    block_classes = [MiniMaxH3Ref2VAReferenceEncoderStep, MiniMaxH3AutoKeyframeVaeEncoderStep]
+    block_classes = [MiniMaxH3Ref2VAReferenceEncoderStep, MiniMaxH3KeyframeVaeEncoderStep]
     block_names = ["ref2va", "keyframes"]
-    block_trigger_inputs = ["references", None]
+    block_trigger_inputs = ["references", "image", "last_image"]
+    default_block_name = None
+
+    def select_block(self, **kwargs) -> str | None:
+        if kwargs.get("references") is not None:
+            return "ref2va"
+        if kwargs.get("image") is not None or kwargs.get("last_image") is not None:
+            return "keyframes"
+        return None
 
     @property
     def description(self):
         return (
             "VAE encoder block.\n"
             + " - `MiniMaxH3Ref2VAReferenceEncoderStep` runs when `references` is provided (`ref2va`).\n"
-            + " - otherwise the keyframe conditioning block runs, which itself is skipped for a text-only request."
+            + " - `MiniMaxH3KeyframeVaeEncoderStep` runs when a keyframe is provided (`fl2va`).\n"
+            + " - a text-only request (`t2va`) skips this block."
         )
 
 
 # auto_docstring
 class MiniMaxH3CoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Core denoising workflow for `t2va` / `fl2va`: builds the packed layout, draws and packs the noise, plans the per-row timesteps and runs the denoising loop against the `transformer` partition.
+    Core denoising workflow for `t2va` / `fl2va`: builds the packed layout, draws and packs the noise, plans the per-row timesteps, runs the denoising loop against the `transformer` partition and unpacks the denoised rows back into latents.
 
       Components:
           scheduler (`MiniMaxH3Scheduler`)
@@ -342,49 +267,10 @@ class MiniMaxH3CoreDenoiseStep(SequentialPipelineBlocks):
               Additional kwargs for attention processors.
 
       Outputs:
-          height (`int`):
-              Resolved height of the generated video in pixels.
-          width (`int`):
-              Resolved width of the generated video in pixels.
-          num_frames (`int`):
-              Resolved number of frames, of the form 17 * n + 5.
-          num_latent_frames (`int`):
-              Number of generated video latent frames.
-          latent_height (`int`):
-              Height of the generated video latents.
-          latent_width (`int`):
-              Width of the generated video latents.
-          num_audio_latents (`int`):
-              Number of generated audio latents per channel.
-          position_ids (`Tensor`):
-              The `(t, h, w)` rotary coordinate of every row, in float64.
-          token_tags (`Tensor`):
-              The modality tag of every row.
-          video_indices (`Tensor`):
-              Sequence positions of the video rows, conditioning rows first.
-          audio_indices (`Tensor`):
-              Sequence positions of the audio rows, reference rows first.
-          text_indices (`Tensor`):
-              Sequence positions of the text rows.
-          num_condition_video_rows (`int`):
-              How many leading video rows are conditioning rows rather than generated rows.
-          num_condition_audio_rows (`int`):
-              How many leading audio rows are reference rows rather than generated rows.
           latents (`Tensor`):
-              The video rows of the packed sequence, conditioning rows first.
+              The generated video latents, of shape `(1, latent_channels, num_latent_frames, latent_height, latent_width)`.
           audio_latents (`Tensor`):
-              The channel-major audio rows of the packed sequence, reference rows first.
-          timesteps (`Tensor`):
-              Timesteps of the video schedule.
-          audio_timesteps (`Tensor`):
-              Timesteps of the audio schedule.
-          row_timestep_plan (`list`):
-              One `(timestep, timestep_indices)` pair per step: the distinct timesteps of the sequence and the index of every row
-              into them.
-          noise_pred (`Tensor`):
-              Predicted velocity of the video rows of the sequence.
-          audio_noise_pred (`Tensor`):
-              Predicted velocity of the audio rows of the sequence.
+              The generated audio latents, one batch item per stereo channel.
     """
 
     model_name = "minimax-h3"
@@ -393,21 +279,40 @@ class MiniMaxH3CoreDenoiseStep(SequentialPipelineBlocks):
         MiniMaxH3PrepareLatentsStep,
         MiniMaxH3SetTimestepsStep,
         MiniMaxH3DenoiseStep,
+        MiniMaxH3AfterDenoiseStep,
     ]
-    block_names = ["prepare_layout", "prepare_latents", "set_timesteps", "denoise"]
+    block_names = ["prepare_layout", "prepare_latents", "set_timesteps", "denoise", "after_denoise"]
 
     @property
     def description(self):
         return (
             "Core denoising workflow for `t2va` / `fl2va`: builds the packed layout, draws and packs the noise, "
-            "plans the per-row timesteps and runs the denoising loop against the `transformer` partition."
+            "plans the per-row timesteps, runs the denoising loop against the `transformer` partition and unpacks "
+            "the denoised rows back into latents."
         )
+
+    @property
+    def outputs(self):
+        # What the decode steps consume: the generated latents of either modality.
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="The generated video latents, of shape `(1, latent_channels, num_latent_frames, "
+                "latent_height, latent_width)`.",
+            ),
+            OutputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                description="The generated audio latents, one batch item per stereo channel.",
+            ),
+        ]
 
 
 # auto_docstring
 class MiniMaxH3Ref2VACoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Core denoising workflow for `ref2va`: builds the packed layout with one block per reference, draws and packs the noise, plans the per-row timesteps and runs the denoising loop against the `transformer_ref` partition.
+    Core denoising workflow for `ref2va`: builds the packed layout with one block per reference, draws and packs the noise, plans the per-row timesteps, runs the denoising loop against the `transformer_ref` partition and unpacks the denoised rows back into latents.
 
       Components:
           scheduler (`MiniMaxH3Scheduler`)
@@ -448,49 +353,10 @@ class MiniMaxH3Ref2VACoreDenoiseStep(SequentialPipelineBlocks):
               Additional kwargs for attention processors.
 
       Outputs:
-          height (`int`):
-              Resolved height of the generated video in pixels.
-          width (`int`):
-              Resolved width of the generated video in pixels.
-          num_frames (`int`):
-              Resolved number of frames, of the form 17 * n + 5.
-          num_latent_frames (`int`):
-              Number of generated video latent frames.
-          latent_height (`int`):
-              Height of the generated video latents.
-          latent_width (`int`):
-              Width of the generated video latents.
-          num_audio_latents (`int`):
-              Number of generated audio latents per channel.
-          position_ids (`Tensor`):
-              The `(t, h, w)` rotary coordinate of every row, in float64.
-          token_tags (`Tensor`):
-              The modality tag of every row.
-          video_indices (`Tensor`):
-              Sequence positions of the video rows, conditioning rows first.
-          audio_indices (`Tensor`):
-              Sequence positions of the audio rows, reference rows first.
-          text_indices (`Tensor`):
-              Sequence positions of the text rows.
-          num_condition_video_rows (`int`):
-              How many leading video rows are conditioning rows rather than generated rows.
-          num_condition_audio_rows (`int`):
-              How many leading audio rows are reference rows rather than generated rows.
           latents (`Tensor`):
-              The video rows of the packed sequence, conditioning rows first.
+              The generated video latents, of shape `(1, latent_channels, num_latent_frames, latent_height, latent_width)`.
           audio_latents (`Tensor`):
-              The channel-major audio rows of the packed sequence, reference rows first.
-          timesteps (`Tensor`):
-              Timesteps of the video schedule.
-          audio_timesteps (`Tensor`):
-              Timesteps of the audio schedule.
-          row_timestep_plan (`list`):
-              One `(timestep, timestep_indices)` pair per step: the distinct timesteps of the sequence and the index of every row
-              into them.
-          noise_pred (`Tensor`):
-              Predicted velocity of the video rows of the sequence.
-          audio_noise_pred (`Tensor`):
-              Predicted velocity of the audio rows of the sequence.
+              The generated audio latents, one batch item per stereo channel.
     """
 
     model_name = "minimax-h3"
@@ -499,16 +365,34 @@ class MiniMaxH3Ref2VACoreDenoiseStep(SequentialPipelineBlocks):
         MiniMaxH3PrepareLatentsStep,
         MiniMaxH3SetTimestepsStep,
         MiniMaxH3Ref2VADenoiseStep,
+        MiniMaxH3AfterDenoiseStep,
     ]
-    block_names = ["prepare_layout", "prepare_latents", "set_timesteps", "denoise"]
+    block_names = ["prepare_layout", "prepare_latents", "set_timesteps", "denoise", "after_denoise"]
 
     @property
     def description(self):
         return (
             "Core denoising workflow for `ref2va`: builds the packed layout with one block per reference, draws and "
-            "packs the noise, plans the per-row timesteps and runs the denoising loop against the `transformer_ref` "
-            "partition."
+            "packs the noise, plans the per-row timesteps, runs the denoising loop against the `transformer_ref` "
+            "partition and unpacks the denoised rows back into latents."
         )
+
+    @property
+    def outputs(self):
+        # What the decode steps consume: the generated latents of either modality.
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="The generated video latents, of shape `(1, latent_channels, num_latent_frames, "
+                "latent_height, latent_width)`.",
+            ),
+            OutputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                description="The generated audio latents, one batch item per stereo channel.",
+            ),
+        ]
 
 
 # auto_docstring
@@ -561,49 +445,10 @@ class MiniMaxH3AutoDenoiseStep(AutoPipelineBlocks):
               Which end of the video every keyframe is anchored to, in packed order.
 
       Outputs:
-          height (`int`):
-              Resolved height of the generated video in pixels.
-          width (`int`):
-              Resolved width of the generated video in pixels.
-          num_frames (`int`):
-              Resolved number of frames, of the form 17 * n + 5.
-          num_latent_frames (`int`):
-              Number of generated video latent frames.
-          latent_height (`int`):
-              Height of the generated video latents.
-          latent_width (`int`):
-              Width of the generated video latents.
-          num_audio_latents (`int`):
-              Number of generated audio latents per channel.
-          position_ids (`Tensor`):
-              The `(t, h, w)` rotary coordinate of every row, in float64.
-          token_tags (`Tensor`):
-              The modality tag of every row.
-          video_indices (`Tensor`):
-              Sequence positions of the video rows, conditioning rows first.
-          audio_indices (`Tensor`):
-              Sequence positions of the audio rows, reference rows first.
-          text_indices (`Tensor`):
-              Sequence positions of the text rows.
-          num_condition_video_rows (`int`):
-              How many leading video rows are conditioning rows rather than generated rows.
-          num_condition_audio_rows (`int`):
-              How many leading audio rows are reference rows rather than generated rows.
           latents (`Tensor`):
-              The video rows of the packed sequence, conditioning rows first.
+              The generated video latents, of shape `(1, latent_channels, num_latent_frames, latent_height, latent_width)`.
           audio_latents (`Tensor`):
-              The channel-major audio rows of the packed sequence, reference rows first.
-          timesteps (`Tensor`):
-              Timesteps of the video schedule.
-          audio_timesteps (`Tensor`):
-              Timesteps of the audio schedule.
-          row_timestep_plan (`list`):
-              One `(timestep, timestep_indices)` pair per step: the distinct timesteps of the sequence and the index of every row
-              into them.
-          noise_pred (`Tensor`):
-              Predicted velocity of the video rows of the sequence.
-          audio_noise_pred (`Tensor`):
-              Predicted velocity of the audio rows of the sequence.
+              The generated audio latents, one batch item per stereo channel.
     """
 
     model_name = "minimax-h3"
@@ -658,7 +503,15 @@ class MiniMaxH3DecodeStep(SequentialPipelineBlocks):
 
     @property
     def outputs(self):
-        return _generation_outputs()
+        return [
+            OutputParam.template("videos", description="The generated video."),
+            OutputParam(
+                "audio",
+                type_hint=torch.Tensor,
+                description="The generated soundtrack, of shape `(1, 2, num_samples)`.",
+            ),
+            OutputParam("sampling_rate", type_hint=int, description="Sample rate of the generated soundtrack in Hz."),
+        ]
 
 
 # auto_docstring
@@ -669,7 +522,6 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
       Supported workflows:
         - `t2va`: requires `prompt`
         - `fl2va`: requires `prompt`, `image`
-        - `fl2va_last_frame`: requires `prompt`, `last_image`
         - `ref2va`: requires `prompt`, `references`
 
       Components:
@@ -710,6 +562,15 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
               follower of the two and is cover-cropped onto the canvas.
           prompt (`str`):
               The prompt to guide generation, a single string.
+          normalized_references (`list`, *optional*):
+              The references normalized by the setup step, in packed order.
+          keyframes (`list`, *optional*):
+              The keyframes put onto the target canvas, in packed order.
+          condition_latents (`list`, *optional*):
+              The encoded video conditioning latents, one per image and video reference in packed order. Their shape is where
+              every reference block's geometry comes from.
+          audio_condition_latents (`list`, *optional*):
+              The encoded audio conditioning rows, one per audio-bearing reference in packed order.
           generator (`Generator`, *optional*):
               The generator of the request. The video noise is drawn from it first, then the audio noise.
           latents (`Tensor`):
@@ -724,6 +585,8 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
               the three row-index tensors.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
+          keyframe_anchors (`tuple`, *optional*, defaults to ()):
+              Which end of the video every keyframe is anchored to, in packed order.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np' or 'pt'.
 
@@ -742,7 +605,6 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
         MiniMaxH3AutoTextEncoderStep,
         MiniMaxH3AutoVaeEncoderStep,
         MiniMaxH3AutoDenoiseStep,
-        MiniMaxH3AfterDenoiseStep,
         MiniMaxH3DecodeStep,
     ]
     block_names = [
@@ -750,7 +612,6 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
         "text_encoder",
         "vae_encoder",
         "denoise",
-        "after_denoise",
         "decode",
     ]
     # One repository holds both checkpoint partitions (`transformer/` for `t2va`/`fl2va`, `transformer_ref/` for
@@ -760,8 +621,9 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
     # without instantiating the blocks first.
     _workflow_map = {
         "t2va": {"prompt": True},
+        # either keyframe trigger selects the same blocks, and the pruned route serves first, last or both because
+        # the resize step handles any combination at runtime
         "fl2va": {"prompt": True, "image": True},
-        "fl2va_last_frame": {"prompt": True, "last_image": True},
         "ref2va": {"prompt": True, "references": True},
     }
 
@@ -776,4 +638,12 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
 
     @property
     def outputs(self):
-        return _generation_outputs()
+        return [
+            OutputParam.template("videos", description="The generated video."),
+            OutputParam(
+                "audio",
+                type_hint=torch.Tensor,
+                description="The generated soundtrack, of shape `(1, 2, num_samples)`.",
+            ),
+            OutputParam("sampling_rate", type_hint=int, description="Sample rate of the generated soundtrack in Hz."),
+        ]
