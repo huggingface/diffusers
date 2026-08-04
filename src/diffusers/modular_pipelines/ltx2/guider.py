@@ -27,9 +27,10 @@
 # `torch.cat([latents] * 2)` the standard `LTX2Pipeline` uses -- this does NOT match the reference bitwise. GPU
 # matmul is not batch-invariant, so `cond` computed alone differs from `cond` inside a batch-of-2: ~1e-6/op in fp32
 # (still within the harness's fp32 tolerance) but ~1e-2/op in bf16, which the CFG delta and sampler amplify to
-# ~10% mean-relative latent divergence. The batched-CFG variant (in git history) is the only one that is fp32
-# bitwise; this design trades that for using the guider API end-to-end. Since fp32-within-tolerance (not bitwise)
-# is the modular-ecosystem norm, gate parity on fp32 and treat bf16 as a close-but-not-bitwise check.
+# ~10% mean-relative latent divergence. A batched cond+uncond forward would be fp32-bitwise, but it can't drive
+# the guider API per-pass, so this design trades bitwiseness for using the guider API end-to-end. Since
+# fp32-within-tolerance (not bitwise) is the modular-ecosystem norm, gate parity on fp32 and treat bf16 as a
+# close-but-not-bitwise check.
 
 import math
 

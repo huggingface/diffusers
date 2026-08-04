@@ -146,6 +146,12 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
         return [
             InputParam.template("prompt", required=True),
             InputParam(
+                "enable_prompt_enhancement",
+                type_hint=bool,
+                default=False,
+                description="Trigger for `LTX2AutoPromptEnhancerStep`; the enhancer runs only when this is truthy.",
+            ),
+            InputParam(
                 "system_prompt",
                 type_hint=str,
                 default=None,
@@ -221,6 +227,12 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
         return [
             InputParam.template("prompt", required=True),
             InputParam.template("image", required=True),
+            InputParam(
+                "enable_prompt_enhancement",
+                type_hint=bool,
+                default=False,
+                description="Trigger for `LTX2AutoPromptEnhancerStep`; the enhancer runs only when this is truthy.",
+            ),
             InputParam(
                 "system_prompt",
                 type_hint=str,
@@ -385,9 +397,9 @@ class LTX2TextConnectorStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        # NOTE: the exact names / `kwargs_type` tagging here should be reconciled with the denoise step's input
-        # contract when `denoise.py` is written (the manual-guidance denoiser assembles the CFG/STG/modality batches
-        # from these). Kept as plain, explicitly-named cond/uncond outputs for now.
+        # Plain, explicitly-named cond/uncond outputs: the denoiser reads them by name through its guider
+        # `guider_input_fields` map (transformer arg -> per-pass block-state attribute names), not via the
+        # `denoiser_input_fields` tag, so they are intentionally not tagged here.
         return [
             OutputParam(
                 "connector_prompt_embeds", type_hint=torch.Tensor, description="Video-branch text conditioning (cond)."
@@ -420,7 +432,7 @@ class LTX2TextConnectorStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        padding_side = getattr(components.tokenizer, "padding_side", "left")
+        padding_side = components.tokenizer.padding_side
 
         # Run the connector once on the CFG-concatenated `[uncond, cond]` batch, matching the standard pipeline
         # (`LTX2Pipeline` concatenates before the single `self.connectors(...)` call). The connector is applied per
@@ -472,10 +484,27 @@ class LTX2DurationStep(ModularPipelineBlocks):
                 required=True,
                 description="An `LTX2AutoDuration` request carrying the `[min_seconds, max_seconds]` bounds.",
             ),
-            InputParam("frame_rate", type_hint=float, default=24.0),
-            InputParam("connector_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("connector_audio_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("batch_size", type_hint=int, required=True),
+            InputParam(
+                "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
+            ),
+            InputParam(
+                "connector_prompt_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Video-branch text conditioning from the connector (positive prompt).",
+            ),
+            InputParam(
+                "connector_audio_prompt_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Audio-branch text conditioning from the connector (positive prompt).",
+            ),
+            InputParam(
+                "batch_size",
+                type_hint=int,
+                required=True,
+                description="The number of prompts being denoised, used to expand conditioning per prompt.",
+            ),
         ]
 
     @property

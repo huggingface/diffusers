@@ -111,9 +111,17 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
             InputParam.template("output_type", default="pil"),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=121),
-            InputParam("decode_timestep", default=0.0),
-            InputParam("decode_noise_scale", default=None),
+            InputParam(
+                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+            ),
+            InputParam(
+                "decode_timestep", default=0.0, description="The timestep at which the VAE decodes the final latents."
+            ),
+            InputParam(
+                "decode_noise_scale",
+                default=None,
+                description="Noise interpolation factor applied to the latents at the decode timestep.",
+            ),
             InputParam.template("generator"),
             InputParam.template("batch_size"),
             InputParam.template("dtype", required=True),

@@ -249,7 +249,9 @@ class LTX2SetTimestepsStep(ModularPipelineBlocks):
             InputParam.template("sigmas"),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=121),
+            InputParam(
+                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+            ),
         ]
 
     @property
@@ -325,12 +327,24 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
         return [
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=121),
+            InputParam(
+                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+            ),
             InputParam.template("latents"),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam("noise_scale", type_hint=float, default=0.0),
+            InputParam(
+                "noise_scale",
+                type_hint=float,
+                default=0.0,
+                description="Interpolation factor between random noise and any provided latents (0.0 keeps the provided latents).",
+            ),
             InputParam.template("generator"),
-            InputParam("batch_size", type_hint=int, required=True),
+            InputParam(
+                "batch_size",
+                type_hint=int,
+                required=True,
+                description="The number of prompts being denoised, used to expand conditioning per prompt.",
+            ),
         ]
 
     @property
@@ -390,13 +404,25 @@ class LTX2Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("image_latents", type_hint=torch.Tensor, required=True),
+            InputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="VAE-encoded reference-image latents used for image-to-video conditioning.",
+            ),
             InputParam.template("latents", required=True),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=121),
+            InputParam(
+                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+            ),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam("batch_size", type_hint=int, required=True),
+            InputParam(
+                "batch_size",
+                type_hint=int,
+                required=True,
+                description="The number of prompts being denoised, used to expand conditioning per prompt.",
+            ),
         ]
 
     @property
@@ -461,13 +487,32 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("num_frames", type_hint=int, default=121),
-            InputParam("frame_rate", type_hint=float, default=24.0),
-            InputParam("audio_latents", type_hint=torch.Tensor, default=None),
-            InputParam("noise_scale", type_hint=float, default=0.0),
+            InputParam(
+                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+            ),
+            InputParam(
+                "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
+            ),
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                default=None,
+                description="Optional pre-encoded audio latents; random noise is used when not provided.",
+            ),
+            InputParam(
+                "noise_scale",
+                type_hint=float,
+                default=0.0,
+                description="Interpolation factor between random noise and any provided latents (0.0 keeps the provided latents).",
+            ),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("generator"),
-            InputParam("batch_size", type_hint=int, required=True),
+            InputParam(
+                "batch_size",
+                type_hint=int,
+                required=True,
+                description="The number of prompts being denoised, used to expand conditioning per prompt.",
+            ),
         ]
 
     @property
@@ -540,11 +585,20 @@ class LTX2PrepareCoordsStep(ModularPipelineBlocks):
         return [
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=121),
-            InputParam("frame_rate", type_hint=float, default=24.0),
+            InputParam(
+                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+            ),
+            InputParam(
+                "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
+            ),
             InputParam("audio_num_frames", type_hint=int, required=True),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam("batch_size", type_hint=int, required=True),
+            InputParam(
+                "batch_size",
+                type_hint=int,
+                required=True,
+                description="The number of prompts being denoised, used to expand conditioning per prompt.",
+            ),
         ]
 
     @property

@@ -82,8 +82,15 @@ class LTX2LoopBeforeDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("latents", type_hint=torch.Tensor, required=True),
-            InputParam("audio_latents", type_hint=torch.Tensor, required=True),
-            InputParam("dtype", type_hint=torch.dtype, required=True),
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Packed noisy audio latents to denoise.",
+            ),
+            InputParam(
+                "dtype", type_hint=torch.dtype, required=True, description="The dtype the model inputs are cast to."
+            ),
         ]
 
     @torch.no_grad()
@@ -110,9 +117,16 @@ class LTX2Image2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("latents", type_hint=torch.Tensor, required=True),
-            InputParam("audio_latents", type_hint=torch.Tensor, required=True),
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Packed noisy audio latents to denoise.",
+            ),
             InputParam("conditioning_mask", type_hint=torch.Tensor, required=True),
-            InputParam("dtype", type_hint=torch.dtype, required=True),
+            InputParam(
+                "dtype", type_hint=torch.dtype, required=True, description="The dtype the model inputs are cast to."
+            ),
         ]
 
     @torch.no_grad()
@@ -216,7 +230,12 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         inputs = [
             InputParam("latents", type_hint=torch.Tensor, required=True),
-            InputParam("audio_latents", type_hint=torch.Tensor, required=True),
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Packed noisy audio latents to denoise.",
+            ),
             InputParam("audio_scheduler", required=True),
             # `audio_num_frames`, `video_coords`, `audio_coords` arrive tagged `denoiser_input_fields` upstream and
             # are collected from the tagged dict (filtered against the transformer signature) in `__call__`.
@@ -224,9 +243,18 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             InputParam.template("num_inference_steps", required=True),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=121),
-            InputParam("frame_rate", type_hint=float, default=24.0),
-            InputParam("use_cross_timestep", type_hint=bool, default=False),
+            InputParam(
+                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+            ),
+            InputParam(
+                "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
+            ),
+            InputParam(
+                "use_cross_timestep",
+                type_hint=bool,
+                default=False,
+                description="Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).",
+            ),
             InputParam.template("attention_kwargs"),
         ]
         # The per-pass conditioning tensors the guiders read off block_state, declared from the field map so a
@@ -235,7 +263,14 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
         for value in self._guider_input_fields.values():
             guider_input_names.extend(value if isinstance(value, tuple) else (value,))
         for name in dict.fromkeys(guider_input_names):
-            inputs.append(InputParam(name, type_hint=torch.Tensor, required=True))
+            inputs.append(
+                InputParam(
+                    name,
+                    type_hint=torch.Tensor,
+                    required=True,
+                    description="Per-pass text conditioning read by the guiders via `guider_input_fields`.",
+                )
+            )
         return inputs
 
     @torch.no_grad()
@@ -345,7 +380,12 @@ class LTX2LoopAfterDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("latents", type_hint=torch.Tensor, required=True),
-            InputParam("audio_latents", type_hint=torch.Tensor, required=True),
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Packed noisy audio latents to denoise.",
+            ),
             InputParam("audio_scheduler", required=True),
         ]
 
@@ -382,11 +422,18 @@ class LTX2Image2VideoLoopAfterDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("latents", type_hint=torch.Tensor, required=True),
-            InputParam("audio_latents", type_hint=torch.Tensor, required=True),
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Packed noisy audio latents to denoise.",
+            ),
             InputParam("audio_scheduler", required=True),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=121),
+            InputParam(
+                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+            ),
         ]
 
     @torch.no_grad()
