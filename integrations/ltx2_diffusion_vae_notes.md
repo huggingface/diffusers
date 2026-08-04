@@ -128,6 +128,11 @@ pre-noising and passes `generator=generator` instead of a timestep. **The conv p
 untouched** — the flag only short-circuits the condition and picks the `decode` call — so it cannot regress
 the in-flight LTX-2.4 PR.
 
+Worth noting where that decode block comes from: `git log -L` puts it in **`c10bdd9b7` "Add LTX 2.0 Video
+Pipelines" (#12915), already on `main`** — it is LTX-2.0 code, not something the LTX-2.4 integration PR wrote.
+That PR does edit `pipeline_ltx2.py` heavily, but its last hunk there ends ~290 lines above this block, so the
+two do not overlap.
+
 Passing the generator is what makes decoding reproducible: two full pipeline runs at 320×448×17 from the same
 seed now agree **bitwise** (`run_pipeline_diffusion_vae.py`), where a dropped generator would reseed the
 decoder's noise on every call. Covered by `test_inference_with_diffusion_decoder_vae` in
