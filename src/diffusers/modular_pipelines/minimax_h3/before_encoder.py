@@ -23,7 +23,7 @@ from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import (
     MINIMAX_H3_FPS,
     MiniMaxH3ModularPipeline,
@@ -62,6 +62,12 @@ class MiniMaxH3ResizeStep(ModularPipelineBlocks):
                 default_creation_method="from_config",
             ),
         ]
+
+    @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        # The canvas MiniMax-H3 was released for. Every block that resolves one declares these, so a fine-tune that
+        # generates at another resolution is configured rather than patched.
+        return [ConfigSpec("canvas_short_edge", 768), ConfigSpec("canvas_max_pixels", 768 * 1344)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -117,7 +123,12 @@ class MiniMaxH3ResizeStep(ModularPipelineBlocks):
             if keyframe is not None
         )
         if block_state.height is None:
-            block_state.height, block_state.width = resolve_canvas_size(*keyframes[0].size, components.canvas_multiple)
+            block_state.height, block_state.width = resolve_canvas_size(
+                *keyframes[0].size,
+                components.canvas_multiple,
+                components.config.canvas_short_edge,
+                components.config.canvas_max_pixels,
+            )
 
         prepared = []
         for index, keyframe in enumerate(keyframes):
@@ -202,6 +213,11 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
         ]
 
     @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        # The canvas MiniMax-H3 was released for, which a video reference is put on as well.
+        return [ConfigSpec("canvas_short_edge", 768), ConfigSpec("canvas_max_pixels", 768 * 1344)]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(
@@ -253,7 +269,9 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    def _normalize_video_condition(frames, fps: float, num_frames: int, canvas_multiple: int) -> np.ndarray:
+    def _normalize_video_condition(
+        frames, fps: float, num_frames: int, canvas_multiple: int, canvas_short_edge: int, canvas_max_pixels: int
+    ) -> np.ndarray:
         r"""
         Normalize a video reference's frames: any accepted layout, onto `uint8` at 24 fps, truncated to the generated
         frame count, on the canvas its own aspect ratio resolves to.
@@ -271,6 +289,9 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
             fps (`float`): The frame rate `frames` carries.
             num_frames (`int`): The generated frame count the reference is truncated to.
             canvas_multiple (`int`): What both canvas axes round to, i.e. `components.canvas_multiple`.
+            canvas_short_edge (`int`), canvas_max_pixels (`int`):
+                The canvas rule the reference is put on, i.e. `components.config.canvas_short_edge` and
+                `components.config.canvas_max_pixels` — the same one the generated video follows.
 
         Returns:
             `np.ndarray` of shape `(num_frames, height, width, 3)`: the normalized `uint8` RGB frames.
@@ -301,7 +322,9 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
         # Truncated to the generated frame count and put on the canvas of its *own* aspect ratio — the same rule the
         # target canvas follows, unlike an image reference.
         frames = frames[:num_frames]
-        height, width = resolve_canvas_size(frames.shape[2], frames.shape[1], canvas_multiple)
+        height, width = resolve_canvas_size(
+            frames.shape[2], frames.shape[1], canvas_multiple, canvas_short_edge, canvas_max_pixels
+        )
         if frames.shape[1:3] == (height, width):
             return frames
         return np.stack(
@@ -388,7 +411,9 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
         # frame count, so that is what the ceiling holds for: 346 frames would otherwise pass the check and then be
         # rounded up to 362, i.e. 15.083 seconds.
         if block_state.height is None:
-            block_state.height, block_state.width = resolve_canvas_size(16, 9, multiple)
+            block_state.height, block_state.width = resolve_canvas_size(
+                16, 9, multiple, components.config.canvas_short_edge, components.config.canvas_max_pixels
+            )
         aligned_num_frames = align_num_frames(
             block_state.num_frames, components.vae_frames_per_chunk, components.vae_latents_per_chunk
         )
@@ -443,7 +468,12 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
                 normalized.append(
                     MiniMaxH3VideoReference(
                         frames=self._normalize_video_condition(
-                            entry.frames, float(entry.fps), block_state.num_frames, multiple
+                            entry.frames,
+                            float(entry.fps),
+                            block_state.num_frames,
+                            multiple,
+                            components.config.canvas_short_edge,
+                            components.config.canvas_max_pixels,
                         ),
                         fps=float(components.fps),
                         audio=waveform,

@@ -49,6 +49,10 @@ class MiniMaxH3AutoBeforeEncodeStep(ConditionalPipelineBlocks):
       Components:
           image_processor (`VaeImageProcessor`)
 
+      Configs:
+          canvas_short_edge (default: 768)
+          canvas_max_pixels (default: 1032192)
+
       Inputs:
           references (`list`, *optional*):
               The references to condition on, **in the order the model should read them**: the order labels them in the prompt
@@ -235,6 +239,10 @@ class MiniMaxH3CoreDenoiseStep(SequentialPipelineBlocks):
           audio_scheduler (`MiniMaxH3Scheduler`)
           transformer (`MiniMaxH3Transformer3DModel`)
 
+      Configs:
+          canvas_short_edge (default: 768)
+          canvas_max_pixels (default: 1032192)
+
       Inputs:
           text_token_tags (`Tensor`):
               The per-row modality tag of every row of `prompt_embeds`.
@@ -322,6 +330,10 @@ class MiniMaxH3FL2VACoreDenoiseStep(SequentialPipelineBlocks):
           scheduler (`MiniMaxH3Scheduler`)
           audio_scheduler (`MiniMaxH3Scheduler`)
           transformer (`MiniMaxH3Transformer3DModel`)
+
+      Configs:
+          canvas_short_edge (default: 768)
+          canvas_max_pixels (default: 1032192)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -520,6 +532,10 @@ class MiniMaxH3AutoDenoiseStep(ConditionalPipelineBlocks):
           transformer_ref (`MiniMaxH3Transformer3DModel`)
           transformer (`MiniMaxH3Transformer3DModel`)
 
+      Configs:
+          canvas_short_edge (default: 768)
+          canvas_max_pixels (default: 1032192)
+
       Inputs:
           text_token_tags (`Tensor`):
               The per-row modality tag of every row of `prompt_embeds`.
@@ -659,6 +675,10 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
           transformer_ref (`MiniMaxH3Transformer3DModel`)
           transformer (`MiniMaxH3Transformer3DModel`)
           video_processor (`VideoProcessor`)
+
+      Configs:
+          canvas_short_edge (default: 768)
+          canvas_max_pixels (default: 1032192)
 
       Inputs:
           references (`list`, *optional*):

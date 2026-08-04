@@ -19,7 +19,7 @@ from ...schedulers import MiniMaxH3Scheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import (
     MINIMAX_H3_AUDIO_CHANNELS,
     MINIMAX_H3_AUDIO_TAG,
@@ -205,6 +205,11 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
             "full self-attention over this one sequence, so the layout is what every later block addresses rows "
             "through."
         )
+
+    @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        # The canvas MiniMax-H3 was released for, which a request without keyframes generates on at 16:9.
+        return [ConfigSpec("canvas_short_edge", 768), ConfigSpec("canvas_max_pixels", 768 * 1344)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -393,7 +398,13 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
 
         # Without a keyframe to take the aspect ratio from, MiniMax-H3 generates on its own 16:9 canvas.
         if block_state.height is None:
-            block_state.height, block_state.width = resolve_canvas_size(16, 9, components.canvas_multiple)
+            block_state.height, block_state.width = resolve_canvas_size(
+                16,
+                9,
+                components.canvas_multiple,
+                components.config.canvas_short_edge,
+                components.config.canvas_max_pixels,
+            )
         if block_state.height % components.canvas_multiple or block_state.width % components.canvas_multiple:
             raise ValueError(
                 f"`height` and `width` must be multiples of {components.canvas_multiple}, got "

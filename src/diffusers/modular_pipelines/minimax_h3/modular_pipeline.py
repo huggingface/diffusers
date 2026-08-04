@@ -24,13 +24,11 @@ MINIMAX_H3_VIDEO_TAG = 0
 MINIMAX_H3_TEXT_TAG = 1
 MINIMAX_H3_AUDIO_TAG = 2
 
-# MiniMax-H3 generates at a fixed 24 fps and was released for a 768 pixel short edge only, with a soft area cap of
-# 768x1344. The multiple both axes round to follows from
-# the VAE and the transformer, so it is `MiniMaxH3ModularPipeline.canvas_multiple` below and reaches these helpers
-# as an argument.
+# MiniMax-H3 generates at a fixed 24 fps. The canvas it generates on is configurable rather than a constant here:
+# the short edge and the area cap are the `canvas_short_edge` / `canvas_max_pixels` configs of the blocks that
+# resolve a canvas, and the multiple both axes round to follows from the VAE and the transformer, so it is
+# `MiniMaxH3ModularPipeline.canvas_multiple` below. All three reach these helpers as arguments.
 MINIMAX_H3_FPS = 24
-MINIMAX_H3_SHORT_EDGE = 768
-MINIMAX_H3_MAX_PIXELS = 768 * 1344
 MINIMAX_H3_MIN_ASPECT_RATIO = 1 / 4
 MINIMAX_H3_MAX_ASPECT_RATIO = 4
 
@@ -40,19 +38,25 @@ MINIMAX_H3_AUDIO_LATENTS_PER_SECOND = 40
 MINIMAX_H3_AUDIO_CHANNELS = 2
 
 
-def resolve_canvas_size(aspect_width: float, aspect_height: float, canvas_multiple: int) -> tuple[int, int]:
+def resolve_canvas_size(
+    aspect_width: float, aspect_height: float, canvas_multiple: int, short_edge: int, max_pixels: int
+) -> tuple[int, int]:
     r"""
     Resolve a display aspect ratio into a MiniMax-H3 canvas.
 
-    The short edge starts at 768, the area is capped at `768 * 1344` and both axes are then rounded to the nearest
-    `canvas_multiple` — so the final area may end up slightly above the pre-rounding budget. Only the ratio of the two
-    arguments matters; pass either the aspect ratio (`16, 9`) or the source dimensions of a keyframe.
+    The short edge starts at `short_edge`, the area is capped at `max_pixels` and both axes are then rounded to the
+    nearest `canvas_multiple` — so the final area may end up slightly above the pre-rounding budget. Only the ratio of
+    the first two arguments matters; pass either the aspect ratio (`16, 9`) or the source dimensions of a keyframe.
 
     Args:
         aspect_width (`float`): Width of the target ratio.
         aspect_height (`float`): Height of the target ratio.
         canvas_multiple (`int`):
             What both axes round to, i.e. `components.canvas_multiple` — 32 for the released checkpoint.
+        short_edge (`int`):
+            The short edge to aim for, i.e. `components.config.canvas_short_edge` — 768 for the released checkpoint.
+        max_pixels (`int`):
+            The area budget, i.e. `components.config.canvas_max_pixels` — `768 * 1344` for the released checkpoint.
 
     Returns:
         `tuple[int, int]`: the `(height, width)` of the canvas.
@@ -67,13 +71,13 @@ def resolve_canvas_size(aspect_width: float, aspect_height: float, canvas_multip
         )
 
     if ratio >= 1.0:
-        width, height = MINIMAX_H3_SHORT_EDGE * ratio, float(MINIMAX_H3_SHORT_EDGE)
+        width, height = short_edge * ratio, float(short_edge)
     else:
-        width, height = float(MINIMAX_H3_SHORT_EDGE), MINIMAX_H3_SHORT_EDGE / ratio
+        width, height = float(short_edge), short_edge / ratio
 
     area = width * height
-    if area > MINIMAX_H3_MAX_PIXELS:
-        scale = (MINIMAX_H3_MAX_PIXELS / area) ** 0.5
+    if area > max_pixels:
+        scale = (max_pixels / area) ** 0.5
         width, height = width * scale, height * scale
 
     multiple = canvas_multiple
