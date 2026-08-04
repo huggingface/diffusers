@@ -521,7 +521,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
 
       Supported workflows:
         - `t2va`: requires `prompt`
-        - `fl2va`: requires `prompt`, `image`
+        - `fl2va`: requires `prompt`, `image` or `prompt`, `last_image`
         - `ref2va`: requires `prompt`, `references`
 
       Components:
@@ -621,9 +621,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
     # without instantiating the blocks first.
     _workflow_map = {
         "t2va": {"prompt": True},
-        # either keyframe trigger selects the same blocks, and the pruned route serves first, last or both because
-        # the resize step handles any combination at runtime
-        "fl2va": {"prompt": True, "image": True},
+        "fl2va": ({"prompt": True, "image": True}, {"prompt": True, "last_image": True}),
         "ref2va": {"prompt": True, "references": True},
     }
 

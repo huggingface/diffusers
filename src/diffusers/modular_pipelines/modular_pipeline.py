@@ -1019,6 +1019,10 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             )
 
         trigger_inputs = self._workflow_map[workflow_name]
+        if isinstance(trigger_inputs, tuple):
+            # a tuple of trigger dicts lists alternative spellings of the same workflow (e.g. `image` or
+            # `last_image`); every spelling resolves the same blocks, so pruning uses the first
+            trigger_inputs = trigger_inputs[0]
         workflow_blocks = self.get_execution_blocks(**trigger_inputs)
 
         return workflow_blocks

@@ -902,7 +902,10 @@ def format_workflow(workflow_map):
     """Format a workflow map into a readable string representation.
 
     Args:
-        workflow_map: Dictionary mapping workflow names to trigger inputs
+        workflow_map:
+            Dictionary mapping workflow names to trigger inputs. A value is either one trigger dict, or a tuple of
+            trigger dicts listing alternative spellings of the same workflow (e.g. `image` or `last_image`), rendered
+            joined with "or".
 
     Returns:
         A formatted string representing all workflows
@@ -912,10 +915,11 @@ def format_workflow(workflow_map):
 
     lines = ["Supported workflows:"]
     for workflow_name, trigger_inputs in workflow_map.items():
-        required_inputs = [k for k, v in trigger_inputs.items() if v]
-        if required_inputs:
-            inputs_str = ", ".join(f"`{t}`" for t in required_inputs)
-            lines.append(f"  - `{workflow_name}`: requires {inputs_str}")
+        alternatives = trigger_inputs if isinstance(trigger_inputs, tuple) else (trigger_inputs,)
+        requires = [", ".join(f"`{t}`" for t, v in alternative.items() if v) for alternative in alternatives]
+        requires = [fragment for fragment in requires if fragment]
+        if requires:
+            lines.append(f"  - `{workflow_name}`: requires {' or '.join(requires)}")
         else:
             lines.append(f"  - `{workflow_name}`: default (no additional inputs required)")
 

@@ -515,6 +515,24 @@ class ModularPipelineTesterMixin:
                     f"{actual_block.__class__.__name__}, expected {expected_class_name}"
                 )
 
+        # a `_workflow_map` value is either one trigger dict or a tuple of trigger dicts — alternative spellings
+        # of the same workflow, which must all resolve the same blocks since `get_workflow` prunes with the first
+        for workflow_name, trigger_inputs in blocks._workflow_map.items():
+            if isinstance(trigger_inputs, dict):
+                continue
+            assert isinstance(trigger_inputs, tuple) and all(
+                isinstance(alternative, dict) for alternative in trigger_inputs
+            ), (
+                f"Workflow '{workflow_name}': a `_workflow_map` value must be a trigger dict or a tuple of "
+                f"trigger dicts, got {trigger_inputs!r}"
+            )
+            resolved = [list(blocks.get_execution_blocks(**alternative).sub_blocks) for alternative in trigger_inputs]
+            for alternative_blocks in resolved[1:]:
+                assert alternative_blocks == resolved[0], (
+                    f"Workflow '{workflow_name}': its trigger spellings resolve different blocks: "
+                    f"{resolved[0]} vs {alternative_blocks}"
+                )
+
     def test_workflow_defaults(self):
         if not getattr(self, "expected_workflow_defaults", None):
             pytest.skip("Skipping test as expected_workflow_defaults is not set")
