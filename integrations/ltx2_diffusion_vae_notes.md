@@ -82,26 +82,33 @@ with reshape/permute. Note the channel packing order is `(channel, width_offset,
 
 ## Converter
 
-`scripts/convert_ltx2_diffusion_vae_to_diffusers.py`. Rules taken from the reference's
-`DIFFUSION_VAE_DECODER_COMFY_KEYS_FILTER`:
+`scripts/convert_ltx2_to_diffusers.py --diffusion_vae`, alongside the existing `--vae`, rather than a second
+script: it is the same checkpoint, and the encoder half must go through the same rules as the conv VAE. The
+decoder rules are taken from the reference's `DIFFUSION_VAE_DECODER_COMFY_KEYS_FILTER`:
 
-* strip `vae.decoder.`; `t_embedder.mlp.0/2` → `t_embedder.timestep_embedder.linear_1/2` (the reference's
-  `t_embedder` *is* diffusers' `PixArtAlphaCombinedTimestepSizeEmbeddings`, saved under shorter names, so it
-  is reused rather than reimplemented);
+* `t_embedder.mlp.0/2` → `t_embedder.timestep_embedder.linear_1/2` (the reference's `t_embedder` *is*
+  diffusers' `PixArtAlphaCombinedTimestepSizeEmbeddings`, saved under shorter names, so it is reused rather
+  than reimplemented);
 * split the fused `qkv.{weight,bias}` into `to_q`/`to_k`/`to_v`; rename `attn.proj` → `attn.to_out.0` and
   `q_norm`/`k_norm` → `norm_q`/`norm_k`;
 * drop `coarse_*` preview heads; fold static AdaLN gates into the following Linear (`W ← g·W`) and drop them.
   **LTX-2.4's sft checkpoint carries no gates and no coarse params**, so those two rules no-op here; they are
   kept because gated (standalone distilled) checkpoints need them.
-* `per_channel_statistics` `mean-of-means`/`std-of-means` become the `latents_mean`/`latents_std` buffers.
 
-**Encoder weights *and* encoder config come from an already-converted VAE folder** (`--encoder-vae`), not from
-class defaults. The encoder is the same module, so its widths must match whatever that checkpoint was
-converted with — the real `block_out_channels` is `[256, 512, 1024, 1024]`, which is *not* the class default,
-and assuming otherwise produced size mismatches.
+**The `decoder.` half and everything else are split before renaming.** The other half — the encoder and
+`per_channel_statistics` (which becomes the `latents_mean`/`latents_std` buffers) — reuses
+`LTX_2_3_VIDEO_VAE_RENAME_DICT` unchanged. None of the diffusion decoder's parameter names collide with that
+dict's keys today, but splitting first makes that a property of the code rather than a coincidence.
 
-Result on `ltx-2.4-22b-sft-rc2.safetensors`: 309 raw decoder keys → **405 tensors, 0 missing, 0 unexpected**,
-1.47 GB bf16.
+**The encoder config is pinned explicitly in `get_ltx2_diffusion_video_vae_config`, not defaulted.** The real
+`block_out_channels` is `(256, 512, 1024, 1024)` and `layers_per_block` is `(4, 6, 4, 2, 2)`, neither of which
+is the class default (those are 2.0's), and assuming otherwise produced size mismatches. Those entries have to
+stay in sync with `get_ltx2_video_vae_config("2.4")` — same encoder, same widths.
+
+Result on `ltx-2.4-22b-sft-rc2.safetensors`: 309 raw decoder keys + 84 encoder keys + 2 statistics →
+**491 tensors, 0 missing, 0 unexpected**, 1.47 GB bf16. Verified **bitwise identical** to what the earlier
+standalone script produced (491/491 tensors equal, identical `config.json`), which is what licensed deleting
+it.
 
 ## Repo layout
 

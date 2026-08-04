@@ -12,6 +12,7 @@ from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor,
 from diffusers import (
     AutoencoderKLLTX2Audio,
     AutoencoderKLLTX2Video,
+    AutoencoderKLLTX2VideoDiffusionDecoder,
     FlowMatchEulerDiscreteScheduler,
     LTX2LatentUpsamplePipeline,
     LTX2Pipeline,
@@ -89,6 +90,28 @@ LTX_2_3_VIDEO_VAE_RENAME_DICT = {
     # Decoder extra blocks
     "up_blocks.7": "up_blocks.3.upsamplers.0",
     "up_blocks.8": "up_blocks.3",
+}
+
+# LTX-2.4's diffusion decoder replaces the conv decoder while keeping the same encoder, so only the
+# `decoder.*` half of the VAE checkpoint is renamed with these rules.
+LTX_2_4_DIFFUSION_DECODER_RENAME_DICT = {
+    # The original `t_embedder` *is* diffusers' `PixArtAlphaCombinedTimestepSizeEmbeddings`, saved under
+    # shorter names, so only its two Linears need renaming.
+    "t_embedder.mlp.0.": "t_embedder.timestep_embedder.linear_1.",
+    "t_embedder.mlp.2.": "t_embedder.timestep_embedder.linear_2.",
+    ".attn.proj.": ".attn.to_out.0.",
+    ".attn.q_norm.": ".attn.norm_q.",
+    ".attn.k_norm.": ".attn.norm_k.",
+}
+
+# Where a checkpoint carries static AdaLN gates, each is folded into the Linear it gates (W <- g * W) and
+# dropped, because the decoder's residuals are ungated. Maps a renamed parameter to its gate's suffix.
+LTX_2_4_DIFFUSION_DECODER_GATE_FOLD_TARGETS = {
+    ".attn.to_out.0.weight": ".gate_msa",
+    ".attn.to_out.0.bias": ".gate_msa",
+    ".mlp.w_down.weight": ".gate_mlp",
+    ".context_proj.weight": ".gate_ctx",
+    ".context_proj.bias": ".gate_ctx",
 }
 
 LTX_2_0_AUDIO_VAE_RENAME_DICT = {
@@ -835,6 +858,122 @@ def convert_ltx2_video_vae(
     return vae
 
 
+def get_ltx2_diffusion_video_vae_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    if version != "2.4":
+        raise ValueError(f"The diffusion video VAE decoder was introduced in LTX-2.4; got version {version!r}.")
+    # The encoder half is 2.4's conv VAE encoder, unchanged (its weights are byte identical to 2.3's), so
+    # those entries must stay in sync with `get_ltx2_video_vae_config("2.4")`.
+    config = {
+        "model_id": "Lightricks/LTX-2.4",
+        "diffusers_config": {
+            "in_channels": 3,
+            "out_channels": 3,
+            "latent_channels": 128,
+            "block_out_channels": (256, 512, 1024, 1024),
+            "down_block_types": (
+                "LTX2VideoDownBlock3D",
+                "LTX2VideoDownBlock3D",
+                "LTX2VideoDownBlock3D",
+                "LTX2VideoDownBlock3D",
+            ),
+            "layers_per_block": (4, 6, 4, 2, 2),
+            "spatio_temporal_scaling": (True, True, True, True),
+            "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+            "patch_size": 4,
+            "patch_size_t": 1,
+            "resnet_norm_eps": 1e-6,
+            "encoder_causal": True,
+            "encoder_spatial_padding_mode": "zeros",
+            "decoder_head_dim": 64,
+            "decoder_stage_channels": (2048, 1024, 512, 512, 256),
+            "decoder_stage_depths": (4, 6, 4, 2, 8),
+            "decoder_stage_kernels": ((3, 7, 7), (3, 7, 7), (3, 5, 5), (3, 5, 5)),
+            "decoder_upsample_strides": ((1, 2, 2), (2, 1, 1), (2, 2, 2), (2, 2, 2)),
+            "decoder_upsample_channel_reductions": (2, 2, 1, 2),
+            "decoder_stage5_kernel": (11, 11, 11),
+            "decoder_t_emb_dim": 384,
+            "decoder_timestep_scale_multiplier": 1000.0,
+            "decoder_model_output_type": "x0",
+            "decoder_num_inference_steps": 1,
+            "spatial_compression_ratio": 32,
+            "temporal_compression_ratio": 8,
+        },
+    }
+    return config, LTX_2_3_VIDEO_VAE_RENAME_DICT, LTX_2_0_VAE_SPECIAL_KEYS_REMAP
+
+
+def convert_ltx2_diffusion_video_vae(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
+    config, rename_dict, special_keys_remap = get_ltx2_diffusion_video_vae_config(version)
+    diffusers_config = config["diffusers_config"]
+
+    with init_empty_weights():
+        vae = AutoencoderKLLTX2VideoDiffusionDecoder.from_config(diffusers_config)
+
+    # The two halves of the checkpoint need different rules, so split them first: everything outside
+    # `decoder.` (the encoder and the per-channel statistics) goes through the conv VAE's remapping.
+    decoder_state_dict = {
+        key.removeprefix("decoder."): value for key, value in original_state_dict.items() if key.startswith("decoder.")
+    }
+    for key in list(original_state_dict.keys()):
+        if key.startswith("decoder."):
+            del original_state_dict[key]
+
+    for key in list(original_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in rename_dict.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        update_state_dict_inplace(original_state_dict, key, new_key)
+
+    for key in list(original_state_dict.keys()):
+        for special_key, handler_fn_inplace in special_keys_remap.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, original_state_dict)
+
+    gates = {
+        key: value
+        for key, value in decoder_state_dict.items()
+        if key.endswith((".gate_msa", ".gate_mlp", ".gate_ctx"))
+    }
+    for key, value in decoder_state_dict.items():
+        # Bundled preview heads are not part of the decoder. LTX-2.4's sft checkpoint carries neither these
+        # nor any gate, so both this and the fold below no-op on it; gated distilled checkpoints need them.
+        if key.startswith("coarse_") or ".coarse_" in key or key in gates:
+            continue
+
+        new_key = key[:]
+        for replace_key, rename_key in LTX_2_4_DIFFUSION_DECODER_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+
+        gated_leaf = next(
+            (leaf for leaf in LTX_2_4_DIFFUSION_DECODER_GATE_FOLD_TARGETS if new_key.endswith(leaf)), None
+        )
+        if gated_leaf is not None:
+            # The gate is a sibling of the Linear it gates, so it shares the block prefix.
+            gate = gates.get(new_key[: -len(gated_leaf)] + LTX_2_4_DIFFUSION_DECODER_GATE_FOLD_TARGETS[gated_leaf])
+            if gate is not None:
+                gate = gate.to(torch.float32)
+                folded = (gate.unsqueeze(1) if value.ndim == 2 else gate) * value.to(torch.float32)
+                value = folded.to(value.dtype)
+
+        # The checkpoint stores one fused `Linear(dim, 3 * dim)`; the model owns three separate projections.
+        if new_key.endswith((".qkv.weight", ".qkv.bias")):
+            leaf = "weight" if new_key.endswith(".weight") else "bias"
+            prefix = new_key[: -len(f"qkv.{leaf}")]
+            if value.shape[0] % 3 != 0:
+                raise ValueError(f"Fused QKV param {key!r} leading dim {value.shape[0]} is not divisible by 3.")
+            chunk = value.shape[0] // 3
+            original_state_dict[f"decoder.{prefix}to_q.{leaf}"] = value[:chunk].clone()
+            original_state_dict[f"decoder.{prefix}to_k.{leaf}"] = value[chunk : 2 * chunk].clone()
+            original_state_dict[f"decoder.{prefix}to_v.{leaf}"] = value[2 * chunk :].clone()
+            continue
+
+        original_state_dict[f"decoder.{new_key}"] = value
+
+    vae.load_state_dict(original_state_dict, strict=True, assign=True)
+    return vae
+
+
 def get_ltx2_audio_vae_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "2.0":
         config = {
@@ -1259,6 +1398,14 @@ def get_args():
         "--timestep_conditioning", action="store_true", help="Whether to add timestep condition to the video VAE model"
     )
     parser.add_argument("--vae", action="store_true", help="Whether to convert the video VAE model")
+    parser.add_argument(
+        "--diffusion_vae",
+        action="store_true",
+        help=(
+            "Whether to convert the LTX-2.4 diffusion-decoder video VAE, saved to a `vae_diffusion` subfolder "
+            "so `from_pretrained` keeps returning the conv decoder in `vae` by default"
+        ),
+    )
     parser.add_argument("--audio_vae", action="store_true", help="Whether to convert the audio VAE model")
     parser.add_argument("--dit", action="store_true", help="Whether to convert the DiT model")
     parser.add_argument("--connectors", action="store_true", help="Whether to convert the connector model")
@@ -1327,6 +1474,7 @@ def main(args):
     load_combined_models = any(
         [
             args.vae,
+            args.diffusion_vae,
             args.audio_vae,
             args.dit,
             args.vocoder,
@@ -1376,6 +1524,14 @@ def main(args):
         )
         if not args.full_pipeline and not args.upsample_pipeline:
             vae.to(vae_dtype).save_pretrained(os.path.join(args.output_path, "vae"))
+
+    if args.diffusion_vae:
+        if args.vae_filename is not None:
+            original_diffusion_vae_ckpt = load_hub_or_local_checkpoint(filename=args.vae_filename)
+        elif combined_ckpt is not None:
+            original_diffusion_vae_ckpt = get_model_state_dict_from_combined_ckpt(combined_ckpt, args.vae_prefix)
+        diffusion_vae = convert_ltx2_diffusion_video_vae(original_diffusion_vae_ckpt, version=args.version)
+        diffusion_vae.to(vae_dtype).save_pretrained(os.path.join(args.output_path, "vae_diffusion"))
 
     if args.audio_vae or args.full_pipeline:
         if args.audio_vae_filename is not None:
