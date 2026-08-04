@@ -455,6 +455,8 @@
         title: AutoencoderKLLTX2Audio
       - local: api/models/autoencoderkl_ltx_2
         title: AutoencoderKLLTX2Video
+      - local: api/models/autoencoderkl_ltx_2_diffusion_decoder
+        title: AutoencoderKLLTX2VideoDiffusionDecoder
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
       - local: api/models/autoencoderkl_magvit
