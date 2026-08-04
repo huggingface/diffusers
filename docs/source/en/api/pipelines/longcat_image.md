@@ -38,7 +38,7 @@ import diffusers
 from diffusers import LongCatImagePipeline
 
 weight_dtype = torch.bfloat16
-pipe = LongCatImagePipeline.from_pretrained("meituan-longcat/LongCat-Image", torch_dtype=torch.bfloat16 )
+pipe = LongCatImagePipeline.from_pretrained("meituan-longcat/LongCat-Image", dtype=torch.bfloat16 )
 pipe.to('cuda')
 # pipe.enable_model_cpu_offload()
 

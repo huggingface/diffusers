@@ -106,6 +106,16 @@ def _wan_i2v_map_fn(config_dict=None):
         return "WanImage2VideoModularPipeline"
 
 
+def _krea2_map_fn(config_dict=None):
+    if config_dict is None:
+        return "Krea2ModularPipeline"
+
+    if config_dict.get("is_distilled", False):
+        return "Krea2TurboModularPipeline"
+    else:
+        return "Krea2ModularPipeline"
+
+
 def _helios_pyramid_map_fn(config_dict=None):
     if config_dict is None:
         return "HeliosPyramidModularPipeline"
@@ -127,6 +137,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("flux2", _create_default_map_fn("Flux2ModularPipeline")),
         ("flux2-klein", _flux2_klein_map_fn),
         ("ideogram4", _create_default_map_fn("Ideogram4ModularPipeline")),
+        ("krea2", _krea2_map_fn),
         ("qwenimage", _create_default_map_fn("QwenImageModularPipeline")),
         ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
@@ -502,6 +513,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         for input_param in state_inputs:
             if input_param.name:
                 value = state.get(input_param.name)
+                if value is None:
+                    # if the value is None (not passed, or passed as None), the first block that reads it sets the
+                    # default at call time. For sequential blocks the default is already resolved at compile time
+                    # (first declaring block wins, see _get_inputs), but for conditional blocks the selected branch
+                    # is only known at runtime: disagreeing branch defaults merge to None (see combine_inputs) and
+                    # the block that actually runs applies its own declared default here
+                    value = input_param.default
                 if input_param.required and value is None:
                     raise ValueError(f"Required input '{input_param.name}' is missing")
                 elif value is not None or (value is None and input_param.name not in data):
@@ -2171,6 +2189,16 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         [`~DiffusionPipeline.enable_sequential_cpu_offload`] the execution device can only be inferred from
         Accelerate's module hooks.
         """
+        from ..hooks.group_offloading import _get_group_onload_device
+
+        for name, model in self.components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+            try:
+                return _get_group_onload_device(model)
+            except ValueError:
+                pass
+
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
                 continue

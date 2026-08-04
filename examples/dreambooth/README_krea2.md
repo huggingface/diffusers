@@ -16,7 +16,7 @@ The `train_dreambooth_lora_krea2.py` script shows how to implement the training 
 >
 > Architecturally, Krea 2 uses the Qwen-Image VAE, a 12B DiT (dense), and a Qwen3-VL text encoder with multi-layer feature aggregation.
 >
-> 📖 Read more here: Krea 2 release blog <!-- TODO: link to the Krea 2 release blog once it's published -->.
+> 📖 Read more here: [Krea 2 Technical Report](https://www.krea.ai/blog/krea-2-technical-report)
 
 ## Running locally with PyTorch
 
@@ -191,7 +191,7 @@ Train on RAW, then load your LoRA into **Turbo** for fast, high-quality generati
 import torch
 from diffusers import Krea2Pipeline
 
-pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", torch_dtype=torch.bfloat16)
+pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # Load your trained LoRA (trained on Krea 2 RAW)

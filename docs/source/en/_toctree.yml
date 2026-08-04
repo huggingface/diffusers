@@ -184,6 +184,8 @@
     title: NVIDIA ModelOpt
   - local: quantization/autoround
     title: AutoRound
+  - local: quantization/sdnq
+    title: SDNQ
   title: Quantization
 - isExpanded: false
   sections:
@@ -220,6 +222,8 @@
     title: Task recipes
   - local: using-diffusers/write_own_pipeline
     title: Understanding pipelines, models and schedulers
+  - local: using-diffusers/cli
+    title: Command line interface
   - local: community_projects
     title: Projects built with Diffusers
   - local: conceptual/philosophy
@@ -230,8 +234,6 @@
     title: How to contribute?
   - local: conceptual/ethical_guidelines
     title: Diffusers' Ethical Guidelines
-  - local: conceptual/evaluation
-    title: Evaluating Diffusion Models
   title: Resources
 - isExpanded: false
   sections:

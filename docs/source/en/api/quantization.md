@@ -38,6 +38,10 @@ Quantization techniques reduce memory and computational costs by representing we
 
 [[autodoc]] quantizers.quantization_config.QuantoConfig
 
+## SDNQConfig
+
+[[autodoc]] quantizers.quantization_config.SDNQConfig
+
 ## TorchAoConfig
 
 [[autodoc]] quantizers.quantization_config.TorchAoConfig
