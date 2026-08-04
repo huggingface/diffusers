@@ -1058,6 +1058,7 @@ class MellonPipelineConfig:
         inputs = []
         model_inputs = []
         outputs = []
+        required_inputs = []
 
         # Process block inputs
         for input_param in block.inputs:
@@ -1066,7 +1067,8 @@ class MellonPipelineConfig:
             if input_param.name in input_types:
                 input_param = copy.copy(input_param)
                 input_param.metadata = {"mellon": input_types[input_param.name]}
-            print(f" processing input: {input_param.name}, metadata: {input_param.metadata}")
+            if input_param.required:
+                required_inputs.append(input_param.name)
             inputs.append(input_param_to_mellon_param(input_param))
 
         # Process block outputs
@@ -1090,7 +1092,7 @@ class MellonPipelineConfig:
             "inputs": inputs,
             "model_inputs": model_inputs,
             "outputs": outputs,
-            "required_inputs": [],
+            "required_inputs": required_inputs,
             "required_model_inputs": [],
             "block_name": "custom",
         }

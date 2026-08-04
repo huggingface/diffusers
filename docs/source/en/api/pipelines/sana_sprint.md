@@ -54,7 +54,7 @@ text_encoder_8bit = AutoModel.from_pretrained(
     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers",
     subfolder="text_encoder",
     quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -62,14 +62,14 @@ transformer_8bit = SanaTransformer2DModel.from_pretrained(
     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 pipeline = SanaSprintPipeline.from_pretrained(
     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     device_map="balanced",
 )
 
@@ -97,7 +97,7 @@ image = load_image(
 
 pipe = SanaSprintImg2ImgPipeline.from_pretrained(
     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers", 
-    torch_dtype=torch.bfloat16)
+    dtype=torch.bfloat16)
 pipe.to("cuda")
 
 image = pipe(
