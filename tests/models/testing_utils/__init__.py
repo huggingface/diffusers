@@ -9,6 +9,8 @@ from .cache import (
     MagCacheTesterMixin,
     PyramidAttentionBroadcastConfigMixin,
     PyramidAttentionBroadcastTesterMixin,
+    ResilPhaseCacheConfigMixin,
+    ResilPhaseCacheTesterMixin,
     TaylorSeerCacheConfigMixin,
     TaylorSeerCacheTesterMixin,
 )
@@ -87,6 +89,8 @@ __all__ = [
     "NunchakuLiteTesterMixin",
     "PyramidAttentionBroadcastConfigMixin",
     "PyramidAttentionBroadcastTesterMixin",
+    "ResilPhaseCacheConfigMixin",
+    "ResilPhaseCacheTesterMixin",
     "TaylorSeerCacheConfigMixin",
     "TaylorSeerCacheTesterMixin",
     "QuantizationCompileTesterMixin",

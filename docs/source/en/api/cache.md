@@ -41,6 +41,12 @@ Cache methods speedup diffusion transformers by storing and reusing intermediate
 
 [[autodoc]] apply_taylorseer_cache
 
+## ResilPhaseCacheConfig
+
+[[autodoc]] ResilPhaseCacheConfig
+
+[[autodoc]] apply_resilphase_cache
+
 ## MagCacheConfig
 
 [[autodoc]] MagCacheConfig

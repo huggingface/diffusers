@@ -4,6 +4,7 @@ from .cache import (
     FirstBlockCacheTesterMixin,
     MagCacheTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
+    ResilPhaseCacheTesterMixin,
     TaylorSeerCacheTesterMixin,
 )
 from .common import BasePipelineTesterConfig, PipelineTesterMixin
@@ -32,6 +33,7 @@ __all__ = [
     "PyramidAttentionBroadcastTesterMixin",
     "FasterCacheTesterMixin",
     "FirstBlockCacheTesterMixin",
+    "ResilPhaseCacheTesterMixin",
     "TaylorSeerCacheTesterMixin",
     "MagCacheTesterMixin",
     "check_qkv_fused_layers_exist",

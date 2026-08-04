@@ -36,6 +36,7 @@ from ..testing_utils import (
     MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
+    ResilPhaseCacheTesterMixin,
     TaylorSeerCacheTesterMixin,
 )
 
@@ -351,6 +352,10 @@ class TestFluxPipelineFirstBlockCache(FluxPipelineTesterConfig, FirstBlockCacheT
 
 class TestFluxPipelineTaylorSeerCache(FluxPipelineTesterConfig, TaylorSeerCacheTesterMixin):
     """TaylorSeer cache tests for the Flux pipeline."""
+
+
+class TestFluxPipelineResilPhaseCache(FluxPipelineTesterConfig, ResilPhaseCacheTesterMixin):
+    """ResilPhase cache tests for the Flux pipeline."""
 
 
 class TestFluxPipelineMagCache(FluxPipelineTesterConfig, MagCacheTesterMixin):
