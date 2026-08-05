@@ -63,10 +63,9 @@ if is_torch_available():
 
 
 if is_torchao_available():
-    from torchao.dtypes import AffineQuantizedTensor
-    from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
+    from torchao.quantization import Int4Tensor, Int8Tensor
     from torchao.quantization.quant_primitives import MappingType
-    from torchao.utils import get_model_size_in_bytes
+    from torchao.utils import TorchAOBaseTensor, get_model_size_in_bytes
 
     if version.parse(importlib.metadata.version("torchao")) >= version.Version("0.9.0"):
         from torchao.quantization import Int8WeightOnlyConfig
@@ -316,9 +315,7 @@ class TorchAoTest(unittest.TestCase):
         )
 
         weight = quantized_model.transformer_blocks[0].ff.net[2].weight
-        self.assertTrue(isinstance(weight, AffineQuantizedTensor))
-        self.assertEqual(weight.quant_min, 0)
-        self.assertEqual(weight.quant_max, 15)
+        self.assertTrue(isinstance(weight, Int4Tensor))
 
     def test_device_map(self):
         """
@@ -378,7 +375,7 @@ class TorchAoTest(unittest.TestCase):
                 if "transformer_blocks.0" in device_map:
                     self.assertTrue(isinstance(weight, nn.Parameter))
                 else:
-                    self.assertTrue(isinstance(weight, AffineQuantizedTensor))
+                    self.assertTrue(isinstance(weight, Int4Tensor))
 
                 output = quantized_model(**inputs)[0]
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
@@ -399,7 +396,7 @@ class TorchAoTest(unittest.TestCase):
                 if "transformer_blocks.0" in device_map:
                     self.assertTrue(isinstance(weight, nn.Parameter))
                 else:
-                    self.assertTrue(isinstance(weight, AffineQuantizedTensor))
+                    self.assertTrue(isinstance(weight, Int4Tensor))
 
                 output = quantized_model(**inputs)[0]
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
@@ -416,11 +413,11 @@ class TorchAoTest(unittest.TestCase):
 
         unquantized_layer = quantized_model_with_not_convert.transformer_blocks[0].ff.net[2]
         self.assertTrue(isinstance(unquantized_layer, torch.nn.Linear))
-        self.assertFalse(isinstance(unquantized_layer.weight, AffineQuantizedTensor))
+        self.assertFalse(isinstance(unquantized_layer.weight, Int8Tensor))
         self.assertEqual(unquantized_layer.weight.dtype, torch.bfloat16)
 
         quantized_layer = quantized_model_with_not_convert.proj_out
-        self.assertTrue(isinstance(quantized_layer.weight, AffineQuantizedTensor))
+        self.assertTrue(isinstance(quantized_layer.weight, Int8Tensor))
 
         quantization_config = TorchAoConfig("int8_weight_only")
         quantized_model = FluxTransformer2DModel.from_pretrained(
@@ -500,18 +497,18 @@ class TorchAoTest(unittest.TestCase):
 
             # Will not quantized all the layers by default due to the model weights shapes not being divisible by group_size=64
             for block in transformer_int4wo.transformer_blocks:
-                self.assertTrue(isinstance(block.ff.net[2].weight, AffineQuantizedTensor))
-                self.assertTrue(isinstance(block.ff_context.net[2].weight, AffineQuantizedTensor))
+                self.assertTrue(isinstance(block.ff.net[2].weight, Int4Tensor))
+                self.assertTrue(isinstance(block.ff_context.net[2].weight, Int4Tensor))
 
             # Will quantize all the linear layers except x_embedder
             for name, module in transformer_int4wo_gs32.named_modules():
                 if isinstance(module, nn.Linear) and name not in ["x_embedder"]:
-                    self.assertTrue(isinstance(module.weight, AffineQuantizedTensor))
+                    self.assertTrue(isinstance(module.weight, Int4Tensor))
 
             # Will quantize all the linear layers
             for module in transformer_int8wo.modules():
                 if isinstance(module, nn.Linear):
-                    self.assertTrue(isinstance(module.weight, AffineQuantizedTensor))
+                    self.assertTrue(isinstance(module.weight, Int8Tensor))
 
             total_int4wo = get_model_size_in_bytes(transformer_int4wo)
             total_int4wo_gs32 = get_model_size_in_bytes(transformer_int4wo_gs32)
@@ -638,7 +635,7 @@ class TorchAoSerializationTest(unittest.TestCase):
         output = quantized_model(**inputs)[0]
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
         weight = quantized_model.transformer_blocks[0].ff.net[2].weight
-        self.assertTrue(isinstance(weight, (AffineQuantizedTensor, LinearActivationQuantizedTensor)))
+        self.assertTrue(isinstance(weight, TorchAOBaseTensor))
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
     def _check_serialization_expected_slice(self, quant_method, quant_method_kwargs, expected_slice, device):
@@ -654,11 +651,7 @@ class TorchAoSerializationTest(unittest.TestCase):
         output = loaded_quantized_model(**inputs)[0]
 
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-        self.assertTrue(
-            isinstance(
-                loaded_quantized_model.proj_out.weight, (AffineQuantizedTensor, LinearActivationQuantizedTensor)
-            )
-        )
+        self.assertTrue(isinstance(loaded_quantized_model.proj_out.weight, TorchAOBaseTensor))
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
     def test_int_a8w8_accelerator(self):
@@ -808,7 +801,7 @@ class SlowTorchAoTests(unittest.TestCase):
         pipe.enable_model_cpu_offload()
 
         weight = pipe.transformer.transformer_blocks[0].ff.net[2].weight
-        self.assertTrue(isinstance(weight, (AffineQuantizedTensor, LinearActivationQuantizedTensor)))
+        self.assertTrue(isinstance(weight, TorchAOBaseTensor))
 
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0].flatten()
@@ -846,7 +839,7 @@ class SlowTorchAoTests(unittest.TestCase):
         pipe.enable_model_cpu_offload()
 
         weight = pipe.transformer.x_embedder.weight
-        self.assertTrue(isinstance(weight, AffineQuantizedTensor))
+        self.assertTrue(isinstance(weight, Int8Tensor))
 
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0].flatten()[:128]
@@ -865,7 +858,7 @@ class SlowTorchAoTests(unittest.TestCase):
             pipe.enable_model_cpu_offload()
 
         weight = transformer.x_embedder.weight
-        self.assertTrue(isinstance(weight, AffineQuantizedTensor))
+        self.assertTrue(isinstance(weight, Int8Tensor))
 
         loaded_output = pipe(**inputs)[0].flatten()[:128]
         # Seems to require higher tolerance depending on which machine it is being run.
@@ -953,7 +946,7 @@ class SlowTorchAoPreserializedModelTests(unittest.TestCase):
         # Verify that all linear layer weights are quantized
         for name, module in pipe.transformer.named_modules():
             if isinstance(module, nn.Linear):
-                self.assertTrue(isinstance(module.weight, AffineQuantizedTensor))
+                self.assertTrue(isinstance(module.weight, Int8Tensor))
 
         # Verify outputs match expected slice
         inputs = self.get_dummy_inputs(torch_device)

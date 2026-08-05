@@ -624,21 +624,50 @@ class TorchAoConfig(QuantizationConfigMixin):
 
         if is_torchao_available():
             # TODO(aryan): Support sparsify
+            # NOTE: the older snake_case quantization functions (e.g. ``int4_weight_only``,
+            # ``float8_weight_only``) were removed from torchao in favor of ``AOBaseConfig``
+            # subclasses. We build the same string -> config mapping using those config classes.
             from torchao.quantization import (
-                float8_dynamic_activation_float8_weight,
-                float8_static_activation_float8_weight,
-                float8_weight_only,
-                int4_weight_only,
-                int8_dynamic_activation_int4_weight,
-                int8_dynamic_activation_int8_weight,
-                int8_weight_only,
-                uintx_weight_only,
+                Float8DynamicActivationFloat8WeightConfig,
+                Float8StaticActivationFloat8WeightConfig,
+                Float8WeightOnlyConfig,
+                Int4WeightOnlyConfig,
+                Int8DynamicActivationInt8WeightConfig,
+                Int8DynamicActivationIntxWeightConfig,
+                Int8WeightOnlyConfig,
+                IntxWeightOnlyConfig,
             )
 
             if is_torchao_version("<=", "0.14.1"):
                 from torchao.quantization import fpx_weight_only
             # TODO(aryan): Add a note on how to use PerAxis and PerGroup observers
-            from torchao.quantization.observer import PerRow, PerTensor
+            from torchao.quantization import PerGroup, PerRow, PerTensor
+
+            # The ``IntxWeightOnlyConfig`` / ``Int8DynamicActivationIntxWeightConfig`` classes that
+            # replace the old ``uintx_weight_only`` / ``int8_dynamic_activation_int4_weight`` helpers
+            # take a ``granularity`` object rather than the ``group_size`` int the old helpers
+            # accepted. This factory keeps the ``group_size`` kwarg working by translating it to a
+            # ``PerGroup`` granularity, and exposes a ``__signature__`` advertising ``group_size``
+            # plus the config's own kwargs so ``TorchAoConfig``'s kwarg validation still works.
+            def _make_intx_config_adapter(config_cls, granularity_param, **fixed_kwargs):
+                def adapter(group_size=None, **kwargs):
+                    if group_size is not None:
+                        kwargs[granularity_param] = PerGroup(group_size)
+                    return config_cls(**fixed_kwargs, **kwargs)
+
+                params = [inspect.Parameter("group_size", inspect.Parameter.KEYWORD_ONLY, default=None)]
+                for name, param in inspect.signature(config_cls).parameters.items():
+                    if name in fixed_kwargs or name == granularity_param:
+                        continue
+                    params.append(param.replace(kind=inspect.Parameter.KEYWORD_ONLY))
+                adapter.__signature__ = inspect.Signature(params)
+                return adapter
+
+            # int4 weight + int8 activation
+            int8_dynamic_activation_int4_weight = _make_intx_config_adapter(
+                Int8DynamicActivationIntxWeightConfig, "weight_granularity", weight_dtype=torch.int4
+            )
+            intx_weight_only = _make_intx_config_adapter(IntxWeightOnlyConfig, "granularity")
 
             def generate_float8dq_types(dtype: torch.dtype):
                 name = "e5m2" if dtype == torch.float8_e5m2 else "e4m3"
@@ -648,7 +677,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                     # Note: Activation and Weights cannot have different granularities
                     granularity_name = "tensor" if granularity_cls is PerTensor else "row"
                     types[f"float8dq_{name}_{granularity_name}"] = partial(
-                        float8_dynamic_activation_float8_weight,
+                        Float8DynamicActivationFloat8WeightConfig,
                         activation_dtype=dtype,
                         weight_dtype=dtype,
                         granularity=(granularity_cls(), granularity_cls()),
@@ -675,8 +704,8 @@ class TorchAoConfig(QuantizationConfigMixin):
 
             INT4_QUANTIZATION_TYPES = {
                 # int4 weight + bfloat16/float16 activation
-                "int4wo": int4_weight_only,
-                "int4_weight_only": int4_weight_only,
+                "int4wo": Int4WeightOnlyConfig,
+                "int4_weight_only": Int4WeightOnlyConfig,
                 # int4 weight + int8 activation
                 "int4dq": int8_dynamic_activation_int4_weight,
                 "int8_dynamic_activation_int4_weight": int8_dynamic_activation_int4_weight,
@@ -684,28 +713,28 @@ class TorchAoConfig(QuantizationConfigMixin):
 
             INT8_QUANTIZATION_TYPES = {
                 # int8 weight + bfloat16/float16 activation
-                "int8wo": int8_weight_only,
-                "int8_weight_only": int8_weight_only,
+                "int8wo": Int8WeightOnlyConfig,
+                "int8_weight_only": Int8WeightOnlyConfig,
                 # int8 weight + int8 activation
-                "int8dq": int8_dynamic_activation_int8_weight,
-                "int8_dynamic_activation_int8_weight": int8_dynamic_activation_int8_weight,
+                "int8dq": Int8DynamicActivationInt8WeightConfig,
+                "int8_dynamic_activation_int8_weight": Int8DynamicActivationInt8WeightConfig,
             }
 
             # TODO(aryan): handle torch 2.2/2.3
             FLOATX_QUANTIZATION_TYPES = {
                 # float8_e5m2 weight + bfloat16/float16 activation
-                "float8wo": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
-                "float8_weight_only": float8_weight_only,
-                "float8wo_e5m2": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
+                "float8wo": partial(Float8WeightOnlyConfig, weight_dtype=torch.float8_e5m2),
+                "float8_weight_only": Float8WeightOnlyConfig,
+                "float8wo_e5m2": partial(Float8WeightOnlyConfig, weight_dtype=torch.float8_e5m2),
                 # float8_e4m3 weight + bfloat16/float16 activation
-                "float8wo_e4m3": partial(float8_weight_only, weight_dtype=torch.float8_e4m3fn),
+                "float8wo_e4m3": partial(Float8WeightOnlyConfig, weight_dtype=torch.float8_e4m3fn),
                 # float8_e5m2 weight + float8 activation (dynamic)
-                "float8dq": float8_dynamic_activation_float8_weight,
-                "float8_dynamic_activation_float8_weight": float8_dynamic_activation_float8_weight,
+                "float8dq": Float8DynamicActivationFloat8WeightConfig,
+                "float8_dynamic_activation_float8_weight": Float8DynamicActivationFloat8WeightConfig,
                 # ===== Matrix multiplication is not supported in float8_e5m2 so the following errors out.
                 # However, changing activation_dtype=torch.float8_e4m3 might work here =====
                 # "float8dq_e5m2": partial(
-                #     float8_dynamic_activation_float8_weight,
+                #     Float8DynamicActivationFloat8WeightConfig,
                 #     activation_dtype=torch.float8_e5m2,
                 #     weight_dtype=torch.float8_e5m2,
                 # ),
@@ -713,13 +742,13 @@ class TorchAoConfig(QuantizationConfigMixin):
                 # ===== =====
                 # float8_e4m3 weight + float8 activation (dynamic)
                 "float8dq_e4m3": partial(
-                    float8_dynamic_activation_float8_weight,
+                    Float8DynamicActivationFloat8WeightConfig,
                     activation_dtype=torch.float8_e4m3fn,
                     weight_dtype=torch.float8_e4m3fn,
                 ),
                 **generate_float8dq_types(torch.float8_e4m3fn),
                 # float8 weight + float8 activation (static)
-                "float8_static_activation_float8_weight": float8_static_activation_float8_weight,
+                "float8_static_activation_float8_weight": Float8StaticActivationFloat8WeightConfig,
             }
 
             if is_torchao_version("<=", "0.14.1"):
@@ -729,16 +758,19 @@ class TorchAoConfig(QuantizationConfigMixin):
                 FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(6))
                 FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(7))
 
+            # The old ``uintx_weight_only`` (unsigned) helper is replaced by
+            # ``IntxWeightOnlyConfig``, which expresses low-bit integer weights via the
+            # signed ``torch.intN`` dtypes.
             UINTX_QUANTIZATION_DTYPES = {
-                "uintx_weight_only": uintx_weight_only,
-                "uint1wo": partial(uintx_weight_only, dtype=torch.uint1),
-                "uint2wo": partial(uintx_weight_only, dtype=torch.uint2),
-                "uint3wo": partial(uintx_weight_only, dtype=torch.uint3),
-                "uint4wo": partial(uintx_weight_only, dtype=torch.uint4),
-                "uint5wo": partial(uintx_weight_only, dtype=torch.uint5),
-                "uint6wo": partial(uintx_weight_only, dtype=torch.uint6),
-                "uint7wo": partial(uintx_weight_only, dtype=torch.uint7),
-                # "uint8wo": partial(uintx_weight_only, dtype=torch.uint8),  # uint8 quantization is not supported
+                "uintx_weight_only": intx_weight_only,
+                "uint1wo": partial(intx_weight_only, weight_dtype=torch.int1),
+                "uint2wo": partial(intx_weight_only, weight_dtype=torch.int2),
+                "uint3wo": partial(intx_weight_only, weight_dtype=torch.int3),
+                "uint4wo": partial(intx_weight_only, weight_dtype=torch.int4),
+                "uint5wo": partial(intx_weight_only, weight_dtype=torch.int5),
+                "uint6wo": partial(intx_weight_only, weight_dtype=torch.int6),
+                "uint7wo": partial(intx_weight_only, weight_dtype=torch.int7),
+                # "uint8wo": partial(intx_weight_only, weight_dtype=torch.int8),  # uint8 quantization is not supported
             }
 
             QUANTIZATION_TYPES = {}
@@ -774,31 +806,6 @@ class TorchAoConfig(QuantizationConfigMixin):
         else:
             methods = self._get_torchao_quant_type_to_method()
             quant_type_kwargs = self.quant_type_kwargs.copy()
-            if (
-                not torch.cuda.is_available()
-                and is_torchao_available()
-                and self.quant_type == "int4_weight_only"
-                and version.parse(importlib.metadata.version("torchao")) >= version.parse("0.8.0")
-                and quant_type_kwargs.get("layout", None) is None
-            ):
-                if torch.xpu.is_available():
-                    if version.parse(importlib.metadata.version("torchao")) >= version.parse(
-                        "0.11.0"
-                    ) and version.parse(importlib.metadata.version("torch")) > version.parse("2.7.9"):
-                        from torchao.dtypes import Int4XPULayout
-                        from torchao.quantization.quant_primitives import ZeroPointDomain
-
-                        quant_type_kwargs["layout"] = Int4XPULayout()
-                        quant_type_kwargs["zero_point_domain"] = ZeroPointDomain.INT
-                    else:
-                        raise ValueError(
-                            "TorchAoConfig requires torchao >= 0.11.0 and torch >= 2.8.0 for XPU support. Please upgrade the version or use run on CPU with the cpu version pytorch."
-                        )
-                else:
-                    from torchao.dtypes import Int4CPULayout
-
-                    quant_type_kwargs["layout"] = Int4CPULayout()
-
             return methods[self.quant_type](**quant_type_kwargs)
 
     def __repr__(self):

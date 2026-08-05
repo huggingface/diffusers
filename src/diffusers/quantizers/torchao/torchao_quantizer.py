@@ -84,30 +84,7 @@ def _update_torch_safe_globals():
         (torch.uint6, "torch.uint6"),
         (torch.uint7, "torch.uint7"),
     ]
-    try:
-        from torchao.dtypes import NF4Tensor
-        from torchao.dtypes.uintx.uintx_layout import UintxAQTTensorImpl, UintxTensor
-
-        safe_globals.extend([UintxTensor, UintxAQTTensorImpl, NF4Tensor])
-
-        # note: is_torchao_version(">=", "0.16.0") does not work correctly
-        # with torchao nightly, so using a ">" check which does work correctly
-        if is_torchao_version(">", "0.15.0"):
-            pass
-        else:
-            from torchao.dtypes.floatx.float8_layout import Float8AQTTensorImpl
-            from torchao.dtypes.uintx.uint4_layout import UInt4Tensor
-
-            safe_globals.extend([UInt4Tensor, Float8AQTTensorImpl])
-
-    except (ImportError, ModuleNotFoundError) as e:
-        logger.warning(
-            "Unable to import `torchao` Tensor objects. This may affect loading checkpoints serialized with `torchao`"
-        )
-        logger.debug(e)
-
-    finally:
-        torch.serialization.add_safe_globals(safe_globals=safe_globals)
+    torch.serialization.add_safe_globals(safe_globals=safe_globals)
 
 
 if (
@@ -134,19 +111,10 @@ def fuzzy_match_size(config_name: str) -> Optional[str]:
     return None
 
 
-def _quantization_type(weight):
-    from torchao.dtypes import AffineQuantizedTensor
-    from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
-
-    if isinstance(weight, AffineQuantizedTensor):
-        return f"{weight.__class__.__name__}({weight._quantization_type()})"
-
-    if isinstance(weight, LinearActivationQuantizedTensor):
-        return f"{weight.__class__.__name__}(activation={weight.input_quant_func}, weight={_quantization_type(weight.original_weight_tensor)})"
-
-
 def _linear_extra_repr(self):
-    weight = _quantization_type(self.weight)
+    from torchao.utils import TorchAOBaseTensor
+
+    weight = self.weight.__class__.__name__ if isinstance(self.weight, TorchAOBaseTensor) else None
     if weight is None:
         return f"in_features={self.weight.shape[1]}, out_features={self.weight.shape[0]}, weight=None"
     else:
@@ -313,12 +281,12 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
         if self.pre_quantized:
             # If we're loading pre-quantized weights, replace the repr of linear layers for pretty printing info
-            # about AffineQuantizedTensor
+            # about the quantized tensor type
             module._parameters[tensor_name] = torch.nn.Parameter(param_value.to(device=target_device))
             if isinstance(module, nn.Linear):
                 module.extra_repr = types.MethodType(_linear_extra_repr, module)
         else:
-            # As we perform quantization here, the repr of linear layers is that of AQT, so we don't have to do it ourselves
+            # As we perform quantization here, the repr of linear layers is set by TorchAO, so we don't have to do it ourselves
             module._parameters[tensor_name] = torch.nn.Parameter(param_value).to(device=target_device)
             quantize_(module, self.quantization_config.get_apply_tensor_subclass())
 
