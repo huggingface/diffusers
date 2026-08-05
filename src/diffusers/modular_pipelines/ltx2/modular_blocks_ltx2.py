@@ -98,6 +98,65 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
 
 
 # auto_docstring
+class LTX2TextConditioningStep(SequentialPipelineBlocks):
+    """
+    Text-conditioning stage for LTX-2.X: encodes the prompt(s), expands them per prompt (`num_videos_per_prompt`), then
+    runs the text connectors to produce the video/audio-branch connector embeddings the denoiser consumes.
+
+      Components:
+          text_encoder (`PreTrainedModel`) tokenizer (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`)
+
+      Inputs:
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
+          max_sequence_length (`int`, *optional*, defaults to 1024):
+              Maximum sequence length for prompt encoding.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+      Outputs:
+          prompt_embeds (`Tensor`):
+              Packed per-layer Gemma hidden states for the prompt.
+          prompt_attention_mask (`Tensor`):
+              Binary attention mask for `prompt_embeds`.
+          negative_prompt_embeds (`Tensor`):
+              Packed per-layer Gemma hidden states for the negative prompt.
+          negative_prompt_attention_mask (`Tensor`):
+              Binary attention mask for `negative_prompt_embeds`.
+          batch_size (`int`):
+              TODO: Add description.
+          dtype (`dtype`):
+              TODO: Add description.
+          connector_prompt_embeds (`Tensor`):
+              Video-branch text conditioning (cond).
+          connector_audio_prompt_embeds (`Tensor`):
+              Audio-branch text conditioning (cond).
+          connector_attention_mask (`Tensor`):
+              Binary text attention mask (cond).
+          negative_connector_prompt_embeds (`Tensor`):
+              Video-branch text conditioning (uncond).
+          negative_connector_audio_prompt_embeds (`Tensor`):
+              Audio-branch text conditioning (uncond).
+          negative_connector_attention_mask (`Tensor`):
+              Binary text attention mask (uncond).
+    """
+
+    model_name = "ltx2"
+    block_classes = [LTX2TextEncoderStep, LTX2TextInputStep, LTX2TextConnectorStep]
+    block_names = ["text_encoder", "text_input", "connectors"]
+
+    @property
+    def description(self):
+        return (
+            "Text-conditioning stage for LTX-2.X: encodes the prompt(s), expands them per prompt "
+            "(`num_videos_per_prompt`), then runs the text connectors to produce the video/audio-branch "
+            "connector embeddings the denoiser consumes."
+        )
+
+
+# auto_docstring
 class LTX2AutoDurationStep(ConditionalPipelineBlocks):
     """
     Conditional duration-prediction step, run only when `num_frames` is an `LTX2AutoDuration` request.
@@ -138,6 +197,45 @@ class LTX2AutoDurationStep(ConditionalPipelineBlocks):
             "Conditional duration-prediction step, run only when `num_frames` is an `LTX2AutoDuration` request.\n"
             " - `LTX2DurationStep` predicts `num_frames` from the connector text conditioning via the `duration_head`.\n"
             " - Skipped when `num_frames` is an integer (or not an `LTX2AutoDuration`)."
+        )
+
+
+# auto_docstring
+class LTX2AutoVaeEncoderStep(AutoPipelineBlocks):
+    """
+    VAE encoder step that encodes the reference `image` into latents for image-to-video.
+       - `LTX2VaeEncoderStep` runs when `image` is provided.
+       - Skipped otherwise.
+
+      Components:
+          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`)
+
+      Inputs:
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          height (`int`, *optional*, defaults to 512):
+              The height in pixels of the generated image.
+          width (`int`, *optional*, defaults to 704):
+              The width in pixels of the generated image.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+      Outputs:
+          image_latents (`Tensor`):
+              Normalized image latents (a single latent frame) for image-to-video conditioning.
+    """
+
+    model_name = "ltx2"
+    block_classes = [LTX2VaeEncoderStep]
+    block_names = ["vae_encoder"]
+    block_trigger_inputs = ["image"]
+
+    @property
+    def description(self):
+        return (
+            "VAE encoder step that encodes the reference `image` into latents for image-to-video.\n"
+            " - `LTX2VaeEncoderStep` runs when `image` is provided.\n"
+            " - Skipped otherwise."
         )
 
 
@@ -324,45 +422,6 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 
 
 # auto_docstring
-class LTX2AutoVaeEncoderStep(AutoPipelineBlocks):
-    """
-    VAE encoder step that encodes the reference `image` into latents for image-to-video.
-       - `LTX2VaeEncoderStep` runs when `image` is provided.
-       - Skipped otherwise.
-
-      Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`)
-
-      Inputs:
-          image (`Image | list`, *optional*):
-              Reference image(s) for denoising. Can be a single image or list of images.
-          height (`int`, *optional*, defaults to 512):
-              The height in pixels of the generated image.
-          width (`int`, *optional*, defaults to 704):
-              The width in pixels of the generated image.
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
-
-      Outputs:
-          image_latents (`Tensor`):
-              Normalized image latents (a single latent frame) for image-to-video conditioning.
-    """
-
-    model_name = "ltx2"
-    block_classes = [LTX2VaeEncoderStep]
-    block_names = ["vae_encoder"]
-    block_trigger_inputs = ["image"]
-
-    @property
-    def description(self):
-        return (
-            "VAE encoder step that encodes the reference `image` into latents for image-to-video.\n"
-            " - `LTX2VaeEncoderStep` runs when `image` is provided.\n"
-            " - Skipped otherwise."
-        )
-
-
-# auto_docstring
 class LTX2AutoCoreDenoiseStep(AutoPipelineBlocks):
     """
     Auto denoise block that selects the workflow based on inputs.
@@ -445,6 +504,65 @@ class LTX2AutoCoreDenoiseStep(AutoPipelineBlocks):
 
 
 # auto_docstring
+class LTX2DecoderStep(SequentialPipelineBlocks):
+    """
+    Decode stage: VAE-decodes the video latents and vocodes the audio latents (or returns latents).
+
+      Components:
+          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
+          vocoder (`LTX2Vocoder`)
+
+      Inputs:
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+          height (`int`, *optional*, defaults to 512):
+              The height in pixels of the generated image.
+          width (`int`, *optional*, defaults to 704):
+              The width in pixels of the generated image.
+          num_frames (`int`, *optional*, defaults to 121):
+              The number of frames in the generated video.
+          decode_timestep (`None`, *optional*, defaults to 0.0):
+              The timestep at which the VAE decodes the final latents.
+          decode_noise_scale (`None`, *optional*):
+              Noise interpolation factor applied to the latents at the decode timestep.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          dtype (`dtype`):
+              The dtype of the model inputs, can be generated in input step.
+          audio_latents (`Tensor`):
+              Denoised audio latents.
+          audio_num_frames (`int`):
+              Number of audio latent frames, used to unpack the audio latent sequence.
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+          audio (`Tensor`):
+              The generated audio waveform.
+    """
+
+    model_name = "ltx2"
+    block_classes = [LTX2VaeDecoderStep, LTX2AudioDecoderStep]
+    block_names = ["video_decode", "audio_decode"]
+
+    @property
+    def description(self):
+        return "Decode stage: VAE-decodes the video latents and vocodes the audio latents (or returns latents)."
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam.template("videos"),
+            OutputParam("audio", type_hint=torch.Tensor, description="The generated audio waveform."),
+        ]
+
+
+# auto_docstring
 class LTX2Blocks(SequentialPipelineBlocks):
     """
     Modular pipeline blocks for LTX-2 text-to-video (joint video + audio).
@@ -508,15 +626,12 @@ class LTX2Blocks(SequentialPipelineBlocks):
 
     model_name = "ltx2"
     block_classes = [
-        LTX2TextEncoderStep,
-        LTX2TextInputStep,
-        LTX2TextConnectorStep,
+        LTX2TextConditioningStep,
         LTX2AutoDurationStep,
         LTX2CoreDenoiseStep,
-        LTX2VaeDecoderStep,
-        LTX2AudioDecoderStep,
+        LTX2DecoderStep,
     ]
-    block_names = ["text_encoder", "text_input", "connectors", "duration", "denoise", "video_decode", "audio_decode"]
+    block_names = ["text_encoder", "duration", "denoise", "decode"]
 
     @property
     def description(self):
@@ -598,25 +713,13 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
 
     model_name = "ltx2"
     block_classes = [
-        LTX2TextEncoderStep,
-        LTX2TextInputStep,
-        LTX2TextConnectorStep,
+        LTX2TextConditioningStep,
         LTX2AutoDurationStep,
         LTX2AutoVaeEncoderStep,
         LTX2Image2VideoCoreDenoiseStep,
-        LTX2VaeDecoderStep,
-        LTX2AudioDecoderStep,
+        LTX2DecoderStep,
     ]
-    block_names = [
-        "text_encoder",
-        "text_input",
-        "connectors",
-        "duration",
-        "vae_encoder",
-        "denoise",
-        "video_decode",
-        "audio_decode",
-    ]
+    block_names = ["text_encoder", "duration", "vae_encoder", "denoise", "decode"]
 
     @property
     def description(self):
@@ -714,26 +817,13 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
     model_name = "ltx2"
     block_classes = [
         LTX2AutoPromptEnhancerStep,
-        LTX2TextEncoderStep,
-        LTX2TextInputStep,
-        LTX2TextConnectorStep,
+        LTX2TextConditioningStep,
         LTX2AutoDurationStep,
         LTX2AutoVaeEncoderStep,
         LTX2AutoCoreDenoiseStep,
-        LTX2VaeDecoderStep,
-        LTX2AudioDecoderStep,
+        LTX2DecoderStep,
     ]
-    block_names = [
-        "prompt_enhancer",
-        "text_encoder",
-        "text_input",
-        "connectors",
-        "duration",
-        "vae_encoder",
-        "denoise",
-        "video_decode",
-        "audio_decode",
-    ]
+    block_names = ["prompt_enhancer", "text_encoder", "duration", "vae_encoder", "denoise", "decode"]
     _workflow_map = {
         "text2video": {"prompt": True},
         "image2video": {"image": True, "prompt": True},
