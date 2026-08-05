@@ -148,8 +148,11 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
             InputParam(
                 "enable_prompt_enhancement",
                 type_hint=bool,
-                default=False,
-                description="Trigger for `LTX2AutoPromptEnhancerStep`; the enhancer runs only when this is truthy.",
+                default=None,
+                description=(
+                    "Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` "
+                    "component is loaded (LTX-2.4); `True`/`False` force it on/off."
+                ),
             ),
             InputParam(
                 "system_prompt",
@@ -187,6 +190,19 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+
+        enable = block_state.enable_prompt_enhancement
+        if enable is None:
+            enable = getattr(components, "prompt_enhancer", None) is not None
+        if not enable:
+            self.set_block_state(state, block_state)  # leave prompt unchanged
+            return components, state
+        if getattr(components, "prompt_enhancer", None) is None:
+            raise ValueError(
+                "`enable_prompt_enhancement=True` but no `prompt_enhancer` component is loaded. Load a "
+                "`prompt_enhancer` (and `processor`), or set `enable_prompt_enhancement=False`."
+            )
+
         system_prompt = block_state.system_prompt or LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT
 
         block_state.prompt = _enhance_prompt(
@@ -230,8 +246,11 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
             InputParam(
                 "enable_prompt_enhancement",
                 type_hint=bool,
-                default=False,
-                description="Trigger for `LTX2AutoPromptEnhancerStep`; the enhancer runs only when this is truthy.",
+                default=None,
+                description=(
+                    "Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` "
+                    "component is loaded (LTX-2.4); `True`/`False` force it on/off."
+                ),
             ),
             InputParam(
                 "system_prompt",
@@ -269,6 +288,19 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+
+        enable = block_state.enable_prompt_enhancement
+        if enable is None:
+            enable = getattr(components, "prompt_enhancer", None) is not None
+        if not enable:
+            self.set_block_state(state, block_state)  # leave prompt unchanged
+            return components, state
+        if getattr(components, "prompt_enhancer", None) is None:
+            raise ValueError(
+                "`enable_prompt_enhancement=True` but no `prompt_enhancer` component is loaded. Load a "
+                "`prompt_enhancer` (and `processor`), or set `enable_prompt_enhancement=False`."
+            )
+
         system_prompt = block_state.system_prompt or LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT
 
         block_state.prompt = _enhance_prompt(

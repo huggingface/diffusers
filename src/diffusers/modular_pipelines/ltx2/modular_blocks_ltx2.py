@@ -59,8 +59,9 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
               The prompt or prompts to guide image generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
-          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
-              Trigger for `LTX2AutoPromptEnhancerStep`; the enhancer runs only when this is truthy.
+          enable_prompt_enhancement (`bool`, *optional*):
+              Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` component is
+              loaded (LTX-2.4); `True`/`False` force it on/off.
           system_prompt (`str`, *optional*):
               System prompt for enhancement. Defaults to `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`.
           prompt_max_new_tokens (`int`, *optional*, defaults to 512):
@@ -83,7 +84,9 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
     block_trigger_inputs = ["image", "enable_prompt_enhancement"]
 
     def select_block(self, image=None, enable_prompt_enhancement=None) -> str | None:
-        if not enable_prompt_enhancement:
+        # `None`/`True` dispatch to the enhancer; the `None` case is resolved against component presence inside
+        # the sub-block (`select_block` cannot see components). Only an explicit `False` skips here.
+        if enable_prompt_enhancement is False:
             return None
         return "image2video" if image is not None else "text2video"
 
@@ -126,9 +129,9 @@ class LTX2TextConditioningStep(SequentialPipelineBlocks):
           negative_prompt_attention_mask (`Tensor`):
               Binary attention mask for `negative_prompt_embeds`.
           batch_size (`int`):
-              TODO: Add description.
+              The number of prompts being denoised (before per-prompt expansion).
           dtype (`dtype`):
-              TODO: Add description.
+              The dtype of the prompt embeddings.
           connector_prompt_embeds (`Tensor`):
               Video-branch text conditioning (cond).
           connector_audio_prompt_embeds (`Tensor`):
@@ -568,14 +571,30 @@ class LTX2Blocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX-2 text-to-video (joint video + audio).
 
       Components:
-          text_encoder (`PreTrainedModel`) tokenizer (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`)
-          duration_head (`LTX2DurationHead`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer
-          (`LTX2VideoTransformer3DModel`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`) vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
+          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
+          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
+          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`) vae
+          (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
 
       Inputs:
-          prompt (`str`):
+          prompt (`str`, *optional*):
               The prompt or prompts to guide image generation.
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          enable_prompt_enhancement (`bool`, *optional*):
+              Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` component is
+              loaded (LTX-2.4); `True`/`False` force it on/off.
+          system_prompt (`str`, *optional*):
+              System prompt for enhancement. Defaults to `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`.
+          prompt_max_new_tokens (`int`, *optional*, defaults to 512):
+              Maximum number of new tokens to generate during prompt enhancement.
+          prompt_enhancement_kwargs (`dict`, *optional*):
+              Keyword arguments for the enhancer's `.generate` call. Defaults to greedy decoding.
+          prompt_enhancement_seed (`int`, *optional*, defaults to 10):
+              Random seed for prompt enhancement (inert under LTX-2.4's greedy decoding).
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
@@ -600,8 +619,6 @@ class LTX2Blocks(SequentialPipelineBlocks):
               Pre-generated noisy latents for image generation.
           noise_scale (`float`, *optional*, defaults to 0.0):
               Interpolation factor between random noise and any provided latents (0.0 keeps the provided latents).
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
           audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
@@ -626,12 +643,13 @@ class LTX2Blocks(SequentialPipelineBlocks):
 
     model_name = "ltx2"
     block_classes = [
+        LTX2AutoPromptEnhancerStep,
         LTX2TextConditioningStep,
         LTX2AutoDurationStep,
         LTX2CoreDenoiseStep,
         LTX2DecoderStep,
     ]
-    block_names = ["text_encoder", "duration", "denoise", "decode"]
+    block_names = ["prompt_enhancer", "text_encoder", "duration", "denoise", "decode"]
 
     @property
     def description(self):
@@ -651,14 +669,30 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX-2 image-to-video (joint video + audio).
 
       Components:
-          text_encoder (`PreTrainedModel`) tokenizer (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`)
-          duration_head (`LTX2DurationHead`) vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
-          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
+          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
+          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
+          (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          transformer (`LTX2VideoTransformer3DModel`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`)
+          audio_guider (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
 
       Inputs:
-          prompt (`str`):
+          prompt (`str`, *optional*):
               The prompt or prompts to guide image generation.
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          enable_prompt_enhancement (`bool`, *optional*):
+              Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` component is
+              loaded (LTX-2.4); `True`/`False` force it on/off.
+          system_prompt (`str`, *optional*):
+              System prompt for enhancement. Defaults to `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`.
+          prompt_max_new_tokens (`int`, *optional*, defaults to 512):
+              Maximum number of new tokens to generate during prompt enhancement.
+          prompt_enhancement_kwargs (`dict`, *optional*):
+              Keyword arguments for the enhancer's `.generate` call. Defaults to greedy decoding.
+          prompt_enhancement_seed (`int`, *optional*, defaults to 10):
+              Random seed for prompt enhancement (inert under LTX-2.4's greedy decoding).
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
@@ -669,14 +703,10 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               An `LTX2AutoDuration` request carrying the `[min_seconds, max_seconds]` bounds.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
-          image (`Image | list`, *optional*):
-              Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 40):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -713,13 +743,14 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
 
     model_name = "ltx2"
     block_classes = [
+        LTX2AutoPromptEnhancerStep,
         LTX2TextConditioningStep,
         LTX2AutoDurationStep,
         LTX2AutoVaeEncoderStep,
         LTX2Image2VideoCoreDenoiseStep,
         LTX2DecoderStep,
     ]
-    block_names = ["text_encoder", "duration", "vae_encoder", "denoise", "decode"]
+    block_names = ["prompt_enhancer", "text_encoder", "duration", "vae_encoder", "denoise", "decode"]
 
     @property
     def description(self):
@@ -754,8 +785,9 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
-          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
-              Trigger for `LTX2AutoPromptEnhancerStep`; the enhancer runs only when this is truthy.
+          enable_prompt_enhancement (`bool`, *optional*):
+              Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` component is
+              loaded (LTX-2.4); `True`/`False` force it on/off.
           system_prompt (`str`, *optional*):
               System prompt for enhancement. Defaults to `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`.
           prompt_max_new_tokens (`int`, *optional*, defaults to 512):

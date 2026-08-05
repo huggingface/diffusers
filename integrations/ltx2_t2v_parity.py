@@ -19,9 +19,8 @@ Both runs:
     video+audio denoise loop, before VAE decode / vocoder);
   - use a freshly-seeded generator with the same seed (both consume randomness in the same order:
     video noise, then audio noise);
-  - disable prompt enhancement (`enable_prompt_enhancement=False` on the standard pipeline; the
-    modular `LTX2Blocks` t2v blockset contains no enhancer block), so the raw prompt is used and the
-    comparison stays deterministic;
+  - disable prompt enhancement (`enable_prompt_enhancement=False` on both pipelines), so the raw prompt
+    is used and the comparison stays deterministic;
   - apply the *same* guidance settings, delivered differently per pipeline: the standard pipeline takes
     the guidance scales as `__call__` kwargs, while the modular pipeline takes them via its `guider` /
     `audio_guider` components (guidance is guider config in modular diffusers, not a call argument).
@@ -231,7 +230,7 @@ def main(args):
     # 4. Modular run — guidance comes from the guiders, so `GUIDANCE` is NOT passed here.
     print("Running modular LTX2Blocks ...")
     generator = torch.Generator(args.device).manual_seed(args.seed)
-    state = mod(generator=generator, **common_kwargs)
+    state = mod(generator=generator, enable_prompt_enhancement=False, **common_kwargs)
     video_mod = state.get("videos")
     audio_mod = state.get("audio")
 

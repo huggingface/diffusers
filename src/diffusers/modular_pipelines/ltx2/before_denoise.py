@@ -198,8 +198,12 @@ class LTX2TextInputStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("batch_size", type_hint=int),
-            OutputParam("dtype", type_hint=torch.dtype),
+            OutputParam(
+                "batch_size",
+                type_hint=int,
+                description="The number of prompts being denoised (before per-prompt expansion).",
+            ),
+            OutputParam("dtype", type_hint=torch.dtype, description="The dtype of the prompt embeddings."),
         ]
 
     @torch.no_grad()

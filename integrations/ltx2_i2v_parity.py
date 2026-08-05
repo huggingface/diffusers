@@ -23,8 +23,7 @@ Both runs:
   - use a freshly-seeded generator with the same seed. The image is VAE-encoded with `argmax` (mode,
     no randomness), so both pipelines then consume randomness in the same order: video noise, audio
     noise;
-  - disable prompt enhancement (`enable_prompt_enhancement=False` on the standard pipeline; the
-    modular `LTX2ImageToVideoBlocks` i2v blockset contains no enhancer block).
+  - disable prompt enhancement (`enable_prompt_enhancement=False` on both pipelines).
 
 Usage
 -----
@@ -286,7 +285,7 @@ def main(args):
     if args.debug_forward:
         phase["name"] = "mod"
     generator = torch.Generator(args.device).manual_seed(args.seed)
-    state = mod(generator=generator, **common_kwargs)
+    state = mod(generator=generator, enable_prompt_enhancement=False, **common_kwargs)
     video_mod = state.get("videos")
     audio_mod = state.get("audio")
 
