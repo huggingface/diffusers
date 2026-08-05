@@ -639,7 +639,9 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
         VAE untouched.
         """
         pipe = self.get_pipeline()
-        pixels = (np.random.default_rng(0).random((4, 64, 64, 3)) * 255).astype("uint8")
+        # A second of video: the conditioner reads a reference at 2 fps, so anything shorter than 13 frames samples
+        # down to a single one, which Qwen3-VL's video processor rejects against its temporal patch of 2.
+        pixels = (np.random.default_rng(0).random((MINIMAX_H3_FPS, 64, 64, 3)) * 255).astype("uint8")
         if media_type == "pil":
             image, frames = Image.fromarray(pixels[0]), [Image.fromarray(frame) for frame in pixels]
         elif media_type == "np":
@@ -712,8 +714,22 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
                 [MiniMaxH3ImageReference(image=np.zeros((32, 32), dtype="uint8"))],
                 r"must be `\(height, width, 3\)` RGB pixels",
             ),
+            (
+                [
+                    MiniMaxH3ImageReference(image=Image.new("RGB", (32, 32))),
+                    MiniMaxH3VideoReference(frames=np.zeros((4, 32, 32, 3), dtype="uint8"), fps=float(MINIMAX_H3_FPS)),
+                ],
+                "must run at least 13 frames",
+            ),
         ],
-        ids=["not_a_reference", "too_many_videos", "audio_only", "image_aspect_ratio", "image_not_rgb"],
+        ids=[
+            "not_a_reference",
+            "too_many_videos",
+            "audio_only",
+            "image_aspect_ratio",
+            "image_not_rgb",
+            "video_too_short",
+        ],
     )
     def test_check_inputs_references(self, references, message):
         pipe = self.get_pipeline()
