@@ -31,6 +31,7 @@ from diffusers import (
     WanAnimateTransformer3DModel,
 )
 
+from ...testing_utils import assert_tensors_close
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
@@ -160,7 +161,7 @@ class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin
 
         generated_slice = video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_replacement(self):
         # Replacement mode with background and mask videos. Run on CPU.

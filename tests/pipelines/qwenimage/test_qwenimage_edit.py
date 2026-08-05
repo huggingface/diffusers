@@ -24,7 +24,7 @@ from diffusers import (
     QwenImageTransformer2DModel,
 )
 
-from ...testing_utils import torch_device
+from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
@@ -143,7 +143,7 @@ class TestQwenImageEditPipeline(QwenImageEditPipelineTesterConfig, PipelineTeste
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=5e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=5e-3)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)

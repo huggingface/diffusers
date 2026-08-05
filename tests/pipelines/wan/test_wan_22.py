@@ -124,7 +124,7 @@ class TestWan22Pipeline(Wan22PipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
         # For wan 2.2 14B, `transformer` is not used when `boundary_ratio` is 1.0, so only then is it optional.
@@ -248,15 +248,12 @@ class TestWan225BPipeline(Wan225BPipelineTesterConfig, PipelineTesterMixin):
         assert generated_video.shape == self.output_shape
 
         # fmt: off
-        expected_slice = torch.tensor([[[0.4814, 0.4298, 0.5094, 0.4289, 0.5061, 0.4301, 0.5043, 0.4284, 0.5375,
-                                        0.5965, 0.5527, 0.6014, 0.5228, 0.6076, 0.6644, 0.5651]]])
+        expected_slice = torch.tensor([0.4814, 0.4298, 0.5094, 0.4289, 0.5061, 0.4301, 0.5043, 0.4284, 0.5375, 0.5965, 0.5527, 0.6014, 0.5228, 0.6076, 0.6644, 0.5651])
         # fmt: on
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3), (
-            f"generated_slice: {generated_slice}, expected_slice: {expected_slice}"
-        )
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_components_function(self):
         init_components = self.get_dummy_components()
