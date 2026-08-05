@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 
 from diffusers import MiniMaxH3Transformer3DModel
@@ -34,8 +33,8 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-# The packed layout the dummy inputs describe: a text block, then the audio rows, then the target video rows. It is
-# the layout `MiniMaxH3Blocks` builds, minus the padding tail the blocks never emit.
+# The packed layout the dummy inputs describe: a text block, then the audio rows, then the target video rows, which
+# is the layout `MiniMaxH3Blocks` builds.
 NUM_TEXT_TOKENS = 4
 NUM_AUDIO_TOKENS = 6
 NUM_VIDEO_TOKENS = 8
@@ -90,7 +89,7 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
         The transformer does not build the layout itself: the caller orders the rows, tags every row with its
         modality and its noise level, and hands over the `(t, h, w)` grid plus the three index tensors. The layout
         here mirrors what the pipelines pack, with two distinct timesteps so the `(timestep, modality)` AdaLN table
-        is addressed on more than one row, and without a padding tail so attention needs no mask.
+        is addressed on more than one row.
         """
         sequence_length = NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS + num_video_tokens
         text_indices = torch.arange(NUM_TEXT_TOKENS, device=torch_device)
@@ -161,41 +160,6 @@ class TestMiniMaxH3Transformer(MiniMaxH3TransformerTesterConfig, ModelTesterMixi
         torch.testing.assert_close(output.sample, output_tuple[0])
         torch.testing.assert_close(output.audio_sample, output_tuple[1])
 
-    @torch.no_grad()
-    def test_padding_rows_form_their_own_attention_document(self):
-        r"""
-        A padding tail (tag `-1`) must not change the live rows.
-
-        The reference pads the packed sequence to a multiple of 64 for FlashAttention and splits it with
-        `cu_seqlens = [0, used, S]`; the port reproduces that split with a boolean mask. Appending padding rows to a
-        layout therefore has to leave the video and audio predictions of the live rows untouched.
-        """
-        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        inputs = self.get_dummy_inputs()
-        padless_output = model(**inputs, return_dict=False)
-
-        num_padding_rows = 3
-        sequence_length = inputs["position_ids"].shape[0]
-        padded = dict(inputs)
-        padded["token_tags"] = torch.cat(
-            [inputs["token_tags"], torch.full((num_padding_rows,), -1, dtype=torch.long, device=torch_device)]
-        )
-        padded["timestep_indices"] = torch.cat(
-            [inputs["timestep_indices"], torch.zeros(num_padding_rows, dtype=torch.long, device=torch_device)]
-        )
-        padded["position_ids"] = torch.cat(
-            [
-                inputs["position_ids"],
-                torch.arange(
-                    sequence_length, sequence_length + num_padding_rows, dtype=torch.float32, device=torch_device
-                )[:, None].repeat(1, 3),
-            ]
-        )
-        padded_output = model(**padded, return_dict=False)
-
-        for padless, padded_ in zip(padless_output, padded_output):
-            torch.testing.assert_close(padless, padded_, atol=1e-5, rtol=1e-5)
-
 
 class TestMiniMaxH3TransformerMemory(MiniMaxH3TransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for the MiniMax-H3 transformer."""
@@ -215,25 +179,4 @@ class TestMiniMaxH3TransformerAttention(MiniMaxH3TransformerTesterConfig, Attent
 
 
 class TestMiniMaxH3TransformerTorchCompile(MiniMaxH3TransformerTesterConfig, TorchCompileTesterMixin):
-    """Torch compile tests for the MiniMax-H3 transformer.
-
-    Regional compilation (`compile_repeated_blocks`) and full-model compilation with graph breaks allowed both work.
-    Whole-model `fullgraph=True` and `torch.export` do not: `forward` decides whether the packed sequence needs an
-    attention mask with `if bool(is_pad.any())`, reading the padding tag out of `token_tags`, and a data-dependent
-    branch has no fullgraph representation. Dropping the branch is not an option, because a padless sequence has to
-    keep `attention_mask=None` so the unmasked flash and sage backends stay available.
-    """
-
-    @pytest.mark.skip(
-        "`forward` branches on `bool(is_pad.any())` to decide whether the packed sequence needs an attention mask, "
-        "which `fullgraph=True` cannot trace. Regional compilation is covered by "
-        "`test_torch_compile_repeated_blocks`."
-    )
-    def test_torch_compile_recompilation_and_graph_break(self):
-        pass
-
-    @pytest.mark.skip(
-        "`torch.export` hits the same data-dependent `bool(is_pad.any())` branch as `fullgraph=True` compilation."
-    )
-    def test_compile_works_with_aot(self, tmp_path):
-        pass
+    """Torch compile tests for the MiniMax-H3 transformer."""

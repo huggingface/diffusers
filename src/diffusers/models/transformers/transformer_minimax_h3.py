@@ -187,10 +187,9 @@ class MiniMaxH3AttnProcessor:
             query = _apply_rotary_emb(query, *rotary_emb)
             key = _apply_rotary_emb(key, *rotary_emb)
 
-        # Without padding rows the packed sequence is a single attention document and no mask is needed (passing an
-        # all-zero float mask here would hard-fail the flash / sage backends). When padding rows are present, the
-        # caller supplies a boolean mask that keeps them in their own attention document, mirroring the reference's
-        # `cu_seqlens = [0, used, S]` split; masked backends (SDPA & co.) are required in that case.
+        # MiniMax-H3 packs one request into a single attention document, so the model passes no mask and every
+        # attention backend stays available; `attention_mask` is here because it is the processor signature every
+        # other one in diffusers has, and a custom processor may need it.
         hidden_states = dispatch_attention_fn(
             query,
             key,
@@ -381,10 +380,10 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
     only from the two input patch projections, the per-row AdaLN modality tag, and the two output heads.
 
     The caller is responsible for building the packed layout: patchifying the video latents, ordering the rows, and
-    producing the `(t, h, w)` position grid, the per-row modality tags and the per-row timestep indices. Padding rows
-    (tag `-1`) are kept in a separate attention document, matching the reference implementation, which pads to a
-    multiple of 64 for FlashAttention with `cu_seqlens = [0, used, S]`. Prefer dropping them — a padless sequence needs
-    no attention mask, keeping the unmasked attention backends available.
+    producing the `(t, h, w)` position grid, the per-row modality tags and the per-row timestep indices. The sequence
+    carries no padding — the reference implementation pads it to a multiple of 64 for FlashAttention and splits the
+    tail off with `cu_seqlens = [0, used, S]`, which this port has no use for — so attention runs unmasked over one
+    document and every attention backend stays available.
 
     The batch axis is a pure replication axis: the structural arguments (`timestep`, `timestep_indices`, `token_tags`,
     `position_ids` and the three index tensors) describe one packed layout that every batch item shares, and each item
@@ -557,8 +556,7 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
             timestep_indices (`torch.Tensor` of shape `(seq_len,)`):
                 For every row of the packed sequence, the index of its timestep in `timestep`.
             token_tags (`torch.Tensor` of shape `(seq_len,)`):
-                For every row of the packed sequence, its modality: `0` video, `1` text, `2` audio, `-1` padding.
-                Padding rows form their own attention document and never reach the outputs.
+                For every row of the packed sequence, its modality: `0` video, `1` text, `2` audio.
             position_ids (`torch.Tensor` of shape `(seq_len, 3)`):
                 The `(t, h, w)` rotary coordinates of every row of the packed sequence.
             video_indices (`torch.Tensor` of shape `(num_video_tokens,)`):
@@ -610,27 +608,16 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         temb = self.time_proj(timestep)
         temb = self.time_embedder(temb.to(self.time_embedder.linear_1.weight.dtype))
 
-        # 3. Row -> AdaLN table row. `clamp(min=0)` mirrors the reference, where padding rows carry the tag `-1`; the
-        # clamp keeps the `-1` from indexing backwards (padding rows never reach the outputs, which are selected by
-        # `video_indices` / `audio_indices`).
-        adaln_indices = timestep_indices * MINIMAX_H3_MODALITY_NUM + token_tags.clamp(min=0)
-
-        # 4. Padding rows (tag `-1`) must not exchange attention with live rows: the reference keeps the padding tail
-        # as a separate attention document (`cu_seqlens = [0, used, S]`). A boolean mask that pairs live rows with live
-        # rows and padding rows with padding rows reproduces that split exactly. Padless sequences keep `None` so the
-        # unmasked fast paths (flash & co.) stay available.
-        attention_mask = None
-        is_pad = token_tags < 0
-        if bool(is_pad.any()):
-            attention_mask = is_pad[None, :] == is_pad[:, None]
+        # 3. Row -> AdaLN table row.
+        adaln_indices = timestep_indices * MINIMAX_H3_MODALITY_NUM + token_tags
 
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, temb, adaln_indices, rotary_emb, attention_mask
+                    block, hidden_states, temb, adaln_indices, rotary_emb
                 )
             else:
-                hidden_states = block(hidden_states, temb, adaln_indices, rotary_emb, attention_mask)
+                hidden_states = block(hidden_states, temb, adaln_indices, rotary_emb)
 
         # 5. Both heads run over every row, then the rows of each modality are selected. The heads are listed in
         # `_keep_in_fp32_modules`, so they stay float32 while the block stack runs in the requested `torch_dtype`;
