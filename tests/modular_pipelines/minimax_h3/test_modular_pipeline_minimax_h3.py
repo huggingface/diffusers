@@ -827,7 +827,12 @@ class TestMiniMaxH3Reference:
         # makes the resize pass a no-op and lets the 24 fps route return the input without a copy.
         size = 64
         frames = np.arange(30, dtype="uint8").reshape(-1, 1, 1, 1) * np.ones((1, size, size, 3), dtype="uint8")
-        canvas = {"canvas_multiple": 32, "canvas_short_edge": 64, "canvas_max_pixels": 64**2 * 2}
+        canvas = {
+            "canvas_multiple": 32,
+            "canvas_short_edge": 64,
+            "canvas_max_pixels": 64**2 * 2,
+            "target_fps": float(MINIMAX_H3_FPS),
+        }
 
         resampled = MiniMaxH3Ref2VASetupStep._normalize_video_condition(frames, fps=30.0, num_frames=124, **canvas)
 

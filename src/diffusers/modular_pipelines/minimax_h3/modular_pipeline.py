@@ -39,7 +39,13 @@ MINIMAX_H3_AUDIO_CHANNELS = 2
 
 
 def resolve_canvas_size(
-    aspect_width: float, aspect_height: float, canvas_multiple: int, short_edge: int, max_pixels: int
+    aspect_width: float,
+    aspect_height: float,
+    canvas_multiple: int,
+    short_edge: int,
+    max_pixels: int,
+    min_aspect_ratio: float = MINIMAX_H3_MIN_ASPECT_RATIO,
+    max_aspect_ratio: float = MINIMAX_H3_MAX_ASPECT_RATIO,
 ) -> tuple[int, int]:
     r"""
     Resolve a display aspect ratio into a MiniMax-H3 canvas.
@@ -57,6 +63,8 @@ def resolve_canvas_size(
             The short edge to aim for, i.e. `components.config.canvas_short_edge` — 768 for the released checkpoint.
         max_pixels (`int`):
             The area budget, i.e. `components.config.canvas_max_pixels` — `768 * 1344` for the released checkpoint.
+        min_aspect_ratio (`float`, defaults to 1/4), max_aspect_ratio (`float`, defaults to 4):
+            The ratios the released checkpoint was trained over, which the requested one has to fall between.
 
     Returns:
         `tuple[int, int]`: the `(height, width)` of the canvas.
@@ -65,9 +73,10 @@ def resolve_canvas_size(
         raise ValueError(f"The aspect ratio must be positive, got {aspect_width}:{aspect_height}.")
 
     ratio = aspect_width / aspect_height
-    if not MINIMAX_H3_MIN_ASPECT_RATIO <= ratio <= MINIMAX_H3_MAX_ASPECT_RATIO:
+    if not min_aspect_ratio <= ratio <= max_aspect_ratio:
         raise ValueError(
-            f"MiniMax-H3 supports aspect ratios from 1:4 to 4:1, got {aspect_width}:{aspect_height} ({ratio:g})."
+            f"MiniMax-H3 supports aspect ratios from 1:{1 / min_aspect_ratio:g} to {max_aspect_ratio:g}:1, got "
+            f"{aspect_width}:{aspect_height} ({ratio:g})."
         )
 
     if ratio >= 1.0:
@@ -120,17 +129,21 @@ def video_latent_num_frames(num_frames: int, frames_per_chunk: int, latents_per_
     return (num_frames - latents_per_chunk) // frames_per_chunk * latents_per_chunk + 2
 
 
-def audio_latent_num_frames(num_frames: int) -> int:
+def audio_latent_num_frames(
+    num_frames: int, fps: float = MINIMAX_H3_FPS, latents_per_second: int = MINIMAX_H3_AUDIO_LATENTS_PER_SECOND
+) -> int:
     r"""
-    The number of audio latents that covers a video of `num_frames` frames at 24 fps.
+    The number of audio latents that covers a video of `num_frames` frames.
 
     Args:
         num_frames (`int`): The number of video frames.
+        fps (`float`, defaults to 24): The rate those frames run at, i.e. `components.fps`.
+        latents_per_second (`int`, defaults to 40): The audio VAE's latent rate.
 
     Returns:
-        `int`: The number of audio latents, rounded at the 40 Hz latent grid.
+        `int`: The number of audio latents, rounded at the latent grid.
     """
-    return int(round(num_frames / MINIMAX_H3_FPS * MINIMAX_H3_AUDIO_LATENTS_PER_SECOND))
+    return int(round(num_frames / fps * latents_per_second))
 
 
 class MiniMaxH3ModularPipeline(ModularPipeline):
@@ -290,3 +303,8 @@ class MiniMaxH3ModularPipeline(ModularPipeline):
     def video_tag(self):
         r"""The modality tag of a video row of the packed sequence, which a vision block's rows also carry."""
         return MINIMAX_H3_VIDEO_TAG
+
+    @property
+    def audio_tag(self):
+        r"""The modality tag of an audio row of the packed sequence."""
+        return MINIMAX_H3_AUDIO_TAG

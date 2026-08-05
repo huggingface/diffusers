@@ -25,7 +25,6 @@ from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import (
-    MINIMAX_H3_FPS,
     MiniMaxH3ModularPipeline,
     align_num_frames,
     resolve_canvas_size,
@@ -274,7 +273,13 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
 
     @staticmethod
     def _normalize_video_condition(
-        frames, fps: float, num_frames: int, canvas_multiple: int, canvas_short_edge: int, canvas_max_pixels: int
+        frames,
+        fps: float,
+        num_frames: int,
+        canvas_multiple: int,
+        canvas_short_edge: int,
+        canvas_max_pixels: int,
+        target_fps: float,
     ) -> np.ndarray:
         r"""
         Normalize a video reference's frames: any accepted layout, onto `uint8` at 24 fps, truncated to the generated
@@ -296,6 +301,7 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
             canvas_short_edge (`int`), canvas_max_pixels (`int`):
                 The canvas rule the reference is put on, i.e. `components.config.canvas_short_edge` and
                 `components.config.canvas_max_pixels` — the same one the generated video follows.
+            target_fps (`float`): The rate the frames are resampled onto, i.e. `components.fps`.
 
         Returns:
             `np.ndarray` of shape `(num_frames, height, width, 3)`: the normalized `uint8` RGB frames.
@@ -318,8 +324,8 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
         # the slot the stream's end rounds to.
         if fps <= 0:
             raise ValueError(f"A reference video must have a positive frame rate, got {fps}.")
-        if fps != MINIMAX_H3_FPS:
-            scale = MINIMAX_H3_FPS / fps
+        if fps != target_fps:
+            scale = target_fps / fps
             slots = np.floor(np.arange(frames.shape[0]) * scale + 0.5).astype(np.int64)
             frames = np.repeat(frames, np.diff(slots, append=math.floor(frames.shape[0] * scale + 0.5)), axis=0)
 
@@ -497,6 +503,7 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
                             multiple,
                             components.config.canvas_short_edge,
                             components.config.canvas_max_pixels,
+                            float(components.fps),
                         ),
                         fps=float(components.fps),
                         audio=waveform,
