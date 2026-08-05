@@ -14,28 +14,25 @@
 
 """Rectified-flow Euler scheduler for MiniMax-H3.
 
-Three things make this incompatible with a [`FlowMatchEulerDiscreteScheduler`] config, which is why
-it is a separate class:
+Three things make this incompatible with a [`FlowMatchEulerDiscreteScheduler`] config, which is why it is a separate
+class:
 
-1. **The velocity sign is reversed.** MiniMax-H3's transformer predicts a *data-ward* velocity, so
-   `x0 = x_t + sigma * v` instead of diffusers' `x0 = x_t - sigma * v`.
-2. **Timesteps are `t = 1 - sigma` in `[0, 1]`**, with `t = 1` meaning *clean*. Flow-match
-   schedulers expose `timesteps = sigma * num_train_timesteps`, i.e. the opposite direction on a
-   1000x scale. The transformer's AdaLN consumes the H3 convention directly.
-3. **The sigma grid starts from `linspace(1, 0, num_inference_steps)`** — the terminal zero is part
-   of the requested step count, and duplicates created by the shift are collapsed with
-   `unique_consecutive`. `FlowMatchEulerDiscreteScheduler` instead builds
-   `linspace(1, 1/num_train_timesteps, ...)` and appends a terminal sigma afterwards, so
-   `len(sigmas)` and every interior value differ.
+1. **The velocity sign is reversed.** MiniMax-H3's transformer predicts a *data-ward* velocity, so `x0 = x_t + sigma *
+   v` instead of diffusers' `x0 = x_t - sigma * v`.
+2. **Timesteps are `t = 1 - sigma` in `[0, 1]`**, with `t = 1` meaning *clean*. Flow-match schedulers expose `timesteps
+   = sigma * num_train_timesteps`, i.e. the opposite direction on a 1000x scale. The transformer's AdaLN consumes the
+   H3 convention directly.
+3. **The sigma grid starts from `linspace(1, 0, num_inference_steps)`** — the terminal zero is part of the requested
+   step count, and duplicates created by the shift are collapsed with `unique_consecutive`.
+   `FlowMatchEulerDiscreteScheduler` instead builds `linspace(1, 1/num_train_timesteps, ...)` and appends a terminal
+   sigma afterwards, so `len(sigmas)` and every interior value differ.
 
-Everything else is ordinary rectified flow: the exponential shift `sigma' = s*sigma / (1 + (s-1)*sigma)`,
-and an Euler update written as the `x_t` / `x0` blend `x_next = r*x_t + (1 - r)*x0` with
-`r = sigma_next / sigma`, evaluated in float32. Despite the reference class being named
-"euler ancestral", `eta` is 0 — no noise is ever re-injected.
+Everything else is ordinary rectified flow: the exponential shift `sigma' = s*sigma / (1 + (s-1)*sigma)`, and an Euler
+update written as the `x_t` / `x0` blend `x_next = r*x_t + (1 - r)*x0` with `r = sigma_next / sigma`, evaluated in
+float32. Despite the reference class being named "euler ancestral", `eta` is 0 — no noise is ever re-injected.
 
-MiniMax-H3 runs **two schedules per request**, one per modality (`shift=12.0` for video,
-`shift=3.0` for audio). The modality is not a property of the scheduler: a pipeline holds two
-instances, e.g. `scheduler` and `audio_scheduler`.
+MiniMax-H3 runs **two schedules per request**, one per modality (`shift=12.0` for video, `shift=3.0` for audio). The
+modality is not a property of the scheduler: a pipeline holds two instances, e.g. `scheduler` and `audio_scheduler`.
 """
 
 from dataclasses import dataclass
@@ -66,8 +63,8 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
 
     Args:
         shift (`float`, defaults to `12.0`):
-            Exponential shift applied to the sigma grid, `sigma' = s*sigma / (1 + (s-1)*sigma)`. The
-            released checkpoints use `12.0` for video latents and `3.0` for audio latents.
+            Exponential shift applied to the sigma grid, `sigma' = s*sigma / (1 + (s-1)*sigma)`. The released
+            checkpoints use `12.0` for video latents and `3.0` for audio latents.
     """
 
     _compatibles = []
@@ -133,20 +130,20 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
         r"""
         Build the sigma / timestep schedule.
 
-        The grid is `linspace(1, 0, num_inference_steps)` pushed through the exponential shift, with
-        consecutive duplicates collapsed. The terminal `0` is already part of that grid — the shift maps
-        `0` to exactly `0` — so the schedule holds `num_inference_steps` sigmas and drives
-        `num_inference_steps - 1` model evaluations, exposed as `self.timesteps = 1 - sigmas[:-1]`.
+        The grid is `linspace(1, 0, num_inference_steps)` pushed through the exponential shift, with consecutive
+        duplicates collapsed. The terminal `0` is already part of that grid — the shift maps `0` to exactly `0` — so
+        the schedule holds `num_inference_steps` sigmas and drives `num_inference_steps - 1` model evaluations, exposed
+        as `self.timesteps = 1 - sigmas[:-1]`.
 
         Args:
             num_inference_steps (`int`, *optional*):
                 Number of sigma grid points, terminal `0` included. Ignored when `sigmas` is given.
             device (`str` or `torch.device`, *optional*):
-                Device the schedule tensors are moved to. The grid itself is always built on CPU in
-                float32 so the schedule does not depend on the accelerator.
+                Device the schedule tensors are moved to. The grid itself is always built on CPU in float32 so the
+                schedule does not depend on the accelerator.
             sigmas (`list[float]` or `torch.Tensor`, *optional*):
-                A fully-formed sigma schedule, used verbatim (no shifting, no deduplication). It must be
-                strictly decreasing and terminate at `0.0`.
+                A fully-formed sigma schedule, used verbatim (no shifting, no deduplication). It must be strictly
+                decreasing and terminate at `0.0`.
         """
         if sigmas is None:
             if num_inference_steps is None or num_inference_steps < 2:
@@ -178,8 +175,8 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             timestep (`float` or `torch.Tensor`):
-                A value taken from `self.timesteps`. The schedule is strictly increasing in `t`, so the
-                match is unique.
+                A value taken from `self.timesteps`. The schedule is strictly increasing in `t`, so the match is
+                unique.
 
         Returns:
             `int`: The index of `timestep`.
@@ -202,9 +199,8 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
         r"""
         Rectified-flow forward process, in MiniMax-H3's `t` convention: `x_t = t*x_0 + (1 - t)*noise`.
 
-        MiniMax-H3 uses this to noise its conditioning anchors, where `t` is the `noise_aug` level
-        rather than a schedule entry, so `timestep` is taken at face value and is *not* looked up in
-        `self.timesteps`.
+        MiniMax-H3 uses this to noise its conditioning anchors, where `t` is the `noise_aug` level rather than a
+        schedule entry, so `timestep` is taken at face value and is *not* looked up in `self.timesteps`.
 
         Args:
             sample (`torch.FloatTensor`):
@@ -234,10 +230,9 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
         r"""
         Take one Euler (`eta = 0`) step.
 
-        The model output is a data-ward velocity, so the denoised estimate is
-        `x0 = x_t + (1 - t) * v` — note the `+`, the opposite of the usual flow-match convention.
-        The update is then the blend `x_next = r*x_t + (1 - r)*x0` with `r = sigma_next / sigma`,
-        evaluated in float32 for half-precision samples.
+        The model output is a data-ward velocity, so the denoised estimate is `x0 = x_t + (1 - t) * v` — note the `+`,
+        the opposite of the usual flow-match convention. The update is then the blend `x_next = r*x_t + (1 - r)*x0`
+        with `r = sigma_next / sigma`, evaluated in float32 for half-precision samples.
 
         Args:
             model_output (`torch.FloatTensor`):

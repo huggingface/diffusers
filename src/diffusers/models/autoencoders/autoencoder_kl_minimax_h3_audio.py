@@ -16,24 +16,22 @@
 
 Waveform in / waveform out — there is no mel front-end and no separate vocoder:
 
-* the **encoder** is a DAC-lineage strided convolutional stack (Snake activations, weight-normed
-  `Conv1d`) that downsamples by `prod(encoder_rates) = 800`, i.e. 40 latents/s at 32 kHz;
-* a **causal-attention projection** (`pre_block`) rewires the 2048-wide encoder trunk to the
-  32-channel latent width, followed by the `mean_proj` / `logs_proj` posterior heads;
-* the **decoder** is BigVGAN (anti-aliased SnakeBeta activations, transposed-conv upsamplers, AMP
-  residual blocks) preceded by `dec_in_proj`, upsampling by `prod(decoder_rates) = 800`.
+* the **encoder** is a DAC-lineage strided convolutional stack (Snake activations, weight-normed `Conv1d`) that
+  downsamples by `prod(encoder_rates) = 800`, i.e. 40 latents/s at 32 kHz;
+* a **causal-attention projection** (`pre_block`) rewires the 2048-wide encoder trunk to the 32-channel latent width,
+  followed by the `mean_proj` / `logs_proj` posterior heads;
+* the **decoder** is BigVGAN (anti-aliased SnakeBeta activations, transposed-conv upsamplers, AMP residual blocks)
+  preceded by `dec_in_proj`, upsampling by `prod(decoder_rates) = 800`.
 
-The autoencoder is **mono**. MiniMax-H3 carries stereo as two *batch* items — the pipeline decodes
-`[2, 32, T]` into `[2, 1, samples]` and interleaves at the output boundary — so no stereo handling
-belongs here.
+The autoencoder is **mono**. MiniMax-H3 carries stereo as two *batch* items — the pipeline decodes `[2, 32, T]` into
+`[2, 1, samples]` and interleaves at the output boundary — so no stereo handling belongs here.
 
-Latents are normalized with per-channel `latents_mean` / `latents_std` (32 floats each) rather than a
-scalar `scaling_factor`; both live in the config and are applied by the pipeline.
+Latents are normalized with per-channel `latents_mean` / `latents_std` (32 floats each) rather than a scalar
+`scaling_factor`; both live in the config and are applied by the pipeline.
 
-Module and parameter names are identical to the original checkpoint, so conversion is a passthrough.
-That includes `torch.nn.utils.weight_norm` (the `weight_g` / `weight_v` spelling, as used by the
-other diffusers audio autoencoders) and the registered Kaiser-window resampling `filter` buffers of
-the anti-aliased activations.
+Module and parameter names are identical to the original checkpoint, so conversion is a passthrough. That includes
+`torch.nn.utils.weight_norm` (the `weight_g` / `weight_v` spelling, as used by the other diffusers audio autoencoders)
+and the registered Kaiser-window resampling `filter` buffers of the anti-aliased activations.
 """
 
 import math
@@ -57,10 +55,9 @@ from .vae import DecoderOutput
 class MiniMaxH3AudioDiagonalGaussianDistribution:
     r"""Posterior of the MiniMax-H3 audio autoencoder, parameterized as `(mean, log_std)`.
 
-    The checkpoint keeps two separate `Conv1d` heads (`mean_proj`, `logs_proj`) instead of one fused
-    moments projection, and the second head predicts the **log standard deviation**, not the log
-    variance. The two tensors are therefore stored as produced, and `mode()` is bit-for-bit
-    `mean_proj`'s output.
+    The checkpoint keeps two separate `Conv1d` heads (`mean_proj`, `logs_proj`) instead of one fused moments
+    projection, and the second head predicts the **log standard deviation**, not the log variance. The two tensors are
+    therefore stored as produced, and `mode()` is bit-for-bit `mean_proj`'s output.
 
     Args:
         mean (`torch.Tensor`): Posterior mean, `[batch_size, latent_channels, num_frames]`.
@@ -96,8 +93,8 @@ class MiniMaxH3AudioEncoderOutput(BaseOutput):
 def kaiser_sinc_filter1d(cutoff: float, half_width: float, kernel_size: int) -> torch.Tensor:
     r"""Kaiser-windowed sinc low-pass filter of shape `[1, 1, kernel_size]`.
 
-    Kept arithmetically identical to the `alias-free-torch` implementation the checkpoint was trained
-    with, because the resulting tensor is stored as a persistent buffer.
+    Kept arithmetically identical to the `alias-free-torch` implementation the checkpoint was trained with, because the
+    resulting tensor is stored as a persistent buffer.
     """
     half_size = kernel_size // 2
 
@@ -136,8 +133,8 @@ class MiniMaxH3AudioSnake1d(nn.Module):
 class MiniMaxH3AudioSnakeBeta(nn.Module):
     r"""`x + (exp(beta) + 1e-9)^-1 * sin(exp(alpha) * x)^2` over `[batch_size, channels, length]`.
 
-    The BigVGAN decoder's activation: separate frequency (`alpha`) and magnitude (`beta`) parameters,
-    both stored in log space as `[channels]` vectors.
+    The BigVGAN decoder's activation: separate frequency (`alpha`) and magnitude (`beta`) parameters, both stored in
+    log space as `[channels]` vectors.
     """
 
     def __init__(self, channels: int):
@@ -307,10 +304,9 @@ class MiniMaxH3AudioGeGluMlp(nn.Module):
 class MiniMaxH3AudioAttnProcessor:
     r"""Processor of [`MiniMaxH3AudioCausalAttention`].
 
-    The causal mask is expressed as `is_causal=True` rather than as a materialized mask. Every
-    attention backend honours that flag, with two exceptions: `_native_npu`, whose kernel takes no
-    causal argument and would compute *bidirectional* attention, and context parallelism, which
-    raises for causal attention.
+    The causal mask is expressed as `is_causal=True` rather than as a materialized mask. Every attention backend
+    honours that flag, with two exceptions: `_native_npu`, whose kernel takes no causal argument and would compute
+    *bidirectional* attention, and context parallelism, which raises for causal attention.
     """
 
     _attention_backend = None
@@ -345,10 +341,10 @@ class MiniMaxH3AudioAttnProcessor:
 class MiniMaxH3AudioCausalAttention(nn.Module, AttentionModuleMixin):
     r"""Causal self-attention that narrows the feature width from `in_dim` to `out_dim`.
 
-    QKV is a single bias-less `nn.Linear`; query and value biases are separate parameters and the key
-    bias is a frozen zero buffer (`zero_k_bias`), exactly as stored in the checkpoint. Heads are
-    `in_dim // num_heads` wide; instead of being concatenated they are **mean-pooled away**, and the
-    remaining head dimension is adaptively average-pooled down to `out_dim`.
+    QKV is a single bias-less `nn.Linear`; query and value biases are separate parameters and the key bias is a frozen
+    zero buffer (`zero_k_bias`), exactly as stored in the checkpoint. Heads are `in_dim // num_heads` wide; instead of
+    being concatenated they are **mean-pooled away**, and the remaining head dimension is adaptively average-pooled
+    down to `out_dim`.
     """
 
     _default_processor_cls = MiniMaxH3AudioAttnProcessor
@@ -393,8 +389,8 @@ class MiniMaxH3AudioAttnProjection(nn.Module):
 class MiniMaxH3AudioAMPBlock(nn.Module):
     r"""BigVGAN anti-aliased multi-periodicity block (`AMPBlock1`).
 
-    Each dilation contributes a `(dilated conv, dilation-1 conv)` pair, and every convolution is
-    preceded by its own alias-free SnakeBeta activation.
+    Each dilation contributes a `(dilated conv, dilation-1 conv)` pair, and every convolution is preceded by its own
+    alias-free SnakeBeta activation.
     """
 
     def __init__(self, channels: int, kernel_size: int, dilation: tuple[int, ...]):
@@ -492,8 +488,8 @@ class MiniMaxH3AudioBigVGANDecoder(nn.Module):
 
 class AutoencoderKLMiniMaxH3Audio(ModelMixin, ConfigMixin, AttentionMixin):
     r"""
-    The audio autoencoder used by [MiniMax-H3](https://huggingface.co/MiniMaxAI): a DAC-lineage
-    convolutional encoder and a BigVGAN decoder, operating directly on mono 32 kHz waveforms.
+    The audio autoencoder used by [MiniMax-H3](https://huggingface.co/MiniMaxAI): a DAC-lineage convolutional encoder
+    and a BigVGAN decoder, operating directly on mono 32 kHz waveforms.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
     implements for all models (such as downloading or saving).
@@ -587,14 +583,13 @@ class AutoencoderKLMiniMaxH3Audio(ModelMixin, ConfigMixin, AttentionMixin):
         r"""
         Encode a waveform into the audio latent posterior.
 
-        The waveform is right-padded to a multiple of `hop_length` (800 samples) first. MiniMax-H3
-        always consumes the posterior **mean** (`latent_dist.mode()`) — the `logs_proj` head is never
-        evaluated by the reference pipeline.
+        The waveform is right-padded to a multiple of `hop_length` (800 samples) first. MiniMax-H3 always consumes the
+        posterior **mean** (`latent_dist.mode()`) — the `logs_proj` head is never evaluated by the reference pipeline.
 
         Args:
             sample (`torch.Tensor`):
-                Mono waveform of shape `[batch_size, 1, samples]`. MiniMax-H3 passes the two stereo
-                channels of a reference clip as `batch_size = 2`.
+                Mono waveform of shape `[batch_size, 1, samples]`. MiniMax-H3 passes the two stereo channels of a
+                reference clip as `batch_size = 2`.
             return_dict (`bool`, defaults to `True`):
                 Whether to return a [`MiniMaxH3AudioEncoderOutput`] instead of a plain tuple.
 
@@ -628,8 +623,8 @@ class AutoencoderKLMiniMaxH3Audio(ModelMixin, ConfigMixin, AttentionMixin):
 
         Args:
             latents (`torch.Tensor`):
-                Denormalized latents of shape `[batch_size, latent_channels, num_frames]`. MiniMax-H3
-                passes the two stereo channels as `batch_size = 2`.
+                Denormalized latents of shape `[batch_size, latent_channels, num_frames]`. MiniMax-H3 passes the two
+                stereo channels as `batch_size = 2`.
             return_dict (`bool`, defaults to `True`):
                 Whether to return a [`~models.autoencoders.vae.DecoderOutput`] instead of a plain tuple.
 

@@ -284,8 +284,8 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
 
         Args:
             frames (`list[PIL.Image.Image]`, `np.ndarray` or `torch.Tensor`):
-                The reference frames: a list of images, a `(num_frames, height, width, 3)` array or a
-                `(num_frames, 3, height, width)` tensor, `uint8` or floating point over `[0, 1]`.
+                The reference frames: a list of images, a `(num_frames, height, width, 3)` array or a `(num_frames, 3,
+                height, width)` tensor, `uint8` or floating point over `[0, 1]`.
             fps (`float`): The frame rate `frames` carries.
             num_frames (`int`): The generated frame count the reference is truncated to.
             canvas_multiple (`int`): What both canvas axes round to, i.e. `components.canvas_multiple`.

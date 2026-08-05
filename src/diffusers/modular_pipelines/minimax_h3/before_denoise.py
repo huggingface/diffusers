@@ -105,8 +105,8 @@ def _temporal_position_span_pairwise(num_latent_frames: int) -> float:
     r"""
     The rotary time spanned by `num_latent_frames` latent frames.
 
-    Summed by numpy (pairwise summation) rather than sequentially: the reference computes the keyframe anchor this
-    way and the two summation orders differ in the last ulp from 16 latent frames onwards.
+    Summed by numpy (pairwise summation) rather than sequentially: the reference computes the keyframe anchor this way
+    and the two summation orders differ in the last ulp from 16 latent frames onwards.
     """
     spans = np.ones(num_latent_frames, dtype=np.float64) * _ROPE_FRAME_RESCALE
     for index in range(len(_ROPE_FRAMES_PER_LATENT)):
@@ -118,9 +118,9 @@ def _temporal_position_span_sequential(num_latent_frames: int) -> float:
     r"""
     The rotary time a video reference advances the clock by.
 
-    Summed sequentially in float64, which is *not* how [`_temporal_position_span_pairwise`] sums
-    the same series: that one reproduces a numpy pairwise sum, and the two orders differ in the last ulp from 16
-    latent frames onwards. The reference implementation keeps both, one per call site, so the port has to as well.
+    Summed sequentially in float64, which is *not* how [`_temporal_position_span_pairwise`] sums the same series: that
+    one reproduces a numpy pairwise sum, and the two orders differ in the last ulp from 16 latent frames onwards. The
+    reference implementation keeps both, one per call site, so the port has to as well.
     """
     return sum(
         _ROPE_FRAME_RESCALE * _ROPE_FRAMES_PER_LATENT[index % len(_ROPE_FRAMES_PER_LATENT)]
@@ -309,8 +309,8 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
 
         Args:
             text_token_tags (`torch.Tensor` of shape `(num_text_tokens,)`):
-                The modality tag of every text row. Text is tagged `1`, except for the rows of a keyframe's vision block,
-                which MiniMax-H3 tags `0` (video).
+                The modality tag of every text row. Text is tagged `1`, except for the rows of a keyframe's vision
+                block, which MiniMax-H3 tags `0` (video).
             num_latent_frames (`int`): Number of target latent frames.
             latent_height (`int`): Target latent height.
             latent_width (`int`): Target latent width.
@@ -588,15 +588,16 @@ class MiniMaxH3Ref2VAPrepareLayoutStep(ModularPipelineBlocks):
 
         Args:
             text_token_tags (`torch.Tensor` of shape `(num_text_tokens,)`):
-                The modality tag of every text row. Text is tagged `1`, except for the rows of a reference's vision block,
-                which MiniMax-H3 tags `0` (video).
+                The modality tag of every text row. Text is tagged `1`, except for the rows of a reference's vision
+                block, which MiniMax-H3 tags `0` (video).
             references (`list[MiniMaxH3Reference]`):
                 The references, in packed order. Only their modality is read here; the geometry comes from the latents.
             condition_latents (`list[torch.Tensor]`):
-                One `(1, channels, num_latent_frames, latent_height, latent_width)` tensor per image and video reference,
-                in packed order, as [`MiniMaxH3Ref2VAReferenceEncoderStep`] produced them.
+                One `(1, channels, num_latent_frames, latent_height, latent_width)` tensor per image and video
+                reference, in packed order, as [`MiniMaxH3Ref2VAReferenceEncoderStep`] produced them.
             audio_condition_latents (`list[torch.Tensor]`):
-                One `(num_audio_latents * 2, audio_latent_channels)` tensor per audio-bearing reference, in packed order.
+                One `(num_audio_latents * 2, audio_latent_channels)` tensor per audio-bearing reference, in packed
+                order.
             num_latent_frames (`int`): Number of target latent frames.
             latent_height (`int`): Target latent height.
             latent_width (`int`): Target latent width.

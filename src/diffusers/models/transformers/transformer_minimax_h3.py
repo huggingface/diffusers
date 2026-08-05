@@ -102,9 +102,9 @@ class MiniMaxH3AdaLayerNormModulation(nn.Module):
     Projects the shared timestep embedding into the six per-(timestep, modality) modulation parameters of one
     transformer block.
 
-    `(num_timesteps, time_embed_dim)` -> six tensors of shape `(num_timesteps * MINIMAX_H3_MODALITY_NUM,
-    hidden_size)`, in the diffusers `shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp` order. The row
-    layout of the returned tensors is `[t0_mod0, t0_mod1, t0_mod2, t1_mod0, ...]`, which is what `timestep_indices *
+    `(num_timesteps, time_embed_dim)` -> six tensors of shape `(num_timesteps * MINIMAX_H3_MODALITY_NUM, hidden_size)`,
+    in the diffusers `shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp` order. The row layout of the
+    returned tensors is `[t0_mod0, t0_mod1, t0_mod2, t1_mod0, ...]`, which is what `timestep_indices *
     MINIMAX_H3_MODALITY_NUM + token_tags` addresses.
 
     A single projection is shared by `norm1` and `norm2` and by the three modalities, so it cannot be folded into
@@ -383,8 +383,8 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
     The caller is responsible for building the packed layout: patchifying the video latents, ordering the rows, and
     producing the `(t, h, w)` position grid, the per-row modality tags and the per-row timestep indices. Padding rows
     (tag `-1`) are kept in a separate attention document, matching the reference implementation, which pads to a
-    multiple of 64 for FlashAttention with `cu_seqlens = [0, used, S]`. Prefer dropping them — a padless sequence
-    needs no attention mask, keeping the unmasked attention backends available.
+    multiple of 64 for FlashAttention with `cu_seqlens = [0, used, S]`. Prefer dropping them — a padless sequence needs
+    no attention mask, keeping the unmasked attention backends available.
 
     The batch axis is a pure replication axis: the structural arguments (`timestep`, `timestep_indices`, `token_tags`,
     `position_ids` and the three index tensors) describe one packed layout that every batch item shares, and each item

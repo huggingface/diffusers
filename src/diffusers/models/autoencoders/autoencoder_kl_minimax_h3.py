@@ -279,8 +279,8 @@ class MiniMaxH3VideoEncoder3d(nn.Module):
 class MiniMaxH3VideoRotaryPosEmbed(nn.Module):
     r"""
     3-axis rotary embedding for the ViT decoder. Coordinates are length-normalized to `[-1, 1)` per axis and scaled by
-    `2 * pi`, and the resulting `(t, h, w)` angles are concatenated and then duplicated, so the first
-    `rope_dim_ratio * attention_head_dim` channels of every head are rotated.
+    `2 * pi`, and the resulting `(t, h, w)` angles are concatenated and then duplicated, so the first `rope_dim_ratio *
+    attention_head_dim` channels of every head are rotated.
     """
 
     def __init__(self, dim: int, theta: float = 100.0, num_axes: int = 3) -> None:
@@ -398,8 +398,8 @@ class MiniMaxH3VideoTransformerBlock(nn.Module):
 class MiniMaxH3VideoViTDecoder3d(nn.Module):
     r"""
     Non-causal ViT decoder. Every latent voxel becomes one token; `num_register_tokens` learned register tokens plus a
-    single all-zero token are appended (all at position `0`), attended over with full self-attention, and dropped
-    again before the patch projection expands each token into a `patch_size_t x patch_size x patch_size` pixel block.
+    single all-zero token are appended (all at position `0`), attended over with full self-attention, and dropped again
+    before the patch projection expands each token into a `patch_size_t x patch_size x patch_size` pixel block.
     """
 
     def __init__(
@@ -794,9 +794,9 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
         r"""
         Decode a latent video, mirroring the chunking that `_encode` applied.
 
-        `token_drop` removed the tail of every encoded chunk, so consecutive decoded chunks overlap by
-        `frame_overlap` pixel frames and are linearly cross-faded. Latent frames are repeated at the end when the
-        length is not a whole number of chunks; the extra pixel frames are cut off again at the end.
+        `token_drop` removed the tail of every encoded chunk, so consecutive decoded chunks overlap by `frame_overlap`
+        pixel frames and are linearly cross-faded. Latent frames are repeated at the end when the length is not a whole
+        number of chunks; the extra pixel frames are cut off again at the end.
         """
         tokens_chunk_size = self.tokens_chunk_size
         token_drop = self.config.token_drop

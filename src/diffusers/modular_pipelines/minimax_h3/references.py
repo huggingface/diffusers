@@ -15,15 +15,15 @@
 r"""
 The references of a MiniMax-H3 `ref2va` request: one public dataclass per modality.
 
-`ref2va` conditions on an ordered list of references — images, videos (with their soundtrack) and audio clips —
-packed one block per reference ahead of the generated rows. The order is semantic twice over: it fixes the
-`"<Picture i>"` / `"<Audio j>"` / `"<Video k>"` labels of the prompt presentation, and it advances the shared
-audio/video rotary clock, so a different order is a different request.
+`ref2va` conditions on an ordered list of references — images, videos (with their soundtrack) and audio clips — packed
+one block per reference ahead of the generated rows. The order is semantic twice over: it fixes the `"<Picture i>"` /
+`"<Audio j>"` / `"<Video k>"` labels of the prompt presentation, and it advances the shared audio/video rotary clock,
+so a different order is a different request.
 
-Every reference holds in-memory media plus the rate that media carries. No block of this model opens a media file;
-each class decodes a path or a URL through its `from_file` classmethod, which brings the rates along. That is the
-reason to prefer `from_file` over a bare `load_video`: MiniMax-H3 resamples a reference onto its own 24 fps, so a
-video whose real rate is lost on the way in is conditioned on at the wrong speed, silently.
+Every reference holds in-memory media plus the rate that media carries. No block of this model opens a media file; each
+class decodes a path or a URL through its `from_file` classmethod, which brings the rates along. That is the reason to
+prefer `from_file` over a bare `load_video`: MiniMax-H3 resamples a reference onto its own 24 fps, so a video whose
+real rate is lost on the way in is conditioned on at the wrong speed, silently.
 """
 
 import contextlib
@@ -45,8 +45,8 @@ from .modular_pipeline import MINIMAX_H3_FPS
 @dataclass
 class MiniMaxH3Reference:
     r"""
-    Base class of the three references a [`MiniMaxH3Ref2VABlocks`] request conditions on:
-    [`MiniMaxH3ImageReference`], [`MiniMaxH3VideoReference`] and [`MiniMaxH3AudioReference`].
+    Base class of the three references a [`MiniMaxH3Ref2VABlocks`] request conditions on: [`MiniMaxH3ImageReference`],
+    [`MiniMaxH3VideoReference`] and [`MiniMaxH3AudioReference`].
 
     References are passed to the blocks as a list, **in the order the model should read them**: the order labels them
     in the prompt presentation and lays them out on the shared rotary clock, so a different order is a different
@@ -145,12 +145,12 @@ class MiniMaxH3VideoReference(MiniMaxH3Reference):
     @classmethod
     def from_file(cls, media) -> "MiniMaxH3VideoReference":
         r"""
-        Decode a video file into a [`MiniMaxH3VideoReference`], at the resolution, the frame rate and the soundtrack
-        it carries.
+        Decode a video file into a [`MiniMaxH3VideoReference`], at the resolution, the frame rate and the soundtrack it
+        carries.
 
         The rates land on the reference, which is the point of decoding this way rather than with
-        [`~utils.load_video`]: MiniMax-H3 resamples a reference onto its own 24 fps, so a frame rate lost on the way
-        in is a request conditioned at the wrong speed, with nothing to raise about it. A container whose metadata is
+        [`~utils.load_video`]: MiniMax-H3 resamples a reference onto its own 24 fps, so a frame rate lost on the way in
+        is a request conditioned at the wrong speed, with nothing to raise about it. A container whose metadata is
         wrong is corrected by overriding `fps` or `sample_rate` on the returned reference.
 
         Needs [PyAV](https://github.com/PyAV-Org/PyAV).
@@ -306,8 +306,8 @@ def _decode_video_file(media) -> tuple[np.ndarray, float, torch.Tensor | None, i
 
 def _decode_audio_file(media) -> tuple[torch.Tensor, int]:
     r"""
-    An audio file's `(channels, num_samples)` float32 waveform, at the sample rate the container reports. The
-    machinery behind [`MiniMaxH3AudioReference.from_file`].
+    An audio file's `(channels, num_samples)` float32 waveform, at the sample rate the container reports. The machinery
+    behind [`MiniMaxH3AudioReference.from_file`].
     """
     av = _import_av()
     with _local_media_file(media) as path, av.open(path) as container:

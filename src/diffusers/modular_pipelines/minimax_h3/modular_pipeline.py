@@ -152,10 +152,10 @@ class MiniMaxH3ModularPipeline(ModularPipeline):
     The checkpoint is guidance-distilled: guidance is baked into the weights, so there is no guider, no
     `negative_prompt` and no `guidance_scale`, and every step runs exactly one forward pass.
 
-    MiniMax-H3 is modular only: this pipeline and its blocks are the whole integration, there is no
-    `DiffusionPipeline` half. This module carries the model facts every block keys off — the config-derived geometry
-    as properties, the canvas and frame-count arithmetic as functions — and the conditioning, encoding and noise
-    contracts live on the blocks themselves.
+    MiniMax-H3 is modular only: this pipeline and its blocks are the whole integration, there is no `DiffusionPipeline`
+    half. This module carries the model facts every block keys off — the config-derived geometry as properties, the
+    canvas and frame-count arithmetic as functions — and the conditioning, encoding and noise contracts live on the
+    blocks themselves.
 
     ```py
     import torch
@@ -276,8 +276,8 @@ class MiniMaxH3ModularPipeline(ModularPipeline):
         r"""
         The `t` a visual conditioning anchor is held at: 0.999, just short of clean.
 
-        The released model was trained with its anchors very slightly noised, so conditioning on exactly `t = 1.0`
-        is off-distribution.
+        The released model was trained with its anchors very slightly noised, so conditioning on exactly `t = 1.0` is
+        off-distribution.
         """
         return 0.999
 

@@ -1871,8 +1871,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 Collection name for organizing components in the ComponentsManager.
             workflow (`str`, optional):
                 Name of a workflow declared by the pipeline blocks. If provided, the blocks are pruned to that
-                workflow's execution blocks, so the pipeline only expects — and `load_components()` only loads —
-                the components that workflow uses.
+                workflow's execution blocks, so the pipeline only expects — and `load_components()` only loads — the
+                components that workflow uses.
         """
         from ..pipelines.pipeline_loading_utils import _get_pipeline_class
 
@@ -2500,9 +2500,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         """
         Unload selected components, freeing their memory.
 
-        The component attribute is set back to `None` and, if a ComponentsManager is attached, the component is
-        removed from it. The component spec is untouched, so the component can be loaded again later with
-        `load_components()`.
+        The component attribute is set back to `None` and, if a ComponentsManager is attached, the component is removed
+        from it. The component spec is untouched, so the component can be loaded again later with `load_components()`.
 
         Args:
             names: component name or list of component names to unload.

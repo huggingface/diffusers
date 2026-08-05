@@ -50,8 +50,8 @@ def get_qwen3vl_prompt_embeds(
         processor (`Qwen3VLProcessor`): Its processor, which derives the token type ids from the vision pad ids.
         token_ids (`list[int]`): The tokenized presentation.
         vision_inputs (`dict`, *optional*):
-            The vision tensors of the presentation's blocks, by the conditioner's own parameter names —
-            `pixel_values` / `image_grid_thw` for images, `pixel_values_videos` / `video_grid_thw` for videos.
+            The vision tensors of the presentation's blocks, by the conditioner's own parameter names — `pixel_values`
+            / `image_grid_thw` for images, `pixel_values_videos` / `video_grid_thw` for videos.
         text_encoder_layer (`int`, *optional*, defaults to 50):
             Which hidden state conditions the transformer, i.e. `components.text_encoder_layer`.
         device (`torch.device`, *optional*): The device to run the conditioner on.
@@ -107,9 +107,9 @@ def encode_vae_condition(
 
     The recipe is the released model's, and every part of it is needed to reproduce its conditioning: the pixels are
     ImageNet-normalized, the posterior is *sampled* under a fresh generator seeded independently of the request, and
-    the sampled latent is rounded to float16 (~11 bits of every conditioning latent) before being normalized. A
-    single frame is encoded by the (tiled) spatial encoder alone; a frame stack goes through the temporal chunking,
-    which is what turns `17 * n + 5` frames into `5 * n + 2` latent frames.
+    the sampled latent is rounded to float16 (~11 bits of every conditioning latent) before being normalized. A single
+    frame is encoded by the (tiled) spatial encoder alone; a frame stack goes through the temporal chunking, which is
+    what turns `17 * n + 5` frames into `5 * n + 2` latent frames.
 
     Args:
         vae (`AutoencoderKLMiniMaxH3`): The video VAE.
@@ -122,8 +122,7 @@ def encode_vae_condition(
             Seed the posterior is sampled under, i.e. `components.keyframe_encode_seed`.
 
     Returns:
-        `torch.Tensor`: one `(1, latent_channels, num_latent_frames, latent_height, latent_width)` float32 CPU
-        tensor.
+        `torch.Tensor`: one `(1, latent_channels, num_latent_frames, latent_height, latent_width)` float32 CPU tensor.
     """
     latents_mean = torch.tensor(vae.config.latents_mean).view(1, -1, 1, 1, 1)
     latents_std = torch.tensor(vae.config.latents_std).view(1, -1, 1, 1, 1)
@@ -385,8 +384,8 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
 
         Args:
             video_sample_fps (`float`, defaults to 2.0):
-                The rate the conditioner reads a reference video at: every `24 / video_sample_fps`-th of the
-                normalized 24 fps frames.
+                The rate the conditioner reads a reference video at: every `24 / video_sample_fps`-th of the normalized
+                24 fps frames.
         """
         self.video_sample_fps = video_sample_fps
         super().__init__()
@@ -482,10 +481,10 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
         r"""
         Run the references' pixels through the conditioner's processors, batched per modality.
 
-        The vision tensors are batched per modality while the presentation is tokenized in request order; the two
-        agree because the filtering here preserves relative order within each modality and Qwen3-VL fills the n-th
-        pad *run* of a modality with the n-th entry of that modality's batch. Audio contributes nothing — a waveform
-        never reaches the conditioner.
+        The vision tensors are batched per modality while the presentation is tokenized in request order; the two agree
+        because the filtering here preserves relative order within each modality and Qwen3-VL fills the n-th pad *run*
+        of a modality with the n-th entry of that modality's batch. Audio contributes nothing — a waveform never
+        reaches the conditioner.
 
         Returns:
             `tuple`: the vision tensors by the conditioner's parameter names, the vision token count per image
@@ -543,10 +542,10 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
         Tokenize MiniMax-H3's presentation of a `ref2va` request.
 
         Every reference prepends a label, in packed order and numbered per modality: `"<Picture i>: "` plus a vision
-        block for an image, `"<Audio j>: "` alone for audio — a waveform never reaches the conditioner — and
-        `"<Video k>: "` plus one timestamped vision block per merged frame pair for a video. A video that carries
-        sound is labelled `"<Audio j>: "` *before* `"<Video k>: "`, mirroring the order its rows are packed in. The
-        prompt follows verbatim, with no chat template and no special tokens.
+        block for an image, `"<Audio j>: "` alone for audio — a waveform never reaches the conditioner — and `"<Video
+        k>: "` plus one timestamped vision block per merged frame pair for a video. A video that carries sound is
+        labelled `"<Audio j>: "` *before* `"<Video k>: "`, mirroring the order its rows are packed in. The prompt
+        follows verbatim, with no chat template and no special tokens.
 
         Args:
             tokenizer (`Qwen2TokenizerFast`): Tokenizer of the conditioner.
