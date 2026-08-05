@@ -174,6 +174,12 @@ class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
+        if block_state.output_type not in ("pil", "np", "pt"):
+            raise ValueError(
+                f"`output_type` must be one of 'pil', 'np' or 'pt', got {block_state.output_type!r}. To keep the "
+                "latents instead of decoding them, run a pipeline that does not include the decode blocks."
+            )
+
         latents_mean = torch.tensor(components.vae.config.latents_mean, device=device).view(1, -1, 1, 1, 1)
         latents_std = torch.tensor(components.vae.config.latents_std, device=device).view(1, -1, 1, 1, 1)
         latents = block_state.latents * latents_std + latents_mean

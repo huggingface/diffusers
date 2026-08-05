@@ -341,9 +341,13 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
         assert all(latent.shape == (1, 4, 1, 32 // 16, 32 // 16) for latent in condition_latents)
         assert all(torch.isfinite(latent).all() for latent in condition_latents)
 
-    @pytest.mark.parametrize("output_type", ["np", "pil", "latent"])
+    @pytest.mark.parametrize("output_type", ["np", "pil", "pt"])
     def test_output_type(self, output_type):
-        r"""`"latent"` stops before both VAEs and keeps the denormalized latents of either modality."""
+        r"""
+        The three formats the video decoder postprocesses to. `output_type` is a video format and nothing else — a
+        request that wants latents instead runs a pipeline without the decode blocks, which is what the audio
+        decoder does whatever is asked of it, since a waveform has only the one representation.
+        """
         pipe = self.get_pipeline()
 
         inputs = self.get_dummy_inputs()
@@ -357,9 +361,8 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
             assert len(video[0]) == 124
             assert video[0][0].size == (32, 32)
         else:
-            # The video as `(1, C, F, H, W)` and the audio channel-major.
-            assert video.shape == (1, 4, 37, 32 // 16, 32 // 16)
-            assert audio.shape == (2, 8, 207)
+            assert video.shape == (1, 124, 3, 32, 32)
+        assert audio.shape == (1, 2, 207 * 4)
 
     @pytest.mark.parametrize(
         "overrides,message",
@@ -369,6 +372,7 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
             ({"width": None}, "have to be passed together"),
             ({"num_frames": 96}, "must be between"),
             ({"num_frames": 400}, "must be between"),
+            ({"output_type": "latent"}, "must be one of 'pil', 'np' or 'pt'"),
         ],
         ids=[
             "prompt_list",
@@ -376,6 +380,7 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
             "height_without_width",
             "shorter_than_five_seconds",
             "longer_than_fifteen_seconds",
+            "output_type_latent",
         ],
     )
     def test_check_inputs(self, overrides, message):

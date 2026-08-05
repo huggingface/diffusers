@@ -140,27 +140,37 @@ pipe.audio_vae.to("cuda")
 
 On 12 to 16 GB the same recipe works with the video VAE group offloaded too (`offload_type="leaf_level"`, no stream) and a small canvas such as 960x544. Expect the weights to live in host RAM: around 75 GB of it at int8.
 
-With two cards nothing has to be offloaded: the conditioner takes the second card through a `device_map` and the denoiser keeps the first.
+With two cards nothing has to be offloaded: split the pipeline in two and put each half on its own device.
 
 ```py
 import torch
 from diffusers import ComponentsManager, ModularPipeline
-from transformers import Qwen3VLForConditionalGeneration
+
+workflow = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3").blocks.get_workflow("t2va")
+
+text_manager = ComponentsManager()
+text_manager.enable_auto_cpu_offload(device="cuda:1")
+conditioner = workflow.sub_blocks.pop("text_encoder").init_pipeline(
+    "MiniMaxAI/MiniMax-H3", components_manager=text_manager
+)
+conditioner.load_components(dtype=torch.bfloat16)
 
 manager = ComponentsManager()
-pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", components_manager=manager)
-pipe.update_components(
-    text_encoder=Qwen3VLForConditionalGeneration.from_pretrained(
-        "MiniMaxAI/MiniMax-H3", subfolder="text_encoder", dtype=torch.bfloat16, device_map={"": "cuda:1"}
-    ),
+manager.enable_auto_cpu_offload(device="cuda:0")
+rest = workflow.init_pipeline("MiniMaxAI/MiniMax-H3", components_manager=manager)
+rest.load_components(dtype=torch.bfloat16)
+
+prompt = "A red fox trotting through a snowy pine forest, snow crunching underfoot"
+state = conditioner(prompt=prompt)
+results = rest(
+    state=state,
+    num_frames=124,
+    generator=torch.Generator().manual_seed(42),
+    output=["videos", "audio", "sampling_rate"],
 )
-pipe.load_components(workflow="t2va", dtype=torch.bfloat16)
-pipe.transformer.to("cuda:0")
-pipe.vae.to("cuda:0")
-pipe.audio_vae.to("cuda:0")
 ```
 
-Two 80 GB cards run full bfloat16 this way with nothing streaming; two 48 GB cards do the same with the int8 loading above on both components.
+Two 80 GB cards run full bfloat16 this way: each half fits on its own card, so nothing is evicted back to host memory once it is resident. Two 48 GB cards do the same with the int8 loading above on both components.
 
 ## Text and keyframes
 
