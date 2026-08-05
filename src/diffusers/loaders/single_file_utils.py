@@ -149,6 +149,12 @@ CHECKPOINT_KEY_NAMES = {
         "net.pos_embedder.dim_spatial_range",
     ],
     "flux2": ["model.diffusion_model.single_stream_modulation.lin.weight", "single_stream_modulation.lin.weight"],
+    "ideogram4": [
+        "diffusion_model.llm_cond_proj.weight",
+        "conditional_transformer.llm_cond_proj.weight",
+        "llm_cond_proj.weight",
+    ],
+    "krea2": ["diffusion_model.txtfusion.projector.weight", "txtfusion.projector.weight"],
     "ltx2": [
         "model.diffusion_model.av_ca_a2v_gate_adaln_single.emb.timestep_embedder.linear_1.weight",
         "vae.per_channel_statistics.mean-of-means",
@@ -237,6 +243,8 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "z-image-turbo-controlnet-2.0": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.0"},
     "z-image-turbo-controlnet-2.1": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.1"},
     "ltx2-dev": {"pretrained_model_name_or_path": "Lightricks/LTX-2"},
+    "ideogram4": {"pretrained_model_name_or_path": "ideogram-ai/ideogram-v4"},
+    "krea2": {"pretrained_model_name_or_path": "krea/Krea-2-Turbo"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -682,6 +690,12 @@ def infer_diffusers_model_type(checkpoint):
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux2"]):
         model_type = "flux-2-dev"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ideogram4"]):
+        model_type = "ideogram4"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["krea2"]):
+        model_type = "krea2"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux"]):
         if any(
@@ -4180,3 +4194,136 @@ def convert_ernie_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
 
     return checkpoint
+
+
+def convert_ideogram4_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    for prefix in ("diffusion_model.", "conditional_transformer."):
+        if any(k.startswith(prefix) for k in converted_state_dict):
+            converted_state_dict = {k.removeprefix(prefix): v for k, v in converted_state_dict.items()}
+            break
+
+    # attention.o -> attention.to_out.0
+    for key in list(converted_state_dict.keys()):
+        if ".attention.o." in key:
+            new_key = key.replace(".attention.o.", ".attention.to_out.0.")
+            converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    # Split fused attention.qkv -> to_q / to_k / to_v
+    for key in list(converted_state_dict.keys()):
+        if ".attention.qkv.weight" in key:
+            fused = converted_state_dict.pop(key)
+            q, k, v = torch.chunk(fused, 3, dim=0)
+            base = key[: key.index(".attention.qkv.weight")]
+            converted_state_dict[f"{base}.attention.to_q.weight"] = q.contiguous()
+            converted_state_dict[f"{base}.attention.to_k.weight"] = k.contiguous()
+            converted_state_dict[f"{base}.attention.to_v.weight"] = v.contiguous()
+
+    return converted_state_dict
+
+
+def convert_krea2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    converted_state_dict = {k.removeprefix("diffusion_model."): v for k, v in converted_state_dict.items()}
+
+    ATTN_MAP = {"wq": "to_q", "wk": "to_k", "wv": "to_v", "wo": "to_out.0", "gate": "to_gate"}
+    FF_MAP = {"gate": "ff.gate", "up": "ff.up", "down": "ff.down"}
+    # native layout (krea-ai/krea-2 inference code, also used by community GGUF exports)
+    NORM_MAP = {
+        "prenorm.scale": "norm1.weight",
+        "postnorm.scale": "norm2.weight",
+        "attn.qknorm.qnorm.scale": "attn.norm_q.weight",
+        "attn.qknorm.knorm.scale": "attn.norm_k.weight",
+    }
+    TOP_MAP = {
+        "first.weight": "img_in.weight",
+        "first.bias": "img_in.bias",
+        "tmlp.0.weight": "time_embed.linear_1.weight",
+        "tmlp.0.bias": "time_embed.linear_1.bias",
+        "tmlp.2.weight": "time_embed.linear_2.weight",
+        "tmlp.2.bias": "time_embed.linear_2.bias",
+        "tproj.1.weight": "time_mod_proj.weight",
+        "tproj.1.bias": "time_mod_proj.bias",
+        "txtmlp.0.scale": "txt_in.norm.weight",
+        "txtmlp.1.weight": "txt_in.linear_1.weight",
+        "txtmlp.1.bias": "txt_in.linear_1.bias",
+        "txtmlp.3.weight": "txt_in.linear_2.weight",
+        "txtmlp.3.bias": "txt_in.linear_2.bias",
+        "last.norm.scale": "final_layer.norm.weight",
+        "last.linear.weight": "final_layer.linear.weight",
+        "last.linear.bias": "final_layer.linear.bias",
+        "last.modulation.lin": "final_layer.scale_shift_table",
+    }
+    # present in some native exports but absent from the current LastLayer
+    # (the official diffusers conversion drops them as well)
+    DROP_KEYS = {"last.up.weight", "last.down.weight"}
+
+    def remap_key(key):
+        if key in TOP_MAP:
+            return TOP_MAP[key]
+
+        # transformer blocks: blocks.{i}.*
+        m = re.match(r"^blocks\.(\d+)\.(.+)$", key)
+        if m:
+            idx, tail = m.groups()
+            if tail in NORM_MAP:
+                return f"transformer_blocks.{idx}.{NORM_MAP[tail]}"
+            if tail == "mod.lin":
+                return f"transformer_blocks.{idx}.scale_shift_table"
+            if tail.startswith("attn."):
+                sub_m = re.match(r"^attn\.(\w+)(.*)$", tail)
+                if sub_m:
+                    sub, rest = sub_m.groups()
+                    if sub in ATTN_MAP:
+                        return f"transformer_blocks.{idx}.attn.{ATTN_MAP[sub]}{rest}"
+            if tail.startswith("mlp."):
+                sub_m = re.match(r"^mlp\.(\w+)(.*)$", tail)
+                if sub_m:
+                    sub, rest = sub_m.groups()
+                    if sub in FF_MAP:
+                        return f"transformer_blocks.{idx}.{FF_MAP[sub]}{rest}"
+            # norm1, norm2, scale_shift_table and any unmatched sub-keys
+            return f"transformer_blocks.{idx}.{tail}"
+
+        # text fusion blocks: txtfusion.(layerwise_blocks|refiner_blocks).{i}.(attn|mlp).*
+        m = re.match(r"^txtfusion\.(layerwise_blocks|refiner_blocks)\.(\d+)\.(.+)$", key)
+        if m:
+            block_group, idx, tail = m.groups()
+            if tail in NORM_MAP:
+                return f"text_fusion.{block_group}.{idx}.{NORM_MAP[tail]}"
+            if tail.startswith("attn."):
+                sub_m = re.match(r"^attn\.(\w+)(.*)$", tail)
+                if sub_m:
+                    sub, rest = sub_m.groups()
+                    if sub in ATTN_MAP:
+                        return f"text_fusion.{block_group}.{idx}.attn.{ATTN_MAP[sub]}{rest}"
+            if tail.startswith("mlp."):
+                sub_m = re.match(r"^mlp\.(\w+)(.*)$", tail)
+                if sub_m:
+                    sub, rest = sub_m.groups()
+                    if sub in FF_MAP:
+                        return f"text_fusion.{block_group}.{idx}.{FF_MAP[sub]}{rest}"
+            return f"text_fusion.{block_group}.{idx}.{tail}"
+
+        # top-level txtfusion.* (e.g. txtfusion.projector)
+        if key.startswith("txtfusion."):
+            return "text_fusion." + key[len("txtfusion.") :]
+
+        return key
+
+    result = {}
+    for key, value in converted_state_dict.items():
+        if key in DROP_KEYS:
+            continue
+        new_key = remap_key(key)
+        # native exports store the modulation tables flat and the projector
+        # squeezed; reshape them to the diffusers parameter shapes
+        if new_key.endswith("scale_shift_table") and value.ndim == 1:
+            value = value.reshape(6 if new_key.startswith("transformer_blocks.") else 2, -1)
+        if new_key == "text_fusion.projector.weight" and value.ndim == 1:
+            value = value.reshape(1, -1)
+        result[new_key] = value
+
+    return result
