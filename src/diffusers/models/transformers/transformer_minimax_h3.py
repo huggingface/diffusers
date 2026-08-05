@@ -25,7 +25,7 @@ from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, Timesteps
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin, get_parameter_dtype
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -123,7 +123,7 @@ class MiniMaxH3AdaLayerNormModulation(nn.Module):
         # mixed-precision checkpoint — and only its result is cast down to the bfloat16 projection. Every block reads
         # the same `temb`, so a rounding applied before the activation biases every block's modulation parameters
         # identically at every sampling step, which accumulates coherently over the denoising trajectory.
-        temb = self.linear(nn.functional.silu(temb).to(self.linear.weight.dtype))
+        temb = self.linear(nn.functional.silu(temb).to(get_parameter_dtype(self.linear)))
         temb = temb.view(-1, 6 * self.hidden_size)
         return temb.chunk(6, dim=-1)
 
@@ -146,7 +146,7 @@ class MiniMaxH3AdaLayerNormOut(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor, timestep_indices: torch.Tensor) -> torch.Tensor:
         # As in `MiniMaxH3AdaLayerNormModulation`: activate at `temb`'s precision, cast to the projection's dtype after.
-        shift, scale = self.linear(nn.functional.silu(temb).to(self.linear.weight.dtype)).chunk(2, dim=-1)
+        shift, scale = self.linear(nn.functional.silu(temb).to(get_parameter_dtype(self.linear))).chunk(2, dim=-1)
         # The modulation itself stays at the block stack's precision; `forward` casts to the output heads' dtype.
         hidden_states = self.norm(hidden_states)
         return hidden_states * (1.0 + scale.index_select(0, timestep_indices)) + shift.index_select(
@@ -592,9 +592,9 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         # mixed-precision (the two patch projections are float32 while `context_embedder` and the block stack are
         # bfloat16 — see `_keep_in_fp32_modules`), so every input is aligned with its projection's parameter dtype,
         # mirroring the reference's explicit casts. The text stream sets the dtype of the packed sequence.
-        video_embeds = self.proj_in(hidden_states.to(self.proj_in.weight.dtype))
-        audio_embeds = self.audio_proj_in(audio_hidden_states.to(self.audio_proj_in.weight.dtype))
-        text_embeds = self.context_embedder(encoder_hidden_states.to(self.context_embedder.weight.dtype))
+        video_embeds = self.proj_in(hidden_states.to(get_parameter_dtype(self.proj_in)))
+        audio_embeds = self.audio_proj_in(audio_hidden_states.to(get_parameter_dtype(self.audio_proj_in)))
+        text_embeds = self.context_embedder(encoder_hidden_states.to(get_parameter_dtype(self.context_embedder)))
         text_embeds = self.token_refiner(text_embeds)
 
         hidden_states = text_embeds.new_zeros((text_embeds.shape[0], sequence_length, text_embeds.shape[-1]))
@@ -606,7 +606,7 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         # bfloat16 in the checkpoint while `time_embedder` is float32, so it stays at the time embedder's precision:
         # each AdaLN module applies its own activation to it and casts to its projection's dtype afterwards.
         temb = self.time_proj(timestep)
-        temb = self.time_embedder(temb.to(self.time_embedder.linear_1.weight.dtype))
+        temb = self.time_embedder(temb.to(get_parameter_dtype(self.time_embedder)))
 
         # 3. Row -> AdaLN table row.
         adaln_indices = timestep_indices * MINIMAX_H3_MODALITY_NUM + token_tags
@@ -622,7 +622,7 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         # 5. Both heads run over every row, then the rows of each modality are selected. The heads are listed in
         # `_keep_in_fp32_modules`, so they stay float32 while the block stack runs in the requested `torch_dtype`;
         # align the activation with their parameter dtype.
-        hidden_states = self.norm_out(hidden_states, temb, timestep_indices).to(self.proj_out.weight.dtype)
+        hidden_states = self.norm_out(hidden_states, temb, timestep_indices).to(get_parameter_dtype(self.proj_out))
         video_output = self.proj_out(hidden_states).index_select(1, video_indices)
         audio_output = self.audio_proj_out(hidden_states).index_select(1, audio_indices)
 
