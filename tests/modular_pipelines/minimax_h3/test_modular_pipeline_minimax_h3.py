@@ -643,7 +643,7 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
         if media_type == "pil":
             image, frames = Image.fromarray(pixels[0]), [Image.fromarray(frame) for frame in pixels]
         elif media_type == "np":
-            image, frames = pixels[0] / 255.0, pixels
+            image, frames = pixels[0] / 255.0, pixels / 255.0
         else:
             image, frames = torch.from_numpy(pixels[0]).permute(2, 0, 1), torch.from_numpy(pixels).permute(0, 3, 1, 2)
 
@@ -708,8 +708,12 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
                 "cannot be used on its own",
             ),
             ([MiniMaxH3ImageReference(image=Image.new("RGB", (20, 100)))], "within 1:4 and 4:1"),
+            (
+                [MiniMaxH3ImageReference(image=np.zeros((32, 32), dtype="uint8"))],
+                r"must be `\(height, width, 3\)` RGB pixels",
+            ),
         ],
-        ids=["not_a_reference", "too_many_videos", "audio_only", "image_aspect_ratio"],
+        ids=["not_a_reference", "too_many_videos", "audio_only", "image_aspect_ratio", "image_not_rgb"],
     )
     def test_check_inputs_references(self, references, message):
         pipe = self.get_pipeline()

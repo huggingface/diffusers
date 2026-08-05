@@ -455,8 +455,27 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
             if entry.kind == "image":
                 # Images are encoded at high detail — a short edge of their own, 2048 for the released checkpoint,
                 # upscaling included and with *no* area cap — unlike video references and the target itself, which
-                # share the one canvas rule. Expected in RGB, as `load_image` returns.
+                # share the one canvas rule.
+                #
+                # Any accepted layout onto a PIL image first, through the processor's own conversions: a
+                # `torch.Tensor` is channels-first, as everywhere else in diffusers, and a `np.ndarray`
+                # channels-last. Both carry floating point over `[0, 1]`, which is what `numpy_to_pil` scales
+                # back up, so `uint8` is normalized before it gets there. Everything below is the geometry of a
+                # decoded image, and `image_processor.resize` interpolates an array with `F.interpolate` rather
+                # than the LANCZOS the released model was conditioned on, so nothing may reach it as one.
                 image = entry.image
+                if isinstance(image, torch.Tensor):
+                    if image.dtype == torch.uint8:
+                        image = image.float() / 255.0
+                    image = components.image_processor.pt_to_numpy(image[None])[0]
+                if isinstance(image, np.ndarray):
+                    if image.ndim != 3 or image.shape[2] != 3:
+                        raise ValueError(
+                            f"A reference image must be `(height, width, 3)` RGB pixels, got {tuple(image.shape)}."
+                        )
+                    if image.dtype == np.uint8:
+                        image = image.astype(np.float32) / 255.0
+                    image = components.image_processor.numpy_to_pil(image)[0]
                 if image.size[0] <= 0 or image.size[1] <= 0:
                     raise ValueError(f"A reference image must have a positive size, got {image.size}.")
                 width, height = image.size

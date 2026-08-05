@@ -84,12 +84,13 @@ class MiniMaxH3ImageReference(MiniMaxH3Reference):
     A subject, style or scene reference: at most 9 per request.
 
     Attributes:
-        image (`PIL.Image.Image`):
-            The reference image. It never binds the generated geometry — it is encoded at a 2048 pixel short edge of
-            its own aspect ratio, whatever canvas the request generates at.
+        image (`PIL.Image.Image`, `np.ndarray` or `torch.Tensor`):
+            The reference image: an image, a `(height, width, 3)` array or a `(3, height, width)` tensor, `uint8` or
+            floating point over `[0, 1]`. It never binds the generated geometry — it is encoded at a short edge of its
+            own, 2048 for the released checkpoint, whatever canvas the request generates at.
     """
 
-    image: Image.Image
+    image: Image.Image | np.ndarray | torch.Tensor
 
     kind = "image"
     has_audio = False
