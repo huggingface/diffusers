@@ -107,7 +107,7 @@ class TestWanPipeline(WanPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
         # `_optional_components` lists both `transformer` and `transformer_2`, but only `transformer_2` is optional
