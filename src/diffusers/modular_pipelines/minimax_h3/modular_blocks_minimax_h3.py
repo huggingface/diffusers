@@ -52,7 +52,8 @@ class MiniMaxH3AutoBeforeEncodeStep(ConditionalPipelineBlocks):
           image_processor (`VaeImageProcessor`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) reference_image_short_edge (default:
+          2048)
 
       Inputs:
           references (`list`, *optional*):
@@ -675,7 +676,8 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
           (`VideoProcessor`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) reference_image_short_edge (default:
+          2048)
 
       Inputs:
           references (`list`, *optional*):

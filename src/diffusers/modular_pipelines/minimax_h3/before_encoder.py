@@ -172,7 +172,6 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
         max_videos: int = 3,
         max_audios: int = 3,
         max_references: int = 12,
-        reference_image_short_edge: int = 2048,
     ):
         r"""
         Resolve a `ref2va` request's plan and normalize its references onto MiniMax-H3's own rates and resolutions.
@@ -182,8 +181,6 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
             max_videos (`int`, defaults to 3): Video references a request may carry.
             max_audios (`int`, defaults to 3): Audio references a request may carry.
             max_references (`int`, defaults to 12): References of any modality a request may carry in total.
-            reference_image_short_edge (`int`, defaults to 2048):
-                The short edge an image reference is resized to, upscaling included.
 
         The limits are what MiniMax-H3 documents for the released checkpoint; they bound nothing but this block's own
         validation, so a fine-tune that packs more can raise them.
@@ -192,7 +189,6 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
         self.max_videos = max_videos
         self.max_audios = max_audios
         self.max_references = max_references
-        self.reference_image_short_edge = reference_image_short_edge
         super().__init__()
 
     @property
@@ -216,8 +212,14 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
 
     @property
     def expected_configs(self) -> list[ConfigSpec]:
-        # The canvas MiniMax-H3 was released for, which a video reference is put on as well.
-        return [ConfigSpec("canvas_short_edge", 768), ConfigSpec("canvas_max_pixels", 768 * 1344)]
+        # The canvas MiniMax-H3 was released for, which a video reference is put on as well, and the separate
+        # resolution an image reference is encoded at. All three are geometry of the released checkpoint, so a
+        # fine-tune that was trained at another one is configured rather than patched.
+        return [
+            ConfigSpec("canvas_short_edge", 768),
+            ConfigSpec("canvas_max_pixels", 768 * 1344),
+            ConfigSpec("reference_image_short_edge", 2048),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -451,16 +453,16 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
                 )
 
             if entry.kind == "image":
-                # Images are encoded at high detail — a 2048 pixel short edge, upscaling included, with *no* area
-                # cap — unlike video references and the target itself, which share the one canvas rule. Expected in
-                # RGB, as `load_image` returns.
+                # Images are encoded at high detail — a short edge of their own, 2048 for the released checkpoint,
+                # upscaling included and with *no* area cap — unlike video references and the target itself, which
+                # share the one canvas rule. Expected in RGB, as `load_image` returns.
                 image = entry.image
                 if image.size[0] <= 0 or image.size[1] <= 0:
                     raise ValueError(f"A reference image must have a positive size, got {image.size}.")
                 width, height = image.size
                 if width > 4 * height or height > 4 * width:
                     raise ValueError(f"A reference image must be within 1:4 and 4:1, got {width}x{height}.")
-                scale = self.reference_image_short_edge / min(width, height)
+                scale = components.config.reference_image_short_edge / min(width, height)
                 target_height = max(multiple, round(height * scale / multiple) * multiple)
                 target_width = max(multiple, round(width * scale / multiple) * multiple)
                 if image.size != (target_width, target_height):

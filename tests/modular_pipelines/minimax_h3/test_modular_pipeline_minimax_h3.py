@@ -135,7 +135,9 @@ MINIMAX_H3_REF2VA_WORKFLOW_DEFAULTS = {
             "transformer_ref": "MiniMaxH3Transformer3DModel",
             "image_processor": "VaeImageProcessor",
         },
-        "configs": _SHARED_CONFIGS,
+        # An image reference is put on a resolution of its own rather than the shared canvas, so `ref2va` declares
+        # one more geometry config than the other two workflows.
+        "configs": {**_SHARED_CONFIGS, "reference_image_short_edge": 2048},
         # `num_frames` cannot default on ref2va: reference soundtracks are truncated to the generated duration, so a
         # silent 124-frame default would cut them short. It is required instead.
         "required_inputs": ["prompt", "references", "num_frames", "num_inference_steps"],
@@ -416,17 +418,14 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
 
         A reference is put on a canvas of its own, and both released sizes pack thousands of conditioning rows —
         minutes per pipeline call on CPU. The two follow different rules, so both are made small: an image reference
-        by the setup step's own `reference_image_short_edge`, which is why the block is swapped for a configured one,
-        and a video reference by the canvas rule it shares with the generated video, which is pipeline config. Every
-        request here passes `height` and `width`, so shrinking the shared rule never touches a generated canvas.
+        by `reference_image_short_edge`, and a video reference by the canvas rule it shares with the generated video.
+        Both are pipeline config, so they survive a save and reload. Every request here passes `height` and `width`,
+        so shrinking the shared rule never touches a generated canvas.
         """
-        blocks = self.pipeline_blocks_class()
-        blocks.sub_blocks["before_encode"].sub_blocks["ref2va"] = MiniMaxH3Ref2VASetupStep(
-            reference_image_short_edge=64
+        pipeline = self.pipeline_blocks_class().init_pipeline(
+            self.pretrained_model_name_or_path, components_manager=components_manager
         )
-
-        pipeline = blocks.init_pipeline(self.pretrained_model_name_or_path, components_manager=components_manager)
-        pipeline.update_components(canvas_short_edge=64, canvas_max_pixels=64**2 * 2)
+        pipeline.update_components(canvas_short_edge=64, canvas_max_pixels=64**2 * 2, reference_image_short_edge=64)
         pipeline.load_components(dtype=dtype)
         pipeline.set_progress_bar_config(disable=None)
         return pipeline
@@ -799,10 +798,10 @@ class TestMiniMaxH3Reference:
     def test_reference_image_geometry(self):
         r"""
         A reference image is encoded at a 2048 pixel short edge, both axes rounded to a multiple of 32, with no area
-        cap — the released geometry, so the setup step is constructed explicitly rather than through the
-        `small_references` fixture's shrunken default.
+        cap — the released geometry, which is what the block declares, so this runs it on its own defaults rather
+        than through the shrunken ones the pipeline tests configure.
         """
-        pipe = MiniMaxH3Ref2VASetupStep(reference_image_short_edge=2048).init_pipeline()
+        pipe = MiniMaxH3Ref2VASetupStep().init_pipeline()
 
         references = pipe(
             references=[MiniMaxH3ImageReference(image=Image.new("RGB", (80, 48)))],
