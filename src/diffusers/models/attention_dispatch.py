@@ -1889,6 +1889,9 @@ def _sage_attention_backward_op(
 
 
 def _maybe_modify_attn_mask_npu(query: torch.Tensor, key: torch.Tensor, attn_mask: torch.Tensor | None = None):
+    if attn_mask is not None and attn_mask.dtype != torch.bool:
+        raise ValueError(f"Attention mask must be of type bool, got {attn_mask.dtype}.")
+
     # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
     if attn_mask is not None and torch.all(attn_mask != 0):
         attn_mask = None
@@ -3773,6 +3776,19 @@ def _native_npu_attention(
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
+
+    if attn_mask is not None and attn_mask.is_floating_point():
+        # Preserve additive mask values by letting native SDPA select the appropriate NPU implementation.
+        return _native_attention(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            scale=scale,
+            _parallel_config=_parallel_config,
+        )
+
     if _parallel_config is None:
         attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
 
