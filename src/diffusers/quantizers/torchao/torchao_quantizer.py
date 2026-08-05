@@ -95,30 +95,7 @@ def _update_torch_safe_globals():
         (torch.uint6, "torch.uint6"),
         (torch.uint7, "torch.uint7"),
     ]
-    try:
-        from torchao.dtypes import NF4Tensor
-        from torchao.dtypes.uintx.uintx_layout import UintxAQTTensorImpl, UintxTensor
-
-        safe_globals.extend([UintxTensor, UintxAQTTensorImpl, NF4Tensor])
-
-        # note: is_torchao_version(">=", "0.16.0") does not work correctly
-        # with torchao nightly, so using a ">" check which does work correctly
-        if is_torchao_version(">", "0.15.0"):
-            pass
-        else:
-            from torchao.dtypes.floatx.float8_layout import Float8AQTTensorImpl
-            from torchao.dtypes.uintx.uint4_layout import UInt4Tensor
-
-            safe_globals.extend([UInt4Tensor, Float8AQTTensorImpl])
-
-    except (ImportError, ModuleNotFoundError) as e:
-        logger.warning(
-            "Unable to import `torchao` Tensor objects. This may affect loading checkpoints serialized with `torchao`"
-        )
-        logger.debug(e)
-
-    finally:
-        torch.serialization.add_safe_globals(safe_globals=safe_globals)
+    torch.serialization.add_safe_globals(safe_globals=safe_globals)
 
 
 if (
