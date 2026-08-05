@@ -155,8 +155,8 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
     # MiniMax-H3 packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     batch_params = frozenset()
     # The checkpoint is guidance-distilled and generates a video, so neither `guidance_scale` nor
-    # `num_images_per_prompt` exists.
-    optional_params = frozenset(["num_inference_steps", "latents", "output_type"])
+    # `num_images_per_prompt` exists. `num_inference_steps` is declared required, so it is not listed here either.
+    optional_params = frozenset(["latents", "output_type"])
     output_name = "videos"
     expected_workflow_blocks = MINIMAX_H3_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_WORKFLOW_DEFAULTS
@@ -399,8 +399,8 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
     # MiniMax-H3 packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     batch_params = frozenset()
     # The checkpoint is guidance-distilled and generates a video, so neither `guidance_scale` nor
-    # `num_images_per_prompt` exists.
-    optional_params = frozenset(["num_inference_steps", "latents", "output_type"])
+    # `num_images_per_prompt` exists. `num_inference_steps` is declared required, so it is not listed here either.
+    optional_params = frozenset(["latents", "output_type"])
     output_name = "videos"
     expected_workflow_blocks = MINIMAX_H3_REF2VA_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_REF2VA_WORKFLOW_DEFAULTS
