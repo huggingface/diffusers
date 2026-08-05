@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 为了将先验模型放入 GPU 内存并加速训练，尝试分别启用 `gradient_accumulation_steps`、`gradient_checkpointing` 和 `mixed_precision`。
 
-本指南探讨 [train_text_to_image_prior.py](https://github.com/huggingface/diffusers/blob/main/examples/wuerstchen/text_to_image/train_text_to_image_prior.py) 脚本，帮助您更熟悉它，以及如何根据您的用例进行适配。
+本指南探讨 [train_text_to_image_prior.py](https://github.com/huggingface/diffusers/blob/main/examples/research_projects/wuerstchen/text_to_image/train_text_to_image_prior.py) 脚本，帮助您更熟悉它，以及如何根据您的用例进行适配。
 
 在运行脚本之前，请确保从源代码安装库：
 
@@ -59,7 +59,7 @@ write_basic_config()
 最后，如果您想在自己的数据集上训练模型，请查看 [创建训练数据集](create_dataset) 指南，了解如何创建与训练脚本兼容的数据集。
 
 > [!TIP]
-> 以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未涵盖 [脚本](https://github.com/huggingface/diffusers/blob/main/examples/wuerstchen/text_to_image/train_text_to_image_prior.py) 的详细信息。如果您有兴趣了解更多，请随时阅读脚本，并告诉我们您是否有任何问题或疑虑。
+> 以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未涵盖 [脚本](https://github.com/huggingface/diffusers/blob/main/examples/research_projects/wuerstchen/text_to_image/train_text_to_image_prior.py) 的详细信息。如果您有兴趣了解更多，请随时阅读脚本，并告诉我们您是否有任何问题或疑虑。
 
 ## 脚本参数
 
@@ -78,7 +78,7 @@ accelerate launch train_text_to_image_prior.py \
 
 训练脚本也与 [文本到图像](text2image#training-script) 训练指南类似，但已修改以支持 Wuerstchen。本指南重点介绍 Wuerstchen 训练脚本中独特的代码。
 
-[`main()`](https://github.com/huggingface/diffusers/blob/6e68c71503682c8693cb5b06a4da4911dfd655ee/examples/wuerstchen/text_to_image/train_text_to_image_prior.py#L441) 函数首先初始化图像编码器 - 一个 [EfficientNet](https://github.com/huggingface/diffusers/blob/main/examples/wuerstchen/text_to_image/modeling_efficient_net_encoder.py) - 以及通常的调度器和分词器。
+[`main()`](https://github.com/huggingface/diffusers/blob/6e68c71503682c8693cb5b06a4da4911dfd655ee/examples/wuerstchen/text_to_image/train_text_to_image_prior.py#L441) 函数首先初始化图像编码器 - 一个 [EfficientNet](https://github.com/huggingface/diffusers/blob/main/examples/research_projects/wuerstchen/text_to_image/modeling_efficient_net_encoder.py) - 以及通常的调度器和分词器。
 
 ```py
 with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
