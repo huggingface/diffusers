@@ -513,6 +513,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         for input_param in state_inputs:
             if input_param.name:
                 value = state.get(input_param.name)
+                if value is None:
+                    # if the value is None (not passed, or passed as None), the first block that reads it sets the
+                    # default at call time. For sequential blocks the default is already resolved at compile time
+                    # (first declaring block wins, see _get_inputs), but for conditional blocks the selected branch
+                    # is only known at runtime: disagreeing branch defaults merge to None (see combine_inputs) and
+                    # the block that actually runs applies its own declared default here
+                    value = input_param.default
                 if input_param.required and value is None:
                     raise ValueError(f"Required input '{input_param.name}' is missing")
                 elif value is not None or (value is None and input_param.name not in data):
