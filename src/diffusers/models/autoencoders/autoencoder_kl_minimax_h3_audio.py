@@ -93,10 +93,6 @@ class MiniMaxH3AudioEncoderOutput(BaseOutput):
     latent_dist: MiniMaxH3AudioDiagonalGaussianDistribution
 
 
-def _wn_conv1d(*args, **kwargs) -> nn.Module:
-    return weight_norm(nn.Conv1d(*args, **kwargs))
-
-
 def kaiser_sinc_filter1d(cutoff: float, half_width: float, kernel_size: int) -> torch.Tensor:
     r"""Kaiser-windowed sinc low-pass filter of shape `[1, 1, kernel_size]`.
 
@@ -234,9 +230,9 @@ class MiniMaxH3AudioResidualUnit(nn.Module):
         super().__init__()
         self.block = nn.Sequential(
             MiniMaxH3AudioSnake1d(dim),
-            _wn_conv1d(dim, dim, kernel_size=7, dilation=dilation, padding=((7 - 1) * dilation) // 2),
+            weight_norm(nn.Conv1d(dim, dim, kernel_size=7, dilation=dilation, padding=((7 - 1) * dilation) // 2)),
             MiniMaxH3AudioSnake1d(dim),
-            _wn_conv1d(dim, dim, kernel_size=1),
+            weight_norm(nn.Conv1d(dim, dim, kernel_size=1)),
         )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -257,12 +253,14 @@ class MiniMaxH3AudioEncoderBlock(nn.Module):
             MiniMaxH3AudioResidualUnit(dim // 2, dilation=3),
             MiniMaxH3AudioResidualUnit(dim // 2, dilation=9),
             MiniMaxH3AudioSnake1d(dim // 2),
-            _wn_conv1d(
-                dim // 2,
-                dim,
-                kernel_size=2 * stride,
-                stride=stride,
-                padding=math.ceil(stride / 2),
+            weight_norm(
+                nn.Conv1d(
+                    dim // 2,
+                    dim,
+                    kernel_size=2 * stride,
+                    stride=stride,
+                    padding=math.ceil(stride / 2),
+                )
             ),
         )
 
@@ -275,13 +273,13 @@ class MiniMaxH3AudioEncoder(nn.Module):
 
     def __init__(self, d_model: int, strides: tuple[int, ...], d_latent: int):
         super().__init__()
-        block: list[nn.Module] = [_wn_conv1d(1, d_model, kernel_size=7, padding=3)]
+        block: list[nn.Module] = [weight_norm(nn.Conv1d(1, d_model, kernel_size=7, padding=3))]
         for stride in strides:
             d_model *= 2
             block.append(MiniMaxH3AudioEncoderBlock(d_model, stride=stride))
         block += [
             MiniMaxH3AudioSnake1d(d_model),
-            _wn_conv1d(d_model, d_latent, kernel_size=3, padding=1),
+            weight_norm(nn.Conv1d(d_model, d_latent, kernel_size=3, padding=1)),
         ]
         self.block = nn.Sequential(*block)
 
@@ -403,12 +401,15 @@ class MiniMaxH3AudioAMPBlock(nn.Module):
         super().__init__()
         self.convs1 = nn.ModuleList(
             [
-                _wn_conv1d(channels, channels, kernel_size, dilation=d, padding=(kernel_size * d - d) // 2)
+                weight_norm(nn.Conv1d(channels, channels, kernel_size, dilation=d, padding=(kernel_size * d - d) // 2))
                 for d in dilation
             ]
         )
         self.convs2 = nn.ModuleList(
-            [_wn_conv1d(channels, channels, kernel_size, dilation=1, padding=(kernel_size - 1) // 2) for _ in dilation]
+            [
+                weight_norm(nn.Conv1d(channels, channels, kernel_size, dilation=1, padding=(kernel_size - 1) // 2))
+                for _ in dilation
+            ]
         )
         self.activations = nn.ModuleList(
             [
@@ -442,7 +443,7 @@ class MiniMaxH3AudioBigVGANDecoder(nn.Module):
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
 
-        self.conv_pre = _wn_conv1d(in_channels, upsample_initial_channel, 7, 1, padding=3)
+        self.conv_pre = weight_norm(nn.Conv1d(in_channels, upsample_initial_channel, 7, 1, padding=3))
 
         # Each upsampler is wrapped in a one-element `ModuleList` in the original checkpoint
         # (`ups.<i>.0`); the extra nesting is kept so the state dict stays a passthrough.
@@ -471,7 +472,7 @@ class MiniMaxH3AudioBigVGANDecoder(nn.Module):
                 self.resblocks.append(MiniMaxH3AudioAMPBlock(channels, kernel, tuple(dilation)))
 
         self.activation_post = MiniMaxH3AudioActivation1d(activation=MiniMaxH3AudioSnakeBeta(channels))
-        self.conv_post = _wn_conv1d(channels, 1, 7, 1, padding=3, bias=False)
+        self.conv_post = weight_norm(nn.Conv1d(channels, 1, 7, 1, padding=3, bias=False))
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.conv_pre(hidden_states)

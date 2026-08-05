@@ -21,15 +21,110 @@ from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import MiniMaxH3ModularPipeline
-from .packing import (
-    MINIMAX_H3_PIXEL_MEAN,
-    MINIMAX_H3_PIXEL_STD,
-    unpack_audio_tokens,
-    unpatchify_video_tokens,
-)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class MiniMaxH3AfterDenoiseStep(ModularPipelineBlocks):
+    model_name = "minimax-h3"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Turns the denoised rows of the packed sequence back into latents: drops the conditioning rows the loop "
+            "never wrote, then unpacks the video rows into `(1, latent_channels, num_latent_frames, latent_height, "
+            "latent_width)` and the channel-major audio rows into the `(2, audio_latent_channels, num_audio_latents)` "
+            "the mono audio VAE consumes. The decoders then take latents from any source, and popping them leaves "
+            "latents in hand."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The denoised video rows of the packed sequence, conditioning rows first.",
+            ),
+            InputParam(
+                name="audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The denoised audio rows of the packed sequence, reference rows first.",
+            ),
+            InputParam(
+                name="num_condition_video_rows",
+                type_hint=int,
+                default=0,
+                description="How many leading video rows are conditioning rows and are dropped here.",
+            ),
+            InputParam(
+                name="num_condition_audio_rows",
+                type_hint=int,
+                default=0,
+                description="How many leading audio rows are reference rows and are dropped here.",
+            ),
+            InputParam(
+                name="num_latent_frames", type_hint=int, required=True, description="Number of video latent frames."
+            ),
+            InputParam(name="latent_height", type_hint=int, required=True, description="Height of the video latents."),
+            InputParam(name="latent_width", type_hint=int, required=True, description="Width of the video latents."),
+            InputParam(
+                name="num_audio_latents",
+                type_hint=int,
+                required=True,
+                description="Number of audio latents per channel.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="The generated video latents, of shape `(1, latent_channels, num_latent_frames, "
+                "latent_height, latent_width)`.",
+            ),
+            OutputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                description="The generated audio latents, one batch item per stereo channel.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        patch_t, patch_h, patch_w = components.patch_size
+        channels = components.vae_latent_channels
+
+        # The inverse of the patchify in the prepare-latents step: rows are frame-major then row-major.
+        rows = block_state.latents[block_state.num_condition_video_rows :]
+        rows = rows.reshape(
+            -1,
+            block_state.num_latent_frames // patch_t,
+            block_state.latent_height // patch_h,
+            block_state.latent_width // patch_w,
+            channels,
+            patch_t,
+            patch_h,
+            patch_w,
+        )
+        rows = rows.permute(0, 4, 1, 5, 2, 6, 3, 7)
+        block_state.latents = rows.reshape(
+            -1, channels, block_state.num_latent_frames, block_state.latent_height, block_state.latent_width
+        ).contiguous()
+
+        # Audio rows are channel-major, and the mono audio VAE takes the two stereo channels as two batch items.
+        audio_rows = block_state.audio_latents[block_state.num_condition_audio_rows :]
+        audio_rows = audio_rows.reshape(components.audio_channels, block_state.num_audio_latents, audio_rows.shape[-1])
+        block_state.audio_latents = audio_rows.permute(0, 2, 1).contiguous()
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
 class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
@@ -38,10 +133,10 @@ class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Unpacks the generated video rows back into latents, denormalizes them and decodes them into video. The "
-            "spatial tiling of the video VAE covers the canvas exactly, so the decoded frames need no crop back, but "
-            "the decode itself runs under float16 autocast even though the VAE weights are float32, and the VAE "
-            "produces ImageNet-normalized RGB that is reverted here."
+            "Denormalizes the generated video latents and decodes them into video. The spatial tiling of the video "
+            "VAE covers the canvas exactly, so the decoded frames need no crop back, but the decode itself runs under "
+            "float16 autocast even though the VAE weights are float32, and the VAE produces ImageNet-normalized RGB "
+            "that is reverted here."
         )
 
     @property
@@ -65,22 +160,9 @@ class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
                 name="latents",
                 type_hint=torch.Tensor,
                 required=True,
-                description="The denoised video rows of the packed sequence, conditioning rows first.",
+                description="The generated video latents.",
             ),
-            InputParam(
-                name="num_condition_video_rows",
-                type_hint=int,
-                default=0,
-                description="How many leading video rows are conditioning rows and are dropped here.",
-            ),
-            InputParam(
-                name="num_latent_frames", type_hint=int, required=True, description="Number of video latent frames."
-            ),
-            InputParam(name="latent_height", type_hint=int, required=True, description="Height of the video latents."),
-            InputParam(name="latent_width", type_hint=int, required=True, description="Width of the video latents."),
-            InputParam.template(
-                "output_type", description="Output format: 'pil', 'np', 'pt' or 'latent' for the raw latents."
-            ),
+            InputParam.template("output_type", description="Output format: 'pil', 'np' or 'pt'."),
         ]
 
     @property
@@ -92,29 +174,16 @@ class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        latents = unpatchify_video_tokens(
-            block_state.latents[block_state.num_condition_video_rows :],
-            block_state.num_latent_frames,
-            block_state.latent_height,
-            block_state.latent_width,
-            components.vae_latent_channels,
-            components.patch_size,
-        )
         latents_mean = torch.tensor(components.vae.config.latents_mean, device=device).view(1, -1, 1, 1, 1)
         latents_std = torch.tensor(components.vae.config.latents_std, device=device).view(1, -1, 1, 1, 1)
-        latents = latents * latents_std + latents_mean
+        latents = block_state.latents * latents_std + latents_mean
 
-        if block_state.output_type == "latent":
-            block_state.videos = latents
-        else:
-            with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type == "cuda"):
-                video = components.vae.decode(latents, return_dict=False)[0]
-            pixel_mean = torch.tensor(MINIMAX_H3_PIXEL_MEAN, device=device).view(1, -1, 1, 1, 1)
-            pixel_std = torch.tensor(MINIMAX_H3_PIXEL_STD, device=device).view(1, -1, 1, 1, 1)
-            video = (video.float() * pixel_std + pixel_mean).clamp(0, 1)
-            block_state.videos = components.video_processor.postprocess_video(
-                video, output_type=block_state.output_type
-            )
+        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type == "cuda"):
+            video = components.vae.decode(latents, return_dict=False)[0]
+        pixel_mean = torch.tensor(components.pixel_mean, device=device).view(1, -1, 1, 1, 1)
+        pixel_std = torch.tensor(components.pixel_std, device=device).view(1, -1, 1, 1, 1)
+        video = (video.float() * pixel_std + pixel_mean).clamp(0, 1)
+        block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -126,8 +195,8 @@ class MiniMaxH3AudioDecodeStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Unpacks the generated audio rows back into latents, denormalizes them and decodes them into a stereo "
-            "waveform. The audio VAE is mono and takes the two stereo channels as two batch items."
+            "Denormalizes the generated audio latents and decodes them into a stereo waveform. The audio VAE is mono "
+            "and takes the two stereo channels as two batch items."
         )
 
     @property
@@ -141,22 +210,7 @@ class MiniMaxH3AudioDecodeStep(ModularPipelineBlocks):
                 name="audio_latents",
                 type_hint=torch.Tensor,
                 required=True,
-                description="The denoised audio rows of the packed sequence, reference rows first.",
-            ),
-            InputParam(
-                name="num_condition_audio_rows",
-                type_hint=int,
-                default=0,
-                description="How many leading audio rows are reference rows and are dropped here.",
-            ),
-            InputParam(
-                name="num_audio_latents",
-                type_hint=int,
-                required=True,
-                description="Number of audio latents per channel.",
-            ),
-            InputParam.template(
-                "output_type", description="Output format: 'pil', 'np', 'pt' or 'latent' for the raw latents."
+                description="The generated audio latents, one batch item per stereo channel.",
             ),
         ]
 
@@ -180,18 +234,12 @@ class MiniMaxH3AudioDecodeStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        audio_latents = unpack_audio_tokens(
-            block_state.audio_latents[block_state.num_condition_audio_rows :], block_state.num_audio_latents
-        )
         audio_latents_mean = torch.tensor(components.audio_vae.config.latents_mean, device=device).view(1, -1, 1)
         audio_latents_std = torch.tensor(components.audio_vae.config.latents_std, device=device).view(1, -1, 1)
-        audio_latents = audio_latents * audio_latents_std + audio_latents_mean
+        audio_latents = block_state.audio_latents * audio_latents_std + audio_latents_mean
 
-        if block_state.output_type == "latent":
-            block_state.audio = audio_latents
-        else:
-            audio = components.audio_vae.decode(audio_latents, return_dict=False)[0]
-            block_state.audio = audio.float().permute(1, 0, 2)
+        audio = components.audio_vae.decode(audio_latents, return_dict=False)[0]
+        block_state.audio = audio.float().permute(1, 0, 2)
         block_state.sampling_rate = components.audio_sampling_rate
 
         self.set_block_state(state, block_state)
