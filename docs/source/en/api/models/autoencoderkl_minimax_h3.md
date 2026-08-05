@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # AutoencoderKLMiniMaxH3
 
-The video variational autoencoder (VAE) model with KL loss used in [MiniMax-H3](https://huggingface.co/MiniMaxAI) by MiniMax. It pairs a causal 3D CNN encoder with a non-causal ViT decoder and compresses 16x spatially and 4x temporally.
+The video variational autoencoder (VAE) model with KL loss used in [MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) by MiniMax. It pairs a causal 3D CNN encoder with a non-causal ViT decoder and compresses 16x spatially and 4x temporally.
 
 Three things set it apart from most autoencoders in the library:
 

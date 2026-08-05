@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # MiniMaxH3Transformer3DModel
 
-A Diffusion Transformer model for joint video and audio generation, introduced in [MiniMax-H3](https://huggingface.co/MiniMaxAI) by MiniMax.
+A Diffusion Transformer model for joint video and audio generation, introduced in [MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) by MiniMax.
 
 MiniMax-H3 runs a single stack of blocks over **one packed 1-D sequence** that holds the text conditioning, the conditioning image and video rows, the audio rows and the target video rows at once. Attention is full self-attention over that sequence, so there is no cross-attention and no per-modality block weights. Modality-specific behaviour comes only from the two input patch projections, the per-row modality tag that selects the AdaLN modulation parameters, and the two output heads.
 
