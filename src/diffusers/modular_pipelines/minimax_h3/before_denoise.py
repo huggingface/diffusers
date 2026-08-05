@@ -396,6 +396,8 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
+        if (block_state.height is None) != (block_state.width is None):
+            raise ValueError("`height` and `width` have to be passed together, or neither of them.")
         # Without a keyframe to take the aspect ratio from, MiniMax-H3 generates on its own 16:9 canvas.
         if block_state.height is None:
             block_state.height, block_state.width = resolve_canvas_size(
@@ -414,22 +416,23 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
         frames_per_chunk = components.vae_frames_per_chunk
         latents_per_chunk = components.vae_latents_per_chunk
         aligned_num_frames = align_num_frames(block_state.num_frames, frames_per_chunk, latents_per_chunk)
+        # The duration the request generates is the one of the *aligned* frame count, so that is what the ceiling has
+        # to hold for: 346 frames would otherwise pass the check and then be rounded up to 362, i.e. 15.083 seconds.
+        duration = aligned_num_frames / components.fps
+        if not components.min_duration <= duration <= components.max_duration:
+            raise ValueError(
+                f"MiniMax-H3 generates between {components.min_duration} and {components.max_duration} seconds at "
+                f"{components.fps} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE can "
+                f"encode, must be between {int(components.min_duration * components.fps)} and "
+                f"{int(components.max_duration * components.fps)}, got {block_state.num_frames} (rounded up to "
+                f"{aligned_num_frames})."
+            )
         if aligned_num_frames != block_state.num_frames:
             logger.warning(
                 f"`num_frames` has to be of the form 17 * n + 5 for the video VAE; rounding {block_state.num_frames} "
                 f"up to {aligned_num_frames}."
             )
             block_state.num_frames = aligned_num_frames
-        # The duration the request generates is the one of the *aligned* frame count, so that is what the ceiling has
-        # to hold for: 346 frames would otherwise pass the check and then be rounded up to 362, i.e. 15.083 seconds.
-        duration = block_state.num_frames / components.fps
-        if not components.min_duration <= duration <= components.max_duration:
-            raise ValueError(
-                f"MiniMax-H3 generates between {components.min_duration} and {components.max_duration} seconds "
-                f"at {components.fps} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE "
-                f"can encode, must be between {int(components.min_duration * components.fps)} and "
-                f"{int(components.max_duration * components.fps)}, got {block_state.num_frames}."
-            )
 
         ratio = components.vae_spatial_compression_ratio
         block_state.num_latent_frames = video_latent_num_frames(

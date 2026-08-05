@@ -29,6 +29,7 @@ from diffusers.modular_pipelines.minimax_h3 import (
 from diffusers.modular_pipelines.minimax_h3.before_encoder import MiniMaxH3Ref2VASetupStep
 from diffusers.modular_pipelines.minimax_h3.encoders import (
     MiniMaxH3FL2VATextEncoderStep,
+    MiniMaxH3KeyframeVaeEncoderStep,
     MiniMaxH3Ref2VATextEncoderStep,
     MiniMaxH3TextEncoderStep,
 )
@@ -204,7 +205,7 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
         pipe = self.get_pipeline()
 
         state = pipe(**self.get_dummy_inputs())
-        video, audio = state.get("videos"), state.get("audio")
+        video, audio, sampling_rate = state.get("videos"), state.get("audio"), state.get("sampling_rate")
 
         assert video.shape == (1, 124, 3, 32, 32)
         # The audio VAE is mono and takes the two stereo channels as two batch items, which the decoder block stacks
@@ -212,7 +213,7 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
         # 207 audio latents at the tiny VAE's 4 samples per latent
         assert audio.shape == (1, 2, 207 * 4)
         assert video.min() >= 0.0 and video.max() <= 1.0
-        assert state.get("sampling_rate") == pipe.audio_vae.config.sampling_rate
+        assert sampling_rate == pipe.audio_vae.config.sampling_rate
 
     @pytest.mark.parametrize(
         "keyframes,num_condition_rows",
@@ -221,12 +222,11 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
     )
     def test_fl2va_keyframes(self, keyframes, num_condition_rows):
         r"""
-        A keyframe contributes one conditioning row per latent patch, and those rows are pinned for the whole loop.
+        A keyframe contributes one conditioning row per latent patch, and the layout reserves exactly those rows.
 
-        They are packed in front of the generated video rows and ride along at their own `t = 0.999`. The loop only
-        ever writes the generated rows, so the conditioning rows the encoder block produced survive it untouched,
-        which is what the denoised sequence is checked against here. On a `32` canvas a keyframe is a single
-        `(1, 2, 2)` patch row.
+        They are packed in front of the generated video rows and ride along at their own `t = 0.999`, pinned for the
+        whole loop, and the after-denoise step drops them again — so the request comes back with the generated frames
+        alone, whichever end the keyframes anchor. On a `32` canvas a keyframe is a single `(1, 2, 2)` patch row.
         """
         pipe = self.get_pipeline()
         keyframe = Image.fromarray((np.random.default_rng(0).random((48, 80, 3)) * 255).astype("uint8"))
@@ -237,9 +237,6 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
 
         assert state.get("videos").shape == (1, 124, 3, 32, 32)
         assert state.get("num_condition_video_rows") == num_condition_rows
-        condition_latents = state.get("condition_latents")
-        assert condition_latents.shape[0] == num_condition_rows
-        assert torch.equal(state.get("latents")[:num_condition_rows], condition_latents)
 
     @pytest.mark.parametrize("with_keyframe", [False, True], ids=["t2va", "fl2va"])
     def test_generator_reproducibility(self, with_keyframe):
@@ -322,6 +319,27 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
         assert torch.isfinite(outputs["prompt_embeds"]).all()
         # `0` tags a row of a vision block and `1` a text row, so a text-only presentation carries text rows alone.
         assert set(outputs["text_token_tags"].tolist()) == ({0, 1} if with_keyframes else {1})
+
+    def test_keyframe_vae_encoder_block_standalone(self):
+        r"""
+        The `fl2va` VAE encoder block runs on its own and returns one conditioning latent per keyframe.
+
+        One entry per condition is what the prepare-latents step draws its noise against, which is why the block hands
+        the latents over as a list rather than as packed rows. It is also the only place the list is worth looking at:
+        downstream it is noised, packed and finally dropped, so a finished request carries no trace of it.
+        """
+        keyframes = [Image.fromarray((np.random.default_rng(0).random((32, 32, 3)) * 255).astype("uint8"))] * 2
+        pipe = MiniMaxH3KeyframeVaeEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components(dtype=torch.float32)
+
+        outputs = pipe(keyframes=keyframes, output=["condition_latents"])
+        condition_latents = outputs["condition_latents"]
+
+        assert set(pipe.components) == {"vae"}
+        assert len(condition_latents) == len(keyframes)
+        # A keyframe is a single frame, so it encodes to one latent frame on the canvas' own latent grid.
+        assert all(latent.shape == (1, 4, 1, 32 // 16, 32 // 16) for latent in condition_latents)
+        assert all(torch.isfinite(latent).all() for latent in condition_latents)
 
     @pytest.mark.parametrize("output_type", ["np", "pil", "latent"])
     def test_output_type(self, output_type):
@@ -535,9 +553,8 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
         it contributes both visual and audio rows; an audio reference contributes audio rows alone and never reaches
         the conditioner.
 
-        The reference rows are pinned for the whole loop, which is what the denoised sequence is checked against: the
-        visual anchors keep their noise-augmented values and the audio anchors stay exactly as the encoder produced
-        them.
+        The reference rows are pinned for the whole loop and the after-denoise step drops them again, so what a
+        request comes back with is the generated frames and soundtrack alone, however many rows the references took.
         """
         media = {
             "image": MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80))),
@@ -567,12 +584,7 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
         assert num_condition_rows > 0
         assert (num_audio_condition_rows > 0) == any(kind in ("video", "audio") for kind in kinds)
         assert state.get("videos").shape == (1, state.get("num_frames"), 3, 32, 32)
-        # The loop only ever writes the generated rows, so the anchors the encoder block produced survive it.
-        assert torch.equal(state.get("latents")[:num_condition_rows], state.get("condition_latents"))
-        if num_audio_condition_rows:
-            assert torch.equal(
-                state.get("audio_latents")[:num_audio_condition_rows], state.get("audio_condition_latents")
-            )
+        assert state.get("audio").shape[:2] == (1, 2)
 
     @pytest.mark.parametrize(
         "kinds", [("image",), ("video",), ("video", "image")], ids=["image", "video", "video_image"]
@@ -676,6 +688,25 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
         # Half the audio VAE's rate, so the same samples span twice as many of the VAE's own.
         assert references[1].audio.shape == (2, 2 * waveform.shape[-1])
 
+    @pytest.mark.parametrize(
+        "references,message",
+        [
+            (["a-photo.png"], "never open media files"),
+            (
+                [
+                    MiniMaxH3VideoReference(frames=np.zeros((1, 8, 8, 3), dtype="uint8"), fps=float(MINIMAX_H3_FPS))
+                    for _ in range(4)
+                ],
+                "at most 3 video references",
+            ),
+            (
+                [MiniMaxH3AudioReference(audio=torch.zeros(2, 160), sample_rate=160)],
+                "cannot be used on its own",
+            ),
+            ([MiniMaxH3ImageReference(image=Image.new("RGB", (20, 100)))], "within 1:4 and 4:1"),
+        ],
+        ids=["not_a_reference", "too_many_videos", "audio_only", "image_aspect_ratio"],
+    )
     def test_check_inputs_references(self, references, message):
         pipe = self.get_pipeline()
 

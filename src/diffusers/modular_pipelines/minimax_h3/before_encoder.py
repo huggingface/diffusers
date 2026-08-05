@@ -122,6 +122,8 @@ class MiniMaxH3ResizeStep(ModularPipelineBlocks):
             for anchor, keyframe in (("first", block_state.image), ("last", block_state.last_image))
             if keyframe is not None
         )
+        if (block_state.height is None) != (block_state.width is None):
+            raise ValueError("`height` and `width` have to be passed together, or neither of them.")
         if block_state.height is None:
             block_state.height, block_state.width = resolve_canvas_size(
                 *keyframes[0].size,
