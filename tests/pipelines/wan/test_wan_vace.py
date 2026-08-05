@@ -133,7 +133,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_with_single_reference_image(self):
         # Run on CPU: the expected slice below is CPU-specific.
@@ -151,7 +151,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_with_multiple_reference_image(self):
         # Run on CPU: the expected slice below is CPU-specific.
@@ -169,7 +169,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_with_only_transformer(self):
         components = self.get_dummy_components()
