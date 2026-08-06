@@ -62,13 +62,15 @@ def _swap_tensor_data(target: torch.Tensor, source: torch.Tensor) -> None:
     the outer wrapper and leaves the internal attributes (`.qdata`, `.scale`, ...) on the wrong device. See
     https://github.com/huggingface/diffusers/pull/13276#discussion_r2944471548.
 
-    For regular tensors we use the `target.data = source` assignment. `swap_tensors` cannot be used here because
-    `torch.compile` attaches weakrefs to parameters and `swap_tensors` refuses to operate on tensors with weakrefs.
+    `swap_tensors` also swaps `__class__`, so a plain-Tensor `source` would demote an `nn.Parameter` `target`. Wrap
+    `source` in a Parameter first to keep the types aligned.
     """
     if _is_torchao_tensor(target):
         torch.utils.swap_tensors(target, source)
-    else:
-        target.data = source
+        return
+    if isinstance(target, torch.nn.Parameter) and not isinstance(source, torch.nn.Parameter):
+        source = torch.nn.Parameter(source, requires_grad=target.requires_grad)
+    torch.utils.swap_tensors(target, source)
 
 
 def _restore_from_cached_cpu(target: torch.Tensor, source: torch.Tensor) -> None:
