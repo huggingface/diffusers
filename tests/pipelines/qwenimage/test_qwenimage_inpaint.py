@@ -49,6 +49,7 @@ class QwenImageInpaintPipelineTesterConfig(BasePipelineTesterConfig):
         ]
     )
     batch_input_params = frozenset(["prompt", "image", "mask_image"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)

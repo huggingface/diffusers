@@ -49,6 +49,7 @@ class QwenImageControlNetPipelineTesterConfig(BasePipelineTesterConfig):
         ]
     )
     batch_input_params = frozenset(["prompt", "control_image"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -165,7 +166,7 @@ class TestQwenImageControlNetPipeline(QwenImageControlNetPipelineTesterConfig, P
         inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
         generated_image = image[0]
-        assert generated_image.shape == (3, 32, 32)
+        assert generated_image.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4726, 0.5549, 0.6324, 0.6548, 0.4968, 0.4639, 0.4749, 0.4898, 0.4725, 0.4645, 0.4435, 0.3339, 0.3400, 0.4630, 0.3879, 0.4406])
@@ -188,7 +189,7 @@ class TestQwenImageControlNetPipeline(QwenImageControlNetPipelineTesterConfig, P
 
         image = pipe(**inputs).images
         generated_image = image[0]
-        assert generated_image.shape == (3, 32, 32)
+        assert generated_image.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.6239, 0.6642, 0.5768, 0.6039, 0.5270, 0.5070, 0.5006, 0.5271, 0.4506, 0.3085, 0.3435, 0.5152, 0.5096, 0.5422, 0.4286, 0.5752])
