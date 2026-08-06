@@ -103,12 +103,10 @@ def test_local_directory_with_multiple_files_warns_and_uses_first(tmp_path, monk
 
 
 def test_unfuse_lora_partial_components_keeps_merged_adapters_in_sync():
-    """Regression test for #14214.
+    """Regression test for gh-14214.
 
-    When unfuse_lora is called with a subset of components, _merged_adapters
-    should still reflect adapters that are physically fused in the remaining
-    components. Before the fix, it removed the adapter on the first unfuse
-    even if other components still had it baked in.
+    Unfusing only a subset of components must keep _merged_adapters in sync
+    with the adapters still physically fused in the remaining components.
     """
     import torch.nn as nn
     from peft import LoraConfig
@@ -140,24 +138,15 @@ def test_unfuse_lora_partial_components_keeps_merged_adapters_in_sync():
     pipe.fuse_lora(components=["unet", "text_encoder"], adapter_names=["adapter"])
     assert pipe.num_fused_loras == 1
 
-    # Unfuse only text_encoder — unet is still physically fused
     pipe.unfuse_lora(components=["text_encoder"])
+    assert "adapter" in pipe.fused_loras, "adapter should remain tracked while unet is still fused"
+    assert pipe.num_fused_loras == 1
 
-    # _merged_adapters must still track the adapter (unet is still fused)
-    assert "adapter" in pipe.fused_loras, (
-        "adapter should remain in fused_loras while unet is still fused"
-    )
-    assert pipe.num_fused_loras == 1, (
-        f"Expected 1 fused lora, got {pipe.num_fused_loras}"
-    )
-
-    # Confirm unet is physically still merged at the PEFT level
     unet_still_merged = any(
         isinstance(m, BaseTunerLayer) and len(m.merged_adapters) > 0
         for m in unet.modules()
     )
-    assert unet_still_merged, "unet should be physically merged at the PEFT level"
+    assert unet_still_merged, "unet should still be physically merged at the PEFT level"
 
-    # Now unfuse unet too — both components are done
     pipe.unfuse_lora(components=["unet"])
-    assert pipe.num_fused_loras == 0, "All components unfused, fused_loras should be empty"
+    assert pipe.num_fused_loras == 0
