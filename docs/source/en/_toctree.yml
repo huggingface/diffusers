@@ -653,6 +653,8 @@
         title: Stable Diffusion
       - local: api/pipelines/stable_unclip
         title: Stable unCLIP
+      - local: api/pipelines/unipic3
+        title: UniPic-3
       - local: api/pipelines/value_guided_sampling
         title: Value-guided sampling
       - local: api/pipelines/visualcloze
