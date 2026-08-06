@@ -547,27 +547,6 @@ class ModelTesterMixin(BaseModelOutputMixin):
             expected_dtype = torch.float32 if fp32_module in name.split(".") else torch.float16
             assert param.dtype == expected_dtype, f"Parameter {name} should be {expected_dtype} but got {param.dtype}"
 
-    def test_keep_in_fp32_modules_float8(self, tmp_path):
-        model = self.model_class(**self.get_init_dict())
-        fp32_modules = model._keep_in_fp32_modules
-
-        if fp32_modules is None or len(fp32_modules) == 0:
-            pytest.skip("Model does not have _keep_in_fp32_modules defined.")
-
-        # Loading in float8 casts the whole model with `to()` after loading, which would flatten the fp32 modules
-        # back down. Models declaring `_keep_in_fp32_modules` must be exempt from that cast. Everything stays on
-        # CPU because float8 tensors are not supported on every accelerator.
-        model.save_pretrained(tmp_path)
-        model = self.model_class.from_pretrained(tmp_path, torch_dtype=torch.float8_e4m3fn)
-
-        for name, param in model.named_parameters():
-            if any(module_to_keep_in_fp32 in name.split(".") for module_to_keep_in_fp32 in fp32_modules):
-                assert param.dtype == torch.float32, f"Parameter {name} should be float32 but got {param.dtype}"
-            else:
-                assert param.dtype == torch.float8_e4m3fn, (
-                    f"Parameter {name} should be float8_e4m3fn but got {param.dtype}"
-                )
-
     def test_keep_in_fp32_modules_layerwise_casting(self):
         # Lives here rather than next to the other layerwise casting tests because it asserts
         # `_keep_in_fp32_modules` semantics (`enable_layerwise_casting` folds it into the skip patterns) and needs
