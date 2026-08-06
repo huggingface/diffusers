@@ -30,14 +30,17 @@ Strive to write code as simple and explicit as possible.
 - **Models** — see [models.md](models.md) for model conventions, attention pattern, implementation rules, dependencies, and gotchas. For adding or converting a model, use the [model-integration](./skills/model-integration/SKILL.md) skill.
 - **Pipelines** — see [pipelines.md](pipelines.md) for pipeline conventions, patterns, and gotchas.
 - **Modular pipelines** — see [modular.md](modular.md) for modular pipeline conventions, patterns, and gotchas.
+- **Tests** — see [testing.md](testing.md) for test conventions: required test layers, tester mixins, and dummy-component rules.
 
 ## Skills
 
 Task-specific guides live in `.ai/skills/` and are loaded on demand by AI agents. Available skills include:
 
 - [model-integration](./skills/model-integration/SKILL.md) (adding/converting pipelines)
+- [custom-blocks](./skills/custom-blocks/SKILL.md) (packaging a `ModularPipelineBlocks` subclass for the Hub)
+- [diffusers-cli](./skills/diffusers-cli/SKILL.md) (running pipelines, inspecting schemas, and using the Diffusers CLI)
 - [self-review](./skills/self-review/SKILL.md) (pre-PR self-review against the project rules)
 
 ## Self-review before a PR
 
-Before opening a PR, run self-review against [review-rules.md](review-rules.md). The [self-review skill](skills/self-review/SKILL.md) runs this as the same pass the `@claude` CI reviewer uses.
+Before opening a PR, run self-review against [review-rules.md](review-rules.md). The [self-review skill](skills/self-review/SKILL.md) runs this as the same pass the `@claude` CI reviewer uses. Share the final report on the PR (description or comment) — see the skill for details.

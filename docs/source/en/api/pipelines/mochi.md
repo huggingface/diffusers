@@ -46,7 +46,7 @@ text_encoder_8bit = T5EncoderModel.from_pretrained(
     "genmo/mochi-1-preview",
     subfolder="text_encoder",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -54,14 +54,14 @@ transformer_8bit = MochiTransformer3DModel.from_pretrained(
     "genmo/mochi-1-preview",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = MochiPipeline.from_pretrained(
     "genmo/mochi-1-preview",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 
@@ -86,7 +86,7 @@ pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview")
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
 
@@ -105,11 +105,11 @@ import torch
 from diffusers import MochiPipeline
 from diffusers.utils import export_to_video
 
-pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", variant="bf16", torch_dtype=torch.bfloat16)
+pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", variant="bf16", dtype=torch.bfloat16)
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
 frames = pipe(prompt, num_frames=85).frames[0]
@@ -138,7 +138,7 @@ from diffusers.utils import export_to_video
 from diffusers.video_processor import VideoProcessor
 
 pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", force_zeros_for_empty_prompt=True)
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 pipe.enable_model_cpu_offload()
 
 prompt =  "An aerial shot of a parade of elephants walking across the African savannah. The camera showcases the herd and the surrounding landscape."
@@ -205,7 +205,7 @@ transformer = MochiTransformer3DModel.from_pretrained(
 
 pipe = MochiPipeline.from_pretrained(model_id,  transformer=transformer)
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=False):
     frames = pipe(
@@ -241,11 +241,11 @@ model_id = "genmo/mochi-1-preview"
 
 ckpt_path = "https://huggingface.co/Comfy-Org/mochi_preview_repackaged/blob/main/split_files/diffusion_models/mochi_preview_bf16.safetensors"
 
-transformer = MochiTransformer3DModel.from_pretrained(ckpt_path, torch_dtype=torch.bfloat16)
+transformer = MochiTransformer3DModel.from_pretrained(ckpt_path, dtype=torch.bfloat16)
 
 pipe = MochiPipeline.from_pretrained(model_id,  transformer=transformer)
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=False):
     frames = pipe(

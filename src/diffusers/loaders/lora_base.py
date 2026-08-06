@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -277,15 +277,14 @@ def _fetch_state_dict(
 def _best_guess_weight_name(
     pretrained_model_name_or_path_or_dict, file_extension=".safetensors", local_files_only=False
 ):
-    if local_files_only or HF_HUB_OFFLINE:
-        raise ValueError("When using the offline mode, you must specify a `weight_name`.")
-
     targeted_files = []
 
     if os.path.isfile(pretrained_model_name_or_path_or_dict):
         return
     elif os.path.isdir(pretrained_model_name_or_path_or_dict):
         targeted_files = [f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)]
+    elif local_files_only or HF_HUB_OFFLINE:
+        raise ValueError("When using the offline mode, you must specify a `weight_name`.")
     else:
         files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
         targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
@@ -536,7 +535,7 @@ class LoraBaseMixin:
 
     def fuse_lora(
         self,
-        components: list[str] = [],
+        components: list[str] | None = None,
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: list[str] | None = None,
@@ -544,8 +543,6 @@ class LoraBaseMixin:
     ):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        > [!WARNING] > This is an experimental API.
 
         Args:
             components: (`list[str]`): list of LoRA-injectable components to fuse the LoRAs into.
@@ -569,6 +566,9 @@ class LoraBaseMixin:
         pipeline.fuse_lora(lora_scale=0.7)
         ```
         """
+        if components is None:
+            components = []
+
         if "fuse_unet" in kwargs:
             depr_message = "Passing `fuse_unet` to `fuse_lora()` is deprecated and will be ignored. Please use the `components` argument and provide a list of the components whose LoRAs are to be fused. `fuse_unet` will be removed in a future version."
             deprecate(
@@ -620,12 +620,10 @@ class LoraBaseMixin:
 
         self._merged_adapters = self._merged_adapters | merged_adapter_names
 
-    def unfuse_lora(self, components: list[str] = [], **kwargs):
+    def unfuse_lora(self, components: list[str] | None = None, **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        > [!WARNING] > This is an experimental API.
 
         Args:
             components (`list[str]`): list of LoRA-injectable components to unfuse LoRA from.
@@ -634,6 +632,9 @@ class LoraBaseMixin:
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
+        if components is None:
+            components = []
+
         if "unfuse_unet" in kwargs:
             depr_message = "Passing `unfuse_unet` to `unfuse_lora()` is deprecated and will be ignored. Please use the `components` argument. `unfuse_unet` will be removed in a future version."
             deprecate(

@@ -83,6 +83,12 @@ else:
         "Ideogram4AutoBlocks",
         "Ideogram4ModularPipeline",
     ]
+    _import_structure["krea2"] = [
+        "Krea2AutoBlocks",
+        "Krea2ModularPipeline",
+        "Krea2TurboAutoBlocks",
+        "Krea2TurboModularPipeline",
+    ]
     _import_structure["qwenimage"] = [
         "QwenImageAutoBlocks",
         "QwenImageModularPipeline",
@@ -97,6 +103,12 @@ else:
         "AnimaAutoBlocks",
         "AnimaModularPipeline",
     ]
+    _import_structure["cosmos"] = [
+        "Cosmos3DistilledBlocks",
+        "Cosmos3DistilledModularPipeline",
+        "Cosmos3OmniBlocks",
+        "Cosmos3OmniModularPipeline",
+    ]
     _import_structure["ernie_image"] = [
         "ErnieImageAutoBlocks",
         "ErnieImageModularPipeline",
@@ -108,6 +120,10 @@ else:
     _import_structure["ltx"] = [
         "LTXAutoBlocks",
         "LTXModularPipeline",
+    ]
+    _import_structure["minimax_h3"] = [
+        "MiniMaxH3Blocks",
+        "MiniMaxH3ModularPipeline",
     ]
     _import_structure["z_image"] = [
         "ZImageAutoBlocks",
@@ -124,6 +140,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .anima import AnimaAutoBlocks, AnimaModularPipeline
         from .components_manager import ComponentsManager
+        from .cosmos import (
+            Cosmos3DistilledBlocks,
+            Cosmos3DistilledModularPipeline,
+            Cosmos3OmniBlocks,
+            Cosmos3OmniModularPipeline,
+        )
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .flux2 import (
@@ -150,7 +172,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,
         )
+        from .krea2 import (
+            Krea2AutoBlocks,
+            Krea2ModularPipeline,
+            Krea2TurboAutoBlocks,
+            Krea2TurboModularPipeline,
+        )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
+        from .minimax_h3 import (
+            MiniMaxH3Blocks,
+            MiniMaxH3ModularPipeline,
+        )
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,

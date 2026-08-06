@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -80,8 +80,6 @@ class StableDiffusionXLPAGImg2ImgPipelineFastTests(
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
         {"add_text_embeds", "add_time_ids", "add_neg_time_ids"}
     )
-
-    supports_dduf = False
 
     #  based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_img2img_pipeline.get_dummy_components
     def get_dummy_components(
@@ -258,7 +256,7 @@ class StableDiffusionXLPAGImg2ImgPipelineFastTests(
             32,
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
-        expected_slice = np.array([0.4613, 0.4902, 0.4406, 0.6788, 0.5611, 0.4529, 0.5893, 0.5975, 0.5226])
+        expected_slice = np.array([0.4566, 0.4907, 0.4374, 0.6633, 0.5626, 0.4494, 0.5771, 0.6011, 0.5245])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"

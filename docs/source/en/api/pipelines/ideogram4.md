@@ -31,7 +31,7 @@ Key inference-time knobs are exposed via the pipeline call:
 import torch
 from diffusers import Ideogram4Pipeline
 
-pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-v4", torch_dtype=torch.bfloat16)
+pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-v4", dtype=torch.bfloat16)
 pipe.to("cuda")
 
 prompt = "A photo of a cat holding a sign that says hello world"
@@ -56,7 +56,7 @@ import requests
 import torch
 from diffusers import Ideogram4Pipeline
 
-pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4", torch_dtype=torch.bfloat16)
+pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4", dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # Expand the prompt into a structured JSON caption with Ideogram's hosted magic-prompt API.
@@ -84,10 +84,10 @@ import torch
 from diffusers import Ideogram4Pipeline, Ideogram4PromptEnhancerHead
 
 prompt_enhancer_head = Ideogram4PromptEnhancerHead.from_pretrained(
-    "diffusers/qwen3-vl-8b-instruct-lm-head", torch_dtype=torch.bfloat16
+    "diffusers/qwen3-vl-8b-instruct-lm-head", dtype=torch.bfloat16
 )
 pipe = Ideogram4Pipeline.from_pretrained(
-    "ideogram-ai/ideogram-4-nf4", prompt_enhancer_head=prompt_enhancer_head, torch_dtype=torch.bfloat16
+    "ideogram-ai/ideogram-4-nf4", prompt_enhancer_head=prompt_enhancer_head, dtype=torch.bfloat16
 )
 pipe.to("cuda")
 

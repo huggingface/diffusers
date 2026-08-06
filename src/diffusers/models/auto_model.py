@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -173,7 +173,7 @@ class AutoModel(ConfigMixin):
             cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
@@ -192,8 +192,6 @@ class AutoModel(ConfigMixin):
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            from_flax (`bool`, *optional*, defaults to `False`):
-                Load the model weights from a Flax checkpoint save file.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             mirror (`str`, *optional*):
@@ -223,8 +221,7 @@ class AutoModel(ConfigMixin):
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
             variant (`str`, *optional*):
-                Load weights from a specified `variant` filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified `variant` filename such as `"fp16"` or `"ema"`.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the `safetensors` weights are downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model is forcibly loaded from `safetensors`
