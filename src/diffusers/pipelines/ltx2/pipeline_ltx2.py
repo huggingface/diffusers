@@ -36,10 +36,12 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .check_inputs import LTX2CheckInputsMixin
 from .connectors import LTX2TextConnectors
 from .duration_head import LTX2AutoDuration, LTX2DurationHead
 from .pipeline_output import LTX2PipelineOutput
-from .utils import GEMMA3_PROMPT_ENHANCEMENT_CONFIG, GEMMA4_PROMPT_ENHANCEMENT_CONFIG, LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT
+from .prompt_enhancement import LTX2PromptEnhancementMixin
+from .utils import LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
@@ -73,8 +75,8 @@ EXAMPLE_DOC_STRING = """
         ...     height=512,
         ...     num_frames=121,
         ...     frame_rate=frame_rate,
-        ...     num_inference_steps=40,
-        ...     guidance_scale=4.0,
+        ...     num_inference_steps=30,
+        ...     guidance_scale=3.0,
         ...     output_type="np",
         ...     return_dict=False,
         ... )
@@ -191,7 +193,9 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
+class LTX2Pipeline(
+    DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin, LTX2PromptEnhancementMixin, LTX2CheckInputsMixin
+):
     r"""
     Pipeline for text-to-video generation.
 
@@ -434,155 +438,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             )
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
-
-    @torch.no_grad()
-    def enhance_prompt(
-        self,
-        prompt: str,
-        system_prompt: str,
-        max_new_tokens: int = 512,
-        seed: int = 10,
-        generator: torch.Generator | None = None,
-        generation_kwargs: dict[str, Any] | None = None,
-        device: str | torch.device | None = None,
-    ):
-        """
-        Enhances the supplied `prompt` by generating a new prompt using the prompt enhancer (a Gemma
-        conditional-generation model) from it and a system prompt. Uses the dedicated `prompt_enhancer` component if
-        one is configured (e.g. LTX-2.5, whose text encoder isn't trained for enhancement), otherwise falls back to the
-        main `text_encoder` (LTX-2.0/2.3, which double as their own enhancer).
-
-        `generation_kwargs`, if not supplied, always matches whichever model is doing the enhancing: greedy decoding
-        (`do_sample=False`, `no_repeat_ngram_size=3`) for a dedicated `prompt_enhancer` (LTX-2.5's
-        `google/gemma-4-E2B-it`); sampling (`do_sample=True`, `temperature=0.7`) for the `text_encoder` fallback
-        (LTX-2.0/2.3). `max_new_tokens`/`seed` are unaffected by this switch -- greedy decoding doesn't consume
-        randomness, so `seed` is inert for the dedicated-enhancer case, and 512 tokens comfortably covers LTX-2.5's
-        ~150-220 word target caption length.
-        """
-        device = device or self._execution_device
-        using_dedicated_enhancer = getattr(self, "prompt_enhancer", None) is not None
-        enhancer = self.prompt_enhancer if using_dedicated_enhancer else self.text_encoder
-        config = GEMMA4_PROMPT_ENHANCEMENT_CONFIG if using_dedicated_enhancer else GEMMA3_PROMPT_ENHANCEMENT_CONFIG
-
-        generation_kwargs = generation_kwargs if generation_kwargs is not None else config.generation_kwargs
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"{config.user_prompt_prefix}: {prompt}"},
-        ]
-        template = self.processor.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        model_inputs = self.processor(text=template, images=None, return_tensors="pt").to(device)
-        enhancer.to(device)
-
-        # `transformers.GenerationMixin.generate` does not support using a `torch.Generator` to control randomness,
-        # so manually apply a seed for reproducible generation.
-        if generator is not None:
-            # Overwrite seed to generator's initial seed
-            seed = generator.initial_seed()
-        torch.manual_seed(seed)
-        generated_sequences = enhancer.generate(
-            **model_inputs,
-            max_new_tokens=max_new_tokens,
-            **generation_kwargs,
-        )  # tensor of shape [batch_size, seq_len]
-
-        generated_ids = [seq[len(model_inputs.input_ids[i]) :] for i, seq in enumerate(generated_sequences)]
-        enhanced_prompt = self.processor.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-
-        return enhanced_prompt
-
-    def check_inputs(
-        self,
-        prompt,
-        height,
-        width,
-        callback_on_step_end_tensor_inputs=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
-        prompt_attention_mask=None,
-        negative_prompt_attention_mask=None,
-        spatio_temporal_guidance_blocks=None,
-        stg_scale=None,
-        audio_stg_scale=None,
-        system_prompt=None,
-        enable_prompt_enhancement=None,
-        num_frames=None,
-    ):
-        if height % 32 != 0 or width % 32 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
-
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if prompt_embeds is not None and prompt_attention_mask is None:
-            raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
-
-        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
-            raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
-
-        if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
-            if prompt_attention_mask.shape != negative_prompt_attention_mask.shape:
-                raise ValueError(
-                    "`prompt_attention_mask` and `negative_prompt_attention_mask` must have the same shape when passed directly, but"
-                    f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
-                    f" {negative_prompt_attention_mask.shape}."
-                )
-
-        if ((stg_scale > 0.0) or (audio_stg_scale > 0.0)) and not spatio_temporal_guidance_blocks:
-            raise ValueError(
-                "Spatio-Temporal Guidance (STG) is specified but no STG blocks are supplied. Please supply a list of"
-                "block indices at which to apply STG in `spatio_temporal_guidance_blocks`"
-            )
-
-        if enable_prompt_enhancement is None:
-            enable_prompt_enhancement = system_prompt is not None or getattr(self, "prompt_enhancer", None) is not None
-        if (
-            enable_prompt_enhancement
-            and prompt is not None
-            and system_prompt is None
-            and getattr(self, "prompt_enhancer", None) is None
-        ):
-            raise ValueError(
-                "`system_prompt` must be supplied to enable prompt enhancement when no dedicated "
-                "`prompt_enhancer` component is configured (LTX-2.0/2.3)."
-            )
-
-        if isinstance(num_frames, LTX2AutoDuration):
-            if getattr(self, "duration_head", None) is None:
-                raise ValueError(
-                    "`num_frames` was an `LTX2AutoDuration` but this pipeline has no `duration_head` component to"
-                    " predict a duration with (the duration head ships from LTX-2.5 checkpoints onward). Pass"
-                    " `num_frames` as an integer instead."
-                )
-            num_prompts = len(prompt) if isinstance(prompt, list) else 1 if prompt is not None else len(prompt_embeds)
-            if num_prompts > 1:
-                raise ValueError(
-                    f"`num_frames` was an `LTX2AutoDuration` but {num_prompts} prompts were supplied. The duration"
-                    " head predicts one duration, and prompts with different natural lengths cannot share a single"
-                    " frame count. Call the pipeline once per prompt, or pass `num_frames` as an integer."
-                )
 
     @staticmethod
     def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1) -> torch.Tensor:
@@ -873,18 +728,18 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         width: int = 768,
         num_frames: int | LTX2AutoDuration | None = None,
         frame_rate: float = 24.0,
-        num_inference_steps: int = 40,
+        num_inference_steps: int = 30,
         sigmas: list[float] | None = None,
         timesteps: list[int] = None,
-        guidance_scale: float = 4.0,
-        stg_scale: float = 0.0,
-        modality_scale: float = 1.0,
-        guidance_rescale: float = 0.0,
-        audio_guidance_scale: float | None = None,
-        audio_stg_scale: float | None = None,
-        audio_modality_scale: float | None = None,
-        audio_guidance_rescale: float | None = None,
-        spatio_temporal_guidance_blocks: list[int] | None = None,
+        guidance_scale: float = 3.0,
+        stg_scale: float = 1.0,
+        modality_scale: float = 3.0,
+        guidance_rescale: float = 0.7,
+        audio_guidance_scale: float | None = 7.0,
+        audio_stg_scale: float | None = 1.0,
+        audio_modality_scale: float | None = 3.0,
+        audio_guidance_rescale: float | None = 0.7,
+        spatio_temporal_guidance_blocks: list[int] | None = [28],
         noise_scale: float = 0.0,
         num_videos_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
@@ -896,10 +751,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         negative_prompt_attention_mask: torch.Tensor | None = None,
         decode_timestep: float | list[float] = 0.0,
         decode_noise_scale: float | list[float] | None = None,
-        use_cross_timestep: bool = False,
+        use_cross_timestep: bool = True,
         system_prompt: str | None = None,
-        enable_prompt_enhancement: bool | None = None,
-        prompt_max_new_tokens: int = 512,
+        enable_prompt_enhancement: bool = False,
+        prompt_max_new_tokens: int | None = None,
         prompt_enhancement_kwargs: dict[str, Any] | None = None,
         prompt_enhancement_seed: int = 10,
         output_type: str = "pil",
@@ -1018,10 +873,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 The timestep at which generated video is decoded.
             decode_noise_scale (`float`, defaults to `None`):
                 The interpolation factor between random noise and denoised latents at the decode timestep.
-            use_cross_timestep (`bool` *optional*, defaults to `False`):
+            use_cross_timestep (`bool` *optional*, defaults to `True`):
                 Whether to use the cross modality (audio is the cross modality of video, and vice versa) sigma when
-                calculating the cross attention modulation parameters. `True` is the newer (e.g. LTX-2.3) behavior;
-                `False` is the legacy LTX-2.0 behavior.
+                calculating the cross attention modulation parameters. `True` is the LTX-2.3/2.5 behavior; `False` is
+                the legacy LTX-2.0 behavior.
             system_prompt (`str`, *optional*, defaults to `None`):
                 Optional system prompt to use for prompt enhancement. The system prompt will be used by the prompt
                 enhancer (a Gemma conditional-generation model -- the dedicated `prompt_enhancer` component if one is
@@ -1029,16 +884,17 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 `prompt` to condition generation. If not supplied and a dedicated `prompt_enhancer` is configured
                 (LTX-2.5), defaults to `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT` (from `diffusers.pipelines.ltx2.utils`) --
                 see `enable_prompt_enhancement`.
-            enable_prompt_enhancement (`bool`, *optional*, defaults to `None`):
-                Whether to run prompt enhancement. If not supplied, defaults to `True` when a dedicated
-                `prompt_enhancer` is configured (LTX-2.5, where enhancement is strongly recommended) or when
-                `system_prompt` was explicitly passed (LTX-2.0/2.3 fallback, matching prior behavior); `False`
-                otherwise. Pass `False` explicitly to disable enhancement even for LTX-2.5.
-            prompt_max_new_tokens (`int`, *optional*, defaults to `512`):
-                The maximum number of new tokens to generate when performing prompt enhancement.
+            enable_prompt_enhancement (`bool`, *optional*, defaults to `False`):
+                Whether to run prompt enhancement. Opt-in, matching the Lightricks reference pipelines. When `True` and
+                `system_prompt` is omitted, LTX-2.5 uses `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT` if a dedicated
+                `prompt_enhancer` is configured; LTX-2.0/2.3 require an explicit `system_prompt`.
+            prompt_max_new_tokens (`int`, *optional*, defaults to `None`):
+                The maximum number of new tokens to generate when performing prompt enhancement. If not supplied, uses
+                600 for a dedicated Gemma 4 `prompt_enhancer` (LTX-2.5) or 512 for the Gemma 3 `text_encoder` fallback
+                (LTX-2.0/2.3).
             prompt_enhancement_kwargs (`dict[str, Any]`, *optional*, defaults to `None`):
                 Keyword arguments for the prompt enhancer's `.generate` call. If not supplied, always matches whichever
-                model is doing the enhancing: `do_sample=False, no_repeat_ngram_size=3` (greedy) when using a dedicated
+                model is doing the enhancing: `do_sample=False, no_repeat_ngram_size=5` (greedy) when using a dedicated
                 `prompt_enhancer` (LTX-2.5), or `do_sample=True, temperature=0.7` for the `text_encoder` fallback
                 (LTX-2.0/2.3). See
                 https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationMixin.generate
@@ -1125,11 +981,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         device = self._execution_device
 
         # 3. Prepare text embeddings
-        if enable_prompt_enhancement is None:
-            # Auto: on if the caller explicitly asked (system_prompt given -- the LTX-2.0/2.3 trigger, unchanged)
-            # or this pipeline has a dedicated prompt_enhancer (LTX-2.5, where enhancement is strongly recommended).
-            enable_prompt_enhancement = system_prompt is not None or getattr(self, "prompt_enhancer", None) is not None
-
         if num_frames is None:
             # Auto-predict when this pipeline has a duration_head (LTX-2.5, where the model is trained to choose its
             # own shot length); the legacy fixed default otherwise.

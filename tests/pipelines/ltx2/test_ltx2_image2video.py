@@ -206,6 +206,17 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
+            # Pin legacy sampling knobs so deterministic slice tests stay stable when
+            # production defaults track LTX-2.3/2.5 (STG on, modality/rescale, cross-timestep).
+            "stg_scale": 0.0,
+            "modality_scale": 1.0,
+            "guidance_rescale": 0.0,
+            "audio_guidance_scale": 1.0,
+            "audio_stg_scale": 0.0,
+            "audio_modality_scale": 1.0,
+            "audio_guidance_rescale": 0.0,
+            "spatio_temporal_guidance_blocks": None,
+            "use_cross_timestep": False,
             "height": 32,
             "width": 32,
             "num_frames": 5,
