@@ -117,7 +117,7 @@ class LTX2DurationHead(ModelMixin, ConfigMixin):
     the pooler can tell them apart, and a small MLP turns the pooled vector into a log-duration. The regression target
     is trained in log-seconds, so `forward` exponentiates and callers always get seconds.
 
-    Ships from LTX-2.4 checkpoints onward.
+    Ships from LTX-2.5 checkpoints onward.
 
     Args:
         video_cross_attention_dim (`int`, defaults to `4096`):

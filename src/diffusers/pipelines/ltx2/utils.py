@@ -59,7 +59,7 @@ GEMMA3_PROMPT_ENHANCEMENT_CONFIG = PromptEnhancementConfig(
     generation_kwargs={"do_sample": True, "temperature": 0.7},
 )
 
-# LTX-2.4: a dedicated `google/gemma-4-E2B-it` `prompt_enhancer` component (the fine-tuned text encoder isn't
+# LTX-2.5: a dedicated `google/gemma-4-E2B-it` `prompt_enhancer` component (the fine-tuned text encoder isn't
 # trained for enhancement). Recipe matches the eval harness this checkpoint was validated with: greedy decoding,
 # no_repeat_ngram_size=3, 600 new tokens, seed 0.
 GEMMA4_PROMPT_ENHANCEMENT_CONFIG = PromptEnhancementConfig(
@@ -188,11 +188,11 @@ hissing softly blends with gentle background chatter and the light clinking of c
 """
 # ruff: enable[E501]
 
-# LTX-2.4 T2V system prompt ("capstyle_plus"), for use with a dedicated prompt-enhancer model (LTX-2.4's text
+# LTX-2.5 T2V system prompt ("capstyle_plus"), for use with a dedicated prompt-enhancer model (LTX-2.5's text
 # encoder is not trained for enhancement, unlike LTX-2.0/2.3's). Paired with `google/gemma-4-E2B-it`.
 # ruff: disable[E501]
 # docstyle-ignore
-LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT = """You are given a user's short text-to-video request. Write a single, highly detailed audio-visual caption describing the video that best fulfills that request, in the EXACT style of the training captions used for this video model. The generated video is scored against the user's ORIGINAL request, so preserve every element the user stated; expand faithfully into the full caption style without contradicting or dropping anything they asked for.
+LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT = """You are given a user's short text-to-video request. Write a single, highly detailed audio-visual caption describing the video that best fulfills that request, in the EXACT style of the training captions used for this video model. The generated video is scored against the user's ORIGINAL request, so preserve every element the user stated; expand faithfully into the full caption style without contradicting or dropping anything they asked for.
 
 Match this captioning style precisely:
 
@@ -220,11 +220,11 @@ AESTHETIC QUALITY (in addition to the above, without breaking the objective capt
 """
 # ruff: enable[E501]
 
-# LTX-2.4 I2V system prompt ("capstyle_plus"), for use with the same dedicated prompt-enhancer model as
-# LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT (`google/gemma-4-E2B-it`).
+# LTX-2.5 I2V system prompt ("capstyle_plus"), for use with the same dedicated prompt-enhancer model as
+# LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT (`google/gemma-4-E2B-it`).
 # ruff: disable[E501]
 # docstyle-ignore
-LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT = """You are given a REFERENCE IMAGE (the exact first frame of the video) and a user's short image-to-video request. Write a single, highly detailed audio-visual caption describing the video that BEGINS from this exact reference image and best fulfills that request, in the EXACT style of the training captions used for this video model. The generated video is scored against the user's ORIGINAL request, so preserve every element the user stated; expand faithfully into the full caption style without contradicting or dropping anything they asked for.
+LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT = """You are given a REFERENCE IMAGE (the exact first frame of the video) and a user's short image-to-video request. Write a single, highly detailed audio-visual caption describing the video that BEGINS from this exact reference image and best fulfills that request, in the EXACT style of the training captions used for this video model. The generated video is scored against the user's ORIGINAL request, so preserve every element the user stated; expand faithfully into the full caption style without contradicting or dropping anything they asked for.
 
 FIRST-FRAME / IMAGE GROUNDING (do this first): the opening of your caption must match the reference image exactly — same subject(s), identity, appearance, clothing, setting, lighting, and composition as shown. The video starts on this frame; describe it faithfully, then narrate chronologically as the user's requested action unfolds from it. Never contradict, replace, or invent things not consistent with the image. Single continuous take — no hard cuts.
 

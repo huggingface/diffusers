@@ -40,7 +40,7 @@ from ..pipeline_utils import DiffusionPipeline
 from .connectors import LTX2TextConnectors
 from .duration_head import LTX2AutoDuration, LTX2DurationHead
 from .pipeline_output import LTX2PipelineOutput
-from .utils import GEMMA3_PROMPT_ENHANCEMENT_CONFIG, GEMMA4_PROMPT_ENHANCEMENT_CONFIG, LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT
+from .utils import GEMMA3_PROMPT_ENHANCEMENT_CONFIG, GEMMA4_PROMPT_ENHANCEMENT_CONFIG, LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
@@ -455,15 +455,15 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         """
         Enhances the supplied `prompt` by generating a new prompt using the prompt enhancer (a Gemma
         conditional-generation model) from it, a system prompt, and the reference `image`. Uses the dedicated
-        `prompt_enhancer` component if one is configured (e.g. LTX-2.4, whose text encoder isn't trained for
+        `prompt_enhancer` component if one is configured (e.g. LTX-2.5, whose text encoder isn't trained for
         enhancement), otherwise falls back to the main `text_encoder` (LTX-2.0/2.3, which double as their own
         enhancer).
 
         `generation_kwargs`, if not supplied, always matches whichever model is doing the enhancing: greedy decoding
-        (`do_sample=False`, `no_repeat_ngram_size=3`) for a dedicated `prompt_enhancer` (LTX-2.4's
+        (`do_sample=False`, `no_repeat_ngram_size=3`) for a dedicated `prompt_enhancer` (LTX-2.5's
         `google/gemma-4-E2B-it`); sampling (`do_sample=True`, `temperature=0.7`) for the `text_encoder` fallback
         (LTX-2.0/2.3). `max_new_tokens`/`seed` are unaffected by this switch -- greedy decoding doesn't consume
-        randomness, so `seed` is inert for the dedicated-enhancer case, and 512 tokens comfortably covers LTX-2.4's
+        randomness, so `seed` is inert for the dedicated-enhancer case, and 512 tokens comfortably covers LTX-2.5's
         ~150-220 word target caption length.
         """
         device = device or self._execution_device
@@ -595,7 +595,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
             if getattr(self, "duration_head", None) is None:
                 raise ValueError(
                     "`num_frames` was an `LTX2AutoDuration` but this pipeline has no `duration_head` component to"
-                    " predict a duration with (the duration head ships from LTX-2.4 checkpoints onward). Pass"
+                    " predict a duration with (the duration head ships from LTX-2.5 checkpoints onward). Pass"
                     " `num_frames` as an integer instead."
                 )
             num_prompts = len(prompt) if isinstance(prompt, list) else 1 if prompt is not None else len(prompt_embeds)
@@ -997,7 +997,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                 The width in pixels of the generated image. This is set to 848 by default for the best results.
             num_frames (`int` or `LTX2AutoDuration`, *optional*):
                 The number of video frames to generate. If not supplied, defaults to an auto-predicted duration
-                (`LTX2AutoDuration()`) when this pipeline has a `duration_head` component (LTX-2.4 checkpoints and
+                (`LTX2AutoDuration()`) when this pipeline has a `duration_head` component (LTX-2.5 checkpoints and
                 later), and to `121` otherwise. Pass an `LTX2AutoDuration` to change the bounds the prediction is
                 clamped to, or an integer to set the length explicitly. Auto-predicted counts are snapped to the VAE's
                 causal temporal grid, so the realized duration is quantized (roughly 0.33s at 24 fps).
@@ -1099,19 +1099,19 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                 enhancer (a Gemma conditional-generation model -- the dedicated `prompt_enhancer` component if one is
                 configured, otherwise the main `text_encoder`) to generate an enhanced prompt from the original
                 `prompt` and the first `image` to condition generation. If not supplied and a dedicated
-                `prompt_enhancer` is configured (LTX-2.4), defaults to `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT` (from
+                `prompt_enhancer` is configured (LTX-2.5), defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` (from
                 `diffusers.pipelines.ltx2.utils`) -- see `enable_prompt_enhancement`.
             enable_prompt_enhancement (`bool`, *optional*, defaults to `None`):
                 Whether to run prompt enhancement. If not supplied, defaults to `True` when a dedicated
-                `prompt_enhancer` is configured (LTX-2.4, where enhancement is strongly recommended) or when
+                `prompt_enhancer` is configured (LTX-2.5, where enhancement is strongly recommended) or when
                 `system_prompt` was explicitly passed (LTX-2.0/2.3 fallback, matching prior behavior); `False`
-                otherwise. Pass `False` explicitly to disable enhancement even for LTX-2.4.
+                otherwise. Pass `False` explicitly to disable enhancement even for LTX-2.5.
             prompt_max_new_tokens (`int`, *optional*, defaults to `512`):
                 The maximum number of new tokens to generate when performing prompt enhancement.
             prompt_enhancement_kwargs (`dict[str, Any]`, *optional*, defaults to `None`):
                 Keyword arguments for the prompt enhancer's `.generate` call. If not supplied, always matches whichever
                 model is doing the enhancing: `do_sample=False, no_repeat_ngram_size=3` (greedy) when using a dedicated
-                `prompt_enhancer` (LTX-2.4), or `do_sample=True, temperature=0.7` for the `text_encoder` fallback
+                `prompt_enhancer` (LTX-2.5), or `do_sample=True, temperature=0.7` for the `text_encoder` fallback
                 (LTX-2.0/2.3). See
                 https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationMixin.generate
                 for more details.
@@ -1199,17 +1199,17 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         # 3. Prepare text embeddings
         if enable_prompt_enhancement is None:
             # Auto: on if the caller explicitly asked (system_prompt given -- the LTX-2.0/2.3 trigger, unchanged)
-            # or this pipeline has a dedicated prompt_enhancer (LTX-2.4, where enhancement is strongly recommended).
+            # or this pipeline has a dedicated prompt_enhancer (LTX-2.5, where enhancement is strongly recommended).
             enable_prompt_enhancement = system_prompt is not None or getattr(self, "prompt_enhancer", None) is not None
 
         if num_frames is None:
-            # Auto-predict when this pipeline has a duration_head (LTX-2.4, where the model is trained to choose its
+            # Auto-predict when this pipeline has a duration_head (LTX-2.5, where the model is trained to choose its
             # own shot length); the legacy fixed default otherwise.
             num_frames = LTX2AutoDuration() if getattr(self, "duration_head", None) is not None else 121
 
         if enable_prompt_enhancement and prompt is not None:
             if system_prompt is None:
-                system_prompt = LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT
+                system_prompt = LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT
             prompt = self.enhance_prompt(
                 image=image,
                 prompt=prompt,

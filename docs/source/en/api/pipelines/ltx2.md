@@ -502,9 +502,9 @@ encode_video(
 )
 ```
 
-## LTX-2.4
+## LTX-2.5
 
-LTX-2.4 reuses the same `LTX2Pipeline`/`LTX2VideoTransformer3DModel`/`AutoencoderKLLTX2Video`/etc. classes as LTX-2.3 — there is no separate pipeline class for it. The only user-visible difference is the text encoder: LTX-2.4 is paired with a Gemma 4 (`gemma4_unified`) checkpoint instead of Gemma 3. This is loaded automatically when you call `from_pretrained` on a converted LTX-2.4 checkpoint (via the `transformers` `Auto*` classes), so no extra setup is needed at inference time — just point `from_pretrained` at an LTX-2.4 repo instead of an LTX-2.3 one:
+LTX-2.5 reuses the same `LTX2Pipeline`/`LTX2VideoTransformer3DModel`/`AutoencoderKLLTX2Video`/etc. classes as LTX-2.3 — there is no separate pipeline class for it. The only user-visible difference is the text encoder: LTX-2.5 is paired with a Gemma 4 (`gemma4_unified`) checkpoint instead of Gemma 3. This is loaded automatically when you call `from_pretrained` on a converted LTX-2.5 checkpoint (via the `transformers` `Auto*` classes), so no extra setup is needed at inference time — just point `from_pretrained` at an LTX-2.5 repo instead of an LTX-2.3 one:
 
 ```py
 import torch
@@ -518,7 +518,7 @@ height = 512
 random_seed = 42
 frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(random_seed)
-model_path = "diffusers/LTX-2.4-Diffusers"
+model_path = "diffusers/LTX-2.5-Diffusers"
 
 pipe = LTX2Pipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
 pipe.enable_sequential_cpu_offload(device=device)
@@ -558,13 +558,13 @@ encode_video(
 )
 ```
 
-A few things carry over from LTX-2.3 unchanged: the [Multimodal Guidance](#multimodal-guidance) recommendations above apply equally to LTX-2.4 (only the STG block index differs — `29` instead of `28`). One thing does *not* carry over:
+A few things carry over from LTX-2.3 unchanged: the [Multimodal Guidance](#multimodal-guidance) recommendations above apply equally to LTX-2.5 (only the STG block index differs — `29` instead of `28`). One thing does *not* carry over:
 
-- **Single-stage checkpoint only.** LTX-2.4 currently ships as a single-stage (text/image-to-video) checkpoint — the [two-stage generation](#two-stages-generation) workflow (distilled LoRA + latent upsampler) is not yet available for it.
+- **Single-stage checkpoint only.** LTX-2.5 currently ships as a single-stage (text/image-to-video) checkpoint — the [two-stage generation](#two-stages-generation) workflow (distilled LoRA + latent upsampler) is not yet available for it.
 
-### Prompt Enhancement for LTX-2.4
+### Prompt Enhancement for LTX-2.5
 
-**Using prompt enhancement is strongly recommended for LTX-2.4, and it's enabled by default.** Unlike LTX-2.0/2.3, where the same text encoder checkpoint doubles as the enhancer (see [Prompt Enhancement](#prompt-enhancement) above), LTX-2.4's fine-tuned text encoder was not trained for enhancement. Instead, enhancement uses a separate, off-the-shelf `google/gemma-4-E2B-it` checkpoint. Load it into the pipeline's optional `prompt_enhancer`/`processor` components; once configured, calling the pipeline with just `prompt=` automatically enhances it using `LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT` and the recipe `google/gemma-4-E2B-it` was evaluated with -- greedy decoding (`do_sample=False`, `no_repeat_ngram_size=3`). Pass `enable_prompt_enhancement=False` to disable it, or an explicit `system_prompt=` to use a different one:
+**Using prompt enhancement is strongly recommended for LTX-2.5, and it's enabled by default.** Unlike LTX-2.0/2.3, where the same text encoder checkpoint doubles as the enhancer (see [Prompt Enhancement](#prompt-enhancement) above), LTX-2.5's fine-tuned text encoder was not trained for enhancement. Instead, enhancement uses a separate, off-the-shelf `google/gemma-4-E2B-it` checkpoint. Load it into the pipeline's optional `prompt_enhancer`/`processor` components; once configured, calling the pipeline with just `prompt=` automatically enhances it using `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT` and the recipe `google/gemma-4-E2B-it` was evaluated with -- greedy decoding (`do_sample=False`, `no_repeat_ngram_size=3`). Pass `enable_prompt_enhancement=False` to disable it, or an explicit `system_prompt=` to use a different one:
 
 ```py
 import torch
@@ -579,7 +579,7 @@ height = 512
 random_seed = 42
 frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(random_seed)
-model_path = "diffusers/LTX-2.4-Diffusers"
+model_path = "diffusers/LTX-2.5-Diffusers"
 enhancer_model_id = "google/gemma-4-E2B-it"
 
 pipe = LTX2Pipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
@@ -609,7 +609,7 @@ video, audio = pipe(
     audio_guidance_rescale=0.7,
     spatio_temporal_guidance_blocks=[29],
     use_cross_timestep=True,
-    # No `system_prompt=` needed -- enhancement runs automatically using `LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT`
+    # No `system_prompt=` needed -- enhancement runs automatically using `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT`
     # because `prompt_enhancer` is configured. Pass `enable_prompt_enhancement=False` to opt out.
     generator=generator,
     output_type="np",
@@ -625,11 +625,11 @@ encode_video(
 )
 ```
 
-The same applies to image-to-video with `LTX2ImageToVideoPipeline`: set `pipe.prompt_enhancer`/`pipe.processor` the same way, and enhancement runs automatically (using `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`, conditioning on both the reference image and the text prompt) — again, no `system_prompt=` needed unless you want to override it.
+The same applies to image-to-video with `LTX2ImageToVideoPipeline`: set `pipe.prompt_enhancer`/`pipe.processor` the same way, and enhancement runs automatically (using `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT`, conditioning on both the reference image and the text prompt) — again, no `system_prompt=` needed unless you want to override it.
 
-### Automatic duration for LTX-2.4
+### Automatic duration for LTX-2.5
 
-LTX-2.4 checkpoints ship a small `duration_head` that predicts how long the described shot should be, from the same text-connector output the transformer is conditioned on. When the loaded pipeline has one, **`num_frames` is auto-predicted by default** — omit it and the model chooses the length:
+LTX-2.5 checkpoints ship a small `duration_head` that predicts how long the described shot should be, from the same text-connector output the transformer is conditioned on. When the loaded pipeline has one, **`num_frames` is auto-predicted by default** — omit it and the model chooses the length:
 
 ```py
 video, audio = pipe(prompt=prompt, output_type="np", return_dict=False)
@@ -677,7 +677,7 @@ seconds = pipe.duration_head(video_tokens, audio_tokens).item()  # raw, before c
 print(f"predicted {seconds:.2f}s -> {num_frames} frames")
 ```
 
-Converting a 2.4 checkpoint picks the head up automatically with `--full_pipeline`, or on its own with `--duration_head`. Checkpoints predating 2.4 have no such weights, and conversion skips the component rather than failing.
+Converting a 2.5 checkpoint picks the head up automatically with `--full_pipeline`, or on its own with `--duration_head`. Checkpoints predating 2.5 have no such weights, and conversion skips the component rather than failing.
 
 ## LTX2Pipeline
 

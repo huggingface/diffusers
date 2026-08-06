@@ -339,7 +339,7 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert len(default_frames) != 121, "omitting num_frames with a head present must not use the legacy default"
 
     def test_omitting_num_frames_uses_the_legacy_default_without_a_head(self):
-        # Guards backwards compatibility: a pre-2.4 pipeline has no duration_head and must keep 121.
+        # Guards backwards compatibility: a pre-2.5 pipeline has no duration_head and must keep 121.
         components = self.get_dummy_components()
         assert components.get("duration_head") is None
         pipe = self.pipeline_class(**components).to(torch_device)
