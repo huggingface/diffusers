@@ -11,10 +11,10 @@ specific language governing permissions and limitations under the License. -->
 
 # MiniMax-H3
 
-<!-- Remove this note once the pull request is merged. -->
+<!-- Remove this note once MiniMax-H3 is part of a diffusers release. -->
 > [!TIP]
-> MiniMax-H3 is not part of a diffusers release yet. Install diffusers from the pull request to use it:
-> `pip install git+https://github.com/huggingface/diffusers.git@refs/pull/14355/head`
+> MiniMax-H3 is not part of a diffusers release yet. Install diffusers from source to use it:
+> `pip install git+https://github.com/huggingface/diffusers.git`
 
 
 MiniMax-H3 generates video and its soundtrack together. A single transformer denoises one packed sequence containing the text conditioning, conditioning media, and target video and audio latents. There is no separate vocoder and no audio post-hoc pass: video and audio come out of the same denoising loop.
