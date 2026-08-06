@@ -24,7 +24,7 @@ from diffusers import (
     QwenImageTransformer2DModel,
 )
 
-from ...testing_utils import torch_device
+from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
@@ -38,6 +38,7 @@ class QwenImageEditPipelineTesterConfig(BasePipelineTesterConfig):
         ["image", "prompt", "negative_prompt", "true_cfg_scale", "height", "width", "guidance_scale", "prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt", "image"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         tiny_ckpt_id = "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration"
@@ -134,7 +135,7 @@ class TestQwenImageEditPipeline(QwenImageEditPipelineTesterConfig, PipelineTeste
         inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
         generated_image = image[0]
-        assert generated_image.shape == (3, 32, 32)
+        assert generated_image.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.5637, 0.6341, 0.6001, 0.5620, 0.5794, 0.5498, 0.5757, 0.6389, 0.4174, 0.3597, 0.5649, 0.4894, 0.4969, 0.5255, 0.4083, 0.4986])
@@ -142,7 +143,7 @@ class TestQwenImageEditPipeline(QwenImageEditPipelineTesterConfig, PipelineTeste
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=5e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=5e-3)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)
