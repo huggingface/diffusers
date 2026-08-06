@@ -644,21 +644,20 @@ video, audio = pipe(prompt=prompt, num_frames=121, output_type="np", return_dict
 
 Pipelines loaded from LTX-2.0 or LTX-2.3 checkpoints have no duration head and keep the previous default of 121 frames, so this changes nothing for them.
 
-Pass an [`~pipelines.ltx2.duration_head.LTX2AutoDuration`] to constrain the prediction. The raw prediction is clamped into the range, then converted to frames:
+Pass `min_seconds` / `max_seconds` to constrain the prediction. The raw prediction is clamped into the range, then converted to frames:
 
 ```py
-from diffusers.pipelines.ltx2 import LTX2AutoDuration
-
 video, audio = pipe(
     prompt=prompt,
-    num_frames=LTX2AutoDuration(min_seconds=2.0, max_seconds=10.0),
+    min_seconds=2.0,
+    max_seconds=10.0,
     frame_rate=frame_rate,
     output_type="np",
     return_dict=False,
 )
 ```
 
-Predicted frame counts are snapped to the VAE's causal temporal grid (`8k + 1`), so the realized duration is quantized — about 0.33s per step at 24 fps — and it shifts with `frame_rate`, since the head predicts seconds rather than frames. `min_seconds` must be strictly less than `max_seconds`.
+Predicted frame counts are snapped to the VAE's causal temporal grid (`8k + 1`), so the realized duration is quantized — about 0.33s per step at 24 fps — and it shifts with `frame_rate`, since the head predicts seconds rather than frames. `min_seconds` must be strictly less than `max_seconds`. These bounds are ignored when `num_frames` is set explicitly.
 
 Bounds narrower than one grid step may not be satisfiable exactly: at 24 fps `[1.0s, 1.02s]` converts to `[24, 24]` frames, and 24 is not `8k + 1`. The nearest grid point is used and a warning is logged, so the returned length can fall just outside bounds that tight.
 
@@ -709,10 +708,6 @@ Converting a 2.5 checkpoint picks the head up automatically with `--full_pipelin
 [[autodoc]] pipelines.ltx2.duration_head.LTX2DurationHead
     - forward
     - predict_num_frames
-
-## LTX2AutoDuration
-
-[[autodoc]] pipelines.ltx2.duration_head.LTX2AutoDuration
 
 ## LTX2PipelineOutput
 

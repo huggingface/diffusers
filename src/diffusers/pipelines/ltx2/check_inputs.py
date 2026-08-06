@@ -14,7 +14,6 @@
 
 import PIL.Image
 
-from .duration_head import LTX2AutoDuration
 from .utils import resolve_default_image_crf
 
 
@@ -37,6 +36,8 @@ class LTX2CheckInputsMixin:
         system_prompt=None,
         enable_prompt_enhancement=None,
         num_frames=None,
+        min_seconds=1.0,
+        max_seconds=20.0,
         image=None,
         image_crf=None,
         latents=None,
@@ -114,19 +115,22 @@ class LTX2CheckInputsMixin:
                 "`prompt_enhancer` component is configured (LTX-2.0/2.3)."
             )
 
-        if isinstance(num_frames, LTX2AutoDuration):
-            if getattr(self, "duration_head", None) is None:
-                raise ValueError(
-                    "`num_frames` was an `LTX2AutoDuration` but this pipeline has no `duration_head` component to"
-                    " predict a duration with (the duration head ships from LTX-2.5 checkpoints onward). Pass"
-                    " `num_frames` as an integer instead."
-                )
+        if min_seconds >= max_seconds:
+            raise ValueError(
+                f"`min_seconds` ({min_seconds}) must be less than `max_seconds` ({max_seconds})."
+                " A collapsed range leaves no room for a prediction, and cannot generally be satisfied by a frame"
+                " count on the VAE's temporal grid."
+            )
+
+        # Auto-duration path: `num_frames` omitted on a pipeline that has a `duration_head`.
+        if num_frames is None and getattr(self, "duration_head", None) is not None:
             num_prompts = len(prompt) if isinstance(prompt, list) else 1 if prompt is not None else len(prompt_embeds)
             if num_prompts > 1:
                 raise ValueError(
-                    f"`num_frames` was an `LTX2AutoDuration` but {num_prompts} prompts were supplied. The duration"
-                    " head predicts one duration, and prompts with different natural lengths cannot share a single"
-                    " frame count. Call the pipeline once per prompt, or pass `num_frames` as an integer."
+                    f"`num_frames` was omitted so the duration head would auto-predict, but {num_prompts} prompts were"
+                    " supplied. The duration head predicts one duration, and prompts with different natural lengths"
+                    " cannot share a single frame count. Call the pipeline once per prompt, or pass `num_frames` as an"
+                    " integer."
                 )
 
         if latents is None and image is not None:

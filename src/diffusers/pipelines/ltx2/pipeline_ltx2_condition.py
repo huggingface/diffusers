@@ -41,7 +41,7 @@ from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .check_inputs import LTX2CheckInputsMixin
 from .connectors import LTX2TextConnectors
-from .duration_head import LTX2AutoDuration, LTX2DurationHead
+from .duration_head import LTX2DurationHead
 from .pipeline_output import LTX2PipelineOutput
 from .prompt_enhancement import LTX2PromptEnhancementMixin
 from .utils import (
@@ -1145,7 +1145,9 @@ class LTX2ConditionPipeline(
         negative_prompt: str | list[str] | None = None,
         height: int = 512,
         width: int = 768,
-        num_frames: int | LTX2AutoDuration | None = None,
+        num_frames: int | None = None,
+        min_seconds: float = 1.0,
+        max_seconds: float = 20.0,
         frame_rate: float = 24.0,
         num_inference_steps: int = 30,
         sigmas: list[float] | None = None,
@@ -1199,12 +1201,17 @@ class LTX2ConditionPipeline(
                 The height in pixels of the generated image. This is set to 480 by default for the best results.
             width (`int`, *optional*, defaults to `768`):
                 The width in pixels of the generated image. This is set to 848 by default for the best results.
-            num_frames (`int` or `LTX2AutoDuration`, *optional*):
-                The number of video frames to generate. If not supplied, defaults to an auto-predicted duration
-                (`LTX2AutoDuration()`) when this pipeline has a `duration_head` component (LTX-2.5 checkpoints and
-                later), and to `121` otherwise. Pass an `LTX2AutoDuration` to change the bounds the prediction is
-                clamped to, or an integer to set the length explicitly. Auto-predicted counts are snapped to the VAE's
-                causal temporal grid, so the realized duration is quantized (roughly 0.33s at 24 fps).
+            num_frames (`int`, *optional*):
+                The number of video frames to generate. If not supplied, defaults to an auto-predicted duration when
+                this pipeline has a `duration_head` component (LTX-2.5 checkpoints and later), and to `121` otherwise.
+                Pass an integer to set the length explicitly. Auto-predicted counts are snapped to the VAE's causal
+                temporal grid, so the realized duration is quantized (roughly 0.33s at 24 fps).
+            min_seconds (`float`, *optional*, defaults to `1.0`):
+                Lower bound on the auto-predicted duration when `num_frames` is omitted and a `duration_head` is
+                present. Ignored when `num_frames` is set explicitly.
+            max_seconds (`float`, *optional*, defaults to `20.0`):
+                Upper bound on the auto-predicted duration when `num_frames` is omitted and a `duration_head` is
+                present. Ignored when `num_frames` is set explicitly. Must be strictly greater than `min_seconds`.
             frame_rate (`float`, *optional*, defaults to `24.0`):
                 The frames per second (FPS) of the generated video.
             num_inference_steps (`int`, *optional*, defaults to 40):
@@ -1379,6 +1386,8 @@ class LTX2ConditionPipeline(
             system_prompt=system_prompt,
             enable_prompt_enhancement=enable_prompt_enhancement,
             num_frames=num_frames,
+            min_seconds=min_seconds,
+            max_seconds=max_seconds,
         )
 
         # Per-modality guidance scales (video, audio)
@@ -1413,10 +1422,10 @@ class LTX2ConditionPipeline(
         device = self._execution_device
 
         # 3. Prepare text embeddings
-        if num_frames is None:
-            # Auto-predict when this pipeline has a duration_head (LTX-2.5, where the model is trained to choose its
-            # own shot length); the legacy fixed default otherwise.
-            num_frames = LTX2AutoDuration() if getattr(self, "duration_head", None) is not None else 121
+        auto_duration = num_frames is None and getattr(self, "duration_head", None) is not None
+        if num_frames is None and not auto_duration:
+            # Legacy fixed default for checkpoints without a duration_head (LTX-2.0/2.3).
+            num_frames = 121
 
         if enable_prompt_enhancement and prompt is not None:
             enhancement_image = None
@@ -1471,7 +1480,7 @@ class LTX2ConditionPipeline(
             prompt_embeds, prompt_attention_mask, padding_side=self.tokenizer_padding_side
         )
 
-        if isinstance(num_frames, LTX2AutoDuration):
+        if auto_duration:
             video_tokens, audio_tokens = connector_prompt_embeds, connector_audio_prompt_embeds
             if self.do_classifier_free_guidance:
                 # The connectors ran on the concatenated [negative, positive] batch; predict from the positive half.
@@ -1483,8 +1492,8 @@ class LTX2ConditionPipeline(
                 audio_tokens[:1],
                 frame_rate=frame_rate,
                 temporal_compression_ratio=self.vae_temporal_compression_ratio,
-                min_seconds=num_frames.min_seconds,
-                max_seconds=num_frames.max_seconds,
+                min_seconds=min_seconds,
+                max_seconds=max_seconds,
             )
 
         # 4. Prepare latent variables

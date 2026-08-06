@@ -25,7 +25,6 @@ from diffusers import (
     LTX2VideoTransformer3DModel,
 )
 from diffusers.pipelines.ltx2 import (
-    LTX2AutoDuration,
     LTX2DurationHead,
     LTX2LatentUpsamplePipeline,
     LTX2TextConnectors,
@@ -394,7 +393,9 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_frames"] = LTX2AutoDuration(min_seconds=0.5, max_seconds=2.0)
+        inputs.pop("num_frames")
+        inputs["min_seconds"] = 0.5
+        inputs["max_seconds"] = 2.0
         frames = pipe(**inputs).frames[0]
 
         ratio = pipe.vae_temporal_compression_ratio
@@ -457,7 +458,7 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         inputs["prompt"] = ["a robot dancing", "a much longer and quite different scene"]
         inputs["negative_prompt"] = ["", ""]
-        inputs["num_frames"] = LTX2AutoDuration()
+        inputs.pop("num_frames")
 
         with self.assertRaises(ValueError) as ctx:
             pipe(**inputs)
@@ -479,15 +480,3 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         latents = pipe(**inputs).frames
 
         assert latents.shape[0] == 2
-
-    def test_auto_duration_without_a_head_raises(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_frames"] = LTX2AutoDuration()
-
-        with self.assertRaises(ValueError) as ctx:
-            pipe(**inputs)
-        assert "duration_head" in str(ctx.exception)

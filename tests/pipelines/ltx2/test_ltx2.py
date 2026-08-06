@@ -24,7 +24,7 @@ from diffusers import (
     LTX2Pipeline,
     LTX2VideoTransformer3DModel,
 )
-from diffusers.pipelines.ltx2 import LTX2AutoDuration, LTX2DurationHead, LTX2TextConnectors
+from diffusers.pipelines.ltx2 import LTX2DurationHead, LTX2TextConnectors
 from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -320,7 +320,9 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_frames"] = LTX2AutoDuration(min_seconds=0.5, max_seconds=2.0)
+        inputs.pop("num_frames")
+        inputs["min_seconds"] = 0.5
+        inputs["max_seconds"] = 2.0
         frames = pipe(**inputs).frames[0]
 
         ratio = pipe.vae_temporal_compression_ratio
@@ -335,17 +337,17 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs.pop("num_frames")
-        inputs["num_frames"] = LTX2AutoDuration(min_seconds=0.5, max_seconds=2.0)
-        auto_frames = pipe(**inputs).frames[0]
+        inputs["min_seconds"] = 0.5
+        inputs["max_seconds"] = 2.0
+        bounded_frames = pipe(**inputs).frames[0]
 
-        # Omitting `num_frames` entirely must take the same auto path as passing LTX2AutoDuration,
-        # bounded here only by the head's own defaults.
+        # Omitting `num_frames` entirely with default bounds must also take the auto path.
         inputs = self.get_dummy_inputs(torch_device)
         inputs.pop("num_frames")
         default_frames = pipe(**inputs).frames[0]
 
         ratio = pipe.vae_temporal_compression_ratio
-        assert (len(auto_frames) - 1) % ratio == 0
+        assert (len(bounded_frames) - 1) % ratio == 0
         assert (len(default_frames) - 1) % ratio == 0
         assert len(default_frames) != 121, "omitting num_frames with a head present must not use the legacy default"
 
@@ -389,7 +391,7 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         inputs["prompt"] = ["a robot dancing", "a much longer and quite different scene"]
         inputs["negative_prompt"] = ["", ""]
-        inputs["num_frames"] = LTX2AutoDuration()
+        inputs.pop("num_frames")
 
         with self.assertRaises(ValueError) as ctx:
             pipe(**inputs)
@@ -412,14 +414,17 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert latents.shape[0] == 2
 
-    def test_auto_duration_without_a_head_raises(self):
+    def test_invalid_duration_bounds_raise(self):
         components = self.get_dummy_components()
+        components["duration_head"] = self.get_dummy_duration_head()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_frames"] = LTX2AutoDuration()
+        inputs.pop("num_frames")
+        inputs["min_seconds"] = 5.0
+        inputs["max_seconds"] = 2.0
 
         with self.assertRaises(ValueError) as ctx:
             pipe(**inputs)
-        assert "duration_head" in str(ctx.exception)
+        assert "min_seconds" in str(ctx.exception)
