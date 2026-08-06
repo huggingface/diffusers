@@ -225,6 +225,12 @@ class PeftAdapterMixin:
             if is_sai_sd_control_lora:
                 state_dict = convert_sai_sd_control_lora_state_dict_to_peft(state_dict)
 
+            # Auto-detect if the incoming state_dict expects fused QKV projections
+            # and fuse them in the model if the model supports it.
+            has_fused_qkv = any("to_qkv" in k for k in state_dict.keys())
+            if has_fused_qkv and hasattr(self, "fuse_qkv_projections"):
+                self.fuse_qkv_projections()
+
             rank = {}
             for key, val in state_dict.items():
                 # Cannot figure out rank from lora layers that don't have at least 2 dimensions.
