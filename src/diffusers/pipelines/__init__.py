@@ -176,6 +176,7 @@ else:
         "Flux2KleinInpaintPipeline",
         "Flux2KleinKVPipeline",
     ]
+    _import_structure["sefi"] = ["SeFiPipeline", "SeFiPipelineOutput"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -857,6 +858,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaSprintPipeline,
         )
         from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
+        from .sefi import SeFiPipeline, SeFiPipelineOutput
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
         from .stable_cascade import (
