@@ -454,14 +454,16 @@ def _func_optionally_disable_offloading(_pipeline):
             if not isinstance(component, nn.Module):
                 continue
             is_group_offload = is_group_offload or _is_group_offload_enabled(component)
-            if not hasattr(component, "_hf_hook"):
-                continue
-            is_model_cpu_offload = is_model_cpu_offload or isinstance(component._hf_hook, CpuOffload)
-            is_sequential_cpu_offload = is_sequential_cpu_offload or (
-                isinstance(component._hf_hook, AlignDevicesHook)
-                or hasattr(component._hf_hook, "hooks")
-                and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
-            )
+            for module in component.modules():
+                if not hasattr(module, "_hf_hook"):
+                    continue
+                hooks = getattr(module._hf_hook, "hooks", (module._hf_hook,))
+                is_model_cpu_offload = is_model_cpu_offload or any(
+                    isinstance(hook, CpuOffload) for hook in hooks
+                )
+                is_sequential_cpu_offload = is_sequential_cpu_offload or any(
+                    isinstance(hook, AlignDevicesHook) and hook.offload for hook in hooks
+                )
 
         if is_sequential_cpu_offload or is_model_cpu_offload:
             logger.info(

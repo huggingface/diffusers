@@ -20,6 +20,7 @@ import torch
 from safetensors.torch import save_file
 
 from diffusers.loaders import StableDiffusionLoraLoaderMixin, lora_base
+from diffusers.utils.testing_utils import require_accelerate
 
 
 LORA_KEY = "unet.test.lora_A.weight"
@@ -100,3 +101,32 @@ def test_local_directory_with_multiple_files_warns_and_uses_first(tmp_path, monk
 
     assert weight_name == first_path.name
     assert "contains more than one weights file" in caplog.text
+
+
+@require_accelerate
+def test_alignment_hook_does_not_enable_sequential_cpu_offload():
+    from accelerate.hooks import AlignDevicesHook, add_hook_to_module
+
+    component = torch.nn.Linear(1, 1)
+    add_hook_to_module(component, AlignDevicesHook(execution_device="cpu"))
+    pipeline = Mock(hf_device_map=None, components={"model": component})
+
+    offload_state = lora_base._func_optionally_disable_offloading(pipeline)
+
+    assert offload_state == (False, False, False)
+    assert hasattr(component, "_hf_hook")
+
+
+@require_accelerate
+def test_sequential_cpu_offload_is_detected_and_disabled():
+    from accelerate import cpu_offload
+
+    component = torch.nn.Sequential(torch.nn.Linear(1, 1))
+    cpu_offload(component, execution_device=torch.device("cuda"))
+    pipeline = Mock(hf_device_map=None, components={"model": component})
+
+    offload_state = lora_base._func_optionally_disable_offloading(pipeline)
+
+    assert offload_state == (False, True, False)
+    assert not hasattr(component, "_hf_hook")
+    assert not hasattr(component[0], "_hf_hook")
