@@ -307,6 +307,23 @@ class AttentionBackendTesterMixin:
         gc.collect()
         backend_empty_cache(torch_device)
 
+    def test_set_attention_backend_does_not_change_registry(self):
+        model = self.model_class(**self.get_init_dict())
+        initial_backend, _ = _AttentionBackendRegistry.get_active_backend()
+        model_backend = (
+            AttentionBackendName.NATIVE
+            if initial_backend != AttentionBackendName.NATIVE
+            else AttentionBackendName._NATIVE_MATH
+        )
+
+        try:
+            model.set_attention_backend(model_backend.value)
+            active_backend, _ = _AttentionBackendRegistry.get_active_backend()
+            assert active_backend == initial_backend
+        finally:
+            model.reset_attention_backend()
+            _AttentionBackendRegistry.set_active_backend(initial_backend)
+
     @torch.no_grad()
     @pytest.mark.parametrize("backend", _ALL_BACKEND_PARAMS)
     def test_set_attention_backend_matches_context_manager(self, backend):
