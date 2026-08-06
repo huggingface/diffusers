@@ -137,7 +137,7 @@ class TestWanImageToVideoPipeline(WanImageToVideoPipelineTesterConfig, PipelineT
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
         # `_optional_components` lists `transformer`, `transformer_2`, `image_encoder` and `image_processor`, but only
@@ -281,7 +281,7 @@ class TestWanFLFToVideoPipeline(WanFLFToVideoPipelineTesterConfig, PipelineTeste
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
         # `_optional_components` lists `transformer`, `transformer_2`, `image_encoder` and `image_processor`, but only

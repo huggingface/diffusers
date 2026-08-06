@@ -13,13 +13,13 @@
 # limitations under the License.
 
 
-import numpy as np
 import torch
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel, CogVideoXVideoToVideoPipeline, DDIMScheduler
 
+from ...testing_utils import assert_tensors_close
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
@@ -137,7 +137,7 @@ class TestCogVideoXVideoToVideoPipeline(CogVideoXVideoToVideoPipelineTesterConfi
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
@@ -194,14 +194,26 @@ class TestCogVideoXVideoToVideoPipeline(CogVideoXVideoToVideoPipelineTesterConfi
         frames = pipe(**inputs).frames
         image_slice_disabled = frames[0, -2:, -1, -3:, -3:]
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
-            "Fusion of QKV projections shouldn't affect the outputs."
+        assert_tensors_close(
+            original_image_slice,
+            image_slice_fused,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Fusion of QKV projections shouldn't affect the outputs.",
         )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert_tensors_close(
+            image_slice_fused,
+            image_slice_disabled,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
         )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
+        assert_tensors_close(
+            original_image_slice,
+            image_slice_disabled,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Original outputs should match when fused QKV projections are disabled.",
         )
 
 
