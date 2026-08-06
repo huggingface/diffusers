@@ -48,6 +48,11 @@ DEFAULT_HF_PARALLEL_LOADING_WORKERS = 8
 HF_ENABLE_PARALLEL_LOADING = os.environ.get("HF_ENABLE_PARALLEL_LOADING", "").upper() in ENV_VARS_TRUE_VALUES
 DIFFUSERS_DISABLE_REMOTE_CODE = os.getenv("DIFFUSERS_DISABLE_REMOTE_CODE", "false").upper() in ENV_VARS_TRUE_VALUES
 DIFFUSERS_SDNQ_TRANSFORMERS = os.getenv("DIFFUSERS_SDNQ_TRANSFORMERS", "false").upper() in ENV_VARS_TRUE_VALUES
+# Kernels published by untrusted publishers execute remote code, so a globally disabled remote code wins over the opt-in.
+DIFFUSERS_TRUST_REMOTE_KERNELS = (
+    os.getenv("DIFFUSERS_TRUST_REMOTE_KERNELS", "false").upper() in ENV_VARS_TRUE_VALUES
+    and not DIFFUSERS_DISABLE_REMOTE_CODE
+)
 
 # Below should be `True` if the current version of `peft` and `transformers` are compatible with
 # PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
