@@ -2548,4 +2548,3 @@ class PeftLoraLoaderMixinTests:
             # Clean up the hooks to prevent state leak
             if hasattr(denoiser, "_diffusers_hook"):
                 denoiser._diffusers_hook.remove_hook(_GROUP_OFFLOADING, recurse=True)
-
