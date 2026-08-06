@@ -20,9 +20,15 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import torch.nn.functional as F
 
-from diffusers.models._modeling_parallel import ContextParallelConfig
-from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
+from diffusers.models.attention_dispatch import (
+    AttentionBackendName,
+    _AttentionBackendRegistry,
+    dispatch_attention_fn,
+)
+from diffusers.models.attention_dispatch import attention_backend as attention_backend_ctx
 
 from ...testing_utils import (
     is_attention,
@@ -177,6 +183,76 @@ def _context_parallel_backward_worker(
         if rank == 0:
             return_dict["status"] = "error"
             return_dict["error"] = str(e)
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+def _attention_backward_parity_worker(rank, world_size, master_port, cp_dict, attention_backend, return_dict):
+    """Op-level worker: check `dispatch_attention_fn` gradients against a single-process reference.
+
+    This guards the ring-attention backward pass, which historically produced silently wrong
+    gradients (see https://github.com/huggingface/diffusers/issues/14265) because it recomputed
+    every ring iteration against the iteration-0 KV chunk.
+    """
+    try:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = str(master_port)
+        os.environ["RANK"] = str(rank)
+        os.environ["WORLD_SIZE"] = str(world_size)
+
+        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
+        device_type = torch_device.split(":")[0]
+        device_module = device_config["module"]
+
+        dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
+        device_module.set_device(rank)
+        device = torch.device(f"{device_type}:{rank}")
+
+        # Identical inputs on every rank so each rank can compute the same full-sequence reference.
+        B, S, H, D = 1, 128, 4, 64
+        torch.manual_seed(777)
+        q = torch.randn(B, S, H, D, device=device, dtype=torch.bfloat16)
+        k = torch.randn(B, S, H, D, device=device, dtype=torch.bfloat16)
+        v = torch.randn(B, S, H, D, device=device, dtype=torch.bfloat16)
+        grad_out = torch.randn(B, S, H, D, device=device, dtype=torch.bfloat16)
+
+        # Reference: full-sequence fp32 SDPA gradients on a single process.
+        q_ref, k_ref, v_ref = (t.float().requires_grad_(True) for t in (q, k, v))
+        ref_out = F.scaled_dot_product_attention(
+            q_ref.transpose(1, 2), k_ref.transpose(1, 2), v_ref.transpose(1, 2)
+        ).transpose(1, 2)
+        ref_dq, ref_dk, ref_dv = torch.autograd.grad(ref_out, (q_ref, k_ref, v_ref), grad_out.float())
+
+        mesh = dist.device_mesh.init_device_mesh(
+            device_type,
+            (cp_dict.get("ring_degree", 1), cp_dict.get("ulysses_degree", 1)),
+            mesh_dim_names=("ring", "ulysses"),
+        )
+        cp_config = ContextParallelConfig(**cp_dict)
+        cp_config.setup(rank, world_size, device, mesh)
+        parallel_config = ParallelConfig(context_parallel_config=cp_config)
+
+        # Each rank runs its sequence shard through the templated CP attention path.
+        shard = slice(rank * S // world_size, (rank + 1) * S // world_size)
+        qs, ks, vs = (t.detach()[:, shard].clone().requires_grad_(True) for t in (q, k, v))
+        with attention_backend_ctx(attention_backend):
+            out = dispatch_attention_fn(qs, ks, vs, parallel_config=parallel_config)
+        out.backward(grad_out[:, shard])
+
+        rel_errs = {}
+        for name, got, ref in (("dq", qs.grad, ref_dq), ("dk", ks.grad, ref_dk), ("dv", vs.grad, ref_dv)):
+            ref_shard = ref[:, shard].to(got.dtype)
+            rel_errs[name] = ((got - ref_shard).norm() / ref_shard.norm()).item()
+
+        if rank == 0:
+            return_dict["status"] = "success"
+            return_dict["rel_errs"] = dict(rel_errs)
+
+    except Exception as e:
+        if rank == 0:
+            return_dict["status"] = "error"
+            return_dict["error"] = repr(e)
     finally:
         if dist.is_initialized():
             dist.destroy_process_group()
@@ -408,6 +484,9 @@ class ContextParallelTesterMixin:
 @require_torch_multi_accelerator
 class ContextParallelAttentionBackendsTesterMixin:
     unsupported_attn_backends: list[str] = []
+    # Max allowed relative error for the CP attention gradient-parity check. Override per model if a
+    # backend / shape needs a looser bound.
+    backward_parity_grad_rtol: float = 2e-2
 
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"])
     @pytest.mark.parametrize(
@@ -506,3 +585,53 @@ class ContextParallelAttentionBackendsTesterMixin:
 
         cp_output = torch.tensor(return_dict["output"], dtype=ref_output.dtype)
         torch.testing.assert_close(ref_output, cp_output, atol=1e-2, rtol=1e-2)
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"])
+    @pytest.mark.parametrize(
+        "attention_backend",
+        [
+            "_native_flash",
+            "_native_cudnn",
+            pytest.param(
+                "flash_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+            pytest.param(
+                "_flash_3_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+        ],
+    )
+    def test_context_parallel_attn_backend_backward_parity(self, cp_type, attention_backend):
+        """Ring and Ulysses attention gradients must match a single-GPU reference.
+
+        Regression test for https://github.com/huggingface/diffusers/issues/14265, where the ring
+        backward silently used the iteration-0 KV chunk for every ring iteration.
+        """
+        if not torch.distributed.is_available():
+            pytest.skip("torch.distributed is not available.")
+        if attention_backend in self.unsupported_attn_backends:
+            pytest.skip(f"{attention_backend} is not supported for this model.")
+
+        world_size = 2
+        cp_dict = {cp_type: world_size}
+        master_port = _find_free_port()
+
+        manager = mp.Manager()
+        return_dict = manager.dict()
+        mp.spawn(
+            _attention_backward_parity_worker,
+            args=(world_size, master_port, cp_dict, attention_backend, return_dict),
+            nprocs=world_size,
+            join=True,
+        )
+
+        assert return_dict.get("status") == "success", (
+            f"Context parallel backward parity run failed: {return_dict.get('error', 'Unknown error')}"
+        )
+        rel_errs = return_dict["rel_errs"]
+        tol = self.backward_parity_grad_rtol
+        for name, rel in rel_errs.items():
+            assert rel < tol, (
+                f"{attention_backend} {cp_type} gradient `{name}` rel_err={rel:.3e} exceeds tol={tol:.1e}: {rel_errs}"
+            )
