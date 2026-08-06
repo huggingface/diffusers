@@ -672,13 +672,11 @@ class LoraBaseMixin:
                             module.unmerge()
 
         # Only remove an adapter from _merged_adapters once it is no longer
-        # physically merged in any remaining loadable component. Removing it
-        # on the first unfused component would desync the set when the adapter
-        # is still fused into other components.
+        # physically merged in any remaining loadable component.
         remaining_merged: set[str] = set()
         for component_name in self._lora_loadable_modules:
             component_model = getattr(self, component_name, None)
-            if component_model is not None and issubclass(component_model.__class__, (ModelMixin, PreTrainedModel)):
+            if isinstance(component_model, nn.Module):
                 for module in component_model.modules():
                     if isinstance(module, BaseTunerLayer):
                         remaining_merged.update(module.merged_adapters)

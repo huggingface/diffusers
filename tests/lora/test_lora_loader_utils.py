@@ -17,9 +17,16 @@ from unittest.mock import Mock
 
 import pytest
 import torch
+import torch.nn as nn
+from peft import LoraConfig
+from peft.tuners.tuners_utils import BaseTunerLayer
 from safetensors.torch import save_file
 
+from diffusers.configuration_utils import ConfigMixin
 from diffusers.loaders import StableDiffusionLoraLoaderMixin, lora_base
+from diffusers.loaders.lora_base import LoraBaseMixin
+from diffusers.loaders.peft import PeftAdapterMixin
+from diffusers.models.modeling_utils import ModelMixin
 
 
 LORA_KEY = "unet.test.lora_A.weight"
@@ -108,13 +115,6 @@ def test_unfuse_lora_partial_components_keeps_merged_adapters_in_sync():
     Unfusing only a subset of components must keep _merged_adapters in sync
     with the adapters still physically fused in the remaining components.
     """
-    import torch.nn as nn
-    from peft import LoraConfig
-    from peft.tuners.tuners_utils import BaseTunerLayer
-    from diffusers.loaders.lora_base import LoraBaseMixin
-    from diffusers.loaders.peft import PeftAdapterMixin
-    from diffusers.models.modeling_utils import ModelMixin
-    from diffusers.configuration_utils import ConfigMixin
 
     class TinyModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         config_name = "config.json"
