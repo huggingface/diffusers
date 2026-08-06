@@ -21,6 +21,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from ..utils import (
     USE_PEFT_BACKEND,
     deprecate,
+    get_peft_kwargs,
     get_submodule_by_name,
     is_bitsandbytes_available,
     is_gguf_available,
@@ -56,6 +57,7 @@ from .lora_conversion_utils import (
     _convert_non_diffusers_ltx2_lora_to_diffusers,
     _convert_non_diffusers_ltxv_lora_to_diffusers,
     _convert_non_diffusers_lumina2_lora_to_diffusers,
+    _convert_non_diffusers_minimax_h3_lora_to_diffusers,
     _convert_non_diffusers_qwen_lora_to_diffusers,
     _convert_non_diffusers_wan_lora_to_diffusers,
     _convert_non_diffusers_z_image_lora_to_diffusers,
@@ -81,6 +83,8 @@ TEXT_ENCODER_NAME = "text_encoder"
 UNET_NAME = "unet"
 TRANSFORMER_NAME = "transformer"
 LTX2_CONNECTOR_NAME = "connectors"
+# MiniMax-H3 ships two independently trained DiT partitions in one repository, under two component names.
+MINIMAX_H3_TRANSFORMER_REF_NAME = "transformer_ref"
 
 _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX = {"x_embedder": "in_channels"}
 
@@ -7035,6 +7039,303 @@ class AceStepLoraLoaderMixin(LoraBaseMixin):
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
+
+
+class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`MiniMaxH3Transformer3DModel`]. Specific to [`MiniMaxH3ModularPipeline`].
+
+    MiniMax-H3 holds two independently trained DiT partitions in one repository — `transformer/` for the `t2va` and
+    `fl2va` workflows, `transformer_ref/` for `ref2va` — and a workflow loads only its own. The two are separate
+    checkpoints with nothing tied between them, and their module names are identical, so a LoRA trained against one
+    loads without error into the other and silently produces garbage. Nothing in a published H3 LoRA records which
+    partition it was trained against, so the routing is explicit: a converted state dict targets `transformer.`, and
+    `transformer_ref` is reached either by a `transformer_ref.`-prefixed file (what `save_lora_weights` writes) or by
+    passing `load_into_transformer_ref=True`.
+    """
+
+    _lora_loadable_modules = ["transformer", "transformer_ref"]
+    transformer_name = TRANSFORMER_NAME
+    transformer_ref_name = MINIMAX_H3_TRANSFORMER_REF_NAME
+
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        # ai-toolkit writes the original checkpoint's module names under a `diffusion_model.` prefix, while the
+        # reference `generate.py` / ComfyUI checkpoints carry no prefix at all, so the module names are what
+        # identifies a non-diffusers file.
+        is_non_diffusers_format = any(
+            k.startswith(("diffusion_model.", "blocks.", "token_refiner.", "final_layer.")) for k in state_dict
+        )
+        if is_non_diffusers_format:
+            state_dict = _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict)
+
+        # Every published MiniMax-H3 LoRA is alpha-less and applies as `W + lora_B @ lora_A`, i.e. at an effective
+        # scale of 1.0 *per module*. `get_peft_kwargs` reads `lora_alpha` off whichever rank it happens to see first
+        # and never re-derives it, so a mixed-rank adapter — which the public turbo LoRA is, rank 64 for attention
+        # and FFN against rank 16 for the AdaLN projections — has one of its two rank groups silently scaled by
+        # `alpha / r`. The `LoraConfig` is therefore built here with `alpha == rank` everywhere and passed on as
+        # metadata, which `load_lora_adapter` uses in place of `get_peft_kwargs`. Keying this off the absence of
+        # alpha information rather than off the conversion is deliberate: the same file also circulates
+        # pre-converted to diffusers keys, and that copy needs the same treatment.
+        if metadata is None and not any(k.endswith(".alpha") for k in state_dict):
+            metadata = {}
+            for prefix in (cls.transformer_name, cls.transformer_ref_name):
+                component_state_dict = {
+                    k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")
+                }
+                # `^` anchors each pattern to a full module name, as `load_lora_adapter` does for the ranks it derives.
+                rank = {f"^{k}": v.shape[1] for k, v in component_state_dict.items() if "lora_B" in k and v.ndim > 1}
+                if not rank:
+                    continue
+                lora_config_kwargs = get_peft_kwargs(
+                    rank, network_alpha_dict=None, peft_state_dict=component_state_dict, is_unet=False
+                )
+                # The same fix-up `PeftAdapterMixin.load_lora_adapter` applies to SAI control LoRAs.
+                lora_config_kwargs["lora_alpha"] = lora_config_kwargs["r"]
+                lora_config_kwargs["alpha_pattern"] = lora_config_kwargs["rank_pattern"]
+                metadata.update(_pack_dict_with_prefix(lora_config_kwargs, prefix))
+            metadata = metadata or None
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        load_into_transformer_ref: bool = False,
+        **kwargs,
+    ):
+        """
+        Load LoRA layers into `transformer` or, with `load_into_transformer_ref=True`, into `transformer_ref`. See
+        [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+
+        Args:
+            load_into_transformer_ref (`bool`, defaults to `False`):
+                Load the `transformer.`-prefixed layers into the `transformer_ref` partition — the one the `ref2va`
+                workflow denoises with — instead of `transformer`. Only needed when both partitions are loaded: a
+                pipeline that holds `transformer_ref` alone routes there on its own.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        # A workflow loads only its own partition, so `getattr(..., None)` — never the `hasattr` ternary the
+        # single-denoiser mixins use — is what tells the two apart.
+        transformer = getattr(self, self.transformer_name, None)
+        transformer_ref = getattr(self, self.transformer_ref_name, None)
+
+        transformer_state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_name}.")}
+        transformer_ref_state_dict = {
+            k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_ref_name}.")
+        }
+
+        if transformer is None and transformer_ref is None:
+            logger.warning(
+                f"No denoiser to load the LoRA into: this pipeline holds neither `{self.transformer_name}` nor "
+                f"`{self.transformer_ref_name}`. Skipping."
+            )
+            return
+
+        if transformer_state_dict:
+            # `transformer.`-prefixed layers go to `transformer_ref` when the caller asks for it, and also when
+            # `transformer_ref` is the only partition present — which is what `workflow="ref2va"` loads.
+            into_ref = load_into_transformer_ref or transformer is None
+            if into_ref and transformer_ref is None:
+                raise ValueError(
+                    f"`load_into_transformer_ref=True` needs a `{self.transformer_ref_name}` component, which this "
+                    'pipeline does not have. Load it with `workflow="ref2va"`, or drop the argument to load into '
+                    f"`{self.transformer_name}`."
+                )
+            if not into_ref and transformer_ref is not None and not transformer_ref_state_dict:
+                logger.warning(
+                    f"Both MiniMax-H3 partitions are loaded and this LoRA does not say which one it was trained "
+                    f"against, so it is going into `{self.transformer_name}` — the partition every published H3 LoRA "
+                    f"so far targets. Pass `load_into_transformer_ref=True` for the `{self.transformer_ref_name}` "
+                    "partition instead."
+                )
+            self.load_lora_into_transformer(
+                transformer_state_dict,
+                transformer=transformer_ref if into_ref else transformer,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+                prefix=self.transformer_name,
+            )
+
+        if transformer_ref_state_dict:
+            if transformer_ref is None:
+                raise ValueError(
+                    f"This LoRA has `{self.transformer_ref_name}.`-prefixed layers but the pipeline does not hold a "
+                    f'`{self.transformer_ref_name}` component. Load it with `workflow="ref2va"`.'
+                )
+            self.load_lora_into_transformer(
+                transformer_ref_state_dict,
+                transformer=transformer_ref,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+                prefix=self.transformer_ref_name,
+            )
+
+    @classmethod
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+        prefix: str = "transformer",
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        logger.info(f"Loading {prefix}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+            prefix=prefix,
+        )
+
+    @classmethod
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        transformer_ref_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+        transformer_ref_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        Save the LoRA layers of one or both MiniMax-H3 partitions. Which partition a LoRA belongs to is not recoverable
+        from its keys, so this is the only way to publish an H3 LoRA that records it. See
+        [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+        if transformer_ref_lora_layers:
+            lora_layers[cls.transformer_ref_name] = transformer_ref_lora_layers
+            lora_metadata[cls.transformer_ref_name] = transformer_ref_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError(
+                "You must pass at least one of `transformer_lora_layers` or `transformer_ref_lora_layers`."
+            )
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer", "transformer_ref"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    def unfuse_lora(self, components: list[str] = ["transformer", "transformer_ref"], **kwargs):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ...loaders import MiniMaxH3LoraLoaderMixin
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
 
@@ -146,7 +147,7 @@ def audio_latent_num_frames(
     return int(round(num_frames / fps * latents_per_second))
 
 
-class MiniMaxH3ModularPipeline(ModularPipeline):
+class MiniMaxH3ModularPipeline(ModularPipeline, MiniMaxH3LoraLoaderMixin):
     """
     A ModularPipeline for joint video + audio generation with MiniMax-H3: the `t2va` (text only) and `fl2va` (first
     and/or last keyframe) workflows against the `transformer/` checkpoint partition, and the `ref2va` (omni-reference)

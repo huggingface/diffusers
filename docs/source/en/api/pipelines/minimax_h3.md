@@ -328,6 +328,47 @@ results = pipe(
 )
 ```
 
+## LoRA
+
+`pipe.load_lora_weights` accepts the diffusers/PEFT format and the two formats real MiniMax-H3 LoRAs actually ship in — [ostris/ai-toolkit](https://github.com/ostris/ai-toolkit)'s `diffusion_model.`-prefixed output and unprefixed original-checkpoint keys — converting the latter two onto the transformer's module names, splitting the fused `attn.qkv_proj` into `to_q` / `to_k` / `to_v` and swapping the two halves of the fused SwiGLU projection.
+
+```py
+import torch
+from diffusers import ModularPipeline
+
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="t2va")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")
+
+pipe.load_lora_weights("some-user/some-minimax-h3-lora", weight_name="lora.safetensors", adapter_name="style")
+results = pipe(
+    prompt="A jazz trio plays in a dim basement club",
+    num_frames=124,
+    num_inference_steps=8,
+    attention_kwargs={"scale": 0.8},
+    output=["videos", "audio", "sampling_rate"],
+)
+```
+
+`attention_kwargs={"scale": ...}` sets the LoRA scale for that one call. `pipe.set_adapters`, `pipe.fuse_lora`, `pipe.unload_lora_weights` and `pipe.delete_adapters` work as they do everywhere else, and reach both partitions.
+
+**Which partition a LoRA belongs to is not in the file.** The two transformer partitions are separately trained checkpoints with identical module names, so a LoRA trained against one loads without error into the other and silently degrades the output. Neither known producer records the partition, so:
+
+- A pipeline that loaded only one partition — every `workflow=` pipeline — is unambiguous, and the LoRA goes there.
+- With both partitions loaded, the LoRA goes into `transformer` and a warning names the alternative. Pass `load_into_transformer_ref=True` to target `transformer_ref` instead.
+- [`~loaders.MiniMaxH3LoraLoaderMixin.save_lora_weights`] takes `transformer_lora_layers` and `transformer_ref_lora_layers` and prefixes each accordingly, which is the only way to publish an H3 LoRA that records its partition. Prefer it.
+
+Two things to know about third-party H3 LoRAs:
+
+- **LoRAs trained against a pruned checkpoint do not load.** Pruned MiniMax-H3 releases replace the timestep MLP with a small interpolation table, so their AdaLN projections take an 8-wide input instead of `time_embed_dim`. A LoRA trained on one carries `adaln_proj.linear.lora_A` of the wrong width and fails with a size mismatch — the update lives in a different space and cannot be mapped onto the released checkpoint. Train against an unpruned checkpoint, or drop the `adaln_proj` keys.
+- **Alpha is synthesized, not guessed.** These files carry no alpha information and apply as `W + lora_B @ lora_A`. Mixed-rank adapters are loaded with `alpha == rank` per module so the effective scale is exactly 1.0.
+
+The model-level path stays available for a raw PEFT-format state dict, and is the escape hatch when the pipeline object is not to hand:
+
+```py
+pipe.transformer.load_lora_adapter(state_dict, prefix=None)
+```
+
 ## MiniMaxH3ModularPipeline
 
 [[autodoc]] MiniMaxH3ModularPipeline
