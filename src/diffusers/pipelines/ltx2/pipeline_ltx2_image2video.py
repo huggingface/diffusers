@@ -17,6 +17,7 @@ import inspect
 from typing import Any, Callable
 
 import numpy as np
+import PIL.Image
 import torch
 from transformers import (
     Gemma3ForConditionalGeneration,
@@ -40,7 +41,13 @@ from ..pipeline_utils import DiffusionPipeline
 from .connectors import LTX2TextConnectors
 from .duration_head import LTX2AutoDuration, LTX2DurationHead
 from .pipeline_output import LTX2PipelineOutput
-from .utils import GEMMA3_PROMPT_ENHANCEMENT_CONFIG, GEMMA4_PROMPT_ENHANCEMENT_CONFIG, LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT
+from .utils import (
+    GEMMA3_PROMPT_ENHANCEMENT_CONFIG,
+    GEMMA4_PROMPT_ENHANCEMENT_CONFIG,
+    LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT,
+    apply_image_conditioning_crf,
+    resolve_default_image_crf,
+)
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
@@ -972,6 +979,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         prompt_max_new_tokens: int = 512,
         prompt_enhancement_kwargs: dict[str, Any] | None = None,
         prompt_enhancement_seed: int = 10,
+        image_crf: int | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
@@ -1287,6 +1295,15 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         # video_sequence_length = latent_num_frames * latent_height * latent_width
 
         if latents is None:
+            # H.264 re-compress before resize/normalize (ltx-pipelines `load_image_and_preprocess`).
+            crf = image_crf if image_crf is not None else resolve_default_image_crf(self.text_encoder)
+            if crf != 0:
+                if not isinstance(image, PIL.Image.Image):
+                    raise ValueError(
+                        f"`image_crf` re-compression requires a `PIL.Image.Image` input, got {type(image)}. "
+                        "Pass a PIL image, or set `image_crf=0` to skip re-compression."
+                    )
+                image = PIL.Image.fromarray(apply_image_conditioning_crf(np.array(image.convert("RGB")), crf))
             image = self.video_processor.preprocess(image, height=height, width=width)
             image = image.to(device=device, dtype=prompt_embeds.dtype)
 

@@ -34,6 +34,7 @@ from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .connectors import LTX2TextConnectors
 from .pipeline_output import LTX2PipelineOutput
+from .utils import apply_image_conditioning_crf, resolve_default_image_crf
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
@@ -111,11 +112,15 @@ class LTX2VideoCondition:
             The index at which the image or video will conditionally affect the video generation.
         strength (`float`, defaults to `1.0`):
             The strength of the conditioning effect. A value of `1.0` means the conditioning effect is fully applied.
+        crf (`int`, *optional*, defaults to `None`):
+            H.264 CRF used when re-compressing a single-frame image condition before VAE encode. `None` resolves to
+            the model default (18 for LTX-2.5 / Gemma 4, 33 otherwise). Pass `0` to skip re-compression.
     """
 
     frames: PIL.Image.Image | list[PIL.Image.Image] | np.ndarray | torch.Tensor
     index: int = 0
     strength: float = 1.0
+    crf: int | None = None
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -740,6 +745,17 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 arr = t.detach().cpu().permute(0, 2, 3, 1).numpy()
             else:
                 raise TypeError(f"Unsupported `frames` type for condition {i}: {type(condition.frames)}")
+
+            # Single-frame image keyframes are H.264 re-compressed at the model CRF (ltx-pipelines
+            # `ImageConditioner.resolve_crf` + `media_io.preprocess`). Multi-frame video conditions are not.
+            if arr.shape[0] == 1:
+                crf = condition.crf if condition.crf is not None else resolve_default_image_crf(self.text_encoder)
+                if crf != 0 and arr.dtype != np.uint8:
+                    raise ValueError(
+                        f"Image conditioning CRF expects a uint8 RGB frame, got dtype={arr.dtype}. "
+                        "Pass a PIL image / uint8 array, or set `crf=0` on the condition to skip re-compression."
+                    )
+                arr = apply_image_conditioning_crf(arr[0], crf)[None]
 
             src_h, src_w = arr.shape[1], arr.shape[2]
             num_cond_frames = arr.shape[0]

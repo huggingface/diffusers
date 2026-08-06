@@ -35,6 +35,7 @@ from ..pipeline_utils import DiffusionPipeline
 from .connectors import LTX2TextConnectors
 from .pipeline_ltx2_condition import LTX2VideoCondition
 from .pipeline_output import LTX2PipelineOutput
+from .utils import apply_image_conditioning_crf, resolve_default_image_crf
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
@@ -769,6 +770,17 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 arr = t.detach().cpu().permute(0, 2, 3, 1).numpy()
             else:
                 raise TypeError(f"Unsupported `frames` type for condition {i}: {type(condition.frames)}")
+
+            # Single-frame image keyframes are H.264 re-compressed at the model CRF (ltx-pipelines
+            # `ImageConditioner.resolve_crf` + `media_io.preprocess`). Multi-frame video conditions are not.
+            if arr.shape[0] == 1:
+                crf = condition.crf if condition.crf is not None else resolve_default_image_crf(self.text_encoder)
+                if crf != 0 and arr.dtype != np.uint8:
+                    raise ValueError(
+                        f"Image conditioning CRF expects a uint8 RGB frame, got dtype={arr.dtype}. "
+                        "Pass a PIL image / uint8 array, or set `crf=0` on the condition to skip re-compression."
+                    )
+                arr = apply_image_conditioning_crf(arr[0], crf)[None]
 
             src_h, src_w = arr.shape[1], arr.shape[2]
             num_cond_frames = arr.shape[0]

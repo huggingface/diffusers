@@ -211,6 +211,8 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_frames": 5,
             "frame_rate": 25.0,
             "max_sequence_length": 16,
+            # Synthetic float tensors skip H.264 CRF re-compression (training path uses PIL).
+            "image_crf": 0,
             "output_type": "pt",
         }
 

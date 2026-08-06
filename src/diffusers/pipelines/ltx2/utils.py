@@ -13,12 +13,23 @@
 # limitations under the License.
 
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Any
+
+import numpy as np
+
+from ...utils import is_av_available
 
 
 # Pre-trained sigma values for distilled model are taken from
 # https://github.com/Lightricks/LTX-2/blob/main/packages/ltx-pipelines/src/ltx_pipelines/utils/constants.py
 DISTILLED_SIGMA_VALUES = [1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875]
+
+# H.264 CRF used when re-compressing image conditionings, matching the compression the model was
+# trained against. 33 through LTX-2.3; 18 from LTX-2.5 (product rename of the internal 2.4 CRF).
+# See ltx-pipelines `DEFAULT_IMAGE_CRF` / `LTX_2_4_IMAGE_CRF`.
+DEFAULT_IMAGE_CRF = 33
+LTX2_5_IMAGE_CRF = 18
 
 # Reduced schedule for super-resolution stage 2 (subset of distilled values)
 STAGE_2_DISTILLED_SIGMA_VALUES = [0.909375, 0.725, 0.421875]
@@ -52,6 +63,7 @@ class PromptEnhancementConfig:
 
 
 # LTX-2.0/2.3: the main text encoder (Gemma 3) doubles as its own enhancer.
+# Matches ltx-core `GEMMA3_ENHANCE_GENERATION_KWARGS`.
 GEMMA3_PROMPT_ENHANCEMENT_CONFIG = PromptEnhancementConfig(
     user_prompt_prefix="user prompt",
     max_new_tokens=512,
@@ -60,12 +72,11 @@ GEMMA3_PROMPT_ENHANCEMENT_CONFIG = PromptEnhancementConfig(
 )
 
 # LTX-2.5: a dedicated `google/gemma-4-E2B-it` `prompt_enhancer` component (the fine-tuned text encoder isn't
-# trained for enhancement). Recipe matches the eval harness this checkpoint was validated with: greedy decoding,
-# no_repeat_ngram_size=3, 600 new tokens, seed 0.
+# trained for enhancement). Matches ltx-core `GEMMA4_ENHANCE_GENERATION_KWARGS`.
 GEMMA4_PROMPT_ENHANCEMENT_CONFIG = PromptEnhancementConfig(
-    user_prompt_prefix="user_prompt",
+    user_prompt_prefix="user prompt",
     max_new_tokens=600,
-    seed=0,
+    seed=10,
     generation_kwargs={"do_sample": False, "no_repeat_ngram_size": 5},
 )
 
@@ -253,3 +264,69 @@ If the user wrote in another language, produce the English caption of the same c
 AESTHETIC QUALITY (in addition to the above, without breaking the objective caption style or contradicting the reference image): render the described scene with strong visual production value — cinematic, film-grade color and contrast, beautiful natural lighting, crisp fine detail and texture, pleasing composition and depth. Weave these quality descriptors naturally into the same observable prose (e.g. "warm cinematic lighting", "richly saturated film-grade color", "crisp high-resolution detail") — describe how the exact requested scene, starting from this frame, LOOKS at its most visually striking, never adding new objects or actions and never contradicting the first frame. Keep everything else (first-frame grounding, framing triple, soundscape, chronological single paragraph, faithfulness) exactly as specified.
 """
 # ruff: enable[E501]
+
+
+def resolve_default_image_crf(text_encoder: Any) -> int:
+    """Return the image-conditioning H.264 CRF that matches the loaded text-encoder generation.
+
+    LTX-2.5 uses a Gemma 4 (`gemma4_unified` / `gemma4`) text encoder and was trained with CRF 18; earlier generations
+    use Gemma 3 and CRF 33. Mirrors `detect_params(...).default_image_crf` in ltx-pipelines, which keys off checkpoint
+    `model_version`.
+    """
+    model_type = getattr(getattr(text_encoder, "config", None), "model_type", None)
+    if model_type in ("gemma4_unified", "gemma4"):
+        return LTX2_5_IMAGE_CRF
+    return DEFAULT_IMAGE_CRF
+
+
+def apply_image_conditioning_crf(image: np.ndarray, crf: int) -> np.ndarray:
+    """Re-compress a single RGB image at ``crf`` so conditioning matches training compression.
+
+    Port of ltx-pipelines `media_io.preprocess`. ``crf=0`` skips re-compression. ``crf`` must be resolved before
+    calling (never ``None``).
+    """
+    if crf is None:
+        raise ValueError(
+            "Image conditioning CRF is unresolved (crf=None). Resolve it first via "
+            "`resolve_default_image_crf(text_encoder)` or pass an explicit `crf` on the condition."
+        )
+    if crf == 0:
+        return image
+    if not is_av_available():
+        raise ImportError(
+            "PyAV is required to apply image-conditioning H.264 CRF re-compression. "
+            "Install it with `pip install av`, or pass `crf=0` to skip re-compression."
+        )
+    import av
+
+    if image.dtype != np.uint8:
+        raise ValueError(
+            f"Image conditioning CRF expects a uint8 RGB array, got dtype={image.dtype}. "
+            "Pass a PIL image / uint8 array, or set `crf=0` to skip re-compression."
+        )
+
+    with BytesIO() as output_file:
+        container = av.open(output_file, "w", format="mp4")
+        try:
+            stream = container.add_stream("libx264", rate=1, options={"crf": str(crf), "preset": "veryfast"})
+            # Round to nearest multiple of 2 for compatibility with video codecs.
+            height = image.shape[0] // 2 * 2
+            width = image.shape[1] // 2 * 2
+            image = image[:height, :width]
+            stream.height = height
+            stream.width = width
+            av_frame = av.VideoFrame.from_ndarray(image, format="rgb24").reformat(format="yuv420p")
+            container.mux(stream.encode(av_frame))
+            container.mux(stream.encode())
+        finally:
+            container.close()
+        video_bytes = output_file.getvalue()
+
+    with BytesIO(video_bytes) as video_file:
+        container = av.open(video_file)
+        try:
+            stream = next(s for s in container.streams if s.type == "video")
+            frame = next(container.decode(stream))
+        finally:
+            container.close()
+        return frame.to_ndarray(format="rgb24")
