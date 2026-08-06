@@ -100,3 +100,64 @@ def test_local_directory_with_multiple_files_warns_and_uses_first(tmp_path, monk
 
     assert weight_name == first_path.name
     assert "contains more than one weights file" in caplog.text
+
+
+def test_unfuse_lora_partial_components_keeps_merged_adapters_in_sync():
+    """Regression test for #14214.
+
+    When unfuse_lora is called with a subset of components, _merged_adapters
+    should still reflect adapters that are physically fused in the remaining
+    components. Before the fix, it removed the adapter on the first unfuse
+    even if other components still had it baked in.
+    """
+    import torch.nn as nn
+    from peft import LoraConfig
+    from peft.tuners.tuners_utils import BaseTunerLayer
+    from diffusers.loaders.lora_base import LoraBaseMixin
+    from diffusers.loaders.peft import PeftAdapterMixin
+    from diffusers.models.modeling_utils import ModelMixin
+    from diffusers.configuration_utils import ConfigMixin
+
+    class TinyModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+        config_name = "config.json"
+        def __init__(self):
+            super().__init__()
+            self.linear = nn.Linear(8, 8)
+
+    class FakePipeline(LoraBaseMixin):
+        _lora_loadable_modules = ["unet", "text_encoder"]
+        def __init__(self, unet, text_encoder):
+            self._merged_adapters = set()
+            self.unet, self.text_encoder = unet, text_encoder
+
+    unet = TinyModel()
+    text_encoder = TinyModel()
+    config = LoraConfig(r=4, lora_alpha=4, target_modules=["linear"], init_lora_weights=False)
+    unet.add_adapter(config, adapter_name="adapter")
+    text_encoder.add_adapter(config, adapter_name="adapter")
+
+    pipe = FakePipeline(unet, text_encoder)
+    pipe.fuse_lora(components=["unet", "text_encoder"], adapter_names=["adapter"])
+    assert pipe.num_fused_loras == 1
+
+    # Unfuse only text_encoder — unet is still physically fused
+    pipe.unfuse_lora(components=["text_encoder"])
+
+    # _merged_adapters must still track the adapter (unet is still fused)
+    assert "adapter" in pipe.fused_loras, (
+        "adapter should remain in fused_loras while unet is still fused"
+    )
+    assert pipe.num_fused_loras == 1, (
+        f"Expected 1 fused lora, got {pipe.num_fused_loras}"
+    )
+
+    # Confirm unet is physically still merged at the PEFT level
+    unet_still_merged = any(
+        isinstance(m, BaseTunerLayer) and len(m.merged_adapters) > 0
+        for m in unet.modules()
+    )
+    assert unet_still_merged, "unet should be physically merged at the PEFT level"
+
+    # Now unfuse unet too — both components are done
+    pipe.unfuse_lora(components=["unet"])
+    assert pipe.num_fused_loras == 0, "All components unfused, fused_loras should be empty"
