@@ -61,9 +61,9 @@ video_latent, audio_latent = pipe(
     height=height,
     num_frames=121,
     frame_rate=frame_rate,
-    num_inference_steps=40,
+    num_inference_steps=30,
     sigmas=None,
-    guidance_scale=4.0,
+    guidance_scale=3.0,
     output_type="latent",
     return_dict=False,
 )
@@ -336,8 +336,8 @@ video, audio = pipe(
     height=height,
     num_frames=121,
     frame_rate=frame_rate,
-    num_inference_steps=40,
-    guidance_scale=4.0,
+    num_inference_steps=30,
+    guidance_scale=3.0,
     generator=generator,
     output_type="np",
     return_dict=False,
@@ -433,7 +433,7 @@ encode_video(
 
 ## Prompt Enhancement
 
-The LTX-2.X models are sensitive to prompting style. Refer to the [official prompting guide](https://ltx.io/model/model-blog/prompting-guide-for-ltx-2) for recommendations on how to write a good prompt. Using prompt enhancement, where the supplied prompts are enhanced using the pipeline's text encoder (by default a [Gemma 3](https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-unquantized) model) given a system prompt, can also improve sample quality. The optional `processor` pipeline component needs to be present to use prompt enhancement. Enable prompt enhancement by supplying a `system_prompt` argument:
+The LTX-2.X models are sensitive to prompting style. Refer to the [official prompting guide](https://ltx.io/model/model-blog/prompting-guide-for-ltx-2) for recommendations on how to write a good prompt. Using prompt enhancement, where the supplied prompts are enhanced using the pipeline's text encoder (by default a [Gemma 3](https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-unquantized) model) given a system prompt, can also improve sample quality. The optional `processor` pipeline component needs to be present to use prompt enhancement. Enable it with `enable_prompt_enhancement=True` and a `system_prompt` (opt-in, matching the Lightricks reference pipelines):
 
 
 ```py
@@ -487,6 +487,7 @@ video, audio = pipe(
     audio_guidance_rescale=0.7,
     spatio_temporal_guidance_blocks=[28],
     use_cross_timestep=True,
+    enable_prompt_enhancement=True,
     system_prompt=T2V_DEFAULT_SYSTEM_PROMPT,
     generator=generator,
     output_type="np",
@@ -533,7 +534,7 @@ video, audio = pipe(
     height=height,
     num_frames=121,
     frame_rate=frame_rate,
-    num_inference_steps=40,
+    num_inference_steps=30,
     guidance_scale=3.0,  # Same recommended guidance parameters as LTX-2.3, see Multimodal Guidance above
     stg_scale=1.0,
     modality_scale=3.0,
@@ -542,7 +543,7 @@ video, audio = pipe(
     audio_stg_scale=1.0,
     audio_modality_scale=3.0,
     audio_guidance_rescale=0.7,
-    spatio_temporal_guidance_blocks=[29],
+    spatio_temporal_guidance_blocks=[28],
     use_cross_timestep=True,
     generator=generator,
     output_type="np",
@@ -558,13 +559,13 @@ encode_video(
 )
 ```
 
-A few things carry over from LTX-2.3 unchanged: the [Multimodal Guidance](#multimodal-guidance) recommendations above apply equally to LTX-2.5 (only the STG block index differs — `29` instead of `28`). One thing does *not* carry over:
+A few things carry over from LTX-2.3 unchanged: the [Multimodal Guidance](#multimodal-guidance) recommendations above apply equally to LTX-2.5 (including STG on block `28`). One thing does *not* carry over:
 
 - **Single-stage checkpoint only.** LTX-2.5 currently ships as a single-stage (text/image-to-video) checkpoint — the [two-stage generation](#two-stages-generation) workflow (distilled LoRA + latent upsampler) is not yet available for it.
 
 ### Prompt Enhancement for LTX-2.5
 
-**Using prompt enhancement is strongly recommended for LTX-2.5, and it's enabled by default.** Unlike LTX-2.0/2.3, where the same text encoder checkpoint doubles as the enhancer (see [Prompt Enhancement](#prompt-enhancement) above), LTX-2.5's fine-tuned text encoder was not trained for enhancement. Instead, enhancement uses a separate, off-the-shelf `google/gemma-4-E2B-it` checkpoint. Load it into the pipeline's optional `prompt_enhancer`/`processor` components; once configured, calling the pipeline with just `prompt=` automatically enhances it using `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT` and the recipe `google/gemma-4-E2B-it` was evaluated with -- greedy decoding (`do_sample=False`, `no_repeat_ngram_size=3`). Pass `enable_prompt_enhancement=False` to disable it, or an explicit `system_prompt=` to use a different one:
+**Using prompt enhancement is strongly recommended for LTX-2.5; pass `enable_prompt_enhancement=True` to opt in** (same as the Lightricks reference pipelines). Unlike LTX-2.0/2.3, where the same text encoder checkpoint doubles as the enhancer (see [Prompt Enhancement](#prompt-enhancement) above), LTX-2.5's fine-tuned text encoder was not trained for enhancement. Instead, enhancement uses a separate, off-the-shelf `google/gemma-4-E2B-it` checkpoint. Load it into the pipeline's optional `prompt_enhancer`/`processor` components, then enable enhancement — the pipeline defaults to `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT` and the Gemma 4 recipe (`do_sample=False`, `no_repeat_ngram_size=5`, `max_new_tokens=600`). Pass an explicit `system_prompt=` to override:
 
 ```py
 import torch
@@ -598,7 +599,7 @@ video, audio = pipe(
     height=height,
     num_frames=121,
     frame_rate=frame_rate,
-    num_inference_steps=40,
+    num_inference_steps=30,
     guidance_scale=3.0,
     stg_scale=1.0,
     modality_scale=3.0,
@@ -607,10 +608,10 @@ video, audio = pipe(
     audio_stg_scale=1.0,
     audio_modality_scale=3.0,
     audio_guidance_rescale=0.7,
-    spatio_temporal_guidance_blocks=[29],
+    spatio_temporal_guidance_blocks=[28],
     use_cross_timestep=True,
-    # No `system_prompt=` needed -- enhancement runs automatically using `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT`
-    # because `prompt_enhancer` is configured. Pass `enable_prompt_enhancement=False` to opt out.
+    enable_prompt_enhancement=True,
+    # No `system_prompt=` needed -- defaults to `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT` when `prompt_enhancer` is set.
     generator=generator,
     output_type="np",
     return_dict=False,
@@ -625,7 +626,7 @@ encode_video(
 )
 ```
 
-The same applies to image-to-video with `LTX2ImageToVideoPipeline`: set `pipe.prompt_enhancer`/`pipe.processor` the same way, and enhancement runs automatically (using `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT`, conditioning on both the reference image and the text prompt) — again, no `system_prompt=` needed unless you want to override it.
+The same applies to image-to-video with `LTX2ImageToVideoPipeline`: set `pipe.prompt_enhancer`/`pipe.processor` the same way and pass `enable_prompt_enhancement=True` (using `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT`, conditioning on both the reference image and the text prompt) — again, no `system_prompt=` needed unless you want to override it.
 
 ### Automatic duration for LTX-2.5
 
