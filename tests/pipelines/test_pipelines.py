@@ -533,6 +533,27 @@ class DownloadTests(unittest.TestCase):
             assert set(offline_kwargs["allow_patterns"]) == set(online_kwargs["allow_patterns"])
             assert set(offline_kwargs["ignore_patterns"]) == set(online_kwargs["ignore_patterns"])
 
+    def test_download_allow_patterns_use_forward_slash_for_component_configs(self):
+        # Hub repo paths always use forward slashes, so per-component config.json allow patterns
+        # must be built with "/" rather than os.path.join (which yields "\" on Windows and then
+        # fails to match repo paths once huggingface_hub matches patterns case-sensitively).
+        # See https://github.com/huggingface/diffusers/issues/14142
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with mock.patch(
+                "diffusers.pipelines.pipeline_utils.snapshot_download", side_effect=snapshot_download
+            ) as mock_snapshot_download:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-torch", cache_dir=tmpdirname
+                )
+                allow_patterns = mock_snapshot_download.call_args.kwargs["allow_patterns"]
+
+            component_config_patterns = [p for p in allow_patterns if p.endswith("/config.json")]
+            # tiny-stable-diffusion-torch has unet, vae and text_encoder model folders, so there
+            # must be at least one component config pattern and every one must use "/".
+            assert len(component_config_patterns) > 0
+            for pattern in component_config_patterns:
+                assert "\\" not in pattern, f"component config pattern {pattern!r} must use forward slash"
+
     def test_local_files_only_raises_for_snapshot_with_missing_weights(self):
         # An interrupted download leaves a cached snapshot without some weights; loading it offline must
         # surface `huggingface_hub`'s incomplete-snapshot error instead of failing later at model load time.
