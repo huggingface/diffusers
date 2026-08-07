@@ -290,20 +290,15 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         device = device or self._execution_device
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
-
         if prompt_embeds is None:
             prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, device)
 
         prompt_embeds = prompt_embeds[:, :max_sequence_length]
-        _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
         if prompt_embeds_mask is not None:
             prompt_embeds_mask = prompt_embeds_mask[:, :max_sequence_length]
-            prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
-            prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
+            prompt_embeds_mask = prompt_embeds_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
             if prompt_embeds_mask.all():
                 prompt_embeds_mask = None

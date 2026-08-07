@@ -897,6 +897,8 @@ class QwenImageTransformer2DModel(
 
         if self.zero_cond_t:
             timestep = torch.cat([timestep, timestep * 0], dim=0)
+            if additional_t_cond is not None:
+                additional_t_cond = torch.cat([additional_t_cond, additional_t_cond], dim=0)
             modulate_index = torch.tensor(
                 [[0] * prod(sample[0]) + [1] * sum([prod(s) for s in sample[1:]]) for sample in img_shapes],
                 device=timestep.device,
