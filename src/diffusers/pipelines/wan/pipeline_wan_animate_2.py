@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanAnimate2Transformer3DModel
+from ...models.transformers.transformer_wan_animate_2 import WanAnimate2KVCache
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import logging
 from ...video_processor import VideoProcessor
@@ -128,8 +129,7 @@ def clip_visual_encode(image_encoder, tensor, device, dtype):
     mean = torch.tensor(CLIP_MEAN, device=device, dtype=videos.dtype).view(1, 3, 1, 1)
     std = torch.tensor(CLIP_STD, device=device, dtype=videos.dtype).view(1, 3, 1, 1)
     videos = (videos - mean) / std
-    with torch.amp.autocast(device_type="cuda", dtype=dtype):
-        out = image_encoder(pixel_values=videos, output_hidden_states=True)
+    out = image_encoder(pixel_values=videos.to(dtype), output_hidden_states=True)
     return out.hidden_states[-2]
 
 
@@ -607,25 +607,21 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     "is_uncondtion": True,
                 }
 
-            # KV cache
-            k_cache = {}
-            v_cache = {}
+            kv_cache = WanAnimate2KVCache(self.transformer.config.num_layers)
 
             # Phase 1: encode reference — cast all inputs to transformer dtype
             t_ref = torch.tensor([timesteps[0].item()], device=device, dtype=self.transformer.dtype)
-            with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
-                self.transformer(
-                    [condition_latents[0].to(self.transformer.dtype)] if condition_latents.ndim == 5 else [condition_latents.to(self.transformer.dtype)],
-                    grid_sizes=grid_sizes_ref,
-                    k_cache=k_cache,
-                    v_cache=v_cache,
-                    clip_fea_ref=arg_ref_c["clip_fea_ref"].to(self.transformer.dtype),
-                    y_ref=[y.to(self.transformer.dtype) for y in arg_ref_c["y_ref"]],
-                    context_ref=[c.to(self.transformer.dtype) for c in arg_ref_c["context_ref"]],
-                    seq_len_ref=max_seq_len_ref,
-                    t=t_ref,
-                    method="forward_ref",
-                )
+            self.transformer(
+                [condition_latents[0].to(self.transformer.dtype)] if condition_latents.ndim == 5 else [condition_latents.to(self.transformer.dtype)],
+                timestep=t_ref,
+                encoder_hidden_states=[c.to(self.transformer.dtype) for c in arg_ref_c["context_ref"]],
+                encoder_hidden_states_image=arg_ref_c["clip_fea_ref"].to(self.transformer.dtype),
+                condition_latents=[y.to(self.transformer.dtype) for y in arg_ref_c["y_ref"]],
+                kv_cache=kv_cache,
+                kv_cache_mode="extract",
+                seq_len=max_seq_len_ref,
+                offset_grid_sizes=grid_sizes_ref,
+            )
 
             # Phase 2: denoising loop
             from tqdm import tqdm
@@ -633,47 +629,40 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             for i, t in tqdm(enumerate(timesteps), total=len(timesteps), desc=f"Segment {seg_idx+1}/{num_segments}"):
                 timestep = torch.stack([t])
 
-                with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    # Conditional
-                    noise_pred_cond = self.transformer(
-                        latents,
-                        k_cache=k_cache,
-                        v_cache=v_cache,
-                        clip_fea=arg_c["clip_fea"],
-                        y=arg_c["y"],
-                        context=arg_c["context"],
+                # Conditional
+                noise_pred_cond = self.transformer(
+                    [l.to(self.transformer.dtype) for l in latents],
+                    timestep=timestep,
+                    encoder_hidden_states=arg_c["context"],
+                    encoder_hidden_states_image=arg_c["clip_fea"],
+                    condition_latents=arg_c["y"],
+                    kv_cache=kv_cache,
+                    kv_cache_mode="cached",
+                    seq_len=max_seq_len,
+                    reference_grid_sizes=grid_sizes_ref,
+                    origin_len=arg_c["origin_len"],
+                    origin_area=arg_c["origin_area"],
+                ).sample[0]
+
+                if self.do_classifier_free_guidance:
+                    noise_pred_uncond = self.transformer(
+                        [l.to(self.transformer.dtype) for l in latents],
+                        timestep=timestep,
+                        encoder_hidden_states=arg_null["context"],
+                        encoder_hidden_states_image=arg_null["clip_fea"],
+                        condition_latents=arg_null["y"],
+                        kv_cache=kv_cache,
+                        kv_cache_mode="cached",
                         seq_len=max_seq_len,
-                        t=timestep,
-                        grid_sizes_ref=grid_sizes_ref,
-                        origin_len=arg_c["origin_len"],
-                        origin_area=arg_c["origin_area"],
-                        method="forward_gen",
-                    )
-                    if isinstance(noise_pred_cond, list):
-                        noise_pred_cond = noise_pred_cond[0]
+                        reference_grid_sizes=grid_sizes_ref,
+                        origin_len=arg_null["origin_len"],
+                        origin_area=arg_null["origin_area"],
+                        is_uncondtion=True,
+                    ).sample[0]
 
-                    if self.do_classifier_free_guidance:
-                        noise_pred_uncond = self.transformer(
-                            latents,
-                            k_cache=k_cache,
-                            v_cache=v_cache,
-                            clip_fea=arg_null["clip_fea"],
-                            y=arg_null["y"],
-                            context=arg_null["context"],
-                            seq_len=max_seq_len,
-                            t=timestep,
-                            grid_sizes_ref=grid_sizes_ref,
-                            origin_len=arg_null["origin_len"],
-                            origin_area=arg_null["origin_area"],
-                            method="forward_gen",
-                            is_uncondtion=True,
-                        )
-                        if isinstance(noise_pred_uncond, list):
-                            noise_pred_uncond = noise_pred_uncond[0]
-
-                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
-                    else:
-                        noise_pred = noise_pred_cond
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                else:
+                    noise_pred = noise_pred_cond
 
                 # Scheduler step
                 temp_x0 = sample_scheduler.step(

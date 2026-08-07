@@ -30,36 +30,22 @@ import PIL.Image
 import requests
 import torch
 from huggingface_hub import (
+    DDUFEntry,
     ModelCard,
     create_repo,
+    get_cached_repo_tree,
     hf_hub_download,
     model_info,
+    read_dduf_file,
     snapshot_download,
 )
-try:
-    from huggingface_hub import DDUFEntry, read_dduf_file
-except ImportError:
-    DDUFEntry = None
-    read_dduf_file = None
-try:
-    from huggingface_hub import get_cached_repo_tree
-except ImportError:
-    get_cached_repo_tree = None
-try:
-    from huggingface_hub.errors import CachedRepoTreeNotFoundError
-except ImportError:
-    class CachedRepoTreeNotFoundError(Exception):
-        pass
+from huggingface_hub.errors import CachedRepoTreeNotFoundError
 from huggingface_hub.utils import (
     HfHubHTTPError,
     LocalEntryNotFoundError,
+    OfflineModeIsEnabled,
     validate_hf_hub_args,
 )
-try:
-    from huggingface_hub.utils import OfflineModeIsEnabled
-except ImportError:
-    class OfflineModeIsEnabled(Exception):
-        pass
 from packaging import version
 from tqdm.auto import tqdm
 from typing_extensions import Self

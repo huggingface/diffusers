@@ -13,228 +13,21 @@
 # limitations under the License.
 
 import math
-from functools import lru_cache, partial
 
-import numpy as np
 import torch
 import torch.nn as nn
-from torch.nn.attention.flex_attention import create_block_mask
+from torch.nn.attention.flex_attention import BlockMask, create_block_mask
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ..attention import AttentionMixin, AttentionModuleMixin
+from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
+from ..embeddings import Timesteps
+from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from ..normalization import FP32LayerNorm
 
 
-try:
-    from flash_attn_interface import flash_attn_varlen_func
-
-    FLASH_VER = 3
-except ModuleNotFoundError:
-    try:
-        from flash_attn import flash_attn_varlen_func
-
-        FLASH_VER = 2
-    except ModuleNotFoundError:
-        flash_attn_varlen_func = None
-        FLASH_VER = None
-
-from torch.nn.attention.flex_attention import flex_attention as _flex_attention_raw
-
-# Lazy compile: compile on first call instead of at import time
-_flex_compiled = None
-
-
-def _get_compiled_flex_attention():
-    global _flex_compiled
-    if _flex_compiled is None:
-        _flex_compiled = torch.compile(_flex_attention_raw, dynamic=False, mode="max-autotune", fullgraph=True)
-    return _flex_compiled
-
-
-def flash_attention(
-    q,
-    k,
-    v,
-    q_lens=None,
-    k_lens=None,
-    dropout_p=0.0,
-    softmax_scale=None,
-    q_scale=None,
-    causal=False,
-    window_size=(-1, -1),
-    deterministic=False,
-    dtype=torch.bfloat16,
-):
-    """
-    q:              [B, Lq, Nq, C1].
-    k:              [B, Lk, Nk, C1].
-    v:              [B, Lk, Nk, C2]. Nq must be divisible by Nk.
-    q_lens:         [B].
-    k_lens:         [B].
-    dropout_p:      float. Dropout probability.
-    softmax_scale:  float. The scaling of QK^T before applying softmax.
-    causal:         bool. Whether to apply causal attention mask.
-    window_size:    (left right). If not (-1, -1), apply sliding window local attention.
-    deterministic:  bool. If True, slightly slower and uses more memory.
-    dtype:          torch.dtype. Apply when dtype of q/k/v is not float16/bfloat16.
-    """
-    half_dtypes = (torch.float16, torch.bfloat16)
-    assert dtype in half_dtypes
-    assert q.device.type == "cuda" and q.size(-1) <= 256
-
-    # params
-    b, lq, lk, out_dtype = q.size(0), q.size(1), k.size(1), q.dtype
-
-    def half(x):
-        return x if x.dtype in half_dtypes else x.to(dtype)
-
-    # preprocess query
-    if q_lens is None:
-        q = half(q.flatten(0, 1))
-        q_lens = torch.tensor([lq] * b, dtype=torch.int32).to(device=q.device, non_blocking=True)
-    else:
-        q = half(torch.cat([u[:v] for u, v in zip(q, q_lens)]))
-
-    # preprocess key, value
-    if k_lens is None:
-        k = half(k.flatten(0, 1))
-        v = half(v.flatten(0, 1))
-        k_lens = torch.tensor([lk] * b, dtype=torch.int32).to(device=k.device, non_blocking=True)
-    else:
-        k = half(torch.cat([u[:v] for u, v in zip(k, k_lens)]))
-        v = half(torch.cat([u[:v] for u, v in zip(v, k_lens)]))
-
-    q = q.to(v.dtype)
-    k = k.to(v.dtype)
-
-    if q_scale is not None:
-        q = q * q_scale
-    # apply attention
-    if FLASH_VER == 3:
-        # Note: dropout_p, window_size are not supported in FA3 now.
-        x = flash_attn_varlen_func(
-            q=q,
-            k=k,
-            v=v,
-            cu_seqlens_q=torch.cat([q_lens.new_zeros([1]), q_lens])
-            .cumsum(0, dtype=torch.int32)
-            .to(q.device, non_blocking=True),
-            cu_seqlens_k=torch.cat([k_lens.new_zeros([1]), k_lens])
-            .cumsum(0, dtype=torch.int32)
-            .to(q.device, non_blocking=True),
-            max_seqlen_q=lq,
-            max_seqlen_k=lk,
-            softmax_scale=softmax_scale,
-            causal=causal,
-            deterministic=deterministic,
-        )[0].unflatten(0, (b, lq))
-    else:
-        assert FLASH_VER == 2
-        x = flash_attn_varlen_func(
-            q=q,
-            k=k,
-            v=v,
-            cu_seqlens_q=torch.cat([q_lens.new_zeros([1]), q_lens])
-            .cumsum(0, dtype=torch.int32)
-            .to(q.device, non_blocking=True),
-            cu_seqlens_k=torch.cat([k_lens.new_zeros([1]), k_lens])
-            .cumsum(0, dtype=torch.int32)
-            .to(q.device, non_blocking=True),
-            max_seqlen_q=lq,
-            max_seqlen_k=lk,
-            dropout_p=dropout_p,
-            softmax_scale=softmax_scale,
-            causal=causal,
-            window_size=window_size,
-            deterministic=deterministic,
-        ).unflatten(0, (b, lq))
-
-    # output
-    return x.type(out_dtype)
-
-
-def flex_attention(
-    q,
-    k,
-    v,
-    q_lens=None,
-    k_lens=None,
-    block_mask=None,
-    kernel_options=None,
-    dtype=torch.bfloat16,
-    score_mod=None,
-):
-    """
-    q:              [B, Lq, Nq, C1].
-    k:              [B, Lk, Nk, C1].
-    v:              [B, Lk, Nk, C2]. Nq must be divisible by Nk.
-    q_lens:         [B].
-    k_lens:         [B].
-    dtype:          torch.dtype. Apply when dtype of q/k/v is not float16/bfloat16.
-    """
-    half_dtypes = (torch.float16, torch.bfloat16)
-    assert dtype in half_dtypes
-    assert q.device.type == "cuda"
-    lq, lk, out_dtype = q.size(1), k.size(1), q.dtype
-
-    def half(x):
-        return x if x.dtype in half_dtypes else x.to(dtype)
-
-    assert lq % 128 == 0, "q_len must be divisible by 128."
-    assert lk % 128 == 0, "k_len must be divisible by 128."
-
-    # preprocess query
-    if q_lens is None:
-        q = half(q)
-    else:
-        q = half(q)
-        assert q_lens.max() == q_lens.min(), "varlen of query is not supported"
-
-    # preprocess key, value
-    if k_lens is None:
-        k, v = half(k), half(v)
-    else:
-        k, v = half(k), half(v)
-        assert k_lens.max() == k_lens.min(), "varlen of key is not supported"
-
-    q = q.to(v.dtype)
-    k = k.to(v.dtype)
-
-    x = _get_compiled_flex_attention()(
-        query=q.transpose(2, 1),
-        key=k.transpose(2, 1),
-        value=v.transpose(2, 1),
-        block_mask=block_mask,
-        kernel_options=kernel_options,
-        score_mod=score_mod,
-    ).transpose(2, 1)
-
-    return x.type(out_dtype)
-
-
-def _score_mod_impl(score, b_idx, h_idx, q_idx, kv_idx, hw: int, log_scale: float):
-    condition = (kv_idx >= hw) & (kv_idx < 2 * hw)
-    return torch.where(condition, score + log_scale, score)
-
-
-@lru_cache(maxsize=32)
-def _get_score_mod(hw: int, log_scale: float = -1.0):
-    return partial(_score_mod_impl, hw=hw, log_scale=log_scale)
-
-
-def sinusoidal_embedding_1d(dim, position):
-    # preprocess
-    assert dim % 2 == 0
-    half = dim // 2
-    position = position.type(torch.float64)
-
-    # calculation
-    sinusoid = torch.outer(position, torch.pow(10000, -torch.arange(half).to(position).div(half)))
-    x = torch.cat([torch.cos(sinusoid), torch.sin(sinusoid)], dim=1)
-    return x
-
-
-@torch.amp.autocast(device_type="cuda", enabled=False)
 def rope_params(max_seq_len, dim, theta=10000, offset=0):
     assert dim % 2 == 0
     freqs = torch.outer(
@@ -245,7 +38,6 @@ def rope_params(max_seq_len, dim, theta=10000, offset=0):
     return freqs
 
 
-@torch.amp.autocast(device_type="cuda", enabled=False)
 def rope_apply(x, grid_sizes, freqs, time_stride=1):
     n, c = x.size(2), x.size(3) // 2
 
@@ -291,343 +83,445 @@ def pad_freqs(original_tensor, target_len):
     return padded_tensor
 
 
-class RMSNorm(nn.Module):
-    def __init__(self, dim, eps=1e-5):
-        super().__init__()
-        self.dim = dim
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
+def _get_qkv_projections(attn, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor | None):
+    # encoder_hidden_states is only passed for cross-attention
+    if encoder_hidden_states is None:
+        encoder_hidden_states = hidden_states
 
-    def forward(self, x):
-        return self._norm(x.float()).type_as(x) * self.weight
+    if attn.fused_projections:
+        if not attn.is_cross_attention:
+            # In self-attention layers, we can fuse the entire QKV projection into a single linear
+            query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+        else:
+            # In cross-attention layers, we can only fuse the KV projections into a single linear
+            query = attn.to_q(hidden_states)
+            key, value = attn.to_kv(encoder_hidden_states).chunk(2, dim=-1)
+    else:
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+    return query, key, value
 
-    def _norm(self, x):
-        return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+
+def _get_added_kv_projections(attn, encoder_hidden_states_img: torch.Tensor):
+    if attn.fused_projections:
+        key_img, value_img = attn.to_added_kv(encoder_hidden_states_img).chunk(2, dim=-1)
+    else:
+        key_img = attn.add_k_proj(encoder_hidden_states_img)
+        value_img = attn.add_v_proj(encoder_hidden_states_img)
+    return key_img, value_img
 
 
-class LayerNorm(nn.LayerNorm):
+class WanAnimate2KVLayerCache:
+    """Per-layer K/V cache for the reference tokens.
+
+    Holds the *pre-RoPE* projections: the generation pass re-applies rotary embeddings to the
+    reference keys using the reference grid and the `refer_offset_*` offsets. Tensor format:
+    `(batch_size, seq_len, num_heads, head_dim)`.
     """
-    LayerNorm without learnable affine parameters.
+
+    def __init__(self):
+        self.key: torch.Tensor | None = None
+        self.value: torch.Tensor | None = None
+
+    def store(self, key: torch.Tensor, value: torch.Tensor):
+        self.key = key
+        self.value = value
+
+    def get(self) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.key is None:
+            raise RuntimeError("The KV cache is empty. Run the reference pass before the generation pass.")
+        return self.key, self.value
+
+    def clear(self):
+        self.key = None
+        self.value = None
+
+
+class WanAnimate2KVCache:
+    """Container holding one [`WanAnimate2KVLayerCache`] per transformer layer."""
+
+    def __init__(self, num_layers: int):
+        self.layer_caches = [WanAnimate2KVLayerCache() for _ in range(num_layers)]
+
+    def get(self, layer_idx: int) -> WanAnimate2KVLayerCache:
+        return self.layer_caches[layer_idx]
+
+    def clear(self):
+        for cache in self.layer_caches:
+            cache.clear()
+
+
+class WanAnimate2AttnProcessor:
+    r"""
+    Self-attention for the Wan-Animate-2 in-context reference mechanism.
+
+    With `kv_cache_mode="extract"` (the reference pass) this is dense self-attention over the reference tokens; the
+    projected K/V are written to `kv_cache` before rotary embeddings are applied.
+
+    With `kv_cache_mode="cached"` (the generation pass) the generation tokens and the cached reference tokens are
+    packed into a 128-aligned `[generation | reference]` buffer and attended through a flex `BlockMask`, so each
+    generation frame attends to every generation token plus the reference tokens at the same frame index. Because the
+    pattern is expressed as a `BlockMask`, this path runs on the `flex` backend only.
     """
 
-    def __init__(self, dim, eps=1e-6, elementwise_affine=False):
-        super().__init__(dim, elementwise_affine=elementwise_affine, eps=eps)
+    _attention_backend = None
+    _parallel_config = None
 
-    def forward(self, x):
-        return super().forward(x.float()).type_as(x)
+    def __call__(
+        self,
+        attn: "WanAnimate2Attention",
+        hidden_states: torch.Tensor,
+        rotary_emb: torch.Tensor,
+        grid_sizes: torch.Tensor,
+        kv_cache: WanAnimate2KVLayerCache,
+        kv_cache_mode: str,
+        rope_stride: int = 1,
+        reference_rotary_emb: torch.Tensor | None = None,
+        reference_grid_sizes: torch.Tensor | None = None,
+        reference_rope_stride: int = 1,
+        attention_mask: BlockMask | None = None,
+        origin_latent_frames: int | None = None,
+        origin_latent_hw: int | None = None,
+    ) -> torch.Tensor:
+        query, key, value = _get_qkv_projections(attn, hidden_states, None)
+
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+
+        query = query.unflatten(2, (attn.heads, -1))
+        key = key.unflatten(2, (attn.heads, -1))
+        value = value.unflatten(2, (attn.heads, -1))
+
+        if kv_cache_mode == "extract":
+            kv_cache.store(key, value)
+
+            # `rope_apply` computes in float64 and returns float32; attention runs in the model dtype.
+            query = rope_apply(query, grid_sizes, rotary_emb, rope_stride).type_as(value)
+            key = rope_apply(key, grid_sizes, rotary_emb, rope_stride).type_as(value)
+
+            hidden_states = dispatch_attention_fn(
+                query,
+                key,
+                value,
+                attn_mask=None,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
+            )
+        elif kv_cache_mode == "cached":
+            query = rope_apply(query, grid_sizes, rotary_emb, rope_stride).type_as(value)
+            key = rope_apply(key, grid_sizes, rotary_emb, rope_stride).type_as(value)
+
+            key_ref, value_ref = kv_cache.get()
+            key_ref = rope_apply(key_ref, reference_grid_sizes, reference_rotary_emb, reference_rope_stride).type_as(
+                value
+            )
+
+            frames, height, width = grid_sizes[0].tolist()
+            ref_frames, ref_height, ref_width = reference_grid_sizes[0].tolist()
+            hw, ref_hw = height * width, ref_height * ref_width
+            valid_length, ref_valid_length = frames * hw, ref_frames * ref_hw
+
+            batch_size, _, heads, head_dim = query.shape
+
+            # The block mask is built once for the full video resolution, so this segment is
+            # scattered into a buffer of that size. Both segments are padded to a multiple of
+            # 128 to match the block mask's granularity.
+            packed_length = math.ceil((origin_latent_frames + 1) * origin_latent_hw / 128) * 128
+            packed_ref_length = math.ceil(origin_latent_frames * origin_latent_hw / 128) * 128
+
+            query_packed = query.new_zeros(batch_size, packed_length, heads, head_dim)
+            key_packed = key.new_zeros(batch_size, packed_length + packed_ref_length, heads, head_dim)
+            value_packed = value.new_zeros(batch_size, packed_length + packed_ref_length, heads, head_dim)
+
+            generation = slice(0, frames * origin_latent_hw)
+            query_packed[:, generation].view(batch_size, frames, origin_latent_hw, heads, head_dim)[:, :, :hw] = query[
+                :, :valid_length
+            ].view(batch_size, frames, hw, heads, head_dim)
+            key_packed[:, generation].view(batch_size, frames, origin_latent_hw, heads, head_dim)[:, :, :hw] = key[
+                :, :valid_length
+            ].view(batch_size, frames, hw, heads, head_dim)
+            value_packed[:, generation].view(batch_size, frames, origin_latent_hw, heads, head_dim)[:, :, :hw] = value[
+                :, :valid_length
+            ].view(batch_size, frames, hw, heads, head_dim)
+
+            reference = slice(packed_length, packed_length + ref_frames * origin_latent_hw)
+            key_packed[:, reference].view(batch_size, ref_frames, origin_latent_hw, heads, head_dim)[:, :, :ref_hw] = (
+                key_ref[:, :ref_valid_length].view(batch_size, ref_frames, ref_hw, heads, head_dim)
+            )
+            value_packed[:, reference].view(batch_size, ref_frames, origin_latent_hw, heads, head_dim)[
+                :, :, :ref_hw
+            ] = value_ref[:, :ref_valid_length].view(batch_size, ref_frames, ref_hw, heads, head_dim)
+
+            hidden_states = dispatch_attention_fn(
+                query_packed,
+                key_packed,
+                value_packed,
+                attn_mask=attention_mask,
+                backend=AttentionBackendName.FLEX,
+                parallel_config=self._parallel_config,
+            )
+
+            hidden_states = (
+                hidden_states[:, generation]
+                .view(batch_size, frames, origin_latent_hw, heads, head_dim)[:, :, :hw]
+                .reshape(batch_size, valid_length, heads, head_dim)
+            )
+            # Padded query positions are not attended and pass through unchanged.
+            hidden_states = torch.cat([hidden_states, query[:, valid_length:]], dim=1)
+        else:
+            raise ValueError(f"`kv_cache_mode` must be either 'extract' or 'cached', got {kv_cache_mode}.")
+
+        hidden_states = hidden_states.flatten(2, 3).type_as(query)
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
 
 
-class SelfAttention(nn.Module):
+class WanAnimate2CrossAttnProcessor:
+    r"""
+    Cross-attention to the text embeddings, plus an additive branch over the CLIP image embeddings.
+
+    The two token streams are passed as separate arguments rather than sliced out of one concatenated tensor, so the
+    CLIP token count does not have to be hardcoded.
+    """
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(
+        self,
+        attn: "WanAnimate2Attention",
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_hidden_states_image: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
+
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+
+        query = query.unflatten(2, (attn.heads, -1))
+        key = key.unflatten(2, (attn.heads, -1))
+        value = value.unflatten(2, (attn.heads, -1))
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=None,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3).type_as(query)
+
+        if encoder_hidden_states_image is not None:
+            key_image, value_image = _get_added_kv_projections(attn, encoder_hidden_states_image)
+            key_image = attn.norm_added_k(key_image)
+
+            key_image = key_image.unflatten(2, (attn.heads, -1))
+            value_image = value_image.unflatten(2, (attn.heads, -1))
+
+            hidden_states_image = dispatch_attention_fn(
+                query,
+                key_image,
+                value_image,
+                attn_mask=None,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
+            )
+            hidden_states = hidden_states + hidden_states_image.flatten(2, 3).type_as(query)
+
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
+
+
+class WanAnimate2Attention(torch.nn.Module, AttentionModuleMixin):
+    _default_processor_cls = WanAnimate2AttnProcessor
+    _available_processors = [WanAnimate2AttnProcessor, WanAnimate2CrossAttnProcessor]
+
     def __init__(
         self,
-        dim,
-        num_heads,
-        window_size=(-1, -1),
-        qk_norm=True,
-        eps=1e-6,
+        dim: int,
+        heads: int,
+        eps: float = 1e-6,
+        dropout: float = 0.0,
+        added_kv_proj_dim: int | None = None,
+        processor=None,
+        is_cross_attention: bool = False,
     ):
-        assert dim % num_heads == 0
         super().__init__()
-        self.dim = dim
-        self.num_heads = num_heads
-        self.head_dim = dim // num_heads
-        self.window_size = window_size
-        self.qk_norm = qk_norm
-        self.eps = eps
 
-        # layers
-        self.q = nn.Linear(dim, dim)
-        self.k = nn.Linear(dim, dim)
-        self.v = nn.Linear(dim, dim)
-        self.o = nn.Linear(dim, dim)
-        self.norm_q = RMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
-        self.norm_k = RMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
+        self.heads = heads
+        self.added_kv_proj_dim = added_kv_proj_dim
+        self.is_cross_attention = is_cross_attention
+        self.use_bias = True
 
-    def forward(self, *args, method, **kwargs):
-        return getattr(self, method)(*args, **kwargs)
+        self.to_q = torch.nn.Linear(dim, dim, bias=True)
+        self.to_k = torch.nn.Linear(dim, dim, bias=True)
+        self.to_v = torch.nn.Linear(dim, dim, bias=True)
+        self.to_out = torch.nn.ModuleList([torch.nn.Linear(dim, dim, bias=True), torch.nn.Dropout(dropout)])
+        self.norm_q = torch.nn.RMSNorm(dim, eps=eps, elementwise_affine=True)
+        self.norm_k = torch.nn.RMSNorm(dim, eps=eps, elementwise_affine=True)
 
-    def pre_attention(self, x):
-        b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
+        self.add_k_proj = self.add_v_proj = None
+        if added_kv_proj_dim is not None:
+            self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, dim, bias=True)
+            self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, dim, bias=True)
+            self.norm_added_k = torch.nn.RMSNorm(dim, eps=eps, elementwise_affine=True)
 
-        # query, key, value function
-        def qkv_fn(x):
-            q = self.norm_q(self.q(x)).view(b, s, n, d)
-            k = self.norm_k(self.k(x)).view(b, s, n, d)
-            v = self.v(x).view(b, s, n, d)
-            return q, k, v
+        self.set_processor(processor if processor is not None else self._default_processor_cls())
 
-        q, k, v = qkv_fn(x)
+    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.fuse_projections
+    def fuse_projections(self):
+        if getattr(self, "fused_projections", False):
+            return
 
-        return q, k, v
-
-    def post_attention(self, x):
-        # output
-        x = x.flatten(2)
-        x = self.o(x)
-        return x
-
-
-class CrossAttention(SelfAttention):
-    def __init__(self, dim, num_heads, window_size=(-1, -1), qk_norm=True, eps=1e-6, use_img_emb=True):
-        super().__init__(dim, num_heads, window_size, qk_norm, eps)
-        self.use_img_emb = use_img_emb
-        if use_img_emb:
-            self.k_img = nn.Linear(dim, dim)
-            self.v_img = nn.Linear(dim, dim)
-            self.norm_k_img = RMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
-
-    def forward(self, x, context, context_lens, counter=0):
-        """
-        x:              [B, L1, C].
-        context:        [B, L2, C].
-        context_lens:   [B].
-        """
-        if self.use_img_emb:
-            context_img = context[:, :257]
-            context = context[:, 257:]
+        if not self.is_cross_attention:
+            concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
+            concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_qkv = nn.Linear(in_features, out_features, bias=True)
+            self.to_qkv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
         else:
-            context = context
+            concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
+            concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_kv = nn.Linear(in_features, out_features, bias=True)
+            self.to_kv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
 
-        b, n, d = x.size(0), self.num_heads, self.head_dim
+        if self.added_kv_proj_dim is not None:
+            concatenated_weights = torch.cat([self.add_k_proj.weight.data, self.add_v_proj.weight.data])
+            concatenated_bias = torch.cat([self.add_k_proj.bias.data, self.add_v_proj.bias.data])
+            out_features, in_features = concatenated_weights.shape
+            with torch.device("meta"):
+                self.to_added_kv = nn.Linear(in_features, out_features, bias=True)
+            self.to_added_kv.load_state_dict(
+                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+            )
 
-        # compute query, key, value
-        q = self.norm_q(self.q(x)).view(b, -1, n, d)
-        k = self.norm_k(self.k(context)).view(b, -1, n, d)
-        v = self.v(context).view(b, -1, n, d)
+        self.fused_projections = True
 
-        if self.use_img_emb:
-            k_img = self.norm_k_img(self.k_img(context_img)).view(b, -1, n, d)
-            v_img = self.v_img(context_img).view(b, -1, n, d)
-            img_x = flash_attention(q, k_img, v_img, k_lens=None)
-        # compute attention
-        x = flash_attention(q, k, v, k_lens=context_lens)
+    @torch.no_grad()
+    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.unfuse_projections
+    def unfuse_projections(self):
+        if not getattr(self, "fused_projections", False):
+            return
 
-        # output
-        x = x.flatten(2)
-        if self.use_img_emb:
-            img_x = img_x.flatten(2)
-            x = x + img_x
-        x = self.o(x)
-        return x
+        if hasattr(self, "to_qkv"):
+            delattr(self, "to_qkv")
+        if hasattr(self, "to_kv"):
+            delattr(self, "to_kv")
+        if hasattr(self, "to_added_kv"):
+            delattr(self, "to_added_kv")
+
+        self.fused_projections = False
+
+    def forward(self, hidden_states: torch.Tensor, **kwargs) -> torch.Tensor:
+        return self.processor(self, hidden_states, **kwargs)
 
 
-class AttentionBlock(nn.Module):
+class WanAnimate2TransformerBlock(nn.Module):
     def __init__(
         self,
         dim,
         ffn_dim,
         num_heads,
-        window_size=(-1, -1),
-        qk_norm=True,
         cross_attn_norm=False,
         eps=1e-6,
+        refer_stride=1,
         use_img_emb=True,
     ):
         super().__init__()
-        self.dim = dim
-        self.ffn_dim = ffn_dim
-        self.num_heads = num_heads
-        self.window_size = window_size
-        self.qk_norm = qk_norm
-        self.cross_attn_norm = cross_attn_norm
-        self.eps = eps
+        self.refer_stride = refer_stride
 
-        # layers
-        self.norm1 = LayerNorm(dim, eps)
+        # 1. Self-attention
+        self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
+        self.self_attn = WanAnimate2Attention(
+            dim=dim,
+            heads=num_heads,
+            eps=eps,
+            processor=WanAnimate2AttnProcessor(),
+        )
 
-        self.self_attn = SelfAttention(dim, num_heads, window_size, qk_norm, eps)
+        # 2. Cross-attention
+        self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
+        self.cross_attn = WanAnimate2Attention(
+            dim=dim,
+            heads=num_heads,
+            eps=eps,
+            added_kv_proj_dim=dim if use_img_emb else None,
+            is_cross_attention=True,
+            processor=WanAnimate2CrossAttnProcessor(),
+        )
 
-        self.norm3 = LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
-
-        self.cross_attn = CrossAttention(dim, num_heads, (-1, -1), qk_norm, eps, use_img_emb=use_img_emb)
-
-        self.norm2 = LayerNorm(dim, eps)
+        # 3. Feed-forward
+        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=False)
         self.ffn = nn.Sequential(
             nn.Linear(dim, ffn_dim),
             nn.GELU(approximate="tanh"),
             nn.Linear(ffn_dim, dim),
         )
-        # modulation
+
         self.modulation = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
 
-    def forward(self, *args, method, **kwargs):
-        return getattr(self, method)(*args, **kwargs)
-
-    def pre_self_attention(self, x, e):
-        assert e.dtype == torch.float32
-        with torch.amp.autocast(device_type="cuda", dtype=torch.float32):
-            e = (self.modulation + e).chunk(6, dim=1)
-        assert e[0].dtype == torch.float32
-
-        q, k, v = self.self_attn(self.norm1(x).float() * (1 + e[1]) + e[0], method="pre_attention")
-        return q, k, v, e
-
-    def post_self_attention(self, x):
-        x = self.self_attn(x, method="post_attention")
-        return x
-
-    def cross_attention(self, x, context, context_lens, e):
-        x = x + self.cross_attn(self.norm3(x), context, context_lens)
-        y = self.ffn(self.norm2(x).float() * (1 + e[4]) + e[3])
-        with torch.amp.autocast(device_type="cuda", dtype=torch.float32):
-            x = x + y * e[5]
-        return x
-
-
-class IncontextAttentionBlock(nn.Module):
-    def __init__(
+    def forward(
         self,
-        dim,
-        ffn_dim,
-        num_heads,
-        window_size=(-1, -1),
-        qk_norm=True,
-        cross_attn_norm=False,
-        eps=1e-6,
-        refer_stride=1,
-        use_img_emb=True,
-        sparse_type=0,
-        log_scale=0.0,
-    ):
-        super().__init__()
-        self.dim = dim
-        self.ffn_dim = ffn_dim
-        self.num_heads = num_heads
-        self.window_size = window_size
-        self.qk_norm = qk_norm
-        self.cross_attn_norm = cross_attn_norm
-        self.eps = eps
-        self.refer_stride = refer_stride
-        self.sparse_type = sparse_type
-        self.log_scale = log_scale
+        hidden_states: torch.Tensor,
+        temb: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        kv_cache: WanAnimate2KVLayerCache,
+        kv_cache_mode: str,
+        rotary_emb: torch.Tensor,
+        grid_sizes: torch.Tensor,
+        encoder_hidden_states_image: torch.Tensor | None = None,
+        reference_rotary_emb: torch.Tensor | None = None,
+        reference_grid_sizes: torch.Tensor | None = None,
+        attention_mask: BlockMask | None = None,
+        origin_latent_frames: int | None = None,
+        origin_latent_hw: int | None = None,
+    ) -> torch.Tensor:
+        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (self.modulation + temb).chunk(6, dim=1)
 
-        self.block = AttentionBlock(
-            dim, ffn_dim, num_heads, window_size, qk_norm, cross_attn_norm, eps, use_img_emb=use_img_emb
+        # 1. Self-attention. The reference tokens sit on a strided time axis, so `refer_stride`
+        # applies to whichever stream is the reference one in this mode.
+        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+        attn_output = self.self_attn(
+            norm_hidden_states,
+            rotary_emb=rotary_emb,
+            grid_sizes=grid_sizes,
+            kv_cache=kv_cache,
+            kv_cache_mode=kv_cache_mode,
+            rope_stride=self.refer_stride if kv_cache_mode == "extract" else 1,
+            reference_rotary_emb=reference_rotary_emb,
+            reference_grid_sizes=reference_grid_sizes,
+            reference_rope_stride=self.refer_stride,
+            attention_mask=attention_mask,
+            origin_latent_frames=origin_latent_frames,
+            origin_latent_hw=origin_latent_hw,
+        )
+        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+
+        # 2. Cross-attention
+        hidden_states = hidden_states + self.cross_attn(
+            self.norm3(hidden_states.float()).type_as(hidden_states),
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_hidden_states_image=encoder_hidden_states_image,
         )
 
-    def forward(self, *args, method, **kwargs):
-        return getattr(self, method)(*args, **kwargs)
+        # 3. Feed-forward
+        norm_hidden_states = (self.norm2(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(hidden_states)
+        ff_output = self.ffn(norm_hidden_states)
+        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 
-    def forward_ref(self, x_ref, index, k_cache, v_cache, context_ref, freqs_ref, grid_sizes_ref, e_ref, context_lens):
-        q_ref, k_ref, v_ref, e_ref = self.block(x_ref, e_ref, method="pre_self_attention")
-
-        k_cache[index] = k_ref
-        v_cache[index] = v_ref
-        q_ref_add_rope = rope_apply(q_ref, grid_sizes_ref, freqs_ref, self.refer_stride)
-        k_ref_add_rope = rope_apply(k_ref, grid_sizes_ref, freqs_ref, self.refer_stride)
-
-        ref_f, ref_h, ref_w = grid_sizes_ref[0].tolist()
-        ref_vail_len = ref_f * ref_h * ref_w
-
-        xout_ref = flash_attention(
-            q=q_ref_add_rope,
-            k=k_ref_add_rope,
-            v=v_ref,
-            k_lens=torch.tensor([ref_vail_len], dtype=torch.long),
-            window_size=self.window_size,
-        )
-
-        y_ref = self.block(xout_ref, method="post_self_attention")
-
-        with torch.amp.autocast(device_type="cuda", dtype=torch.float32):
-            x_ref = x_ref + y_ref * e_ref[2]
-
-        x_ref = self.block(x_ref, context_ref, context_lens, e_ref, method="cross_attention")
-
-        return x_ref
-
-    def forward_gen(
-        self,
-        x,
-        index,
-        k_cache,
-        v_cache,
-        block_mask,
-        context,
-        freqs,
-        freqs_ref,
-        grid_sizes,
-        grid_sizes_ref,
-        origin_len,
-        origin_area,
-        e,
-        context_lens,
-    ):
-        origin_latent_f = origin_len // 4 + 1
-        origin_latent_hw = origin_area[0] * origin_area[1] // 256
-        origin_max_len = (origin_latent_f + 1) * origin_latent_hw
-        origin_ref_max_len = origin_latent_f * origin_latent_hw
-
-        f, h, w = grid_sizes[0].tolist()
-        vail_len = f * h * w
-        hw = h * w
-
-        ref_f, ref_h, ref_w = grid_sizes_ref[0].tolist()
-        ref_vail_len = ref_f * ref_h * ref_w
-        ref_hw = ref_h * ref_w
-
-        q, k, v, e = self.block(x, e, method="pre_self_attention")
-
-        q = rope_apply(q, grid_sizes, freqs)
-        k = rope_apply(k, grid_sizes, freqs)
-        k_ref, v_ref = k_cache[index], v_cache[index]
-        k_ref = rope_apply(k_ref, grid_sizes_ref, freqs_ref, self.refer_stride)
-
-        B, _, N, C = q.shape
-        device, dtype = q.device, q.dtype
-
-        target_q_len = math.ceil(origin_max_len / 128) * 128
-        target_ref_len = math.ceil(origin_ref_max_len / 128) * 128
-        target_kv_len = target_q_len + target_ref_len
-
-        q_padding = q[:, vail_len:].clone()
-
-        q_incontext = torch.zeros(B, target_q_len, N, C, device=device, dtype=dtype)
-        k_incontext = torch.zeros(B, target_kv_len, N, C, device=device, dtype=dtype)
-        v_incontext = torch.zeros(B, target_kv_len, N, C, device=device, dtype=dtype)
-
-        q_src = q[:, :vail_len].view(B, f, hw, N, C)
-        k_src = k[:, :vail_len].view(B, f, hw, N, C)
-        v_src = v[:, :vail_len].view(B, f, hw, N, C)
-
-        q_incontext[:, : f * origin_latent_hw].view(B, f, origin_latent_hw, N, C)[:, :, :hw] = q_src
-        k_incontext[:, : f * origin_latent_hw].view(B, f, origin_latent_hw, N, C)[:, :, :hw] = k_src
-        v_incontext[:, : f * origin_latent_hw].view(B, f, origin_latent_hw, N, C)[:, :, :hw] = v_src
-
-        k_ref_src = k_ref[:, :ref_vail_len].view(B, ref_f, ref_hw, N, C)
-        v_ref_src = v_ref[:, :ref_vail_len].view(B, ref_f, ref_hw, N, C)
-
-        k_incontext[:, target_q_len : target_q_len + ref_f * origin_latent_hw].view(B, ref_f, origin_latent_hw, N, C)[
-            :, :, :ref_hw
-        ] = k_ref_src
-        v_incontext[:, target_q_len : target_q_len + ref_f * origin_latent_hw].view(B, ref_f, origin_latent_hw, N, C)[
-            :, :, :ref_hw
-        ] = v_ref_src
-
-        score_mod = _get_score_mod(hw=int(origin_latent_hw), log_scale=self.log_scale)
-
-        xout_full = flex_attention(
-            q=q_incontext,
-            k=k_incontext,
-            v=v_incontext,
-            block_mask=block_mask,
-            kernel_options=None,
-            score_mod=score_mod,
-        )
-
-        xout_valid = xout_full[:, : f * origin_latent_hw]
-        xout_valid = xout_valid.view(B, f, origin_latent_hw, N, C)
-        xout_vail = xout_valid[:, :, :hw]
-        xout_vail = xout_vail.reshape(B, f * hw, N, C)
-        xout = torch.cat([xout_vail, q_padding], dim=1)
-
-        y = self.block(xout, method="post_self_attention")
-
-        with torch.amp.autocast(device_type="cuda", dtype=torch.float32):
-            x = x + y * e[2]
-
-        x = self.block(x, context, context_lens, e, method="cross_attention")
-        return x
+        return hidden_states
 
 
 class Head(nn.Module):
@@ -640,17 +534,15 @@ class Head(nn.Module):
 
         # layers
         out_dim = math.prod(patch_size) * out_dim
-        self.norm = LayerNorm(dim, eps)
+        self.norm = FP32LayerNorm(dim, eps, elementwise_affine=False)
         self.head = nn.Linear(dim, out_dim)
 
         # modulation
         self.modulation = nn.Parameter(torch.randn(1, 2, dim) / dim**0.5)
 
     def forward(self, x, e):
-        assert e.dtype == torch.float32
-        with torch.amp.autocast(device_type="cuda", dtype=torch.float32):
-            e = (self.modulation + e.unsqueeze(1)).chunk(2, dim=1)
-            x = self.head(self.norm(x) * (1 + e[1]) + e[0])
+        shift, scale = (self.modulation + e.float().unsqueeze(1)).chunk(2, dim=1)
+        x = self.head((self.norm(x.float()) * (1 + scale) + shift).type_as(x))
         return x
 
 
@@ -671,14 +563,16 @@ class MLPProj(torch.nn.Module):
         return clip_extra_context_tokens
 
 
-class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, AttentionMixin):
     r"""
     A Transformer model for video-like data used in the Wan-Animate-2 model.
 
-    Wan-Animate-2 uses an in-context attention mechanism with KV cache: a reference video is first encoded
-    (``forward_ref``) to cache K/V tensors, then the generation forward (``forward_gen``) uses the cached
-    K/V with a block mask (``flex_attention``) and score modification (``log_scale``) for frame-level
-    sparse in-context attention.
+    Wan-Animate-2 uses an in-context attention mechanism with a KV cache: a reference video is first encoded
+    (``kv_cache_mode="extract"``) to populate a [`WanAnimate2KVCache`], then each denoising step
+    (``kv_cache_mode="cached"``) attends
+    jointly over the generation tokens and the cached reference K/V through a flex ``BlockMask``. The generation
+    self-attention therefore runs on the ``flex`` attention backend only; every other attention in the model works
+    on any backend.
 
     Args:
         patch_size (`tuple[int]`, defaults to `(1, 2, 2)`):
@@ -701,10 +595,6 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
             The number of attention heads.
         num_layers (`int`, defaults to `40`):
             The number of layers of transformer blocks to use.
-        window_size (`tuple[int]`, defaults to `(-1, -1)`):
-            Window size for local attention (-1 indicates global attention).
-        qk_norm (`bool`, defaults to `True`):
-            Enable query/key normalization.
         cross_attn_norm (`bool`, defaults to `True`):
             Enable cross-attention normalization.
         eps (`float`, defaults to `1e-6`):
@@ -719,16 +609,13 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
             RoPE offset for the width dimension of the reference. -1 means use the generation grid size.
         refer_stride (`int`, defaults to `1`):
             Stride for RoPE application on the reference.
-        sparse_type (`int`, defaults to `0`):
-            Sparse attention type.
-        log_scale (`float`, defaults to `0.0`):
-            Log scale for score modification in in-context attention.
     """
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "img_emb", "norm"]
-    _no_split_modules = ["IncontextAttentionBlock"]
-    _repeated_blocks = ["IncontextAttentionBlock"]
+    _no_split_modules = ["WanAnimate2TransformerBlock"]
+    _repeated_blocks = ["WanAnimate2TransformerBlock"]
+    _skip_keys = ["kv_cache"]
     _keep_in_fp32_modules = [
         "time_embedding",
         "time_projection",
@@ -752,8 +639,6 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         out_dim: int = 16,
         num_heads: int = 40,
         num_layers: int = 40,
-        window_size: tuple = (-1, -1),
-        qk_norm: bool = True,
         cross_attn_norm: bool = True,
         eps: float = 1e-6,
         use_img_emb: bool = True,
@@ -761,8 +646,6 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         refer_offset_h: int = 0,
         refer_offset_w: int = -1,
         refer_stride: int = 1,
-        sparse_type: int = 0,
-        log_scale: float = 0.0,
     ):
         super().__init__()
         self.patch_size = patch_size
@@ -775,8 +658,6 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         self.out_dim = out_dim
         self.num_heads = num_heads
         self.num_layers = num_layers
-        self.window_size = window_size
-        self.qk_norm = qk_norm
         self.cross_attn_norm = cross_attn_norm
         self.eps = eps
         self.use_img_emb = use_img_emb
@@ -784,8 +665,6 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         self.refer_offset_h = refer_offset_h
         self.refer_offset_w = refer_offset_w
         self.refer_stride = refer_stride
-        self.sparse_type = sparse_type
-        self.log_scale = log_scale
 
         # [Denoising Transformer]
         # embeddings
@@ -796,6 +675,7 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
             nn.Linear(dim, dim),
         )
 
+        self.timesteps_proj = Timesteps(num_channels=freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedding = nn.Sequential(
             nn.Linear(freq_dim, dim),
             nn.SiLU(),
@@ -809,18 +689,14 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         # blocks
         self.blocks = nn.ModuleList(
             [
-                IncontextAttentionBlock(
+                WanAnimate2TransformerBlock(
                     dim,
                     ffn_dim,
                     num_heads,
-                    window_size,
-                    qk_norm,
                     cross_attn_norm,
                     eps,
                     refer_stride,
                     use_img_emb=use_img_emb,
-                    sparse_type=sparse_type,
-                    log_scale=log_scale,
                 )
                 for _ in range(num_layers)
             ]
@@ -832,16 +708,11 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         if use_img_emb:
             self.img_emb = MLPProj(1280, dim)
 
-        # initialize weights
-        self.init_weights()
         self.gradient_checkpointing = False
         self.block_masks = {}
         self.block_mask_grid_sizes = {}
 
-    def create_mask(self, origin_len, origin_area, device):
-        origin_latent_f = origin_len // 4 + 1
-        hw = int(np.prod(origin_area).item() // 256)
-
+    def create_mask(self, origin_latent_f, hw, device):
         q_len = (origin_latent_f + 1) * hw
         k_len = origin_latent_f * hw
 
@@ -885,41 +756,89 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         )
         return block_mask
 
-    def forward(self, *args, method, **kwargs):
-        return getattr(self, method)(*args, **kwargs)
-
-    def forward_ref(
+    def forward(
         self,
-        x_ref,
-        grid_sizes,
-        k_cache,
-        v_cache,
-        clip_fea_ref,
-        y_ref,
-        context_ref,
-        seq_len_ref,
-        t,
-    ):
+        hidden_states: list[torch.Tensor],
+        timestep: torch.Tensor,
+        encoder_hidden_states: list[torch.Tensor],
+        condition_latents: list[torch.Tensor],
+        kv_cache: WanAnimate2KVCache,
+        kv_cache_mode: str,
+        seq_len: int,
+        encoder_hidden_states_image: torch.Tensor | None = None,
+        offset_grid_sizes: torch.Tensor | None = None,
+        reference_grid_sizes: torch.Tensor | None = None,
+        origin_len: int | None = None,
+        origin_area: list[int] | None = None,
+        is_uncondtion: bool = False,
+        return_dict: bool = True,
+    ) -> Transformer2DModelOutput | tuple[list[torch.Tensor]]:
+        r"""
+        Args:
+            hidden_states (`list[torch.Tensor]`):
+                Latents for this pass — the reference latents when `kv_cache_mode="extract"`, the noisy generation
+                latents when `kv_cache_mode="cached"`.
+            timestep (`torch.Tensor`):
+                Denoising timestep. Ignored under `kv_cache_mode="extract"`, which uses a fixed timestep of 1.
+            encoder_hidden_states (`list[torch.Tensor]`):
+                Text embeddings for this pass.
+            condition_latents (`list[torch.Tensor]`):
+                Conditioning latents concatenated to `hidden_states` before patch embedding.
+            kv_cache (`WanAnimate2KVCache`):
+                Written under `kv_cache_mode="extract"`, read under `"cached"`.
+            kv_cache_mode (`str`):
+                `"extract"` runs the reference pass and populates `kv_cache`; `"cached"` runs a denoising step
+                against the cached reference tokens.
+            seq_len (`int`):
+                Token count each sample must hold after patch embedding.
+            encoder_hidden_states_image (`torch.Tensor`, *optional*):
+                CLIP image embeddings, used when the model is configured with `use_img_emb`.
+            offset_grid_sizes (`torch.Tensor`, *optional*):
+                Patch grid used to resolve any `refer_offset_*` still set to -1. Required under
+                `kv_cache_mode="extract"`; under `"cached"` the grid derived from `hidden_states` is used instead.
+                Note the two are not the same grid — the reference pass runs first and resolves the offsets from
+                whatever it is given here, which the pipeline sets to the *reference* grid.
+            reference_grid_sizes (`torch.Tensor`, *optional*):
+                Patch grid of the reference latents, used for the reference rotary embeddings. Required under
+                `kv_cache_mode="cached"`.
+            origin_len (`int`, *optional*), origin_area (`list[int]`, *optional*):
+                Frame count and spatial size of the full video, which the in-context block mask is built over.
+                Required under `kv_cache_mode="cached"`.
+            is_uncondtion (`bool`, *optional*):
+                Whether this is the unconditional branch of classifier-free guidance.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain tuple.
+        """
+        if kv_cache_mode not in ("extract", "cached"):
+            raise ValueError(f"`kv_cache_mode` must be either 'extract' or 'cached', got {kv_cache_mode}.")
+
         device = self.patch_embedding.weight.device
-        # [reference]
-        x_ref = [torch.cat([u, v], dim=0) for u, v in zip(x_ref, y_ref)]
-        # embeddings
-        x_ref = [self.patch_embedding(u.unsqueeze(0)) for u in x_ref]
-        grid_sizes_ref = torch.stack([torch.tensor(u.shape[2:], dtype=torch.long) for u in x_ref])
-        x_ref = [u.flatten(2).transpose(1, 2) for u in x_ref]
-        seq_lens_ref = torch.tensor([u.size(1) for u in x_ref], dtype=torch.long)
-        assert seq_lens_ref.max() <= seq_len_ref
-        x_ref = torch.cat([torch.cat([u, u.new_zeros(1, seq_len_ref - u.size(1), u.size(2))], dim=1) for u in x_ref])
+
+        # 1. Patch embedding. `grid_sizes` describes whichever stream this pass is running over.
+        hidden_states = [torch.cat([u, v], dim=0) for u, v in zip(hidden_states, condition_latents)]
+        hidden_states = [self.patch_embedding(u.unsqueeze(0)) for u in hidden_states]
+        grid_sizes = torch.stack([torch.tensor(u.shape[2:], dtype=torch.long) for u in hidden_states])
+        hidden_states = [u.flatten(2).transpose(1, 2) for u in hidden_states]
+        if any(u.size(1) != seq_len for u in hidden_states):
+            raise ValueError(
+                f"Each sample must hold exactly `seq_len` ({seq_len}) tokens, got "
+                f"{[u.size(1) for u in hidden_states]}. Self-attention here is either dense and unmasked or driven "
+                f"by a block mask built from the grid, so a padded sequence would not line up."
+            )
+        hidden_states = torch.cat(hidden_states)
 
         assert (self.dim % self.num_heads) == 0 and (self.dim // self.num_heads) % 2 == 0
         d = self.dim // self.num_heads
 
+        # 2. Rotary embeddings for the reference stream. The offsets place the reference tokens
+        # past the generation grid, so they are resolved from the generation grid either way.
+        offset_grid_sizes = offset_grid_sizes if kv_cache_mode == "extract" else grid_sizes
         if self.refer_offset_t < 0:
-            self.refer_offset_t = grid_sizes[0][0].item()
+            self.refer_offset_t = offset_grid_sizes[0][0].item()
         if self.refer_offset_h < 0:
-            self.refer_offset_h = grid_sizes[0][1].item()
+            self.refer_offset_h = offset_grid_sizes[0][1].item()
         if self.refer_offset_w < 0:
-            self.refer_offset_w = grid_sizes[0][2].item()
+            self.refer_offset_w = offset_grid_sizes[0][2].item()
 
         self.freqs_ref = torch.cat(
             [
@@ -932,158 +851,85 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         if self.freqs_ref.device != device:
             self.freqs_ref = self.freqs_ref.to(device)
 
-        # time embeddings ref
-        with torch.amp.autocast(device_type="cuda", dtype=torch.float32):
-            e_ref = self.time_embedding(sinusoidal_embedding_1d(self.freq_dim, t * 0 + 1).float())
-            e0_ref = self.time_projection(e_ref).unflatten(1, (6, self.dim))
-            assert e_ref.dtype == torch.float32 and e0_ref.dtype == torch.float32
-
-        # [context_ref]
-        context_ref = self.text_embedding(
-            torch.stack([torch.cat([u, u.new_zeros(self.text_len - u.size(0), u.size(1))]) for u in context_ref])
+        # 3. Time and context embeddings. The reference pass is modulated at a fixed timestep.
+        timestep_input = timestep * 0 + 1 if kv_cache_mode == "extract" else timestep
+        temb = self.time_embedding(
+            self.timesteps_proj(timestep_input).to(dtype=next(self.time_embedding.parameters()).dtype)
         )
+        timestep_proj = self.time_projection(temb).unflatten(1, (6, self.dim))
 
-        if self.use_img_emb:
-            context_clip_ref = self.img_emb(clip_fea_ref)
-            context_ref = torch.concat([context_clip_ref, context_ref], dim=1)
+        encoder_hidden_states = self.text_embedding(
+            torch.stack(
+                [torch.cat([u, u.new_zeros(self.text_len - u.size(0), u.size(1))]) for u in encoder_hidden_states]
+            )
+        )
+        encoder_hidden_states_image = self.img_emb(encoder_hidden_states_image) if self.use_img_emb else None
 
-        context_lens = None
-        # arguments
-        kwargs = {
-            "e_ref": e0_ref,
-            "grid_sizes_ref": grid_sizes_ref,
-            "freqs_ref": self.freqs_ref,
-            "context_ref": context_ref,
-            "context_lens": context_lens,
-        }
+        # 4. Per-mode block arguments.
+        if kv_cache_mode == "extract":
+            block_kwargs = {
+                "rotary_emb": self.freqs_ref,
+                "grid_sizes": grid_sizes,
+            }
+        else:
+            self.freqs = torch.cat(
+                [
+                    rope_params(512, d - 4 * (d // 6)),
+                    rope_params(512, 2 * (d // 6)),
+                    rope_params(512, 2 * (d // 6)),
+                ],
+                dim=1,
+            )
+            if self.freqs.device != device:
+                self.freqs = self.freqs.to(device)
 
-        for idx, block in enumerate(self.blocks):
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
-                x_ref = self._gradient_checkpointing_func(
-                    block.forward_ref,
-                    x_ref,
-                    idx,
-                    k_cache,
-                    v_cache,
-                    **kwargs,
+            # Latent geometry of the full video, which is what the block mask is built over. The
+            # current segment is scattered into a buffer of this size inside the attention processor.
+            origin_latent_frames = origin_len // 4 + 1
+            origin_latent_hw = origin_area[0] * origin_area[1] // 256
+
+            block_mask_id = (origin_latent_frames, origin_latent_hw)
+            if block_mask_id not in self.block_masks:
+                self.block_masks[block_mask_id] = self.create_mask(
+                    origin_latent_frames, origin_latent_hw, hidden_states.device
                 )
-            else:
-                x_ref = block(x_ref, idx, k_cache, v_cache, method="forward_ref", **kwargs)
 
-    def forward_gen(
-        self,
-        x,
-        k_cache,
-        v_cache,
-        clip_fea,
-        y,
-        context,
-        seq_len,
-        t,
-        grid_sizes_ref,
-        origin_len,
-        origin_area,
-        is_uncondtion=False,
-    ):
-        # [denoising]
-        # params
-        device = self.patch_embedding.weight.device
-        x = [torch.cat([u, v], dim=0) for u, v in zip(x, y)]
-        # embeddings
-        x = [self.patch_embedding(u.unsqueeze(0)) for u in x]
-        grid_sizes = torch.stack([torch.tensor(u.shape[2:], dtype=torch.long) for u in x])
-        x = [u.flatten(2).transpose(1, 2) for u in x]
-        seq_lens = torch.tensor([u.size(1) for u in x], dtype=torch.long)
-        assert seq_lens.max() <= seq_len
-        x = torch.cat([torch.cat([u, u.new_zeros(1, seq_len - u.size(1), u.size(2))], dim=1) for u in x])
+            block_kwargs = {
+                "rotary_emb": self.freqs,
+                "grid_sizes": grid_sizes,
+                "reference_rotary_emb": self.freqs_ref,
+                "reference_grid_sizes": reference_grid_sizes,
+                "attention_mask": self.block_masks[block_mask_id],
+                "origin_latent_frames": origin_latent_frames,
+                "origin_latent_hw": origin_latent_hw,
+            }
 
-        assert (self.dim % self.num_heads) == 0 and (self.dim // self.num_heads) % 2 == 0
-        d = self.dim // self.num_heads
-        self.freqs = torch.cat(
-            [
-                rope_params(512, d - 4 * (d // 6)),
-                rope_params(512, 2 * (d // 6)),
-                rope_params(512, 2 * (d // 6)),
-            ],
-            dim=1,
-        )
-        if self.freqs.device != device:
-            self.freqs = self.freqs.to(device)
-
-        if self.refer_offset_t < 0:
-            self.refer_offset_t = grid_sizes[0][0].item()
-        if self.refer_offset_h < 0:
-            self.refer_offset_h = grid_sizes[0][1].item()
-        if self.refer_offset_w < 0:
-            self.refer_offset_w = grid_sizes[0][2].item()
-
-        self.freqs_ref = torch.cat(
-            [
-                rope_params(512, d - 4 * (d // 6), offset=self.refer_offset_t),
-                rope_params(512, 2 * (d // 6), offset=self.refer_offset_h),
-                rope_params(512, 2 * (d // 6), offset=self.refer_offset_w),
-            ],
-            dim=1,
-        )
-        if self.freqs_ref.device != device:
-            self.freqs_ref = self.freqs_ref.to(device)
-
-        # time embeddings
-        with torch.amp.autocast(device_type="cuda", dtype=torch.float32):
-            e = self.time_embedding(sinusoidal_embedding_1d(self.freq_dim, t).float())
-            e0 = self.time_projection(e).unflatten(1, (6, self.dim))
-            assert e.dtype == torch.float32 and e0.dtype == torch.float32
-
-        # [context]
-        context_lens = None
-        context = self.text_embedding(
-            torch.stack([torch.cat([u, u.new_zeros(self.text_len - u.size(0), u.size(1))]) for u in context])
+        block_kwargs.update(
+            temb=timestep_proj,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_hidden_states_image=encoder_hidden_states_image,
+            kv_cache_mode=kv_cache_mode,
         )
 
-        if self.use_img_emb:
-            context_clip = self.img_emb(clip_fea)
-            context = torch.concat([context_clip, context], dim=1)
-
-        block_mask_id = (origin_len, origin_area[0], origin_area[1])
-        if block_mask_id not in self.block_masks:
-            self.block_masks[block_mask_id] = self.create_mask(origin_len, origin_area, x.device)
-        block_mask = self.block_masks[block_mask_id]
-
-        # arguments
-        kwargs = {
-            "e": e0,
-            "block_mask": block_mask,
-            "grid_sizes": grid_sizes,
-            "freqs": self.freqs,
-            "context": context,
-            "grid_sizes_ref": grid_sizes_ref,
-            "freqs_ref": self.freqs_ref,
-            "context_lens": context_lens,
-            "origin_area": origin_area,
-            "origin_len": origin_len,
-        }
-
+        # 5. Transformer blocks.
         for idx, block in enumerate(self.blocks):
             if is_uncondtion and idx == 9:
                 continue
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                x = self._gradient_checkpointing_func(
-                    block.forward_gen,
-                    x,
-                    idx,
-                    k_cache,
-                    v_cache,
-                    **kwargs,
+                hidden_states = self._gradient_checkpointing_func(
+                    block, hidden_states, kv_cache=kv_cache.get(idx), **block_kwargs
                 )
             else:
-                x = block(x, idx, k_cache, v_cache, method="forward_gen", **kwargs)
+                hidden_states = block(hidden_states, kv_cache=kv_cache.get(idx), **block_kwargs)
 
-        # head
-        x = self.head(x, e)
+        # 6. Output. Under `kv_cache_mode="extract"` the meaningful product is the populated
+        # cache; the sample is returned anyway so both modes have the same return type.
+        hidden_states = self.head(hidden_states, temb)
+        output = [u.float() for u in self.unpatchify(hidden_states, grid_sizes)]
 
-        # unpatchify
-        x = self.unpatchify(x, grid_sizes)
-        return [u.float() for u in x]
+        if not return_dict:
+            return (output,)
+        return Transformer2DModelOutput(sample=output)
 
     def unpatchify(self, x, grid_sizes):
         c = self.out_dim
@@ -1094,27 +940,3 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
             u = u.reshape(c, *[i * j for i, j in zip(v, self.patch_size)])
             out.append(u)
         return out
-
-    def init_weights(self):
-        # basic init
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-
-        # init embeddings
-        nn.init.xavier_uniform_(self.patch_embedding.weight.flatten(1))
-        for m in self.text_embedding.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, std=0.02)
-        for m in self.time_embedding.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, std=0.02)
-
-        # init output layer
-        nn.init.zeros_(self.head.head.weight)
-
-    def load_from_official_state_dict(self, state_dict):
-        """Load weights from the official Wan-Animate-2 checkpoint."""
-        self.load_state_dict(state_dict, strict=True)

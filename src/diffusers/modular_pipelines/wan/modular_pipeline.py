@@ -139,13 +139,3 @@ class Wan22Image2VideoModularPipeline(Wan22ModularPipeline):
     """
 
     default_blocks_name = "Wan22Image2VideoBlocks"
-
-
-class WanAnimate2ModularPipeline(WanModularPipeline):
-    """
-    A ModularPipeline for Wan-Animate-2 character animation.
-
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
-    """
-
-    default_blocks_name = "WanAnimate2Blocks"
