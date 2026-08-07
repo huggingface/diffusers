@@ -17,8 +17,11 @@ The model can be loaded with the following code snippet.
 
 ```python
 from diffusers import MochiTransformer3DModel
+from diffusers.utils.torch_utils import get_device
 
-transformer = MochiTransformer3DModel.from_pretrained("genmo/mochi-1-preview", subfolder="transformer", dtype=torch.float16).to("cuda")
+
+device = get_device()
+transformer = MochiTransformer3DModel.from_pretrained("genmo/mochi-1-preview", subfolder="transformer", dtype=torch.float16).to(device)
 ```
 
 ## MochiTransformer3DModel

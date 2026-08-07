@@ -42,8 +42,11 @@ number of steps. Refer to the code snippet below:
 ```py
 from diffusers import DiffusionPipeline, FlowMatchEulerDiscreteScheduler
 import torch 
+from diffusers.utils.torch_utils import get_device
 import math
 
+
+device = get_device()
 ckpt_id = "Qwen/Qwen-Image"
 
 # From
@@ -67,7 +70,7 @@ scheduler_config = {
 scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 pipe = DiffusionPipeline.from_pretrained(
     ckpt_id, scheduler=scheduler, dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 pipe.load_lora_weights(
     "lightx2v/Qwen-Image-Lightning", weight_name="Qwen-Image-Lightning-8steps-V1.0.safetensors"
 )
@@ -103,7 +106,7 @@ from diffusers.utils import load_image
 
 pipe = QwenImageEditPlusPipeline.from_pretrained(
     "Qwen/Qwen-Image-Edit-2509", dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 
 image_1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/grumpy.jpg")
 image_2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peng.png")
@@ -123,8 +126,10 @@ Using `torch.compile` on the transformer provides ~2.4x speedup (A100 80GB: 4.70
 ```python
 import torch
 from diffusers import QwenImagePipeline
+from diffusers.utils.torch_utils import get_device
 
-pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", dtype=torch.bfloat16).to("cuda")
+device = get_device()
+pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", dtype=torch.bfloat16).to(device)
 pipe.transformer = torch.compile(pipe.transformer)
 
 # First call triggers compilation (~7s overhead)

@@ -57,10 +57,13 @@ First, load the pipeline:
 ```python
 from diffusers import LuminaPipeline
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 pipeline = LuminaPipeline.from_pretrained(
 	"Alpha-VLLM/Lumina-Next-SFT-diffusers", dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 ```
 
 Then change the memory layout of the pipelines `transformer` and `vae` components to `torch.channels-last`:

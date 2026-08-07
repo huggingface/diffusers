@@ -32,11 +32,14 @@ and guidance is enabled whenever `guidance_scale > 0` (this equals the usual CFG
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import Krea2Pipeline
 
+
+device = get_device()
 # Load from a local directory produced by the Krea 2 conversion (no hub repo yet).
 pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Raw", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "a fox in the snow"
 image = pipe(
@@ -45,7 +48,7 @@ image = pipe(
     width=1024,
     num_inference_steps=28,
     guidance_scale=4.5,
-    generator=torch.Generator("cuda").manual_seed(0),
+    generator=torch.Generator(device).manual_seed(0),
 ).images[0]
 image.save("krea2.png")
 ```
@@ -55,9 +58,11 @@ We additionally provide an example for using Krea2 Turbo :
 ```python
 import torch
 from diffusers import Krea2Pipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 image = pipe(
     "a fox in the snow",
@@ -65,7 +70,7 @@ image = pipe(
     width=1024,
     num_inference_steps=8,
     guidance_scale=0.0,
-    generator=torch.Generator("cuda").manual_seed(0),
+    generator=torch.Generator(device).manual_seed(0),
 ).images[0]
 image.save("krea2_turbo.png")
 ```
@@ -90,10 +95,12 @@ which is [`ClassifierFreeGuidance`] with `use_original_formulation=True`.
 ```python
 import torch
 from diffusers import ClassifierFreeGuidance, ModularPipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = ModularPipeline.from_pretrained("krea/Krea-2-Raw")
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 
 image = pipe(
@@ -101,7 +108,7 @@ image = pipe(
     height=1024,
     width=1024,
     num_inference_steps=28,
-    generator=torch.Generator("cuda").manual_seed(0),
+    generator=torch.Generator(device).manual_seed(0),
 ).images[0]
 image.save("krea2.png")
 ```
@@ -114,17 +121,19 @@ no guidance configuration is needed:
 ```python
 import torch
 from diffusers import ModularPipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = ModularPipeline.from_pretrained("krea/Krea-2-Turbo")
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 image = pipe(
     prompt="a fox in the snow",
     height=1024,
     width=1024,
     num_inference_steps=8,
-    generator=torch.Generator("cuda").manual_seed(0),
+    generator=torch.Generator(device).manual_seed(0),
 ).images[0]
 image.save("krea2_turbo.png")
 ```

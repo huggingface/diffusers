@@ -25,8 +25,11 @@ The example below only quantizes the weights to FP8.
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoModel, SanaPipeline, NVIDIAModelOptConfig
 
+
+device = get_device()
 model_id = "Efficient-Large-Model/Sana_600M_1024px_diffusers"
 dtype = torch.bfloat16
 
@@ -42,7 +45,7 @@ pipe = SanaPipeline.from_pretrained(
     transformer=transformer,
     dtype=dtype,
 )
-pipe.to("cuda")
+pipe.to(device)
 
 print(f"Pipeline memory usage: {torch.cuda.max_memory_reserved() / 1024**3:.3f} GB")
 
@@ -117,7 +120,9 @@ To load a serialized quantized model, use the [`~ModelMixin.from_pretrained`] me
 import torch
 from diffusers import AutoModel, NVIDIAModelOptConfig, SanaPipeline
 from modelopt.torch.opt import enable_huggingface_checkpointing
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 enable_huggingface_checkpointing()
 
 quantization_config = NVIDIAModelOptConfig(quant_type="FP8", quant_method="modelopt")
@@ -132,7 +137,7 @@ pipe = SanaPipeline.from_pretrained(
     transformer=transformer,
     dtype=torch.bfloat16,
 )
-pipe.to("cuda")
+pipe.to(device)
 prompt = "A cat holding a sign that says hello world"
 image = pipe(
     prompt, num_inference_steps=50, guidance_scale=4.5, max_sequence_length=512

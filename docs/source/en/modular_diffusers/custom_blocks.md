@@ -174,9 +174,12 @@ The `__call__` method contains the block's logic. Access inputs via `block_state
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers.modular_pipelines import PipelineState
 
 
+
+device = get_device()
 class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
 
     # ... expected_components, inputs, intermediate_outputs from above ...
@@ -238,8 +241,11 @@ print(image_annotator.blocks.doc)
 Use the block to generate a mask:
 
 ```python
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 image_annotator.load_components(dtype=torch.bfloat16)
-image_annotator.to("cuda")
+image_annotator.to(device)
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg")
 image = image.resize((1024, 1024))
@@ -260,6 +266,9 @@ mask_image[0].save("car-mask.png")
 Compose it with other blocks to create a new pipeline:
 
 ```python
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 # Get the annotator block
 annotator_block = image_annotator.blocks
 
@@ -269,7 +278,7 @@ inpaint_blocks.sub_blocks.insert("image_annotator", annotator_block, 0)
 
 # Initialize the combined pipeline
 pipe = inpaint_blocks.init_pipeline()
-pipe.load_components(dtype=torch.float16, device="cuda")
+pipe.load_components(dtype=torch.float16, device=device)
 
 # Now the pipeline automatically generates masks from prompts
 output = pipe(

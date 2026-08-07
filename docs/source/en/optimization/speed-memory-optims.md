@@ -47,9 +47,12 @@ Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynam
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 
+
+device = get_device()
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
 # quantize
@@ -62,7 +65,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
@@ -103,7 +106,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 
 # model CPU offloading
 pipeline.enable_model_cpu_offload()
@@ -148,10 +151,10 @@ pipeline = DiffusionPipeline.from_pretrained(
     "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 
 # group offloading
-onload_device = torch.device("cuda")
+onload_device = torch.device(device)
 offload_device = torch.device("cpu")
 
 pipeline.transformer.enable_group_offload(

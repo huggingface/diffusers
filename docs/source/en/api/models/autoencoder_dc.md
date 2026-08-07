@@ -35,8 +35,11 @@ Load a model in Diffusers format with [`~ModelMixin.from_pretrained`].
 
 ```python
 from diffusers import AutoencoderDC
+from diffusers.utils.torch_utils import get_device
 
-ae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers", dtype=torch.float32).to("cuda")
+
+device = get_device()
+ae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers", dtype=torch.float32).to(device)
 ```
 
 ## Load a model in Diffusers via `from_single_file`

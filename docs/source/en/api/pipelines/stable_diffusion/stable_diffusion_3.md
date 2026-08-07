@@ -39,10 +39,13 @@ hf auth login
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import StableDiffusion3Pipeline
 
+
+device = get_device()
 pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", dtype=torch.float16)
-pipe.to("cuda")
+pipe.to(device)
 
 image = pipe(
     prompt="a photo of a cat holding a sign that says hello world",
@@ -77,7 +80,9 @@ from PIL import Image
 
 from diffusers import StableDiffusion3Pipeline
 from transformers import SiglipVisionModel, SiglipImageProcessor
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 image_encoder_id = "google/siglip-so400m-patch14-384"
 ip_adapter_id = "InstantX/SD3.5-Large-IP-Adapter"
 
@@ -95,7 +100,7 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     dtype=torch.float16,
     feature_extractor=feature_extractor,
     image_encoder=image_encoder,
-).to("cuda")
+).to(device)
 
 pipe.load_ip_adapter(ip_adapter_id)
 pipe.set_ip_adapter_scale(0.6)
@@ -159,14 +164,16 @@ Removing the memory-intensive 4.7B parameter T5-XXL text encoder during inferenc
 ```python
 import torch
 from diffusers import StableDiffusion3Pipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
     text_encoder_3=None,
     tokenizer_3=None,
     dtype=torch.float16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 image = pipe(
     prompt="a photo of a cat holding a sign that says hello world",
@@ -235,7 +242,9 @@ Using compiled components in the SD3 pipeline can speed up inference by as much 
 ```python
 import torch
 from diffusers import StableDiffusion3Pipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 torch.set_float32_matmul_precision("high")
 
 torch._inductor.config.conv_1x1_as_mm = True
@@ -246,7 +255,7 @@ torch._inductor.config.coordinate_descent_check_all_directions = True
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
     dtype=torch.float16
-).to("cuda")
+).to(device)
 pipe.set_progress_bar_config(disable=True)
 
 pipe.transformer.to(memory_format=torch.channels_last)
@@ -354,12 +363,14 @@ To use with Stable Diffusion 3:
 ```python
 import torch
 from diffusers import StableDiffusion3Pipeline, AutoencoderTiny
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers", dtype=torch.float16
 )
 pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd3", dtype=torch.float16)
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 prompt = "slice of delicious New York-style berry cheesecake"
 image = pipe(prompt, num_inference_steps=25).images[0]

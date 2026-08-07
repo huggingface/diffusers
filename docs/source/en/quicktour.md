@@ -50,10 +50,13 @@ Use `.images[0]` to access the generated image output.
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline
 
+
+device = get_device()
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map=device
 )
 
 prompt = """
@@ -83,7 +86,7 @@ pipeline = DiffusionPipeline.from_pretrained(
   "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
   vae=vae
   dtype=torch.bfloat16,
-  device_map="cuda"
+  device_map=device
 )
 
 prompt = """
@@ -110,7 +113,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map=device
 )
 pipeline.load_lora_weights(
   "flymy-ai/qwen-image-realism-lora",
@@ -147,7 +150,7 @@ pipeline = DiffusionPipeline.from_pretrained(
   "Qwen/Qwen-Image",
   dtype=torch.bfloat16,
   quantization_config=quant_config,
-  device_map="cuda"
+  device_map=device
 )
 
 prompt = """
@@ -189,7 +192,7 @@ pipeline = DiffusionPipeline.from_pretrained(
   "Qwen/Qwen-Image",
   dtype=torch.bfloat16,
   quantization_config=quant_config,
-  device_map="cuda"
+  device_map=device
 )
 pipeline.enable_model_cpu_offload()
 
@@ -216,7 +219,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map=device
 )
 
 pipeline.transformer.compile_repeated_blocks(

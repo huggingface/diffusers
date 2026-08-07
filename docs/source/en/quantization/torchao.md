@@ -25,9 +25,12 @@ Pass the `AOBaseConfig` of a quantization dtype, like [Int4WeightOnlyConfig](htt
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline, PipelineQuantizationConfig, TorchAoConfig
 from torchao.quantization import Int8WeightOnlyConfig
 
+
+device = get_device()
 pipeline_quant_config = PipelineQuantizationConfig(
     quant_mapping={"transformer": TorchAoConfig(Int8WeightOnlyConfig(group_size=128, version=2))}
 )
@@ -35,11 +38,11 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda"
+    device_map=device
 )
 ```
 
-`device_map="cuda"` quantizes each layer on the GPU while it loads. This is fast, but it temporarily requires additional GPU memory for the original and quantized weights. If the model already uses most of your GPU memory, loading can fail with an out-of-memory error. In that case, drop `device_map` and move the pipeline to the GPU after loading:
+`device_map=device` quantizes each layer on your accelerator device while it loads. This is fast, but it temporarily requires additional accelerator memory for the original and quantized weights. If the model already uses most of your accelerator memory, loading can fail with an out-of-memory error. In that case, drop `device_map` and move the pipeline to the accelerator after loading:
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
@@ -47,7 +50,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     quantization_config=pipeline_quant_config,
     torch_dtype=torch.bfloat16,
 )
-pipeline.to("cuda")
+pipeline.to(device)
 ```
 
 Without `device_map`, Diffusers quantizes the layers on the CPU. This is slower, but avoids the temporary GPU-memory spike during quantization. To reduce GPU memory usage further, use [`~DiffusionPipeline.enable_model_cpu_offload`] instead. You can also quantize additional components, such as the text encoder.
@@ -60,7 +63,9 @@ torchao supports [torch.compile](../optimization/fp16#torchcompile) which can sp
 import torch
 from diffusers import DiffusionPipeline, PipelineQuantizationConfig, TorchAoConfig
 from torchao.quantization import Int4WeightOnlyConfig
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipeline_quant_config = PipelineQuantizationConfig(
     quant_mapping={"transformer": TorchAoConfig(Int4WeightOnlyConfig(group_size=128))}
 )
@@ -68,7 +73,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda"
+    device_map=device
 )
 
 pipeline.transformer.compile(transformer, mode="max-autotune", fullgraph=True)
@@ -121,10 +126,12 @@ To load a serialized quantized model, use the [`~ModelMixin.from_pretrained`] me
 ```python
 import torch
 from diffusers import FluxPipeline, AutoModel
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 transformer = AutoModel.from_pretrained("/path/to/flux_int8wo", dtype=torch.bfloat16, use_safetensors=False)
 pipe = FluxPipeline.from_pretrained("black-forest-labs/Flux.1-Dev", transformer=transformer, dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "A cat holding a sign that says hello world"
 image = pipe(prompt, num_inference_steps=30, guidance_scale=7.0).images[0]

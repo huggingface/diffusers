@@ -229,13 +229,16 @@ Once you have trained a lora model, the inference can be done simply loading the
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import CogVideoXPipeline
 from diffusers.utils import export_to_video
 
+
+device = get_device()
 pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", dtype=torch.float16)
 # pipe.load_lora_weights("/path/to/lora/weights", adapter_name="cogvideox-lora") # Or,
 pipe.load_lora_weights("my-awesome-hf-username/my-awesome-lora-name", adapter_name="cogvideox-lora") # If loading from the HF Hub
-pipe.to("cuda")
+pipe.to(device)
 
 # Assuming lora_alpha=32 and rank=64 for training. If different, set accordingly
 pipe.set_adapters(["cogvideox-lora"], [32 / 64])

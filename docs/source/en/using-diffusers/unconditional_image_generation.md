@@ -20,8 +20,11 @@ To get started, use the [`DiffusionPipeline`] to load the [anton-l/ddpm-butterfl
 
 ```py
 from diffusers import DiffusionPipeline
+from diffusers.utils.torch_utils import get_device
 
-generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128").to("cuda")
+
+device = get_device()
+generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128").to(device)
 image = generator().images[0]
 image
 ```

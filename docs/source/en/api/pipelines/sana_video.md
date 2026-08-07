@@ -46,13 +46,16 @@ Note: The recommended dtype mentioned is for the transformer weights. The text e
 The example below demonstrates how to use the text-to-video pipeline to generate a video using a text description.
 
 ```python
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 pipe = SanaVideoPipeline.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers", 
     dtype=torch.bfloat16,
 )
 pipe.text_encoder.to(torch.bfloat16)
 pipe.vae.to(torch.float32)
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
 negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
@@ -68,7 +71,7 @@ video = pipe(
     frames=81,
     guidance_scale=6,
     num_inference_steps=50,
-    generator=torch.Generator(device="cuda").manual_seed(0),
+    generator=torch.Generator(device=device).manual_seed(0),
 ).frames[0]
 
 export_to_video(video, "sana_video.mp4", fps=16)
@@ -80,6 +83,9 @@ export_to_video(video, "sana_video.mp4", fps=16)
 The example below demonstrates how to use the image-to-video pipeline to generate a video using a text description and a starting frame.
 
 ```python
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 pipe = SanaImageToVideoPipeline.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
     dtype=torch.bfloat16,
@@ -87,7 +93,7 @@ pipe = SanaImageToVideoPipeline.from_pretrained(
 pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipe.scheduler.config, flow_shift=8.0)
 pipe.vae.to(torch.float32)
 pipe.text_encoder.to(torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 image = load_image("https://raw.githubusercontent.com/NVlabs/Sana/refs/heads/main/asset/samples/i2v-1.png")
 prompt = "A woman stands against a stunning sunset backdrop, her long, wavy brown hair gently blowing in the breeze. She wears a sleeveless, light-colored blouse with a deep V-neckline, which accentuates her graceful posture. The warm hues of the setting sun cast a golden glow across her face and hair, creating a serene and ethereal atmosphere. The background features a blurred landscape with soft, rolling hills and scattered clouds, adding depth to the scene. The camera remains steady, capturing the tranquil moment from a medium close-up angle."
@@ -107,7 +113,7 @@ video = pipe(
     frames=81,
     guidance_scale=6,
     num_inference_steps=50,
-    generator=torch.Generator(device="cuda").manual_seed(0),
+    generator=torch.Generator(device=device).manual_seed(0),
 ).frames[0]
 
 export_to_video(video, "sana-i2v.mp4", fps=16)
@@ -125,9 +131,12 @@ Refer to the [Quantization](../../quantization/overview) overview to learn more 
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, SanaVideoTransformer3DModel, SanaVideoPipeline
 from transformers import BitsAndBytesConfig as BitsAndBytesConfig, AutoModel
 
+
+device = get_device()
 quant_config = BitsAndBytesConfig(load_in_8bit=True)
 text_encoder_8bit = AutoModel.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",

@@ -56,19 +56,22 @@ Model weights may be stored in separate subfolders on the Hub or locally, in whi
 ```python
 # !pip install consisid_eva_clip insightface facexlib
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import ConsisIDPipeline
 from diffusers.pipelines.consisid.consisid_utils import prepare_face_models, process_face_embeddings_infer
 from huggingface_hub import snapshot_download
 
+
+device = get_device()
 # Download ckpts
 snapshot_download(repo_id="BestWishYsh/ConsisID-preview", local_dir="BestWishYsh/ConsisID-preview")
 
 # Load face helper model to preprocess input face image
-face_helper_1, face_helper_2, face_clip_model, face_main_model, eva_transform_mean, eva_transform_std = prepare_face_models("BestWishYsh/ConsisID-preview", device="cuda", dtype=torch.bfloat16)
+face_helper_1, face_helper_2, face_clip_model, face_main_model, eva_transform_mean, eva_transform_std = prepare_face_models("BestWishYsh/ConsisID-preview", device=device, dtype=torch.bfloat16)
 
 # Load consisid base model
 pipe = ConsisIDPipeline.from_pretrained("BestWishYsh/ConsisID-preview", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 ```
 
 ## Identity-Preserving Text-to-Video
@@ -77,13 +80,15 @@ For identity-preserving text-to-video, pass a text prompt and an image contain c
 
 ```python
 from diffusers.utils import export_to_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 prompt = "The video captures a boy walking along a city street, filmed in black and white on a classic 35mm camera. His expression is thoughtful, his brow slightly furrowed as if he's lost in contemplation. The film grain adds a textured, timeless quality to the image, evoking a sense of nostalgia. Around him, the cityscape is filled with vintage buildings, cobblestone sidewalks, and softly blurred figures passing by, their outlines faint and indistinct. Streetlights cast a gentle glow, while shadows play across the boy's path, adding depth to the scene. The lighting highlights the boy's subtle smile, hinting at a fleeting moment of curiosity. The overall cinematic atmosphere, complete with classic film still aesthetics and dramatic contrasts, gives the scene an evocative and introspective feel."
 image = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/consisid/consisid_input.png?download=true"
 
 id_cond, id_vit_hidden, image, face_kps = process_face_embeddings_infer(face_helper_1, face_clip_model, face_helper_2, eva_transform_mean, eva_transform_std, face_main_model, "cuda", torch.bfloat16, image, is_align_face=True)
 
-video = pipe(image=image, prompt=prompt, num_inference_steps=50, guidance_scale=6.0, use_dynamic_cfg=False, id_vit_hidden=id_vit_hidden, id_cond=id_cond, kps_cond=face_kps, generator=torch.Generator("cuda").manual_seed(42))
+video = pipe(image=image, prompt=prompt, num_inference_steps=50, guidance_scale=6.0, use_dynamic_cfg=False, id_vit_hidden=id_vit_hidden, id_cond=id_cond, kps_cond=face_kps, generator=torch.Generator(device).manual_seed(42))
 export_to_video(video.frames[0], "output.mp4", fps=8)
 ```
 <table>

@@ -60,12 +60,15 @@ For example:
 ```py
 from diffusers import DiffusionPipeline, DDIMScheduler
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 pipe = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", dtype=torch.float16)
 pipe.scheduler = DDIMScheduler.from_config(
     pipe.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
 )
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
 image = pipe(prompt, guidance_rescale=0.7).images[0]

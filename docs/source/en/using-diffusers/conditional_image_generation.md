@@ -28,10 +28,13 @@ You can generate images from a prompt in 🤗 Diffusers in two steps:
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 pipeline = AutoPipelineForText2Image.from_pretrained(
 	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
-).to("cuda")
+).to(device)
 ```
 
 2. Pass a prompt to the pipeline to generate an image:
@@ -61,8 +64,8 @@ import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
 	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
-).to("cuda")
-generator = torch.Generator("cuda").manual_seed(31)
+).to(device)
+generator = torch.Generator(device).manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
 image
 ```
@@ -77,8 +80,8 @@ import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16"
-).to("cuda")
-generator = torch.Generator("cuda").manual_seed(31)
+).to(device)
+generator = torch.Generator(device).manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
 image
 ```
@@ -95,8 +98,8 @@ import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
 	"kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16
-).to("cuda")
-generator = torch.Generator("cuda").manual_seed(31)
+).to(device)
+generator = torch.Generator(device).manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
 image
 ```
@@ -114,7 +117,7 @@ import torch
 
 controlnet = ControlNetModel.from_pretrained(
 	"lllyasviel/control_v11p_sd15_openpose", dtype=torch.float16, variant="fp16"
-).to("cuda")
+).to(device)
 pose_image = load_image("https://huggingface.co/lllyasviel/control_v11p_sd15_openpose/resolve/main/images/control.png")
 ```
 
@@ -123,8 +126,8 @@ Pass the `controlnet` to the [`AutoPipelineForText2Image`], and provide the prom
 ```py
 pipeline = AutoPipelineForText2Image.from_pretrained(
 	"stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, dtype=torch.float16, variant="fp16"
-).to("cuda")
-generator = torch.Generator("cuda").manual_seed(31)
+).to(device)
+generator = torch.Generator(device).manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", image=pose_image, generator=generator).images[0]
 image
 ```
@@ -162,7 +165,7 @@ import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
 	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
-).to("cuda")
+).to(device)
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", height=768, width=512
 ).images[0]
@@ -186,7 +189,7 @@ import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
 	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
-).to("cuda")
+).to(device)
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", guidance_scale=3.5
 ).images[0]
@@ -218,7 +221,7 @@ import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
 	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
-).to("cuda")
+).to(device)
 image = pipeline(
 	prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
 	negative_prompt="ugly, deformed, disfigured, poor details, bad anatomy",
@@ -249,8 +252,8 @@ import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
 	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
-).to("cuda")
-generator = torch.Generator(device="cuda").manual_seed(30)
+).to(device)
+generator = torch.Generator(device=device).manual_seed(30)
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
 	generator=generator,
@@ -277,7 +280,7 @@ import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
 	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
-).to("cuda")
+).to(device)
 image = pipeline(
 	prompt_embeds=prompt_embeds, # generated from Compel
 	negative_prompt_embeds=negative_prompt_embeds, # generated from Compel
@@ -300,7 +303,7 @@ PyTorch 2.0 also supports a more memory-efficient attention mechanism called [*s
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16").to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16").to(device)
 pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 

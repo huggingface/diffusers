@@ -31,6 +31,7 @@ FLUX.1 Depth and Canny [dev] is a 12 billion parameter rectified flow transforme
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import FluxControlInpaintPipeline
 from diffusers.models.transformers import FluxTransformer2DModel
 from transformers import T5EncoderModel
@@ -39,6 +40,8 @@ from image_gen_aux import DepthPreprocessor # https://github.com/huggingface/ima
 from PIL import Image
 import numpy as np
 
+
+device = get_device()
 pipe = FluxControlInpaintPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-Depth-dev",
     dtype=torch.bfloat16,
@@ -55,7 +58,7 @@ pipe.transformer = transformer
 pipe.text_encoder_2 = text_encoder_2
 pipe.enable_model_cpu_offload()
 # ---------------------------------------------------------------
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "a blue robot singing opera with human-like expressions"
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")

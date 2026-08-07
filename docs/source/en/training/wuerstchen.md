@@ -157,10 +157,13 @@ Once training is complete, you can use your newly trained model for inference!
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoPipelineForText2Image
 from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS
 
-pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", dtype=torch.float16).to("cuda")
+
+device = get_device()
+pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", dtype=torch.float16).to(device)
 
 caption = "A cute bird naruto holding a shield"
 images = pipeline(

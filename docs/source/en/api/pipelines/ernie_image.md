@@ -41,11 +41,14 @@ If you prefer not to use PE, set use_pe=False.
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import ErnieImagePipeline
 from diffusers.utils import load_image
 
+
+device = get_device()
 pipe = ErnieImagePipeline.from_pretrained("baidu/ERNIE-Image", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 # If you are running low on GPU VRAM, you can enable offloading
 pipe.enable_model_cpu_offload()
 
@@ -56,7 +59,7 @@ images = pipe(
     width=1024,
     num_inference_steps=50,
     guidance_scale=4.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
     use_pe=True,
 ).images
 images[0].save("ernie-image-output.png")
@@ -66,9 +69,11 @@ images[0].save("ernie-image-output.png")
 import torch
 from diffusers import ErnieImagePipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = ErnieImagePipeline.from_pretrained("baidu/ERNIE-Image-Turbo", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 # If you are running low on GPU VRAM, you can enable offloading
 pipe.enable_model_cpu_offload()
 
@@ -79,7 +84,7 @@ images = pipe(
     width=1024,
     num_inference_steps=8,
     guidance_scale=1.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
     use_pe=True,
 ).images
 images[0].save("ernie-image-turbo-output.png")

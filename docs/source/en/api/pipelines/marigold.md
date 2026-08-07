@@ -115,10 +115,13 @@ put the image through the pipeline, and save the predictions:
 ```python
 import diffusers
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
     "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
-).to("cuda")
+).to(device)
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 
@@ -162,10 +165,12 @@ pipeline, and save the predictions:
 ```python
 import diffusers
 import torch
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = diffusers.MarigoldNormalsPipeline.from_pretrained(
     "prs-eth/marigold-normals-v1-1", variant="fp16", dtype=torch.float16
-).to("cuda")
+).to(device)
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 
@@ -212,10 +217,12 @@ Here is the sample code saving predictions made by the "Appearance" model:
 ```python
 import diffusers
 import torch
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = diffusers.MarigoldIntrinsicsPipeline.from_pretrained(
     "prs-eth/marigold-iid-appearance-v1-1", variant="fp16", dtype=torch.float16
-).to("cuda")
+).to(device)
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 
@@ -232,10 +239,12 @@ Another example demonstrating the predictions made by the "Lighting" model:
 ```python
 import diffusers
 import torch
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = diffusers.MarigoldIntrinsicsPipeline.from_pretrained(
     "prs-eth/marigold-iid-lighting-v1-1", variant="fp16", dtype=torch.float16
-).to("cuda")
+).to(device)
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 
@@ -284,7 +293,7 @@ steps to the minimum:
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
       "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
-  ).to("cuda")
+  ).to(device)
 
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
   
@@ -307,7 +316,7 @@ Note that using a lightweight VAE may slightly reduce the visual quality of the 
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
       "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
-  ).to("cuda")
+  ).to(device)
 
 + pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
 +     "madebyollin/taesd", dtype=torch.float16
@@ -329,7 +338,7 @@ Speeding them up can be achieved by using a more efficient attention processor:
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
       "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
-  ).to("cuda")
+  ).to(device)
 
 + pipe.vae.set_attn_processor(AttnProcessor2_0()) 
 + pipe.unet.set_attn_processor(AttnProcessor2_0())
@@ -351,7 +360,7 @@ the same pipeline instance is called repeatedly, such as within a loop.
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
       "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
-  ).to("cuda")
+  ).to(device)
 
   pipe.vae.set_attn_processor(AttnProcessor2_0()) 
   pipe.unet.set_attn_processor(AttnProcessor2_0())
@@ -376,7 +385,7 @@ The effect of ensembling is particularly well-seen with surface normals:
 ```diff
   import diffusers
 
-  pipe = diffusers.MarigoldNormalsPipeline.from_pretrained("prs-eth/marigold-normals-v1-1").to("cuda")
+  pipe = diffusers.MarigoldNormalsPipeline.from_pretrained("prs-eth/marigold-normals-v1-1").to(device)
 
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 
@@ -436,8 +445,9 @@ import torch
 from diffusers.models.attention_processor import AttnProcessor2_0
 from PIL import Image
 from tqdm import tqdm
+from diffusers.utils.torch_utils import get_device
 
-device = "cuda"
+device = get_device()
 path_in = "https://huggingface.co/spaces/prs-eth/marigold-lcm/resolve/c7adb5427947d2680944f898cd91d386bf0d4924/files/video/obama.mp4"
 path_out = "obama_depth.gif"
 
@@ -505,8 +515,9 @@ The snippet below demonstrates how to load an image, compute depth, and pass it 
 ```python
 import torch
 import diffusers
+from diffusers.utils.torch_utils import get_device
 
-device = "cuda"
+device = get_device()
 generator = torch.Generator(device=device).manual_seed(2024)
 image = diffusers.utils.load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_depth_source.png"
@@ -573,8 +584,9 @@ Maximizing `batch_size` will deliver maximum device utilization.
 ```python
 import diffusers
 import torch
+from diffusers.utils.torch_utils import get_device
 
-device = "cuda"
+device = get_device()
 seed = 2024
 
 generator = torch.Generator(device=device).manual_seed(seed)
@@ -604,10 +616,12 @@ It can be visualized as follows:
 ```python
 import diffusers
 import torch
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
     "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
-).to("cuda")
+).to(device)
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 

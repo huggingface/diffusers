@@ -18,12 +18,15 @@ Textual Inversion weights are very lightweight and typically only a few KBs beca
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoPipelineForText2Image
 
+
+device = get_device()
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     dtype=torch.float16
-).to("cuda")
+).to(device)
 ```
 
 Load the word embeddings with [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] and include the unique token in the prompt to activate its generation.
@@ -49,7 +52,7 @@ from diffusers import AutoPipelineForText2Image
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     dtype=torch.float16
-).to("cuda")
+).to(device)
 pipeline.load_textual_inversion(
     "EvilEngine/easynegative",
     weight_name="easynegative.safetensors",

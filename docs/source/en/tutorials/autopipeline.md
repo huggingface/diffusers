@@ -20,10 +20,13 @@ This is unlike [`DiffusionPipeline`], a *model-only* pipeline that automatically
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoPipelineForImage2Image
 
+
+device = get_device()
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-  "RunDiffusion/Juggernaut-XL-v9", dtype=torch.bfloat16, device_map="cuda",
+  "RunDiffusion/Juggernaut-XL-v9", dtype=torch.bfloat16, device_map=device,
 )
 print(pipeline)
 "StableDiffusionXLImg2ImgPipeline {
@@ -39,7 +42,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "RunDiffusion/Juggernaut-XL-v9", dtype=torch.bfloat16, device_map="cuda",
+  "RunDiffusion/Juggernaut-XL-v9", dtype=torch.bfloat16, device_map=device,
 )
 print(pipeline)
 "StableDiffusionXLPipeline {

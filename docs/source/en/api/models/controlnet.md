@@ -25,7 +25,10 @@ from the original format using [`FromOriginalModelMixin.from_single_file`] as fo
 
 ```py
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 url = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"  # can also be a local path
 controlnet = ControlNetModel.from_single_file(url)
 
@@ -43,8 +46,8 @@ from diffusers import ControlNetModel, UNet2DConditionModel
 lora_id = "stabilityai/control-lora"
 lora_filename = "control-LoRAs-rank128/control-lora-canny-rank128.safetensors"
 
-unet = UNet2DConditionModel.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", dtype=torch.bfloat16).to("cuda")
-controlnet = ControlNetModel.from_unet(unet).to(device="cuda", dtype=torch.bfloat16)
+unet = UNet2DConditionModel.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", dtype=torch.bfloat16).to(device)
+controlnet = ControlNetModel.from_unet(unet).to(device=device, dtype=torch.bfloat16)
 controlnet.load_lora_adapter(lora_id, weight_name=lora_filename, prefix=None, controlnet_config=controlnet.config)
 ```
 

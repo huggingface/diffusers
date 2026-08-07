@@ -29,9 +29,12 @@ Evaluation results can be found in section 4.1 of the original paper.
 
 ```python
 from diffusers import AsymmetricAutoencoderKL, StableDiffusionInpaintPipeline
+from diffusers.utils.torch_utils import get_device
 from diffusers.utils import load_image, make_image_grid
 
 
+
+device = get_device()
 prompt = "a photo of a person with beard"
 img_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/repaint/celeba_hq_256.png"
 mask_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/repaint/mask_256.png"
@@ -41,7 +44,7 @@ mask_image = load_image(mask_url).resize((512, 512))
 
 pipe = StableDiffusionInpaintPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-inpainting")
 pipe.vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
-pipe.to("cuda")
+pipe.to(device)
 
 image = pipe(prompt=prompt, image=original_image, mask_image=mask_image).images[0]
 make_image_grid([original_image, mask_image, image], rows=1, cols=3)

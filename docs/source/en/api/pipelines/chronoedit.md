@@ -39,18 +39,21 @@ Available Models/LoRAs:
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 import numpy as np
 from diffusers import AutoencoderKLWan, ChronoEditTransformer3DModel, ChronoEditPipeline
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
 from PIL import Image
 
+
+device = get_device()
 model_id = "nvidia/ChronoEdit-14B-Diffusers"
 image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", dtype=torch.float32)
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
 transformer = ChronoEditTransformer3DModel.from_pretrained(model_id, subfolder="transformer", dtype=torch.bfloat16)
 pipe = ChronoEditPipeline.from_pretrained(model_id, image_encoder=image_encoder, transformer=transformer, vae=vae, dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 image = load_image(
     "https://huggingface.co/spaces/nvidia/ChronoEdit/resolve/main/examples/3.png"
@@ -117,7 +120,7 @@ pipe = ChronoEditPipeline.from_pretrained(model_id, image_encoder=image_encoder,
 pipe.load_lora_weights("nvidia/ChronoEdit-14B-Diffusers", weight_name="lora/chronoedit_distill_lora.safetensors", adapter_name="distill")
 pipe.fuse_lora(adapter_names=["distill"], lora_scale=1.0)
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=2.0)
-pipe.to("cuda")
+pipe.to(device)
 
 image = load_image(
     "https://huggingface.co/spaces/nvidia/ChronoEdit/resolve/main/examples/3.png"
@@ -169,7 +172,7 @@ pipe.load_lora_weights("nvidia/ChronoEdit-14B-Diffusers-Paint-Brush-Lora", weigh
 pipe.load_lora_weights("nvidia/ChronoEdit-14B-Diffusers", weight_name="lora/chronoedit_distill_lora.safetensors", adapter_name="distill")
 pipe.fuse_lora(adapter_names=["paintbrush", "distill"], lora_scale=1.0)
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=2.0)
-pipe.to("cuda")
+pipe.to(device)
 
 image = load_image(
     "https://raw.githubusercontent.com/nv-tlabs/ChronoEdit/refs/heads/main/assets/images/input_paintbrush.png"

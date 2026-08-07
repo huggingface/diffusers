@@ -48,7 +48,10 @@ Call the `enable_cache()` function on a pipeline to enable cache acceleration. T
 ```python
 import cache_dit
 from diffusers import DiffusionPipeline 
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 # Can be any diffusion pipeline
 pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 
@@ -175,10 +178,11 @@ DBCache (Dual Block Caching) supports different configurations of compute blocks
 import cache_dit
 from diffusers import FluxPipeline
 
+device = get_device()
 pipe_or_adapter = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 
 # Default options, F8B0, 8 warmup steps, and unlimited cached 
 # steps for good balance between performance and precision
@@ -186,6 +190,7 @@ cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
 from cache_dit import BasicCacheConfig
+from diffusers.utils.torch_utils import get_device
 
 cache_dit.enable_cache(
     pipe_or_adapter,

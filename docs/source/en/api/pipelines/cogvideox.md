@@ -41,12 +41,15 @@ The quantized CogVideoX 5B model below requires ~16GB of VRAM.
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import CogVideoXPipeline, AutoModel, TorchAoConfig
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
 from torchao.quantization import Int8WeightOnlyConfig
 
+
+device = get_device()
 # quantize weights to int8 with torchao
 pipeline_quant_config = PipelineQuantizationConfig(
   quant_mapping={"transformer": TorchAoConfig(Int8WeightOnlyConfig())}
@@ -68,7 +71,7 @@ pipeline = CogVideoXPipeline.from_pretrained(
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 # model-offloading
 pipeline.enable_model_cpu_offload()
@@ -103,7 +106,7 @@ from diffusers.utils import export_to_video
 pipeline = CogVideoXPipeline.from_pretrained(
     "THUDM/CogVideoX-2b",
     dtype=torch.float16
-).to("cuda")
+).to(device)
 
 # torch.compile
 pipeline.transformer.to(memory_format=torch.channels_last)
@@ -146,7 +149,7 @@ export_to_video(video, "output.mp4", fps=8)
       "THUDM/CogVideoX-5b",
       dtype=torch.bfloat16
   )
-  pipeline.to("cuda")
+  pipeline.to(device)
 
   # load LoRA weights
   pipeline.load_lora_weights("finetrainers/CogVideoX-1.5-crush-smol-v0", adapter_name="crush-lora")

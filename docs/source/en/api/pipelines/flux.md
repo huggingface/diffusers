@@ -50,8 +50,11 @@ All checkpoints have different usage which we detail below.
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import FluxPipeline
 
+
+device = get_device()
 pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
 
@@ -99,12 +102,14 @@ out.save("image.png")
 import torch
 from diffusers import FluxFillPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/cup.png")
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/cup_mask.png")
 
 repo_id = "black-forest-labs/FLUX.1-Fill-dev"
-pipe = FluxFillPipeline.from_pretrained(repo_id, dtype=torch.bfloat16).to("cuda")
+pipe = FluxFillPipeline.from_pretrained(repo_id, dtype=torch.bfloat16).to(device)
 
 image = pipe(
     prompt="a white paper cup",
@@ -128,8 +133,10 @@ import torch
 from controlnet_aux import CannyDetector
 from diffusers import FluxControlPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Canny-dev", dtype=torch.bfloat16).to("cuda")
+device = get_device()
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Canny-dev", dtype=torch.bfloat16).to(device)
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
 control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
@@ -156,8 +163,10 @@ import torch
 from controlnet_aux import CannyDetector
 from diffusers import FluxControlPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to("cuda")
+device = get_device()
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to(device)
 pipe.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
@@ -187,8 +196,10 @@ import torch
 from diffusers import FluxControlPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image
 from image_gen_aux import DepthPreprocessor
+from diffusers.utils.torch_utils import get_device
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Depth-dev", dtype=torch.bfloat16).to("cuda")
+device = get_device()
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Depth-dev", dtype=torch.bfloat16).to(device)
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
 control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
@@ -216,8 +227,10 @@ import torch
 from diffusers import FluxControlPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image
 from image_gen_aux import DepthPreprocessor
+from diffusers.utils.torch_utils import get_device
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to("cuda")
+device = get_device()
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to(device)
 pipe.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
@@ -248,7 +261,9 @@ image.save("output.png")
 import torch
 from diffusers import FluxPriorReduxPipeline, FluxPipeline
 from diffusers.utils import load_image
-device = "cuda"
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 dtype = torch.bfloat16
 
 
@@ -281,11 +296,13 @@ Flux Kontext is a model that allows in-context control of the image generation p
 import torch
 from diffusers import FluxKontextPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = FluxKontextPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-Kontext-dev", dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png").convert("RGB")
 prompt = "Make Pikachu hold a sign that says 'Black Forest Labs is awesome', yarn art style, detailed, vibrant colors"
@@ -302,13 +319,15 @@ Flux Kontext comes with an integrity safety checker, which should be run after t
 
 ```python
 from flux.content_filters import PixtralContentFilter
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # ... pipeline invocation to generate images
 
-integrity_checker = PixtralContentFilter(torch.device("cuda"))
+integrity_checker = PixtralContentFilter(torch.device(device))
 image_ = np.array(image) / 255.0
 image_ = 2 * image_ - 1
-image_ = torch.from_numpy(image_).to("cuda", dtype=torch.float32).unsqueeze(0).permute(0, 3, 1, 2)
+image_ = torch.from_numpy(image_).to(device, dtype=torch.float32).unsqueeze(0).permute(0, 3, 1, 2)
 if integrity_checker.test_image(image_):
     raise ValueError("Your image has been flagged. Choose another prompt/image or try again.")
 ```
@@ -323,7 +342,9 @@ if integrity_checker.test_image(image_):
 import torch
 from diffusers import FluxKontextInpaintPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 prompt = "Change the yellow dinosaur to green one"
 img_url = (
     "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_input.jpeg?raw=true"
@@ -338,7 +359,7 @@ mask = load_image(mask_url)
 pipe = FluxKontextInpaintPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-Kontext-dev", dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 image = pipe(prompt=prompt, image=source, mask_image=mask, strength=1.0).images[0]
 image.save("kontext_inpainting_normal.png")
@@ -350,11 +371,13 @@ image.save("kontext_inpainting_normal.png")
 import torch
 from diffusers import FluxKontextInpaintPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = FluxKontextInpaintPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-Kontext-dev", dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "Replace this ball"
 img_url = "https://images.pexels.com/photos/39362/the-ball-stadion-football-the-pitch-39362.jpeg?auto=compress&cs=tinysrgb&dpr=1&w=500"
@@ -426,10 +449,12 @@ An IP-Adapter lets you prompt Flux with images, in addition to the text prompt. 
 import torch
 from diffusers import FluxPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux_ip_adapter_input.jpg").resize((1024, 1024))
 
@@ -487,27 +512,27 @@ apply_group_offloading(
     pipe.transformer,
     offload_type="leaf_level",
     offload_device=torch.device("cpu"),
-    onload_device=torch.device("cuda"),
+    onload_device=torch.device(device),
     use_stream=True,
 )
 apply_group_offloading(
     pipe.text_encoder, 
     offload_device=torch.device("cpu"),
-    onload_device=torch.device("cuda"),
+    onload_device=torch.device(device),
     offload_type="leaf_level",
     use_stream=True,
 )
 apply_group_offloading(
     pipe.text_encoder_2, 
     offload_device=torch.device("cpu"),
-    onload_device=torch.device("cuda"),
+    onload_device=torch.device(device),
     offload_type="leaf_level",
     use_stream=True,
 )
 apply_group_offloading(
     pipe.vae, 
     offload_device=torch.device("cpu"),
-    onload_device=torch.device("cuda"),
+    onload_device=torch.device(device),
     offload_type="leaf_level",
     use_stream=True,
 )

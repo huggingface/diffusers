@@ -48,10 +48,13 @@ The Helios model below requires ~6GB of VRAM.
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoModel, HeliosPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video
 
+
+device = get_device()
 vae = AutoModel.from_pretrained("BestWishYsh/Helios-Base", subfolder="vae", dtype=torch.float32)
 
 # group-offloading
@@ -61,7 +64,7 @@ pipeline = HeliosPipeline.from_pretrained(
     dtype=torch.bfloat16
 )
 pipeline.enable_group_offload(
-    onload_device=torch.device("cuda"),
+    onload_device=torch.device(device),
     offload_device=torch.device("cpu"),
     offload_type="leaf_level",
     use_stream=True,
@@ -88,7 +91,7 @@ output = pipeline(
     num_frames=99,
     num_inference_steps=50,
     guidance_scale=5.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_base_t2v_output.mp4", fps=24)
 ```
@@ -110,7 +113,7 @@ pipeline = HeliosPipeline.from_pretrained(
     vae=vae,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 # attention backend
 # pipeline.transformer.set_attention_backend("flash")
@@ -142,7 +145,7 @@ output = pipeline(
     num_frames=99,
     num_inference_steps=50,
     guidance_scale=5.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_base_t2v_output.mp4", fps=24)
 ```
@@ -162,7 +165,9 @@ The example below demonstrates how to use Helios-Base to generate video based on
 import torch
 from diffusers import AutoModel, HeliosPipeline
 from diffusers.utils import export_to_video, load_video, load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 vae = AutoModel.from_pretrained("BestWishYsh/Helios-Base", subfolder="vae", dtype=torch.float32)
 
 pipeline = HeliosPipeline.from_pretrained(
@@ -170,7 +175,7 @@ pipeline = HeliosPipeline.from_pretrained(
     vae=vae,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
@@ -194,7 +199,7 @@ output = pipeline(
     num_frames=99,
     num_inference_steps=50,
     guidance_scale=5.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_base_t2v_output.mp4", fps=24)
 
@@ -216,7 +221,7 @@ output = pipeline(
     num_frames=99,
     num_inference_steps=50,
     guidance_scale=5.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_base_i2v_output.mp4", fps=24)
 
@@ -237,7 +242,7 @@ output = pipeline(
     num_frames=99,
     num_inference_steps=50,
     guidance_scale=5.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_base_v2v_output.mp4", fps=24)
 ```
@@ -257,7 +262,9 @@ The example below demonstrates how to use Helios-Mid to generate video based on 
 import torch
 from diffusers import AutoModel, HeliosPyramidPipeline
 from diffusers.utils import export_to_video, load_video, load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 vae = AutoModel.from_pretrained("BestWishYsh/Helios-Mid", subfolder="vae", dtype=torch.float32)
 
 pipeline = HeliosPyramidPipeline.from_pretrained(
@@ -265,7 +272,7 @@ pipeline = HeliosPyramidPipeline.from_pretrained(
     vae=vae,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
@@ -291,7 +298,7 @@ output = pipeline(
     guidance_scale=5.0,
     use_zero_init=True,
     zero_steps=1,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_pyramid_t2v_output.mp4", fps=24)
 
@@ -315,7 +322,7 @@ output = pipeline(
     guidance_scale=5.0,
     use_zero_init=True,
     zero_steps=1,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_pyramid_i2v_output.mp4", fps=24)
 
@@ -338,7 +345,7 @@ output = pipeline(
     guidance_scale=5.0,
     use_zero_init=True,
     zero_steps=1,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_pyramid_v2v_output.mp4", fps=24)
 ```
@@ -358,7 +365,9 @@ The example below demonstrates how to use Helios-Distilled to generate video bas
 import torch
 from diffusers import AutoModel, HeliosPyramidPipeline
 from diffusers.utils import export_to_video, load_video, load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 vae = AutoModel.from_pretrained("BestWishYsh/Helios-Distilled", subfolder="vae", dtype=torch.float32)
 
 pipeline = HeliosPyramidPipeline.from_pretrained(
@@ -366,7 +375,7 @@ pipeline = HeliosPyramidPipeline.from_pretrained(
     vae=vae,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
@@ -391,7 +400,7 @@ output = pipeline(
     pyramid_num_inference_steps_list=[2, 2, 2],
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_distilled_t2v_output.mp4", fps=24)
 
@@ -414,7 +423,7 @@ output = pipeline(
     pyramid_num_inference_steps_list=[2, 2, 2],
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_distilled_i2v_output.mp4", fps=24)
 
@@ -436,7 +445,7 @@ output = pipeline(
     pyramid_num_inference_steps_list=[2, 2, 2],
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_distilled_v2v_output.mp4", fps=24)
 ```

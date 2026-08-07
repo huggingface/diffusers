@@ -251,11 +251,14 @@ Once training is complete, you can use your newly trained model for inference!
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 from diffusers.utils import load_image
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 controlnet = ControlNetModel.from_pretrained("path/to/controlnet", dtype=torch.float16)
 pipeline = StableDiffusionControlNetPipeline.from_pretrained(
     "path/to/base/model", controlnet=controlnet, dtype=torch.float16
-).to("cuda")
+).to(device)
 
 control_image = load_image("./conditioning_image_1.png")
 prompt = "pale golden rod circle with old lace background"

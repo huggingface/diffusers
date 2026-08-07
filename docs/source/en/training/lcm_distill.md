@@ -217,12 +217,15 @@ Once training is complete, you can use your new LCM for inference.
 ```py
 from diffusers import UNet2DConditionModel, DiffusionPipeline, LCMScheduler
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 unet = UNet2DConditionModel.from_pretrained("your-username/your-model", dtype=torch.float16, variant="fp16")
 pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, dtype=torch.float16, variant="fp16")
 
 pipeline.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-pipeline.to("cuda")
+pipeline.to(device)
 
 prompt = "sushi rolls in the form of panda heads, sushi platter"
 
