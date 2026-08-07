@@ -445,12 +445,12 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_from = self.sigmas[self.step_index]
         sigma_to = self.sigmas[self.step_index + 1]
         sigma_up = (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5
-        # Clamp the radicand to 0. sigma_up is mathematically <= sigma_to, but with
-        # beta_schedule="squaredcos_cap_v2" the sigma dynamic range is so large that in
-        # float32 sigma_up can round to a value fractionally larger than sigma_to, making
-        # sigma_to**2 - sigma_up**2 negative and producing NaN. sigma_up == sigma_to is the
-        # correct limit, so sigma_down == 0 there.
-        sigma_down = ((sigma_to**2 - sigma_up**2).clamp(min=0)) ** 0.5
+        # sigma_down = sqrt(sigma_to**4 / sigma_from**2) = sigma_to**2 / sigma_from,
+        # the algebraic form of sqrt(sigma_to**2 - sigma_up**2). The textbook form suffers
+        # catastrophic cancellation under beta_schedule="squaredcos_cap_v2", where the sigma
+        # dynamic range is so large that in float32 sigma_up rounds to a value fractionally
+        # larger than sigma_to — the radicand goes negative and sigma_down becomes NaN.
+        sigma_down = sigma_to**2 / sigma_from
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
