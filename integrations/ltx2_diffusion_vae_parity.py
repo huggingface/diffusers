@@ -1,4 +1,7 @@
-"""Component parity: native LTX-2.4 `DiffusionVideoDecoder` vs diffusers `LTX2VideoDiffusionDecoder3d`.
+"""Component parity: the native `DiffusionVideoDecoder` vs diffusers `LTX2VideoDiffusionDecoder3d`.
+
+Runs against either the LTX-2.4 or LTX-2.5 reference package: 2.5 reworked the decoder's staging API and
+the shims under "Reference-version shims" below absorb the difference.
 
 TEMPORARY / for-visibility only. This whole `integrations/` directory is meant to be committed
 transiently while the modular LTX-2 integration is under review, and removed before the final merge.
@@ -7,7 +10,7 @@ It is NOT a pytest test and is not wired into CI — run it manually, and note t
 
 Both implementations are built in this one process from the same random weights and fed the same inputs,
 per the repo's parity-testing convention. Run it in an environment that has *both* the native `ltx_core`
-package and `natten` installed, e.g. the rc2 source venv:
+package and `natten` installed, e.g. the reference source venv:
 
     PYTHONPATH=src python integrations/ltx2_diffusion_vae_parity.py
 
@@ -80,7 +83,70 @@ def build_native(device, dtype):
     # `PerChannelStatistics` registers its buffers with `torch.empty`, so they must be written before use.
     decoder.per_channel_statistics.get_buffer("mean-of-means").zero_()
     decoder.per_channel_statistics.get_buffer("std-of-means").fill_(1.0)
-    return decoder.to(device=device, dtype=dtype).eval()
+    decoder = decoder.to(device=device, dtype=dtype).eval()
+    _install_combined_pathway(decoder)
+    return decoder
+
+
+# --- Reference-version shims -------------------------------------------------------------------------
+# The reference decoder's staging API changed between LTX-2.4 and LTX-2.5. 2.5 added selectable decode
+# pathways (`DiffVAEMode`), which split stages 1-4 apart so the chunked pathway can defer stage 4, and
+# renamed the diff-step input builder. The three shims below keep this harness runnable against either
+# release; each falls back to the older name when the newer one is absent.
+
+
+def _install_combined_pathway(native):
+    """Put 2.5's `diff_blocks` on the COMBINED pathway, eagerly.
+
+    2.5 ships three decode presets and installs one by swapping `__class__` on every block, so an
+    as-constructed decoder has no `forward_combined` at all. This port implements the COMBINED pathway
+    (combined context, full-volume attention), so that is what the comparison has to install — with
+    compilation off, since we want to compare math and not Inductor output. 2.4 had no pathway system
+    and needs nothing.
+    """
+    try:
+        from ltx_core.model.video_vae.transformer.apply import apply_diffvae_config
+        from ltx_core.model.video_vae.transformer.config import DiffVAEBlockKind, DiffVAEConfig
+    except ImportError:
+        return native  # 2.4-era reference: single hard-wired pathway
+
+    return apply_diffvae_config(
+        native,
+        DiffVAEConfig(
+            block=DiffVAEBlockKind.COMBINED,
+            w_chunks=1,
+            natten_backend=None,
+            compile_blocks=False,
+            compile_det_stages=False,
+        ),
+    )
+
+
+def native_context(native, latent):
+    """Stages 1-4 of the reference decoder, as one call.
+
+    2.4 did the trailing pad-and-crop inside `forward_pre_diffusion`. 2.5 moved the pad out to the caller
+    (so the tiled path can pad once per volume rather than once per tile) and left the matching crop
+    behind `forward_stage_4(pad_trailing=True)`, keyed off the same frame count. So the two halves have to
+    be paired explicitly here; padding by `_natten_trailing_pad_latent_frames` is what the diffusers side
+    does internally via `trailing_pad_latent_frames`. Skipping the pad while keeping the crop silently
+    removes real frames — at this config the context comes back with 3 frames instead of 17.
+    """
+    if hasattr(native, "forward_pre_diffusion"):
+        return native.forward_pre_diffusion(latent)
+
+    from ltx_core.model.video_vae import diffusion_tiling
+
+    padded = diffusion_tiling.pad_trailing_latent_for_natten_border(
+        latent, native._natten_trailing_pad_latent_frames
+    )
+    return native.forward_stage_4(native.forward_stages_1_to_3(padded))
+
+
+def native_step_input(native, context, x_t):
+    """`[context | conv_in_x_t(patchify(x_t))]`, the single buffer `forward_diff_step` consumes."""
+    build = getattr(native, "_combined_for_diff_step", None) or native._context_and_x_for_diff_step
+    return build(context, x_t)
 
 
 def convert_state_dict(native_state_dict):
@@ -189,9 +255,9 @@ def main():
     diffusers_decoder = build_diffusers(native, device, dtype, processor="natten")
 
     # Stage 1-4 context.
-    native_context = native.forward_pre_diffusion(latent).clone()
+    native_ctx = native_context(native, latent).clone()
     diffusers_context = diffusers_decoder.forward_pre_diffusion(latent)
-    ok = ok_components & report("pre_diffusion context", native_context, diffusers_context)
+    ok = ok_components & report("pre_diffusion context", native_ctx, diffusers_context)
 
     # One stage-5 step on identical injected noise.
     num_frames = (LATENT_SHAPE[2] - 1) * CONFIG["temporal_compression_ratio"] + 1
@@ -203,7 +269,7 @@ def main():
     ).to(device=device, dtype=dtype)
     timestep = torch.ones((LATENT_SHAPE[0],), device=device, dtype=torch.float32)
 
-    native_pred = native.forward_diff_step(native._combined_for_diff_step(native_context, x_t), timestep).clone()
+    native_pred = native.forward_diff_step(native_step_input(native, native_ctx, x_t), timestep).clone()
     diffusers_pred = diffusers_decoder.forward_diffusion_step(diffusers_context, x_t, timestep)
     ok &= report("diffusion step (x0)", native_pred, diffusers_pred)
 
