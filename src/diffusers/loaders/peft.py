@@ -15,6 +15,7 @@
 import inspect
 import json
 import os
+import threading
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
@@ -44,6 +45,12 @@ from .unet_loader_utils import _maybe_expand_lora_scales
 
 
 logger = logging.get_logger(__name__)
+
+# PEFT's `init_empty_weights()` context monkey-patches `torch.nn.Module.register_parameter`
+# process-wide on entry and restores the value captured at entry on exit, which is not
+# thread-safe. Concurrent adapter injection with `low_cpu_mem_usage=True` can interleave these
+# capture/restore operations and leak the patch, so the low-memory injection path is serialized.
+_LOW_CPU_MEM_USAGE_INJECTION_LOCK = threading.Lock()
 
 _SET_ADAPTER_SCALE_FN_MAPPING = defaultdict(
     lambda: (lambda model_cls, weights: weights),
@@ -324,9 +331,15 @@ class PeftAdapterMixin:
                     # it to None
                     incompatible_keys = None
                 else:
-                    inject_adapter_in_model(
-                        lora_config, self, adapter_name=adapter_name, state_dict=state_dict, **peft_kwargs
-                    )
+                    if low_cpu_mem_usage:
+                        with _LOW_CPU_MEM_USAGE_INJECTION_LOCK:
+                            inject_adapter_in_model(
+                                lora_config, self, adapter_name=adapter_name, state_dict=state_dict, **peft_kwargs
+                            )
+                    else:
+                        inject_adapter_in_model(
+                            lora_config, self, adapter_name=adapter_name, state_dict=state_dict, **peft_kwargs
+                        )
                     incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
 
                     if self._prepare_lora_hotswap_kwargs is not None:
