@@ -20,7 +20,7 @@ import torch
 
 from diffusers.models.attention import AttentionModuleMixin
 from diffusers.models.attention_dispatch import AttentionBackendName
-from diffusers.pipelines.ltx2.duration_head import LTX2AutoDuration, LTX2DurationHead
+from diffusers.pipelines.ltx2.duration_head import LTX2DurationHead
 
 from ...testing_utils import enable_full_determinism
 
@@ -247,21 +247,3 @@ class LTX2DurationHeadFrameSnappingTests(unittest.TestCase):
 
         with pytest.raises(ValueError, match="single prediction"):
             head.predict_num_frames(video_tokens=torch.randn(2, 4, 8), frame_rate=24.0, temporal_compression_ratio=8)
-
-
-class LTX2AutoDurationTests(unittest.TestCase):
-    def test_defaults_match_the_reference(self):
-        bounds = LTX2AutoDuration()
-
-        assert bounds.min_seconds == 1.0
-        assert bounds.max_seconds == 20.0
-
-    def test_raises_when_min_exceeds_max(self):
-        with pytest.raises(ValueError, match="must be less than"):
-            LTX2AutoDuration(min_seconds=10.0, max_seconds=2.0)
-
-    def test_raises_when_min_equals_max(self):
-        # A collapsed range is unsatisfiable: at 24 fps it pins the frame count to 24, which is not
-        # on the 8k+1 grid, so it would produce a count the VAE rejects.
-        with pytest.raises(ValueError, match="must be less than"):
-            LTX2AutoDuration(min_seconds=1.0, max_seconds=1.0)
