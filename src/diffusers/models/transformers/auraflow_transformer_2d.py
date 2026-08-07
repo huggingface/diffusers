@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale, logging
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
 from ..attention import AttentionMixin
 from ..attention_processor import (
     Attention,
@@ -435,8 +435,10 @@ class AuraFlowTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAd
         temb = self.time_step_embed(timestep).to(dtype=next(self.parameters()).dtype)
         temb = self.time_step_proj(temb)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+        register_tokens_dtype = maybe_adjust_dtype_for_device(encoder_hidden_states.dtype, encoder_hidden_states.device)
+        register_tokens = self.register_tokens.to(device=encoder_hidden_states.device, dtype=register_tokens_dtype)
         encoder_hidden_states = torch.cat(
-            [self.register_tokens.repeat(encoder_hidden_states.size(0), 1, 1), encoder_hidden_states], dim=1
+            [register_tokens.repeat(encoder_hidden_states.size(0), 1, 1), encoder_hidden_states], dim=1
         )
 
         # MMDiT blocks.
