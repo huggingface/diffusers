@@ -187,3 +187,30 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         torch.testing.assert_close(scheduler.scale_noise(sample, zero_t, noise), sample)
         full_t = torch.tensor([float(scheduler.config.num_train_timesteps)])
         torch.testing.assert_close(scheduler.scale_noise(sample, full_t, noise), noise)
+
+    def test_set_timesteps_no_double_shift(self):
+        """set_timesteps must not apply the shift formula twice (regression #13243).
+
+        When sigma_min/sigma_max were stored *after* shifting in __init__, calling
+        set_timesteps fed already-shifted values back through the shift formula a
+        second time.  After the fix the schedule produced by set_timesteps must be
+        identical to the one built in __init__ for the same number of steps.
+        """
+        shift = 3.0
+        n = 1000
+        scheduler = self.scheduler_class(**self.get_default_config(shift=shift))
+
+        # The sigmas stored in __init__ — these are the ground-truth shifted values.
+        init_sigmas = scheduler.sigmas[:-1]  # drop terminal 0 added by set_timesteps
+
+        scheduler.set_timesteps(num_inference_steps=n)
+        inferred_sigmas = scheduler.sigmas[:-1]
+
+        self.assertEqual(len(init_sigmas), len(inferred_sigmas))
+        for i, (s_init, s_infer) in enumerate(zip(init_sigmas, inferred_sigmas)):
+            self.assertAlmostEqual(
+                s_init.item(),
+                s_infer.item(),
+                places=5,
+                msg=f"sigma mismatch at index {i}: init={s_init:.6f} vs set_timesteps={s_infer:.6f}",
+            )
