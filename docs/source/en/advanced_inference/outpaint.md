@@ -53,10 +53,13 @@ import random
 
 import requests
 import torch
+from diffusers.utils.torch_utils import get_device
 from controlnet_aux import ZoeDetector
 from PIL import Image, ImageOps
 
 from diffusers import (
+
+device = get_device()
     AutoencoderKL,
     ControlNetModel,
     StableDiffusionXLControlNetPipeline,
@@ -117,10 +120,10 @@ controlnets = [
         "diffusers/controlnet-zoe-depth-sdxl-1.0", dtype=torch.float16
     ),
 ]
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16).to("cuda")
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16).to(device)
 pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0", dtype=torch.float16, variant="fp16", controlnet=controlnets, vae=vae
-).to("cuda")
+).to(device)
 
 def generate_image(prompt, negative_prompt, inpaint_image, zoe_image, seed: int = None):
     if seed is None:
@@ -176,7 +179,7 @@ pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
     dtype=torch.float16,
     variant="fp16",
     vae=vae,
-).to("cuda")
+).to(device)
 ```
 
 Prepare a mask for the final outpainted image. To create a more natural transition between the original image and the outpainted background, blur the mask to help it blend better.

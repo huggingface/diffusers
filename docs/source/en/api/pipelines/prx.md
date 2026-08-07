@@ -44,7 +44,7 @@ from diffusers.pipelines.prx import PRXPipeline
 
 # Load pipeline - VAE and text encoder will be loaded from HuggingFace
 pipe = PRXPipeline.from_pretrained("Photoroom/prx-512-t2i-sft", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "A front-facing portrait of a lion the golden savanna at sunset."
 image = pipe(prompt, num_inference_steps=28, guidance_scale=5.0).images[0]
@@ -57,6 +57,7 @@ Load components individually to customize the pipeline for instance to use quant
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers.pipelines.prx import PRXPipeline
 from diffusers.models import AutoencoderKL, AutoencoderDC
 from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
@@ -65,6 +66,8 @@ from transformers import T5GemmaModel, GemmaTokenizerFast
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as BitsAndBytesConfig
 
+
+device = get_device()
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
 # Load transformer
 transformer = PRXTransformer2DModel.from_pretrained(
@@ -101,7 +104,7 @@ pipe = PRXPipeline(
     tokenizer=tokenizer,
     vae=vae
 )
-pipe.to("cuda")
+pipe.to(device)
 ```
 
 

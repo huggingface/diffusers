@@ -51,11 +51,14 @@ During inference:
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 import soundfile as sf
 from diffusers import AceStepPipeline
 
+
+device = get_device()
 pipe = AceStepPipeline.from_pretrained("ACE-Step/acestep-v15-xl-turbo-diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 audio = pipe(
     prompt="A beautiful piano piece with soft melodies and gentle rhythm",

@@ -42,12 +42,15 @@ Kandinsky 5.0 Image Lite:
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import Kandinsky5T2IPipeline
 
+
+device = get_device()
 # Load the pipeline
 model_id = "kandinskylab/Kandinsky-5.0-T2I-Lite-sft-Diffusers"
 pipe = Kandinsky5T2IPipeline.from_pretrained(model_id)
-_ = pipe.to(device='cuda',dtype=torch.bfloat16)
+_ = pipe.to(device=device,dtype=torch.bfloat16)
 
 # Generate image
 prompt = "A fluffy, expressive cat wearing a bright red hat with a soft, slightly textured fabric. The hat should look cozy and well-fitted on the cat’s head. On the front of the hat, add clean, bold white text that reads “SWEET”, clearly visible and neatly centered. Ensure the overall lighting highlights the hat’s color and the cat’s fur details."
@@ -68,11 +71,14 @@ output = pipe(
 import torch
 from diffusers import Kandinsky5I2IPipeline
 from diffusers.utils import load_image 
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 # Load the pipeline
 model_id = "kandinskylab/Kandinsky-5.0-I2I-Lite-sft-Diffusers"
 pipe = Kandinsky5I2IPipeline.from_pretrained(model_id)
 
-_ = pipe.to(device='cuda',dtype=torch.bfloat16)
+_ = pipe.to(device=device,dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()                                               # <--- Enable CPU offloading for single GPU inference
 
 # Edit the input image

@@ -29,11 +29,14 @@ The abstract from the technical report is:
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 
 from diffusers import DPMSolverMultistepScheduler, KolorsPipeline
 
+
+device = get_device()
 pipe = KolorsPipeline.from_pretrained("Kwai-Kolors/Kolors-diffusers", dtype=torch.float16, variant="fp16")
-pipe.to("cuda")
+pipe.to(device)
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 
 image = pipe(

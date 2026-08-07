@@ -205,11 +205,14 @@ After training is finished, you can use your new InstructPix2Pix for inference:
 import PIL
 import requests
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import StableDiffusionInstructPix2PixPipeline
 from diffusers.utils import load_image
 
-pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained("your_cool_model", dtype=torch.float16).to("cuda")
-generator = torch.Generator("cuda").manual_seed(0)
+
+device = get_device()
+pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained("your_cool_model", dtype=torch.float16).to(device)
+generator = torch.Generator(device).manual_seed(0)
 
 image = load_image("https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/test_pix2pix_4.png")
 prompt = "add some ducks to the lake"

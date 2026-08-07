@@ -23,13 +23,16 @@ This pipeline supports loading from a local directory or Hugging Face Hub reposi
 ```py
 import soundfile as sf
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import LongCatAudioDiTPipeline
 
+
+device = get_device()
 pipeline = LongCatAudioDiTPipeline.from_pretrained(
     "ruixiangma/LongCat-AudioDiT-1B-Diffusers",
     dtype=torch.float16,
 )
-pipeline = pipeline.to("cuda")
+pipeline = pipeline.to(device)
 
 prompt = "A calm ocean wave ambience with soft wind in the background."
 audio = pipeline(
@@ -37,7 +40,7 @@ audio = pipeline(
     audio_duration_s=5.0,
     num_inference_steps=16,
     guidance_scale=4.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).audios[0, 0]
 
 sf.write("longcat.wav", audio, pipeline.sample_rate)
@@ -46,7 +49,7 @@ sf.write("longcat.wav", audio, pipeline.sample_rate)
 ## Tips
 
 - `audio_duration_s` is the most direct way to control output duration.
-- Use `generator=torch.Generator("cuda").manual_seed(42)` to make generation reproducible.
+- Use `generator=torch.Generator(device).manual_seed(42)` to make generation reproducible.
 - Output shape is `(batch, channels, samples)` - use `.audios[0, 0]` to get a single audio sample.
 - The pipeline outputs mono audio (1 channel). If you need stereo, you can duplicate the channel: `audio.unsqueeze(0).repeat(1, 2, 1)`.
 

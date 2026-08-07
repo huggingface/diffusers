@@ -24,18 +24,21 @@ Check out what some of these video models are capable of below.
 ```py
 # pip install ftfy
 import torch
+from diffusers.utils.torch_utils import get_device
 import numpy as np
 from diffusers import AutoModel, WanPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
+
+device = get_device()
 text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16)
 vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32)
 transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 
 # group-offloading
-onload_device = torch.device("cuda")
+onload_device = torch.device(device)
 offload_device = torch.device("cpu")
 apply_group_offloading(text_encoder,
     onload_device=onload_device,
@@ -57,7 +60,7 @@ pipeline = WanPipeline.from_pretrained(
     text_encoder=text_encoder,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 prompt = """
 The camera rushes from far to near in a low-angle shot, 
@@ -138,7 +141,7 @@ transformer.enable_layerwise_casting(
 pipeline = LTXPipeline.from_pretrained("Lightricks/LTX-Video", transformer=transformer, dtype=torch.bfloat16)
 
 # group-offloading
-onload_device = torch.device("cuda")
+onload_device = torch.device(device)
 offload_device = torch.device("cpu")
 pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True)
 apply_group_offloading(pipeline.text_encoder, onload_device=onload_device, offload_type="block_level", num_blocks_per_group=2)
@@ -187,7 +190,7 @@ from diffusers.utils import export_to_video
 
 pipeline = LTXPipeline.from_pretrained(
     "Lightricks/LTX-Video", dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 
 prompt = """
 A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman 
@@ -222,7 +225,7 @@ from diffusers.utils import export_to_video
 pipeline = CogVideoXPipeline.from_pretrained(
   "THUDM/CogVideoX-2b",
   dtype=torch.float16
-).to("cuda")
+).to(device)
 
 prompt = """
 A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over
@@ -261,7 +264,7 @@ pipeline = WanPipeline.from_pretrained(
 pipeline.scheduler = UniPCMultistepScheduler.from_config(
   pipeline.scheduler.config, flow_shift=5.0
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 pipeline.load_lora_weights("benjamin-paine/steamboat-willie-14b", adapter_name="steamboat-willie")
 pipeline.set_adapters("steamboat-willie")
@@ -308,7 +311,7 @@ vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="va
 transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 
 # group-offloading
-onload_device = torch.device("cuda")
+onload_device = torch.device(device)
 offload_device = torch.device("cpu")
 apply_group_offloading(text_encoder,
     onload_device=onload_device,
@@ -330,7 +333,7 @@ pipeline = WanPipeline.from_pretrained(
     text_encoder=text_encoder,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 prompt = """
 The camera rushes from far to near in a low-angle shot, 
@@ -385,7 +388,7 @@ pipeline = WanPipeline.from_pretrained(
 pipeline.scheduler = UniPCMultistepScheduler.from_config(
   pipeline.scheduler.config, flow_shift=5.0
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 pipeline.load_lora_weights("benjamin-paine/steamboat-willie-14b", adapter_name="steamboat-willie")
 pipeline.set_adapters("steamboat-willie")
@@ -423,7 +426,7 @@ from diffusers.utils import export_to_video
 pipeline = CogVideoXPipeline.from_pretrained(
   "THUDM/CogVideoX-2b",
   dtype=torch.float16
-).to("cuda")
+).to(device)
 
 # torch.compile
 pipeline.transformer.to(memory_format=torch.channels_last)

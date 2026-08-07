@@ -211,8 +211,11 @@ After you've finished training, you can use your newly trained SDXL model for in
 ```py
 from diffusers import DiffusionPipeline
 import torch
+from diffusers.utils.torch_utils import get_device
 
-pipeline = DiffusionPipeline.from_pretrained("path/to/your/model", dtype=torch.float16).to("cuda")
+
+device = get_device()
+pipeline = DiffusionPipeline.from_pretrained("path/to/your/model", dtype=torch.float16).to(device)
 
 prompt = "A naruto with green eyes and red legs."
 image = pipeline(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]

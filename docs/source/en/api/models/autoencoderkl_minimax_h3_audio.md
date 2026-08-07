@@ -21,11 +21,14 @@ The autoencoder is **mono**, and it normalizes latents per channel with `latents
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoencoderKLMiniMaxH3Audio
 
+
+device = get_device()
 audio_vae = AutoencoderKLMiniMaxH3Audio.from_pretrained(
     "MiniMaxAI/MiniMax-H3", subfolder="audio_vae", dtype=torch.float32
-).to("cuda")
+).to(device)
 ```
 
 ## AutoencoderKLMiniMaxH3Audio

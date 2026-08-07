@@ -20,14 +20,17 @@ Start by creating an instance of the [`StableDiffusionDepth2ImgPipeline`]:
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import StableDiffusionDepth2ImgPipeline
 from diffusers.utils import load_image, make_image_grid
 
+
+device = get_device()
 pipeline = StableDiffusionDepth2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-depth",
     dtype=torch.float16,
     use_safetensors=True,
-).to("cuda")
+).to(device)
 ```
 
 Now pass your prompt to the pipeline. You can also pass a `negative_prompt` to prevent certain words from guiding how an image is generated:

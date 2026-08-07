@@ -27,9 +27,12 @@ Define a callback with either of the `cutoff` arguments and pass it to the `call
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
 from diffusers.callbacks import SDXLCFGCutoffCallback
 
+
+device = get_device()
 callback = SDXLCFGCutoffCallback(cutoff_step_ratio=0.4)
 # if using cutoff_step_index
 # callback = SDXLCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=10)
@@ -37,7 +40,7 @@ callback = SDXLCFGCutoffCallback(cutoff_step_ratio=0.4)
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16,
-    device_map="cuda"
+    device_map=device
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, use_karras_sigmas=True)
 
@@ -124,7 +127,7 @@ from diffusers import AutoPipelineForText2Image
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16,
-    device_map="cuda"
+    device_map=device
 )
 
 image = pipeline(

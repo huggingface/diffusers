@@ -25,12 +25,15 @@ The quantization configuration of a prequantized SDNQ checkpoint is stored in it
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline
 
+
+device = get_device()
 pipe = DiffusionPipeline.from_pretrained(
     "Disty0/Z-Image-Turbo-SDNQ-uint4-svd-r32",
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 
 image = pipe("a cat holding a sign that says hello").images[0]
 image.save("output.png")
@@ -46,7 +49,9 @@ Pass an [`SDNQConfig`] to `from_pretrained` to quantize a model during loading. 
 ```python
 import torch
 from diffusers import DiffusionPipeline, PipelineQuantizationConfig, SDNQConfig
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipeline_quant_config = PipelineQuantizationConfig(
     quant_mapping={"transformer": SDNQConfig(weights_dtype="uint4", use_svd=True)}
 )
@@ -54,7 +59,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "Tongyi-MAI/Z-Image-Turbo",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 ```
 
 Or quantize a single model component directly.
@@ -88,11 +93,13 @@ import torch
 from diffusers import DiffusionPipeline
 from sdnq.common import use_torch_compile as triton_is_available
 from sdnq.loader import apply_sdnq_options_to_model
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = DiffusionPipeline.from_pretrained(
     "Disty0/Z-Image-Turbo-SDNQ-uint4-svd-r32",
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 
 if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available()):
     pipe.transformer = apply_sdnq_options_to_model(pipe.transformer, use_quantized_matmul=True)

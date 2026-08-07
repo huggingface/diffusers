@@ -18,13 +18,16 @@ To use with Stable Diffusion v-2.1:
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline, AutoencoderTiny
 
+
+device = get_device()
 pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1-base", dtype=torch.float16
 )
 pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd", dtype=torch.float16)
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 prompt = "slice of delicious New York-style berry cheesecake"
 image = pipe(prompt, num_inference_steps=25).images[0]
@@ -36,12 +39,14 @@ To use with Stable Diffusion XL 1.0
 ```python
 import torch
 from diffusers import DiffusionPipeline, AutoencoderTiny
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16
 )
 pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesdxl", dtype=torch.float16)
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 prompt = "slice of delicious New York-style berry cheesecake"
 image = pipe(prompt, num_inference_steps=25).images[0]

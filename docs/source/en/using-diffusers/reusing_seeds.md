@@ -32,10 +32,13 @@ Use [manual_seed](https://docs.pytorch.org/docs/stable/generated/torch.manual_se
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 import numpy as np
 from diffusers import DDIMPipeline
 
-ddim = DDIMPipeline.from_pretrained("google/ddpm-cifar10-32", device_map="cuda")
+
+device = get_device()
+ddim = DDIMPipeline.from_pretrained("google/ddpm-cifar10-32", device_map=device)
 generator = torch.manual_seed(0)
 image = ddim(num_inference_steps=2, output_type="np", generator=generator).images
 print(np.abs(image).sum())

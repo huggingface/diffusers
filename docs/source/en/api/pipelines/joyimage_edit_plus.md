@@ -22,13 +22,16 @@ JoyAI-Image-Edit-Plus is a multi-image instruction-guided editing model that acc
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from PIL import Image
 from diffusers import JoyImageEditPlusPipeline
 
+
+device = get_device()
 pipeline = JoyImageEditPlusPipeline.from_pretrained(
     "jdopensource/JoyAI-Image-Edit-Plus-Diffusers", dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 images = [
     Image.open("reference_0.png").convert("RGB"),
@@ -45,7 +48,7 @@ output = pipeline(
     width=target_w,
     num_inference_steps=30,
     guidance_scale=4.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).images[0]
 output.save("joyimage_edit_plus_output.png")
 ```

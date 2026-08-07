@@ -41,10 +41,13 @@ The LTX-Video model below requires ~10GB of VRAM.
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import LTXPipeline, AutoModel
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
 
+
+device = get_device()
 # fp8 layerwise weight-casting
 transformer = AutoModel.from_pretrained(
     "Lightricks/LTX-Video",
@@ -58,7 +61,7 @@ transformer.enable_layerwise_casting(
 pipeline = LTXPipeline.from_pretrained("Lightricks/LTX-Video", transformer=transformer, dtype=torch.bfloat16)
 
 # group-offloading
-onload_device = torch.device("cuda")
+onload_device = torch.device(device)
 offload_device = torch.device("cpu")
 pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True)
 apply_group_offloading(pipeline.text_encoder, onload_device=onload_device, offload_type="block_level", num_blocks_per_group=2)
@@ -151,8 +154,8 @@ export_to_video(video, "output.mp4", fps=24)
 
   pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.7-dev", dtype=torch.bfloat16)
   pipeline_upsample = LTXLatentUpsamplePipeline.from_pretrained("Lightricks/ltxv-spatial-upscaler-0.9.7", vae=pipeline.vae, dtype=torch.bfloat16)
-  pipeline.to("cuda")
-  pipe_upsample.to("cuda")
+  pipeline.to(device)
+  pipe_upsample.to(device)
   pipeline.vae.enable_tiling()
 
   def round_to_nearest_resolution_acceptable_by_vae(height, width):
@@ -249,8 +252,8 @@ export_to_video(video, "output.mp4", fps=24)
 
   pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.7-distilled", dtype=torch.bfloat16)
   pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained("Lightricks/ltxv-spatial-upscaler-0.9.7", vae=pipeline.vae, dtype=torch.bfloat16)
-  pipeline.to("cuda")
-  pipe_upsample.to("cuda")
+  pipeline.to(device)
+  pipe_upsample.to(device)
   pipeline.vae.enable_tiling()
 
   def round_to_nearest_resolution_acceptable_by_vae(height, width):
@@ -341,8 +344,8 @@ export_to_video(video, "output.mp4", fps=24)
   # TODO: Update the checkpoint here once updated in LTX org
   upsampler = LTXLatentUpsamplerModel.from_pretrained("a-r-r-o-w/LTX-0.9.8-Latent-Upsampler", dtype=torch.bfloat16)
   pipe_upsample = LTXLatentUpsamplePipeline(vae=pipeline.vae, latent_upsampler=upsampler).to(torch.bfloat16)
-  pipeline.to("cuda")
-  pipe_upsample.to("cuda")
+  pipeline.to(device)
+  pipe_upsample.to(device)
   pipeline.vae.enable_tiling()
 
   def round_to_nearest_resolution_acceptable_by_vae(height, width):

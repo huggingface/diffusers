@@ -43,9 +43,12 @@ Model weights may be stored in separate subfolders on the Hub or locally, in whi
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", dtype=torch.float16, variant="fp16")
-pipeline = pipeline.to("cuda")
+pipeline = pipeline.to(device)
 ```
 
 You can also use the [`~StableDiffusionXLPipeline.from_single_file`] method to load a model checkpoint stored in a single file format (`.ckpt` or `.safetensors`) from the Hub or locally. For this loading method, you need to set `timestep_spacing="trailing"` (feel free to experiment with the other scheduler config values to get better results):
@@ -57,7 +60,7 @@ import torch
 pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/sdxl-turbo/blob/main/sd_xl_turbo_1.0_fp16.safetensors",
     dtype=torch.float16, variant="fp16")
-pipeline = pipeline.to("cuda")
+pipeline = pipeline.to(device)
 pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config, timestep_spacing="trailing")
 ```
 
@@ -73,7 +76,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline_text2image = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", dtype=torch.float16, variant="fp16")
-pipeline_text2image = pipeline_text2image.to("cuda")
+pipeline_text2image = pipeline_text2image.to(device)
 
 prompt = "A cinematic shot of a baby racoon wearing an intricate italian priest robe."
 
@@ -96,7 +99,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import load_image, make_image_grid
 
 # use from_pipe to avoid consuming additional memory when loading a checkpoint
-pipeline_image2image = AutoPipelineForImage2Image.from_pipe(pipeline_text2image).to("cuda")
+pipeline_image2image = AutoPipelineForImage2Image.from_pipe(pipeline_text2image).to(device)
 
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
 init_image = init_image.resize((512, 512))

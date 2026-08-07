@@ -46,8 +46,11 @@ Now you can use the sharded checkpoint, instead of the regular checkpoint, to sa
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoModel, StableDiffusionXLPipeline
 
+
+device = get_device()
 unet = AutoModel.from_pretrained(
     "username/sdxl-unet-sharded", dtype=torch.float16
 )
@@ -55,7 +58,7 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     unet=unet,
     dtype=torch.float16
-).to("cuda")
+).to(device)
 ```
 
 ### Device placement
@@ -182,7 +185,7 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16,
-).to("cuda")
+).to(device)
 pipeline.vae.enable_slicing()
 pipeline(["An astronaut riding a horse on Mars"]*32).images[0]
 print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
@@ -204,7 +207,7 @@ from diffusers.utils import load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16
-).to("cuda")
+).to(device)
 pipeline.vae.enable_tiling()
 
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-sdxl-init.png")
@@ -309,7 +312,7 @@ from diffusers import CogVideoXPipeline
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
 
-onload_device = torch.device("cuda")
+onload_device = torch.device(device)
 offload_device = torch.device("cpu")
 
 pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
@@ -344,7 +347,7 @@ from diffusers import CogVideoXPipeline
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
 
-onload_device = torch.device("cuda")
+onload_device = torch.device(device)
 offload_device = torch.device("cpu")
 pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
 
@@ -431,7 +434,7 @@ transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_
 pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b",
     transformer=transformer,
     dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 prompt = (
     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
     "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "

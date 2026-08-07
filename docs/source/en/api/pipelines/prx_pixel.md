@@ -31,10 +31,13 @@ generation resolution is fed into the timestep modulation so the model is aware 
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import PRXPixelPipeline
 
+
+device = get_device()
 pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "A front-facing portrait of a lion in the golden savanna at sunset."
 image = pipe(prompt, num_inference_steps=28, guidance_scale=5.0).images[0]

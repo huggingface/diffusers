@@ -34,10 +34,13 @@ You'll use the SVD-XT checkpoint for this guide.
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 
 from diffusers import StableVideoDiffusionPipeline
 from diffusers.utils import load_image, export_to_video
 
+
+device = get_device()
 pipe = StableVideoDiffusionPipeline.from_pretrained(
     "stabilityai/stable-video-diffusion-img2vid-xt", dtype=torch.float16, variant="fp16"
 )
@@ -70,7 +73,7 @@ You can gain a 20-25% speedup at the expense of slightly increased memory by [co
 
 ```diff
 - pipe.enable_model_cpu_offload()
-+ pipe.to("cuda")
++ pipe.to(device)
 + pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
