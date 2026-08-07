@@ -16,7 +16,8 @@ class LTX2PipelineOutput(BaseOutput):
             denoised PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
             `(batch_size, num_frames, channels, height, width)`.
         audio (`torch.Tensor`, `np.ndarray`):
-            TODO
+            Generated audio aligned with the returned video. When returned as a tensor or NumPy array, the shape is
+            `(batch_size, channels, samples)`.
     """
 
     frames: torch.Tensor

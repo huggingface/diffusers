@@ -71,7 +71,7 @@ EXAMPLE_DOC_STRING = """
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted, static"
 
         >>> frame_rate = 24.0
-        >>> video = pipe(
+        >>> video, audio = pipe(
         ...     conditions=conditions,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
@@ -235,11 +235,9 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     r"""
-    Pipeline for video generation which allows image conditions to be inserted at arbitary parts of the video.
+    Pipeline for video generation that applies image or video conditions at specific frame indices.
 
     Reference: https://github.com/Lightricks/LTX-Video
-
-    TODO
     """
 
     model_cpu_offload_seq = "text_encoder->connectors->transformer->vae->audio_vae->vocoder"

@@ -204,11 +204,9 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     r"""
-    Pipeline for image-to-video generation.
+    Pipeline for image-to-video generation with an optional multimodal processor for image-conditioned prompting.
 
     Reference: https://github.com/Lightricks/LTX-Video
-
-    TODO
     """
 
     model_cpu_offload_seq = "text_encoder->connectors->transformer->vae->audio_vae->vocoder"
@@ -247,7 +245,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         self.vae_temporal_compression_ratio = (
             self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 8
         )
-        # TODO: check whether the MEL compression ratio logic here is corrct
+        # TODO: check whether the MEL compression ratio logic here is correct
         self.audio_vae_mel_compression_ratio = (
             self.audio_vae.mel_compression_ratio if getattr(self, "audio_vae", None) is not None else 4
         )
