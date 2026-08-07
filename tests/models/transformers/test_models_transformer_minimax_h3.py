@@ -23,6 +23,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    ContextParallelTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -121,12 +122,11 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
             "text_indices": text_indices,
         }
 
-    def get_dummy_inputs(self, num_video_tokens: int = NUM_VIDEO_TOKENS) -> dict:
+    def get_dummy_inputs(self, num_video_tokens: int = NUM_VIDEO_TOKENS, batch_size: int = 2) -> dict:
         generator = self.generator
         init_dict = self.get_init_dict()
         patch_size = init_dict["patch_size"]
         video_patch_dim = init_dict["in_channels"] * patch_size[0] * patch_size[1] * patch_size[2]
-        batch_size = 2
 
         return {
             "hidden_states": randn_tensor(
@@ -180,3 +180,7 @@ class TestMiniMaxH3TransformerAttention(MiniMaxH3TransformerTesterConfig, Attent
 
 class TestMiniMaxH3TransformerTorchCompile(MiniMaxH3TransformerTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for the MiniMax-H3 transformer."""
+
+
+class TestMiniMaxH3TransformerContextParallel(MiniMaxH3TransformerTesterConfig, ContextParallelTesterMixin):
+    """Context parallel inference tests for the MiniMax-H3 transformer."""
