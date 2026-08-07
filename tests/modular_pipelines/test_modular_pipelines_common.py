@@ -1,6 +1,7 @@
 import gc
 import json
 import os
+import weakref
 from typing import Callable
 
 import pytest
@@ -20,11 +21,13 @@ from diffusers.modular_pipelines.modular_pipeline_utils import (
 from diffusers.utils import logging
 
 from ..testing_utils import (
+    CaptureLogger,
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_accelerator,
     torch_device,
 )
+from .utils import backend_memory_allocated
 
 
 def _get_specified_components(path_or_repo_id, cache_dir=None):
@@ -628,6 +631,11 @@ class ModularPipelineTesterMixin:
 
         pipe.unload_components(name)
         assert getattr(pipe, name) is None
+        # `components` is the mapping most callers iterate over: the entry stays, its value becomes None
+        assert pipe.components[name] is None
+        # unloading an already unloaded component is a no-op, not an error
+        pipe.unload_components(name)
+        assert pipe.components[name] is None
         # the spec survives, so the component can be loaded again
         assert pipe._component_specs[name] is spec_before
         pipe.load_components(names=name)
@@ -641,6 +649,101 @@ class ModularPipelineTesterMixin:
         pipe.unload_components(name)
         assert getattr(pipe, name) is None
         assert len(manager._lookup_ids(name=name)) == 0
+
+    def test_unload_components_multiple_names(self):
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components()
+        names = [name for name in pipe.pretrained_component_names if pipe.components.get(name) is not None]
+        if len(names) < 2:
+            pytest.skip("Skipping test as the pipeline has fewer than two loaded pretrained components.")
+
+        pipe.unload_components(names)
+        assert all(pipe.components[name] is None for name in names)
+
+        pipe.load_components(names=names)
+        assert all(pipe.components[name] is not None for name in names)
+
+    def test_unload_components_invalid_names(self):
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components()
+        name = next(name for name in pipe.pretrained_component_names if pipe.components.get(name) is not None)
+
+        with pytest.raises(ValueError, match="Invalid type for names"):
+            pipe.unload_components((name,))
+        assert pipe.components[name] is not None
+
+        # an unknown name is warned about and skipped; the known names are still unloaded
+        logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline")
+        logger.setLevel(diffusers.logging.WARNING)
+        with CaptureLogger(logger) as cap_logger:
+            pipe.unload_components([name, "not_a_component"])
+
+        assert "not_a_component" in cap_logger.out
+        assert pipe.components[name] is None
+
+    def test_unload_components_releases_component(self):
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components()
+        name = next(
+            name for name in pipe.pretrained_component_names if isinstance(pipe.components.get(name), torch.nn.Module)
+        )
+
+        # a weakref keeps no strong reference, so it goes dead only if nothing in the pipeline holds the
+        # component anymore — which is what makes the memory actually reclaimable
+        component_ref = weakref.ref(pipe.components[name])
+        pipe.unload_components(name)
+
+        assert component_ref() is None
+
+    @require_accelerator
+    def test_unload_components_frees_device_memory(self):
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components(dtype=torch.float32)
+        name = next(
+            name for name in pipe.pretrained_component_names if isinstance(pipe.components.get(name), torch.nn.Module)
+        )
+        pipe.to(torch_device)
+
+        component = pipe.components[name]
+        footprint = sum(t.numel() * t.element_size() for t in [*component.parameters(), *component.buffers()])
+        del component
+
+        gc.collect()
+        backend_empty_cache(torch_device)
+        allocated_before = backend_memory_allocated(torch_device)
+
+        pipe.unload_components(name)
+        freed = allocated_before - backend_memory_allocated(torch_device)
+
+        assert freed >= 0.9 * footprint, (
+            f"Unloading '{name}' freed {freed} bytes on {torch_device}, expected around {footprint}"
+        )
+
+    @require_accelerator
+    def test_unload_components_auto_cpu_offload(self):
+        base_pipe = self.get_pipeline().to(torch_device)
+        expected_image = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        cm = ComponentsManager()
+        cm.enable_auto_cpu_offload(device=torch_device)
+        pipe = self.get_pipeline(components_manager=cm)
+        name = next(
+            name for name in pipe.pretrained_component_names if isinstance(pipe.components.get(name), torch.nn.Module)
+        )
+        component_id = f"{name}_{id(pipe.components[name])}"
+
+        pipe.unload_components(name)
+
+        # removing a component re-applies auto offload to the ones that are left
+        assert component_id not in cm.components
+        assert component_id not in {hook.model_id for hook in cm.model_hooks}
+        remaining = [component for component in cm.components.values() if isinstance(component, torch.nn.Module)]
+        assert all(hasattr(component, "_hf_hook") for component in remaining)
+
+        # the reloaded component is hooked up again, so the pipeline still runs
+        pipe.load_components(names=name, dtype=torch.float32)
+        image = pipe(**self.get_dummy_inputs(), output=self.output_name)
+        assert torch.abs(expected_image - image).max() < 1e-3
 
 
 class ModularGuiderTesterMixin:

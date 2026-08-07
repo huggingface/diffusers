@@ -35,6 +35,7 @@ class CogVideoXFunControlPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt", "control_video"])
+    output_shape = (8, 3, 16, 16)
     # CogVideoX is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
@@ -128,7 +129,7 @@ class TestCogVideoXFunControlPipeline(CogVideoXFunControlPipelineTesterConfig, P
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (8, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.5921, 0.6076, 0.6015, 0.6024, 0.6140, 0.5966, 0.5870, 0.6079, 0.5049, 0.5086, 0.4891, 0.4783, 0.4770, 0.4738, 0.4537, 0.4508])
