@@ -817,18 +817,13 @@ class Flux2SingleTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor | None,
+        encoder_hidden_states: torch.Tensor,
         temb_mod: torch.Tensor,
         image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         joint_attention_kwargs: dict[str, Any] | None = None,
-        split_hidden_states: bool = False,
-        text_seq_len: int | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        # If encoder_hidden_states is None, hidden_states is assumed to have encoder_hidden_states already
-        # concatenated
-        if encoder_hidden_states is not None:
-            text_seq_len = encoder_hidden_states.shape[1]
-            hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+        text_seq_len = encoder_hidden_states.shape[1]
+        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
         mod_shift, mod_scale, mod_gate = Flux2Modulation.split(temb_mod, 1)[0]
 
@@ -846,11 +841,8 @@ class Flux2SingleTransformerBlock(nn.Module):
         if hidden_states.dtype == torch.float16:
             hidden_states = hidden_states.clip(-65504, 65504)
 
-        if split_hidden_states:
-            encoder_hidden_states, hidden_states = hidden_states[:, :text_seq_len], hidden_states[:, text_seq_len:]
-            return encoder_hidden_states, hidden_states
-        else:
-            return hidden_states
+        encoder_hidden_states, hidden_states = hidden_states[:, :text_seq_len], hidden_states[:, text_seq_len:]
+        return encoder_hidden_states, hidden_states
 
 
 class Flux2TransformerBlock(nn.Module):
@@ -1326,12 +1318,9 @@ class Flux2Transformer2DModel(
                     joint_attention_kwargs=kv_attn_kwargs,
                 )
 
-        # Concatenate text and image streams for single-block inference
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-
         # Blend single block modulation for extract mode: [txt_mod, ref_mod, img_mod]
         if kv_cache_mode == "extract" and num_ref_tokens > 0:
-            total_single_len = hidden_states.shape[1]
+            total_single_len = num_txt_tokens + hidden_states.shape[1]
             single_stream_mod = _blend_single_block_mods(
                 single_stream_mod, ref_single_mod, num_txt_tokens, num_ref_tokens, total_single_len
             )
@@ -1348,28 +1337,26 @@ class Flux2Transformer2DModel(
                 kv_attn_kwargs_single["kv_cache"] = kv_cache.get_single(index_block)
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states = self._gradient_checkpointing_func(
+                encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
-                    None,
+                    encoder_hidden_states,
                     single_stream_mod,
                     concat_rotary_emb,
                     kv_attn_kwargs_single,
                 )
             else:
-                hidden_states = block(
+                encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
-                    encoder_hidden_states=None,
+                    encoder_hidden_states=encoder_hidden_states,
                     temb_mod=single_stream_mod,
                     image_rotary_emb=concat_rotary_emb,
                     joint_attention_kwargs=kv_attn_kwargs_single,
                 )
 
-        # Remove text tokens (and ref tokens in extract mode) from concatenated stream
+        # Remove ref tokens (extract mode only) from the image stream
         if kv_cache_mode == "extract" and num_ref_tokens > 0:
-            hidden_states = hidden_states[:, num_txt_tokens + num_ref_tokens :, ...]
-        else:
-            hidden_states = hidden_states[:, num_txt_tokens:, ...]
+            hidden_states = hidden_states[:, num_ref_tokens:, ...]
 
         # 7. Output layers
         hidden_states = self.norm_out(hidden_states, temb)
