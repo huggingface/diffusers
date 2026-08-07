@@ -114,7 +114,7 @@ class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
             tokenize=False,
             add_generation_prompt=False,  # "Output:" is already in the user block
         )
-        inputs = self.pe_tokenizer(input_text, return_tensors="pt").to(device)
+        inputs = self.pe_tokenizer(input_text, return_tensors="pt").to(self.pe.device)
         output_ids = self.pe.generate(
             **inputs,
             max_new_tokens=self.pe_tokenizer.model_max_length,
@@ -155,7 +155,7 @@ class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
                 else:
                     ids = [0]
 
-            input_ids = torch.tensor([ids], device=device)
+            input_ids = torch.tensor([ids], device=self.text_encoder.device)
             with torch.no_grad():
                 outputs = self.text_encoder(
                     input_ids=input_ids,

@@ -275,7 +275,8 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FluxIPAdapterM
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder_2(text_input_ids.to(device), output_hidden_states=False)[0]
+        model_device = self.text_encoder_2.device
+        prompt_embeds = self.text_encoder_2(text_input_ids.to(model_device), output_hidden_states=False)[0]
 
         dtype = self.text_encoder_2.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
@@ -321,7 +322,8 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FluxIPAdapterM
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer_max_length} tokens: {removed_text}"
             )
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), output_hidden_states=False)
+        model_device = self.text_encoder.device
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), output_hidden_states=False)
 
         # Use pooled output of CLIPTextModel
         prompt_embeds = prompt_embeds.pooler_output

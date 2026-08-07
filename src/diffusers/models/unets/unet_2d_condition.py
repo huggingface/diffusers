@@ -864,7 +864,14 @@ class UNet2DConditionModel(
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
 
-        t_emb = self.time_proj(timesteps)
+        # On TPU in eager/lazy mode, torch.cat([sin, cos], dim=-1) inside time_proj
+        # lands at an unaligned offset in the XLA DUS fusion emitter → crash.
+        # torch.compile with TpuBackend handles this internally, so skip the CPU
+        # workaround when we're inside a compiled graph.
+        if sample.device.type == "tpu" and not torch.compiler.is_compiling():
+            t_emb = self.time_proj(timesteps.cpu()).to(sample.device)
+        else:
+            t_emb = self.time_proj(timesteps)
         # `Timesteps` does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
