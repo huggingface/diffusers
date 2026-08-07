@@ -634,6 +634,9 @@ class AutoencoderKLLTX2VideoDiffusionDecoder(ModelMixin, AutoencoderMixin, Atten
     for all models (such as downloading or saving).
     """
 
+    # Both block types close over a residual add that combines outputs from different children, so a device split
+    # inside either one would separate tensors that have to meet again in the same forward.
+    _no_split_modules = ["LTX2VideoVaeNABlock", "LTX2VideoVaeDiffusionNABlock"]
     _supports_gradient_checkpointing = False
 
     @register_to_config
