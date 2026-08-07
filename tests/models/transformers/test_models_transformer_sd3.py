@@ -22,6 +22,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
+    LoraTesterMixin,
     ModelTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -224,3 +225,7 @@ class TestSD35TransformerBitsAndBytes(SD35TransformerTesterConfig, BitsAndBytesT
 
 class TestSD35TransformerTorchAo(SD35TransformerTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for SD3.5 Transformer."""
+
+
+class TestSD3TransformerLoRA(SD3TransformerTesterConfig, LoraTesterMixin):
+    pass

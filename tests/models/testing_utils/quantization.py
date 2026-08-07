@@ -34,6 +34,7 @@ from diffusers.utils.import_utils import (
     is_kernels_available,
     is_nvidia_modelopt_available,
     is_optimum_quanto_available,
+    is_peft_available,
     is_torchao_available,
 )
 
@@ -63,6 +64,11 @@ from ...testing_utils import (
     torch_device,
 )
 
+
+if is_peft_available():
+    from peft import LoraConfig
+
+    from diffusers.loaders.peft import PeftAdapterMixin
 
 if is_nvidia_modelopt_available():
     import modelopt.torch.quantization as mtq
@@ -215,12 +221,8 @@ class QuantizationTesterMixin:
 
     @torch.no_grad()
     def _test_quantization_lora_inference(self, config_kwargs):
-        try:
-            from peft import LoraConfig
-        except ImportError:
+        if not is_peft_available():
             pytest.skip("peft is not available")
-
-        from diffusers.loaders.peft import PeftAdapterMixin
 
         if not issubclass(self.model_class, PeftAdapterMixin):
             pytest.skip(f"PEFT is not supported for this model ({self.model_class.__name__})")

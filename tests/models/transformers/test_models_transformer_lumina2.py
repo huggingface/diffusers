@@ -21,6 +21,7 @@ from diffusers.utils.torch_utils import randn_tensor
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
+    LoraTesterMixin,
     ModelTesterMixin,
     TrainingTesterMixin,
 )
@@ -95,3 +96,7 @@ class TestLumina2TransformerTraining(Lumina2TransformerTesterConfig, TrainingTes
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Lumina2Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestLumina2TransformerLoRA(Lumina2TransformerTesterConfig, LoraTesterMixin):
+    pass
