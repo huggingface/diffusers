@@ -18,7 +18,7 @@ specific language governing permissions and limitations under the License.
 [LoRA（大语言模型的低秩适配）](https://hf.co/papers/2106.09685) 是一种轻量级训练技术，能显著减少可训练参数量。其原理是通过向模型注入少量新权重参数，仅训练这些新增参数。这使得LoRA训练速度更快、内存效率更高，并生成更小的模型权重文件（通常仅数百MB），便于存储和分享。LoRA还可与DreamBooth等其他训练技术结合以加速训练过程。
 
 > [!TIP]
-> LoRA具有高度通用性，目前已支持以下应用场景：[DreamBooth](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py)、[Kandinsky 2.2](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/train_text_to_image_lora_decoder.py)、[Stable Diffusion XL](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora_sdxl.py)、[文生图](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)以及[Wuerstchen](https://github.com/huggingface/diffusers/blob/main/examples/wuerstchen/text_to_image/train_text_to_image_lora_prior.py)。
+> LoRA具有高度通用性，目前已支持以下应用场景：[DreamBooth](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py)、[Kandinsky 2.2](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/train_text_to_image_lora_decoder.py)、[Stable Diffusion XL](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora_sdxl.py)、[文生图](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)以及[Wuerstchen](https://github.com/huggingface/diffusers/blob/main/examples/research_projects/wuerstchen/text_to_image/train_text_to_image_lora_prior.py)。
 
 本指南将通过解析[train_text_to_image_lora.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)脚本，帮助您深入理解其工作原理，并掌握如何针对具体需求进行定制化修改。
 
