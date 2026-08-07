@@ -399,6 +399,8 @@
         title: SD3Transformer2DModel
       - local: api/models/skyreels_v2_transformer_3d
         title: SkyReelsV2Transformer3DModel
+      - local: api/models/stable_audio_3_transformer
+        title: StableAudio3DiTModel
       - local: api/models/stable_audio_transformer
         title: StableAudioDiTModel
       - local: api/models/transformer2d
@@ -473,6 +475,8 @@
         title: AutoencoderKLWan
       - local: api/models/autoencoder_rae
         title: AutoencoderRAE
+      - local: api/models/autoencoder_same
+        title: AutoencoderSAME
       - local: api/models/consistency_decoder_vae
         title: ConsistencyDecoderVAE
       - local: api/models/autoencoder_oobleck
@@ -497,6 +501,8 @@
         title: LongCat-AudioDiT
       - local: api/pipelines/stable_audio
         title: Stable Audio
+      - local: api/pipelines/stable_audio_3
+        title: Stable Audio 3
       title: Audio
     - sections:
       - local: api/pipelines/anima
