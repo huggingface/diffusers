@@ -969,9 +969,9 @@ def _cudnn_attention_backward_op(
 ):
     query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = ctx.saved_tensors
 
+    # Only grad_out needs to be transposed here: the saved query/key/value are the tensors the
+    # forward op already transposed to (B, H, S, D) before calling into cuDNN.
     grad_out = grad_out.transpose(1, 2).contiguous()
-    key = key.transpose(1, 2).contiguous()
-    value = value.transpose(1, 2).contiguous()
 
     # Cannot pass first 5 arguments as kwargs because: https://github.com/pytorch/pytorch/blob/d26ca5de058dbcf56ac52bb43e84dd98df2ace97/torch/_dynamo/variables/torch.py#L1341
     grad_query, grad_key, grad_value = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
@@ -1062,9 +1062,9 @@ def _native_flash_attention_backward_op(
 ):
     query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = ctx.saved_tensors
 
+    # Only grad_out needs to be transposed here: the saved query/key/value are the tensors the
+    # forward op already transposed to (B, H, S, D).
     grad_out = grad_out.transpose(1, 2).contiguous()
-    key = key.transpose(1, 2).contiguous()
-    value = value.transpose(1, 2).contiguous()
 
     grad_query, grad_key, grad_value = torch.ops.aten._scaled_dot_product_flash_attention_backward(
         grad_out,
