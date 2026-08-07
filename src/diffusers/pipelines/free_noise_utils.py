@@ -525,7 +525,6 @@ class AnimateDiffFreeNoiseMixin:
         else:
             blocks = [*self.unet.down_blocks, *self.unet.up_blocks]
 
-        blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
         for block in blocks:
             self._disable_free_noise_in_block(block)
 
