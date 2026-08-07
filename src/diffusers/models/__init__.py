@@ -46,6 +46,8 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_ltx2"] = ["AutoencoderKLLTX2Video"]
     _import_structure["autoencoders.autoencoder_kl_ltx2_audio"] = ["AutoencoderKLLTX2Audio"]
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
+    _import_structure["autoencoders.autoencoder_kl_minimax_h3"] = ["AutoencoderKLMiniMaxH3"]
+    _import_structure["autoencoders.autoencoder_kl_minimax_h3_audio"] = ["AutoencoderKLMiniMaxH3Audio"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
@@ -128,6 +130,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
+    _import_structure["transformers.transformer_minimax_h3"] = ["MiniMaxH3Transformer3DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_motif_video"] = ["MotifVideoTransformer3DModel"]
     _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
@@ -181,6 +184,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLLTX2Video,
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
+            AutoencoderKLMiniMaxH3,
+            AutoencoderKLMiniMaxH3Audio,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
             AutoencoderKLTemporalDecoder,
@@ -261,6 +266,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            MiniMaxH3Transformer3DModel,
             MochiTransformer3DModel,
             MotifVideoTransformer3DModel,
             NucleusMoEImageTransformer2DModel,
