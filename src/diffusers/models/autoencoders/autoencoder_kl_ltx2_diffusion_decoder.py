@@ -286,8 +286,21 @@ class LTX2VideoVaeNeighborhoodAttention(nn.Module, AttentionModuleMixin):
         return self.processor(self, hidden_states)
 
 
+# Tokens per tile in `LTX2VideoVaeSwiGLU`, matching the reference decoder's own default. `w_gate(x)` and
+# `w_up(x)` are both hidden-width and their product makes a third, so evaluating a whole video at once
+# holds three hidden-width tensors live at the same time — at 121 frames and 512x768 that is
+# 3 x 5.67 GiB, which by itself dominates decode memory. Fixing a token *count* rather than a number of
+# tiles keeps that bound independent of resolution.
+_SWIGLU_TILE_SIZE = 16384
+
+
 class LTX2VideoVaeSwiGLU(nn.Module):
-    """Gated MLP: `w_down(silu(w_gate(x)) * w_up(x))`."""
+    """Gated MLP: `w_down(silu(w_gate(x)) * w_up(x))`, evaluated in tiles of `_SWIGLU_TILE_SIZE` tokens.
+
+    Tiling is exact rather than an approximation: the MLP is pointwise across tokens, so splitting it changes only how
+    many hidden-width elements exist at once, never a result. Verified bit-identical to the untiled evaluation on a
+    full-size decode.
+    """
 
     def __init__(self, dim: int, hidden_dim: int):
         super().__init__()
@@ -296,7 +309,17 @@ class LTX2VideoVaeSwiGLU(nn.Module):
         self.w_down = nn.Linear(hidden_dim, dim, bias=False)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        return self.w_down(F.silu(self.w_gate(hidden_states)) * self.w_up(hidden_states))
+        batch_size, *token_dims, channels = hidden_states.shape
+        num_tokens = math.prod(token_dims)
+        if num_tokens <= _SWIGLU_TILE_SIZE:
+            return self.w_down(F.silu(self.w_gate(hidden_states)) * self.w_up(hidden_states))
+
+        flat = hidden_states.reshape(batch_size, num_tokens, channels)
+        out = torch.empty_like(flat)
+        for start in range(0, num_tokens, _SWIGLU_TILE_SIZE):
+            tile = flat[:, start : start + _SWIGLU_TILE_SIZE]
+            out[:, start : start + _SWIGLU_TILE_SIZE] = self.w_down(F.silu(self.w_gate(tile)) * self.w_up(tile))
+        return out.reshape(hidden_states.shape)
 
 
 def _swiglu_hidden_dim(dim: int, mlp_ratio: float) -> int:
