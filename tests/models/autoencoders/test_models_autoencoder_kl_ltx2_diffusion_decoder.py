@@ -17,6 +17,7 @@ import pytest
 import torch
 
 from diffusers import AutoencoderKLLTX2VideoDiffusionDecoder
+from diffusers.models.autoencoders import autoencoder_kl_ltx2_diffusion_decoder
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -90,6 +91,44 @@ class AutoencoderKLLTX2VideoDiffusionDecoderTesterConfig(BaseModelTesterConfig):
 
 class TestAutoencoderKLLTX2VideoDiffusionDecoder(AutoencoderKLLTX2VideoDiffusionDecoderTesterConfig, ModelTesterMixin):
     base_precision = 1e-2
+
+
+class TestAutoencoderKLLTX2VideoDiffusionDecoderSwiGLUTiling(AutoencoderKLLTX2VideoDiffusionDecoderTesterConfig):
+    """The SwiGLU evaluates in token tiles to bound decode memory; that must not change the result."""
+
+    def test_token_tiled_swiglu_matches_untiled(self):
+        """Force the tiled path at test scale and require bit-identical output.
+
+        The dummy video is 9x48x48, so its stage-5 grid is 5184 tokens -- an order of magnitude under the
+        16384-token tile size, which means every other test in this file exercises only the untiled
+        branch. Shrinking the tile size is what actually covers the loop.
+        """
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
+        latent = model.encode(inputs["sample"]).latent_dist.mode()
+
+        def decode():
+            # Re-seed per call: the decoder samples the noise it denoises, so a shared generator would
+            # hand the second call different noise and the comparison would be vacuous.
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+            with torch.no_grad():
+                return model.decode(latent, generator=generator, return_dict=False)[0]
+
+        original = autoencoder_kl_ltx2_diffusion_decoder._SWIGLU_TILE_SIZE
+        try:
+            autoencoder_kl_ltx2_diffusion_decoder._SWIGLU_TILE_SIZE = 10**9  # larger than the volume
+            untiled = decode()
+            autoencoder_kl_ltx2_diffusion_decoder._SWIGLU_TILE_SIZE = 128  # ~41 tiles at this size
+            tiled = decode()
+        finally:
+            autoencoder_kl_ltx2_diffusion_decoder._SWIGLU_TILE_SIZE = original
+
+        assert tiled.shape == untiled.shape
+        # Exact, not approximate: the MLP is pointwise across tokens, so tiling changes only how many
+        # hidden-width elements are live, never a value.
+        assert torch.equal(tiled, untiled), (
+            f"tiled SwiGLU diverged from untiled by {(tiled - untiled).abs().max().item():.3e}"
+        )
 
 
 class TestAutoencoderKLLTX2VideoDiffusionDecoderMemory(
