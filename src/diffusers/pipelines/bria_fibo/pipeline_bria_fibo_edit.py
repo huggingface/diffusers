@@ -27,6 +27,7 @@ from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler, KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -50,7 +51,6 @@ PipelineMaskInput = Union[
     torch.FloatTensor, Image.Image, List[Image.Image], List[torch.FloatTensor], np.ndarray, List[np.ndarray]
 ]
 
-# TODO: Update example docstring
 EXAMPLE_DOC_STRING = """
     Example:
     ```python
@@ -59,7 +59,7 @@ EXAMPLE_DOC_STRING = """
     from diffusers.modular_pipelines import ModularPipeline
 
     torch.set_grad_enabled(False)
-    vlm_pipe = ModularPipelineBlocks.from_pretrained("briaai/FIBO-VLM-prompt-to-JSON", trust_remote_code=True)
+    vlm_pipe = ModularPipeline.from_pretrained("briaai/FIBO-VLM-prompt-to-JSON", trust_remote_code=True)
     vlm_pipe = vlm_pipe.init_pipeline()
 
     pipe = BriaFiboEditPipeline.from_pretrained(
@@ -116,6 +116,33 @@ PREFERRED_RESOLUTION = {
         (1360, 768),
     ],
 }
+
+
+# Copied from diffusers.pipelines.ideogram4.pipeline_ideogram4._expand_tensor_to_effective_batch
+def _expand_tensor_to_effective_batch(
+    tensor: torch.Tensor,
+    batch_size: int,
+    num_per_prompt: int,
+    tensor_name: str | None = None,
+) -> torch.Tensor:
+    """Replicate `tensor` along dim 0 from `batch_size` (or 1) to `batch_size * num_per_prompt`."""
+    target_batch_size = batch_size * num_per_prompt
+
+    if tensor.shape[0] == target_batch_size:
+        return tensor
+
+    if tensor.shape[0] == 1:
+        repeat_by = target_batch_size
+    elif tensor.shape[0] == batch_size:
+        repeat_by = num_per_prompt
+    else:
+        tensor_name = f"`{tensor_name}`" if tensor_name is not None else "Tensor"
+        raise ValueError(
+            f"{tensor_name} batch size must be 1, `batch_size` ({batch_size}), or "
+            f"`batch_size * num_*_per_prompt` ({target_batch_size}), but got {tensor.shape[0]}."
+        )
+
+    return torch.repeat_interleave(tensor, repeats=repeat_by, dim=0, output_size=tensor.shape[0] * repeat_by)
 
 
 def is_valid_edit_json(json_input: str | dict):
@@ -265,7 +292,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor = 16
+        self.vae_scale_factor = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 16
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)  # * 2)
         self.default_sample_size = 32  # 64
 
@@ -648,9 +675,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             seed (`int`, *optional*):
                 A seed used to make generation deterministic.
             timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
+                Deprecated. Has no effect and will be removed in a future version.
             guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
@@ -808,6 +833,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             image_latents, image_ids = self.prepare_image_latents(
                 image=image,
                 batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
                 num_channels_latents=num_channels_latents,
                 height=height,
                 width=width,
@@ -853,6 +879,12 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         else:
             seq_len = (height // self.vae_scale_factor) * (width // self.vae_scale_factor)
 
+        if timesteps is not None:
+            deprecate(
+                "timesteps",
+                "1.0.0",
+                "Passing `timesteps` to `__call__` is deprecated and has no effect; it will be removed in a future version.",
+            )
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
         mu = calculate_shift(
@@ -982,6 +1014,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         self,
         image: torch.Tensor,
         batch_size: int,
+        num_images_per_prompt: int,
         num_channels_latents: int,
         height: int,
         width: int,
@@ -1006,6 +1039,13 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         latents_scaled = [(latent - latents_mean) * latents_std for latent in image_latents_cthw]
         image_latents_cthw = torch.concat(latents_scaled, dim=0)
         image_latents_bchw = image_latents_cthw[:, :, 0, :, :]
+
+        image_latents_bchw = _expand_tensor_to_effective_batch(
+            image_latents_bchw,
+            batch_size=batch_size // num_images_per_prompt,
+            num_per_prompt=num_images_per_prompt,
+            tensor_name="image",
+        )
 
         image_latent_height, image_latent_width = image_latents_bchw.shape[2:]
         image_latents_bsd = self._pack_latents_no_patch(

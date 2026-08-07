@@ -441,6 +441,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         ...
     """
 
+    _no_split_modules = ["BriaFiboTransformerBlock", "BriaFiboSingleTransformerBlock"]
     _supports_gradient_checkpointing = True
 
     @register_to_config
