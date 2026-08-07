@@ -75,7 +75,7 @@ Diffusers에서는 이러한 철학을 파이프라인과 스케줄러에 모두
 
 다음과 같은 설계 원칙을 따릅니다:
 - 모델은 **모델 아키텍처 유형**에 해당합니다. 예를 들어 [`UNet2DConditionModel`] 클래스는 2D 이미지 입력을 기대하고 일부 context에 의존하는 모든 UNet 변형들에 사용됩니다.
-- 모든 모델은 [`src/diffusers/models`](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)에서 찾을 수 있으며, 각 모델 아키텍처는 해당 파일에 정의되어야 합니다. 예를 들어 [`unet_2d_condition.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/unet_2d_condition.py), [`transformer_2d.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformer_2d.py) 등이 있습니다.
+- 모든 모델은 [`src/diffusers/models`](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)에서 찾을 수 있으며, 각 모델 아키텍처는 해당 파일에 정의되어야 합니다. 예를 들어 [`unet_2d_condition.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/unets/unet_2d_condition.py), [`transformer_2d.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_2d.py) 등이 있습니다.
 - 모델은 **단일 파일 정책**을 따르지 않으며, [`attention.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention.py), [`resnet.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/resnet.py), [`embeddings.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/embeddings.py) 등과 같은 작은 모델 구성 요소를 사용해야 합니다. **참고**: 이는 Transformers의 모델링 파일과는 대조적으로 모델이 실제로 단일 파일 정책을 따르지 않음을 보여줍니다.
 - 모델은 PyTorch의 `Module` 클래스와 마찬가지로 복잡성을 노출하고 명확한 오류 메시지를 제공해야 합니다.
 - 모든 모델은 `ModelMixin`과 `ConfigMixin`을 상속합니다.
@@ -83,7 +83,7 @@ Diffusers에서는 이러한 철학을 파이프라인과 스케줄러에 모두
 - 모델은 기본적으로 가장 높은 정밀도와 가장 낮은 성능 설정을 가져야 합니다.
 - Diffusers에 이미 있는 모델 아키텍처로 분류할 수 있는 새로운 모델 체크포인트를 통합할 때는 기존 모델 아키텍처를 새로운 체크포인트와 호환되도록 수정해야 합니다. 새로운 파일을 만들어야 하는 경우는 모델 아키텍처가 근본적으로 다른 경우에만 해당합니다.
 - 모델은 미래의 변경 사항을 쉽게 확장할 수 있도록 설계되어야 합니다. 이는 공개 함수 인수들과 구성 인수들을 제한하고,미래의 변경 사항을 "예상"하는 것을 통해 달성할 수 있습니다. 예를 들어, 불리언 `is_..._type` 인수보다는 새로운 미래 유형에 쉽게 확장할 수 있는 문자열 "...type" 인수를 추가하는 것이 일반적으로 더 좋습니다. 새로운 모델 체크포인트가 작동하도록 하기 위해 기존 아키텍처에 최소한의 변경만을 가해야 합니다.
-- 모델 디자인은 코드의 가독성과 간결성을 유지하는 것과 많은 모델 체크포인트를 지원하는 것 사이의 어려운 균형 조절입니다. 모델링 코드의 대부분은 새로운 모델 체크포인트를 위해 클래스를 수정하는 것이 좋지만, [UNet 블록](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/unet_2d_blocks.py) 및 [Attention 프로세서](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py)와 같이 코드를 장기적으로 간결하고 읽기 쉽게 유지하기 위해 새로운 클래스를 추가하는 예외도 있습니다.
+- 모델 디자인은 코드의 가독성과 간결성을 유지하는 것과 많은 모델 체크포인트를 지원하는 것 사이의 어려운 균형 조절입니다. 모델링 코드의 대부분은 새로운 모델 체크포인트를 위해 클래스를 수정하는 것이 좋지만, [UNet 블록](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/unets/unet_2d_blocks.py) 및 [Attention 프로세서](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py)와 같이 코드를 장기적으로 간결하고 읽기 쉽게 유지하기 위해 새로운 클래스를 추가하는 예외도 있습니다.
 
 ### 스케줄러 [[schedulers]]
 
