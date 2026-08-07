@@ -103,6 +103,10 @@ else:
         "AnimaAutoBlocks",
         "AnimaModularPipeline",
     ]
+    _import_structure["chroma"] = [
+        "ChromaAutoBlocks",
+        "ChromaModularPipeline",
+    ]
     _import_structure["cosmos"] = [
         "Cosmos3DistilledBlocks",
         "Cosmos3DistilledModularPipeline",
@@ -139,6 +143,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
         from .anima import AnimaAutoBlocks, AnimaModularPipeline
+        from .chroma import ChromaAutoBlocks, ChromaModularPipeline
         from .components_manager import ComponentsManager
         from .cosmos import (
             Cosmos3DistilledBlocks,
