@@ -62,7 +62,7 @@ Examples:
 >>> import torch
 
 >>> pipe = diffusers.MarigoldNormalsPipeline.from_pretrained(
-...     "prs-eth/marigold-normals-v1-1", variant="fp16", torch_dtype=torch.float16
+...     "prs-eth/marigold-normals-v1-1", variant="fp16", dtype=torch.float16
 ... ).to("cuda")
 
 >>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")

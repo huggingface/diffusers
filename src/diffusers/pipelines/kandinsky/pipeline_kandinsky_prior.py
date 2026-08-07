@@ -82,7 +82,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> from torchvision import transforms
 
         >>> pipe_prior = KandinskyPriorPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-1-prior", dtype=torch.float16
         ... )
         >>> pipe_prior.to("cuda")
 
@@ -100,7 +100,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> weights = [0.3, 0.3, 0.4]
         >>> image_emb, zero_image_emb = pipe_prior.interpolate(images_texts, weights)
 
-        >>> pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+        >>> pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", dtype=torch.float16)
         >>> pipe.to("cuda")
 
         >>> image = pipe(

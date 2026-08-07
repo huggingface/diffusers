@@ -78,11 +78,11 @@ EXAMPLE_DOC_STRING = """
         >>> canny_image = Image.fromarray(image)
 
         >>> # load control net and stable diffusion v1-5
-        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", dtype=torch.float16)
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
         ...     "stable-diffusion-v1-5/stable-diffusion-v1-5",
         ...     controlnet=controlnet,
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     enable_pag=True,
         ... )
 

@@ -54,7 +54,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import pt_to_pil
         >>> import torch
 
-        >>> pipe = IFPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
+        >>> pipe = IFPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = 'a photo of a kangaroo wearing an orange hoodie and blue sunglasses standing in front of the eiffel tower holding a sign that says "very deep learning"'
@@ -67,7 +67,7 @@ EXAMPLE_DOC_STRING = """
         >>> pil_image[0].save("./if_stage_I.png")
 
         >>> super_res_1_pipe = IFSuperResolutionPipeline.from_pretrained(
-        ...     "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
+        ...     "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", dtype=torch.float16
         ... )
         >>> super_res_1_pipe.enable_model_cpu_offload()
 

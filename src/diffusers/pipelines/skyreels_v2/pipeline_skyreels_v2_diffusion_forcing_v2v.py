@@ -66,12 +66,12 @@ EXAMPLE_DOC_STRING = """\
         >>> vae = AutoencoderKLWan.from_pretrained(
         ...     "Skywork/SkyReels-V2-DF-14B-720P-Diffusers",
         ...     subfolder="vae",
-        ...     torch_dtype=torch.float32,
+        ...     dtype=torch.float32,
         ... )
         >>> pipe = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
         ...     "Skywork/SkyReels-V2-DF-14B-720P-Diffusers",
         ...     vae=vae,
-        ...     torch_dtype=torch.bfloat16,
+        ...     dtype=torch.bfloat16,
         ... )
         >>> flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
         >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=flow_shift)

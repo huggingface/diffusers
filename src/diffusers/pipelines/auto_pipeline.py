@@ -1384,7 +1384,7 @@ class AutoPipelineForText2Audio(ConfigMixin):
         >>> from diffusers import AutoPipelineForText2Audio
 
         >>> pipeline = AutoPipelineForText2Audio.from_pretrained(
-        ...     "stabilityai/stable-audio-open-1.0", torch_dtype=torch.float16
+        ...     "stabilityai/stable-audio-open-1.0", dtype=torch.float16
         ... )
         >>> pipeline = pipeline.to("cuda")
 
@@ -1443,7 +1443,7 @@ class AutoPipelineForText2Audio(ConfigMixin):
         >>> import soundfile as sf
         >>> from diffusers import AutoPipelineForText2Audio, StableAudioPipeline
 
-        >>> pipe = StableAudioPipeline.from_pretrained("stabilityai/stable-audio-open-1.0", torch_dtype=torch.float16)
+        >>> pipe = StableAudioPipeline.from_pretrained("stabilityai/stable-audio-open-1.0", dtype=torch.float16)
 
         >>> pipe_audio = AutoPipelineForText2Audio.from_pipe(pipe)
         >>> output = pipe_audio(

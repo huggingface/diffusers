@@ -46,7 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import NucleusMoEImagePipeline
 
-        >>> pipe = NucleusMoEImagePipeline.from_pretrained("NucleusAI/NucleusMoE-Image", torch_dtype=torch.bfloat16)
+        >>> pipe = NucleusMoEImagePipeline.from_pretrained("NucleusAI/NucleusMoE-Image", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> image = pipe(prompt, num_inference_steps=50).images[0]
