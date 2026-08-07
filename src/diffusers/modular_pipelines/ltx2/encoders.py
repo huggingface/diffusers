@@ -14,24 +14,33 @@
 
 from typing import Any
 
+import numpy as np
+import PIL.Image
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLLTX2Video
 
-# NOTE (modular.md gotcha #1): `LTX2TextConnectors`, `LTX2DurationHead`, `LTX2AutoDuration`, and the
-# prompt-enhancement constants live under `diffusers.pipelines.ltx2.*`, and modular blocks must not import from
+# NOTE (modular.md gotcha #1): `LTX2TextConnectors`, `LTX2DurationHead`, the prompt-enhancement config/helpers, and
+# the system prompts live under `diffusers.pipelines.ltx2.*`, and modular blocks must not import from
 # `diffusers.pipelines.*`. `LTX2TextConnectors` / `LTX2DurationHead` are `ModelMixin` / `ConfigMixin` model classes
-# (relocate to `src/diffusers/models/`); `LTX2AutoDuration`, the enhancement config, and the system prompts are plain
-# data (relocate to a neutral shared module or copy into this package). Imported from the pipelines path here only so
-# the draft is runnable.
+# (relocate to `src/diffusers/models/`); the enhancement config, the response/image helpers, and the system prompts are
+# plain data and utilities (relocate to a neutral shared module or copy into this package). Imported from the pipelines
+# path here only so the draft is runnable.
 from ...pipelines.ltx2.connectors import LTX2TextConnectors
-from ...pipelines.ltx2.duration_head import LTX2AutoDuration, LTX2DurationHead
+from ...pipelines.ltx2.duration_head import LTX2DurationHead
+from ...pipelines.ltx2.prompt_enhancement import (
+    _pad_inputs_for_attention_alignment,
+    _prepare_enhance_image,
+    clean_response,
+)
 from ...pipelines.ltx2.utils import (
     GEMMA4_PROMPT_ENHANCEMENT_CONFIG,
-    LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT,
-    LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT,
+    LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT,
+    LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT,
+    apply_image_conditioning_crf,
+    resolve_default_image_crf,
 )
 from ...utils import logging
 from ...video_processor import VideoProcessor
@@ -47,43 +56,60 @@ def _enhance_prompt(
     prompt: str | list[str],
     system_prompt: str,
     image: Any | None,
-    max_new_tokens: int,
+    max_new_tokens: int | None,
     seed: int,
     generator: torch.Generator | None,
     generation_kwargs: dict[str, Any] | None,
     device: torch.device,
 ) -> list[str]:
-    # Mirrors `LTX2Pipeline.enhance_prompt` / `LTX2ImageToVideoPipeline.enhance_prompt` for the LTX-2.4 path only:
-    # a dedicated `prompt_enhancer` (Gemma-4) with the greedy `GEMMA4_PROMPT_ENHANCEMENT_CONFIG` recipe. The
-    # LTX-2.0/2.3 `text_encoder`-as-enhancer fallback is intentionally dropped (LTX-2.4-only integration).
+    # Mirrors `LTX2PromptEnhancementMixin.enhance_prompt` for the LTX-2.5 path only: a dedicated `prompt_enhancer`
+    # (Gemma-4) with the greedy `GEMMA4_PROMPT_ENHANCEMENT_CONFIG` recipe. The LTX-2.0/2.3
+    # `text_encoder`-as-enhancer fallback is intentionally dropped (LTX-2.5-only integration).
     config = GEMMA4_PROMPT_ENHANCEMENT_CONFIG
-    generation_kwargs = generation_kwargs if generation_kwargs is not None else config.generation_kwargs
+    generation_kwargs = dict(generation_kwargs) if generation_kwargs is not None else dict(config.generation_kwargs)
+    if max_new_tokens is None:
+        max_new_tokens = config.max_new_tokens
 
-    user_text = f"{config.user_prompt_prefix}: {prompt}"
+    # Templates match ltx-core `LTXGemmaTextEncoder.enhance_t2v` / `enhance_i2v`.
     if image is None:
-        user_content = user_text
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"user prompt: {prompt}"},
+        ]
+        enhance_image = None
     else:
-        user_content = [{"type": "image"}, {"type": "text", "text": user_text}]
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_content},
-    ]
+        enhance_image = _prepare_enhance_image(image)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": f"User Raw Input Prompt: {prompt}."},
+                ],
+            },
+        ]
 
     template = components.processor.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    model_inputs = components.processor(text=template, images=image, return_tensors="pt").to(device)
+    model_inputs = components.processor(text=template, images=enhance_image, return_tensors="pt").to(device)
+    pad_token_id = (
+        components.processor.tokenizer.pad_token_id if components.processor.tokenizer.pad_token_id is not None else 0
+    )
+    model_inputs = _pad_inputs_for_attention_alignment(model_inputs, pad_token_id=pad_token_id)
     components.prompt_enhancer.to(device)
 
     # `transformers.GenerationMixin.generate` does not support a `torch.Generator`, so seed manually for
-    # reproducibility. (Inert for LTX-2.4's greedy decoding, but honored if the user passes sampling kwargs.)
+    # reproducibility. (Inert for LTX-2.5's greedy decoding, but honored if the user passes sampling kwargs.)
     if generator is not None:
-        seed = generator.initial_seed()
+        seed = generator.initial_seed() if not isinstance(generator, list) else generator[0].initial_seed()
     torch.manual_seed(seed)
     generated_sequences = components.prompt_enhancer.generate(
         **model_inputs, max_new_tokens=max_new_tokens, **generation_kwargs
     )
 
     generated_ids = [seq[len(model_inputs.input_ids[i]) :] for i, seq in enumerate(generated_sequences)]
-    return components.processor.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+    enhanced_prompt = components.processor.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+    return [clean_response(text) for text in enhanced_prompt]
 
 
 def _get_gemma_prompt_embeds(
@@ -131,7 +157,7 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Text-to-video prompt enhancer step. Rewrites `prompt` into a detailed caption using the dedicated "
-            "LTX-2.4 `prompt_enhancer` (a Gemma conditional-generation model) and a system prompt."
+            "LTX-2.5 `prompt_enhancer` (a Gemma conditional-generation model) and a system prompt."
         )
 
     @property
@@ -148,23 +174,25 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
             InputParam(
                 "enable_prompt_enhancement",
                 type_hint=bool,
-                default=None,
+                default=False,
                 description=(
-                    "Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` "
-                    "component is loaded (LTX-2.4); `True`/`False` force it on/off."
+                    "Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines."
                 ),
             ),
             InputParam(
                 "system_prompt",
                 type_hint=str,
                 default=None,
-                description="System prompt for enhancement. Defaults to `LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT`.",
+                description="System prompt for enhancement. Defaults to `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT`.",
             ),
             InputParam(
                 "prompt_max_new_tokens",
                 type_hint=int,
-                default=512,
-                description="Maximum number of new tokens to generate during prompt enhancement.",
+                default=None,
+                description=(
+                    "Maximum number of new tokens to generate during prompt enhancement. Defaults to 600, the "
+                    "LTX-2.5 Gemma-4 enhancer's budget."
+                ),
             ),
             InputParam(
                 "prompt_enhancement_kwargs",
@@ -176,7 +204,7 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
                 "prompt_enhancement_seed",
                 type_hint=int,
                 default=10,
-                description="Random seed for prompt enhancement (inert under LTX-2.4's greedy decoding).",
+                description="Random seed for prompt enhancement (inert under LTX-2.5's greedy decoding).",
             ),
             InputParam.template("generator"),
         ]
@@ -191,10 +219,7 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        enable = block_state.enable_prompt_enhancement
-        if enable is None:
-            enable = getattr(components, "prompt_enhancer", None) is not None
-        if not enable:
+        if not block_state.enable_prompt_enhancement:
             self.set_block_state(state, block_state)  # leave prompt unchanged
             return components, state
         if getattr(components, "prompt_enhancer", None) is None:
@@ -203,7 +228,7 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
                 "`prompt_enhancer` (and `processor`), or set `enable_prompt_enhancement=False`."
             )
 
-        system_prompt = block_state.system_prompt or LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT
+        system_prompt = block_state.system_prompt or LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT
 
         block_state.prompt = _enhance_prompt(
             components=components,
@@ -228,7 +253,7 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Image-to-video prompt enhancer step. Rewrites `prompt` into a detailed caption grounded in the reference "
-            "`image`, using the dedicated LTX-2.4 `prompt_enhancer` and a system prompt."
+            "`image`, using the dedicated LTX-2.5 `prompt_enhancer` and a system prompt."
         )
 
     @property
@@ -246,23 +271,25 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
             InputParam(
                 "enable_prompt_enhancement",
                 type_hint=bool,
-                default=None,
+                default=False,
                 description=(
-                    "Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` "
-                    "component is loaded (LTX-2.4); `True`/`False` force it on/off."
+                    "Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines."
                 ),
             ),
             InputParam(
                 "system_prompt",
                 type_hint=str,
                 default=None,
-                description="System prompt for enhancement. Defaults to `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`.",
+                description="System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT`.",
             ),
             InputParam(
                 "prompt_max_new_tokens",
                 type_hint=int,
-                default=512,
-                description="Maximum number of new tokens to generate during prompt enhancement.",
+                default=None,
+                description=(
+                    "Maximum number of new tokens to generate during prompt enhancement. Defaults to 600, the "
+                    "LTX-2.5 Gemma-4 enhancer's budget."
+                ),
             ),
             InputParam(
                 "prompt_enhancement_kwargs",
@@ -274,7 +301,7 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
                 "prompt_enhancement_seed",
                 type_hint=int,
                 default=10,
-                description="Random seed for prompt enhancement (inert under LTX-2.4's greedy decoding).",
+                description="Random seed for prompt enhancement (inert under LTX-2.5's greedy decoding).",
             ),
             InputParam.template("generator"),
         ]
@@ -289,10 +316,7 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        enable = block_state.enable_prompt_enhancement
-        if enable is None:
-            enable = getattr(components, "prompt_enhancer", None) is not None
-        if not enable:
+        if not block_state.enable_prompt_enhancement:
             self.set_block_state(state, block_state)  # leave prompt unchanged
             return components, state
         if getattr(components, "prompt_enhancer", None) is None:
@@ -301,7 +325,7 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
                 "`prompt_enhancer` (and `processor`), or set `enable_prompt_enhancement=False`."
             )
 
-        system_prompt = block_state.system_prompt or LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT
+        system_prompt = block_state.system_prompt or LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT
 
         block_state.prompt = _enhance_prompt(
             components=components,
@@ -414,7 +438,7 @@ class LTX2TextConnectorStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("connectors", LTX2TextConnectors),
-            # Declared only to read `padding_side` (used by the LTX-2.0 connector branch); LTX-2.4 defaults to "left".
+            # Declared only to read `padding_side` (used by the LTX-2.0 connector branch); LTX-2.5 defaults to "left".
             ComponentSpec("tokenizer", PreTrainedTokenizerBase),
         ]
 
@@ -498,9 +522,9 @@ class LTX2DurationStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Predicts `num_frames` from the connector text conditioning using the `duration_head`, replacing an "
-            "`LTX2AutoDuration` request with a concrete frame count snapped to the VAE's temporal grid. Run only when "
-            "`num_frames` is an `LTX2AutoDuration` (see `LTX2AutoDurationStep`)."
+            "Predicts `num_frames` from the connector text conditioning using the `duration_head`, producing a "
+            "concrete frame count snapped to the VAE's temporal grid. Run only when `num_frames` was omitted (see "
+            "`LTX2AutoDurationStep`)."
         )
 
     @property
@@ -511,10 +535,16 @@ class LTX2DurationStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(
-                "num_frames",
-                type_hint=LTX2AutoDuration,
-                required=True,
-                description="An `LTX2AutoDuration` request carrying the `[min_seconds, max_seconds]` bounds.",
+                "min_seconds",
+                type_hint=float,
+                default=1.0,
+                description="Lower bound on the auto-predicted duration.",
+            ),
+            InputParam(
+                "max_seconds",
+                type_hint=float,
+                default=20.0,
+                description="Upper bound on the auto-predicted duration. Must be strictly greater than `min_seconds`.",
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
@@ -549,14 +579,28 @@ class LTX2DurationStep(ModularPipelineBlocks):
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
+        if getattr(components, "duration_head", None) is None:
+            raise ValueError(
+                "`num_frames` was omitted so the duration head would auto-predict, but no `duration_head` component "
+                "is loaded (the duration head ships from LTX-2.5 checkpoints onward). Load a `duration_head`, or pass "
+                "`num_frames` as an integer."
+            )
+
         # The head predicts one duration; prompts with different natural lengths cannot share a single frame count.
         if block_state.batch_size > 1:
             raise ValueError(
-                f"`num_frames` was an `LTX2AutoDuration` but {block_state.batch_size} prompts were supplied. The "
-                "duration head predicts one duration -- run one prompt at a time, or pass `num_frames` as an integer."
+                f"`num_frames` was omitted so the duration head would auto-predict, but {block_state.batch_size} "
+                "prompts were supplied. The duration head predicts one duration -- run one prompt at a time, or pass "
+                "`num_frames` as an integer."
             )
 
-        auto_duration = block_state.num_frames
+        if block_state.min_seconds >= block_state.max_seconds:
+            raise ValueError(
+                f"`min_seconds` ({block_state.min_seconds}) must be less than `max_seconds` "
+                f"({block_state.max_seconds}). A collapsed range leaves no room for a prediction, and cannot "
+                "generally be satisfied by a frame count on the VAE's temporal grid."
+            )
+
         # `connector_prompt_embeds` is already the positive (conditional) conditioning; rows past the first are
         # `num_videos_per_prompt` duplicates of the same prompt, so predict from the first.
         block_state.num_frames = components.duration_head.predict_num_frames(
@@ -564,8 +608,8 @@ class LTX2DurationStep(ModularPipelineBlocks):
             block_state.connector_audio_prompt_embeds[:1],
             frame_rate=block_state.frame_rate,
             temporal_compression_ratio=components.vae_temporal_compression_ratio,
-            min_seconds=auto_duration.min_seconds,
-            max_seconds=auto_duration.max_seconds,
+            min_seconds=block_state.min_seconds,
+            max_seconds=block_state.max_seconds,
         )
 
         self.set_block_state(state, block_state)
@@ -607,6 +651,8 @@ class LTX2VaeEncoderStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLLTX2Video),
+            # Only used to resolve the default `image_crf` from the text-encoder generation.
+            ComponentSpec("text_encoder", PreTrainedModel),
             ComponentSpec(
                 "video_processor",
                 VideoProcessor,
@@ -621,6 +667,17 @@ class LTX2VaeEncoderStep(ModularPipelineBlocks):
             InputParam.template("image", required=True),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
+            InputParam(
+                "image_crf",
+                type_hint=int,
+                default=None,
+                description=(
+                    "H.264 CRF used to re-compress the conditioning `image` before VAE encode, matching the "
+                    "compression the model was trained against. `None` (default) resolves from the text-encoder "
+                    "generation (33 through LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a "
+                    "`PIL.Image.Image` when re-compression runs."
+                ),
+            ),
             InputParam.template("generator"),
         ]
 
@@ -641,6 +698,19 @@ class LTX2VaeEncoderStep(ModularPipelineBlocks):
 
         image = block_state.image
         if not isinstance(image, torch.Tensor):
+            # H.264 re-compress before resize/normalize (ltx-pipelines `load_image_and_preprocess`).
+            crf = (
+                block_state.image_crf
+                if block_state.image_crf is not None
+                else resolve_default_image_crf(components.text_encoder)
+            )
+            if crf != 0:
+                if not isinstance(image, PIL.Image.Image):
+                    raise ValueError(
+                        f"`image_crf` re-compression requires a `PIL.Image.Image` input, got {type(image)}. "
+                        "Pass a PIL image, or set `image_crf=0` to skip re-compression."
+                    )
+                image = PIL.Image.fromarray(apply_image_conditioning_crf(np.array(image.convert("RGB")), crf))
             image = components.video_processor.preprocess(image, height=block_state.height, width=block_state.width)
         image = image.to(device=device, dtype=torch.float32)
 

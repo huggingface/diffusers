@@ -248,13 +248,19 @@ class LTX2SetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("num_inference_steps", default=40),
+            InputParam.template("num_inference_steps", default=30),
             InputParam.template("timesteps"),
             InputParam.template("sigmas"),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
             ),
         ]
 
@@ -332,7 +338,13 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
             ),
             InputParam.template("latents"),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
@@ -418,7 +430,13 @@ class LTX2Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
             ),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam(
@@ -492,7 +510,13 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
@@ -590,7 +614,13 @@ class LTX2PrepareCoordsStep(ModularPipelineBlocks):
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."

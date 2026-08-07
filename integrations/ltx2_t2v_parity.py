@@ -1,5 +1,5 @@
 """
-LTX-2.4 text-to-video parity harness: modular `LTX2Blocks` vs. standard `LTX2Pipeline`.
+LTX-2.5 text-to-video parity harness: modular `LTX2Blocks` vs. standard `LTX2Pipeline`.
 
 TEMPORARY / for-visibility only. This whole `integrations/` directory is meant to be committed
 transiently while the modular LTX-2 integration is under review, and removed before the final merge.
@@ -7,7 +7,7 @@ It is NOT a pytest test and is not wired into CI — run it manually against a r
 
 What it does
 ------------
-Loads `diffusers/LTX-2.4-Diffusers` once, then runs the *same* text-to-video generation through:
+Loads `diffusers/LTX-2.5-Diffusers` once, then runs the *same* text-to-video generation through:
   1. the standard `LTX2Pipeline` (`.__call__`), and
   2. the modular `LTX2Blocks` t2v blockset (built with `init_pipeline()`),
 
@@ -41,7 +41,6 @@ import torch
 from diffusers import LTX2Pipeline
 from diffusers.modular_pipelines.ltx2 import LTX2Blocks
 from diffusers.modular_pipelines.ltx2.guider import LTX2Guidance
-from diffusers.pipelines.ltx2 import LTX2AutoDuration
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 
 
@@ -49,7 +48,7 @@ DEFAULT_PROMPT = (
     "A cinematic shot of a red fox walking through a snowy forest at dawn, golden light filtering through pine trees."
 )
 
-# Full guidance stack (CFG + spatio-temporal guidance + modality-isolation), matching real LTX-2.4 usage.
+# Full guidance stack (CFG + spatio-temporal guidance + modality-isolation), matching real LTX-2.5 usage.
 # The standard pipeline takes these as `__call__` kwargs; the modular pipeline takes them via its video/audio
 # guider components (see `_make_guiders`). Kept identical so the comparison is apples-to-apples.
 GUIDANCE = {
@@ -183,10 +182,8 @@ def main(args):
     else:
         std.to(args.device)
 
-    if args.predict_duration:
-        num_frames = LTX2AutoDuration(min_seconds=args.min_seconds, max_seconds=args.max_seconds)
-    else:
-        num_frames = args.num_frames
+    # `num_frames=None` asks both pipelines to auto-predict the duration via the `duration_head`.
+    num_frames = None if args.predict_duration else args.num_frames
     # Non-guidance call kwargs shared by both pipelines. Guidance is delivered separately: `__call__` kwargs for
     # the standard pipeline, guider components for the modular one.
     common_kwargs = {
@@ -195,6 +192,8 @@ def main(args):
         "width": args.width,
         "height": args.height,
         "num_frames": num_frames,
+        "min_seconds": args.min_seconds,
+        "max_seconds": args.max_seconds,
         "frame_rate": args.frame_rate,
         "num_inference_steps": args.num_inference_steps,
         "max_sequence_length": args.max_sequence_length,

@@ -112,7 +112,13 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
             ),
             InputParam(
                 "decode_timestep", default=0.0, description="The timestep at which the VAE decodes the final latents."

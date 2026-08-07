@@ -215,13 +215,28 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             ComponentSpec(
                 "guider",
                 LTX2Guidance,
-                config=FrozenDict({"guidance_scale": 4.0}),
+                config=FrozenDict(
+                    {
+                        "guidance_scale": 3.0,
+                        "stg_scale": 1.0,
+                        "modality_scale": 3.0,
+                        "guidance_rescale": 0.7,
+                        "spatio_temporal_guidance_blocks": [28],
+                    }
+                ),
                 default_creation_method="from_config",
             ),
             ComponentSpec(
                 "audio_guider",
                 LTX2Guidance,
-                config=FrozenDict({"guidance_scale": 4.0}),
+                config=FrozenDict(
+                    {
+                        "guidance_scale": 7.0,
+                        "stg_scale": 1.0,
+                        "modality_scale": 3.0,
+                        "guidance_rescale": 0.7,
+                    }
+                ),
                 default_creation_method="from_config",
             ),
         ]
@@ -244,7 +259,13 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
@@ -252,7 +273,7 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             InputParam(
                 "use_cross_timestep",
                 type_hint=bool,
-                default=False,
+                default=True,
                 description="Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).",
             ),
             InputParam.template("attention_kwargs"),
@@ -432,7 +453,13 @@ class LTX2Image2VideoLoopAfterDenoiser(ModularPipelineBlocks):
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
             ),
         ]
 

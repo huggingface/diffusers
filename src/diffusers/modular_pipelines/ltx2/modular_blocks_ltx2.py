@@ -14,9 +14,6 @@
 
 import torch
 
-# NOTE (modular.md gotcha #1): `LTX2AutoDuration` is imported from `diffusers.pipelines.ltx2.*` only for the
-# `select_block` isinstance check; it should move to a neutral location with the other relocated LTX-2 classes.
-from ...pipelines.ltx2.duration_head import LTX2AutoDuration
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
@@ -59,17 +56,17 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
               The prompt or prompts to guide image generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
-          enable_prompt_enhancement (`bool`, *optional*):
-              Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` component is
-              loaded (LTX-2.4); `True`/`False` force it on/off.
+          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
+              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           system_prompt (`str`, *optional*):
-              System prompt for enhancement. Defaults to `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`.
-          prompt_max_new_tokens (`int`, *optional*, defaults to 512):
-              Maximum number of new tokens to generate during prompt enhancement.
+              System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT`.
+          prompt_max_new_tokens (`int`, *optional*):
+              Maximum number of new tokens to generate during prompt enhancement. Defaults to 600, the LTX-2.5 Gemma-4
+              enhancer's budget.
           prompt_enhancement_kwargs (`dict`, *optional*):
               Keyword arguments for the enhancer's `.generate` call. Defaults to greedy decoding.
           prompt_enhancement_seed (`int`, *optional*, defaults to 10):
-              Random seed for prompt enhancement (inert under LTX-2.4's greedy decoding).
+              Random seed for prompt enhancement (inert under LTX-2.5's greedy decoding).
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
@@ -83,10 +80,8 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
     block_names = ["image2video", "text2video"]
     block_trigger_inputs = ["image", "enable_prompt_enhancement"]
 
-    def select_block(self, image=None, enable_prompt_enhancement=None) -> str | None:
-        # `None`/`True` dispatch to the enhancer; the `None` case is resolved against component presence inside
-        # the sub-block (`select_block` cannot see components). Only an explicit `False` skips here.
-        if enable_prompt_enhancement is False:
+    def select_block(self, image=None, enable_prompt_enhancement=False) -> str | None:
+        if not enable_prompt_enhancement:
             return None
         return "image2video" if image is not None else "text2video"
 
@@ -162,16 +157,18 @@ class LTX2TextConditioningStep(SequentialPipelineBlocks):
 # auto_docstring
 class LTX2AutoDurationStep(ConditionalPipelineBlocks):
     """
-    Conditional duration-prediction step, run only when `num_frames` is an `LTX2AutoDuration` request.
+    Conditional duration-prediction step, run only when `num_frames` is omitted.
        - `LTX2DurationStep` predicts `num_frames` from the connector text conditioning via the `duration_head`.
-       - Skipped when `num_frames` is an integer (or not an `LTX2AutoDuration`).
+       - Skipped when `num_frames` is supplied as an integer.
 
       Components:
           duration_head (`LTX2DurationHead`)
 
       Inputs:
-          num_frames (`LTX2AutoDuration`, *optional*):
-              An `LTX2AutoDuration` request carrying the `[min_seconds, max_seconds]` bounds.
+          min_seconds (`float`, *optional*, defaults to 1.0):
+              Lower bound on the auto-predicted duration.
+          max_seconds (`float`, *optional*, defaults to 20.0):
+              Upper bound on the auto-predicted duration. Must be strictly greater than `min_seconds`.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
           connector_prompt_embeds (`Tensor`, *optional*):
@@ -192,14 +189,14 @@ class LTX2AutoDurationStep(ConditionalPipelineBlocks):
     block_trigger_inputs = ["num_frames"]
 
     def select_block(self, num_frames=None) -> str | None:
-        return "duration" if isinstance(num_frames, LTX2AutoDuration) else None
+        return "duration" if num_frames is None else None
 
     @property
     def description(self):
         return (
-            "Conditional duration-prediction step, run only when `num_frames` is an `LTX2AutoDuration` request.\n"
+            "Conditional duration-prediction step, run only when `num_frames` is omitted.\n"
             " - `LTX2DurationStep` predicts `num_frames` from the connector text conditioning via the `duration_head`.\n"
-            " - Skipped when `num_frames` is an integer (or not an `LTX2AutoDuration`)."
+            " - Skipped when `num_frames` is supplied as an integer."
         )
 
 
@@ -211,7 +208,7 @@ class LTX2AutoVaeEncoderStep(AutoPipelineBlocks):
        - Skipped otherwise.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`)
+          vae (`AutoencoderKLLTX2Video`) text_encoder (`PreTrainedModel`) video_processor (`VideoProcessor`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -220,6 +217,11 @@ class LTX2AutoVaeEncoderStep(AutoPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
+          image_crf (`int`, *optional*):
+              H.264 CRF used to re-compress the conditioning `image` before VAE encode, matching the compression the
+              model was trained against. `None` (default) resolves from the text-encoder generation (33 through
+              LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when
+              re-compression runs.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
@@ -252,7 +254,7 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
           (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
 
       Inputs:
-          num_inference_steps (`int`, *optional*, defaults to 40):
+          num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
@@ -262,8 +264,9 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*, defaults to 121):
-              The number of frames in the generated video.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
+              `LTX2AutoDurationStep`).
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -282,7 +285,7 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
               The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to False):
+          use_cross_timestep (`bool`, *optional*, defaults to True):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -338,7 +341,7 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
           (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
 
       Inputs:
-          num_inference_steps (`int`, *optional*, defaults to 40):
+          num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
@@ -348,8 +351,9 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*, defaults to 121):
-              The number of frames in the generated video.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
+              `LTX2AutoDurationStep`).
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -370,7 +374,7 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to False):
+          use_cross_timestep (`bool`, *optional*, defaults to True):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -446,8 +450,9 @@ class LTX2AutoCoreDenoiseStep(AutoPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*, defaults to 121):
-              The number of frames in the generated video.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
+              `LTX2AutoDurationStep`).
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -468,7 +473,7 @@ class LTX2AutoCoreDenoiseStep(AutoPipelineBlocks):
               The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to False):
+          use_cross_timestep (`bool`, *optional*, defaults to True):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -524,8 +529,9 @@ class LTX2DecoderStep(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*, defaults to 121):
-              The number of frames in the generated video.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
+              `LTX2AutoDurationStep`).
           decode_timestep (`None`, *optional*, defaults to 0.0):
               The timestep at which the VAE decodes the final latents.
           decode_noise_scale (`None`, *optional*):
@@ -582,17 +588,17 @@ class LTX2Blocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
-          enable_prompt_enhancement (`bool`, *optional*):
-              Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` component is
-              loaded (LTX-2.4); `True`/`False` force it on/off.
+          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
+              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           system_prompt (`str`, *optional*):
-              System prompt for enhancement. Defaults to `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`.
-          prompt_max_new_tokens (`int`, *optional*, defaults to 512):
-              Maximum number of new tokens to generate during prompt enhancement.
+              System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT`.
+          prompt_max_new_tokens (`int`, *optional*):
+              Maximum number of new tokens to generate during prompt enhancement. Defaults to 600, the LTX-2.5 Gemma-4
+              enhancer's budget.
           prompt_enhancement_kwargs (`dict`, *optional*):
               Keyword arguments for the enhancer's `.generate` call. Defaults to greedy decoding.
           prompt_enhancement_seed (`int`, *optional*, defaults to 10):
-              Random seed for prompt enhancement (inert under LTX-2.4's greedy decoding).
+              Random seed for prompt enhancement (inert under LTX-2.5's greedy decoding).
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           negative_prompt (`str`, *optional*):
@@ -601,11 +607,13 @@ class LTX2Blocks(SequentialPipelineBlocks):
               Maximum sequence length for prompt encoding.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          num_frames (`LTX2AutoDuration`, *optional*):
-              An `LTX2AutoDuration` request carrying the `[min_seconds, max_seconds]` bounds.
+          min_seconds (`float`, *optional*, defaults to 1.0):
+              Lower bound on the auto-predicted duration.
+          max_seconds (`float`, *optional*, defaults to 20.0):
+              Upper bound on the auto-predicted duration. Must be strictly greater than `min_seconds`.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
-          num_inference_steps (`int`, *optional*, defaults to 40):
+          num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
@@ -615,6 +623,9 @@ class LTX2Blocks(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
+              `LTX2AutoDurationStep`).
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           noise_scale (`float`, *optional*, defaults to 0.0):
@@ -623,7 +634,7 @@ class LTX2Blocks(SequentialPipelineBlocks):
               Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to False):
+          use_cross_timestep (`bool`, *optional*, defaults to True):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -680,17 +691,17 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
-          enable_prompt_enhancement (`bool`, *optional*):
-              Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` component is
-              loaded (LTX-2.4); `True`/`False` force it on/off.
+          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
+              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           system_prompt (`str`, *optional*):
-              System prompt for enhancement. Defaults to `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`.
-          prompt_max_new_tokens (`int`, *optional*, defaults to 512):
-              Maximum number of new tokens to generate during prompt enhancement.
+              System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT`.
+          prompt_max_new_tokens (`int`, *optional*):
+              Maximum number of new tokens to generate during prompt enhancement. Defaults to 600, the LTX-2.5 Gemma-4
+              enhancer's budget.
           prompt_enhancement_kwargs (`dict`, *optional*):
               Keyword arguments for the enhancer's `.generate` call. Defaults to greedy decoding.
           prompt_enhancement_seed (`int`, *optional*, defaults to 10):
-              Random seed for prompt enhancement (inert under LTX-2.4's greedy decoding).
+              Random seed for prompt enhancement (inert under LTX-2.5's greedy decoding).
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           negative_prompt (`str`, *optional*):
@@ -699,20 +710,30 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               Maximum sequence length for prompt encoding.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          num_frames (`LTX2AutoDuration`, *optional*):
-              An `LTX2AutoDuration` request carrying the `[min_seconds, max_seconds]` bounds.
+          min_seconds (`float`, *optional*, defaults to 1.0):
+              Lower bound on the auto-predicted duration.
+          max_seconds (`float`, *optional*, defaults to 20.0):
+              Upper bound on the auto-predicted duration. Must be strictly greater than `min_seconds`.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_inference_steps (`int`, *optional*, defaults to 40):
+          image_crf (`int`, *optional*):
+              H.264 CRF used to re-compress the conditioning `image` before VAE encode, matching the compression the
+              model was trained against. `None` (default) resolves from the text-encoder generation (33 through
+              LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when
+              re-compression runs.
+          num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
+              `LTX2AutoDurationStep`).
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           noise_scale (`float`, *optional*, defaults to 0.0):
@@ -723,7 +744,7 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to False):
+          use_cross_timestep (`bool`, *optional*, defaults to True):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -785,17 +806,17 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
-          enable_prompt_enhancement (`bool`, *optional*):
-              Whether to run the prompt enhancer. `None` (default) auto-enables when a `prompt_enhancer` component is
-              loaded (LTX-2.4); `True`/`False` force it on/off.
+          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
+              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           system_prompt (`str`, *optional*):
-              System prompt for enhancement. Defaults to `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`.
-          prompt_max_new_tokens (`int`, *optional*, defaults to 512):
-              Maximum number of new tokens to generate during prompt enhancement.
+              System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT`.
+          prompt_max_new_tokens (`int`, *optional*):
+              Maximum number of new tokens to generate during prompt enhancement. Defaults to 600, the LTX-2.5 Gemma-4
+              enhancer's budget.
           prompt_enhancement_kwargs (`dict`, *optional*):
               Keyword arguments for the enhancer's `.generate` call. Defaults to greedy decoding.
           prompt_enhancement_seed (`int`, *optional*, defaults to 10):
-              Random seed for prompt enhancement (inert under LTX-2.4's greedy decoding).
+              Random seed for prompt enhancement (inert under LTX-2.5's greedy decoding).
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           negative_prompt (`str`, *optional*):
@@ -804,20 +825,30 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               Maximum sequence length for prompt encoding.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          num_frames (`LTX2AutoDuration`, *optional*):
-              An `LTX2AutoDuration` request carrying the `[min_seconds, max_seconds]` bounds.
+          min_seconds (`float`, *optional*, defaults to 1.0):
+              Lower bound on the auto-predicted duration.
+          max_seconds (`float`, *optional*, defaults to 20.0):
+              Upper bound on the auto-predicted duration. Must be strictly greater than `min_seconds`.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
+          image_crf (`int`, *optional*):
+              H.264 CRF used to re-compress the conditioning `image` before VAE encode, matching the compression the
+              model was trained against. `None` (default) resolves from the text-encoder generation (33 through
+              LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when
+              re-compression runs.
           num_inference_steps (`int`):
               The number of denoising steps.
           timesteps (`Tensor`):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
+              `LTX2AutoDurationStep`).
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
           noise_scale (`float`, *optional*, defaults to 0.0):
@@ -828,7 +859,7 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to False):
+          use_cross_timestep (`bool`, *optional*, defaults to True):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
