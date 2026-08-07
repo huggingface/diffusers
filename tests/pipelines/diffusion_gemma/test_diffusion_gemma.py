@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 import torch
 
@@ -102,6 +103,46 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         )
         self.assertEqual(sequences.shape, (1, self.canvas_length))
         self.assertEqual(len(texts), 1)
+
+    def test_adaptive_stopping_freezes_finished_rows_and_uses_scheduler_logits(self):
+        vocab_size = 8
+        self.pipe.model.config.get_text_config(decoder=True).vocab_size = vocab_size
+        forward_calls = 0
+
+        def forward(decoder_input_ids, **kwargs):
+            nonlocal forward_calls
+            forward_calls += 1
+            batch_size, canvas_length = decoder_input_ids.shape
+            return SimpleNamespace(logits=torch.zeros(batch_size, canvas_length, vocab_size))
+
+        class DeterministicScheduler:
+            config = SimpleNamespace(corrector_steps=0)
+
+            def set_timesteps(self, num_inference_steps, device=None):
+                self.timesteps = torch.arange(num_inference_steps, device=device)
+
+            def step(self, model_output, timestep, sample, return_dict=True):
+                del model_output, return_dict
+                token_ids = ([1, 3], [1, 4], [2, 5], [2, 5], [2, 6])[timestep]
+                tokens = torch.tensor(token_ids, device=sample.device)[:, None].expand_as(sample)
+                pred_logits = torch.full((*sample.shape, vocab_size), -100.0, device=sample.device)
+                pred_logits.scatter_(-1, tokens[..., None], 100.0)
+                return SimpleNamespace(prev_sample=tokens, pred_logits=pred_logits)
+
+        self.pipe.model.forward = forward
+        self.pipe.scheduler = DeterministicScheduler()
+        output = self.pipe(
+            prompt=["Short prompt.", "A somewhat longer prompt for the second batch row."],
+            gen_length=self.canvas_length,
+            num_inference_steps=5,
+            confidence_threshold=0.005,
+            eos_early_stop=False,
+            output_type="seq",
+        )
+
+        self.assertEqual(forward_calls, 4)
+        self.assertTrue((output.sequences[0] == 1).all())
+        self.assertTrue((output.sequences[1] == 5).all())
 
     def test_callback_receives_advertised_keys(self):
         observed: list[str] = []
