@@ -92,6 +92,39 @@ class AuraFlowPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         # blocks interfere with each other.
         return
 
+    def test_vae_dtype_cast_on_decode_after_upcast(self):
+        # Regression test for #14183: on the second call, upcast_vae() has already
+        # moved the VAE to fp32, so needs_upcasting is False and the latents must
+        # still be cast to the VAE dtype before decode. We build a tiny VAE directly
+        # (no HF download) and assert that mismatched-dtype latents decode without a
+        # RuntimeError, mirroring the inline `latents.to(self.vae.dtype)` the fix adds.
+        from diffusers import AutoencoderKL
+
+        device = "cpu"
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+            sample_size=32,
+            force_upcast=True,
+        ).to(device)
+        vae.to(torch.float32)  # simulate the post-upcast state from the first call
+
+        # fp16 latents arriving at a now-fp32 VAE: this is exactly what regressed.
+        latents = torch.randn(
+            1, vae.config.latent_channels, 4, 4, generator=torch.Generator(device=device).manual_seed(0)
+        ).to(torch.float16)
+
+        # With the bug, this raises:
+        #   RuntimeError: Input type (c10::Half) and bias type (float) should be the same
+        # The fix casts latents to the VAE dtype inline, so decode succeeds.
+        decoded = vae.decode(latents.to(vae.dtype) / vae.config.scaling_factor, return_dict=False)[0]
+        assert decoded.dtype == vae.dtype, "decoded image should match the upcast VAE dtype"
+
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
