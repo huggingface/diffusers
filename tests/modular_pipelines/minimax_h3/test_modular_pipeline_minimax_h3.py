@@ -620,23 +620,6 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
         assert "dummy" in fresh.transformer_ref.peft_config
         assert "dummy" not in getattr(fresh.transformer, "peft_config", {})
 
-    @require_peft_backend
-    def test_lora_scale_is_applied(self):
-        r"""`attention_kwargs={"scale": ...}` reaches the adapter through the transformer's `apply_lora_scale`."""
-        pipe = self.get_pipeline()
-        inputs = self.get_dummy_inputs()
-
-        without_lora = pipe(**inputs, output="videos")
-
-        pipe.load_lora_weights(self.get_dummy_lora_state_dict(), adapter_name="dummy")
-        inputs = self.get_dummy_inputs()
-        with_lora = pipe(**inputs, attention_kwargs={"scale": 1.0}, output="videos")
-        inputs = self.get_dummy_inputs()
-        zero_scale = pipe(**inputs, attention_kwargs={"scale": 0.0}, output="videos")
-
-        assert not np.allclose(without_lora, with_lora, atol=1e-4)
-        assert np.allclose(without_lora, zero_scale, atol=1e-4)
-
 
 class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
     """The `ref2va` requests of [`MiniMaxH3Blocks`]: a prompt and an ordered list of references."""

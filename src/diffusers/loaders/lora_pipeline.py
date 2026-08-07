@@ -7056,6 +7056,14 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
     partition it was trained against, so the routing is explicit: a converted state dict targets `transformer.`, and
     `transformer_ref` is reached either by a `transformer_ref.`-prefixed file (what `save_lora_weights` writes) or by
     passing `load_into_transformer_ref=True`.
+
+    Two things to know about third-party H3 LoRAs. LoRAs trained against a *pruned* checkpoint do not load: pruned
+    releases replace the timestep MLP with a small interpolation table, so their AdaLN projections take an 8-wide
+    input instead of `time_embed_dim`, and the update cannot be mapped onto the released checkpoint — loading fails
+    with a size mismatch naming the module. And published H3 LoRAs carry no alpha information while applying as
+    `W + lora_B @ lora_A`, so mixed-rank files are loaded with `alpha == rank` per module (effective scale exactly
+    1.0); their updates are also small enough relative to the base weights that [`~MiniMaxH3LoraLoaderMixin.fuse_lora`]
+    into bfloat16 discards most of the update — prefer the default unfused path.
     """
 
     _lora_loadable_modules = ["transformer", "transformer_ref"]
@@ -7120,14 +7128,15 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
         if is_non_diffusers_format:
             state_dict = _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict)
 
-        # Every published MiniMax-H3 LoRA is alpha-less and applies as `W + lora_B @ lora_A`, i.e. at an effective
-        # scale of 1.0 *per module*. `get_peft_kwargs` reads `lora_alpha` off whichever rank it happens to see first
-        # and never re-derives it, so a mixed-rank adapter — which the public turbo LoRA is, rank 64 for attention
-        # and FFN against rank 16 for the AdaLN projections — has one of its two rank groups silently scaled by
-        # `alpha / r`. The `LoraConfig` is therefore built here with `alpha == rank` everywhere and passed on as
-        # metadata, which `load_lora_adapter` uses in place of `get_peft_kwargs`. Keying this off the absence of
-        # alpha information rather than off the conversion is deliberate: the same file also circulates
-        # pre-converted to diffusers keys, and that copy needs the same treatment.
+        # Every published MiniMax-H3 LoRA is alpha-less, MIXED-RANK (rank 64 on attention and FFN modules, rank 16
+        # on the AdaLN projections) and applies as `W + lora_B @ lora_A`, i.e. at an effective scale of 1.0 *per
+        # module*. `get_peft_kwargs` reads `lora_alpha` off whichever rank it happens to see first and never
+        # re-derives it, so one of the two rank groups would be silently scaled by `alpha / r`. The `LoraConfig` is
+        # therefore built here with `alpha == rank` everywhere and passed on as metadata, which `load_lora_adapter`
+        # uses in place of its own `get_peft_kwargs` inference — that inference recovers everything else (ranks,
+        # target modules), just not this alpha correction. Keying the synthesis off the absence of alpha information
+        # rather than off the conversion is deliberate: the same file also circulates pre-converted to diffusers
+        # keys, and that copy needs the same treatment.
         if metadata is None and not any(k.endswith(".alpha") for k in state_dict):
             metadata = {}
             for prefix in (cls.transformer_name, cls.transformer_ref_name):
@@ -7218,16 +7227,28 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
                     f"so far targets. Pass `load_into_transformer_ref=True` for the `{self.transformer_ref_name}` "
                     "partition instead."
                 )
-            self.load_lora_into_transformer(
-                transformer_state_dict,
-                transformer=transformer_ref if into_ref else transformer,
-                adapter_name=adapter_name,
-                metadata=metadata,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-                hotswap=hotswap,
-                prefix=self.transformer_name,
-            )
+            if into_ref:
+                # `transformer.`-prefixed layers into the other partition, so the prefix and the target differ.
+                transformer_ref.load_lora_adapter(
+                    transformer_state_dict,
+                    prefix=self.transformer_name,
+                    network_alphas=None,
+                    adapter_name=adapter_name,
+                    metadata=metadata,
+                    _pipeline=self,
+                    low_cpu_mem_usage=low_cpu_mem_usage,
+                    hotswap=hotswap,
+                )
+            else:
+                self.load_lora_into_transformer(
+                    transformer_state_dict,
+                    transformer=transformer,
+                    adapter_name=adapter_name,
+                    metadata=metadata,
+                    _pipeline=self,
+                    low_cpu_mem_usage=low_cpu_mem_usage,
+                    hotswap=hotswap,
+                )
 
         if transformer_ref_state_dict:
             if transformer_ref is None:
@@ -7235,18 +7256,19 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
                     f"This LoRA has `{self.transformer_ref_name}.`-prefixed layers but the pipeline does not hold a "
                     f'`{self.transformer_ref_name}` component. Load it with `workflow="ref2va"`.'
                 )
-            self.load_lora_into_transformer(
+            transformer_ref.load_lora_adapter(
                 transformer_ref_state_dict,
-                transformer=transformer_ref,
+                prefix=self.transformer_ref_name,
+                network_alphas=None,
                 adapter_name=adapter_name,
                 metadata=metadata,
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 hotswap=hotswap,
-                prefix=self.transformer_ref_name,
             )
 
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->MiniMaxH3Transformer3DModel
     def load_lora_into_transformer(
         cls,
         state_dict,
@@ -7256,12 +7278,17 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
         low_cpu_mem_usage=False,
         hotswap: bool = False,
         metadata=None,
-        prefix: str = "transformer",
     ):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        logger.info(f"Loading {prefix}.")
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
+
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
@@ -7270,7 +7297,6 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
-            prefix=prefix,
         )
 
     @classmethod
