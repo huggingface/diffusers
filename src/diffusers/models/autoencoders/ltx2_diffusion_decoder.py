@@ -166,7 +166,9 @@ class LTX2VideoVaeNeighborhoodAttnProcessor:
 
     _SUPPORTED_BACKENDS = ("flex", "_native_flex")
 
-    def __call__(self, attn: "LTX2VideoVaeNeighborhoodAttention", hidden_states: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self, attn: "LTX2VideoVaeNeighborhoodAttention", hidden_states: torch.Tensor, block_mask=None
+    ) -> torch.Tensor:
         if self._attention_backend not in self._SUPPORTED_BACKENDS:
             raise ValueError(
                 f"LTX2VideoVaeNeighborhoodAttnProcessor requires the 'flex' attention backend (got "
@@ -181,7 +183,8 @@ class LTX2VideoVaeNeighborhoodAttnProcessor:
         query = query.reshape(batch_size, num_frames * height * width, attn.heads, attn.head_dim)
         key = key.reshape(batch_size, num_frames * height * width, attn.heads, attn.head_dim)
         value = value.reshape(batch_size, num_frames * height * width, attn.heads, attn.head_dim)
-        block_mask = _neighborhood_block_mask(num_frames, height, width, attn.kernel_size, hidden_states.device)
+        if block_mask is None:
+            block_mask = _neighborhood_block_mask(num_frames, height, width, attn.kernel_size, hidden_states.device)
         # `scale=1.0`: the query is already scaled in `project_qkv`, as in the reference.
         hidden_states = dispatch_attention_fn(
             query,
@@ -201,6 +204,9 @@ class LTX2VideoVaeNeighborhoodNattenProcessor:
 
     Requires the optional `natten` package and a supported GPU; `backend=None` lets NATTEN pick the fastest kernel for
     the device. No CPU path — use [`LTX2VideoVaeNeighborhoodAttnProcessor`] elsewhere.
+
+    `na3d` encodes the neighborhood window in the kernel itself, so this processor takes no `block_mask` and the
+    decoder never builds one for it.
     """
 
     def __init__(self, backend: str | None = None):
@@ -211,7 +217,9 @@ class LTX2VideoVaeNeighborhoodNattenProcessor:
             )
         self.backend = backend
 
-    def __call__(self, attn: "LTX2VideoVaeNeighborhoodAttention", hidden_states: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self, attn: "LTX2VideoVaeNeighborhoodAttention", hidden_states: torch.Tensor, block_mask=None
+    ) -> torch.Tensor:
         from natten.functional import na3d
 
         batch_size, num_frames, height, width, channels = hidden_states.shape
@@ -272,7 +280,20 @@ class LTX2VideoVaeNeighborhoodAttention(nn.Module, AttentionModuleMixin):
         query = query * self.scale
         return self.rope(query), self.rope(key), value
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def build_block_mask(self, hidden_states: torch.Tensor):
+        """The flex `BlockMask` for this grid, or `None` if the processor does not read one.
+
+        The mask depends only on the token grid and the kernel, both of which are fixed within a decoder stage, so a
+        stage builds it once and hands it to every block. NATTEN gets `None`: it encodes the window in its kernel, and
+        at production grids the mask is not merely wasteful but larger than device memory (a 69x64x96 stage needs 167
+        GiB), so it must never be built for a path that would not read it.
+        """
+        if not isinstance(self.processor, LTX2VideoVaeNeighborhoodAttnProcessor):
+            return None
+        num_frames, height, width = hidden_states.shape[1:4]
+        return _neighborhood_block_mask(num_frames, height, width, self.kernel_size, hidden_states.device)
+
+    def forward(self, hidden_states: torch.Tensor, block_mask=None) -> torch.Tensor:
         """Channels-last in and out: `(B, T, H, W, C)`."""
         num_frames, height, width = hidden_states.shape[1:4]
         kernel_t, kernel_h, kernel_w = self.kernel_size
@@ -281,7 +302,7 @@ class LTX2VideoVaeNeighborhoodAttention(nn.Module, AttentionModuleMixin):
                 f"Neighborhood attention requires each spatial dim to be at least its kernel size; got "
                 f"(T, H, W) = ({num_frames}, {height}, {width}) with kernel_size {self.kernel_size}."
             )
-        return self.processor(self, hidden_states)
+        return self.processor(self, hidden_states, block_mask)
 
 
 # Tokens per tile in `LTX2VideoVaeSwiGLU`, matching the reference decoder's own default. `w_gate(x)` and
@@ -340,8 +361,8 @@ class LTX2VideoVaeNABlock(nn.Module):
         self.norm2 = nn.RMSNorm(dim, eps=1e-6)
         self.mlp = LTX2VideoVaeSwiGLU(dim, _swiglu_hidden_dim(dim, mlp_ratio))
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = hidden_states + self.attn(self.norm1(hidden_states))
+    def forward(self, hidden_states: torch.Tensor, block_mask=None) -> torch.Tensor:
+        hidden_states = hidden_states + self.attn(self.norm1(hidden_states), block_mask)
         hidden_states = hidden_states + self.mlp(self.norm2(hidden_states))
         return hidden_states
 
@@ -354,11 +375,10 @@ class LTX2VideoVaeAdaLNZero(nn.Module):
     carry are folded into the following linear weights at conversion time.
     """
 
-    num_chunks = 7
-
-    def __init__(self, dim: int, t_emb_dim: int):
+    def __init__(self, dim: int, t_emb_dim: int, num_chunks: int = 7):
         super().__init__()
-        self.proj = nn.Linear(t_emb_dim, self.num_chunks * dim, bias=True)
+        self.num_chunks = num_chunks
+        self.proj = nn.Linear(t_emb_dim, num_chunks * dim, bias=True)
 
     def forward(self, t_emb: torch.Tensor) -> tuple[torch.Tensor, ...]:
         chunks = self.proj(F.silu(t_emb)).chunk(self.num_chunks, dim=-1)
@@ -379,11 +399,13 @@ class LTX2VideoVaeDiffusionNABlock(nn.Module):
         context_channels: int,
         head_dim: int = 64,
         mlp_ratio: float = 4.0,
+        num_mod_params: int = 7,
     ):
         super().__init__()
         self.context_channels = context_channels
+        self.num_mod_params = num_mod_params
         self.context_proj = nn.Linear(context_channels, dim, bias=True)
-        self.scale_shift_table = nn.Parameter(torch.zeros(LTX2VideoVaeAdaLNZero.num_chunks, dim))
+        self.scale_shift_table = nn.Parameter(torch.zeros(num_mod_params, dim))
 
         self.norm1 = nn.RMSNorm(dim, eps=1e-6)
         self.attn = LTX2VideoVaeNeighborhoodAttention(dim, kernel_size, head_dim=head_dim)
@@ -395,14 +417,14 @@ class LTX2VideoVaeDiffusionNABlock(nn.Module):
         hidden_states: torch.Tensor,
         latent_context: torch.Tensor,
         modulation: tuple[torch.Tensor, ...],
+        block_mask=None,
     ) -> torch.Tensor:
         scale_msa, shift_msa, _, scale_mlp, shift_mlp, _, _ = [
-            modulation[i] + self.scale_shift_table[i].view(1, 1, 1, 1, -1)
-            for i in range(LTX2VideoVaeAdaLNZero.num_chunks)
+            modulation[i] + self.scale_shift_table[i].view(1, 1, 1, 1, -1) for i in range(self.num_mod_params)
         ]
 
         hidden_states = hidden_states + self.context_proj(latent_context)
-        hidden_states = hidden_states + self.attn(self.norm1(hidden_states) * (1 + scale_msa) + shift_msa)
+        hidden_states = hidden_states + self.attn(self.norm1(hidden_states) * (1 + scale_msa) + shift_msa, block_mask)
         hidden_states = hidden_states + self.mlp(self.norm2(hidden_states) * (1 + scale_mlp) + shift_mlp)
         return hidden_states
 
@@ -530,6 +552,7 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
                     kernel_size=stage5_kernel,
                     context_channels=self.context_channels,
                     head_dim=head_dim,
+                    num_mod_params=self.shared_adaln.num_chunks,
                 )
                 for _ in range(stage_depths[-1])
             ]
@@ -547,8 +570,10 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
         hidden_states = self.conv_in(hidden_states)
         for blocks, upsample in zip(self.det_stages, self.upsamples):
+            # The grid and kernel are fixed within a stage, so every block shares one mask.
+            block_mask = blocks[0].attn.build_block_mask(hidden_states)
             for block in blocks:
-                hidden_states = block(hidden_states)
+                hidden_states = block(hidden_states, block_mask)
             hidden_states = upsample(hidden_states)
 
         if num_pad > 0:
@@ -570,8 +595,9 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
 
         hidden_states = _patchify(x_t, self.patch_size).permute(0, 2, 3, 4, 1)
         hidden_states = self.conv_in_x_t(hidden_states)
+        block_mask = self.diff_blocks[0].attn.build_block_mask(hidden_states)
         for block in self.diff_blocks:
-            hidden_states = block(hidden_states, latent_context, modulation)
+            hidden_states = block(hidden_states, latent_context, modulation, block_mask)
 
         hidden_states = self.norm_out(hidden_states)
         hidden_states = self.conv_out(hidden_states)
