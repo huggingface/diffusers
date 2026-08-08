@@ -352,7 +352,8 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. If required, stretch the sigmas schedule to terminate at the configured `shift_terminal` value. This is
         #    skipped when there is only a single step, since there is nothing to stretch and the terminal rescaling
-        #    otherwise divides by zero (the single sigma is always 1.0, i.e. `one_minus_z[-1]` is always 0).
+        #    otherwise divides by zero (with the default schedule the single sigma is always 1.0, so
+        #    `one_minus_z[-1]` is always 0).
         if self.config.shift_terminal and len(sigmas) > 1:
             sigmas = self.stretch_shift_to_terminal(sigmas)
 
