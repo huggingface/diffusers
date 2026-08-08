@@ -25,6 +25,7 @@ from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import apply_lora_scale, logging
 from ..attention import LuminaFeedForward
 from ..attention_processor import Attention
+from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -322,7 +323,7 @@ class Lumina2RotaryPosEmbed(nn.Module):
         return hidden_states, cap_freqs_cis, img_freqs_cis, freqs_cis, l_effective_cap_len, seq_lengths
 
 
-class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
     r"""
     Lumina2NextDiT: Diffusion model with a Transformer backbone.
 
