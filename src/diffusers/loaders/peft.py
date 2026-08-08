@@ -129,7 +129,8 @@ class PeftAdapterMixin:
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
+                weights. When enabled, the low-memory loading path is serialized with a process-wide lock, making it
+                safe to call concurrently across threads.
             hotswap : (`bool`, *optional*)
                 Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
                 in-place. This means that, instead of loading an additional adapter, this will take the existing
