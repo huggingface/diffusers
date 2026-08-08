@@ -27,6 +27,7 @@ from ..testing_utils import (
     ModelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
+    run_nondeterministic,
 )
 from .testing_utils import NewAutoencoderTesterMixin
 
@@ -134,9 +135,34 @@ class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTester
 class TestAutoencoderKLMiniMaxH3Memory(AutoencoderKLMiniMaxH3TesterConfig, MemoryTesterMixin):
     """Memory optimization tests for the MiniMax-H3 video autoencoder."""
 
+    @pytest.mark.skip(
+        "`_keep_in_fp32_modules` pins every module of this autoencoder, so layerwise casting has nothing left to "
+        "cast and the memory footprint cannot go down."
+    )
+    def test_layerwise_casting_memory(self):
+        pass
+
+    # The encoder pads spatially with `mode="reflect"`, whose reflection_pad3d_backward_out_cuda has no deterministic
+    # implementation, so every test below that runs a backward pass has to relax determinism.
+    def test_layerwise_casting_training(self):
+        run_nondeterministic(super().test_layerwise_casting_training)
+
 
 class TestAutoencoderKLMiniMaxH3Training(AutoencoderKLMiniMaxH3TesterConfig, TrainingTesterMixin):
     """Training tests for the MiniMax-H3 video autoencoder."""
+
+    # See `TestAutoencoderKLMiniMaxH3Memory` for why these relax determinism.
+    def test_training(self):
+        run_nondeterministic(super().test_training)
+
+    def test_training_with_ema(self):
+        run_nondeterministic(super().test_training_with_ema)
+
+    def test_mixed_precision_training(self):
+        run_nondeterministic(super().test_mixed_precision_training)
+
+    def test_gradient_checkpointing_equivalence(self):
+        run_nondeterministic(super().test_gradient_checkpointing_equivalence)
 
     def test_gradient_checkpointing_is_applied(self):
         super().test_gradient_checkpointing_is_applied(

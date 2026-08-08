@@ -19,21 +19,17 @@ from diffusers import AutoencoderVidTok
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TrainingTesterMixin,
+    run_nondeterministic,
+)
 from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
-
-
-def _run_nondeterministic(fn):
-    # avg_pool3d_backward_cuda has no deterministic CUDA implementation;
-    # temporarily relax the requirement for tests that do backward passes.
-    torch.use_deterministic_algorithms(False)
-    try:
-        fn()
-    finally:
-        torch.use_deterministic_algorithms(True)
 
 
 class AutoencoderVidTokTesterConfig(BaseModelTesterConfig):
@@ -90,24 +86,26 @@ class TestAutoencoderVidTokTraining(AutoencoderVidTokTesterConfig, TrainingTeste
         expected_set = {"VidTokEncoder3D", "VidTokDecoder3D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    # avg_pool3d_backward_cuda has no deterministic implementation, so every test below that runs a backward pass
+    # has to relax determinism.
     def test_training(self):
-        _run_nondeterministic(super().test_training)
+        run_nondeterministic(super().test_training)
 
     def test_training_with_ema(self):
-        _run_nondeterministic(super().test_training_with_ema)
+        run_nondeterministic(super().test_training_with_ema)
 
     def test_mixed_precision_training(self):
-        _run_nondeterministic(super().test_mixed_precision_training)
+        run_nondeterministic(super().test_mixed_precision_training)
 
     def test_gradient_checkpointing_equivalence(self):
-        _run_nondeterministic(super().test_gradient_checkpointing_equivalence)
+        run_nondeterministic(super().test_gradient_checkpointing_equivalence)
 
 
 class TestAutoencoderVidTokMemory(AutoencoderVidTokTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderVidTok."""
 
     def test_layerwise_casting_training(self):
-        _run_nondeterministic(super().test_layerwise_casting_training)
+        run_nondeterministic(super().test_layerwise_casting_training)
 
 
 class TestAutoencoderVidTokSlicingTiling(AutoencoderVidTokTesterConfig, NewAutoencoderTesterMixin):

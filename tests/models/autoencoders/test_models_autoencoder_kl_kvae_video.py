@@ -20,21 +20,17 @@ from diffusers import AutoencoderKLKVAEVideo
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TrainingTesterMixin,
+    run_nondeterministic,
+)
 from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
-
-
-def _run_nondeterministic(fn):
-    # reflection_pad3d_backward_out_cuda has no deterministic CUDA implementation;
-    # temporarily relax the requirement for tests that do backward passes.
-    torch.use_deterministic_algorithms(False)
-    try:
-        fn()
-    finally:
-        torch.use_deterministic_algorithms(True)
 
 
 class AutoencoderKLKVAEVideoTesterConfig(BaseModelTesterConfig):
@@ -91,14 +87,16 @@ class TestAutoencoderKLKVAEVideoTraining(AutoencoderKLKVAEVideoTesterConfig, Tra
         expected_set = {"KVAECachedEncoder3D", "KVAECachedDecoder3D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    # reflection_pad3d_backward_out_cuda has no deterministic implementation, so every test below that runs a
+    # backward pass has to relax determinism.
     def test_training(self):
-        _run_nondeterministic(super().test_training)
+        run_nondeterministic(super().test_training)
 
     def test_training_with_ema(self):
-        _run_nondeterministic(super().test_training_with_ema)
+        run_nondeterministic(super().test_training_with_ema)
 
     def test_mixed_precision_training(self):
-        _run_nondeterministic(super().test_mixed_precision_training)
+        run_nondeterministic(super().test_mixed_precision_training)
 
     @pytest.mark.skip(
         "Gradient checkpointing recomputes the forward pass, but the model uses a stateful cache_dict "
@@ -113,7 +111,7 @@ class TestAutoencoderKLKVAEVideoMemory(AutoencoderKLKVAEVideoTesterConfig, Memor
     """Memory optimization tests for AutoencoderKLKVAEVideo."""
 
     def test_layerwise_casting_training(self):
-        _run_nondeterministic(super().test_layerwise_casting_training)
+        run_nondeterministic(super().test_layerwise_casting_training)
 
 
 class TestAutoencoderKLKVAEVideoSlicingTiling(AutoencoderKLKVAEVideoTesterConfig, NewAutoencoderTesterMixin):
