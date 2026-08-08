@@ -12,50 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 import math
-from typing import Callable
+from typing import Any, Callable
 
-import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+from tqdm import tqdm
 
 from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanAnimate2Transformer3DModel
 from ...models.transformers.transformer_wan_animate_2 import WanAnimate2KVCache
-from ...schedulers import DPMSolverMultistepScheduler
+from ...schedulers import SchedulerMixin
 from ...utils import logging
-from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .image_processor import WanAnimateVideoProcessor
 from .pipeline_output import WanPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def get_sampling_sigmas(sampling_steps, shift):
-    sigma = np.linspace(1, 0, sampling_steps + 1)[:sampling_steps]
-    sigma = shift * sigma / (1 + (shift - 1) * sigma)
-    return sigma
-
-
-def retrieve_timesteps(scheduler, num_inference_steps=None, device=None, sigmas=None, **kwargs):
-    if sigmas is not None:
-        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accept_sigmas:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" sigmas schedules."
-            )
-        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
 
 
 def get_i2v_mask(lat_t, lat_h, lat_w, mask_len=1, device="cuda"):
@@ -75,56 +51,19 @@ CLIP_MEAN = [0.48145466, 0.4578275, 0.40821073]
 CLIP_STD = [0.26862954, 0.26130258, 0.27577711]
 
 
-def get_frame_indices(frame_num, video_fps, clip_length, train_fps):
-    """Resample video frames to target fps."""
-    times = np.arange(0, clip_length) / train_fps
+def get_frame_indices(num_frames, video_fps, target_fps):
+    """Nearest-neighbour resample of a `video_fps` clip to `target_fps`."""
+    num_target_frames = int(num_frames / video_fps * target_fps)
+    times = np.arange(0, num_target_frames) / target_fps
     frame_indices = np.round(times * video_fps).astype(int)
-    return np.clip(frame_indices, 0, frame_num - 1).tolist()
-
-
-def padding_resize(img_ori, height, width, padding_color=(0, 0, 0), interpolation=cv2.INTER_LINEAR):
-    """Letterbox resize: keep aspect ratio + black padding to exact (height, width)."""
-    ori_h, ori_w = img_ori.shape[:2]
-    channel = img_ori.shape[2] if img_ori.ndim == 3 else 1
-    img_pad = np.zeros((height, width, channel), dtype=np.uint8)
-    img_pad[:] = padding_color
-
-    if ori_h / ori_w > height / width:
-        new_w = int(height / ori_h * ori_w)
-        img = cv2.resize(img_ori, (new_w, height), interpolation=interpolation)
-        padding = (width - new_w) // 2
-        if img.ndim == 2:
-            img = img[:, :, np.newaxis]
-        img_pad[:, padding : padding + new_w, :] = img
-        return img_pad, {"padding_type": "width", "padding": padding, "side_long": new_w}
-    else:
-        new_h = int(width / ori_w * ori_h)
-        img = cv2.resize(img_ori, (width, new_h), interpolation=interpolation)
-        padding = (height - new_h) // 2
-        if img.ndim == 2:
-            img = img[:, :, np.newaxis]
-        img_pad[padding : padding + new_h, :, :] = img
-        return img_pad, {"padding_type": "height", "padding": padding, "side_long": new_h}
-
-
-def resize_by_area(image, target_area, divisor=16):
-    """Resize keeping aspect ratio targeting area, pad to exact dims. Returns (image, padding_info)."""
-    h, w = image.shape[:2]
-    aspect_ratio = w / h
-    new_h = math.sqrt(target_area / aspect_ratio)
-    new_w = target_area / new_h
-    new_w, new_h = int((new_w // divisor) * divisor), int((new_h // divisor) * divisor)
-    interpolation = cv2.INTER_AREA if (new_w * new_h < w * h) else cv2.INTER_LINEAR
-    return padding_resize(image, new_h, new_w, interpolation=interpolation)
+    return np.clip(frame_indices, 0, num_frames - 1).tolist()
 
 
 def clip_visual_encode(image_encoder, tensor, device, dtype):
     """Encode tensor to CLIP features (bicubic to 224×224, matching original)."""
     if tensor.ndim == 3:
         tensor = tensor.unsqueeze(1)
-    videos = F.interpolate(
-        tensor.transpose(0, 1), size=(224, 224), mode="bicubic", align_corners=False
-    )
+    videos = F.interpolate(tensor.transpose(0, 1), size=(224, 224), mode="bicubic", align_corners=False)
     videos = videos.mul_(0.5).add_(0.5)
     mean = torch.tensor(CLIP_MEAN, device=device, dtype=videos.dtype).view(1, 3, 1, 1)
     std = torch.tensor(CLIP_STD, device=device, dtype=videos.dtype).view(1, 3, 1, 1)
@@ -151,8 +90,10 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             CLIP vision model for encoding the reference image.
         transformer ([`WanAnimate2Transformer3DModel`]):
             The Wan-Animate-2 transformer model.
-        scheduler ([`DPMSolverMultistepScheduler`]):
-            A scheduler for flow matching.
+        scheduler ([`SchedulerMixin`]):
+            A flow-matching scheduler to be used in combination with `transformer` to denoise the encoded latents.
+            The reference implementation samples with `DPMSolverMultistepScheduler` (`flow_shift=5.0`) for the base
+            model and `FlowMatchEulerDiscreteScheduler` (`shift=5.0`) for the distilled one.
         vae ([`AutoencoderKLWan`]):
             The Wan VAE model.
     """
@@ -165,7 +106,7 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         tokenizer,
         text_encoder,
         vae: AutoencoderKLWan,
-        scheduler: DPMSolverMultistepScheduler,
+        scheduler: SchedulerMixin,
         image_encoder,
         transformer: WanAnimate2Transformer3DModel,
     ):
@@ -182,7 +123,11 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
-        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+        # Wan-Animate-2 letterboxes the reference image and the driving video into the same frame: aspect
+        # ratio preserved, the remainder filled with black. That is `resize_mode="fill"` with `fill_color=0`.
+        self.video_processor = WanAnimateVideoProcessor(
+            vae_scale_factor=self.vae_scale_factor_spatial, spatial_patch_size=(2, 2)
+        )
 
     def _get_t5_prompt_embeds(self, prompt, device=None, dtype=None, max_sequence_length=512):
         device = device or self._execution_device
@@ -220,10 +165,9 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image_embeds = self.image_encoder(**processed, output_hidden_states=True)
         return image_embeds.hidden_states[-2]
 
-    def _encode_vae(self, video, device, dtype):
-        """Encode video to latents using VAE, with standardization."""
-        video = video.to(device=device, dtype=dtype)
-        latents = self.vae.encode(video)
+    def _encode_vae(self, video):
+        """VAE-encode a `[B, C, T, H, W]` clip and standardize the latents."""
+        latents = self.vae.encode(video.to(self.vae.dtype))
         if hasattr(latents, "latent_dist"):
             latents = latents.latent_dist.mode()
         elif hasattr(latents, "latents"):
@@ -280,7 +224,7 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def __call__(
         self,
         image: PipelineImageInput,
-        driving_video: list,
+        driving_video: list[Any],
         prompt: str | list[str] = None,
         negative_prompt: str | list[str] = None,
         prompt_ref: str = "人物动作的参考视频",
@@ -289,11 +233,9 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         clip_len: int = 81,
         first_num: int = 1,
         fps: int = 24,
+        driving_video_fps: float | None = None,
         num_inference_steps: int = 40,
         guidance_scale: float = 3.0,
-        sample_shift: float = 5.0,
-        flow_solver: str = "dpm",
-        seed: int = -1,
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str | None = "np",
         return_dict: bool = True,
@@ -307,8 +249,10 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         Args:
             image (`PipelineImageInput`):
                 The reference character image.
-            driving_video (`list`):
-                The driving video (list of PIL images or tensors) that provides motion.
+            driving_video (`list[PIL.Image.Image]`, `np.ndarray` or `torch.Tensor`):
+                The driving video that provides the motion, in any format accepted by
+                [`~video_processor.VideoProcessor.preprocess_video`]. Load one from disk with
+                [`~utils.load_video`].
             prompt (`str` or `list[str]`):
                 The text prompt describing the character appearance and background.
             negative_prompt (`str` or `list[str]`, *optional*):
@@ -316,23 +260,28 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt_ref (`str`, defaults to `"人物动作的参考视频"`):
                 The reference prompt for the driving video context.
             height (`int`, defaults to `800`):
-                The height of the generated video.
+                Together with `width`, the target *area* (`height * width`) of the generated video. The aspect ratio
+                is taken from `image`, so the video is rarely exactly `height` x `width` — both dimensions are
+                rescaled to hit that area and then floored to a multiple of 16.
             width (`int`, defaults to `640`):
-                The width of the generated video.
+                See `height`.
             clip_len (`int`, defaults to `81`):
                 The number of frames in each inference segment.
             first_num (`int`, defaults to `1`):
                 The number of conditioning frames from the previous segment.
             fps (`int`, defaults to `24`):
-                The output video FPS.
+                The frame rate the model generates at. `driving_video` is resampled to it when
+                `driving_video_fps` is given.
+            driving_video_fps (`float`, *optional*):
+                The frame rate `driving_video` was captured at — a list of frames does not carry it, so
+                [`~utils.load_video`] will report it with `return_fps=True`. When set, the driving frames are
+                nearest-neighbour resampled from it to `fps`; when `None` they are used as-is.
             num_inference_steps (`int`, defaults to `40`):
                 The number of denoising steps.
             guidance_scale (`float`, defaults to `3.0`):
                 Guidance scale for classifier-free guidance.
-            sample_shift (`float`, defaults to `5.0`):
-                The shift parameter for sigma computation.
-            seed (`int`, defaults to `-1`):
-                Random seed. -1 means random.
+            generator (`torch.Generator`, *optional*):
+                A generator to make generation deterministic.
             output_type (`str`, defaults to `"np"`):
                 The output format.
             return_dict (`bool`, defaults to `True`):
@@ -344,40 +293,37 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._guidance_scale = guidance_scale
         device = self._execution_device
 
-        if seed >= 0:
-            torch.manual_seed(seed)
-            torch.cuda.manual_seed_all(seed)
-            np.random.seed(seed)
+        # 2. Resolve the output frame. `height * width` is a target *area*; the aspect ratio comes from the
+        # reference image, and both sides are floored to a multiple of `vae_scale_factor_spatial * patch_size`
+        # so the latent grid divides evenly.
+        image_height, image_width = self.video_processor.get_default_height_width(image)
+        mod_value = self.vae_scale_factor_spatial * 2
+        aspect_ratio = image_height / image_width
+        actual_h = int(math.sqrt(height * width * aspect_ratio)) // mod_value * mod_value
+        actual_w = int(math.sqrt(height * width / aspect_ratio)) // mod_value * mod_value
 
-        if generator is None:
-            generator = torch.Generator(device=device)
-            if seed >= 0:
-                generator.manual_seed(seed)
+        # The reference image is letterboxed into that frame. `resize_mode="fill"` keeps the aspect ratio and
+        # pads the remainder with black; record the pasted box so the bars can be cropped back off the output.
+        src_w = (
+            actual_w if actual_w / actual_h < image_width / image_height else image_width * actual_h // image_height
+        )
+        src_h = (
+            actual_h if actual_w / actual_h >= image_width / image_height else image_height * actual_w // image_width
+        )
+        crop_top, crop_left = actual_h // 2 - src_h // 2, actual_w // 2 - src_w // 2
 
-        # 2. Preprocess reference image (letterbox resize — do this first to get actual dims)
-        ref_np = np.array(image)  # PIL → numpy [H, W, C]
-        ref_pad, ref_padding_info = resize_by_area(ref_np, width * height, divisor=16)
-        actual_h, actual_w = ref_pad.shape[:2]
+        image_pixels = self.video_processor.preprocess(image, height=actual_h, width=actual_w, resize_mode="fill").to(
+            device, dtype=torch.float32
+        )
 
-        # 3. Prepare driving video frames (FPS resampling + letterbox to match ref dims)
-        import decord
+        # 3. Preprocess the driving video into the same frame, resampling to `fps` first if asked to.
+        if driving_video_fps is not None:
+            frame_indices = get_frame_indices(len(driving_video), driving_video_fps, fps)
+            driving_video = [driving_video[i] for i in frame_indices]
 
-        vr = decord.VideoReader(driving_video if isinstance(driving_video, str) else None)
-        video_fps = vr.get_avg_fps()
-        frame_num = len(vr)
-        target_num = int(frame_num / video_fps * fps)
-        idxs = get_frame_indices(frame_num, video_fps, target_num, fps)
-        frames_np = vr.get_batch(idxs).asnumpy()  # [T, H, W, C] uint8
-
-        cond_images_np = []
-        for frame in frames_np:
-            img_pad, _ = padding_resize(frame, actual_h, actual_w)
-            cond_images_np.append(img_pad)
-
-        driving_video = torch.tensor(np.stack(cond_images_np), dtype=torch.float32)  # [T, H, W, C]
-        driving_video = driving_video / 127.5 - 1.0  # [-1, 1]
-        driving_video = driving_video.permute(3, 0, 1, 2).unsqueeze(0)  # [1, C, T, H, W]
-        driving_video = driving_video.to(device, dtype=torch.float32)
+        driving_video = self.video_processor.preprocess_video(
+            driving_video, height=actual_h, width=actual_w, resize_mode="fill"
+        ).to(device, dtype=torch.float32)
 
         # Pad driving video to be a multiple of (clip_len - first_num)
         real_frame_len = driving_video.shape[2]
@@ -391,6 +337,8 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # Pad driving video using zigzag (reflect) strategy
         if num_padding > 0:
+            # Mirrored real frames, not filler: the model attends to them like any other frame and needs no mask.
+            # The surplus generated frames are cropped off again with `[:, :, :real_frame_len]` at the end.
             padding_frames = driving_video[:, :, real_frame_len - num_padding : real_frame_len].flip(2)
             driving_video = torch.cat([driving_video, padding_frames], dim=2)
 
@@ -409,35 +357,11 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
 
         # 5. Encode reference image (VAE + CLIP)
-        ref_tensor = torch.tensor(ref_pad, dtype=torch.float32) / 127.5 - 1.0  # [-1, 1]
-        image_pixels = ref_tensor.permute(2, 0, 1).unsqueeze(0).unsqueeze(2).to(device, dtype=torch.float32)
-
         # CLIP features from reference image (direct bicubic to 224×224 from tensor)
-        clip_fea = clip_visual_encode(self.image_encoder, ref_tensor.permute(2, 0, 1).to(device), device, self.transformer.dtype)
+        clip_fea = clip_visual_encode(self.image_encoder, image_pixels[0], device, self.transformer.dtype)
 
-        # VAE encode reference image
-        ref_pixels = image_pixels.to(self.vae.dtype)
-        if ref_pixels.ndim == 4:
-            ref_pixels = ref_pixels.unsqueeze(2)  # [B, C, H, W] -> [B, C, 1, H, W]
-        ref_latents = self.vae.encode(ref_pixels)
-        if hasattr(ref_latents, "latent_dist"):
-            ref_latents = ref_latents.latent_dist.mode()
-        elif hasattr(ref_latents, "latents"):
-            ref_latents = ref_latents.latents
-        elif isinstance(ref_latents, (list, tuple)):
-            ref_latents = torch.stack(ref_latents) if not isinstance(ref_latents[0], torch.Tensor) else ref_latents[0]
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean)
-            .view(1, self.vae.config.z_dim, 1, 1, 1)
-            .to(ref_latents.device, ref_latents.dtype)
-        )
-        latents_recip_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-            ref_latents.device, ref_latents.dtype
-        )
-        ref_latents = (ref_latents - latents_mean) * latents_recip_std
+        ref_latents = self._encode_vae(image_pixels.unsqueeze(2))  # [B, C, H, W] -> [B, C, 1, H, W]
 
-        # Derive latent dims from ACTUAL image size after resize_by_area (not requested height/width)
-        actual_h, actual_w = ref_pad.shape[:2]
         latent_h = actual_h // self.vae_scale_factor_spatial
         latent_w = actual_w // self.vae_scale_factor_spatial
 
@@ -449,29 +373,12 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # CLIP context for reference
         clip_context = clip_fea
 
-        # 5. Set up scheduler
-        if flow_solver == "euler":
-            from diffusers import FlowMatchEulerDiscreteScheduler
-
-            sample_scheduler = FlowMatchEulerDiscreteScheduler(
-                num_train_timesteps=1000,
-                shift=sample_shift,
-                use_dynamic_shifting=False,
-            )
-        else:
-            sample_scheduler = DPMSolverMultistepScheduler.from_config(
-                self.scheduler.config,
-                num_train_timesteps=1000,
-                flow_shift=sample_shift,
-                use_dynamic_shifting=False,
-                prediction_type="flow_prediction",
-            )
-        sample_scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = sample_scheduler.timesteps
-
+        # 6. Prepare timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
         self._num_timesteps = len(timesteps)
 
-        # 6. Segment-based generation loop
+        # 7. Segment-based generation loop
         start = 0
         end = clip_len
         all_out_frames = []
@@ -490,16 +397,11 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             else:
                 clip_len_actual = clip_len
 
-            # VAE encode the driving video segment
-            cond_pixels = driving_video[:, :, start : start + clip_len_actual].to(self.vae.dtype)
-            condition_latents = self.vae.encode(cond_pixels)
-            if hasattr(condition_latents, "latent_dist"):
-                condition_latents = condition_latents.latent_dist.mode()
-            elif hasattr(condition_latents, "latents"):
-                condition_latents = condition_latents.latents
-            elif isinstance(condition_latents, (list, tuple)):
-                condition_latents = condition_latents[0] if isinstance(condition_latents[0], torch.Tensor) else torch.stack(condition_latents)
-            condition_latents = (condition_latents - latents_mean) * latents_recip_std
+            # VAE-encode this segment's slice of the driving video. The Wan VAE is causal in time, so
+            # encoding the whole video once up front and slicing the latents is not the same tensor —
+            # segments overlap by `first_num` frames and each slice restarts the temporal convolution.
+            # Encoding per segment is also what a streaming mode would have to do anyway.
+            condition_latents = self._encode_vae(driving_video[:, :, start : start + clip_len_actual])
 
             # CLIP features from driving video first frame (direct bicubic to 224×224 from tensor)
             condition_img = driving_video[0, :, 0]  # [C, H, W] in [-1, 1]
@@ -519,18 +421,11 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 cond_y_input = torch.cat(
                     [prev_frames_interp, torch.zeros(3, T - mask_reft_len - 1, actual_h, actual_w, device=device)],
                     dim=1,
-                ).to(self.vae.dtype)
+                )
             else:
-                cond_y_input = torch.zeros(3, T - 1, actual_h, actual_w, device=device).to(self.vae.dtype)
+                cond_y_input = torch.zeros(3, T - 1, actual_h, actual_w, device=device)
 
-            y_reft = self.vae.encode(cond_y_input.unsqueeze(0))
-            if hasattr(y_reft, "latent_dist"):
-                y_reft = y_reft.latent_dist.mode()
-            elif hasattr(y_reft, "latents"):
-                y_reft = y_reft.latents
-            elif isinstance(y_reft, (list, tuple)):
-                y_reft = y_reft[0]
-            y_reft = (y_reft - latents_mean) * latents_recip_std
+            y_reft = self._encode_vae(cond_y_input.unsqueeze(0))
             if y_reft.ndim == 5:
                 y_reft = y_reft.squeeze(0)  # [1, 16, T, H, W] -> [16, T, H, W]
 
@@ -612,7 +507,9 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # Phase 1: encode reference — cast all inputs to transformer dtype
             t_ref = torch.tensor([timesteps[0].item()], device=device, dtype=self.transformer.dtype)
             self.transformer(
-                [condition_latents[0].to(self.transformer.dtype)] if condition_latents.ndim == 5 else [condition_latents.to(self.transformer.dtype)],
+                [condition_latents[0].to(self.transformer.dtype)]
+                if condition_latents.ndim == 5
+                else [condition_latents.to(self.transformer.dtype)],
                 timestep=t_ref,
                 encoder_hidden_states=[c.to(self.transformer.dtype) for c in arg_ref_c["context_ref"]],
                 encoder_hidden_states_image=arg_ref_c["clip_fea_ref"].to(self.transformer.dtype),
@@ -624,9 +521,7 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
             # Phase 2: denoising loop
-            from tqdm import tqdm
-
-            for i, t in tqdm(enumerate(timesteps), total=len(timesteps), desc=f"Segment {seg_idx+1}/{num_segments}"):
+            for i, t in tqdm(enumerate(timesteps), total=len(timesteps), desc=f"Segment {seg_idx + 1}/{num_segments}"):
                 timestep = torch.stack([t])
 
                 # Conditional
@@ -665,7 +560,7 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     noise_pred = noise_pred_cond
 
                 # Scheduler step
-                temp_x0 = sample_scheduler.step(
+                temp_x0 = self.scheduler.step(
                     noise_pred.unsqueeze(0),
                     t,
                     latents[0].unsqueeze(0),
@@ -703,19 +598,15 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             del kv_cache, latents, x0
             torch.cuda.empty_cache()
 
-            # Reset scheduler for next segment
-            sample_scheduler.set_timesteps(num_inference_steps, device=device)
-            timesteps = sample_scheduler.timesteps
+            # Each segment is an independent trajectory, so the solver state has to be reset.
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
+            timesteps = self.scheduler.timesteps
 
         # Concatenate all segments
         video = torch.cat(all_out_frames, dim=2)[:, :, :real_frame_len].to(device)
 
-        # Remove letterbox padding (crop black borders)
-        p_info = ref_padding_info
-        if p_info["padding_type"] == "width":
-            video = video[:, :, :, :, p_info["padding"] : p_info["padding"] + p_info["side_long"]]
-        else:
-            video = video[:, :, :, p_info["padding"] : p_info["padding"] + p_info["side_long"], :]
+        # Crop the reference image's letterbox bars back off
+        video = video[:, :, :, crop_top : crop_top + src_h, crop_left : crop_left + src_w]
 
         video = self.video_processor.postprocess_video(video, output_type=output_type)
 

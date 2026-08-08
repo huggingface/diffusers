@@ -20,6 +20,7 @@ import torch
 from ...configuration_utils import register_to_config
 from ...image_processor import VaeImageProcessor
 from ...utils import PIL_INTERPOLATION
+from ...video_processor import VideoProcessor
 
 
 class WanAnimateImageProcessor(VaeImageProcessor):
@@ -182,3 +183,11 @@ class WanAnimateImageProcessor(VaeImageProcessor):
         width = round(np.sqrt(max_area / aspect_ratio)) // mod_value_w * mod_value_w
 
         return height, width
+
+
+class WanAnimateVideoProcessor(VideoProcessor, WanAnimateImageProcessor):
+    r"""
+    Video counterpart of [`WanAnimateImageProcessor`]. `preprocess_video(..., resize_mode="fill")` letterboxes every
+    frame into the target frame: the aspect ratio is preserved and the remainder is filled with `fill_color` (black by
+    default) rather than with stretched image data.
+    """
