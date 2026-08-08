@@ -106,6 +106,108 @@ image = pipe(
 image.save("krea2.png")
 ```
 
+The same modular pipeline automatically selects image-to-image generation when `image` is provided. `strength`
+controls how strongly the result can depart from the source image.
+
+```python
+import torch
+from diffusers import ModularPipeline
+from diffusers.utils import load_image
+
+pipe = ModularPipeline.from_pretrained("krea/Krea-2-Raw")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")
+
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
+image = pipe(
+    prompt="a cat wearing a knitted wizard hat",
+    image=init_image,
+    height=init_image.height,
+    width=init_image.width,
+    strength=0.8,
+    num_inference_steps=28,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("krea2_img2img.png")
+```
+
+Provide both `image` and `mask_image` to select inpainting. White mask pixels are regenerated and black mask pixels
+are preserved.
+
+```python
+import torch
+from diffusers import ModularPipeline
+from diffusers.utils import load_image
+
+pipe = ModularPipeline.from_pretrained("krea/Krea-2-Raw")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")
+
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+image = pipe(
+    prompt="a small red fox sitting on a park bench",
+    image=init_image,
+    mask_image=mask_image,
+    height=init_image.height,
+    width=init_image.width,
+    strength=0.9,
+    num_inference_steps=28,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("krea2_inpaint.png")
+```
+
+### Reference-conditioned generation
+
+Pass `reference_image` to condition generation on clean reference-image tokens and an image-grounded Qwen3-VL prompt
+encoding. Unlike conventional image-to-image generation, the target starts from pure noise, so this workflow does not
+use `strength`. It is intended for LoRAs trained with the same reference-conditioning layout and is not tied to one
+specific identity or editing adapter.
+
+The following example uses the community [Krea 2 Identity Edit](https://huggingface.co/conradlocke/krea2-identity-edit)
+LoRA:
+
+```python
+import torch
+from diffusers import ModularPipeline
+from diffusers.utils import load_image
+
+pipe = ModularPipeline.from_pretrained("krea/Krea-2-Turbo")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.load_lora_weights(
+    "conradlocke/krea2-identity-edit",
+    weight_name="krea2_identity_edit_v1_2_r64.safetensors",
+    adapter_name="krea2_edit",
+)
+pipe.to("cuda")
+
+scene_image = load_image(
+    "https://raw.githubusercontent.com/lucasruan1618/Image_storage/main/Input/cute_dog.png"
+)
+subject_image = load_image(
+    "https://raw.githubusercontent.com/lucasruan1618/Image_storage/main/Input/cute_cat.png"
+)
+image = pipe(
+    prompt="place the wizard cat from the second image sitting on the bench beside the dog from the first image",
+    reference_image=[scene_image, subject_image],
+    height=1024,
+    width=1024,
+    reference_image_encoder_resolution=768,
+    reference_attention_scale=[1.0, 4.0],
+    num_inference_steps=10,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("krea2_reference.png")
+```
+
+`reference_image` accepts one image or an ordered list of any length. The example passes the scene first and the subject
+second to match the adapter's training order. The same reference set is shared by every prompt in a prompt batch.
+`reference_image_encoder_resolution` controls the maximum reference-image side length passed to Qwen3-VL.
+`reference_attention_scale` accepts either one value for all references or one value per reference; the example leaves
+scene attention unchanged and boosts subject fidelity. The adapter's recommended LoRA scale is `1.0`. References are
+resized to the requested output dimensions before VAE encoding, so use similar aspect ratios to avoid distortion.
+
 We additionally provide an example for using Krea2 Turbo. The distilled checkpoint maps to its own set of blocks
 ([`Krea2TurboAutoBlocks`]): it runs guidance-free (no `guider`), takes no negative prompt, and samples in a few steps.
 `ModularPipeline.from_pretrained` picks the turbo blocks automatically from the checkpoint's `is_distilled` config, so
