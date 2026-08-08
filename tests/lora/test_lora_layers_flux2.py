@@ -148,3 +148,116 @@ class Flux2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Not supported in Flux2.")
     def test_modify_padding_mode(self):
         pass
+
+
+@require_peft_backend
+class Flux2LoKrTests(unittest.TestCase):
+    factor = 4
+
+    def get_transformer(self):
+        return Flux2Transformer2DModel(
+            patch_size=1,
+            in_channels=4,
+            num_layers=1,
+            num_single_layers=1,
+            attention_head_dim=16,
+            num_attention_heads=2,
+            joint_attention_dim=16,
+            timestep_guidance_channels=256,
+            axes_dims_rope=[4, 4, 4, 4],
+        )
+
+    def make_factors(self, out_features, in_features):
+        from peft.tuners.lokr.layer import factorization
+
+        (out_l, out_k) = factorization(out_features, self.factor)
+        (in_m, in_n) = factorization(in_features, self.factor)
+        return torch.randn(out_l, in_m), torch.randn(out_k, in_n)
+
+    def test_lokr_bfl_checkpoint_fuses_qkv_and_loads(self):
+        # ai-toolkit Flux2 LoKr checkpoints use BFL layer names with LoKr applied to the fused QKV projections
+        # of the double blocks; loading fuses the model's QKV projections and maps the adapter 1:1.
+        from peft.tuners.lokr.layer import LoKrLayer
+
+        torch.manual_seed(0)
+        transformer = self.get_transformer()
+        named = dict(transformer.named_modules())
+        state_dict = {}
+        expected_deltas = {}
+
+        for bfl_path, diffusers_path, target in [
+            ("single_blocks.0.linear1", "single_transformer_blocks.0.attn.to_qkv_mlp_proj", None),
+            ("single_blocks.0.linear2", "single_transformer_blocks.0.attn.to_out", None),
+            ("double_blocks.0.img_attn.proj", "transformer_blocks.0.attn.to_out.0", None),
+            ("double_blocks.0.img_mlp.0", "transformer_blocks.0.ff.linear_in", None),
+            ("double_blocks.0.img_attn.qkv", "transformer_blocks.0.attn.to_qkv", "transformer_blocks.0.attn.to_q"),
+            (
+                "double_blocks.0.txt_attn.qkv",
+                "transformer_blocks.0.attn.to_added_qkv",
+                "transformer_blocks.0.attn.add_q_proj",
+            ),
+        ]:
+            # fused QKV modules do not exist before fusion; derive their dimensions from the query projection
+            linear = named[target if target is not None else diffusers_path]
+            out_features = linear.out_features if target is None else 3 * linear.out_features
+            w1, w2 = self.make_factors(out_features, linear.in_features)
+            state_dict[f"diffusion_model.{bfl_path}.lokr_w1"] = w1
+            state_dict[f"diffusion_model.{bfl_path}.lokr_w2"] = w2
+            state_dict[f"diffusion_model.{bfl_path}.alpha"] = torch.tensor(9999220736.0)
+            expected_deltas[diffusers_path] = torch.kron(w1, w2)
+
+        pipe = Flux2Pipeline(
+            scheduler=FlowMatchEulerDiscreteScheduler(),
+            vae=None,
+            text_encoder=None,
+            tokenizer=None,
+            transformer=transformer,
+        )
+        pipe.load_lora_weights(state_dict, adapter_name="default")
+
+        self.assertTrue(transformer.transformer_blocks[0].attn.fused_projections)
+        named = dict(transformer.named_modules())
+        for module, expected in expected_deltas.items():
+            layer = named[module]
+            self.assertIsInstance(layer, LoKrLayer, module)
+            delta = layer.get_delta_weight("default")
+            self.assertLess((delta - expected).abs().max().item(), 1e-5, module)
+
+    def test_lokr_lycoris_checkpoint(self):
+        # LyCORIS wraps the diffusers model directly and encodes module paths with underscores under a
+        # `lycoris_` prefix.
+        from peft.tuners.lokr.layer import LoKrLayer
+
+        from diffusers.loaders.lora_pipeline import Flux2LoraLoaderMixin
+
+        torch.manual_seed(0)
+        transformer = self.get_transformer()
+        named = dict(transformer.named_modules())
+        state_dict = {}
+        expected_deltas = {}
+
+        for lycoris_path, diffusers_path in [
+            (
+                "lycoris_single_transformer_blocks_0_attn_to_qkv_mlp_proj",
+                "single_transformer_blocks.0.attn.to_qkv_mlp_proj",
+            ),
+            ("lycoris_transformer_blocks_0_attn_to_q", "transformer_blocks.0.attn.to_q"),
+            ("lycoris_transformer_blocks_0_attn_to_out_0", "transformer_blocks.0.attn.to_out.0"),
+            ("lycoris_transformer_blocks_0_ff_linear_in", "transformer_blocks.0.ff.linear_in"),
+        ]:
+            linear = named[diffusers_path]
+            w1, w2 = self.make_factors(linear.out_features, linear.in_features)
+            state_dict[f"{lycoris_path}.lokr_w1"] = w1
+            state_dict[f"{lycoris_path}.lokr_w2"] = w2
+            state_dict[f"{lycoris_path}.alpha"] = torch.tensor(16.0)
+            expected_deltas[diffusers_path] = torch.kron(w1, w2)
+
+        converted = Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+        transformer.load_lora_adapter(converted, prefix="transformer", adapter_name="default")
+
+        named = dict(transformer.named_modules())
+        for module, expected in expected_deltas.items():
+            layer = named[module]
+            self.assertIsInstance(layer, LoKrLayer, module)
+            delta = layer.get_delta_weight("default")
+            self.assertLess((delta - expected).abs().max().item(), 1e-5, module)

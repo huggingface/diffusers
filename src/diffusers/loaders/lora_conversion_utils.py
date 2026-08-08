@@ -2741,6 +2741,166 @@ def _convert_kohya_flux2_lora_to_diffusers(state_dict):
     return ait_sd
 
 
+def _bake_lokr_alpha(state_dict):
+    """
+    Consume `.alpha` keys by baking the LyCORIS `alpha / rank` scaling into the left Kronecker factor. The scaling only
+    applies when a factor is rank-decomposed (`lokr_w1_a/b` or `lokr_w2_a/b`); when both factors are stored as full
+    matrices, LoKr applies no alpha scaling and the alpha key is simply dropped.
+    """
+    for alpha_key in [k for k in state_dict if k.endswith(".alpha")]:
+        alpha = state_dict.pop(alpha_key).item()
+        module = alpha_key.removesuffix(".alpha")
+        w1_b = state_dict.get(f"{module}.lokr_w1_b")
+        w2_b = state_dict.get(f"{module}.lokr_w2_b")
+        rank = w2_b.shape[0] if w2_b is not None else w1_b.shape[0] if w1_b is not None else None
+        if rank is None:
+            continue
+        w1_key = f"{module}.lokr_w1" if f"{module}.lokr_w1" in state_dict else f"{module}.lokr_w1_a"
+        state_dict[w1_key] = state_dict[w1_key] * (alpha / rank)
+
+
+def _convert_non_diffusers_lokr_to_diffusers(state_dict):
+    """
+    Convert a non-diffusers LoKr state dict whose module paths already match the diffusers model (e.g. ai-toolkit
+    Z-Image checkpoints with keys like `diffusion_model.layers.0.attention.to_q.lokr_w1`) to the peft-loadable format:
+    the `diffusion_model.` prefix is replaced with `transformer.` and the `.alpha` keys are consumed.
+    """
+    state_dict = {k.removeprefix("diffusion_model."): v for k, v in state_dict.items()}
+    _bake_lokr_alpha(state_dict)
+
+    non_lokr_keys = [k for k in state_dict if ".lokr_" not in k]
+    if non_lokr_keys:
+        raise ValueError(f"`state_dict` contains unexpected non-LoKr keys: {non_lokr_keys}.")
+
+    return {f"transformer.{k}": v for k, v in state_dict.items()}
+
+
+_LOKR_SUFFIXES = ("lokr_w1", "lokr_w1_a", "lokr_w1_b", "lokr_w2", "lokr_w2_a", "lokr_w2_b")
+
+
+def _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict):
+    """
+    Convert a BFL-format Flux2 LoKr state dict (e.g. trained with ai-toolkit, keys like
+    `diffusion_model.double_blocks.0.img_attn.qkv.lokr_w1`) to the peft-loadable diffusers format.
+
+    BFL checkpoints apply LoKr to the fused QKV projections of the double blocks. Unlike a LoRA delta, a Kronecker
+    product delta over the fused projection cannot be split exactly into separate Q/K/V factors, so these are mapped to
+    the model's fused `to_qkv`/`to_added_qkv` projections instead; `Flux2LoraLoaderMixin.load_lora_weights` fuses the
+    model's projections before injecting such an adapter.
+    """
+    original_state_dict = {k.removeprefix("diffusion_model."): v for k, v in state_dict.items()}
+    _bake_lokr_alpha(original_state_dict)
+
+    converted_state_dict = {}
+
+    # Some Flux2 LoKr checkpoints already store expanded diffusers block names; accept those as-is.
+    for key in list(original_state_dict.keys()):
+        if key.startswith(("single_transformer_blocks.", "transformer_blocks.")):
+            converted_state_dict[key] = original_state_dict.pop(key)
+
+    num_double_layers = 0
+    num_single_layers = 0
+    for key in original_state_dict.keys():
+        if key.startswith("single_blocks."):
+            num_single_layers = max(num_single_layers, int(key.split(".")[1]) + 1)
+        elif key.startswith("double_blocks."):
+            num_double_layers = max(num_double_layers, int(key.split(".")[1]) + 1)
+
+    def _remap(bfl_path, diffusers_path):
+        for suffix in _LOKR_SUFFIXES:
+            weight = original_state_dict.pop(f"{bfl_path}.{suffix}", None)
+            if weight is not None:
+                converted_state_dict[f"{diffusers_path}.{suffix}"] = weight
+
+    for sl in range(num_single_layers):
+        _remap(f"single_blocks.{sl}.linear1", f"single_transformer_blocks.{sl}.attn.to_qkv_mlp_proj")
+        _remap(f"single_blocks.{sl}.linear2", f"single_transformer_blocks.{sl}.attn.to_out")
+
+    for dl in range(num_double_layers):
+        tb = f"transformer_blocks.{dl}"
+        db = f"double_blocks.{dl}"
+
+        _remap(f"{db}.img_attn.qkv", f"{tb}.attn.to_qkv")
+        _remap(f"{db}.txt_attn.qkv", f"{tb}.attn.to_added_qkv")
+
+        _remap(f"{db}.img_attn.proj", f"{tb}.attn.to_out.0")
+        _remap(f"{db}.txt_attn.proj", f"{tb}.attn.to_add_out")
+
+        _remap(f"{db}.img_mlp.0", f"{tb}.ff.linear_in")
+        _remap(f"{db}.img_mlp.2", f"{tb}.ff.linear_out")
+        _remap(f"{db}.txt_mlp.0", f"{tb}.ff_context.linear_in")
+        _remap(f"{db}.txt_mlp.2", f"{tb}.ff_context.linear_out")
+
+    extra_mappings = {
+        "img_in": "x_embedder",
+        "txt_in": "context_embedder",
+        "time_in.in_layer": "time_guidance_embed.timestep_embedder.linear_1",
+        "time_in.out_layer": "time_guidance_embed.timestep_embedder.linear_2",
+        "guidance_in.in_layer": "time_guidance_embed.guidance_embedder.linear_1",
+        "guidance_in.out_layer": "time_guidance_embed.guidance_embedder.linear_2",
+        "final_layer.linear": "proj_out",
+        "final_layer.adaLN_modulation.1": "norm_out.linear",
+        "single_stream_modulation.lin": "single_stream_modulation.linear",
+        "double_stream_modulation_img.lin": "double_stream_modulation_img.linear",
+        "double_stream_modulation_txt.lin": "double_stream_modulation_txt.linear",
+    }
+    for bfl_key, diffusers_key in extra_mappings.items():
+        _remap(bfl_key, diffusers_key)
+
+    if len(original_state_dict) > 0:
+        raise ValueError(f"`original_state_dict` should be empty at this point but has {original_state_dict.keys()=}.")
+
+    return {f"transformer.{k}": v for k, v in converted_state_dict.items()}
+
+
+# Mapping from LyCORIS underscore-encoded sub-paths to dotted Flux2 module paths.
+_LYCORIS_FLUX2_SUBPATH_MAP = {
+    "attn_to_q": "attn.to_q",
+    "attn_to_k": "attn.to_k",
+    "attn_to_v": "attn.to_v",
+    "attn_to_out_0": "attn.to_out.0",
+    "attn_to_add_out": "attn.to_add_out",
+    "attn_add_q_proj": "attn.add_q_proj",
+    "attn_add_k_proj": "attn.add_k_proj",
+    "attn_add_v_proj": "attn.add_v_proj",
+    "attn_to_qkv_mlp_proj": "attn.to_qkv_mlp_proj",
+    "attn_to_out": "attn.to_out",
+    "ff_linear_in": "ff.linear_in",
+    "ff_linear_out": "ff.linear_out",
+    "ff_context_linear_in": "ff_context.linear_in",
+    "ff_context_linear_out": "ff_context.linear_out",
+}
+
+
+def _convert_lycoris_flux2_lokr_to_diffusers(state_dict):
+    """
+    Convert a LyCORIS-format Flux2 LoKr state dict (keys like `lycoris_transformer_blocks_0_attn_to_q.lokr_w1`) to the
+    peft-loadable diffusers format. LyCORIS wraps the diffusers model directly and encodes each module path with
+    underscores, which are decoded through a lookup of the known block sub-paths.
+    """
+    state_dict = dict(state_dict)
+    _bake_lokr_alpha(state_dict)
+
+    lycoris_key_pattern = re.compile(r"^lycoris_((?:single_)?transformer_blocks)_(\d+)_(.+)\.(.+)$")
+
+    converted_state_dict = {}
+    for key in list(state_dict.keys()):
+        match = lycoris_key_pattern.match(key)
+        if match is None:
+            continue
+        container, block_idx, sub_path, suffix = match.groups()
+        diffusers_sub_path = _LYCORIS_FLUX2_SUBPATH_MAP.get(sub_path)
+        if diffusers_sub_path is None:
+            continue
+        diffusers_key = f"transformer.{container}.{block_idx}.{diffusers_sub_path}.{suffix}"
+        converted_state_dict[diffusers_key] = state_dict.pop(key)
+
+    if len(state_dict) > 0:
+        raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}.")
+
+    return converted_state_dict
+
+
 def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
     """
     Convert non-diffusers ZImage LoRA state dict to diffusers format.
