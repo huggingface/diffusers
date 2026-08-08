@@ -118,12 +118,14 @@ def test_unfuse_lora_partial_components_keeps_merged_adapters_in_sync():
 
     class TinyModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         config_name = "config.json"
+
         def __init__(self):
             super().__init__()
             self.linear = nn.Linear(8, 8)
 
     class FakePipeline(LoraBaseMixin):
         _lora_loadable_modules = ["unet", "text_encoder"]
+
         def __init__(self, unet, text_encoder):
             self._merged_adapters = set()
             self.unet, self.text_encoder = unet, text_encoder
@@ -142,10 +144,7 @@ def test_unfuse_lora_partial_components_keeps_merged_adapters_in_sync():
     assert "adapter" in pipe.fused_loras, "adapter should remain tracked while unet is still fused"
     assert pipe.num_fused_loras == 1
 
-    unet_still_merged = any(
-        isinstance(m, BaseTunerLayer) and len(m.merged_adapters) > 0
-        for m in unet.modules()
-    )
+    unet_still_merged = any(isinstance(m, BaseTunerLayer) and len(m.merged_adapters) > 0 for m in unet.modules())
     assert unet_still_merged, "unet should still be physically merged at the PEFT level"
 
     pipe.unfuse_lora(components=["unet"])
