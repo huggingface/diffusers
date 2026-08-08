@@ -231,6 +231,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             fill_color=0,
         )
         self.image_processor = image_processor
+        self._interrupt = False
 
     def _get_t5_prompt_embeds(
         self,
