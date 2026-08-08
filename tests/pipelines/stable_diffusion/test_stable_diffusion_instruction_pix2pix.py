@@ -15,9 +15,9 @@
 
 import gc
 import random
+import unittest
 
 import numpy as np
-import pytest
 import torch
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -31,13 +31,14 @@ from diffusers import (
     StableDiffusionInstructPix2PixPipeline,
     UNet2DConditionModel,
 )
+from diffusers.image_processor import VaeImageProcessor
 
 from ...testing_utils import (
-    assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
+    enable_full_determinism,
     floats_tensor,
     load_image,
     require_torch_accelerator,
@@ -45,20 +46,30 @@ from ...testing_utils import (
     torch_device,
 )
 from ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..testing_utils import (
-    BasePipelineTesterConfig,
-    MemoryTesterMixin,
+from ..test_pipelines_common import (
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
     PipelineTesterMixin,
 )
 
 
-class StableDiffusionInstructPix2PixPipelineTesterConfig(BasePipelineTesterConfig):
+enable_full_determinism()
+
+
+class StableDiffusionInstructPix2PixPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionInstructPix2PixPipeline
-    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
-    batch_input_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "cross_attention_kwargs"}
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"image_latents"}) - {"negative_prompt_embeds"}
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -109,106 +120,165 @@ class StableDiffusionInstructPix2PixPipelineTesterConfig(BasePipelineTesterConfi
         }
         return components
 
-    def get_dummy_inputs(self):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0))
-        image = image.permute(0, 2, 3, 1)[0]
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
         image = Image.fromarray(np.uint8(image)).convert("RGB")
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "image": image,
-            "generator": self.get_generator(0),
+            "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "image_guidance_scale": 1,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
-            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
-            "output_type": "pt",
+            "output_type": "np",
         }
         return inputs
 
-
-class TestStableDiffusionInstructPix2PixPipeline(
-    StableDiffusionInstructPix2PixPipelineTesterConfig, PipelineTesterMixin
-):
     def test_stable_diffusion_pix2pix_default_case(self):
-        # Run on CPU: the expected slice below is CPU-specific.
-        sd_pipe = self.get_pipeline()
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionInstructPix2PixPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
 
-        image = sd_pipe(**self.get_dummy_inputs()).images
-        assert image.shape == (1, 3, 32, 32)
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array([0.7024, 0.3769, 0.4392, 0.5858, 0.5620, 0.4827, 0.4174, 0.5506, 0.4806])
 
-        # fmt: off
-        expected_slice = torch.tensor([0.7024, 0.3769, 0.4392, 0.5858, 0.5620, 0.4827, 0.4174, 0.5506, 0.4806])
-        # fmt: on
-        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_negative_prompt(self):
-        # Run on CPU: the expected slice below is CPU-specific.
-        sd_pipe = self.get_pipeline()
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionInstructPix2PixPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
 
-        image = sd_pipe(**self.get_dummy_inputs(), negative_prompt="french fries").images
-        assert image.shape == (1, 3, 32, 32)
+        inputs = self.get_dummy_inputs(device)
+        negative_prompt = "french fries"
+        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
 
-        # fmt: off
-        expected_slice = torch.tensor([0.7059, 0.3731, 0.4428, 0.5922, 0.5649, 0.4871, 0.4203, 0.5507, 0.4809])
-        # fmt: on
-        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array([0.7059, 0.3731, 0.4428, 0.5922, 0.5649, 0.4871, 0.4203, 0.5507, 0.4809])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_multiple_init_images(self):
-        # Run on CPU: the expected slice below is CPU-specific.
-        sd_pipe = self.get_pipeline()
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionInstructPix2PixPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * 2
 
         image = np.array(inputs["image"]).astype(np.float32) / 255.0
-        image = torch.from_numpy(image).unsqueeze(0)
+        image = torch.from_numpy(image).unsqueeze(0).to(device)
         image = image / 2 + 0.5
         image = image.permute(0, 3, 1, 2)
         inputs["image"] = image.repeat(2, 1, 1, 1)
 
         image = sd_pipe(**inputs).images
-        assert image.shape == (2, 3, 32, 32)
+        image_slice = image[-1, -3:, -3:, -1]
 
-        # fmt: off
-        expected_slice = torch.tensor([0.5710, 0.5834, 0.5128, 0.5892, 0.5773, 0.7047, 0.6797, 0.5411, 0.5536])
-        # fmt: on
-        assert_tensors_close(image[-1, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
+        assert image.shape == (2, 32, 32, 3)
+        expected_slice = np.array([0.5710, 0.5834, 0.5128, 0.5892, 0.5773, 0.7047, 0.6797, 0.5411, 0.5536])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_euler(self):
-        # Run on CPU: the expected slice below is CPU-specific.
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = EulerAncestralDiscreteScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
         )
-        sd_pipe = self.get_pipeline(**components)
+        sd_pipe = StableDiffusionInstructPix2PixPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
 
-        image = sd_pipe(**self.get_dummy_inputs()).images
-        assert image.shape == (1, 3, 32, 32)
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
 
-        # fmt: off
-        expected_slice = torch.tensor([0.6674, 0.3879, 0.4447, 0.5375, 0.5464, 0.4881, 0.3896, 0.5467, 0.4923])
-        # fmt: on
-        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array([0.6674, 0.3879, 0.4447, 0.5375, 0.5464, 0.4881, 0.3896, 0.5467, 0.4923])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    # Overwrite the default test_latents_inputs because pix2pix encode the image differently
+    def test_latents_input(self):
+        components = self.get_dummy_components()
+        pipe = StableDiffusionInstructPix2PixPipeline(**components)
+        pipe.image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
-class TestStableDiffusionInstructPix2PixPipelineMemory(
-    StableDiffusionInstructPix2PixPipelineTesterConfig, MemoryTesterMixin
-):
-    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the InstructPix2Pix pipeline."""
+        out = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="pt"))[0]
+
+        vae = components["vae"]
+        inputs = self.get_dummy_inputs_by_type(torch_device, input_image_type="pt")
+
+        for image_param in self.image_latents_params:
+            if image_param in inputs.keys():
+                inputs[image_param] = vae.encode(inputs[image_param]).latent_dist.mode()
+
+        out_latents_inputs = pipe(**inputs)[0]
+
+        max_diff = np.abs(out - out_latents_inputs).max()
+        self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
+
+    # Override the default test_callback_cfg because pix2pix create inputs for cfg differently
+    def test_callback_cfg(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        def callback_no_cfg(pipe, i, t, callback_kwargs):
+            if i == 1:
+                for k, w in callback_kwargs.items():
+                    if k in self.callback_cfg_params:
+                        callback_kwargs[k] = callback_kwargs[k].chunk(3)[0]
+                pipe._guidance_scale = 1.0
+
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["guidance_scale"] = 1.0
+        inputs["num_inference_steps"] = 2
+        out_no_cfg = pipe(**inputs)[0]
+
+        inputs["guidance_scale"] = 7.5
+        inputs["callback_on_step_end"] = callback_no_cfg
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        out_callback_no_cfg = pipe(**inputs)[0]
+
+        assert out_no_cfg.shape == out_callback_no_cfg.shape
 
 
 @slow
 @require_torch_accelerator
-class TestStableDiffusionInstructPix2PixPipelineSlow:
-    @pytest.fixture(autouse=True)
-    def cleanup(self):
+class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
         gc.collect()
         backend_empty_cache(torch_device)
-        yield
+
+    def tearDown(self):
+        super().tearDown()
         gc.collect()
         backend_empty_cache(torch_device)
 
