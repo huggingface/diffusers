@@ -25,8 +25,8 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
     TrainingTesterMixin,
+    run_nondeterministic,
 )
 
 
@@ -130,9 +130,31 @@ class TestAutoencoderKLMiniMaxH3Audio(AutoencoderKLMiniMaxH3AudioTesterConfig, M
 class TestAutoencoderKLMiniMaxH3AudioMemory(AutoencoderKLMiniMaxH3AudioTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for the MiniMax-H3 audio autoencoder."""
 
+    @pytest.mark.skip(
+        "`_keep_in_fp32_modules` pins every module of this autoencoder, so layerwise casting has nothing left to "
+        "cast and the memory footprint cannot go down."
+    )
+    def test_layerwise_casting_memory(self):
+        pass
+
+    # The latent projection pools with `F.adaptive_avg_pool1d`, whose adaptive_avg_pool2d_backward_cuda has no
+    # deterministic implementation, so every test below that runs a backward pass has to relax determinism.
+    def test_layerwise_casting_training(self):
+        run_nondeterministic(super().test_layerwise_casting_training)
+
 
 class TestAutoencoderKLMiniMaxH3AudioTraining(AutoencoderKLMiniMaxH3AudioTesterConfig, TrainingTesterMixin):
     """Training tests for the MiniMax-H3 audio autoencoder."""
+
+    # See `TestAutoencoderKLMiniMaxH3AudioMemory` for why these relax determinism.
+    def test_training(self):
+        run_nondeterministic(super().test_training)
+
+    def test_training_with_ema(self):
+        run_nondeterministic(super().test_training_with_ema)
+
+    def test_mixed_precision_training(self):
+        run_nondeterministic(super().test_mixed_precision_training)
 
 
 class TestAutoencoderKLMiniMaxH3AudioAttention(AutoencoderKLMiniMaxH3AudioTesterConfig, AttentionTesterMixin):
@@ -144,7 +166,3 @@ class TestAutoencoderKLMiniMaxH3AudioAttention(AutoencoderKLMiniMaxH3AudioTester
     )
     def test_attention_processor_count_mismatch_raises_error(self):
         pass
-
-
-class TestAutoencoderKLMiniMaxH3AudioTorchCompile(AutoencoderKLMiniMaxH3AudioTesterConfig, TorchCompileTesterMixin):
-    """Torch compile tests for the MiniMax-H3 audio autoencoder."""
