@@ -154,12 +154,6 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuider
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
 
 
-# TODO: `hf-internal-testing/tiny-qwenimage-edit-modular` records `_class_name: QwenImageModularPipeline` and
-# `_blocks_class_name: SequentialPipelineBlocks`, so `from_pretrained` falls back to `QwenImageAutoBlocks`, which
-# declares no `image_conditioned` workflow. Point the repository at the Edit classes and drop the overrides below.
-_FIXTURE_NAMES_BASE_PIPELINE = "TODO: the tiny repository records `QwenImageModularPipeline` for an Edit checkpoint."
-
-
 QWEN_IMAGE_EDIT_WORKFLOWS = {
     "image_conditioned": [
         ("text_encoder.resize", "QwenImageEditResizeStep"),
@@ -206,14 +200,6 @@ class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGu
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_workflow_blocks = QWEN_IMAGE_EDIT_WORKFLOWS
-
-    @pytest.mark.skip(reason=_FIXTURE_NAMES_BASE_PIPELINE)
-    def test_from_pretrained_workflow(self):
-        pass
-
-    @pytest.mark.skip(reason=_FIXTURE_NAMES_BASE_PIPELINE)
-    def test_load_components_workflow(self):
-        pass
 
     def get_dummy_inputs(self):
         generator = self.get_generator()
