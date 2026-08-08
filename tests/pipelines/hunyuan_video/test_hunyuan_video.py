@@ -33,6 +33,7 @@ from ..test_pipelines_common import (
     FirstBlockCacheTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
+    ResilPhaseCacheTesterMixin,
     TaylorSeerCacheTesterMixin,
     to_np,
 )
@@ -46,6 +47,7 @@ class HunyuanVideoPipelineFastTests(
     PyramidAttentionBroadcastTesterMixin,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
+    ResilPhaseCacheTesterMixin,
     TaylorSeerCacheTesterMixin,
     unittest.TestCase,
 ):

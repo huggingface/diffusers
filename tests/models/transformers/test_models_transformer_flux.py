@@ -47,6 +47,7 @@ from ..testing_utils import (
     ModelTesterMixin,
     QuantoCompileTesterMixin,
     QuantoTesterMixin,
+    ResilPhaseCacheTesterMixin,
     SDNQCompileTesterMixin,
     SDNQTesterMixin,
     SingleFileTesterMixin,
@@ -569,6 +570,10 @@ class TestFluxTransformerFasterCache(FluxTransformerTesterConfig, FasterCacheTes
 
 class TestFluxTransformerMagCache(FluxTransformerTesterConfig, MagCacheTesterMixin):
     """MagCache tests for Flux Transformer."""
+
+
+class TestFluxTransformerResilPhaseCache(FluxTransformerTesterConfig, ResilPhaseCacheTesterMixin):
+    """ResilPhase cache tests for Flux Transformer."""
 
 
 class TestFluxTransformerTaylorSeerCache(FluxTransformerTesterConfig, TaylorSeerCacheTesterMixin):

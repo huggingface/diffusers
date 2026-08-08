@@ -23,12 +23,18 @@ from diffusers.hooks import (
     FirstBlockCacheConfig,
     MagCacheConfig,
     PyramidAttentionBroadcastConfig,
+    ResilPhaseCacheConfig,
     TaylorSeerCacheConfig,
 )
 from diffusers.hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
 from diffusers.hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
 from diffusers.hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
 from diffusers.hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
+from diffusers.hooks.resilphase_cache import (
+    _RESILPHASE_BLOCK_HOOK,
+    _RESILPHASE_DENOISER_HOOK,
+    _RESILPHASE_LEADER_BLOCK_HOOK,
+)
 from diffusers.hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
 from diffusers.models.cache_utils import CacheMixin
 
@@ -628,6 +634,89 @@ class MagCacheTesterMixin(MagCacheConfigMixin, CacheTesterMixin):
 
     @require_cache_mixin
     def test_mag_cache_reset_stateful_cache(self):
+        self._test_reset_stateful_cache()
+
+
+@is_cache
+class ResilPhaseCacheConfigMixin:
+    """Base mixin providing ResilPhase cache config."""
+
+    RESILPHASE_CACHE_CONFIG = {
+        "cache_interval": 3,
+        "warmup_steps": 1,
+        "max_order": 1,
+    }
+
+    def _get_cache_config(self):
+        return ResilPhaseCacheConfig(**self.RESILPHASE_CACHE_CONFIG)
+
+    def _get_hook_names(self):
+        return [_RESILPHASE_DENOISER_HOOK, _RESILPHASE_LEADER_BLOCK_HOOK, _RESILPHASE_BLOCK_HOOK]
+
+
+@is_cache
+class ResilPhaseCacheTesterMixin(ResilPhaseCacheConfigMixin, CacheTesterMixin):
+    """Mixin class for testing ResilPhase cache on models."""
+
+    @torch.no_grad()
+    def _test_cache_inference(self):
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        model = self.model_class(**init_dict).to(torch_device)
+        model.eval()
+
+        model.enable_cache(self._get_cache_config())
+        with model.cache_context("resilphase_test"):
+            _ = model(**inputs_dict, return_dict=False)[0]
+
+            inputs_dict_step2 = inputs_dict.copy()
+            if self.cache_input_key in inputs_dict_step2:
+                inputs_dict_step2[self.cache_input_key] = inputs_dict_step2[self.cache_input_key] + torch.randn_like(
+                    inputs_dict_step2[self.cache_input_key]
+                )
+            output_with_cache = model(**inputs_dict_step2, return_dict=False)[0]
+
+        assert output_with_cache is not None
+        assert not torch.isnan(output_with_cache).any()
+
+        model.disable_cache()
+        output_without_cache = model(**inputs_dict_step2, return_dict=False)[0]
+        assert not torch.allclose(output_without_cache, output_with_cache, atol=1e-5)
+
+    @torch.no_grad()
+    def _test_reset_stateful_cache(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        model.eval()
+        model.enable_cache(self._get_cache_config())
+
+        with model.cache_context("resilphase_test"):
+            _ = model(**self.get_dummy_inputs(), return_dict=False)[0]
+
+        model._reset_stateful_cache()
+        model.disable_cache()
+
+    @require_cache_mixin
+    def test_resilphase_cache_enable_disable_state(self):
+        self._test_cache_enable_disable_state()
+
+    @require_cache_mixin
+    def test_resilphase_cache_double_enable_raises_error(self):
+        self._test_cache_double_enable_raises_error()
+
+    @require_cache_mixin
+    def test_resilphase_cache_hooks_registered(self):
+        self._test_cache_hooks_registered()
+
+    @require_cache_mixin
+    def test_resilphase_cache_inference(self):
+        self._test_cache_inference()
+
+    @require_cache_mixin
+    def test_resilphase_cache_context_manager(self):
+        self._test_cache_context_manager()
+
+    @require_cache_mixin
+    def test_resilphase_cache_reset_stateful_cache(self):
         self._test_reset_stateful_cache()
 
 

@@ -21,6 +21,7 @@ from diffusers import FasterCacheConfig, PyramidAttentionBroadcastConfig
 from diffusers.hooks.first_block_cache import FirstBlockCacheConfig
 from diffusers.hooks.mag_cache import MagCacheConfig
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
+from diffusers.hooks.resilphase_cache import ResilPhaseCacheConfig
 from diffusers.hooks.taylorseer_cache import TaylorSeerCacheConfig
 
 from ...testing_utils import assert_tensors_close, is_cache, torch_device
@@ -306,6 +307,21 @@ class FirstBlockCacheTesterMixin(CacheTesterMixin):
         return FirstBlockCacheConfig(**self.FIRST_BLOCK_CACHE_CONFIG)
 
     def test_first_block_cache_inference(self, expected_atol: float = 0.1):
+        self._test_cache_inference(self._get_cache_config(), num_inference_steps=4, expected_atol=expected_atol)
+
+
+@is_cache
+class ResilPhaseCacheTesterMixin(CacheTesterMixin):
+    RESILPHASE_CACHE_CONFIG = {
+        "cache_interval": 2,
+        "warmup_steps": 3,
+        "max_order": 1,
+    }
+
+    def _get_cache_config(self):
+        return ResilPhaseCacheConfig(**self.RESILPHASE_CACHE_CONFIG)
+
+    def test_resilphase_cache_inference(self, expected_atol: float = 0.1):
         self._test_cache_inference(self._get_cache_config(), num_inference_steps=4, expected_atol=expected_atol)
 
 

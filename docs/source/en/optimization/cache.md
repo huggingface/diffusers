@@ -112,6 +112,43 @@ config = TaylorSeerCacheConfig(
 pipe.transformer.enable_cache(config)
 ```
 
+## ResilPhase Cache
+
+[ResilPhase](https://github.com/zqc214/ResilPhase) accelerates diffusion inference by mapping denoising steps to a
+normalized phase axis and interpolating the residual produced by the transformer's block stack. On intermediate
+steps, the predicted residual is added to the stack input while the transformer blocks are skipped. The method is
+supported for FLUX and HunyuanVideo transformers.
+
+FLUX ControlNet inference automatically falls back to full transformer block computation because ControlNet residuals
+are injected between individual blocks.
+
+Create a [`ResilPhaseCacheConfig`] and pass it to the pipeline transformer. `cache_interval` controls the interval
+between full block-stack computations, `warmup_steps` initializes the interpolation history, and `max_order` controls
+the number of historical residuals used by the interpolation.
+
+```python
+import torch
+
+from diffusers import FluxPipeline, ResilPhaseCacheConfig
+
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    dtype=torch.bfloat16,
+).to("cuda")
+
+config = ResilPhaseCacheConfig(
+    cache_interval=6,
+    warmup_steps=3,
+    max_order=1,
+    mapping_method="balanced",
+    balance_alpha=0.55,
+)
+pipe.transformer.enable_cache(config)
+
+image = pipe("A cat playing chess", num_inference_steps=50).images[0]
+```
+
 ## MagCache
 
 [MagCache](https://github.com/Zehong-Ma/MagCache) accelerates inference by skipping transformer blocks based on the magnitude of the residual update. It observes that the magnitude of updates (Output - Input) decays predictably over the diffusion process. By accumulating an "error budget" based on pre-computed magnitude ratios, it dynamically decides when to skip computation and reuse the previous residual.
