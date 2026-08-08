@@ -692,16 +692,23 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             if start > 0:
                 out_frames = out_frames[:, :, mask_reft_len:]
 
-            all_out_frames.append(out_frames)
+            all_out_frames.append(out_frames.cpu())
             start += effective_segment
             end += effective_segment
+
+            # Each segment allocates a fresh KV cache — at 720p that is tens of GB, and holding
+            # the previous one while the next is built fragments the allocator enough to OOM.
+            kv_cache.clear()
+            # `out_frames` is deliberately kept: the next segment conditions on its tail.
+            del kv_cache, latents, x0
+            torch.cuda.empty_cache()
 
             # Reset scheduler for next segment
             sample_scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = sample_scheduler.timesteps
 
         # Concatenate all segments
-        video = torch.cat(all_out_frames, dim=2)[:, :, :real_frame_len]
+        video = torch.cat(all_out_frames, dim=2)[:, :, :real_frame_len].to(device)
 
         # Remove letterbox padding (crop black borders)
         p_info = ref_padding_info
