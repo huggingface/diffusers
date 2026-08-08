@@ -155,6 +155,31 @@ def get_peft_kwargs(
 ):
     rank_pattern = {}
     alpha_pattern = {}
+    if not rank_dict:
+        # rank_dict is populated by the caller by walking the model's named_modules
+        # and probing the state_dict for `{name}.lora_B.weight` keys (see e.g.
+        # `_load_lora_into_text_encoder` and `load_lora_into_unet`). When the
+        # state_dict keys do not match that pattern (typically because of a
+        # missing or extra prefix on the saved keys, an adapter-name infix such
+        # as `.default_0.` between `lora_B` and `weight`, or a non-diffusers
+        # serialization format that was not converted upstream), `rank_dict`
+        # ends up empty and we would crash here with a cryptic IndexError on
+        # `list(rank_dict.values())[0]`. Surface the actual problem instead so
+        # the caller can debug the key mismatch. See issue #3238 on huggingface/peft
+        # (the original report was filed against peft, but the failure path is
+        # this function in diffusers).
+        n_keys = len(peft_state_dict) if peft_state_dict is not None else 0
+        sample_keys = list(peft_state_dict.keys())[:3] if peft_state_dict else []
+        raise ValueError(
+            "Could not extract LoRA rank: `rank_dict` is empty. This means none of the "
+            "expected `{module_name}.lora_B.weight` keys were found in the state_dict. "
+            "Usual causes: the saved keys carry an extra or missing prefix versus the "
+            "target model (e.g. `text_model.encoder.*` vs `encoder.*`); the keys carry "
+            "an adapter-name infix such as `.default_0.` between `lora_B` and `weight`; "
+            "or the state_dict was saved in a format that diffusers does not yet "
+            "convert. "
+            f"State dict has {n_keys} keys; first 3: {sample_keys}."
+        )
     r = lora_alpha = list(rank_dict.values())[0]
 
     if len(set(rank_dict.values())) > 1:
