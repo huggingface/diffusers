@@ -17,7 +17,7 @@ import numpy as np
 import PIL.Image
 import torch
 
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import VaeImageProcessor, VaeImageProcessorLDM3D
 
 
 class TestImageProcessor:
@@ -306,3 +306,26 @@ class TestImageProcessor:
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+    def test_vae_image_processor_ldm3d_config(self):
+        image_processor = VaeImageProcessorLDM3D(
+            do_resize=False,
+            vae_scale_factor=4,
+            resample="nearest",
+            do_normalize=False,
+        )
+
+        assert image_processor.config.do_resize is False
+        assert image_processor.config.vae_scale_factor == 4
+        assert image_processor.config.resample == "nearest"
+        assert image_processor.config.do_normalize is False
+
+    def test_vae_image_processor_ldm3d_np_batch(self):
+        image_processor = VaeImageProcessorLDM3D(do_resize=False, do_normalize=False)
+        rgb = np.zeros((2, 8, 8, 3), dtype=np.float32)
+        depth = np.zeros((2, 8, 8, 1), dtype=np.float32)
+
+        processed_rgb, processed_depth = image_processor.preprocess(rgb, depth)
+
+        assert processed_rgb.shape == (2, 3, 8, 8)
+        assert processed_depth.shape == (2, 1, 8, 8)
