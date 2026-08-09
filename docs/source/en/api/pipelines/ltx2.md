@@ -25,6 +25,9 @@ You can find all the original LTX-Video checkpoints under the [Lightricks](https
 The original codebase for LTX-2 can be found [here](https://github.com/Lightricks/LTX-2).
 
 ## Two-stages Generation
+
+The shared `LTX2Pipeline` / `LTX2ImageToVideoPipeline` `__call__` defaults match the LTX-2.5 reference (`num_inference_steps=30`; `num_frames` is optional when a `duration_head` is present, otherwise it falls back to `121`). The examples below use those defaults for LTX-2.0/2.3 as well.
+
 Recommended pipeline to achieve production quality generation, this pipeline is composed of two stages:
 
 - Stage 1: Generate a video at the target resolution using diffusion sampling with classifier-free guidance (CFG). This stage produces a coherent low-noise video sequence that respects the text/image conditioning.
