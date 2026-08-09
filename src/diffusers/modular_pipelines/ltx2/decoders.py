@@ -17,7 +17,7 @@ from typing import Any
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2VideoDiffusionDecoderModel
 
 # NOTE (modular.md gotcha #1): `LTX2Vocoder` / `LTX2VocoderWithBWE` currently live under
 # `diffusers.pipelines.ltx2.vocoder`, and modular blocks must not import from `diffusers.pipelines.*`.
@@ -83,6 +83,86 @@ def _unpack_audio_latents(
         # Assume [B, S, D] = [B, L, C * M], i.e. a (mel) patch_size of M and a patch_size_t of 1.
         latents = latents.unflatten(2, (-1, num_mel_bins)).transpose(1, 2)
     return latents
+
+
+class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step that unpacks and decodes the denoised video latents with the LTX-2 diffusion decoder (or returns "
+            "latents). Swap this in for `LTX2VaeDecoderStep` on checkpoints that ship the diffusion decoder, which "
+            "from LTX-2.5 on is the native default. The decoder denoises rather than deterministically decoding, so "
+            "it draws its own noise from `generator` and takes no decode timestep."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("diffusion_decoder", LTX2VideoDiffusionDecoderModel),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 32}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[tuple[str, Any]]:
+        return [
+            InputParam.template("latents", required=True),
+            InputParam.template("output_type", default="pil"),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
+            InputParam(
+                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+            ),
+            InputParam.template("generator"),
+            InputParam.template("dtype", required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam.template("videos")]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        decoder = components.diffusion_decoder
+
+        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+
+        latents = _unpack_latents(
+            block_state.latents,
+            latent_num_frames,
+            latent_height,
+            latent_width,
+            components.transformer_spatial_patch_size,
+            components.transformer_temporal_patch_size,
+        )
+
+        if block_state.output_type == "latent":
+            block_state.videos = _denormalize_latents(
+                latents, decoder.latents_mean, decoder.latents_std, decoder.config.scaling_factor
+            )
+            self.set_block_state(state, block_state)
+            return components, state
+
+        latents = latents.to(block_state.dtype)
+        latents = _denormalize_latents(
+            latents, decoder.latents_mean, decoder.latents_std, decoder.config.scaling_factor
+        )
+        latents = latents.to(decoder.dtype)
+        # It samples the noise it denoises, so pass the generator to keep decoding reproducible.
+        video = decoder.decode(latents, generator=block_state.generator, return_dict=False)[0]
+        block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
 class LTX2VaeDecoderStep(ModularPipelineBlocks):
