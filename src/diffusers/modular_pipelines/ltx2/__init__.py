@@ -26,6 +26,7 @@ else:
         "LTX2Blocks",
         "LTX2ConditionBlocks",
         "LTX2ImageToVideoBlocks",
+        "LTX2InContextBlocks",
     ]
     _import_structure["modular_pipeline"] = ["LTX2ModularPipeline"]
 
@@ -36,7 +37,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modular_blocks_ltx2 import LTX2AutoBlocks, LTX2Blocks, LTX2ConditionBlocks, LTX2ImageToVideoBlocks
+        from .modular_blocks_ltx2 import (
+            LTX2AutoBlocks,
+            LTX2Blocks,
+            LTX2ConditionBlocks,
+            LTX2ImageToVideoBlocks,
+            LTX2InContextBlocks,
+        )
         from .modular_pipeline import LTX2ModularPipeline
 else:
     import sys

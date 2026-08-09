@@ -1877,13 +1877,16 @@ class LTX2InContextPipeline(
         base_token_count = latents.shape[1] - (appended_coords.shape[2] if appended_coords is not None else 0)
 
         has_conditions = conditions is not None and len(conditions) > 0
-        has_appended_tokens = appended_coords is not None
         if self.do_classifier_free_guidance and (has_conditions or num_ref_tokens > 0):
             conditioning_mask = torch.cat([conditioning_mask, conditioning_mask])
 
-        # Build a video self-attention mask over three groups: (1) the noisy latents (2) keyframe conditions, if any
-        # and (3) reference conditions, if any. Tokens are attend to each other across groups as follows:
-        #   - TODO
+        # Build a video self-attention mask over the noisy tokens and the appended reference tokens, matching
+        # `build_attention_mask` in the reference implementation:
+        #   - noisy <-> noisy: 1.0 (full attention)
+        #   - noisy <-> reference: `ref_cross_mask`, broadcast symmetrically across the noisy-token axis
+        #   - reference <-> reference: 1.0 (a group fully attends to itself)
+        #   - reference <-> any other appended group (e.g. keyframes): 0.0
+        # Only needed when the references carry a per-token strength; unmasked attention is the default.
         video_self_attention_mask: torch.Tensor | None = None
         if ref_cross_mask is not None:
             num_noisy_tokens = latents.shape[1] - num_ref_tokens
@@ -1992,8 +1995,14 @@ class LTX2InContextPipeline(
                 audio_timestep = t_audio.expand(latent_model_input.shape[0])
 
                 # --- Main transformer forward pass (conditional + unconditional for CFG) ---
-                if video_self_attention_mask is not None:
-                    video_self_attention_mask = video_self_attention_mask.expand(latent_model_input.shape[0], -1, -1)
+                # Expand into a per-pass local rather than rebinding `video_self_attention_mask`. The base mask is
+                # built at batch 1; the STG and modality passes below run at `latents.shape[0]` rather than this
+                # CFG-doubled batch, so rebinding here would make their own expand() fail on the second pass.
+                cond_uncond_attention_mask = (
+                    video_self_attention_mask.expand(latent_model_input.shape[0], -1, -1)
+                    if video_self_attention_mask is not None
+                    else None
+                )
                 with self.transformer.cache_context("cond_uncond"):
                     noise_pred_video, noise_pred_audio = self.transformer(
                         hidden_states=latent_model_input,
@@ -2006,7 +2015,7 @@ class LTX2InContextPipeline(
                         audio_sigma=audio_timestep,
                         encoder_attention_mask=connector_attention_mask,
                         audio_encoder_attention_mask=connector_attention_mask,
-                        video_self_attention_mask=video_self_attention_mask,
+                        video_self_attention_mask=cond_uncond_attention_mask,
                         num_frames=latent_num_frames,
                         height=latent_height,
                         width=latent_width,
@@ -2078,8 +2087,11 @@ class LTX2InContextPipeline(
 
                 # --- STG forward pass ---
                 if self.do_spatio_temporal_guidance:
-                    if video_self_attention_mask is not None:
-                        video_self_attention_mask = video_self_attention_mask.expand(latents.shape[0], -1, -1)
+                    single_pass_attention_mask = (
+                        video_self_attention_mask.expand(latents.shape[0], -1, -1)
+                        if video_self_attention_mask is not None
+                        else None
+                    )
                     with self.transformer.cache_context("uncond_stg"):
                         noise_pred_video_uncond_stg, noise_pred_audio_uncond_stg = self.transformer(
                             hidden_states=latents.to(dtype=prompt_embeds.dtype),
@@ -2092,7 +2104,7 @@ class LTX2InContextPipeline(
                             audio_sigma=audio_timestep_single,
                             encoder_attention_mask=prompt_attn_mask,
                             audio_encoder_attention_mask=prompt_attn_mask,
-                            video_self_attention_mask=video_self_attention_mask,
+                            video_self_attention_mask=single_pass_attention_mask,
                             num_frames=latent_num_frames,
                             height=latent_height,
                             width=latent_width,
@@ -2124,8 +2136,11 @@ class LTX2InContextPipeline(
 
                 # --- Modality isolation guidance forward pass ---
                 if self.do_modality_isolation_guidance:
-                    if video_self_attention_mask is not None:
-                        video_self_attention_mask = video_self_attention_mask.expand(latents.shape[0], -1, -1)
+                    single_pass_attention_mask = (
+                        video_self_attention_mask.expand(latents.shape[0], -1, -1)
+                        if video_self_attention_mask is not None
+                        else None
+                    )
                     with self.transformer.cache_context("uncond_modality"):
                         noise_pred_video_uncond_mod, noise_pred_audio_uncond_mod = self.transformer(
                             hidden_states=latents.to(dtype=prompt_embeds.dtype),
@@ -2138,7 +2153,7 @@ class LTX2InContextPipeline(
                             audio_sigma=audio_timestep_single,
                             encoder_attention_mask=prompt_attn_mask,
                             audio_encoder_attention_mask=prompt_attn_mask,
-                            video_self_attention_mask=video_self_attention_mask,
+                            video_self_attention_mask=single_pass_attention_mask,
                             num_frames=latent_num_frames,
                             height=latent_height,
                             width=latent_width,
@@ -2189,8 +2204,12 @@ class LTX2InContextPipeline(
                 else:
                     noise_pred_audio = noise_pred_audio_g
 
-                # Apply frame conditioning mask: blend denoised x0 with clean condition latents
-                if has_conditions:
+                # Apply the conditioning mask: blend denoised x0 with the clean condition latents. Reference tokens
+                # take part in this exactly like frame conditions do -- in the reference implementation
+                # `VideoConditionByReferenceLatent` and `VideoConditionByKeyframeIndex` produce the same
+                # (denoise_mask, clean_latent) pair and `post_process_latent` is applied unconditionally, so
+                # reference tokens must be re-pinned every step or they drift away from the encoded reference.
+                if has_conditions or num_ref_tokens > 0:
                     bsz = noise_pred_video.size(0)
                     denoised_sample_cond = (
                         noise_pred_video * (1 - conditioning_mask[:bsz])

@@ -19,6 +19,12 @@ import numpy as np
 import torch
 
 from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2VideoTransformer3DModel
+
+# NOTE (modular.md gotcha #1): `LTX2ReferenceCondition` is a plain dataclass under `diffusers.pipelines.ltx2.*`, and
+# modular blocks must not import from `diffusers.pipelines.*`. It belongs in the same neutral-module relocation as
+# the other shared LTX-2 data/utilities enumerated in `encoders.py`. Imported from the pipelines path here only so
+# the draft is runnable.
+from ...pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
@@ -982,6 +988,400 @@ class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
         block_state.appended_coords = appended_coords
         block_state.base_token_count = base_token_count
         block_state.noise_scale = noise_scale
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Prepares the packed video latents for in-context (IC-LoRA) generation. Same frame-condition handling as "
+            "`LTX2ConditionPrepareLatentsStep` (first-frame overwrite, keyframe token append), then appends the "
+            "encoded reference tokens after the keyframes with a per-token `conditioning_mask` of their own "
+            "strength, giving a single `[base | keyframe | reference]` sequence. Mirrors "
+            "`LTX2InContextPipeline.prepare_latents`, which likewise re-implements the condition version rather "
+            "than extending it -- the two are kept side by side so each reads top to bottom."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", LTX2VideoTransformer3DModel),
+            ComponentSpec("vae", AutoencoderKLLTX2Video),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "condition_latents",
+                type_hint=list,
+                required=True,
+                description="Per-condition normalized VAE latents of shape [1, C, F, H, W].",
+            ),
+            InputParam(
+                "condition_strengths",
+                type_hint=list,
+                required=True,
+                description="Per-condition conditioning strengths.",
+            ),
+            InputParam(
+                "condition_indices",
+                type_hint=list,
+                required=True,
+                description="Per-condition latent frame index at which the condition is applied.",
+            ),
+            InputParam(
+                "condition_pixel_frames",
+                type_hint=list,
+                required=True,
+                description="Per-condition trimmed pixel frame count, used to clamp single-frame keyframe coords.",
+            ),
+            InputParam(
+                "reference_conditions",
+                type_hint=list,
+                default=None,
+                description=(
+                    "`LTX2ReferenceCondition` (or list of them); only their `strength` is read here. Omit for "
+                    "IC-LoRAs that carry their behavior in the adapter weights and take no reference video."
+                ),
+            ),
+            InputParam(
+                "reference_latents",
+                type_hint=torch.Tensor,
+                default=None,
+                description=(
+                    "Packed reference tokens of shape [1, total_reference_tokens, C], or `None` when no reference "
+                    "conditions were supplied (`LTX2AutoReferenceEncoderStep` is skipped)."
+                ),
+            ),
+            InputParam(
+                "reference_coords",
+                type_hint=torch.Tensor,
+                default=None,
+                description="RoPE coordinates for the reference tokens.",
+            ),
+            InputParam(
+                "reference_token_counts",
+                type_hint=list,
+                default=None,
+                description="Per-reference token counts, in `reference_conditions` order.",
+            ),
+            InputParam.template("latents"),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
+            InputParam(
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
+            ),
+            InputParam(
+                "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
+            ),
+            InputParam(
+                "noise_scale",
+                type_hint=float,
+                default=None,
+                description=(
+                    "Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` "
+                    "when custom `sigmas` are supplied, else 1.0."
+                ),
+            ),
+            InputParam.template("sigmas"),
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
+            InputParam(
+                "batch_size",
+                type_hint=int,
+                required=True,
+                description="The number of prompts being denoised, used to expand conditioning per prompt.",
+            ),
+            InputParam.template("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="Packed noisy video latents, with keyframe and reference tokens appended.",
+            ),
+            OutputParam(
+                "conditioning_mask",
+                type_hint=torch.Tensor,
+                description=(
+                    "Packed per-token conditioning strengths of shape [B, S, 1] in [0, 1]: 1 at fully-conditioned "
+                    "positions, 0 at free positions."
+                ),
+            ),
+            OutputParam(
+                "clean_latents",
+                type_hint=torch.Tensor,
+                description="Clean condition latents at conditioned positions, zeros elsewhere; same shape as `latents`.",
+            ),
+            OutputParam(
+                "appended_coords",
+                type_hint=torch.Tensor,
+                description=(
+                    "RoPE coordinates of shape [B, 3, num_keyframe_tokens + num_reference_tokens, 2] for the "
+                    "appended tokens, zero-width when there are none."
+                ),
+            ),
+            OutputParam(
+                "base_token_count",
+                type_hint=int,
+                description="Number of generated-video tokens, i.e. the sequence length before appended tokens.",
+            ),
+            OutputParam(
+                "num_ref_tokens",
+                type_hint=int,
+                description="Number of reference tokens, which sit at the very end of the sequence.",
+            ),
+            OutputParam(
+                "noise_scale",
+                type_hint=float,
+                description="The resolved initial noise level, forwarded to the audio latents step.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        batch_size = block_state.batch_size * block_state.num_videos_per_prompt
+        spatial_patch = components.transformer_spatial_patch_size
+        temporal_patch = components.transformer_temporal_patch_size
+        frame_scale_factor = components.vae_temporal_compression_ratio
+
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+        latent_num_frames = (block_state.num_frames - 1) // frame_scale_factor + 1
+
+        noise_scale = block_state.noise_scale
+        if noise_scale is None:
+            noise_scale = block_state.sigmas[0] if block_state.sigmas is not None else 1.0
+
+        if isinstance(block_state.generator, list):
+            logger.warning(
+                f"{self.__class__.__name__} does not support using a list of generators. The first generator in the"
+                f" list will be used for all (pseudo-)random operations."
+            )
+
+        if block_state.latents is not None:
+            latents = _normalize_latents(
+                block_state.latents,
+                components.vae.latents_mean,
+                components.vae.latents_std,
+                components.vae.config.scaling_factor,
+            )
+        else:
+            shape = (
+                batch_size,
+                components.transformer.config.in_channels,
+                latent_num_frames,
+                latent_height,
+                latent_width,
+            )
+            latents = torch.zeros(shape, device=device, dtype=torch.float32)
+
+        conditioning_mask = latents.new_zeros((batch_size, 1, latent_num_frames, latent_height, latent_width))
+        latents = _pack_latents(latents, spatial_patch, temporal_patch)
+        conditioning_mask = _pack_latents(conditioning_mask, spatial_patch, temporal_patch)  # [B, S, 1]
+
+        if latents.ndim != 3 or latents.shape[:2] != conditioning_mask.shape[:2]:
+            raise ValueError(
+                f"Provided `latents` tensor packs to shape {latents.shape}, but the expected packed shape is "
+                f"{conditioning_mask.shape[:2] + (components.transformer.config.in_channels,)}."
+            )
+
+        base_token_count = latents.shape[1]
+        condition_latents_packed = [
+            _pack_latents(cond, spatial_patch, temporal_patch) for cond in block_state.condition_latents
+        ]
+
+        # First-frame conditions (latent index 0): overwrite the tokens at the first-frame positions.
+        clean_latents = torch.zeros_like(latents)
+        for cond, strength, latent_idx in zip(
+            condition_latents_packed, block_state.condition_strengths, block_state.condition_indices
+        ):
+            if latent_idx != 0:
+                continue
+            num_cond_tokens = cond.size(1)
+            latents[:, :num_cond_tokens] = cond
+            conditioning_mask[:, :num_cond_tokens] = strength
+            clean_latents[:, :num_cond_tokens] = cond
+
+        # Non-first-frame ("keyframe") conditions (latent index > 0): append as extra tokens with their own coords.
+        scale_factors = (
+            frame_scale_factor,
+            components.vae_spatial_compression_ratio,
+            components.vae_spatial_compression_ratio,
+        )
+        keyframe_tokens, keyframe_masks, keyframe_coords = [], [], []
+        for cond_5d, cond_packed, strength, latent_idx, num_pixel_frames in zip(
+            block_state.condition_latents,
+            condition_latents_packed,
+            block_state.condition_strengths,
+            block_state.condition_indices,
+            block_state.condition_pixel_frames,
+        ):
+            if latent_idx == 0:
+                continue
+
+            _, _, kf_latent_frames, kf_latent_height, kf_latent_width = cond_5d.shape
+            coords = _prepare_keyframe_coords(
+                keyframe_latent_num_frames=kf_latent_frames,
+                keyframe_latent_height=kf_latent_height,
+                keyframe_latent_width=kf_latent_width,
+                pixel_frame_idx=(latent_idx - 1) * frame_scale_factor + 1,
+                num_pixel_frames=num_pixel_frames,
+                fps=block_state.frame_rate,
+                patch_size=spatial_patch,
+                patch_size_t=temporal_patch,
+                scale_factors=scale_factors,
+                device=device,
+            )
+
+            keyframe_tokens.append(cond_packed.expand(batch_size, -1, -1))
+            keyframe_masks.append(
+                torch.full(
+                    (batch_size, cond_packed.shape[1], 1),
+                    float(strength),
+                    device=device,
+                    dtype=conditioning_mask.dtype,
+                )
+            )
+            keyframe_coords.append(coords.expand(batch_size, -1, -1, -1))
+
+        # Seeded with a zero-width block so the concat below is unconditional whether or not anything is appended.
+        appended_coords = [torch.zeros((batch_size, 3, 0, 2), device=device, dtype=torch.float32)]
+        if keyframe_tokens:
+            keyframe_tokens = torch.cat(keyframe_tokens, dim=1)
+            latents = torch.cat([latents, keyframe_tokens], dim=1)
+            clean_latents = torch.cat([clean_latents, keyframe_tokens], dim=1)
+            conditioning_mask = torch.cat([conditioning_mask, torch.cat(keyframe_masks, dim=1)], dim=1)
+            appended_coords.append(torch.cat(keyframe_coords, dim=2))
+
+        # Reference (IC-LoRA) tokens, appended last so they sit at the very end of the sequence -- the video
+        # self-attention mask is built off that placement. Same mechanism as the keyframes above: a per-token
+        # `conditioning_mask` of the reference's strength, matching `VideoConditionByReferenceLatent` in the
+        # reference implementation. Absent for IC-LoRAs that take no reference video (camera control, style, ...),
+        # which `LTX2InContextPipeline` supports too -- `LTX2AutoReferenceEncoderStep` is then skipped.
+        num_ref_tokens = 0
+        if block_state.reference_latents is not None:
+            reference_conditions = block_state.reference_conditions
+            if isinstance(reference_conditions, LTX2ReferenceCondition):
+                reference_conditions = [reference_conditions]
+            reference_tokens = block_state.reference_latents.expand(batch_size, -1, -1)
+            num_ref_tokens = reference_tokens.shape[1]
+            # Per-reference token counts come from the encoder rather than an equal split of the total, so
+            # references of differing lengths (a reference video shorter than `num_frames`) get the right strengths.
+            reference_masks = [
+                torch.full(
+                    (batch_size, num_tokens, 1),
+                    float(ref_cond.strength),
+                    device=device,
+                    dtype=conditioning_mask.dtype,
+                )
+                for ref_cond, num_tokens in zip(reference_conditions, block_state.reference_token_counts)
+            ]
+            latents = torch.cat([latents, reference_tokens], dim=1)
+            clean_latents = torch.cat([clean_latents, reference_tokens], dim=1)
+            conditioning_mask = torch.cat([conditioning_mask, torch.cat(reference_masks, dim=1)], dim=1)
+            appended_coords.append(block_state.reference_coords.expand(batch_size, -1, -1, -1))
+
+        # Mask semantics: 0 -> fully noised, 1 -> kept clean, in between -> noise level (1 - mask) * noise_scale.
+        noise = randn_tensor(
+            latents.shape, generator=block_state.generator, device=latents.device, dtype=latents.dtype
+        )
+        scaled_mask = (1.0 - conditioning_mask) * noise_scale
+        block_state.latents = noise * scaled_mask + latents * (1 - scaled_mask)
+
+        block_state.conditioning_mask = conditioning_mask
+        block_state.clean_latents = clean_latents
+        block_state.appended_coords = torch.cat(appended_coords, dim=2)
+        block_state.base_token_count = base_token_count
+        block_state.num_ref_tokens = num_ref_tokens
+        block_state.noise_scale = noise_scale
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class LTX2BuildVideoSelfAttentionMaskStep(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Builds the video self-attention mask over the noisy+appended token sequence for in-context "
+            "generation, mirroring `build_attention_mask` in the reference implementation:\n"
+            "  - noisy <-> noisy: 1.0 (full attention)\n"
+            "  - noisy <-> reference: `reference_cross_mask`, broadcast symmetrically across the noisy-token axis\n"
+            "  - reference <-> reference: 1.0 (the group fully attends to itself)\n"
+            "  - reference <-> any other appended group (e.g. keyframes): 0.0\n"
+            "Emitted tagged `denoiser_input_fields`, so it reaches the transformer's `video_self_attention_mask` "
+            "argument without any change to `LTX2LoopDenoiser`. Only run when the references carry a per-token "
+            "strength (see `LTX2AutoBuildVideoSelfAttentionMaskStep`); attention is otherwise left unmasked."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("latents", required=True),
+            InputParam(
+                "num_ref_tokens",
+                type_hint=int,
+                required=True,
+                description="Number of reference tokens, which sit at the very end of the sequence.",
+            ),
+            InputParam(
+                "reference_cross_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "video_self_attention_mask",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Multiplicative self-attention mask of shape [B, S, S] with values in [0, 1].",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        batch_size, total_tokens, _ = block_state.latents.shape
+        num_noisy_tokens = total_tokens - block_state.num_ref_tokens
+        cross = block_state.reference_cross_mask.to(device=device, dtype=torch.float32)
+
+        # Start from zeros so the keyframe<->reference blocks stay masked without explicit assignment. Each guidance
+        # pass is its own single-batch forward, so this is built at the generation batch size -- the standard
+        # pipeline's expand to 2B for the CFG batch has no counterpart here.
+        attn_mask = torch.zeros((batch_size, total_tokens, total_tokens), device=device, dtype=torch.float32)
+        attn_mask[:, :num_noisy_tokens, :num_noisy_tokens] = 1.0
+        attn_mask[:, :num_noisy_tokens, num_noisy_tokens:] = cross.unsqueeze(1)
+        attn_mask[:, num_noisy_tokens:, :num_noisy_tokens] = cross.unsqueeze(2)
+        attn_mask[:, num_noisy_tokens:, num_noisy_tokens:] = 1.0
+
+        block_state.video_self_attention_mask = attn_mask
 
         self.set_block_state(state, block_state)
         return components, state
