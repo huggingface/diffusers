@@ -133,6 +133,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("stable-diffusion-3", _create_default_map_fn("StableDiffusion3ModularPipeline")),
         ("wan", _wan_map_fn),
         ("wan-i2v", _wan_i2v_map_fn),
+        ("wan-vace", _create_default_map_fn("Wan22VaceModularPipeline")),
         ("flux", _create_default_map_fn("FluxModularPipeline")),
         ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),
         ("flux2", _create_default_map_fn("Flux2ModularPipeline")),

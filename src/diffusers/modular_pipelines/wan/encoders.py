@@ -23,7 +23,7 @@ from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...image_processor import PipelineImageInput
-from ...models import AutoencoderKLWan
+from ...models import AutoencoderKLWan, WanVACETransformer3DModel
 from ...utils import is_ftfy_available, is_torchvision_available, logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -558,6 +558,314 @@ class WanVaeEncoderStep(ModularPipelineBlocks):
             dtype=vae_dtype,
             latent_channels=components.num_channels_latents,
         )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanVaceEncoderStep(ModularPipelineBlocks):
+    model_name = "wan-vace"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Vace Encoder step that preprocesses the control video, mask and reference images and encodes them "
+            "into the conditioning latents used by the VACE control branch of the transformer"
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", WanVACETransformer3DModel),
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 8}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "video",
+                type_hint=list[PIL.Image.Image],
+                description="The control video to condition the generation on. If not provided, an empty video is used.",
+            ),
+            InputParam(
+                "mask",
+                type_hint=list[PIL.Image.Image],
+                description="The mask that defines which video regions to condition on (black) and which to generate (white). Can only be passed if `video` is passed as well.",
+            ),
+            InputParam(
+                "reference_images",
+                type_hint=PIL.Image.Image | list[PIL.Image.Image],
+                description="One or more reference images as extra conditioning for the generation.",
+            ),
+            InputParam(
+                "conditioning_scale",
+                type_hint=float | list[float] | torch.Tensor,
+                default=1.0,
+                description="The conditioning scale applied in each control layer of the model. If a float, it is applied uniformly to all layers; a list or tensor must have the same length as the number of control layers.",
+            ),
+            InputParam("height"),
+            InputParam("width"),
+            InputParam("num_frames", type_hint=int, default=81),
+            InputParam("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "vace_conditioning_latents",
+                type_hint=torch.Tensor,
+                description="The concatenated video and mask conditioning latents fed into the VACE control branch of the transformer",
+            ),
+            OutputParam(
+                "num_reference_images",
+                type_hint=int,
+                description="Number of reference images prepended on the frame dimension of the conditioning latents",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(components, block_state):
+        base = components.vae_scale_factor_spatial * components.patch_size_spatial
+        if (block_state.height is not None and block_state.height % base != 0) or (
+            block_state.width is not None and block_state.width % base != 0
+        ):
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {base} but are {block_state.height} and {block_state.width}."
+            )
+        if block_state.num_frames is not None and (
+            block_state.num_frames < 1 or (block_state.num_frames - 1) % components.vae_scale_factor_temporal != 0
+        ):
+            raise ValueError(
+                f"`num_frames` has to be greater than 0, and (num_frames - 1) must be divisible by {components.vae_scale_factor_temporal}, but got {block_state.num_frames}."
+            )
+        if isinstance(block_state.generator, list):
+            raise ValueError("Passing a list of generators is not yet supported. This may be supported in the future.")
+        if block_state.video is not None:
+            if block_state.mask is not None and len(block_state.video) != len(block_state.mask):
+                raise ValueError(
+                    f"Length of `video` {len(block_state.video)} and `mask` {len(block_state.mask)} do not match. Please make sure that"
+                    " they have the same length."
+                )
+        elif block_state.mask is not None:
+            raise ValueError("`mask` can only be passed if `video` is passed as well.")
+
+    @staticmethod
+    def preprocess_conditions(
+        components,
+        video,
+        mask,
+        reference_images,
+        height,
+        width,
+        num_frames,
+        dtype,
+        device,
+    ):
+        if video is not None:
+            base = components.vae_scale_factor_spatial * components.patch_size_spatial
+            video_height, video_width = components.video_processor.get_default_height_width(video[0])
+
+            if video_height * video_width > height * width:
+                scale = min(width / video_width, height / video_height)
+                video_height, video_width = int(video_height * scale), int(video_width * scale)
+
+            if video_height % base != 0 or video_width % base != 0:
+                logger.warning(
+                    f"Video height and width should be divisible by {base}, but got {video_height} and {video_width}. "
+                )
+                video_height = (video_height // base) * base
+                video_width = (video_width // base) * base
+
+            video = components.video_processor.preprocess_video(video, video_height, video_width)
+            image_size = (video_height, video_width)  # Use the height/width of video (with possible rescaling)
+        else:
+            video = torch.zeros(1, 3, num_frames, height, width, dtype=dtype, device=device)
+            image_size = (height, width)  # Use the height/width provider by user
+
+        if mask is not None:
+            mask = components.video_processor.preprocess_video(mask, image_size[0], image_size[1])
+            mask = torch.clamp((mask + 1) / 2, min=0, max=1)
+        else:
+            mask = torch.ones_like(video)
+
+        video = video.to(dtype=dtype, device=device)
+        mask = mask.to(dtype=dtype, device=device)
+
+        # Make a list of list of images where the outer list corresponds to video batch size and the inner list
+        # corresponds to list of conditioning images per video
+        if reference_images is None or isinstance(reference_images, PIL.Image.Image):
+            reference_images = [[reference_images] for _ in range(video.shape[0])]
+        elif isinstance(reference_images, (list, tuple)) and isinstance(next(iter(reference_images)), PIL.Image.Image):
+            reference_images = [reference_images]
+        elif (
+            isinstance(reference_images, (list, tuple))
+            and isinstance(next(iter(reference_images)), list)
+            and isinstance(next(iter(reference_images[0])), PIL.Image.Image)
+        ):
+            reference_images = reference_images
+        else:
+            raise ValueError(
+                "`reference_images` has to be of type `PIL.Image.Image` or `list` of `PIL.Image.Image`, or "
+                f"`list` of `list` of `PIL.Image.Image`, but is {type(reference_images)}"
+            )
+
+        if video.shape[0] != len(reference_images):
+            raise ValueError(
+                f"Batch size of `video` {video.shape[0]} and length of `reference_images` {len(reference_images)} does not match."
+            )
+
+        reference_images_preprocessed = []
+        for i, reference_images_batch in enumerate(reference_images):
+            preprocessed_images = []
+            for j, image in enumerate(reference_images_batch):
+                if image is None:
+                    continue
+                image = components.video_processor.preprocess(image, None, None)
+                img_height, img_width = image.shape[-2:]
+                scale = min(image_size[0] / img_height, image_size[1] / img_width)
+                new_height, new_width = int(img_height * scale), int(img_width * scale)
+                resized_image = torch.nn.functional.interpolate(
+                    image, size=(new_height, new_width), mode="bilinear", align_corners=False
+                ).squeeze(0)  # [C, H, W]
+                top = (image_size[0] - new_height) // 2
+                left = (image_size[1] - new_width) // 2
+                canvas = torch.ones(3, *image_size, device=device, dtype=dtype)
+                canvas[:, top : top + new_height, left : left + new_width] = resized_image
+                preprocessed_images.append(canvas)
+            reference_images_preprocessed.append(preprocessed_images)
+
+        return video, mask, reference_images_preprocessed
+
+    @staticmethod
+    def prepare_video_latents(components, video, mask, reference_images, generator, device):
+        vae_dtype = components.vae.dtype
+        video = video.to(dtype=vae_dtype)
+
+        latents_mean = torch.tensor(components.vae.config.latents_mean, device=device, dtype=torch.float32).view(
+            1, components.vae.config.z_dim, 1, 1, 1
+        )
+        latents_std = 1.0 / torch.tensor(components.vae.config.latents_std, device=device, dtype=torch.float32).view(
+            1, components.vae.config.z_dim, 1, 1, 1
+        )
+
+        mask = torch.where(mask > 0.5, 1.0, 0.0).to(dtype=vae_dtype)
+        inactive = video * (1 - mask)
+        reactive = video * mask
+        inactive = retrieve_latents(components.vae.encode(inactive), generator, sample_mode="argmax")
+        reactive = retrieve_latents(components.vae.encode(reactive), generator, sample_mode="argmax")
+        inactive = ((inactive.float() - latents_mean) * latents_std).to(vae_dtype)
+        reactive = ((reactive.float() - latents_mean) * latents_std).to(vae_dtype)
+        latents = torch.cat([inactive, reactive], dim=1)
+
+        latent_list = []
+        for latent, reference_images_batch in zip(latents, reference_images):
+            for reference_image in reference_images_batch:
+                reference_image = reference_image.to(dtype=vae_dtype)
+                reference_image = reference_image[None, :, None, :, :]  # [1, C, 1, H, W]
+                reference_latent = retrieve_latents(
+                    components.vae.encode(reference_image), generator, sample_mode="argmax"
+                )
+                reference_latent = ((reference_latent.float() - latents_mean) * latents_std).to(vae_dtype)
+                reference_latent = reference_latent.squeeze(0)  # [C, 1, H, W]
+                reference_latent = torch.cat([reference_latent, torch.zeros_like(reference_latent)], dim=0)
+                latent = torch.cat([reference_latent.squeeze(0), latent], dim=1)
+            latent_list.append(latent)
+        return torch.stack(latent_list)
+
+    @staticmethod
+    def prepare_masks(components, mask, reference_images):
+        transformer_patch_size = components.patch_size_spatial
+
+        mask_list = []
+        for mask_, reference_images_batch in zip(mask, reference_images):
+            num_channels, num_frames, height, width = mask_.shape
+            new_num_frames = (
+                num_frames + components.vae_scale_factor_temporal - 1
+            ) // components.vae_scale_factor_temporal
+            new_height = (
+                height // (components.vae_scale_factor_spatial * transformer_patch_size) * transformer_patch_size
+            )
+            new_width = (
+                width // (components.vae_scale_factor_spatial * transformer_patch_size) * transformer_patch_size
+            )
+            mask_ = mask_[0, :, :, :]
+            mask_ = mask_.view(
+                num_frames,
+                new_height,
+                components.vae_scale_factor_spatial,
+                new_width,
+                components.vae_scale_factor_spatial,
+            )
+            mask_ = mask_.permute(2, 4, 0, 1, 3).flatten(0, 1)  # [8x8, num_frames, new_height, new_width]
+            mask_ = torch.nn.functional.interpolate(
+                mask_.unsqueeze(0), size=(new_num_frames, new_height, new_width), mode="nearest-exact"
+            ).squeeze(0)
+            num_ref_images = len(reference_images_batch)
+            if num_ref_images > 0:
+                mask_padding = torch.zeros_like(mask_[:, :num_ref_images, :, :])
+                mask_ = torch.cat([mask_padding, mask_], dim=1)
+            mask_list.append(mask_)
+        return torch.stack(mask_list)
+
+    @torch.no_grad()
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(components, block_state)
+
+        device = components._execution_device
+        dtype = torch.float32
+
+        height = block_state.height or components.default_height
+        width = block_state.width or components.default_width
+        num_frames = block_state.num_frames or components.default_num_frames
+
+        video, mask, reference_images = self.preprocess_conditions(
+            components,
+            block_state.video,
+            block_state.mask,
+            block_state.reference_images,
+            height,
+            width,
+            num_frames,
+            dtype,
+            device,
+        )
+        if video.shape[0] != 1:
+            raise ValueError(
+                "Generating with more than one video is not yet supported. This may be supported in the future."
+            )
+        block_state.num_reference_images = len(reference_images[0])
+
+        conditioning_latents = self.prepare_video_latents(
+            components, video, mask, reference_images, block_state.generator, device
+        )
+        mask = self.prepare_masks(components, mask, reference_images)
+        block_state.vace_conditioning_latents = torch.cat([conditioning_latents, mask], dim=1)
+
+        conditioning_scale = block_state.conditioning_scale
+        if isinstance(conditioning_scale, (int, float)):
+            conditioning_scale = [conditioning_scale] * components.num_vace_layers
+        if isinstance(conditioning_scale, list):
+            if len(conditioning_scale) != components.num_vace_layers:
+                raise ValueError(
+                    f"Length of `conditioning_scale` {len(conditioning_scale)} does not match number of layers {components.num_vace_layers}."
+                )
+            conditioning_scale = torch.tensor(conditioning_scale)
+        if isinstance(conditioning_scale, torch.Tensor):
+            if conditioning_scale.size(0) != components.num_vace_layers:
+                raise ValueError(
+                    f"Length of `conditioning_scale` {conditioning_scale.size(0)} does not match number of layers {components.num_vace_layers}."
+                )
+            conditioning_scale = conditioning_scale.to(device=device)
+        block_state.conditioning_scale = conditioning_scale
 
         self.set_block_state(state, block_state)
         return components, state
