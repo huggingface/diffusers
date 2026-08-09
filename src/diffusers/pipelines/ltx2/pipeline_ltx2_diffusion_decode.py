@@ -18,7 +18,7 @@ from ...models.autoencoders import AutoencoderKLLTX2Video, LTX2VideoDiffusionDec
 from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import LTX2PipelineOutput
+from .pipeline_output import LTX2VideoDecodeOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -96,7 +96,7 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
                 denormalized.
 
         Returns:
-            [`~pipelines.ltx2.pipeline_output.LTX2PipelineOutput`] or `tuple`
+            [`~pipelines.ltx2.pipeline_output.LTX2VideoDecodeOutput`] or `tuple`
         """
         device = self._execution_device
         latents = latents.to(device)
@@ -113,4 +113,4 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
 
         if not return_dict:
             return (video,)
-        return LTX2PipelineOutput(frames=video)
+        return LTX2VideoDecodeOutput(frames=video)
