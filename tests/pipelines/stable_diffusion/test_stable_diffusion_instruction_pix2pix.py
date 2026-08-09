@@ -58,6 +58,7 @@ class StableDiffusionInstructPix2PixPipelineTesterConfig(BasePipelineTesterConfi
         ["prompt", "image", "guidance_scale", "negative_prompt", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)

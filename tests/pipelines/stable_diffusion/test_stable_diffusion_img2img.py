@@ -62,6 +62,7 @@ class StableDiffusionImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "image", "guidance_scale", "negative_prompt", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    output_shape = (3, 32, 32)
     # img2img derives its latents from the input image, so `__call__` takes no `latents` argument.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_images_per_prompt", "generator", "output_type", "return_dict"]

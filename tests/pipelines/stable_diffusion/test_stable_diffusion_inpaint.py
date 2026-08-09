@@ -66,6 +66,7 @@ class StableDiffusionInpaintPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionInpaintPipeline
     required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_input_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    output_shape = (3, 64, 64)
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -194,20 +195,18 @@ class TestStableDiffusionInpaintPipeline(StableDiffusionInpaintPipelineTesterCon
         # fmt: on
         assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
-    def test_stable_diffusion_inpaint_image_tensor(self):
-        # Run on CPU: PIL and tensor inputs are compared against each other.
-        sd_pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        out_pil = sd_pipe(**inputs).images
+    def test_stable_diffusion_inpaint_image_tensor(self, base_pipe_output):
+        # `base_pipe_output` is the PIL-input reference: the class-cached run over the standard dummy inputs.
+        sd_pipe = self.get_pipeline().to(torch_device)
 
         inputs = self.get_dummy_inputs()
         inputs["image"] = torch.tensor(np.array(inputs["image"]) / 127.5 - 1).permute(2, 0, 1).unsqueeze(0)
         inputs["mask_image"] = torch.tensor(np.array(inputs["mask_image"]) / 255).permute(2, 0, 1)[:1].unsqueeze(0)
+        torch.manual_seed(0)
         out_tensor = sd_pipe(**inputs).images
 
-        assert out_pil.shape == (1, 3, 64, 64)
-        assert (out_pil - out_tensor).abs().max() < 5e-2
+        assert base_pipe_output.shape == (1, 3, 64, 64)
+        assert (base_pipe_output - out_tensor).abs().max() < 5e-2
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)

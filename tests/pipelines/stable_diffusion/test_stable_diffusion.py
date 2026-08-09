@@ -72,6 +72,7 @@ from .ip_adapter_tester import IPAdapterTesterMixin
 class StableDiffusionPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionPipeline
     required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS
+    output_shape = (3, 64, 64)
     batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS
 
     def get_dummy_components(self, time_cond_proj_dim=None):
@@ -400,22 +401,19 @@ class TestStableDiffusionPipeline(StableDiffusionPipelineTesterConfig, PipelineT
         # there is a small discrepancy at image borders vs. full batch decode
         assert (output_2.images - output_1.images).abs().max() < 3e-3
 
-    def test_stable_diffusion_vae_tiling(self):
-        # Run on CPU: tiled VAE decoding is compared against a non-tiled decode of the same run.
-        sd_pipe = self.get_pipeline()
+    def test_stable_diffusion_vae_tiling(self, base_pipe_output):
+        sd_pipe = self.get_pipeline().to(torch_device)
 
-        # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
-        output_1 = sd_pipe(**self.get_dummy_inputs())
-
-        # make sure tiled vae decode yields the same result
+        # Tiled decode should yield the same result as the non-tiled decode cached by `base_pipe_output`.
         sd_pipe.vae.enable_tiling()
-        output_2 = sd_pipe(**self.get_dummy_inputs())
+        torch.manual_seed(0)
+        output_tiled = sd_pipe(**self.get_dummy_inputs()).images
 
-        assert (output_2.images - output_1.images).abs().max() < 5e-1
+        assert (output_tiled - base_pipe_output).abs().max() < 5e-1
 
         # test that tiled decode works with various shapes
         for shape in [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]:
-            sd_pipe.vae.decode(torch.zeros(shape))
+            sd_pipe.vae.decode(torch.zeros(shape, device=torch_device))
 
     def test_stable_diffusion_long_prompt(self):
         components = self.get_dummy_components()
@@ -485,24 +483,19 @@ class TestStableDiffusionPipeline(StableDiffusionPipelineTesterConfig, PipelineT
 
     # MPS currently doesn't support ComplexFloats, which are required for freeU - see https://github.com/huggingface/diffusers/issues/7569.
     @skip_mps
-    def test_freeu_enabled(self):
+    def test_freeu_enabled(self, base_pipe_output):
         sd_pipe = self.get_pipeline().to(torch_device)
 
-        prompt = "hey"
-        output = sd_pipe(prompt, num_inference_steps=1, output_type="pt", generator=torch.manual_seed(0)).images
-
         sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
-        output_freeu = sd_pipe(prompt, num_inference_steps=1, output_type="pt", generator=torch.manual_seed(0)).images
+        torch.manual_seed(0)
+        output_freeu = sd_pipe(**self.get_dummy_inputs()).images
 
-        assert not torch.allclose(output[0, -1, -3:, -3:], output_freeu[0, -1, -3:, -3:]), (
+        assert not torch.allclose(base_pipe_output[0, -1, -3:, -3:], output_freeu[0, -1, -3:, -3:]), (
             "Enabling of FreeU should lead to different results."
         )
 
-    def test_freeu_disabled(self):
+    def test_freeu_disabled(self, base_pipe_output):
         sd_pipe = self.get_pipeline().to(torch_device)
-
-        prompt = "hey"
-        output = sd_pipe(prompt, num_inference_steps=1, output_type="pt", generator=torch.manual_seed(0)).images
 
         sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         sd_pipe.disable_freeu()
@@ -511,24 +504,26 @@ class TestStableDiffusionPipeline(StableDiffusionPipelineTesterConfig, PipelineT
             for key in {"s1", "s2", "b1", "b2"}:
                 assert getattr(upsample_block, key) is None, f"Disabling of FreeU should have set {key} to None."
 
-        output_no_freeu = sd_pipe(
-            prompt, num_inference_steps=1, output_type="pt", generator=torch.manual_seed(0)
-        ).images
+        torch.manual_seed(0)
+        output_no_freeu = sd_pipe(**self.get_dummy_inputs()).images
 
-        assert torch.allclose(output[0, -1, -3:, -3:], output_no_freeu[0, -1, -3:, -3:]), (
+        assert torch.allclose(base_pipe_output[0, -1, -3:, -3:], output_no_freeu[0, -1, -3:, -3:]), (
             "Disabling of FreeU should lead to results similar to the default pipeline results."
         )
 
-    def test_fused_qkv_projections(self):
-        # Run on CPU: fused and unfused attention are compared against each other.
-        sd_pipe = self.get_pipeline()
+    def test_fused_qkv_projections(self, base_pipe_output):
+        # The unfused reference is the class-cached `base_pipe_output`, so the runs below reseed the global RNG to
+        # reproduce it and the only remaining difference comes from the projection fusion itself.
+        sd_pipe = self.get_pipeline().to(torch_device)
 
-        original_image_slice = sd_pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
+        original_image_slice = base_pipe_output[0, -1, -3:, -3:]
 
         sd_pipe.fuse_qkv_projections()
+        torch.manual_seed(0)
         image_slice_fused = sd_pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
 
         sd_pipe.unfuse_qkv_projections()
+        torch.manual_seed(0)
         image_slice_disabled = sd_pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
 
         assert torch.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
