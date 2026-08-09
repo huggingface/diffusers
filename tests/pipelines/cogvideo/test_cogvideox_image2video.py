@@ -25,9 +25,9 @@ from diffusers.utils import load_image
 from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
+    nightly,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 from ..testing_utils import (
@@ -254,9 +254,9 @@ class TestCogVideoXImageToVideoPipelineMemory(CogVideoXImageToVideoPipelineTeste
     pass
 
 
-@slow
+@nightly
 @require_torch_accelerator
-class TestCogVideoXImageToVideoPipelineSlow:
+class TestCogVideoXImageToVideoPipelineIntegration:
     prompt = "A painting of a squirrel eating a burger."
 
     @pytest.fixture(autouse=True)

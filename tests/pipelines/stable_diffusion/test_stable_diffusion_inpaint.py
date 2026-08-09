@@ -48,7 +48,6 @@ from ...testing_utils import (
     load_numpy,
     nightly,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 from ..pipeline_params import (
@@ -455,9 +454,9 @@ class TestStableDiffusionInpaintPipelineIPAdapter(StableDiffusionInpaintPipeline
     """IP-Adapter tests for the inpaint pipeline."""
 
 
-@slow
+@nightly
 @require_torch_accelerator
-class TestStableDiffusionInpaintPipelineSlow:
+class TestStableDiffusionInpaintPipelineIntegration:
     @pytest.fixture(autouse=True)
     def cleanup(self):
         yield
@@ -632,10 +631,77 @@ class TestStableDiffusionInpaintPipelineSlow:
         expected_slice = np.array([0.3757, 0.3875, 0.4445, 0.4353, 0.3780, 0.4513, 0.3965, 0.3984, 0.4362])
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
+    def test_inpaint_ddim(self):
+        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
 
-@slow
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint/stable_diffusion_inpaint_ddim.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_inpaint_pndm(self):
+        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
+        sd_pipe.scheduler = PNDMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint/stable_diffusion_inpaint_pndm.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_inpaint_lms(self):
+        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
+        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint/stable_diffusion_inpaint_lms.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_inpaint_dpm(self):
+        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
+        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 30
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint/stable_diffusion_inpaint_dpm_multi.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+
+@nightly
 @require_torch_accelerator
-class TestStableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlow:
+class TestStableDiffusionInpaintPipelineAsymmetricAutoencoderKLIntegration:
     @pytest.fixture(autouse=True)
     def cleanup(self):
         yield
@@ -880,100 +946,3 @@ class TestStableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlow:
         image_out = pipe(**inputs).images[0]
 
         assert image_out.shape == (512, 512, 3)
-
-
-@nightly
-@require_torch_accelerator
-class TestStableDiffusionInpaintPipelineNightly:
-    @pytest.fixture(autouse=True)
-    def cleanup(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-        yield
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
-        init_image = load_image(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_inpaint/input_bench_image.png"
-        )
-        mask_image = load_image(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_inpaint/input_bench_mask.png"
-        )
-        inputs = {
-            "prompt": "Face of a yellow cat, high resolution, sitting on a park bench",
-            "image": init_image,
-            "mask_image": mask_image,
-            "generator": generator,
-            "num_inference_steps": 50,
-            "guidance_scale": 7.5,
-            "output_type": "np",
-        }
-        return inputs
-
-    def test_inpaint_ddim(self):
-        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
-        sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_inpaint/stable_diffusion_inpaint_ddim.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_inpaint_pndm(self):
-        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
-        sd_pipe.scheduler = PNDMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_inpaint/stable_diffusion_inpaint_pndm.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_inpaint_lms(self):
-        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_inpaint/stable_diffusion_inpaint_lms.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_inpaint_dpm(self):
-        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        inputs["num_inference_steps"] = 30
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_inpaint/stable_diffusion_inpaint_dpm_multi.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3

@@ -40,8 +40,8 @@ from ...testing_utils import (
     backend_reset_peak_memory_stats,
     floats_tensor,
     load_image,
+    nightly,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 from ..pipeline_params import (
@@ -201,9 +201,9 @@ class TestStableDiffusionInstructPix2PixPipelineMemory(
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the InstructPix2Pix pipeline."""
 
 
-@slow
+@nightly
 @require_torch_accelerator
-class TestStableDiffusionInstructPix2PixPipelineSlow:
+class TestStableDiffusionInstructPix2PixPipelineIntegration:
     @pytest.fixture(autouse=True)
     def cleanup(self):
         gc.collect()

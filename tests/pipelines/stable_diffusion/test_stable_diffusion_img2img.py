@@ -45,7 +45,6 @@ from ...testing_utils import (
     load_numpy,
     nightly,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 from ..pipeline_params import (
@@ -309,9 +308,9 @@ class TestStableDiffusionImg2ImgPipelineIPAdapter(StableDiffusionImg2ImgPipeline
     """IP-Adapter tests for the img2img pipeline."""
 
 
-@slow
+@nightly
 @require_torch_accelerator
-class TestStableDiffusionImg2ImgPipelineSlow:
+class TestStableDiffusionImg2ImgPipelineIntegration:
     @pytest.fixture(autouse=True)
     def cleanup(self):
         gc.collect()
@@ -558,41 +557,13 @@ class TestStableDiffusionImg2ImgPipelineSlow:
         assert out.nsfw_content_detected[0], f"Safety checker should work for prompt: {inputs['prompt']}"
         assert np.abs(out.images[0]).sum() < 1e-5  # should be all zeros
 
-
-@nightly
-@require_torch_accelerator
-class TestStableDiffusionImg2ImgPipelineNightly:
-    @pytest.fixture(autouse=True)
-    def cleanup(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-        yield
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
-        init_image = load_image(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_img2img/sketch-mountains-input.png"
-        )
-        inputs = {
-            "prompt": "a fantasy landscape, concept art, high resolution",
-            "image": init_image,
-            "generator": generator,
-            "num_inference_steps": 50,
-            "strength": 0.75,
-            "guidance_scale": 7.5,
-            "output_type": "np",
-        }
-        return inputs
-
     def test_img2img_pndm(self):
         sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
         image = sd_pipe(**inputs).images[0]
 
         expected_image = load_numpy(
@@ -609,6 +580,7 @@ class TestStableDiffusionImg2ImgPipelineNightly:
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
         image = sd_pipe(**inputs).images[0]
 
         expected_image = load_numpy(
@@ -625,6 +597,7 @@ class TestStableDiffusionImg2ImgPipelineNightly:
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
         image = sd_pipe(**inputs).images[0]
 
         expected_image = load_numpy(
