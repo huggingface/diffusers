@@ -85,6 +85,46 @@ def _unpack_audio_latents(
     return latents
 
 
+class LTX2TrimConditionTokensStep(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Drops the appended keyframe-condition tokens from the denoised latents, leaving only the "
+            "generated-video tokens for the decoders."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("latents", required=True),
+            InputParam(
+                "base_token_count",
+                type_hint=int,
+                required=True,
+                description="Number of generated-video tokens, i.e. the sequence length before appended tokens.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="Denoised latents for the generated video, with condition tokens removed.",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.latents = block_state.latents[:, : block_state.base_token_count]
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class LTX2VaeDecoderStep(ModularPipelineBlocks):
     model_name = "ltx2"
 
