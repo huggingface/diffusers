@@ -44,10 +44,7 @@ from ...testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
-from ..pipeline_params import (
-    TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
-    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
-)
+from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
@@ -57,7 +54,9 @@ from ..testing_utils import (
 
 class StableDiffusionInstructPix2PixPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionInstructPix2PixPipeline
-    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "image", "guidance_scale", "negative_prompt", "prompt_embeds", "negative_prompt_embeds"]
+    )
     batch_input_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
 
     def get_dummy_components(self):
