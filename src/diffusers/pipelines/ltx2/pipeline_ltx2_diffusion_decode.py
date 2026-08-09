@@ -30,7 +30,7 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
 
     Unlike a convolutional decoder this one is itself a small diffusion model: it denoises pixels conditioned on a
     context volume built from the latents, so it needs a scheduler and a generator. Pair it with any LTX-2 pipeline run
-    with `output_type="latent"`.
+    with `output_type="latent"`, passing `denormalize=False` since that path already applied the latent statistics.
 
     Args:
         diffusion_decoder ([`LTX2VideoDiffusionDecoderModel`]):
@@ -88,7 +88,8 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
         r"""
         Args:
             latents (`torch.Tensor`):
-                Latents of shape `(B, C, F, H, W)`, typically from an LTX-2 pipeline run with `output_type="latent"`.
+                Latents of shape `(B, C, F, H, W)`. Note that an LTX-2 pipeline run with `output_type="latent"` returns
+                latents that are *already* denormalized, so pass `denormalize=False` for those.
             generator (`torch.Generator`, *optional*):
                 The decoder samples the noise it denoises, so pass a generator to make decoding reproducible.
             denormalize (`bool`, *optional*, defaults to `True`):

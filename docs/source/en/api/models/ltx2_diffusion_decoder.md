@@ -32,12 +32,17 @@ decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
 ).to("cuda")
 decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=pipe.scheduler)
 
-# The decoder draws the noise it denoises, so decoding is only reproducible with a generator.
-video = decode_pipe(latents, generator=torch.Generator("cuda").manual_seed(0)).frames[0]
+# `denormalize=False`: `output_type="latent"` already applied the latent statistics, so applying them
+# again here would scale every channel by its std a second time.
+# The decoder also draws the noise it denoises, so decoding is only reproducible with a generator.
+video = decode_pipe(
+    latents, generator=torch.Generator("cuda").manual_seed(0), denormalize=False
+).frames[0]
 ```
 
-`vae` is an optional component on the decode pipeline: it is only consulted for the latent statistics, and the
-decoder carries its own, so a decode-only workflow does not have to load a second autoencoder.
+`vae` is an optional component on the decode pipeline: it is only consulted for the latent statistics when
+`denormalize=True`, and the decoder carries its own, so a decode-only workflow does not have to load a second
+autoencoder.
 
 ## Attention backends
 
