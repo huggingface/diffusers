@@ -9,33 +9,35 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License. -->
 
-# AutoencoderKLLTX2VideoDiffusionDecoder
+# LTX2VideoDiffusionDecoderModel
 
-The video VAE used from LTX-2.4 onwards, introduced by Lightricks. It pairs the causal convolutional encoder of
-[`AutoencoderKLLTX2Video`] — same weights, same latent space — with a *diffusion* decoder: neighborhood-attention
-stages upsample the latent into a context volume, and a final stage denoises pixels conditioned on that context.
-Because the encoder is unchanged, latents are interchangeable between the two classes and either decoder can
-consume them.
+The diffusion video decoder used from LTX-2.4 onwards, introduced by Lightricks. Neighborhood-attention stages
+upsample the latent into a context volume, and a final stage denoises pixels conditioned on that context.
 
-The diffusion decoder ships as a second subfolder alongside the convolutional `vae`, so it is opt-in:
+It is a decoder, not an autoencoder: encoding stays with [`AutoencoderKLLTX2Video`], whose latent space this
+consumes unchanged, so latents are interchangeable between the convolutional decoder and this one. Because it is
+itself a diffusion model it is driven by [`LTX2VideoDiffusionDecodePipeline`] rather than being passed as a
+pipeline's `vae`: run any LTX-2 pipeline with `output_type="latent"`, then decode.
 
 ```python
 import torch
-from diffusers import AutoencoderKLLTX2VideoDiffusionDecoder, LTX2Pipeline
+from diffusers import LTX2Pipeline, LTX2VideoDiffusionDecoderModel
+from diffusers.pipelines.ltx2.pipeline_ltx2_diffusion_decode import LTX2VideoDiffusionDecodePipeline
 
-vae = AutoencoderKLLTX2VideoDiffusionDecoder.from_pretrained(
-    "Lightricks/LTX-2.4", subfolder="vae_diffusion", dtype=torch.bfloat16
-)
-pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2.4", vae=vae, dtype=torch.bfloat16)
+pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2.5", dtype=torch.bfloat16).to("cuda")
+latents = pipe(prompt="a potter shaping a clay vase", output_type="latent").frames
+
+decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
+    "Lightricks/LTX-2.5", subfolder="vae_diffusion", dtype=torch.bfloat16
+).to("cuda")
+decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=pipe.scheduler)
+
+# The decoder draws the noise it denoises, so decoding is only reproducible with a generator.
+video = decode_pipe(latents, generator=torch.Generator("cuda").manual_seed(0)).frames[0]
 ```
 
-Unlike a convolutional decoder this one draws noise and denoises it, so decoding is only reproducible when a
-generator is passed. `LTX2Pipeline` forwards the generator it was called with; calling `decode` directly, pass
-your own:
-
-```python
-video = vae.decode(latents, generator=torch.Generator("cuda").manual_seed(0)).sample
-```
+`vae` is an optional component on the decode pipeline: it is only consulted for the latent statistics, and the
+decoder carries its own, so a decode-only workflow does not have to load a second autoencoder.
 
 ## Attention backends
 
@@ -46,7 +48,7 @@ For those, either compile the decoder or install [`natten`](https://github.com/S
 kernels, which are also what the original implementation uses:
 
 ```python
-from diffusers.models.autoencoders.autoencoder_kl_ltx2_diffusion_decoder import (
+from diffusers.models.autoencoders.ltx2_diffusion_decoder import (
     LTX2VideoVaeNeighborhoodAttention,
     LTX2VideoVaeNeighborhoodNattenProcessor,
 )
@@ -65,9 +67,9 @@ Tiled decoding is not supported — `enable_tiling` raises. Neighborhood attenti
 kernel, including a short remnant tile, so tile sizes cannot be chosen freely. Batch slicing (`enable_slicing`)
 works as usual.
 
-## AutoencoderKLLTX2VideoDiffusionDecoder
+## LTX2VideoDiffusionDecoderModel
 
-[[autodoc]] AutoencoderKLLTX2VideoDiffusionDecoder
+[[autodoc]] LTX2VideoDiffusionDecoderModel
     - decode
     - encode
     - all

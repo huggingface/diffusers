@@ -20,7 +20,6 @@ from transformers import AutoTokenizer, Gemma3ForConditionalGeneration
 from diffusers import (
     AutoencoderKLLTX2Audio,
     AutoencoderKLLTX2Video,
-    AutoencoderKLLTX2VideoDiffusionDecoder,
     FlowMatchEulerDiscreteScheduler,
     LTX2Pipeline,
     LTX2VideoTransformer3DModel,
@@ -290,60 +289,6 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=2, expected_max_diff=2e-2)
-
-    def get_dummy_diffusion_decoder_vae(self):
-        """The LTX-2.4 diffusion-decoder VAE at the same 2x spatial / 1x temporal compression as the dummy VAE.
-
-        The decoder's neighborhood attention needs every stage to hold at least its kernel, so with a kernel of
-        3 all four upsamples but the last are identity strides -- that is what keeps a 32x32x5 dummy video
-        decodable while still exercising all five stages.
-        """
-        torch.manual_seed(0)
-        return AutoencoderKLLTX2VideoDiffusionDecoder(
-            in_channels=3,
-            out_channels=3,
-            latent_channels=4,
-            block_out_channels=(8,),
-            down_block_types=("LTX2VideoDownBlock3D",),
-            layers_per_block=(1,),
-            spatio_temporal_scaling=(True,),
-            downsample_type=("spatial",),
-            patch_size=1,
-            patch_size_t=1,
-            encoder_causal=True,
-            decoder_head_dim=16,
-            decoder_stage_channels=(32, 16, 16, 16, 16),
-            decoder_stage_depths=(1, 1, 1, 1, 2),
-            decoder_stage_kernels=((3, 3, 3), (3, 3, 3), (3, 3, 3), (3, 3, 3)),
-            decoder_upsample_strides=((1, 1, 1), (1, 1, 1), (1, 1, 1), (1, 2, 2)),
-            decoder_upsample_channel_reductions=(2, 1, 1, 1),
-            decoder_stage5_kernel=(3, 3, 3),
-            decoder_t_emb_dim=32,
-            spatial_compression_ratio=2,
-            temporal_compression_ratio=1,
-        )
-
-    def test_inference_with_diffusion_decoder_vae(self):
-        """LTX-2.4's diffusion decoder decodes through the pipeline, and its noise follows the generator.
-
-        The pipeline's conv-decoder path noises the latents itself at `decode_timestep` and passes that
-        timestep to `vae.decode`; this decoder instead samples and denoises its own noise, so it takes the
-        generator. Running twice from the same seed is what shows the generator actually reaches it -- if it
-        did not, the decoder's noise would be fresh on every call.
-        """
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        components["vae"] = self.get_dummy_diffusion_decoder_vae()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        first = pipe(**self.get_dummy_inputs(device)).frames
-        second = pipe(**self.get_dummy_inputs(device)).frames
-
-        self.assertEqual(first.shape, (1, 5, 3, 32, 32))
-        assert torch.equal(first, second), "Same-seed runs should match: the decoder's noise must be seeded."
 
     def get_dummy_duration_head(self):
         torch.manual_seed(0)

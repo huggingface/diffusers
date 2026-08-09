@@ -33,7 +33,7 @@ import argparse
 
 import torch
 
-from diffusers.models.autoencoders.autoencoder_kl_ltx2_diffusion_decoder import (
+from diffusers.models.autoencoders.ltx2_diffusion_decoder import (
     LTX2VideoDiffusionDecoder3d,
     LTX2VideoVaeNeighborhoodAttention,
     LTX2VideoVaeNeighborhoodNattenProcessor,

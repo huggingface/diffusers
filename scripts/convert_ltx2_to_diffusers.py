@@ -12,10 +12,10 @@ from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor,
 from diffusers import (
     AutoencoderKLLTX2Audio,
     AutoencoderKLLTX2Video,
-    AutoencoderKLLTX2VideoDiffusionDecoder,
     FlowMatchEulerDiscreteScheduler,
     LTX2LatentUpsamplePipeline,
     LTX2Pipeline,
+    LTX2VideoDiffusionDecoderModel,
     LTX2VideoTransformer3DModel,
 )
 from diffusers.pipelines.ltx2 import (
@@ -866,24 +866,9 @@ def get_ltx2_diffusion_video_vae_config(version: str) -> tuple[dict[str, Any], d
     config = {
         "model_id": "Lightricks/LTX-2.4",
         "diffusers_config": {
-            "in_channels": 3,
             "out_channels": 3,
             "latent_channels": 128,
-            "block_out_channels": (256, 512, 1024, 1024),
-            "down_block_types": (
-                "LTX2VideoDownBlock3D",
-                "LTX2VideoDownBlock3D",
-                "LTX2VideoDownBlock3D",
-                "LTX2VideoDownBlock3D",
-            ),
-            "layers_per_block": (4, 6, 4, 2, 2),
-            "spatio_temporal_scaling": (True, True, True, True),
-            "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
             "patch_size": 4,
-            "patch_size_t": 1,
-            "resnet_norm_eps": 1e-6,
-            "encoder_causal": True,
-            "encoder_spatial_padding_mode": "zeros",
             "decoder_head_dim": 64,
             "decoder_stage_channels": (2048, 1024, 512, 512, 256),
             "decoder_stage_depths": (4, 6, 4, 2, 8),
@@ -907,7 +892,7 @@ def convert_ltx2_diffusion_video_vae(original_state_dict: dict[str, Any], versio
     diffusers_config = config["diffusers_config"]
 
     with init_empty_weights():
-        vae = AutoencoderKLLTX2VideoDiffusionDecoder.from_config(diffusers_config)
+        vae = LTX2VideoDiffusionDecoderModel.from_config(diffusers_config)
 
     # The two halves of the checkpoint need different rules, so split them first: everything outside
     # `decoder.` (the encoder and the per-channel statistics) goes through the conv VAE's remapping.

@@ -735,7 +735,7 @@ class AutoencoderKLLTX2Video(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class AutoencoderKLLTX2VideoDiffusionDecoder(metaclass=DummyObject):
+class LTX2VideoDiffusionDecoderModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

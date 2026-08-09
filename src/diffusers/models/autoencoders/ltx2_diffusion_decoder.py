@@ -24,10 +24,8 @@ from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaCombinedTimestepSizeEmbeddings
-from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .autoencoder_kl_ltx2 import LTX2VideoEncoder3d
-from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
+from .vae import DecoderOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -622,13 +620,20 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         return x_t
 
 
-class AutoencoderKLLTX2VideoDiffusionDecoder(ModelMixin, AutoencoderMixin, AttentionMixin, ConfigMixin):
+class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
     r"""
-    The LTX-2.4 video VAE: the LTX-2 causal convolutional encoder paired with the diffusion decoder used from LTX-2.4
-    onwards.
+    The LTX-2 diffusion video decoder, used from LTX-2.4 onwards.
 
-    The encoder is unchanged from [`AutoencoderKLLTX2Video`] — same weights, same latent space — so latents are
-    interchangeable between the two and either decoder can consume them.
+    This is a decoder, not an autoencoder: it has no encoder and cannot produce latents. Encoding stays with
+    [`AutoencoderKLLTX2Video`], whose latent space this consumes unchanged, so latents are interchangeable between the
+    convolutional decoder and this one.
+
+    It is also a diffusion model rather than a deterministic decoder — it denoises pixels conditioned on a context
+    volume built from the latents — which is why it is driven by [`LTX2VideoDiffusionDecodePipeline`] rather than being
+    passed as a pipeline's `vae`.
+
+    The latent statistics are carried here as buffers so the decode pipeline can denormalize without loading a second
+    autoencoder just for two vectors.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -642,25 +647,10 @@ class AutoencoderKLLTX2VideoDiffusionDecoder(ModelMixin, AutoencoderMixin, Atten
     @register_to_config
     def __init__(
         self,
-        in_channels: int = 3,
         out_channels: int = 3,
         latent_channels: int = 128,
-        block_out_channels: tuple[int, ...] = (256, 512, 1024, 1024),
-        down_block_types: tuple[str, ...] = (
-            "LTX2VideoDownBlock3D",
-            "LTX2VideoDownBlock3D",
-            "LTX2VideoDownBlock3D",
-            "LTX2VideoDownBlock3D",
-        ),
-        layers_per_block: tuple[int, ...] = (4, 6, 4, 2, 2),
-        spatio_temporal_scaling: tuple[bool, ...] = (True, True, True, True),
-        downsample_type: tuple[str, ...] = ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
         patch_size: int = 4,
-        patch_size_t: int = 1,
-        resnet_norm_eps: float = 1e-6,
         scaling_factor: float = 1.0,
-        encoder_causal: bool = True,
-        encoder_spatial_padding_mode: str = "zeros",
         decoder_head_dim: int = 64,
         decoder_stage_channels: tuple[int, ...] = (2048, 1024, 512, 512, 256),
         decoder_stage_depths: tuple[int, ...] = (4, 6, 4, 2, 8),
@@ -677,20 +667,6 @@ class AutoencoderKLLTX2VideoDiffusionDecoder(ModelMixin, AutoencoderMixin, Atten
     ) -> None:
         super().__init__()
 
-        self.encoder = LTX2VideoEncoder3d(
-            in_channels=in_channels,
-            out_channels=latent_channels,
-            block_out_channels=block_out_channels,
-            down_block_types=down_block_types,
-            spatio_temporal_scaling=spatio_temporal_scaling,
-            layers_per_block=layers_per_block,
-            downsample_type=downsample_type,
-            patch_size=patch_size,
-            patch_size_t=patch_size_t,
-            resnet_norm_eps=resnet_norm_eps,
-            is_causal=encoder_causal,
-            spatial_padding_mode=encoder_spatial_padding_mode,
-        )
         self.decoder = LTX2VideoDiffusionDecoder3d(
             in_channels=latent_channels,
             out_channels=out_channels,
@@ -711,28 +687,11 @@ class AutoencoderKLLTX2VideoDiffusionDecoder(ModelMixin, AutoencoderMixin, Atten
 
         self.spatial_compression_ratio = spatial_compression_ratio
         self.temporal_compression_ratio = temporal_compression_ratio
-        # Batch slicing is supported (`enable_slicing`); tiling is not — see `enable_tiling`.
-        self.use_slicing = False
 
         latents_mean = torch.zeros((latent_channels,), requires_grad=False)
         latents_std = torch.ones((latent_channels,), requires_grad=False)
         self.register_buffer("latents_mean", latents_mean, persistent=True)
         self.register_buffer("latents_std", latents_std, persistent=True)
-
-    @apply_forward_hook
-    def encode(
-        self, x: torch.Tensor, causal: bool | None = None, return_dict: bool = True
-    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
-        """Encode a batch of videos into latents."""
-        if self.use_slicing and x.shape[0] > 1:
-            h = torch.cat([self.encoder(x_slice, causal=causal) for x_slice in x.split(1)])
-        else:
-            h = self.encoder(x, causal=causal)
-        posterior = DiagonalGaussianDistribution(h)
-
-        if not return_dict:
-            return (posterior,)
-        return AutoencoderKLOutput(latent_dist=posterior)
 
     @apply_forward_hook
     def decode(
@@ -744,19 +703,10 @@ class AutoencoderKLLTX2VideoDiffusionDecoder(ModelMixin, AutoencoderMixin, Atten
     ) -> DecoderOutput | torch.Tensor:
         """Decode a batch of latents.
 
-        Unlike a convolutional decoder this one denoises, so it draws noise: pass `generator` for reproducibility. `z`
-        is expected to be denormalized already (the pipeline applies `latents_mean` / `latents_std`), matching
-        [`AutoencoderKLLTX2Video`].
+        `z` is expected to be denormalized already (the pipeline applies `latents_mean` / `latents_std`), matching
+        [`AutoencoderKLLTX2Video`]. This decoder denoises, so pass `generator` for reproducibility.
         """
-        if self.use_slicing and z.shape[0] > 1:
-            decoded = torch.cat(
-                [
-                    self.decoder(z_slice, generator=generator, num_inference_steps=num_inference_steps)
-                    for z_slice in z.split(1)
-                ]
-            )
-        else:
-            decoded = self.decoder(z, generator=generator, num_inference_steps=num_inference_steps)
+        decoded = self.decoder(z, generator=generator, num_inference_steps=num_inference_steps)
 
         if not return_dict:
             return (decoded,)
@@ -764,41 +714,9 @@ class AutoencoderKLLTX2VideoDiffusionDecoder(ModelMixin, AutoencoderMixin, Atten
 
     def forward(
         self,
-        sample: torch.Tensor,
-        sample_posterior: bool = False,
+        z: torch.Tensor,
+        generator: torch.Generator | None = None,
         num_inference_steps: int | None = None,
         return_dict: bool = True,
-        generator: torch.Generator | None = None,
     ) -> DecoderOutput | tuple[torch.Tensor]:
-        r"""
-        Args:
-            sample (`torch.Tensor`): Input sample.
-            sample_posterior (`bool`, *optional*, defaults to `False`):
-                Whether to sample from the posterior.
-            num_inference_steps (`int`, *optional*):
-                Number of denoising steps the decoder takes. If `None`, falls back to the model default.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
-            generator (`torch.Generator`, *optional*):
-                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make the
-                decoder's noise — and the posterior sampling, if enabled — deterministic. The decoder denoises, so
-                without one every call returns a different result.
-
-        Returns:
-            [`~models.vae.DecoderOutput`] or `tuple`:
-                If `return_dict` is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
-                returned.
-        """
-        posterior = self.encode(sample).latent_dist
-        z = posterior.sample(generator=generator) if sample_posterior else posterior.mode()
-        decoded = self.decode(z, generator=generator, num_inference_steps=num_inference_steps).sample
-
-        if not return_dict:
-            return (decoded,)
-        return DecoderOutput(sample=decoded)
-
-    def enable_tiling(self, *args, **kwargs) -> None:
-        raise NotImplementedError(
-            "Tiled decoding is not supported for the LTX-2.4 diffusion decoder: its neighborhood attention "
-            "rejects tiles smaller than its kernel, so tile sizes cannot be chosen freely. Decode untiled."
-        )
+        return self.decode(z, generator=generator, num_inference_steps=num_inference_steps, return_dict=return_dict)
