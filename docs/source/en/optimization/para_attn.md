@@ -43,7 +43,6 @@ import time
 import torch
 from diffusers import FluxPipeline
 
-
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16,
