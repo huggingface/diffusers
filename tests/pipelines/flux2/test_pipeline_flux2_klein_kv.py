@@ -23,6 +23,7 @@ class Flux2KleinKVPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = Flux2KleinKVPipeline
     required_input_params_in_call_signature = frozenset(["prompt", "height", "width", "prompt_embeds", "image"])
     batch_input_params = frozenset(["prompt"])
+    output_shape = (3, 8, 8)
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -164,7 +165,7 @@ class TestFlux2KleinKVPipeline(Flux2KleinKVPipelineTesterConfig, PipelineTesterM
         inputs = self.get_dummy_inputs()
         del inputs["image"]
         image = pipe(**inputs).images
-        assert image.shape == (1, 3, 8, 8)
+        assert image.shape == (1, *self.output_shape)
 
     @pytest.mark.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):

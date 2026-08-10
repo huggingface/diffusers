@@ -866,17 +866,23 @@ class TorchAoConfigMixin:
     }
 
     @staticmethod
-    def _get_quant_config(config_name):
+    def _get_quant_config(config_name, modules_to_not_convert=None):
         config_cls = getattr(_torchao_quantization, config_name)
         config_kwargs = {"version": 2}
-        # TorchAO int4 quantization requires plain_int32 packing format on Intel XPU
-        if config_name == "Int4WeightOnlyConfig" and torch_device == "xpu":
-            config_kwargs.setdefault("int4_packing_format", "plain_int32")
+        # version=2 int4 defaults to the "plain" packing format, which routes through the
+        # fbgemm/mslk Int4Tensor kernels. Pin the packing format to the tinygemm
+        # (_convert_weight_to_int4pack) path on CUDA and plain_int32 on Intel XPU so the tests
+        # don't require those extra kernels to be installed.
+        if config_name == "Int4WeightOnlyConfig":
+            if torch_device == "xpu":
+                config_kwargs["int4_packing_format"] = "plain_int32"
+            elif torch_device == "cuda":
+                config_kwargs["int4_packing_format"] = "tile_packed_to_4d"
 
-        return TorchAoConfig(config_cls(**config_kwargs))
+        return TorchAoConfig(config_cls(**config_kwargs), modules_to_not_convert=modules_to_not_convert)
 
-    def _create_quantized_model(self, config_name, **extra_kwargs):
-        config = self._get_quant_config(config_name)
+    def _create_quantized_model(self, config_name, modules_to_not_convert=None, **extra_kwargs):
+        config = self._get_quant_config(config_name, modules_to_not_convert=modules_to_not_convert)
         kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
         kwargs["quantization_config"] = config
         kwargs["device_map"] = str(torch_device)
@@ -895,6 +901,11 @@ class TorchAoConfigMixin:
 # int4wo requires CUDA or XPU ops (_convert_weight_to_int4pack)
 _int4wo_skip = pytest.mark.skipif(
     torch_device not in ["cuda", "xpu"], reason="int4wo quantization requires CUDA or XPU"
+)
+
+# The CUDA int4 tinygemm path (Int4TilePackedTo4dTensor) does not implement aten.dequantize.
+_int4wo_dequantize_skip = pytest.mark.skip(
+    reason="int4wo tinygemm packing (Int4TilePackedTo4dTensor) does not support dequantize"
 )
 
 
@@ -950,7 +961,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     @pytest.mark.parametrize(
         "quant_type",
         [
-            pytest.param("int4wo", marks=_int4wo_skip),
+            pytest.param("int4wo", marks=[_int4wo_skip, _int4wo_dequantize_skip]),
             "int8wo",
             "int8dq",
         ],
@@ -985,9 +996,21 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         if modules_to_exclude is None:
             pytest.skip("modules_to_not_convert_for_test not defined for this model")
 
-        self._test_quantization_modules_to_not_convert(
-            TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"], modules_to_exclude
+        # TorchAoConfig takes modules_to_not_convert directly (not inside the quant_type config),
+        # so this can't reuse the dict-based QuantizationTesterMixin helper.
+        model = self._create_quantized_model(
+            TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"], modules_to_not_convert=modules_to_exclude
         )
+
+        found_excluded = False
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear) and any(excluded in name for excluded in modules_to_exclude):
+                found_excluded = True
+                assert not self._is_module_quantized(module), (
+                    f"Module {name} should not be quantized but was found to be quantized"
+                )
+
+        assert found_excluded, f"No linear layers found in excluded modules: {modules_to_exclude}"
 
     def test_torchao_device_map(self):
         """Test that device_map='auto' works correctly with quantization."""
