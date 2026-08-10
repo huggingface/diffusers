@@ -484,7 +484,7 @@ torchrun --nproc-per-node 4 tensor_parallel_flux.py
 
 `tp_degree` is taken from `world_size` above, so `--nproc-per-node 4` shards the transformer across 4 devices.
 
-### Writing a _tp_plan
+### Writing a tensor parallelism plan
 
 Tensor parallelism only works on models that define a `_tp_plan`, a flat class attribute mapping module-name globs to a sharding style. Writing one is mostly a matter of pairing each projection that *expands* the hidden dimension with the projection that *contracts* it back.
 
