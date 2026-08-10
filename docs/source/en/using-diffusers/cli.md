@@ -147,7 +147,7 @@ Configure how the CLI loads model weights and custom pipeline code.
   under `--remote` the CLI wraps `torchrun --nproc-per-node=gpu` for you. See
   [Context parallelism](../training/distributed_inference#context-parallelism).
 
-### Modular pipelines (`--workflow`, `--output-key`)
+### Modular pipelines
 
 `run` detects a [modular repo](../modular_diffusers/overview) automatically — either because it ships a
 `modular_model_index.json`, or because its `model_index.json` names a `ModularPipeline` subclass — so no flag
@@ -174,7 +174,7 @@ diffusers-cli run \
 
 Selecting a workflow keeps only that task's blocks, so the pipeline declares only the components it needs and
 `load_components` fetches only their subfolders. Omit `--workflow` to keep every workflow available and let the
-pipeline pick per call from the inputs it is given. Use `schema` to see what a workflow takes before calling it:
+pipeline pick per call from the inputs it is given.
 
 ```bash
 diffusers-cli --format json schema --model MiniMaxAI/MiniMax-H3 --trust-remote-code
@@ -182,11 +182,8 @@ diffusers-cli --format json schema --model MiniMaxAI/MiniMax-H3 --trust-remote-c
 
 `--workflow` applies to modular pipelines only; it is ignored with a warning on standard pipelines.
 
-A modular pipeline returns a [`PipelineState`](../modular_diffusers/modular_pipeline) rather than a single
-output object, so `--output-key` names the intermediate to save (it is forwarded as `output=`). Repeat the flag
-to request several at once — each named output is saved by its own media type, which is how a model that emits
-a video and its soundtrack yields both an `.mp4` and a `.wav` from one run. Name only media outputs; scalars
-such as a sample rate are set with their own flag (`--sampling-rate`).
+A modular pipeline returns a [`PipelineState`](../modular_diffusers/modular_pipeline) rather than a single output object, so `--output-key` names the intermediate to save.
+
 
 ### Outputs
 
