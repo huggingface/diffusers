@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import LTX2VideoDiffusionDecoderModel
@@ -128,3 +129,19 @@ class TestLTX2VideoDiffusionDecoderModelMemory(LTX2VideoDiffusionDecoderModelTes
 
 class TestLTX2VideoDiffusionDecoderModelAttention(LTX2VideoDiffusionDecoderModelTesterConfig, AttentionTesterMixin):
     """Attention processor tests for LTX2VideoDiffusionDecoderModel."""
+
+
+class TestLTX2VideoDiffusionDecoderConversion(LTX2VideoDiffusionDecoderModelTesterConfig):
+    """The converter is the only thing that produces weights for this model, so exercise it here.
+
+    A native checkpoint carries the whole VAE, but this model is decoder-only, so the encoder half has
+    to be dropped rather than remapped: `load_state_dict` in the converter is strict and would raise.
+    """
+
+    def test_load_state_dict_rejects_leftover_encoder_keys(self):
+        model = self.model_class(**self.get_init_dict())
+        state_dict = dict(model.state_dict())
+        state_dict["encoder.conv_in.conv.weight"] = torch.zeros(8, 3, 3, 3, 3)
+
+        with pytest.raises(RuntimeError, match="Unexpected key"):
+            model.load_state_dict(state_dict, strict=True)

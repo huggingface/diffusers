@@ -894,13 +894,15 @@ def convert_ltx2_diffusion_video_vae(original_state_dict: dict[str, Any], versio
     with init_empty_weights():
         vae = LTX2VideoDiffusionDecoderModel.from_config(diffusers_config)
 
-    # The two halves of the checkpoint need different rules, so split them first: everything outside
-    # `decoder.` (the encoder and the per-channel statistics) goes through the conv VAE's remapping.
+    # The checkpoint is a whole VAE, but this model is decoder-only: encoding stays with
+    # `AutoencoderKLLTX2Video`. So keep the `decoder.` half and the per-channel statistics (which become
+    # `latents_mean` / `latents_std`), and drop the encoder outright rather than remapping weights that
+    # have nowhere to land. `load_state_dict` below is strict, so anything left over would raise.
     decoder_state_dict = {
         key.removeprefix("decoder."): value for key, value in original_state_dict.items() if key.startswith("decoder.")
     }
     for key in list(original_state_dict.keys()):
-        if key.startswith("decoder."):
+        if key.startswith("decoder.") or not key.startswith("per_channel_statistics"):
             del original_state_dict[key]
 
     for key in list(original_state_dict.keys()):
