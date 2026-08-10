@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import math
 from math import prod
 from typing import Any
@@ -93,11 +94,61 @@ def get_timestep_embedding(
     return emb
 
 
-def apply_rotary_emb_qwen(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
-    """Apply rotary position embeddings to `x` using real-valued cos/sin.
+def apply_rotary_emb_qwen(
+    x: torch.Tensor,
+    freqs_cis: torch.Tensor | tuple[torch.Tensor],
+    use_real: bool = True,
+    use_real_unbind_dim: int = -1,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
+    to the given query or key 'x' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
+    reshaped as complex numbers, and the frequency tensor is reshaped for broadcasting compatibility. The resulting
+    tensors contain rotary embeddings and are returned as real tensors.
 
-    `freqs` holds the per-position rotation *angles* with shape `[seq_len, head_dim // 2]`. The real cos/sin rotation
-    is numerically identical to the equivalent complex-exponential formulation.
+    Args:
+        x (`torch.Tensor`):
+            Query or key tensor to apply rotary embeddings. [B, S, H, D] xk (torch.Tensor): Key tensor to apply
+        freqs_cis (`tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor]: tuple of modified query tensor and key tensor with rotary embeddings.
+    """
+    if use_real:
+        cos, sin = freqs_cis  # [S, D]
+        cos = cos[None, None]
+        sin = sin[None, None]
+        cos, sin = cos.to(x.device), sin.to(x.device)
+
+        if use_real_unbind_dim == -1:
+            # Used for flux, cogvideox, hunyuan-dit
+            x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+            x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+        elif use_real_unbind_dim == -2:
+            # Used for Stable Audio, OmniGen, CogView4 and Cosmos
+            x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)  # [B, S, H, D//2]
+            x_rotated = torch.cat([-x_imag, x_real], dim=-1)
+        else:
+            raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
+
+        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+
+        return out
+    else:
+        x_rotated = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+        freqs_cis = freqs_cis.unsqueeze(1)
+        x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
+
+        return x_out.type_as(x)
+
+
+def apply_rotary_emb_qwen_neuron(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
+    """
+    Apply rotary embeddings to `x` using real-valued cos/sin, for backends without a complex dtype.
+
+    Numerically equivalent to `apply_rotary_emb_qwen(..., use_real=False)`, which multiplies `x` by a complex
+    exponential. Neuron has no complex tensor support, so the rotation angles are carried as reals and cos/sin are
+    taken here instead.
 
     Args:
         x (`torch.Tensor`): Query or key tensor to rotate, shape `[B, S, H, D]`.
@@ -113,6 +164,14 @@ def apply_rotary_emb_qwen(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
     x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)  # [B, S, H, D]
     return (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+
+
+# RoPE application is backend-dependent: the default path multiplies by a complex exponential, which Neuron cannot
+# represent. Callers select by `device.type` and fall back to the default for any backend not listed here.
+ROPE_PER_DEVICE = {
+    "cuda": functools.partial(apply_rotary_emb_qwen, use_real=False),
+    "neuron": apply_rotary_emb_qwen_neuron,
+}
 
 
 def compute_text_seq_len_from_mask(
@@ -202,13 +261,18 @@ class QwenEmbedRope(nn.Module):
             index: [0, 1, 2, 3] 1D Tensor representing the position index of the token
         """
         assert dim % 2 == 0
-        # Return the raw rotation angles (real); cos/sin are taken later in apply_rotary_emb_qwen.
         freqs = torch.outer(index, 1.0 / torch.pow(theta, torch.arange(0, dim, 2).to(torch.float32).div(dim)))
+        freqs = torch.polar(torch.ones_like(freqs), freqs)
         return freqs
 
     @lru_cache_unless_export(maxsize=None)
     def _get_device_freqs(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         """Return pos_freqs and neg_freqs on the given device."""
+        if device is not None and device.type == "neuron":
+            # Neuron has no complex dtype, so send the rotation angles instead and let
+            # `apply_rotary_emb_qwen_neuron` take cos/sin on device. `torch.angle` runs on CPU while the freqs are
+            # still complex; wrapping into (-pi, pi] is harmless because only cos/sin of the angle are used.
+            return torch.angle(self.pos_freqs).to(device), torch.angle(self.neg_freqs).to(device)
         return self.pos_freqs.to(device), self.neg_freqs.to(device)
 
     def forward(
@@ -326,13 +390,18 @@ class QwenEmbedLayer3DRope(nn.Module):
             index: [0, 1, 2, 3] 1D Tensor representing the position index of the token
         """
         assert dim % 2 == 0
-        # Real rotation angles (see QwenEmbedRope.rope_params).
         freqs = torch.outer(index, 1.0 / torch.pow(theta, torch.arange(0, dim, 2).to(torch.float32).div(dim)))
+        freqs = torch.polar(torch.ones_like(freqs), freqs)
         return freqs
 
     @lru_cache_unless_export(maxsize=None)
     def _get_device_freqs(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         """Return pos_freqs and neg_freqs on the given device."""
+        if device is not None and device.type == "neuron":
+            # Neuron has no complex dtype, so send the rotation angles instead and let
+            # `apply_rotary_emb_qwen_neuron` take cos/sin on device. `torch.angle` runs on CPU while the freqs are
+            # still complex; wrapping into (-pi, pi] is harmless because only cos/sin of the angle are used.
+            return torch.angle(self.pos_freqs).to(device), torch.angle(self.neg_freqs).to(device)
         return self.pos_freqs.to(device), self.neg_freqs.to(device)
 
     def forward(
@@ -519,10 +588,11 @@ class QwenDoubleStreamAttnProcessor2_0:
         # Apply RoPE
         if image_rotary_emb is not None:
             img_freqs, txt_freqs = image_rotary_emb
-            img_query = apply_rotary_emb_qwen(img_query, img_freqs)
-            img_key = apply_rotary_emb_qwen(img_key, img_freqs)
-            txt_query = apply_rotary_emb_qwen(txt_query, txt_freqs)
-            txt_key = apply_rotary_emb_qwen(txt_key, txt_freqs)
+            apply_rope = ROPE_PER_DEVICE.get(img_query.device.type, ROPE_PER_DEVICE["cuda"])
+            img_query = apply_rope(img_query, img_freqs)
+            img_key = apply_rope(img_key, img_freqs)
+            txt_query = apply_rope(txt_query, txt_freqs)
+            txt_key = apply_rope(txt_key, txt_freqs)
 
         # Concatenate for joint attention
         # Order: [text, image]
