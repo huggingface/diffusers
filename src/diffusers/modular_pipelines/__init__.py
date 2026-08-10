@@ -123,7 +123,9 @@ else:
     ]
     _import_structure["ltx2"] = [
         "LTX2AutoBlocks",
+        "LTX25AutoBlocks",
         "LTX2ModularPipeline",
+        "LTX25ModularPipeline",
     ]
     _import_structure["z_image"] = [
         "ZImageAutoBlocks",
@@ -179,7 +181,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Krea2TurboModularPipeline,
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
-        from .ltx2 import LTX2AutoBlocks, LTX2ModularPipeline
+        from .ltx2 import LTX2AutoBlocks, LTX2ModularPipeline, LTX25AutoBlocks, LTX25ModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
