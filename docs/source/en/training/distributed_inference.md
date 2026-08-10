@@ -528,6 +528,8 @@ self.to_out._tp_packed_row_blocks = [self.inner_dim, self.mlp_hidden_dim]
 "single_transformer_blocks.*.attn.to_out": PackedRowwiseParallel(),
 ```
 
+Both forms appear in one plan in [`transformer_flux2.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux2.py): the double-stream SwiGLU pair passes `blocks` literally, while the fused single-stream QKV+MLP projection stores its sizes on the `Linear` in `Flux2ParallelSelfAttention.__init__` because they depend on `mlp_ratio` and `mlp_mult_factor`.
+
 #### What to leave out
 
 Anything absent from the plan stays replicated on every rank, which is the right choice for normalization layers, AdaLN modulation (`img_mod`/`txt_mod`), patch and text embeddings, and the final `norm_out`/`proj_out`. These are small, so sharding them saves little memory while adding communication.
@@ -540,7 +542,7 @@ Anything absent from the plan stays replicated on every rank, which is the right
 Validate a new plan numerically rather than by eye: generate with a fixed seed on a single device, then again under tensor parallelism, and compare the outputs. A misplaced `"colwise"`/`"rowwise"` usually still runs and produces a plausible but wrong image.
 
 > [!TIP]
-> Start from an existing plan for a similar architecture. [`QwenImageTransformer2DModel`] is fully unfused and every entry is plain `"colwise"`/`"rowwise"`, [`FluxTransformer2DModel`] adds a single packed row-wise projection, and [`Flux2Transformer2DModel`] covers both packed styles.
+> Start from an existing plan for a similar architecture. [`QwenImageTransformer2DModel`] is fully unfused and every entry is plain `"colwise"`/`"rowwise"`, [`FluxTransformer2DModel`] adds a single packed row-wise projection, and [`Flux2Transformer2DModel`] covers both packed styles — see [`transformer_qwenimage.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_qwenimage.py), [`transformer_flux.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py), and [`transformer_flux2.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux2.py) respectively.
 
 ## Choosing a strategy
 
