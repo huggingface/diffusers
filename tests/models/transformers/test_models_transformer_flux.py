@@ -417,6 +417,8 @@ class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
 class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Flux Transformer."""
 
+    modules_to_not_convert_for_test = ["proj_out"]
+
     @property
     def torch_dtype(self):
         return torch.bfloat16
