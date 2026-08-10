@@ -185,9 +185,56 @@ class WanAnimateImageProcessor(VaeImageProcessor):
         return height, width
 
 
-class WanAnimateVideoProcessor(VideoProcessor, WanAnimateImageProcessor):
+class WanAnimate2VideoProcessor(VideoProcessor, WanAnimateImageProcessor):
     r"""
-    Video counterpart of [`WanAnimateImageProcessor`]. `preprocess_video(..., resize_mode="fill")` letterboxes every
-    frame into the target frame: the aspect ratio is preserved and the remainder is filled with `fill_color` (black by
-    default) rather than with stretched image data.
+    Letterbox processor for Wan-Animate-2: `preprocess` / `preprocess_video` with `resize_mode="fill"` keep the
+    aspect ratio and fill the remainder with `fill_color` (black by default). Same letterbox as
+    [`WanAnimateImageProcessor`], except the resized content is pasted at
+    `((height - src_h) // 2, (width - src_w) // 2)` -- the placement convention of the reference implementation --
+    instead of `(height // 2 - src_h // 2, ...)`. The two differ by one row or column whenever the frame dimension
+    is even and the content dimension odd, and that one-pixel placement shift is a real difference in what the
+    model sees.
     """
+
+    @register_to_config
+    def __init__(
+        self,
+        do_resize: bool = True,
+        vae_scale_factor: int = 8,
+        vae_latent_channels: int = 16,
+        spatial_patch_size: tuple[int, int] = (2, 2),
+        resample: str = "lanczos",
+        reducing_gap: int = None,
+        do_normalize: bool = True,
+        do_binarize: bool = False,
+        do_convert_rgb: bool = False,
+        do_convert_grayscale: bool = False,
+        fill_color: str | float | tuple[float, ...] | None = 0,
+    ):
+        # Deliberately does not chain into the parent `__init__`s: they are themselves
+        # `register_to_config`-decorated, so calling one re-registers every shared field with its
+        # defaults and discards what the caller asked for -- `resample` included. The decorator on
+        # this method already records the full config; the parents' bodies only validate.
+        if do_convert_rgb and do_convert_grayscale:
+            raise ValueError(
+                "`do_convert_rgb` and `do_convert_grayscale` can not both be set to `True`,"
+                " if you intended to convert the image into RGB format, please set `do_convert_grayscale = False`.",
+                " if you intended to convert the image into grayscale format, please set `do_convert_rgb = False`",
+            )
+
+    def _resize_and_fill(
+        self,
+        image: PIL.Image.Image,
+        width: int,
+        height: int,
+    ) -> PIL.Image.Image:
+        ratio = width / height
+        src_ratio = image.width / image.height
+
+        src_w = width if ratio < src_ratio else image.width * height // image.height
+        src_h = height if ratio >= src_ratio else image.height * width // image.width
+
+        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
+        res = PIL.Image.new("RGB", (width, height), color=self.config.fill_color or 0)
+        res.paste(resized, box=((width - src_w) // 2, (height - src_h) // 2))
+        return res

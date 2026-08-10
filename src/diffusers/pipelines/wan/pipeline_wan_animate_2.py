@@ -27,7 +27,7 @@ from ...models.transformers.transformer_wan_animate_2 import WanAnimate2KVCache
 from ...schedulers import SchedulerMixin
 from ...utils import logging
 from ..pipeline_utils import DiffusionPipeline
-from .image_processor import WanAnimateVideoProcessor
+from .image_processor import WanAnimate2VideoProcessor
 from .pipeline_output import WanPipelineOutput
 
 
@@ -124,9 +124,19 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         # Wan-Animate-2 letterboxes the reference image and the driving video into the same frame: aspect
-        # ratio preserved, the remainder filled with black. That is `resize_mode="fill"` with `fill_color=0`.
-        self.video_processor = WanAnimateVideoProcessor(
-            vae_scale_factor=self.vae_scale_factor_spatial, spatial_patch_size=(2, 2)
+        # ratio preserved, the remainder filled with black (`resize_mode="fill"` with `fill_color=0`).
+        # The reference implementation resizes with cv2, which is not a diffusers dependency, so these
+        # processors use the closest PIL kernels: bilinear for the driving frames (the same filter as
+        # `INTER_LINEAR`, but PIL quantizes interpolation weights to 22 bits where cv2 uses 11, so
+        # exact-half values round in opposite directions -- at most one 8-bit level per pixel) and
+        # bicubic for the reference image's downscale (`INTER_AREA` has no PIL equivalent; bicubic
+        # measures closest). Outputs therefore differ very slightly, numerically and visually, from
+        # the original repository.
+        self.image_processor_for_reference = WanAnimate2VideoProcessor(
+            vae_scale_factor=self.vae_scale_factor_spatial, spatial_patch_size=(2, 2), resample="bicubic"
+        )
+        self.video_processor = WanAnimate2VideoProcessor(
+            vae_scale_factor=self.vae_scale_factor_spatial, spatial_patch_size=(2, 2), resample="bilinear"
         )
 
     def _get_t5_prompt_embeds(self, prompt, device=None, dtype=None, max_sequence_length=512):
@@ -310,11 +320,11 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         src_h = (
             actual_h if actual_w / actual_h >= image_width / image_height else image_height * actual_w // image_width
         )
-        crop_top, crop_left = actual_h // 2 - src_h // 2, actual_w // 2 - src_w // 2
+        crop_top, crop_left = (actual_h - src_h) // 2, (actual_w - src_w) // 2
 
-        image_pixels = self.video_processor.preprocess(image, height=actual_h, width=actual_w, resize_mode="fill").to(
-            device, dtype=torch.float32
-        )
+        image_pixels = self.image_processor_for_reference.preprocess(
+            image, height=actual_h, width=actual_w, resize_mode="fill"
+        ).to(device, dtype=torch.float32)
 
         # 3. Preprocess the driving video into the same frame, resampling to `fps` first if asked to.
         if driving_video_fps is not None:
