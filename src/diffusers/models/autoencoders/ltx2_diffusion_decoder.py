@@ -461,11 +461,11 @@ class LTX2VideoVaePixelShuffleUpsampler(nn.Module):
 
 
 class LTX2VideoDiffusionDecoder3d(nn.Module):
-    """The LTX-2.4 diffusion video decoder.
+    """The LTX-2.5 diffusion video decoder.
 
     Stages 1-4 deterministically upsample the latent into a context volume with neighborhood-attention blocks. Stage 5
     then denoises patchified pixels, conditioned on that context through AdaLN-Zero scale/shift. With
-    `model_output_type="x0"` and a single step — how LTX-2.4 ships — stage 5 runs once and its prediction *is* the
+    `model_output_type="x0"` and a single step — how LTX-2.5 ships — stage 5 runs once and its prediction *is* the
     output; more steps add reverse Euler updates.
     """
 
@@ -648,7 +648,7 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
 
 class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
     r"""
-    The LTX-2 diffusion video decoder, used from LTX-2.4 onwards.
+    The LTX-2 diffusion video decoder, introduced in LTX-2.5.
 
     This is a decoder, not an autoencoder: it has no encoder and cannot produce latents. Encoding stays with
     [`AutoencoderKLLTX2Video`], whose latent space this consumes unchanged, so latents are interchangeable between the

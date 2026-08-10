@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # LTX2VideoDiffusionDecoderModel
 
-The diffusion video decoder used from LTX-2.4 onwards, introduced by Lightricks. Neighborhood-attention stages
+The diffusion video decoder introduced in LTX-2.5 by Lightricks. Neighborhood-attention stages
 upsample the latent into a context volume, and a final stage denoises pixels conditioned on that context.
 
 It is a decoder, not an autoencoder: encoding stays with [`AutoencoderKLLTX2Video`], whose latent space this
@@ -28,7 +28,7 @@ pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2.5", dtype=torch.bfloat16).
 latents = pipe(prompt="a potter shaping a clay vase", output_type="latent").frames
 
 decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
-    "Lightricks/LTX-2.5", subfolder="vae_diffusion", dtype=torch.bfloat16
+    "Lightricks/LTX-2.5", subfolder="diffusion_decoder", dtype=torch.bfloat16
 ).to("cuda")
 decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=pipe.scheduler)
 

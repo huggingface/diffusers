@@ -26,7 +26,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
     r"""
-    Decode LTX-2 video latents with the diffusion decoder introduced in LTX-2.4.
+    Decode LTX-2 video latents with the diffusion decoder introduced in LTX-2.5.
 
     Unlike a convolutional decoder this one is itself a small diffusion model: it denoises pixels conditioned on a
     context volume built from the latents, so it needs a scheduler and a generator. Pair it with any LTX-2 pipeline run

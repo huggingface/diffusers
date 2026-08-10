@@ -33,7 +33,7 @@ enable_full_determinism()
 
 
 class LTX2VideoDiffusionDecoderModelTesterConfig(BaseModelTesterConfig):
-    """Tiny config for the LTX-2.4 diffusion-decoder VAE.
+    """Tiny config for the LTX-2.5 diffusion decoder.
 
     The decoder's neighborhood attention needs every stage to be at least its kernel size in T/H/W, which
     sets the floor on the dummy input: with a kernel of 3, a compression of 16x spatial / 8x temporal and
