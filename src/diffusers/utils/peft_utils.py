@@ -156,6 +156,7 @@ def get_peft_kwargs(
     rank_pattern = {}
     alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
+    has_alphas = network_alpha_dict is not None and len(network_alpha_dict) > 0
 
     if len(set(rank_dict.values())) > 1:
         # get the rank occurring the most number of times
@@ -164,6 +165,13 @@ def get_peft_kwargs(
         # for modules with rank different from the most occurring rank, add it to the `rank_pattern`
         rank_pattern = dict(filter(lambda x: x[1] != r, rank_dict.items()))
         rank_pattern = {k.split(".lora_B.")[0]: v for k, v in rank_pattern.items()}
+
+        if not has_alphas:
+            # No alpha data in the checkpoint: the diffusers/PEFT convention is
+            # `W_eff = W + lora_B @ lora_A`, i.e. alpha == rank per module (scale 1.0).
+            # Mirror the ranks into the alphas so every module keeps scale 1.0.
+            lora_alpha = r
+            alpha_pattern = dict(rank_pattern)
 
     if network_alpha_dict is not None and len(network_alpha_dict) > 0:
         if len(set(network_alpha_dict.values())) > 1:
