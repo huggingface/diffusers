@@ -725,7 +725,6 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             )
 
             visual_cond_mask[:, 0:1] = 1
-            visual_cond[:, 0:1] = image_latents
 
             latents = torch.cat([latents, visual_cond, visual_cond_mask], dim=-1)
 
