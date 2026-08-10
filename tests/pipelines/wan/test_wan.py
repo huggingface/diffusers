@@ -28,6 +28,7 @@ class WanPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt"])
+    output_shape = (9, 3, 16, 16)
     # Wan is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
@@ -99,7 +100,7 @@ class TestWanPipeline(WanPipelineTesterConfig, PipelineTesterMixin):
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (9, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4525, 0.452, 0.4485, 0.4534, 0.4524, 0.4529, 0.454, 0.453, 0.5127, 0.5326, 0.5204, 0.5253, 0.5439, 0.5424, 0.5133, 0.5078])
