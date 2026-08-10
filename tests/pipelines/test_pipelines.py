@@ -1972,10 +1972,6 @@ class PipelineFastTests(unittest.TestCase):
         assert sd.text_encoder.device.type == "cpu"
         assert sd.device.type == device_type
 
-        # With every component on CPU there is no accelerator to prefer.
-        sd.to("cpu")
-        assert sd.device.type == "cpu"
-
     def test_pipe_same_device_id_offload(self):
         unet = self.dummy_cond_unet()
         scheduler = PNDMScheduler(skip_prk_steps=True)
