@@ -21,8 +21,13 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modular_blocks_ltx2"] = ["LTX2AutoBlocks", "LTX2Blocks", "LTX2ImageToVideoBlocks"]
-    _import_structure["modular_pipeline"] = ["LTX2ModularPipeline"]
+    _import_structure["modular_blocks_ltx2"] = [
+        "LTX2AutoBlocks",
+        "LTX2Blocks",
+        "LTX2ImageToVideoBlocks",
+        "LTX25AutoBlocks",
+    ]
+    _import_structure["modular_pipeline"] = ["LTX2ModularPipeline", "LTX25ModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -31,8 +36,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modular_blocks_ltx2 import LTX2AutoBlocks, LTX2Blocks, LTX2ImageToVideoBlocks
-        from .modular_pipeline import LTX2ModularPipeline
+        from .modular_blocks_ltx2 import LTX2AutoBlocks, LTX2Blocks, LTX2ImageToVideoBlocks, LTX25AutoBlocks
+        from .modular_pipeline import LTX2ModularPipeline, LTX25ModularPipeline
 else:
     import sys
 

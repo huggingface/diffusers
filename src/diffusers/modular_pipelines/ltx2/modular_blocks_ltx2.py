@@ -28,7 +28,7 @@ from .before_denoise import (
     LTX2SetTimestepsStep,
     LTX2TextInputStep,
 )
-from .decoders import LTX2AudioDecoderStep, LTX2VaeDecoderStep
+from .decoders import LTX2AudioDecoderStep, LTX2DiffusionVaeDecoderStep, LTX2VaeDecoderStep
 from .denoise import LTX2DenoiseStep, LTX2Image2VideoDenoiseStep
 from .encoders import (
     LTX2DurationStep,
@@ -749,3 +749,35 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
             OutputParam.template("videos"),
             OutputParam("audio", type_hint=torch.Tensor, description="The generated audio waveform."),
         ]
+
+
+class LTX25AutoBlocks(LTX2AutoBlocks):
+    """
+    Auto blocks for LTX-2.5, supporting text-to-video and image-to-video (joint video + audio).
+
+      Supported workflows:
+        - `text2video`: requires `prompt`
+        - `image2video`: requires `image`, `prompt`
+    """
+
+    model_name = "ltx2"
+    block_classes = [
+        LTX2AutoPromptEnhancerStep,
+        LTX2TextEncoderStep,
+        LTX2TextInputStep,
+        LTX2TextConnectorStep,
+        LTX2AutoDurationStep,
+        LTX2AutoVaeEncoderStep,
+        LTX2AutoCoreDenoiseStep,
+        LTX2DiffusionVaeDecoderStep,
+        LTX2AudioDecoderStep,
+    ]
+
+    @property
+    def description(self):
+        return (
+            "Auto blocks for LTX-2.5 supporting both text-to-video and image-to-video (joint video + audio). "
+            "Identical to `LTX2AutoBlocks` except that `video_decode` is `LTX2DiffusionVaeDecoderStep`, since the "
+            "diffusion decoder is the native default from LTX-2.5 on. To decode with the convolutional VAE instead, "
+            'swap that one block: `blocks.sub_blocks["video_decode"] = LTX2VaeDecoderStep()`.'
+        )
