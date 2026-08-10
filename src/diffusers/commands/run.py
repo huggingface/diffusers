@@ -527,7 +527,7 @@ def _load_lora(pipeline: Any, args: Namespace) -> None:
         if not lora_id:
             raise SystemExit(f"--lora entry {i} is missing 'lora_id'.")
         adapter_name = spec.get("adapter_name") or (f"lora_{i}" if len(specs) > 1 else "default")
-        pipeline.load_lora_weights(lora_id, adapter_name=adapter_name, weight_name=spec.get("weight_name"))
+        pipeline.load_lora_weights(lora_id, adapter_name=adapter_name, weight_name=spec.get("weight_name", None))
         names.append(adapter_name)
         scales.append(float(spec.get("lora_scale", 1.0)))
 
