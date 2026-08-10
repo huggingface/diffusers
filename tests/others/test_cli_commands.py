@@ -16,15 +16,22 @@
 One test per contract that would ship broken if regressed. Grouped by command.
 """
 
+import json
 import os
 import subprocess
+import wave
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import torch
+from huggingface_hub.cli._output import OutputFormat, out
+from PIL import Image
 
 from diffusers.commands.custom_blocks import CustomBlocksCommand
 from diffusers.commands.run import (
+    RunCommand,
     _build_task_kwargs,
     _collapse_frame_dirs,
     _download_outputs_from_sandbox,
@@ -38,7 +45,7 @@ from diffusers.commands.run import (
     _unwrap_pipeline_output,
     _upload_inputs_to_sandbox,
 )
-from diffusers.commands.schema import _parse_docstring_args
+from diffusers.commands.schema import SchemaCommand, _parse_docstring_args
 from diffusers.utils.testing_utils import (
     require_accelerator,
     require_kernels_version_greater_or_equal,
@@ -105,8 +112,6 @@ class TestRunCommand:
     def test_upload_inputs_to_sandbox_batched(self, tmp_path):
         # Batched media on --remote: `_upload_inputs_to_sandbox` uploads each local path in a list
         # and rewrites the JSON in place. URLs and non-existent paths pass through untouched.
-        import json as _json
-
         local_a = tmp_path / "a.png"
         local_b = tmp_path / "b.png"
         local_a.write_bytes(b"a")
@@ -122,7 +127,7 @@ class TestRunCommand:
             files = FakeFiles()
 
         args = Namespace(
-            pipeline_kwargs=_json.dumps(
+            pipeline_kwargs=json.dumps(
                 {
                     "image": str(local_a),  # scalar local → uploaded
                     "mask_image": [str(local_a), "https://example.com/x.png", str(local_b)],  # mixed batch
@@ -133,7 +138,7 @@ class TestRunCommand:
         _upload_inputs_to_sandbox(args, FakeSbx(), run_id="rid")
 
         assert len(uploads) == 3  # a (scalar), a (list[0]), b (list[2]); URL skipped
-        rewritten = _json.loads(args.pipeline_kwargs)
+        rewritten = json.loads(args.pipeline_kwargs)
         assert rewritten["image"].startswith("/tmp/diffusers-cli/inputs/rid/image_")
         assert rewritten["mask_image"][0].startswith("/tmp/diffusers-cli/inputs/rid/mask_image_0_")
         assert rewritten["mask_image"][1] == "https://example.com/x.png"  # URL untouched
@@ -182,8 +187,6 @@ class TestRunCommand:
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-pipe"
 
     def _parse_run_argv(self, extra_argv: list[str]) -> Namespace:
-        from diffusers.commands.run import RunCommand
-
         parser = ArgumentParser()
         subparsers = parser.add_subparsers()
         RunCommand.register_subcommand(subparsers)
@@ -261,8 +264,6 @@ class TestRunCommand:
     def test_save_output_video_saves_mp4_and_frames(self, tmp_path, monkeypatch):
         # `output_type="pt"` video is (B, F, C, H, W) from `postprocess_video`: one mp4 per batch
         # item, plus every frame as `<video-stem>-frames/<NNNN>.png` beside it.
-        import torch
-
         exported: list[tuple[int, str]] = []
         monkeypatch.setattr(
             "diffusers.commands.run.export_to_video",
@@ -280,8 +281,6 @@ class TestRunCommand:
     def test_lora_spec_passes_weight_name(self):
         # A LoRA repo can ship several weight files (e.g. a ComfyUI variant next to the diffusers
         # one), so `weight_name` has to reach `load_lora_weights` to disambiguate.
-        import json as _json
-
         calls = []
 
         class FakePipeline:
@@ -292,7 +291,7 @@ class TestRunCommand:
                 calls.append(("set_adapters", names, adapter_weights))
 
         spec = {"lora_id": "org/style", "lora_scale": 1.1, "weight_name": "style.safetensors"}
-        _load_lora(FakePipeline(), Namespace(lora=[_json.dumps(spec)]))
+        _load_lora(FakePipeline(), Namespace(lora=[json.dumps(spec)]))
         assert calls[0] == ("org/style", "default", "style.safetensors")
         assert calls[1] == ("set_adapters", ["default"], [1.1])
 
@@ -311,8 +310,6 @@ class TestRunCommand:
     def test_download_outputs_recurses_into_subdirs(self, tmp_path):
         # Frame folders are subdirectories of the sandbox output dir; the listing marks them
         # `dir` (not `directory`), and missing that means remote runs silently lose every frame.
-        from types import SimpleNamespace
-
         class FakeFiles:
             def list(self, path):
                 if path == "/out":
@@ -344,8 +341,6 @@ class TestRunCommand:
 
     def test_save_output_tensor_image_batch(self, tmp_path):
         # `output_type="pt"` images are channels-first (B, C, H, W): one png per batch item.
-        import torch
-
         args = Namespace(output=str(tmp_path) + os.sep, fps=24, sampling_rate=None)
         saved = _save_output(torch.zeros((2, 3, 8, 8)), args)
         assert [Path(p).suffix for p in saved] == [".png", ".png"]
@@ -354,8 +349,6 @@ class TestRunCommand:
     def test_save_output_nested_pil_video_batch(self, tmp_path, monkeypatch):
         # list[list[PIL]] (video pipelines under their default output_type="pil") saves one mp4
         # per inner sequence, plus the per-frame pngs.
-        from PIL import Image
-
         exported: list[str] = []
         monkeypatch.setattr("diffusers.commands.run.export_to_video", lambda frames, path, fps: exported.append(path))
         frames = [Image.new("RGB", (8, 8)) for _ in range(3)]
@@ -367,10 +360,6 @@ class TestRunCommand:
     def test_save_output_stereo_audio(self, tmp_path):
         # (B, C, samples) waveforms (e.g. StableAudio's native output_type="pt") save as
         # multi-channel wavs instead of falling through as unrecognized.
-        import wave
-
-        import torch
-
         args = Namespace(output=str(tmp_path) + os.sep, fps=24, sampling_rate=44100)
         saved = _save_output(torch.zeros((1, 2, 1000)), args)
         assert [Path(p).suffix for p in saved] == [".wav"]
@@ -381,8 +370,6 @@ class TestRunCommand:
     def test_unwrap_pipeline_output_multi_media(self):
         # Every media field present on an output is saved, not just the first match (LTX2 returns
         # both `frames` and `audio`), and payloads keep their batch dimension.
-        import torch
-
         class Output:
             frames = torch.zeros((1, 4, 3, 8, 8))
             audio = torch.zeros((1, 2, 1000))
@@ -420,10 +407,6 @@ class TestSchemaCommand:
         # End-to-end: parse real argv → SchemaCommand.run → capture the emitted payload and
         # verify it contains the pipeline class + at least a `prompt` input parsed from the
         # pipeline's `__call__` signature.
-        from huggingface_hub.cli._output import OutputFormat, out
-
-        from diffusers.commands.schema import SchemaCommand
-
         captured: dict = {}
         monkeypatch.setattr(out, "dict", lambda payload: captured.update(payload))
 
