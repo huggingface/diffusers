@@ -19,7 +19,6 @@ import gc
 import huggingface_hub
 import pytest
 import torch
-from accelerate import init_empty_weights
 from huggingface_hub import HfApi
 from safetensors.torch import _getdtype
 
@@ -116,7 +115,7 @@ class SingleFileTesterMixin:
     def test_single_file_model_config(self):
         # An empty model supplies the registered defaults (`out_channels` and friends) that a bare config dict
         # would be missing.
-        with init_empty_weights():
+        with torch.device("meta"):
             model = self.model_class.from_config(self.pretrained_model_name_or_path, **self.pretrained_model_kwargs)
 
         config = model.config
@@ -161,7 +160,7 @@ class SingleFileTesterMixin:
 
         # An empty model supplies the registered defaults (`out_channels` and friends) that a bare config dict
         # would be missing.
-        with init_empty_weights():
+        with torch.device("meta"):
             model = self.model_class.from_config(self.pretrained_model_name_or_path, **self.pretrained_model_kwargs)
 
         config = model.config
@@ -179,7 +178,8 @@ class SingleFileTesterMixin:
         model_single_file = self.model_class.from_single_file(
             self.get_dummy_single_file_state_dict(), device="meta", dtype=dtype
         )
-        assert model_single_file.dtype == dtype, f"Expected dtype {dtype}, got {model_single_file.dtype}"
+        for name, param in model_single_file.named_parameters():
+            assert param.dtype == dtype, f"Parameter {name} should be {dtype} but got {param.dtype}"
 
     @nightly
     def test_single_file_model_parameters(self):
