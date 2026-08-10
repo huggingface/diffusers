@@ -669,10 +669,18 @@ class LoraBaseMixin:
                 if issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
-                            for adapter in set(module.merged_adapters):
-                                if adapter and adapter in self._merged_adapters:
-                                    self._merged_adapters = self._merged_adapters - {adapter}
                             module.unmerge()
+
+        # Only remove an adapter from _merged_adapters once it is no longer
+        # physically merged in any remaining loadable component.
+        remaining_merged: set[str] = set()
+        for component_name in self._lora_loadable_modules:
+            component_model = getattr(self, component_name, None)
+            if isinstance(component_model, nn.Module):
+                for module in component_model.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        remaining_merged.update(module.merged_adapters)
+        self._merged_adapters = self._merged_adapters & remaining_merged
 
     def set_adapters(
         self,

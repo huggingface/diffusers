@@ -36,6 +36,7 @@ class WanVACEPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt"])
+    output_shape = (17, 3, 16, 16)
     # WanVACE is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
@@ -125,7 +126,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (17, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4523, 0.45198, 0.44872, 0.45326, 0.45211, 0.45258, 0.45344, 0.453, 0.52431, 0.52572, 0.50701, 0.5118, 0.53717, 0.53093, 0.50557, 0.51402])
@@ -133,7 +134,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_with_single_reference_image(self):
         # Run on CPU: the expected slice below is CPU-specific.
@@ -143,7 +144,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
         inputs["reference_images"] = Image.new("RGB", (16, 16))
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (17, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.45247, 0.45214, 0.44874, 0.45314, 0.45171, 0.45299, 0.45428, 0.45317, 0.51378, 0.52658, 0.53361, 0.52303, 0.46204, 0.50435, 0.52555, 0.51342])
@@ -151,7 +152,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_with_multiple_reference_image(self):
         # Run on CPU: the expected slice below is CPU-specific.
@@ -161,7 +162,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
         inputs["reference_images"] = [[Image.new("RGB", (16, 16))] * 2]
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (17, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.45321, 0.45221, 0.44818, 0.45375, 0.45268, 0.4519, 0.45271, 0.45253, 0.51244, 0.52223, 0.51253, 0.51321, 0.50743, 0.51177, 0.51626, 0.50983])
@@ -169,7 +170,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_with_only_transformer(self):
         components = self.get_dummy_components()
@@ -179,7 +180,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames[0]
-        assert video.shape == (17, 3, 16, 16)
+        assert video.shape == self.output_shape
 
     def test_inference_with_only_transformer_2(self):
         components = self.get_dummy_components()
@@ -197,7 +198,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames[0]
-        assert video.shape == (17, 3, 16, 16)
+        assert video.shape == self.output_shape
 
     def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
         # `_optional_components` lists both `transformer` and `transformer_2`. Here we drop the (optional)
