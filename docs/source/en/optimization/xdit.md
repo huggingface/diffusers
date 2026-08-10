@@ -53,8 +53,6 @@ Here's an example of using xDiT to accelerate inference of a Diffusers model.
          generator=torch.Generator(device=device).manual_seed(input_config.seed),
      )
 
-+    if input_config.output_type == "pil":
-+        pipe.save("results", "stable_diffusion_3")
 
 if __name__ == "__main__":
     main()

@@ -114,22 +114,20 @@ We can load and evaluate an optimized model by using the `EvaluationAgent` and p
 ```python
 import torch
 from diffusers import FluxPipeline
+from diffusers.utils.torch_utils import get_device
 
 from pruna import PrunaModel
 from pruna.data.pruna_datamodule import PrunaDataModule
 from pruna.evaluation.evaluation_agent import EvaluationAgent
 from pruna.evaluation.metrics import (
-
-device = get_device()
     ThroughputMetric,
     TorchMetricWrapper,
     TotalTimeMetric,
 )
 from pruna.evaluation.task import Task
-from diffusers.utils.torch_utils import get_device
 
 # define the device
-device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+device = get_device()
 
 # load the model
 # Try PrunaAI/Segmind-Vega-smashed or PrunaAI/FLUX.1-dev-smashed with a small GPU memory

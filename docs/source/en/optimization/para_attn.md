@@ -41,15 +41,13 @@ To apply first block cache on FLUX.1-dev, call `apply_cache_on_pipe` as shown be
 ```python
 import time
 import torch
-from diffusers.utils.torch_utils import get_device
 from diffusers import FluxPipeline
 
 
-device = get_device()
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16,
-).to(device)
+).to("cuda")
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
 
@@ -89,7 +87,6 @@ import torch
 from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
 from diffusers.utils import export_to_video
 
-device = get_device()
 model_id = "tencent/HunyuanVideo"
 transformer = HunyuanVideoTransformer3DModel.from_pretrained(
     model_id,
@@ -102,10 +99,9 @@ pipe = HunyuanVideoPipeline.from_pretrained(
     transformer=transformer,
     dtype=torch.float16,
     revision="refs/pr/18",
-).to(device)
+).to("cuda")
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
-from diffusers.utils.torch_utils import get_device
 
 apply_cache_on_pipe(pipe, residual_diff_threshold=0.6)
 
@@ -174,11 +170,10 @@ import time
 import torch
 from diffusers import FluxPipeline
 
-device = get_device()
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16,
-).to(device)
+).to("cuda")
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
 
@@ -188,7 +183,6 @@ apply_cache_on_pipe(
 )
 
 from torchao.quantization import quantize_, float8_dynamic_activation_float8_weight, float8_weight_only
-from diffusers.utils.torch_utils import get_device
 
 quantize_(pipe.text_encoder, float8_weight_only())
 quantize_(pipe.transformer, float8_dynamic_activation_float8_weight())
@@ -227,7 +221,6 @@ import torch
 from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
 from diffusers.utils import export_to_video
 
-device = get_device()
 model_id = "tencent/HunyuanVideo"
 transformer = HunyuanVideoTransformer3DModel.from_pretrained(
     model_id,
@@ -240,14 +233,13 @@ pipe = HunyuanVideoPipeline.from_pretrained(
     transformer=transformer,
     dtype=torch.float16,
     revision="refs/pr/18",
-).to(device)
+).to("cuda")
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
 
 apply_cache_on_pipe(pipe)
 
 from torchao.quantization import quantize_, float8_dynamic_activation_float8_weight, float8_weight_only
-from diffusers.utils.torch_utils import get_device
 
 quantize_(pipe.text_encoder, float8_weight_only())
 quantize_(pipe.transformer, float8_dynamic_activation_float8_weight())
@@ -306,7 +298,6 @@ import torch
 import torch.distributed as dist
 from diffusers import FluxPipeline
 
-device = get_device()
 dist.init_process_group()
 
 torch.cuda.set_device(dist.get_rank())
@@ -314,7 +305,7 @@ torch.cuda.set_device(dist.get_rank())
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16,
-).to(device)
+).to("cuda")
 
 from para_attn.context_parallel import init_context_parallel_mesh
 from para_attn.context_parallel.diffusers_adapters import parallelize_pipe
@@ -338,7 +329,6 @@ apply_cache_on_pipe(
 )
 
 from torchao.quantization import quantize_, float8_dynamic_activation_float8_weight, float8_weight_only
-from diffusers.utils.torch_utils import get_device
 
 quantize_(pipe.text_encoder, float8_weight_only())
 quantize_(pipe.transformer, float8_dynamic_activation_float8_weight())
@@ -393,7 +383,6 @@ import torch.distributed as dist
 from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
 from diffusers.utils import export_to_video
 
-device = get_device()
 dist.init_process_group()
 
 torch.cuda.set_device(dist.get_rank())
@@ -410,7 +399,7 @@ pipe = HunyuanVideoPipeline.from_pretrained(
     transformer=transformer,
     dtype=torch.float16,
     revision="refs/pr/18",
-).to(device)
+).to("cuda")
 
 from para_attn.context_parallel import init_context_parallel_mesh
 from para_attn.context_parallel.diffusers_adapters import parallelize_pipe
@@ -426,7 +415,6 @@ parallelize_pipe(
 parallelize_vae(pipe.vae, mesh=mesh._flatten())
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
-from diffusers.utils.torch_utils import get_device
 
 apply_cache_on_pipe(pipe)
 

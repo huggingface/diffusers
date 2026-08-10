@@ -177,6 +177,8 @@ DBCache (Dual Block Caching) supports different configurations of compute blocks
 ```python
 import cache_dit
 from diffusers import FluxPipeline
+from diffusers.utils.torch_utils import get_device
+from cache_dit import BasicCacheConfig
 
 device = get_device()
 pipe_or_adapter = FluxPipeline.from_pretrained(
@@ -189,9 +191,6 @@ pipe_or_adapter = FluxPipeline.from_pretrained(
 cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
-from cache_dit import BasicCacheConfig
-from diffusers.utils.torch_utils import get_device
-
 cache_dit.enable_cache(
     pipe_or_adapter,
     cache_config=BasicCacheConfig(

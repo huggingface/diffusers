@@ -114,14 +114,14 @@ AnimateDiff can also be used with ControlNets ControlNet was introduced in [Addi
 
 ```python
 import torch
+from controlnet_aux.processor import ZoeDetector
 from diffusers import AnimateDiffControlNetPipeline, AutoencoderKL, ControlNetModel, MotionAdapter, LCMScheduler
 from diffusers.utils import export_to_gif, load_video
+from diffusers.utils.torch_utils import get_device
 
 device = get_device()
 # Additionally, you will need a preprocess videos before they can be used with the ControlNet
 # HF maintains just the right package for it: `pip install controlnet_aux`
-from controlnet_aux.processor import ZoeDetector
-from diffusers.utils.torch_utils import get_device
 
 # Download controlnets from https://huggingface.co/lllyasviel/ControlNet-v1-1 to use .from_single_file
 # Download Diffusers-format controlnets, such as https://huggingface.co/lllyasviel/sd-controlnet-depth, to use .from_pretrained()

@@ -53,18 +53,18 @@ import random
 
 import requests
 import torch
-from diffusers.utils.torch_utils import get_device
 from controlnet_aux import ZoeDetector
 from PIL import Image, ImageOps
 
 from diffusers import (
-
-device = get_device()
     AutoencoderKL,
     ControlNetModel,
     StableDiffusionXLControlNetPipeline,
     StableDiffusionXLInpaintPipeline,
 )
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 def scale_and_paste(original_image):
     aspect_ratio = original_image.width / original_image.height

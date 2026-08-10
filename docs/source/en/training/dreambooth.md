@@ -317,7 +317,8 @@ Once training is complete, you can use your newly trained model for inference!
 > from diffusers import DiffusionPipeline, UNet2DConditionModel
 > from transformers import CLIPTextModel
 > import torch
->
+> from diffusers.utils.torch_utils import get_device
+> device = get_device()
 > unet = UNet2DConditionModel.from_pretrained("path/to/model/checkpoint-100/unet")
 >
 > # if you have trained with `--args.train_text_encoder` make sure to also load the text encoder

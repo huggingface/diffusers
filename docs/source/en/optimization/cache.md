@@ -58,7 +58,7 @@ from diffusers import CogVideoXPipeline, FasterCacheConfig
 from diffusers.utils.torch_utils import get_device
 
 device = get_device()
-pipe line= CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
 pipeline.to(device)
 
 config = FasterCacheConfig(
