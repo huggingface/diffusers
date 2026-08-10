@@ -679,10 +679,14 @@ class LTX2AutoBuildVideoSelfAttentionMaskStep(ConditionalPipelineBlocks):
       Inputs:
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
+          base_token_count (`int`, *optional*):
+              Number of generated-video tokens, i.e. the sequence length before appended tokens.
           num_ref_tokens (`int`, *optional*):
               Number of reference tokens, which sit at the very end of the sequence.
           reference_cross_mask (`Tensor`, *optional*):
               Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
+          reference_token_counts (`list`, *optional*):
+              Per-reference token counts, used to split `reference_cross_mask` into attention groups.
 
       Outputs:
           video_self_attention_mask (`Tensor`):

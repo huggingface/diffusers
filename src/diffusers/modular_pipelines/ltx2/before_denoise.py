@@ -1323,21 +1323,31 @@ class LTX2BuildVideoSelfAttentionMaskStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Builds the video self-attention mask over the noisy+appended token sequence for in-context "
-            "generation, mirroring `build_attention_mask` in the reference implementation:\n"
-            "  - noisy <-> noisy: 1.0 (full attention)\n"
-            "  - noisy <-> reference: `reference_cross_mask`, broadcast symmetrically across the noisy-token axis\n"
-            "  - reference <-> reference: 1.0 (the group fully attends to itself)\n"
-            "  - reference <-> any other appended group (e.g. keyframes): 0.0\n"
-            "Emitted tagged `denoiser_input_fields`, so it reaches the transformer's `video_self_attention_mask` "
-            "argument without any change to `LTX2LoopDenoiser`. Only run when the references carry a per-token "
-            "strength (see `LTX2AutoBuildVideoSelfAttentionMaskStep`); attention is otherwise left unmasked."
+            "Builds the video self-attention mask over the `[base | keyframe | reference]` token sequence for "
+            "in-context generation, mirroring `build_attention_mask` in the reference implementation. Each "
+            "`LTX2ReferenceCondition` is its own attention group:\n"
+            "  - base <-> base, base <-> keyframe, keyframe <-> keyframe: 1.0 (full attention)\n"
+            "  - base <-> reference group: that group's slice of `reference_cross_mask`, broadcast symmetrically "
+            "across the base-token axis\n"
+            "  - reference group <-> itself: 1.0 (a group fully attends to itself)\n"
+            "  - reference group <-> any other appended group (keyframes, other references): 0.0\n"
+            "Note the cross blocks span only the *base* tokens: keyframe tokens are appended conditioning like the "
+            "references are, and the two are masked off from each other. Emitted tagged `denoiser_input_fields`, so "
+            "it reaches the transformer's `video_self_attention_mask` argument without any change to "
+            "`LTX2LoopDenoiser`. Only run when the references carry a per-token strength (see "
+            "`LTX2AutoBuildVideoSelfAttentionMaskStep`); attention is otherwise left unmasked."
         )
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("latents", required=True),
+            InputParam(
+                "base_token_count",
+                type_hint=int,
+                required=True,
+                description="Number of generated-video tokens, i.e. the sequence length before appended tokens.",
+            ),
             InputParam(
                 "num_ref_tokens",
                 type_hint=int,
@@ -1349,6 +1359,12 @@ class LTX2BuildVideoSelfAttentionMaskStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 required=True,
                 description="Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].",
+            ),
+            InputParam(
+                "reference_token_counts",
+                type_hint=list,
+                required=True,
+                description="Per-reference token counts, used to split `reference_cross_mask` into attention groups.",
             ),
         ]
 
@@ -1369,17 +1385,27 @@ class LTX2BuildVideoSelfAttentionMaskStep(ModularPipelineBlocks):
         device = components._execution_device
 
         batch_size, total_tokens, _ = block_state.latents.shape
-        num_noisy_tokens = total_tokens - block_state.num_ref_tokens
+        # Cross-attention partners are the base tokens only. The prefix (base + keyframe tokens) attends fully to
+        # itself, but keyframe tokens are appended conditioning just like the references, so the two groups are
+        # masked off from each other.
+        num_base_tokens = block_state.base_token_count
+        num_prefix_tokens = total_tokens - block_state.num_ref_tokens
         cross = block_state.reference_cross_mask.to(device=device, dtype=torch.float32)
 
-        # Start from zeros so the keyframe<->reference blocks stay masked without explicit assignment. Each guidance
-        # pass is its own single-batch forward, so this is built at the generation batch size -- the standard
-        # pipeline's expand to 2B for the CFG batch has no counterpart here.
+        # Start from zeros so the keyframe<->reference and reference<->reference blocks stay masked without explicit
+        # assignment. Each guidance pass is its own single-batch forward, so this is built at the generation batch
+        # size -- the standard pipeline's expand to 2B for the CFG batch has no counterpart here.
         attn_mask = torch.zeros((batch_size, total_tokens, total_tokens), device=device, dtype=torch.float32)
-        attn_mask[:, :num_noisy_tokens, :num_noisy_tokens] = 1.0
-        attn_mask[:, :num_noisy_tokens, num_noisy_tokens:] = cross.unsqueeze(1)
-        attn_mask[:, num_noisy_tokens:, :num_noisy_tokens] = cross.unsqueeze(2)
-        attn_mask[:, num_noisy_tokens:, num_noisy_tokens:] = 1.0
+        attn_mask[:, :num_prefix_tokens, :num_prefix_tokens] = 1.0
+
+        # One attention group per reference condition, in the order the encoder emitted their tokens.
+        offset = num_prefix_tokens
+        for group_cross in torch.split(cross, block_state.reference_token_counts, dim=1):
+            n = group_cross.shape[1]
+            attn_mask[:, :num_base_tokens, offset : offset + n] = group_cross.unsqueeze(1)
+            attn_mask[:, offset : offset + n, :num_base_tokens] = group_cross.unsqueeze(2)
+            attn_mask[:, offset : offset + n, offset : offset + n] = 1.0
+            offset += n
 
         block_state.video_self_attention_mask = attn_mask
 
