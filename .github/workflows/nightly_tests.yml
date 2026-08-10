@@ -343,19 +343,19 @@ jobs:
       matrix:
         config:
           - backend: "bitsandbytes"
-            test_location: "bnb"
+            marker: "bitsandbytes"
             additional_deps: ["peft"]
           - backend: "gguf"
-            test_location: "gguf"
+            marker: "gguf"
             additional_deps: ["peft", "kernels"]
           - backend: "torchao"
-            test_location: "torchao"
-            additional_deps: []
+            marker: "torchao"
+            additional_deps: ["mslk"]
           - backend: "optimum_quanto"
-            test_location: "quanto"
+            marker: "quanto"
             additional_deps: []
           - backend: "nvidia_modelopt"
-            test_location: "modelopt"
+            marker: "modelopt"
             additional_deps: []
     runs-on:
       group: aws-g6e-xlarge-plus
@@ -390,9 +390,12 @@ jobs:
           BIG_GPU_MEMORY: 40
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -m "${{ matrix.config.marker }}" \
             --make-reports=tests_${{ matrix.config.backend }}_torch_cuda \
             --report-log=tests_${{ matrix.config.backend }}_torch_cuda.log \
-            tests/quantization/${{ matrix.config.test_location }}
+            tests/models \
+            tests/quantization \
+            tests/pipelines/testing_utils/quantization.py
       - name: Failure short reports
         if: ${{ failure() }}
         run: |
@@ -440,9 +443,10 @@ jobs:
           BIG_GPU_MEMORY: 40
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -k "TestPipelineQuantization" \
             --make-reports=tests_pipeline_level_quant_torch_cuda \
             --report-log=tests_pipeline_level_quant_torch_cuda.log \
-            tests/quantization/test_pipeline_level_quantization.py
+            tests/pipelines/testing_utils/quantization.py
       - name: Failure short reports
         if: ${{ failure() }}
         run: |
