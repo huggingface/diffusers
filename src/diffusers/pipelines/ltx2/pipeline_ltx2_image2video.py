@@ -17,8 +17,16 @@ import inspect
 from typing import Any, Callable
 
 import numpy as np
+import PIL.Image
 import torch
-from transformers import Gemma3ForConditionalGeneration, Gemma3Processor, GemmaTokenizer, GemmaTokenizerFast
+from transformers import (
+    Gemma3ForConditionalGeneration,
+    Gemma4ForConditionalGeneration,
+    Gemma4UnifiedForConditionalGeneration,
+    GemmaTokenizer,
+    GemmaTokenizerFast,
+    ProcessorMixin,
+)
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -30,8 +38,12 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .check_inputs import LTX2CheckInputsMixin
 from .connectors import LTX2TextConnectors
+from .duration_head import LTX2DurationHead
 from .pipeline_output import LTX2PipelineOutput
+from .prompt_enhancement import LTX2PromptEnhancementMixin
+from .utils import LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT, apply_image_conditioning_crf, resolve_default_image_crf
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
@@ -70,8 +82,8 @@ EXAMPLE_DOC_STRING = """
         ...     height=512,
         ...     num_frames=121,
         ...     frame_rate=frame_rate,
-        ...     num_inference_steps=40,
-        ...     guidance_scale=4.0,
+        ...     num_inference_steps=30,
+        ...     guidance_scale=3.0,
         ...     output_type="np",
         ...     return_dict=False,
         ... )
@@ -202,7 +214,9 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
+class LTX2ImageToVideoPipeline(
+    DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin, LTX2PromptEnhancementMixin, LTX2CheckInputsMixin
+):
     r"""
     Pipeline for image-to-video generation.
 
@@ -211,8 +225,10 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
     TODO
     """
 
-    model_cpu_offload_seq = "text_encoder->connectors->transformer->vae->audio_vae->vocoder"
-    _optional_components = ["processor"]
+    model_cpu_offload_seq = (
+        "prompt_enhancer->text_encoder->connectors->duration_head->transformer->vae->audio_vae->vocoder"
+    )
+    _optional_components = ["processor", "prompt_enhancer", "duration_head"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -220,12 +236,14 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKLLTX2Video,
         audio_vae: AutoencoderKLLTX2Audio,
-        text_encoder: Gemma3ForConditionalGeneration,
+        text_encoder: Gemma3ForConditionalGeneration | Gemma4UnifiedForConditionalGeneration,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
         vocoder: LTX2Vocoder | LTX2VocoderWithBWE,
-        processor: Gemma3Processor | None = None,
+        processor: ProcessorMixin | None = None,
+        prompt_enhancer: Gemma4ForConditionalGeneration | None = None,
+        duration_head: LTX2DurationHead | None = None,
     ):
         super().__init__()
 
@@ -239,6 +257,8 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
             vocoder=vocoder,
             scheduler=scheduler,
             processor=processor,
+            prompt_enhancer=prompt_enhancer,
+            duration_head=duration_head,
         )
 
         self.vae_spatial_compression_ratio = (
@@ -424,120 +444,6 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
             )
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
-
-    @torch.no_grad()
-    def enhance_prompt(
-        self,
-        image: PipelineImageInput,
-        prompt: str,
-        system_prompt: str,
-        max_new_tokens: int = 512,
-        seed: int = 10,
-        generator: torch.Generator | None = None,
-        generation_kwargs: dict[str, Any] | None = None,
-        device: str | torch.device | None = None,
-    ):
-        """
-        Enhances the supplied `prompt` by generating a new prompt using the current text encoder (default is a
-        `transformers.Gemma3ForConditionalGeneration` model) from it and a system prompt.
-        """
-        device = device or self._execution_device
-        if generation_kwargs is None:
-            # Set to default generation kwargs
-            generation_kwargs = {"do_sample": True, "temperature": 0.7}
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image"},
-                    {"type": "text", "text": f"User Raw Input Prompt: {prompt}."},
-                ],
-            },
-        ]
-        template = self.processor.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        model_inputs = self.processor(text=template, images=image, return_tensors="pt").to(device)
-        self.text_encoder.to(device)
-
-        # `transformers.GenerationMixin.generate` does not support using a `torch.Generator` to control randomness,
-        # so manually apply a seed for reproducible generation.
-        if generator is not None:
-            # Overwrite seed to generator's initial seed
-            seed = generator.initial_seed()
-        torch.manual_seed(seed)
-        generated_sequences = self.text_encoder.generate(
-            **model_inputs,
-            max_new_tokens=max_new_tokens,
-            **generation_kwargs,
-        )  # tensor of shape [batch_size, seq_len]
-
-        generated_ids = [seq[len(model_inputs.input_ids[i]) :] for i, seq in enumerate(generated_sequences)]
-        enhanced_prompt = self.processor.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-        return enhanced_prompt
-
-    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline.check_inputs
-    def check_inputs(
-        self,
-        prompt,
-        height,
-        width,
-        callback_on_step_end_tensor_inputs=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
-        prompt_attention_mask=None,
-        negative_prompt_attention_mask=None,
-        spatio_temporal_guidance_blocks=None,
-        stg_scale=None,
-        audio_stg_scale=None,
-    ):
-        if height % 32 != 0 or width % 32 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
-
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if prompt_embeds is not None and prompt_attention_mask is None:
-            raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
-
-        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
-            raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
-
-        if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
-            if prompt_attention_mask.shape != negative_prompt_attention_mask.shape:
-                raise ValueError(
-                    "`prompt_attention_mask` and `negative_prompt_attention_mask` must have the same shape when passed directly, but"
-                    f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
-                    f" {negative_prompt_attention_mask.shape}."
-                )
-
-        if ((stg_scale > 0.0) or (audio_stg_scale > 0.0)) and not spatio_temporal_guidance_blocks:
-            raise ValueError(
-                "Spatio-Temporal Guidance (STG) is specified but no STG blocks are supplied. Please supply a list of"
-                "block indices at which to apply STG in `spatio_temporal_guidance_blocks`"
-            )
 
     @staticmethod
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._pack_latents
@@ -874,20 +780,22 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         negative_prompt: str | list[str] | None = None,
         height: int = 512,
         width: int = 768,
-        num_frames: int = 121,
+        num_frames: int | None = None,
+        min_seconds: float = 1.0,
+        max_seconds: float = 20.0,
         frame_rate: float = 24.0,
-        num_inference_steps: int = 40,
+        num_inference_steps: int = 30,
         sigmas: list[float] | None = None,
         timesteps: list[int] | None = None,
-        guidance_scale: float = 4.0,
-        stg_scale: float = 0.0,
-        modality_scale: float = 1.0,
-        guidance_rescale: float = 0.0,
-        audio_guidance_scale: float | None = None,
-        audio_stg_scale: float | None = None,
-        audio_modality_scale: float | None = None,
-        audio_guidance_rescale: float | None = None,
-        spatio_temporal_guidance_blocks: list[int] | None = None,
+        guidance_scale: float = 3.0,
+        stg_scale: float = 1.0,
+        modality_scale: float = 3.0,
+        guidance_rescale: float = 0.7,
+        audio_guidance_scale: float | None = 7.0,
+        audio_stg_scale: float | None = 1.0,
+        audio_modality_scale: float | None = 3.0,
+        audio_guidance_rescale: float | None = 0.7,
+        spatio_temporal_guidance_blocks: list[int] | None = [28],
         noise_scale: float = 0.0,
         num_videos_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
@@ -899,11 +807,13 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         negative_prompt_attention_mask: torch.Tensor | None = None,
         decode_timestep: float | list[float] = 0.0,
         decode_noise_scale: float | list[float] | None = None,
-        use_cross_timestep: bool = False,
+        use_cross_timestep: bool = True,
         system_prompt: str | None = None,
-        prompt_max_new_tokens: int = 512,
+        enable_prompt_enhancement: bool = False,
+        prompt_max_new_tokens: int | None = None,
         prompt_enhancement_kwargs: dict[str, Any] | None = None,
         prompt_enhancement_seed: int = 10,
+        image_crf: int | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
@@ -927,8 +837,17 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                 The height in pixels of the generated image. This is set to 480 by default for the best results.
             width (`int`, *optional*, defaults to `768`):
                 The width in pixels of the generated image. This is set to 848 by default for the best results.
-            num_frames (`int`, *optional*, defaults to `121`):
-                The number of video frames to generate
+            num_frames (`int`, *optional*):
+                The number of video frames to generate. If not supplied, defaults to an auto-predicted duration when
+                this pipeline has a `duration_head` component (LTX-2.5 checkpoints and later), and to `121` otherwise.
+                Pass an integer to set the length explicitly. Auto-predicted counts are snapped to the VAE's causal
+                temporal grid, so the realized duration is quantized (roughly 0.33s at 24 fps).
+            min_seconds (`float`, *optional*, defaults to `1.0`):
+                Lower bound on the auto-predicted duration when `num_frames` is omitted and a `duration_head` is
+                present. Ignored when `num_frames` is set explicitly.
+            max_seconds (`float`, *optional*, defaults to `20.0`):
+                Upper bound on the auto-predicted duration when `num_frames` is omitted and a `duration_head` is
+                present. Ignored when `num_frames` is set explicitly. Must be strictly greater than `min_seconds`.
             frame_rate (`float`, *optional*, defaults to `24.0`):
                 The frames per second (FPS) of the generated video.
             num_inference_steps (`int`, *optional*, defaults to 40):
@@ -1018,24 +937,38 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                 The timestep at which generated video is decoded.
             decode_noise_scale (`float`, defaults to `None`):
                 The interpolation factor between random noise and denoised latents at the decode timestep.
-            use_cross_timestep (`bool` *optional*, defaults to `False`):
+            use_cross_timestep (`bool` *optional*, defaults to `True`):
                 Whether to use the cross modality (audio is the cross modality of video, and vice versa) sigma when
-                calculating the cross attention modulation parameters. `True` is the newer (e.g. LTX-2.3) behavior;
-                `False` is the legacy LTX-2.0 behavior.
+                calculating the cross attention modulation parameters. `True` is the LTX-2.3/2.5 behavior; `False` is
+                the legacy LTX-2.0 behavior.
             system_prompt (`str`, *optional*, defaults to `None`):
-                Optional system prompt to use for prompt enhancement. The system prompt will be used by the current
-                text encoder (by default, a `Gemma3ForConditionalGeneration` model) to generate an enhanced prompt from
-                the original `prompt` to condition generation. If not supplied, prompt enhancement will not be
-                performed.
-            prompt_max_new_tokens (`int`, *optional*, defaults to `512`):
-                The maximum number of new tokens to generate when performing prompt enhancement.
+                Optional system prompt to use for prompt enhancement. The system prompt will be used by the prompt
+                enhancer (a Gemma conditional-generation model -- the dedicated `prompt_enhancer` component if one is
+                configured, otherwise the main `text_encoder`) to generate an enhanced prompt from the original
+                `prompt` and the first `image` to condition generation. If not supplied and a dedicated
+                `prompt_enhancer` is configured (LTX-2.5), defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` (from
+                `diffusers.pipelines.ltx2.utils`) -- see `enable_prompt_enhancement`.
+            enable_prompt_enhancement (`bool`, *optional*, defaults to `False`):
+                Whether to run prompt enhancement. Opt-in, matching the Lightricks reference pipelines. When `True` and
+                `system_prompt` is omitted, LTX-2.5 uses `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` if a dedicated
+                `prompt_enhancer` is configured; LTX-2.0/2.3 require an explicit `system_prompt`.
+            prompt_max_new_tokens (`int`, *optional*, defaults to `None`):
+                The maximum number of new tokens to generate when performing prompt enhancement. If not supplied, uses
+                600 for a dedicated Gemma 4 `prompt_enhancer` (LTX-2.5) or 512 for the Gemma 3 `text_encoder` fallback
+                (LTX-2.0/2.3).
             prompt_enhancement_kwargs (`dict[str, Any]`, *optional*, defaults to `None`):
-                Keyword arguments for `self.text_encoder.generate`. If not supplied, default arguments of
-                `do_sample=True` and `temperature=0.7` will be used. See
+                Keyword arguments for the prompt enhancer's `.generate` call. If not supplied, always matches whichever
+                model is doing the enhancing: `do_sample=False, no_repeat_ngram_size=3` (greedy) when using a dedicated
+                `prompt_enhancer` (LTX-2.5), or `do_sample=True, temperature=0.7` for the `text_encoder` fallback
+                (LTX-2.0/2.3). See
                 https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationMixin.generate
                 for more details.
-            prompt_enhancement_seed (`int`, *optional*, default to `10`):
+            prompt_enhancement_seed (`int`, *optional*, defaults to `10`):
                 Random seed for any random operations during prompt enhancement.
+            image_crf (`int`, *optional*, defaults to `None`):
+                H.264 CRF used to re-compress the conditioning `image` before VAE encode, matching the compression the
+                model was trained against. `None` means "use the model default" (33 through LTX-2.3, 18 for LTX-2.5).
+                Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when re-compression runs.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -1086,6 +1019,14 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
             spatio_temporal_guidance_blocks=spatio_temporal_guidance_blocks,
             stg_scale=stg_scale,
             audio_stg_scale=audio_stg_scale,
+            system_prompt=system_prompt,
+            enable_prompt_enhancement=enable_prompt_enhancement,
+            num_frames=num_frames,
+            min_seconds=min_seconds,
+            max_seconds=max_seconds,
+            image=image,
+            image_crf=image_crf,
+            latents=latents,
         )
 
         # Per-modality guidance scales (video, audio)
@@ -1113,7 +1054,14 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         device = self._execution_device
 
         # 3. Prepare text embeddings
-        if system_prompt is not None and prompt is not None:
+        auto_duration = num_frames is None and getattr(self, "duration_head", None) is not None
+        if num_frames is None and not auto_duration:
+            # Legacy fixed default for checkpoints without a duration_head (LTX-2.0/2.3).
+            num_frames = 121
+
+        if enable_prompt_enhancement and prompt is not None:
+            if system_prompt is None:
+                system_prompt = LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT
             prompt = self.enhance_prompt(
                 image=image,
                 prompt=prompt,
@@ -1153,6 +1101,22 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
             prompt_embeds, prompt_attention_mask, padding_side=tokenizer_padding_side
         )
 
+        if auto_duration:
+            video_tokens, audio_tokens = connector_prompt_embeds, connector_audio_prompt_embeds
+            if self.do_classifier_free_guidance:
+                # The connectors ran on the concatenated [negative, positive] batch; predict from the positive half.
+                video_tokens = video_tokens.chunk(2, dim=0)[1]
+                audio_tokens = audio_tokens.chunk(2, dim=0)[1]
+            # Rows past the first are `num_videos_per_prompt` duplicates of the same prompt.
+            num_frames = self.duration_head.predict_num_frames(
+                video_tokens[:1],
+                audio_tokens[:1],
+                frame_rate=frame_rate,
+                temporal_compression_ratio=self.vae_temporal_compression_ratio,
+                min_seconds=min_seconds,
+                max_seconds=max_seconds,
+            )
+
         # 4. Prepare latent variables
         latent_num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
         latent_height = height // self.vae_spatial_compression_ratio
@@ -1175,6 +1139,11 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         # video_sequence_length = latent_num_frames * latent_height * latent_width
 
         if latents is None:
+            # H.264 re-compress before resize/normalize (ltx-pipelines `load_image_and_preprocess`).
+            # PIL requirement is validated in `check_inputs` when CRF re-compression will run.
+            crf = image_crf if image_crf is not None else resolve_default_image_crf(self.text_encoder)
+            if crf != 0:
+                image = PIL.Image.fromarray(apply_image_conditioning_crf(np.array(image.convert("RGB")), crf))
             image = self.video_processor.preprocess(image, height=height, width=width)
             image = image.to(device=device, dtype=prompt_embeds.dtype)
 
@@ -1236,7 +1205,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         mu = calculate_shift(
-            self.scheduler.config.get("max_image_seq_len", 4096),
+            latents.shape[1],
             self.scheduler.config.get("base_image_seq_len", 1024),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.95),
