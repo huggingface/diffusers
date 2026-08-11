@@ -21,7 +21,6 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer, CLIPVisionModel, UMT5EncoderModel
 
 from ...configuration_utils import FrozenDict
-from ...guiders import ClassifierFreeGuidance
 from ...models import AutoencoderKLWan
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -129,8 +128,9 @@ class WanAnimate2TextEncoderStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Text Encoder step that encodes the character/background prompt, the negative prompt (when the guider "
-            "needs unconditional embeddings), and the fixed reference prompt for the driving-video context"
+            "Text Encoder step that encodes the character/background prompt, the negative prompt (when the "
+            "pipeline's guider needs unconditional embeddings, or one is passed explicitly), and the fixed "
+            "reference prompt for the driving-video context"
         )
 
     @property
@@ -138,12 +138,6 @@ class WanAnimate2TextEncoderStep(ModularPipelineBlocks):
         return [
             ComponentSpec("text_encoder", UMT5EncoderModel),
             ComponentSpec("tokenizer", AutoTokenizer),
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 3.0}),
-                default_creation_method="from_config",
-            ),
         ]
 
     @property
@@ -191,8 +185,12 @@ class WanAnimate2TextEncoderStep(ModularPipelineBlocks):
             block_state.max_sequence_length,
             device,
         )
+        # The guider is not a component of this block: when the step runs inside the full pipeline,
+        # the denoise step's guider determines (via `requires_unconditional_embeds`) whether
+        # unconditional embeddings are needed, defaulting the negative prompt to "". Standalone,
+        # there is no guider and the negative prompt is only encoded when the caller passes one.
         block_state.negative_prompt_embeds = None
-        if components.requires_unconditional_embeds:
+        if components.requires_unconditional_embeds or block_state.negative_prompt is not None:
             block_state.negative_prompt_embeds = get_t5_prompt_embeds(
                 components.text_encoder,
                 components.tokenizer,
@@ -217,7 +215,7 @@ class WanAnimate2TextEncoderStep(ModularPipelineBlocks):
 # ========================================
 
 
-class WanAnimate2ImageResizeStep(ModularPipelineBlocks):
+class WanAnimate2ProcessImagesInputStep(ModularPipelineBlocks):
     model_name = "wan-animate-2"
 
     @property
@@ -303,7 +301,7 @@ class WanAnimate2ImageResizeStep(ModularPipelineBlocks):
         return components, state
 
 
-class WanAnimate2VideoPreprocessStep(ModularPipelineBlocks):
+class WanAnimate2ProcessVideosInputStep(ModularPipelineBlocks):
     model_name = "wan-animate-2"
 
     @property
@@ -345,10 +343,13 @@ class WanAnimate2VideoPreprocessStep(ModularPipelineBlocks):
             ),
             InputParam("fps", type_hint=int, default=24, description="The frame rate the model generates at"),
             InputParam(
-                "clip_len", type_hint=int, default=81, description="The number of frames in each inference segment"
+                "segment_frame_length",
+                type_hint=int,
+                default=81,
+                description="The number of frames in each inference segment",
             ),
             InputParam(
-                "first_num",
+                "prev_segment_conditioning_frames",
                 type_hint=int,
                 default=1,
                 description="The number of conditioning frames carried over from the previous segment",
@@ -369,7 +370,7 @@ class WanAnimate2VideoPreprocessStep(ModularPipelineBlocks):
             OutputParam(
                 "effective_segment",
                 type_hint=int,
-                description="Frames each segment advances by (`clip_len - first_num`)",
+                description="Frames each segment advances by (`segment_frame_length - prev_segment_conditioning_frames`)",
             ),
         ]
 
@@ -389,9 +390,9 @@ class WanAnimate2VideoPreprocessStep(ModularPipelineBlocks):
         ).to(device, dtype=torch.float32)
 
         real_frame_len = driving_video.shape[2]
-        effective_segment = block_state.clip_len - block_state.first_num
-        if real_frame_len > block_state.first_num:
-            last_segment_frames = (real_frame_len - block_state.first_num) % effective_segment
+        effective_segment = block_state.segment_frame_length - block_state.prev_segment_conditioning_frames
+        if real_frame_len > block_state.prev_segment_conditioning_frames:
+            last_segment_frames = (real_frame_len - block_state.prev_segment_conditioning_frames) % effective_segment
         else:
             last_segment_frames = 0
         num_padding = effective_segment - last_segment_frames if last_segment_frames > 0 else 0
@@ -405,7 +406,7 @@ class WanAnimate2VideoPreprocessStep(ModularPipelineBlocks):
         block_state.real_frame_len = real_frame_len
         block_state.effective_segment = effective_segment
         block_state.num_segments = (
-            target_num_frames - block_state.first_num + effective_segment - 1
+            target_num_frames - block_state.prev_segment_conditioning_frames + effective_segment - 1
         ) // effective_segment
 
         self.set_block_state(state, block_state)
@@ -417,7 +418,7 @@ class WanAnimate2VideoPreprocessStep(ModularPipelineBlocks):
 # ========================================
 
 
-class WanAnimate2ImageEncoderStep(ModularPipelineBlocks):
+class WanAnimate2ImageClipEncoderStep(ModularPipelineBlocks):
     model_name = "wan-animate-2"
 
     @property
@@ -460,7 +461,7 @@ class WanAnimate2ImageEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
-class WanAnimate2DrivingImageEncoderStep(ModularPipelineBlocks):
+class WanAnimate2VideoClipEncoderStep(ModularPipelineBlocks):
     model_name = "wan-animate-2"
 
     @property
@@ -511,11 +512,11 @@ class WanAnimate2DrivingImageEncoderStep(ModularPipelineBlocks):
 
 
 # ========================================
-# VAE Encoder (reference image)
+# VAE Encoders
 # ========================================
 
 
-class WanAnimate2RefVaeEncoderStep(ModularPipelineBlocks):
+class WanAnimate2ImageVaeEncoderStep(ModularPipelineBlocks):
     model_name = "wan-animate-2"
 
     @property
@@ -566,6 +567,90 @@ class WanAnimate2RefVaeEncoderStep(ModularPipelineBlocks):
             ref_latents.dtype
         )
         block_state.y_ref = torch.cat([mask_ref, ref_latents[0]], dim=0)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanAnimate2VideoVaeEncoderStep(ModularPipelineBlocks):
+    model_name = "wan-animate-2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "VAE Encoder step that encodes every segment's slice of the driving video and stacks the i2v "
+            "conditioning mask on top. The Wan VAE is causal in time, so encoding the whole video once and "
+            "slicing the latents would not be equivalent -- each segment restarts the temporal convolution on "
+            "its own slice. A streaming mode would replace this block with one fed segments incrementally."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLWan),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "driving_video",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The preprocessed driving video `[1, 3, T, H, W]`",
+            ),
+            InputParam("num_segments", required=True, type_hint=int),
+            InputParam("effective_segment", required=True, type_hint=int),
+            InputParam("segment_frame_length", type_hint=int, default=81),
+            InputParam("latent_height", required=True, type_hint=int),
+            InputParam("latent_width", required=True, type_hint=int),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "condition_latents",
+                type_hint=torch.Tensor,
+                description="VAE latents of every segment's driving-video slice, `[num_segments, 16, T, H', W']`",
+            ),
+            OutputParam(
+                "condition_y",
+                type_hint=torch.Tensor,
+                description=(
+                    "i2v mask + driving-slice latents per segment, `[num_segments, 20, T, H', W']`, conditioning "
+                    "the reference-extraction pass"
+                ),
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+
+        condition_latents = []
+        for k in range(block_state.num_segments):
+            start = k * block_state.effective_segment
+            condition_latents.append(
+                encode_vae(
+                    components.vae, block_state.driving_video[:, :, start : start + block_state.segment_frame_length]
+                )
+            )
+        block_state.condition_latents = torch.cat(condition_latents, dim=0)
+
+        # After zigzag padding every segment is exactly `segment_frame_length` frames, so one mask fits all.
+        condition_mask = get_i2v_mask(
+            block_state.condition_latents.shape[2],
+            block_state.latent_height,
+            block_state.latent_width,
+            block_state.segment_frame_length,
+            device=device,
+        ).to(block_state.condition_latents.dtype)
+        block_state.condition_y = torch.stack(
+            [torch.cat([condition_mask, latents], dim=0) for latents in block_state.condition_latents]
+        )
 
         self.set_block_state(state, block_state)
         return components, state

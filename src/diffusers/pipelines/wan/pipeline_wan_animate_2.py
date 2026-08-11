@@ -240,8 +240,8 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_ref: str = "人物动作的参考视频",
         height: int = 800,
         width: int = 640,
-        clip_len: int = 81,
-        first_num: int = 1,
+        segment_frame_length: int = 81,
+        prev_segment_conditioning_frames: int = 1,
         fps: int = 24,
         driving_video_fps: float | None = None,
         num_inference_steps: int = 40,
@@ -275,9 +275,9 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 rescaled to hit that area and then floored to a multiple of 16.
             width (`int`, defaults to `640`):
                 See `height`.
-            clip_len (`int`, defaults to `81`):
+            segment_frame_length (`int`, defaults to `81`):
                 The number of frames in each inference segment.
-            first_num (`int`, defaults to `1`):
+            prev_segment_conditioning_frames (`int`, defaults to `1`):
                 The number of conditioning frames from the previous segment.
             fps (`int`, defaults to `24`):
                 The frame rate the model generates at. `driving_video` is resampled to it when
@@ -335,10 +335,14 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             driving_video, height=actual_h, width=actual_w, resize_mode="fill"
         ).to(device, dtype=torch.float32)
 
-        # Pad driving video to be a multiple of (clip_len - first_num)
+        # Pad driving video to be a multiple of (segment_frame_length - prev_segment_conditioning_frames)
         real_frame_len = driving_video.shape[2]
-        effective_segment = clip_len - first_num
-        last_segment_frames = (real_frame_len - first_num) % effective_segment if real_frame_len > first_num else 0
+        effective_segment = segment_frame_length - prev_segment_conditioning_frames
+        last_segment_frames = (
+            (real_frame_len - prev_segment_conditioning_frames) % effective_segment
+            if real_frame_len > prev_segment_conditioning_frames
+            else 0
+        )
         if last_segment_frames > 0:
             num_padding = effective_segment - last_segment_frames
         else:
@@ -390,28 +394,30 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # 7. Segment-based generation loop
         start = 0
-        end = clip_len
+        end = segment_frame_length
         all_out_frames = []
         out_frames = None
 
-        num_segments = (target_num_frames - first_num + effective_segment - 1) // effective_segment
+        num_segments = (
+            target_num_frames - prev_segment_conditioning_frames + effective_segment - 1
+        ) // effective_segment
 
         for seg_idx in range(num_segments):
-            if start + first_num >= target_num_frames:
+            if start + prev_segment_conditioning_frames >= target_num_frames:
                 break
 
-            mask_reft_len = first_num if start > 0 else 0
+            mask_reft_len = prev_segment_conditioning_frames if start > 0 else 0
 
-            if target_num_frames - start < clip_len:
-                clip_len_actual = target_num_frames - start
+            if target_num_frames - start < segment_frame_length:
+                segment_frame_length_actual = target_num_frames - start
             else:
-                clip_len_actual = clip_len
+                segment_frame_length_actual = segment_frame_length
 
             # VAE-encode this segment's slice of the driving video. The Wan VAE is causal in time, so
             # encoding the whole video once up front and slicing the latents is not the same tensor —
-            # segments overlap by `first_num` frames and each slice restarts the temporal convolution.
+            # segments overlap by `prev_segment_conditioning_frames` frames and each slice restarts the temporal convolution.
             # Encoding per segment is also what a streaming mode would have to do anyway.
-            condition_latents = self._encode_vae(driving_video[:, :, start : start + clip_len_actual])
+            condition_latents = self._encode_vae(driving_video[:, :, start : start + segment_frame_length_actual])
 
             # CLIP features from driving video first frame (direct bicubic to 224×224 from tensor)
             condition_img = driving_video[0, :, 0]  # [C, H, W] in [-1, 1]
@@ -420,7 +426,7 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
             # Prepare condition y (mask + latents)
-            T = clip_len_actual + 1
+            T = segment_frame_length_actual + 1
 
             # Encode condition y
             if mask_reft_len > 0:
@@ -449,9 +455,9 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             y_reft = torch.cat([msk_reft, y_reft], dim=0)
 
             # Condition mask and latents
-            condition_msk_y = get_i2v_mask(lat_t_cond, latent_h, latent_w, clip_len_actual, device=device).to(
-                self.transformer.dtype
-            )
+            condition_msk_y = get_i2v_mask(
+                lat_t_cond, latent_h, latent_w, segment_frame_length_actual, device=device
+            ).to(self.transformer.dtype)
             cond_lat_0 = condition_latents[0] if condition_latents.ndim == 5 else condition_latents
             condition_y = torch.cat([condition_msk_y, cond_lat_0], dim=0)
 
@@ -489,7 +495,7 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 "seq_len": max_seq_len,
                 "clip_fea": clip_context,
                 "y": [y],
-                "origin_len": clip_len_actual,
+                "origin_len": segment_frame_length_actual,
                 "origin_area": [actual_h, actual_w],
             }
 
@@ -507,7 +513,7 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     "seq_len": max_seq_len,
                     "clip_fea": clip_context,
                     "y": [y],
-                    "origin_len": clip_len_actual,
+                    "origin_len": segment_frame_length_actual,
                     "origin_area": [actual_h, actual_w],
                     "is_uncondtion": True,
                 }

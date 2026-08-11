@@ -32,14 +32,14 @@ class WanAnimate2PrepareSegmentsStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Step that computes the segment-invariant geometry for the segment loop. The zigzag padding makes "
-            "every segment exactly `clip_len` frames, so the latent grid, the packed sequence lengths, and the "
+            "every segment exactly `segment_frame_length` frames, so the latent grid, the packed sequence lengths, and the "
             "noise shape are the same for all segments and are computed once here."
         )
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("clip_len", type_hint=int, default=81),
+            InputParam("segment_frame_length", type_hint=int, default=81),
             InputParam("latent_height", type_hint=int, required=True),
             InputParam("latent_width", type_hint=int, required=True),
         ]
@@ -69,7 +69,7 @@ class WanAnimate2PrepareSegmentsStep(ModularPipelineBlocks):
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        latent_segment_frames = (block_state.clip_len - 1) // components.vae_scale_factor_temporal + 1
+        latent_segment_frames = (block_state.segment_frame_length - 1) // components.vae_scale_factor_temporal + 1
         ref_shape = [latent_segment_frames, block_state.latent_height, block_state.latent_width]
         ref_shape_post = [ref_shape[0], ref_shape[1] // 2, ref_shape[2] // 2]
         block_state.grid_sizes_ref = torch.tensor([ref_shape_post], dtype=torch.long)
