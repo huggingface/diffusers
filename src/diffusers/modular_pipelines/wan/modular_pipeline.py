@@ -139,3 +139,20 @@ class Wan22Image2VideoModularPipeline(Wan22ModularPipeline):
     """
 
     default_blocks_name = "Wan22Image2VideoBlocks"
+
+
+class Wan22VaceModularPipeline(Wan22ModularPipeline):
+    """
+    A ModularPipeline for Wan2.2 VACE.
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "Wan22VaceBlocks"
+
+    @property
+    def num_vace_layers(self):
+        num_vace_layers = 8
+        if hasattr(self, "transformer") and self.transformer is not None:
+            num_vace_layers = len(self.transformer.config.vace_layers)
+        return num_vace_layers

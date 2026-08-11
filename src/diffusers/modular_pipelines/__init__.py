@@ -52,10 +52,12 @@ else:
         "Wan22Blocks",
         "WanImage2VideoAutoBlocks",
         "Wan22Image2VideoBlocks",
+        "Wan22VaceBlocks",
         "WanModularPipeline",
         "Wan22ModularPipeline",
         "WanImage2VideoModularPipeline",
         "Wan22Image2VideoModularPipeline",
+        "Wan22VaceModularPipeline",
     ]
     _import_structure["helios"] = [
         "HeliosAutoBlocks",
@@ -218,6 +220,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Wan22Image2VideoBlocks,
             Wan22Image2VideoModularPipeline,
             Wan22ModularPipeline,
+            Wan22VaceBlocks,
+            Wan22VaceModularPipeline,
             WanBlocks,
             WanImage2VideoAutoBlocks,
             WanImage2VideoModularPipeline,
