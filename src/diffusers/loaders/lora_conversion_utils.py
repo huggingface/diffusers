@@ -3127,11 +3127,12 @@ def _convert_non_diffusers_ace_step_lora_to_diffusers(state_dict):
 def _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict):
     """Convert a non-diffusers MiniMax-H3 LoRA state dict onto `MiniMaxH3Transformer3DModel`'s module names.
 
-    Both known producers train against the original checkpoint's module names — ai-toolkit under a `diffusion_model.`
-    prefix, the reference `generate.py` / ComfyUI checkpoints under no prefix at all — so the prefix is optional and
-    the module names are what identifies the format. Handles:
+    Every known producer trains against the original checkpoint's module names — ai-toolkit under a `diffusion_model.`
+    prefix, the reference `generate.py` / ComfyUI checkpoints under no prefix at all, musubi-tuner under a flattened
+    `lora_unet_` one — so the prefix is optional and the module names are what identifies the format. Handles:
 
     - `diffusion_model.` prefix removal, and bare `blocks.` / `token_refiner.` / `final_layer.` keys
+    - musubi-tuner's flattened `lora_unet_blocks_0_attn_qkv_proj` -> `blocks.0.attn.qkv_proj`
     - `lora_down`/`lora_up` (kohya) -> `lora_A`/`lora_B`, with `.alpha` folded into the weights
     - fused `attn.qkv_proj` -> split `to_q`/`to_k`/`to_v`; `attn.out_proj` -> `to_out.0`
     - `mlp.fc1` -> `ff.net.0.proj` with its two output halves swapped, `mlp.fc2` -> `ff.net.2`
@@ -3142,6 +3143,38 @@ def _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict):
     `MiniMaxH3LoraLoaderMixin.load_lora_weights` is what redirects it to `transformer_ref` when asked.
     """
     state_dict = {k.removeprefix("diffusion_model."): v for k, v in state_dict.items()}
+
+    # musubi-tuner (kohya sd-scripts) writes one flat module name per key under a `lora_unet_` prefix, with every `.`
+    # collapsed to `_`. H3's own module names contain underscores (`qkv_proj`, `token_refiner`, `final_layer`,
+    # `video_out`), so the dot path is recovered by matching the whole flattened name against the module vocabulary
+    # rather than by splitting on `_`.
+    if any(k.startswith("lora_unet_") for k in state_dict):
+        flattened_modules = [
+            (r"blocks_(\d+)_attn_(qkv|out)_proj", r"blocks.\1.attn.\2_proj"),
+            (r"blocks_(\d+)_mlp_fc([12])", r"blocks.\1.mlp.fc\2"),
+            (r"blocks_(\d+)_adaln_proj_linear", r"blocks.\1.adaln_proj.linear"),
+            (r"token_refiner_blocks_(\d+)_attn_(qkv|out)_proj", r"token_refiner.blocks.\1.attn.\2_proj"),
+            (r"token_refiner_blocks_(\d+)_mlp_fc([12])", r"token_refiner.blocks.\1.mlp.fc\2"),
+            (r"(video|audio)_patch_proj", r"\1_patch_proj"),
+            (r"condition_proj", "condition_proj"),
+            (r"time_embedder_proj_(in|out)", r"time_embedder.proj_\1"),
+            (r"final_layer_adaln_proj_linear", "final_layer.adaln_proj.linear"),
+            (r"final_layer_(video|audio)_out", r"final_layer.\1_out"),
+        ]
+        unflattened = {}
+        for key, value in state_dict.items():
+            module, _, suffix = key.removeprefix("lora_unet_").partition(".")
+            dotted = None
+            for pattern, replacement in flattened_modules:
+                if re.fullmatch(pattern, module):
+                    dotted = re.sub(pattern, replacement, module)
+                    break
+            if dotted is None:
+                raise ValueError(
+                    f"`{key}` does not name a MiniMax-H3 module in musubi-tuner's flattened `lora_unet_` layout."
+                )
+            unflattened[f"{dotted}.{suffix}"] = value
+        state_dict = unflattened
 
     is_kohya = any(".lora_down.weight" in k for k in state_dict)
     down_suffix = ".lora_down.weight" if is_kohya else ".lora_A.weight"
