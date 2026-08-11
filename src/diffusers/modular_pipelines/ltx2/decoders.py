@@ -187,14 +187,14 @@ class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
 
         if block_state.output_type == "latent":
             block_state.videos = _denormalize_latents(
-                latents, decoder.latents_mean, decoder.latents_std, decoder.config.scaling_factor
+                latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
             )
             self.set_block_state(state, block_state)
             return components, state
 
         latents = latents.to(block_state.dtype)
         latents = _denormalize_latents(
-            latents, decoder.latents_mean, decoder.latents_std, decoder.config.scaling_factor
+            latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
         )
         latents = latents.to(decoder.dtype)
         # It samples the noise it denoises, so pass the generator to keep decoding reproducible.
@@ -282,7 +282,7 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
 
         if block_state.output_type == "latent":
             block_state.videos = _denormalize_latents(
-                latents, vae.latents_mean, vae.latents_std, vae.config.scaling_factor
+                latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
             )
             self.set_block_state(state, block_state)
             return components, state
@@ -312,7 +312,9 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
             ]
             latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
 
-        latents = _denormalize_latents(latents, vae.latents_mean, vae.latents_std, vae.config.scaling_factor)
+        latents = _denormalize_latents(
+            latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
+        )
         latents = latents.to(vae.dtype)
         video = vae.decode(latents, timestep, return_dict=False)[0]
         block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
@@ -368,7 +370,7 @@ class LTX2AudioDecoderStep(ModularPipelineBlocks):
         latent_mel_bins = num_mel_bins // components.audio_vae_mel_compression_ratio
 
         audio_latents = _denormalize_audio_latents(
-            block_state.audio_latents, audio_vae.latents_mean, audio_vae.latents_std
+            block_state.audio_latents, components.audio_latents_mean, components.audio_latents_std
         )
         audio_latents = _unpack_audio_latents(
             audio_latents, block_state.audio_num_frames, num_mel_bins=latent_mel_bins

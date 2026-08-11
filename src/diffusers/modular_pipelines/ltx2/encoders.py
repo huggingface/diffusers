@@ -928,9 +928,7 @@ class LTX2VaeEncoderStep(ModularPipelineBlocks):
             ]
 
         init_latents = torch.cat(init_latents, dim=0).to(torch.float32)
-        block_state.image_latents = _normalize_latents(
-            init_latents, components.vae.latents_mean, components.vae.latents_std
-        )
+        block_state.image_latents = _normalize_latents(init_latents, components.latents_mean, components.latents_std)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -1101,7 +1099,7 @@ class LTX2ConditionEncoderStep(ModularPipelineBlocks):
                 generator=generator,
                 sample_mode="argmax",
             )
-            latents = _normalize_latents(latents, components.vae.latents_mean, components.vae.latents_std)
+            latents = _normalize_latents(latents, components.latents_mean, components.latents_std)
 
             condition_latents.append(latents.to(device=device, dtype=torch.float32))
             condition_strengths.append(condition.strength)
@@ -1270,7 +1268,7 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
             ref_pixels = ref_pixels.to(dtype=components.vae.dtype, device=device)
 
             ref_latent = retrieve_latents(components.vae.encode(ref_pixels), generator=generator, sample_mode="argmax")
-            ref_latent = _normalize_latents(ref_latent, components.vae.latents_mean, components.vae.latents_std).to(
+            ref_latent = _normalize_latents(ref_latent, components.latents_mean, components.latents_std).to(
                 device=device, dtype=torch.float32
             )
             _, _, ref_latent_frames, ref_latent_height, ref_latent_width = ref_latent.shape

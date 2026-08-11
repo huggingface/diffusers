@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
+
 from ...loaders import LTX2LoraLoaderMixin
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
+from .utils import LTX2_AUDIO_LATENTS_MEAN, LTX2_AUDIO_LATENTS_STD, LTX2_LATENTS_MEAN, LTX2_LATENTS_STD
 
 
 logger = logging.get_logger(__name__)
@@ -44,6 +47,33 @@ class LTX2ModularPipeline(
             return self.vae.temporal_compression_ratio
         return 8
 
+    # The video latent statistics live on whichever video autoencoder the checkpoint ships: the conv `vae`, or the
+    # `diffusion_decoder`, which carries the same buffers and is the only one registered when a checkpoint decodes
+    # with it and does not need the conv encoder. `LTX2_LATENTS_*` are the values of `Lightricks/LTX-2`.
+    @property
+    def vae_scaling_factor(self):
+        if getattr(self, "vae", None) is not None:
+            return self.vae.config.scaling_factor
+        if getattr(self, "diffusion_decoder", None) is not None:
+            return self.diffusion_decoder.config.scaling_factor
+        return 1.0
+
+    @property
+    def latents_mean(self):
+        if getattr(self, "vae", None) is not None:
+            return self.vae.latents_mean
+        if getattr(self, "diffusion_decoder", None) is not None:
+            return self.diffusion_decoder.latents_mean
+        return torch.tensor(LTX2_LATENTS_MEAN)
+
+    @property
+    def latents_std(self):
+        if getattr(self, "vae", None) is not None:
+            return self.vae.latents_std
+        if getattr(self, "diffusion_decoder", None) is not None:
+            return self.diffusion_decoder.latents_std
+        return torch.tensor(LTX2_LATENTS_STD)
+
     @property
     def transformer_spatial_patch_size(self):
         if getattr(self, "transformer", None) is not None:
@@ -67,6 +97,18 @@ class LTX2ModularPipeline(
         if getattr(self, "audio_vae", None) is not None:
             return self.audio_vae.temporal_compression_ratio
         return 4
+
+    @property
+    def audio_latents_mean(self):
+        if getattr(self, "audio_vae", None) is not None:
+            return self.audio_vae.latents_mean
+        return torch.tensor(LTX2_AUDIO_LATENTS_MEAN)
+
+    @property
+    def audio_latents_std(self):
+        if getattr(self, "audio_vae", None) is not None:
+            return self.audio_vae.latents_std
+        return torch.tensor(LTX2_AUDIO_LATENTS_STD)
 
     @property
     def audio_sampling_rate(self):

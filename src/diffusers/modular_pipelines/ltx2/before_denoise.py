@@ -501,9 +501,9 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
             if latents.ndim == 5:
                 latents = _normalize_latents(
                     latents,
-                    components.vae.latents_mean,
-                    components.vae.latents_std,
-                    components.vae.config.scaling_factor,
+                    components.latents_mean,
+                    components.latents_std,
+                    components.vae_scaling_factor,
                 )
                 latents = _pack_latents(latents, spatial_patch, temporal_patch)
             latents = _create_noised_state(latents, block_state.noise_scale, block_state.generator)
@@ -704,7 +704,7 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
                 audio_num_frames = audio_latents.shape[2]
                 audio_latents = _pack_audio_latents(audio_latents)
             audio_latents = _normalize_audio_latents(
-                audio_latents, components.audio_vae.latents_mean, components.audio_vae.latents_std
+                audio_latents, components.audio_latents_mean, components.audio_latents_std
             )
             audio_latents = _create_noised_state(audio_latents, block_state.noise_scale, block_state.generator)
             block_state.audio_latents = audio_latents.to(device=device, dtype=torch.float32)
@@ -952,9 +952,9 @@ class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
         if block_state.latents is not None:
             latents = _normalize_latents(
                 block_state.latents,
-                components.vae.latents_mean,
-                components.vae.latents_std,
-                components.vae.config.scaling_factor,
+                components.latents_mean,
+                components.latents_std,
+                components.vae_scaling_factor,
             )
         else:
             # Zeros rather than a Gaussian sample: the noise is mixed in at the end, once the mask is known.
@@ -1251,9 +1251,9 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
         if block_state.latents is not None:
             latents = _normalize_latents(
                 block_state.latents,
-                components.vae.latents_mean,
-                components.vae.latents_std,
-                components.vae.config.scaling_factor,
+                components.latents_mean,
+                components.latents_std,
+                components.vae_scaling_factor,
             )
         else:
             shape = (
@@ -1654,7 +1654,7 @@ class LTX2ConditionPrepareAudioLatentsStep(ModularPipelineBlocks):
                 audio_num_frames = audio_latents.shape[2]
                 audio_latents = _pack_audio_latents(audio_latents)
             audio_latents = _normalize_audio_latents(
-                audio_latents, components.audio_vae.latents_mean, components.audio_vae.latents_std
+                audio_latents, components.audio_latents_mean, components.audio_latents_std
             )
             audio_latents = _create_noised_state(audio_latents, block_state.noise_scale, block_state.generator)
             block_state.audio_latents = audio_latents.to(device=device, dtype=torch.float32)
