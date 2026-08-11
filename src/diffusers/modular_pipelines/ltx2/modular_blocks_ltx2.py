@@ -474,8 +474,8 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Denoise block (condition-to-video) that applies the frame conditions to the video latents and runs the joint
-    denoising loop.
+    Denoise block (condition-to-video) that expands the text conditioning by `num_videos_per_prompt`, applies the frame
+    conditions to the video latents and runs the joint denoising loop.
 
       Components:
           transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
@@ -483,6 +483,20 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
           (`LTX2Guidance`)
 
       Inputs:
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          connector_prompt_embeds (`Tensor`):
+              Video-branch text conditioning (cond).
+          connector_audio_prompt_embeds (`Tensor`):
+              Audio-branch text conditioning (cond).
+          connector_attention_mask (`Tensor`):
+              Binary text attention mask (cond).
+          negative_connector_prompt_embeds (`Tensor`):
+              Video-branch text conditioning (uncond).
+          negative_connector_audio_prompt_embeds (`Tensor`):
+              Audio-branch text conditioning (uncond).
+          negative_connector_attention_mask (`Tensor`):
+              Binary text attention mask (uncond).
           condition_latents (`list`):
               Per-condition normalized VAE latents of shape [1, C, F, H, W].
           condition_strengths (`list`):
@@ -507,8 +521,6 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           batch_size (`int`):
               The number of prompts being denoised, used to expand conditioning per prompt.
           generator (`Generator`, *optional*):
@@ -527,18 +539,6 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
-          connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
 
       Outputs:
           latents (`Tensor`):
@@ -553,19 +553,20 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
     # includes the appended keyframe tokens, so the latents have to exist first. This mirrors `LTX2ConditionPipeline`
     # (its section 4 runs before section 5).
     block_classes = [
+        LTX2TextInputStep,
         LTX2ConditionPrepareLatentsStep,
         LTX2ConditionSetTimestepsStep,
         LTX2ConditionPrepareAudioLatentsStep,
         LTX2ConditionPrepareCoordsStep,
         LTX2ConditionDenoiseStep,
     ]
-    block_names = ["prepare_latents", "set_timesteps", "prepare_audio_latents", "prepare_coords", "denoise"]
+    block_names = ["input", "prepare_latents", "set_timesteps", "prepare_audio_latents", "prepare_coords", "denoise"]
 
     @property
     def description(self):
         return (
-            "Denoise block (condition-to-video) that applies the frame conditions to the video latents and runs the "
-            "joint denoising loop."
+            "Denoise block (condition-to-video) that expands the text conditioning by `num_videos_per_prompt`, "
+            "applies the frame conditions to the video latents and runs the joint denoising loop."
         )
 
     @property
@@ -772,9 +773,10 @@ class LTX2AutoBuildVideoSelfAttentionMaskStep(ConditionalPipelineBlocks):
 # auto_docstring
 class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Denoise block (in-context) that folds the frame conditions and the IC-LoRA reference tokens into one latent
-    sequence and runs the joint denoising loop. Reuses the condition denoise step unchanged: reference tokens are
-    pinned by the same x0 blend as frame conditions, matching the reference implementation's uniform treatment of both.
+    Denoise block (in-context) that expands the text conditioning by `num_videos_per_prompt`, folds the frame
+    conditions and the IC-LoRA reference tokens into one latent sequence and runs the joint denoising loop. Reuses the
+    condition denoise step unchanged: reference tokens are pinned by the same x0 blend as frame conditions, matching
+    the reference implementation's uniform treatment of both.
 
       Components:
           transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
@@ -782,6 +784,20 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
           (`LTX2Guidance`)
 
       Inputs:
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          connector_prompt_embeds (`Tensor`):
+              Video-branch text conditioning (cond).
+          connector_audio_prompt_embeds (`Tensor`):
+              Audio-branch text conditioning (cond).
+          connector_attention_mask (`Tensor`):
+              Binary text attention mask (cond).
+          negative_connector_prompt_embeds (`Tensor`):
+              Video-branch text conditioning (uncond).
+          negative_connector_audio_prompt_embeds (`Tensor`):
+              Audio-branch text conditioning (uncond).
+          negative_connector_attention_mask (`Tensor`):
+              Binary text attention mask (uncond).
           condition_latents (`list`):
               Per-condition normalized VAE latents of shape [1, C, F, H, W].
           condition_strengths (`list`):
@@ -816,8 +832,6 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           batch_size (`int`):
               The number of prompts being denoised, used to expand conditioning per prompt.
           generator (`Generator`, *optional*):
@@ -838,18 +852,6 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
-          connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
 
       Outputs:
           latents (`Tensor`):
@@ -862,6 +864,7 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
     # Same ordering rationale as `LTX2ConditionCoreDenoiseStep`: prepare-latents precedes set-timesteps because
     # `mu` is read off the packed sequence length, which here includes both keyframe and reference tokens.
     block_classes = [
+        LTX2TextInputStep,
         LTX2InContextPrepareLatentsStep,
         LTX2AutoBuildVideoSelfAttentionMaskStep,
         LTX2ConditionSetTimestepsStep,
@@ -870,6 +873,7 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
         LTX2ConditionDenoiseStep,
     ]
     block_names = [
+        "input",
         "prepare_latents",
         "attention_mask",
         "set_timesteps",
@@ -881,8 +885,9 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return (
-            "Denoise block (in-context) that folds the frame conditions and the IC-LoRA reference tokens into one "
-            "latent sequence and runs the joint denoising loop. Reuses the condition denoise step unchanged: "
+            "Denoise block (in-context) that expands the text conditioning by `num_videos_per_prompt`, folds the "
+            "frame conditions and the IC-LoRA reference tokens into one latent sequence and runs the joint denoising "
+            "loop. Reuses the condition denoise step unchanged: "
             "reference tokens are pinned by the same x0 blend as frame conditions, matching the reference "
             "implementation's uniform treatment of both."
         )
@@ -910,6 +915,20 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
           (`LTX2Guidance`)
 
       Inputs:
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          connector_prompt_embeds (`Tensor`):
+              Video-branch text conditioning (cond).
+          connector_audio_prompt_embeds (`Tensor`):
+              Audio-branch text conditioning (cond).
+          connector_attention_mask (`Tensor`):
+              Binary text attention mask (cond).
+          negative_connector_prompt_embeds (`Tensor`):
+              Video-branch text conditioning (uncond).
+          negative_connector_audio_prompt_embeds (`Tensor`):
+              Audio-branch text conditioning (uncond).
+          negative_connector_attention_mask (`Tensor`):
+              Binary text attention mask (uncond).
           condition_latents (`list`, *optional*):
               Per-condition normalized VAE latents of shape [1, C, F, H, W].
           condition_strengths (`list`, *optional*):
@@ -944,8 +963,6 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           batch_size (`int`):
               The number of prompts being denoised, used to expand conditioning per prompt.
           generator (`Generator`, *optional*):
@@ -966,18 +983,6 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
-          connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
           image_latents (`Tensor`, *optional*):
               VAE-encoded reference-image latents used for image-to-video conditioning.
 
@@ -1498,6 +1503,8 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
           num_frames (`int`, *optional*):
               The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
               `LTX2AutoDurationStep`).
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           noise_scale (`float`, *optional*):
@@ -1505,8 +1512,6 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -1624,6 +1629,8 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
               `conditioning_attention_strength`.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           reference_latents (`Tensor`, *optional*):
               Packed reference tokens of shape [1, total_reference_tokens, C], or `None` when no reference conditions
               were supplied (`LTX2AutoReferenceEncoderStep` is skipped).
@@ -1638,8 +1645,6 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           reference_cross_mask (`Tensor`, *optional*):
               Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
           num_inference_steps (`int`, *optional*, defaults to 30):
@@ -1785,6 +1790,8 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
               attention strength. Downsampled to the reference's latent grid and multiplied by
               `conditioning_attention_strength`.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           condition_latents (`list`, *optional*):
               Per-condition normalized VAE latents of shape [1, C, F, H, W].
           condition_strengths (`list`, *optional*):
@@ -1807,8 +1814,6 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           reference_cross_mask (`Tensor`, *optional*):
               Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
           num_inference_steps (`int`):
