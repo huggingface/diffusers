@@ -119,8 +119,9 @@ def _get_gemma_prompt_embeds(
     device: torch.device,
     dtype: torch.dtype,
 ):
-    # Mirrors `LTX2Pipeline._get_gemma_prompt_embeds`, minus the `num_videos_per_prompt` expansion (that happens
-    # in the dedicated text-input step so pre-encoded embeds stay reusable across runs).
+    # Mirrors `LTX2Pipeline._get_gemma_prompt_embeds`, minus the `num_videos_per_prompt` expansion. The whole text
+    # stage stays at one row per prompt; `LTX2TextInputStep` expands the connector outputs to the effective batch at
+    # the head of the denoise stage, so this stage's outputs are reusable across `num_videos_per_prompt` values.
     prompt = [prompt] if isinstance(prompt, str) else prompt
 
     # Gemma expects left padding for chat-style prompts.
@@ -350,7 +351,8 @@ class LTX2TextEncoderStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Text encoder step. Encodes `prompt` and `negative_prompt` into packed per-layer Gemma hidden states "
-            "that the connectors adapt for the video and audio branches."
+            "that the connectors adapt for the video and audio branches, and reports the prompt count (`batch_size`) "
+            "and embedding `dtype`."
         )
 
     @property
@@ -393,6 +395,12 @@ class LTX2TextEncoderStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Binary attention mask for `negative_prompt_embeds`.",
             ),
+            OutputParam(
+                "batch_size",
+                type_hint=int,
+                description="The number of prompts being denoised (before per-prompt expansion).",
+            ),
+            OutputParam("dtype", type_hint=torch.dtype, description="The dtype of the prompt embeddings."),
         ]
 
     @staticmethod
@@ -419,6 +427,9 @@ class LTX2TextEncoderStep(ModularPipelineBlocks):
         block_state.negative_prompt_embeds, block_state.negative_prompt_attention_mask = _get_gemma_prompt_embeds(
             components, negative_prompt, max_sequence_length, device, dtype
         )
+
+        block_state.batch_size = block_state.prompt_embeds.shape[0]
+        block_state.dtype = block_state.prompt_embeds.dtype
 
         self.set_block_state(state, block_state)
         return components, state
@@ -601,11 +612,12 @@ class LTX2DurationStep(ModularPipelineBlocks):
                 "generally be satisfied by a frame count on the VAE's temporal grid."
             )
 
-        # `connector_prompt_embeds` is already the positive (conditional) conditioning; rows past the first are
-        # `num_videos_per_prompt` duplicates of the same prompt, so predict from the first.
+        # `connector_prompt_embeds` is the positive (conditional) conditioning, one row per prompt (per-prompt
+        # expansion happens later, in the denoise stage), and `batch_size > 1` was rejected above -- so it is a
+        # single row here.
         block_state.num_frames = components.duration_head.predict_num_frames(
-            block_state.connector_prompt_embeds[:1],
-            block_state.connector_audio_prompt_embeds[:1],
+            block_state.connector_prompt_embeds,
+            block_state.connector_audio_prompt_embeds,
             frame_rate=block_state.frame_rate,
             temporal_compression_ratio=components.vae_temporal_compression_ratio,
             min_seconds=block_state.min_seconds,

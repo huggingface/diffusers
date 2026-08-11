@@ -98,8 +98,9 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
 # auto_docstring
 class LTX2TextConditioningStep(SequentialPipelineBlocks):
     """
-    Text-conditioning stage for LTX-2.X: encodes the prompt(s), expands them per prompt (`num_videos_per_prompt`), then
-    runs the text connectors to produce the video/audio-branch connector embeddings the denoiser consumes.
+    Text-conditioning stage for LTX-2.X: encodes the prompt(s), then runs the text connectors to produce the
+    video/audio-branch connector embeddings the denoiser consumes. Outputs stay at one row per prompt -- the denoise
+    stage expands them by `num_videos_per_prompt` -- so they can be reused across denoise runs.
 
       Components:
           text_encoder (`PreTrainedModel`) tokenizer (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`)
@@ -111,8 +112,6 @@ class LTX2TextConditioningStep(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
               Maximum sequence length for prompt encoding.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
 
       Outputs:
           prompt_embeds (`Tensor`):
@@ -142,15 +141,16 @@ class LTX2TextConditioningStep(SequentialPipelineBlocks):
     """
 
     model_name = "ltx2"
-    block_classes = [LTX2TextEncoderStep, LTX2TextInputStep, LTX2TextConnectorStep]
-    block_names = ["text_encoder", "text_input", "connectors"]
+    block_classes = [LTX2TextEncoderStep, LTX2TextConnectorStep]
+    block_names = ["text_encoder", "connectors"]
 
     @property
     def description(self):
         return (
-            "Text-conditioning stage for LTX-2.X: encodes the prompt(s), expands them per prompt "
-            "(`num_videos_per_prompt`), then runs the text connectors to produce the video/audio-branch "
-            "connector embeddings the denoiser consumes."
+            "Text-conditioning stage for LTX-2.X: encodes the prompt(s), then runs the text connectors to produce "
+            "the video/audio-branch connector embeddings the denoiser consumes. Outputs stay at one row per prompt "
+            "-- the denoise stage expands them by `num_videos_per_prompt` -- so they can be reused across denoise "
+            "runs."
         )
 
 
@@ -247,13 +247,28 @@ class LTX2AutoVaeEncoderStep(AutoPipelineBlocks):
 # auto_docstring
 class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Denoise block (text-to-video) that prepares video/audio latents and runs the joint denoising loop.
+    Denoise block (text-to-video) that expands the text conditioning by `num_videos_per_prompt`, prepares video/audio
+    latents and runs the joint denoising loop.
 
       Components:
           scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
           (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
 
       Inputs:
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          connector_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          connector_audio_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          connector_attention_mask (`Tensor`):
+              TODO: Add description.
+          negative_connector_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          negative_connector_audio_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          negative_connector_attention_mask (`Tensor`):
+              TODO: Add description.
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -269,8 +284,6 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
               `LTX2AutoDurationStep`).
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           noise_scale (`float`, *optional*, defaults to 0.0):
               Interpolation factor between random noise and any provided latents (0.0 keeps the provided latents).
           generator (`Generator`, *optional*):
@@ -289,18 +302,6 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
-          connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
 
       Outputs:
           latents (`Tensor`):
@@ -311,17 +312,28 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
 
     model_name = "ltx2"
     block_classes = [
+        LTX2TextInputStep,
         LTX2SetTimestepsStep,
         LTX2PrepareLatentsStep,
         LTX2PrepareAudioLatentsStep,
         LTX2PrepareCoordsStep,
         LTX2DenoiseStep,
     ]
-    block_names = ["set_timesteps", "prepare_latents", "prepare_audio_latents", "prepare_coords", "denoise"]
+    block_names = [
+        "input",
+        "set_timesteps",
+        "prepare_latents",
+        "prepare_audio_latents",
+        "prepare_coords",
+        "denoise",
+    ]
 
     @property
     def description(self):
-        return "Denoise block (text-to-video) that prepares video/audio latents and runs the joint denoising loop."
+        return (
+            "Denoise block (text-to-video) that expands the text conditioning by `num_videos_per_prompt`, prepares "
+            "video/audio latents and runs the joint denoising loop."
+        )
 
     @property
     def outputs(self):
@@ -334,13 +346,28 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Denoise block (image-to-video) that adds image conditioning and runs the joint denoising loop.
+    Denoise block (image-to-video) that expands the text conditioning by `num_videos_per_prompt`, adds image
+    conditioning and runs the joint denoising loop.
 
       Components:
           scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
           (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
 
       Inputs:
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          connector_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          connector_audio_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          connector_attention_mask (`Tensor`):
+              TODO: Add description.
+          negative_connector_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          negative_connector_audio_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          negative_connector_attention_mask (`Tensor`):
+              TODO: Add description.
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -356,8 +383,6 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               `LTX2AutoDurationStep`).
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           noise_scale (`float`, *optional*, defaults to 0.0):
               Interpolation factor between random noise and any provided latents (0.0 keeps the provided latents).
           generator (`Generator`, *optional*):
@@ -378,18 +403,6 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
-          connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
 
       Outputs:
           latents (`Tensor`):
@@ -400,6 +413,7 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 
     model_name = "ltx2"
     block_classes = [
+        LTX2TextInputStep,
         LTX2SetTimestepsStep,
         LTX2PrepareLatentsStep,
         LTX2Image2VideoPrepareLatentsStep,
@@ -408,6 +422,7 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
         LTX2Image2VideoDenoiseStep,
     ]
     block_names = [
+        "input",
         "set_timesteps",
         "prepare_latents",
         "prepare_i2v_latents",
@@ -418,7 +433,10 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return "Denoise block (image-to-video) that adds image conditioning and runs the joint denoising loop."
+        return (
+            "Denoise block (image-to-video) that expands the text conditioning by `num_videos_per_prompt`, adds "
+            "image conditioning and runs the joint denoising loop."
+        )
 
     @property
     def outputs(self):
@@ -440,6 +458,20 @@ class LTX2AutoCoreDenoiseStep(AutoPipelineBlocks):
           (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
 
       Inputs:
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          connector_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          connector_audio_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          connector_attention_mask (`Tensor`):
+              TODO: Add description.
+          negative_connector_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          negative_connector_audio_prompt_embeds (`Tensor`):
+              TODO: Add description.
+          negative_connector_attention_mask (`Tensor`):
+              TODO: Add description.
           num_inference_steps (`int`):
               The number of denoising steps.
           timesteps (`Tensor`):
@@ -455,8 +487,6 @@ class LTX2AutoCoreDenoiseStep(AutoPipelineBlocks):
               `LTX2AutoDurationStep`).
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           noise_scale (`float`, *optional*, defaults to 0.0):
               Interpolation factor between random noise and any provided latents (0.0 keeps the provided latents).
           generator (`Generator`, *optional*):
@@ -477,18 +507,6 @@ class LTX2AutoCoreDenoiseStep(AutoPipelineBlocks):
               Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
-          connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
-          negative_connector_attention_mask (`Tensor`):
-              Per-pass text conditioning read by the guiders via `guider_input_fields`.
 
       Outputs:
           latents (`Tensor`):
@@ -605,14 +623,14 @@ class LTX2Blocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
               Maximum sequence length for prompt encoding.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           min_seconds (`float`, *optional*, defaults to 1.0):
               Lower bound on the auto-predicted duration.
           max_seconds (`float`, *optional*, defaults to 20.0):
               Upper bound on the auto-predicted duration. Must be strictly greater than `min_seconds`.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -708,8 +726,6 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
               Maximum sequence length for prompt encoding.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           min_seconds (`float`, *optional*, defaults to 1.0):
               Lower bound on the auto-predicted duration.
           max_seconds (`float`, *optional*, defaults to 20.0):
@@ -725,6 +741,8 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               model was trained against. `None` (default) resolves from the text-encoder generation (33 through
               LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when
               re-compression runs.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -823,8 +841,6 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
               Maximum sequence length for prompt encoding.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           min_seconds (`float`, *optional*, defaults to 1.0):
               Lower bound on the auto-predicted duration.
           max_seconds (`float`, *optional*, defaults to 20.0):
@@ -840,6 +856,8 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               model was trained against. `None` (default) resolves from the text-encoder generation (33 through
               LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when
               re-compression runs.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           num_inference_steps (`int`):
               The number of denoising steps.
           timesteps (`Tensor`):

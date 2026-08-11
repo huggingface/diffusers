@@ -180,52 +180,68 @@ class LTX2TextInputStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Input processing step that:\n"
-            "  1. Determines `batch_size` and `dtype` from `prompt_embeds`\n"
-            "  2. Expands the text embeddings/masks by `num_videos_per_prompt`"
+            "Input processing step that expands the connector text conditioning (cond and uncond) by "
+            "`num_videos_per_prompt`, so it matches the `batch_size * num_videos_per_prompt` batch of the video and "
+            "audio latents. Runs at the head of the denoise stage, which keeps the text-conditioning stage's outputs "
+            "reusable across denoise runs with different `num_videos_per_prompt`."
         )
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam("prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("prompt_attention_mask", type_hint=torch.Tensor, required=True),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("negative_prompt_attention_mask", type_hint=torch.Tensor, required=True),
+            InputParam("connector_prompt_embeds", type_hint=torch.Tensor, required=True),
+            InputParam("connector_audio_prompt_embeds", type_hint=torch.Tensor, required=True),
+            InputParam("connector_attention_mask", type_hint=torch.Tensor, required=True),
+            InputParam("negative_connector_prompt_embeds", type_hint=torch.Tensor, required=True),
+            InputParam("negative_connector_audio_prompt_embeds", type_hint=torch.Tensor, required=True),
+            InputParam("negative_connector_attention_mask", type_hint=torch.Tensor, required=True),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
-                "batch_size",
-                type_hint=int,
-                description="The number of prompts being denoised (before per-prompt expansion).",
+                "connector_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Video-branch text conditioning (cond), expanded per prompt.",
             ),
-            OutputParam("dtype", type_hint=torch.dtype, description="The dtype of the prompt embeddings."),
+            OutputParam(
+                "connector_audio_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Audio-branch text conditioning (cond), expanded per prompt.",
+            ),
+            OutputParam(
+                "connector_attention_mask",
+                type_hint=torch.Tensor,
+                description="Binary text attention mask (cond), expanded per prompt.",
+            ),
+            OutputParam(
+                "negative_connector_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Video-branch text conditioning (uncond), expanded per prompt.",
+            ),
+            OutputParam(
+                "negative_connector_audio_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Audio-branch text conditioning (uncond), expanded per prompt.",
+            ),
+            OutputParam(
+                "negative_connector_attention_mask",
+                type_hint=torch.Tensor,
+                description="Binary text attention mask (uncond), expanded per prompt.",
+            ),
         ]
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.batch_size = block_state.prompt_embeds.shape[0]
-        block_state.dtype = block_state.prompt_embeds.dtype
+        # `repeat_interleave` keeps each prompt's copies contiguous, matching how the latents are laid out
+        # (`batch_size * num_videos_per_prompt`, prompt-major) and how `image_latents` are expanded downstream.
         num_videos = block_state.num_videos_per_prompt
-
-        def _expand(embeds, mask):
-            _, seq_len, _ = embeds.shape
-            embeds = embeds.repeat(1, num_videos, 1).view(block_state.batch_size * num_videos, seq_len, -1)
-            mask = mask.repeat(num_videos, 1)
-            return embeds, mask
-
-        block_state.prompt_embeds, block_state.prompt_attention_mask = _expand(
-            block_state.prompt_embeds, block_state.prompt_attention_mask
-        )
-        block_state.negative_prompt_embeds, block_state.negative_prompt_attention_mask = _expand(
-            block_state.negative_prompt_embeds, block_state.negative_prompt_attention_mask
-        )
+        for name in self.intermediate_output_names:
+            setattr(block_state, name, getattr(block_state, name).repeat_interleave(num_videos, dim=0))
 
         self.set_block_state(state, block_state)
         return components, state
