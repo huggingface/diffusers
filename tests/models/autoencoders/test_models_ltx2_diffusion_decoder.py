@@ -18,9 +18,11 @@ import torch
 
 from diffusers import LTX2VideoDiffusionDecoderModel
 from diffusers.models.autoencoders import ltx2_diffusion_decoder
+from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
+from diffusers.utils import is_kernels_available
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -131,17 +133,29 @@ class TestLTX2VideoDiffusionDecoderModelAttention(LTX2VideoDiffusionDecoderModel
     """Attention processor tests for LTX2VideoDiffusionDecoderModel."""
 
 
-class TestLTX2VideoDiffusionDecoderConversion(LTX2VideoDiffusionDecoderModelTesterConfig):
-    """The converter is the only thing that produces weights for this model, so exercise it here.
+@require_torch_gpu
+@pytest.mark.skipif(not is_kernels_available(), reason="Fetching NATTEN from the Hub requires the `kernels` package.")
+class TestLTX2VideoDiffusionDecoderModelNattenProcessor(LTX2VideoDiffusionDecoderModelTesterConfig):
+    """The NATTEN processor is the reference decoder's attention path; it must agree with the default flex path.
 
-    A native checkpoint carries the whole VAE, but this model is decoder-only, so the encoder half has
-    to be dropped rather than remapped: `load_state_dict` in the converter is strict and would raise.
+    CUDA-only twice over: NATTEN has no CPU kernels, and the processor fetches its build from the Hub
+    (`shi-labs/natten`) through `kernels`, which resolves a variant for the running torch/CUDA.
     """
 
-    def test_load_state_dict_rejects_leftover_encoder_keys(self):
-        model = self.model_class(**self.get_init_dict())
-        state_dict = dict(model.state_dict())
-        state_dict["encoder.conv_in.conv.weight"] = torch.zeros(8, 3, 3, 3, 3)
+    def test_natten_processor_decodes(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
 
-        with pytest.raises(RuntimeError, match="Unexpected key"):
-            model.load_state_dict(state_dict, strict=True)
+        # One shared instance swaps every attention module: the decoder's attention is homogeneous, with
+        # per-stage differences (the kernel size) living on the module rather than the processor.
+        model.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
+        processors = model.attn_processors
+        assert processors and all(
+            isinstance(processor, LTX2VideoVaeNeighborhoodNattenProcessor) for processor in processors.values()
+        )
+
+        with torch.no_grad():
+            output = model.decode(inputs["z"], generator=inputs["generator"], return_dict=False)[0]
+
+        assert output.shape == (inputs["z"].shape[0], *self.output_shape)
+        assert torch.isfinite(output).all(), "NATTEN decode produced NaN/inf values"

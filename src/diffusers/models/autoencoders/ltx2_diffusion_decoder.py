@@ -18,8 +18,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_natten_available, logging
+from ...utils import is_kernels_available, logging
 from ...utils.accelerate_utils import apply_forward_hook
+from ...utils.constants import DIFFUSERS_DISABLE_REMOTE_CODE
 from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -202,32 +203,42 @@ class LTX2VideoVaeNeighborhoodAttnProcessor:
 class LTX2VideoVaeNeighborhoodNattenProcessor:
     """Neighborhood-attention processor using NATTEN's `na3d`, which is what the reference decoder calls.
 
-    Requires the optional `natten` package and a supported GPU; `backend=None` lets NATTEN pick the fastest kernel for
-    the device. No CPU path — use [`LTX2VideoVaeNeighborhoodAttnProcessor`] elsewhere.
+    NATTEN is fetched from the Hub (`shi-labs/natten`, a trusted kernel publisher) through the `kernels` package rather
+    than imported from a local install, so it needs `kernels`, a supported GPU, and `DIFFUSERS_DISABLE_REMOTE_CODE`
+    unset; `backend=None` lets NATTEN pick the fastest kernel for the device. No CPU path — use
+    [`LTX2VideoVaeNeighborhoodAttnProcessor`] elsewhere.
 
     `na3d` encodes the neighborhood window in the kernel itself, so this processor takes no `block_mask` and the
     decoder never builds one for it.
     """
 
     def __init__(self, backend: str | None = None):
-        if not is_natten_available():
-            raise ImportError(
-                "LTX2VideoVaeNeighborhoodNattenProcessor requires the `natten` package. Install it, or use the "
-                "default `LTX2VideoVaeNeighborhoodAttnProcessor` (FlexAttention) instead."
+        if DIFFUSERS_DISABLE_REMOTE_CODE:
+            raise ValueError(
+                "LTX2VideoVaeNeighborhoodNattenProcessor downloads the `shi-labs/natten` kernel from the Hub, which "
+                "is disabled globally by the `DIFFUSERS_DISABLE_REMOTE_CODE` environment variable. Unset it, or use "
+                "the default `LTX2VideoVaeNeighborhoodAttnProcessor` (FlexAttention) instead."
             )
+        if not is_kernels_available():
+            raise ImportError(
+                "LTX2VideoVaeNeighborhoodNattenProcessor fetches NATTEN from the Hub with the `kernels` package. "
+                "Install it with `pip install kernels`, or use the default "
+                "`LTX2VideoVaeNeighborhoodAttnProcessor` (FlexAttention) instead."
+            )
+        from kernels import get_kernel
+
+        self._na3d = get_kernel("shi-labs/natten", version=1).na3d
         self.backend = backend
 
     def __call__(
         self, attn: "LTX2VideoVaeNeighborhoodAttention", hidden_states: torch.Tensor, block_mask=None
     ) -> torch.Tensor:
-        from natten.functional import na3d
-
         batch_size, num_frames, height, width, channels = hidden_states.shape
         query, key, value = attn.project_qkv(hidden_states)
         # NATTEN's CUTLASS kernels silently produce wrong output for non-contiguous inputs.
         query, key, value = query.contiguous(), key.contiguous(), value.contiguous()
         # `scale=1.0`: the query is already scaled in `project_qkv`, as in the reference.
-        hidden_states = na3d(query, key, value, kernel_size=attn.kernel_size, scale=1.0, backend=self.backend)
+        hidden_states = self._na3d(query, key, value, kernel_size=attn.kernel_size, scale=1.0, backend=self.backend)
         hidden_states = hidden_states.reshape(batch_size, num_frames, height, width, channels)
         return attn.to_out[0](hidden_states)
 

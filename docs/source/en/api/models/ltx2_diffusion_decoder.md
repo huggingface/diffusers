@@ -48,21 +48,25 @@ autoencoder.
 The neighborhood-attention window is expressed as a `BlockMask`, so the decoder runs on the `flex` attention
 backend by default and needs no extra dependency. PyTorch does not compile `flex_attention` unless you ask it to,
 and uncompiled it materializes the full score matrix — which is impractical at full-resolution sequence lengths.
-For those, either compile the decoder or install [`natten`](https://github.com/SHI-Labs/NATTEN) and switch to its
-kernels, which are also what the original implementation uses:
+For those, either compile the decoder or switch to [NATTEN](https://github.com/SHI-Labs/NATTEN)'s kernels, which
+are also what the original implementation uses. The processor fetches NATTEN from the Hub
+([`shi-labs/natten`](https://huggingface.co/shi-labs/natten)) through the
+[`kernels`](https://github.com/huggingface/kernels) package, so it needs `pip install kernels` rather than a local
+NATTEN build:
 
 ```python
-from diffusers.models.autoencoders.ltx2_diffusion_decoder import (
-    LTX2VideoVaeNeighborhoodAttention,
-    LTX2VideoVaeNeighborhoodNattenProcessor,
-)
+from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
 
-for module in vae.modules():
-    if isinstance(module, LTX2VideoVaeNeighborhoodAttention):
-        module.set_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
+decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
 ```
 
-Switching the *backend* (`vae.set_attention_backend(...)`) to anything but `flex` raises: no other backend
+Fetching the kernel downloads code from the Hub, so the processor raises when remote code is disabled globally with
+`DIFFUSERS_DISABLE_REMOTE_CODE=true`.
+
+Every attention module in the decoder is the same neighborhood attention (per-stage differences like the kernel
+size live on the module, not the processor), so `set_attn_processor` swaps them all with one shared instance.
+
+Switching the *backend* (`decoder.set_attention_backend(...)`) to anything but `flex` raises: no other backend
 accepts the `BlockMask`. Use the NATTEN processor above instead.
 
 ## Tiling

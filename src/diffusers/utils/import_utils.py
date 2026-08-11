@@ -182,7 +182,6 @@ _torch_neuronx_available, _torch_neuronx_version = _is_package_available("torch_
 _transformers_available, _transformers_version = _is_package_available("transformers")
 _hf_hub_available, _hf_hub_version = _is_package_available("huggingface_hub")
 _kernels_available, _kernels_version = _is_package_available("kernels")
-_natten_available, _natten_version = _is_package_available("natten")
 _inflect_available, _inflect_version = _is_package_available("inflect")
 _unidecode_available, _unidecode_version = _is_package_available("unidecode")
 
@@ -282,10 +281,6 @@ def is_accelerate_available():
 
 def is_kernels_available():
     return _kernels_available
-
-
-def is_natten_available():
-    return _natten_available
 
 
 def is_note_seq_available():
