@@ -442,9 +442,11 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
                 "rope_type": "split",
                 "use_prompt_embeddings": False,
                 "perturbed_attn": True,
-                # The only transformer-level delta from 2.3: the video FFN drops its bias (audio_ff_bias and
-                # use_prompt_adaln_single keep their True defaults for this checkpoint).
+                # The only transformer-level deltas from 2.3: the video FFN drops its bias (audio_ff_bias and
+                # use_prompt_adaln_single keep their True defaults for this checkpoint), and 2.5.1+ carries a
+                # learned keyframe absolute-position embedding.
                 "ff_bias": False,
+                "use_keyframes_abs_pos_embedding": True,
             },
         }
         rename_dict = LTX_2_3_TRANSFORMER_KEYS_RENAME_DICT

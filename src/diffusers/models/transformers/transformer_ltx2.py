@@ -1113,6 +1113,10 @@ class LTX2VideoTransformer3DModel(
             Whether the prompt's cross-attention Key/Value modulation is timestep-dependent. When `False`, it uses a
             fixed per-layer table instead, making the cross-attention Key/Value values cacheable across denoising steps
             for a given prompt.
+        use_keyframes_abs_pos_embedding (`bool`, defaults to `False`):
+            Whether to store a learned `(1, inner_dim)` absolute-position embedding for generated-keyframe tokens
+            (LTX-2.5.1+). When `True`, the weight is kept on the module for load/save; the regular distilled forward
+            path does not consume it until a dedicated keyframes pipeline wires it in.
     """
 
     _supports_gradient_checkpointing = True
@@ -1179,6 +1183,7 @@ class LTX2VideoTransformer3DModel(
         ff_bias: bool = True,
         audio_ff_bias: bool = True,
         use_prompt_adaln_single: bool = True,
+        use_keyframes_abs_pos_embedding: bool = False,
     ) -> None:
         super().__init__()
 
@@ -1190,6 +1195,11 @@ class LTX2VideoTransformer3DModel(
         # 1. Patchification input projections
         self.proj_in = nn.Linear(in_channels, inner_dim)
         self.audio_proj_in = nn.Linear(audio_in_channels, audio_inner_dim)
+
+        # Marks single-pixel-frame keyframe tokens. Zero-initialized in the reference; unused by the regular
+        # distilled forward until a dedicated keyframes pipeline applies it after `proj_in`.
+        if use_keyframes_abs_pos_embedding:
+            self.keyframes_abs_pos_embedding = nn.Parameter(torch.zeros(1, inner_dim))
 
         # 2. Prompt embeddings
         if use_prompt_embeddings:
