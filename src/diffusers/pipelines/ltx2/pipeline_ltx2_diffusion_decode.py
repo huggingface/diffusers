@@ -92,6 +92,10 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
                 latents that are *already* denormalized, so pass `denormalize=False` for those.
             generator (`torch.Generator`, *optional*):
                 The decoder samples the noise it denoises, so pass a generator to make decoding reproducible.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the decoded video. Choose between `"pil"`, `"np"`, `"pt"` and `"latent"`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a [`~pipelines.ltx2.pipeline_output.LTX2VideoDecodeOutput`] instead of a plain tuple.
             denormalize (`bool`, *optional*, defaults to `True`):
                 Whether to apply the latent statistics before decoding. Set to `False` if the latents are already
                 denormalized.

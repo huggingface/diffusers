@@ -1021,4 +1021,19 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
         num_inference_steps: int | None = None,
         return_dict: bool = True,
     ) -> DecoderOutput | tuple[torch.Tensor]:
+        r"""
+        Args:
+            z (`torch.Tensor`):
+                Latents of shape `(B, C, F, H, W)`, expected to be denormalized already (the pipeline applies
+                `latents_mean` / `latents_std`), matching [`AutoencoderKLLTX2Video`].
+            generator (`torch.Generator`, *optional*):
+                This decoder denoises, so pass a generator to make decoding reproducible.
+            num_inference_steps (`int`, *optional*):
+                Number of denoising steps. Defaults to the decoder's `decoder_num_inference_steps` config value.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a [`~models.autoencoders.vae.DecoderOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.autoencoders.vae.DecoderOutput`] or `tuple`
+        """
         return self.decode(z, generator=generator, num_inference_steps=num_inference_steps, return_dict=return_dict)
