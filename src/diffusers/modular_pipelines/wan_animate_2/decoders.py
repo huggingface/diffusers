@@ -65,28 +65,11 @@ class WanAnimate2DecodeStep(ModularPipelineBlocks):
                 description="Number of frames in the driving video before zigzag padding; the output is trimmed to it",
             ),
             InputParam(
-                "crop_top",
+                "crop_region",
                 required=True,
-                type_hint=int,
-                description="Top edge of the reference image content inside the letterboxed frame",
-            ),
-            InputParam(
-                "crop_left",
-                required=True,
-                type_hint=int,
-                description="Left edge of the reference image content inside the letterboxed frame",
-            ),
-            InputParam(
-                "crop_height",
-                required=True,
-                type_hint=int,
-                description="Height of the reference image content inside the letterboxed frame",
-            ),
-            InputParam(
-                "crop_width",
-                required=True,
-                type_hint=int,
-                description="Width of the reference image content inside the letterboxed frame",
+                type_hint=tuple[int, int, int, int],
+                description="`(top, left, height, width)` of the reference image content inside the letterboxed "
+                "frame, from the image preprocess step",
             ),
             InputParam(
                 "output_type", default="np", type_hint=str, description="The output type of the decoded videos"
@@ -108,13 +91,8 @@ class WanAnimate2DecodeStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         video = torch.cat(block_state.segment_frames, dim=2)[:, :, : block_state.real_frame_len]
-        video = video[
-            :,
-            :,
-            :,
-            block_state.crop_top : block_state.crop_top + block_state.crop_height,
-            block_state.crop_left : block_state.crop_left + block_state.crop_width,
-        ]
+        crop_top, crop_left, crop_height, crop_width = block_state.crop_region
+        video = video[:, :, :, crop_top : crop_top + crop_height, crop_left : crop_left + crop_width]
         block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
 
         self.set_block_state(state, block_state)

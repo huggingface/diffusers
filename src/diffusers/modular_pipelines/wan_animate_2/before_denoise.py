@@ -40,8 +40,19 @@ class WanAnimate2PrepareSegmentsStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("segment_frame_length", type_hint=int, default=81),
-            InputParam("latent_height", type_hint=int, required=True),
-            InputParam("latent_width", type_hint=int, required=True),
+            InputParam(
+                "reference_image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The reference conditioning tensor `[20, 1, latent_height, latent_width]`; "
+                "provides the latent grid",
+            ),
+            InputParam(
+                "driving_video_pixels",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The preprocessed driving video `[1, 3, T, H, W]`, from the video preprocess step",
+            ),
         ]
 
     @property
@@ -69,16 +80,27 @@ class WanAnimate2PrepareSegmentsStep(ModularPipelineBlocks):
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
+        latent_height, latent_width = block_state.reference_image_latents.shape[-2:]
+
+        expected = (
+            latent_height * components.vae_scale_factor_spatial,
+            latent_width * components.vae_scale_factor_spatial,
+        )
+        if tuple(block_state.driving_video_pixels.shape[-2:]) != expected:
+            raise ValueError(
+                f"`driving_video_pixels` is letterboxed to {tuple(block_state.driving_video_pixels.shape[-2:])} but "
+                f"the reference image conditioning is {expected} — the video and image preprocess steps must use the "
+                "same `height`/`width`."
+            )
+
         latent_segment_frames = (block_state.segment_frame_length - 1) // components.vae_scale_factor_temporal + 1
-        ref_shape = [latent_segment_frames, block_state.latent_height, block_state.latent_width]
+        ref_shape = [latent_segment_frames, latent_height, latent_width]
         ref_shape_post = [ref_shape[0], ref_shape[1] // 2, ref_shape[2] // 2]
         block_state.grid_sizes_ref = torch.tensor([ref_shape_post], dtype=torch.long)
 
         # The noise tensor carries one extra latent frame: the reference image's slot.
         latent_noise_frames = latent_segment_frames + 1
-        block_state.max_seq_len = int(
-            math.ceil(np.prod([latent_noise_frames, block_state.latent_height // 2, block_state.latent_width // 2]))
-        )
+        block_state.max_seq_len = int(math.ceil(np.prod([latent_noise_frames, latent_height // 2, latent_width // 2])))
         block_state.max_seq_len_ref = int(math.ceil(np.prod(ref_shape) // 4))
 
         self.set_block_state(state, block_state)

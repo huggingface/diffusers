@@ -25,7 +25,6 @@ from .encoders import (
     WanAnimate2ProcessVideosInputStep,
     WanAnimate2TextEncoderStep,
     WanAnimate2VideoClipEncoderStep,
-    WanAnimate2VideoVaeEncoderStep,
 )
 
 
@@ -66,14 +65,8 @@ class WanAnimate2ImageEncodeStep(SequentialPipelineBlocks):
       Outputs:
           image_pixels (`Tensor`):
               The letterboxed reference image as a `[1, 3, H, W]` tensor in `[-1, 1]`
-          crop_top (`int`):
-              Top edge of the content inside the letterbox
-          crop_left (`int`):
-              Left edge of the content inside the letterbox
-          crop_height (`int`):
-              Height of the content inside the letterbox
-          crop_width (`int`):
-              Width of the content inside the letterbox
+          crop_region (`tuple`):
+              `(top, left, height, width)` of the reference image content inside the letterboxed frame
           encoder_hidden_states_image (`Tensor`):
               CLIP vision features of the reference image, conditioning every denoising forward
     """
@@ -110,7 +103,6 @@ class WanAnimate2VideoEncodeStep(SequentialPipelineBlocks):
       Inputs:
           driving_video (`list`):
               The driving video that provides the motion, in any format accepted by `VideoProcessor.preprocess_video`.
-              Overwritten with the preprocessed `[1, 3, T, H, W]` tensor.
           driving_video_fps (`float`, *optional*):
               The frame rate `driving_video` was captured at — `load_video(..., return_fps=True)` reports it. When set, the
               driving frames are resampled from it to `fps`; when `None` they are used as-is.
@@ -120,12 +112,15 @@ class WanAnimate2VideoEncodeStep(SequentialPipelineBlocks):
               The number of frames in each inference segment
           prev_segment_conditioning_frames (`int`, *optional*, defaults to 1):
               The number of conditioning frames carried over from the previous segment
-          height (`int`):
-              TODO: Add description.
-          width (`int`):
-              TODO: Add description.
+          height (`int`, *optional*, defaults to 800):
+              The height the driving frames are letterboxed to; must match the reference image's resolved height. In the
+              assembled pipeline the image preprocess step supplies the resolved value.
+          width (`int`, *optional*, defaults to 640):
+              See `height`.
 
       Outputs:
+          driving_video_pixels (`Tensor`):
+              The resampled, letterboxed, and zigzag-padded driving video, `[1, 3, T, height, width]` in `[-1, 1]`
           real_frame_len (`int`):
               Number of driving frames before zigzag padding; the output is trimmed to it
           num_segments (`int`):
@@ -145,65 +140,6 @@ class WanAnimate2VideoEncodeStep(SequentialPipelineBlocks):
         return (
             "Video encoder step that preprocesses the driving video (fps resample, letterbox, zigzag padding to a "
             "whole number of segments) and CLIP-encodes its first frame into `condition_clip_context`."
-        )
-
-
-WanAnimate2VaeEncoderBlocks = InsertableDict(
-    [
-        ("image_encode", WanAnimate2ImageVaeEncoderStep()),
-        ("video_encode", WanAnimate2VideoVaeEncoderStep()),
-    ]
-)
-
-
-# auto_docstring
-class WanAnimate2VaeEncodeStep(SequentialPipelineBlocks):
-    """
-    VAE encoder step that encodes the letterboxed reference image into the reference half of the conditioning tensor `y_ref`, and every segment's slice of the driving video into the reference-extraction conditioning `condition_latents` / `condition_y`.
-
-      Components:
-          vae (`AutoencoderKLWan`)
-
-      Inputs:
-          image_pixels (`Tensor`):
-              TODO: Add description.
-          height (`int`):
-              TODO: Add description.
-          width (`int`):
-              TODO: Add description.
-          driving_video (`Tensor`):
-              The preprocessed driving video `[1, 3, T, H, W]`
-          num_segments (`int`):
-              TODO: Add description.
-          effective_segment (`int`):
-              TODO: Add description.
-          segment_frame_length (`int`, *optional*, defaults to 81):
-              TODO: Add description.
-
-      Outputs:
-          y_ref (`Tensor`):
-              i2v mask + reference image latents, `[20, 1, latent_height, latent_width]`
-          latent_height (`int`):
-              TODO: Add description.
-          latent_width (`int`):
-              TODO: Add description.
-          condition_latents (`Tensor`):
-              VAE latents of every segment's driving-video slice, `[num_segments, 16, T, H', W']`
-          condition_y (`Tensor`):
-              i2v mask + driving-slice latents per segment, `[num_segments, 20, T, H', W']`, conditioning the
-              reference-extraction pass
-    """
-
-    model_name = "wan-animate-2"
-    block_classes = WanAnimate2VaeEncoderBlocks.values()
-    block_names = WanAnimate2VaeEncoderBlocks.keys()
-
-    @property
-    def description(self):
-        return (
-            "VAE encoder step that encodes the letterboxed reference image into the reference half of the "
-            "conditioning tensor `y_ref`, and every segment's slice of the driving video into the "
-            "reference-extraction conditioning `condition_latents` / `condition_y`."
         )
 
 
@@ -234,31 +170,27 @@ class WanAnimate2CoreDenoiseStep(SequentialPipelineBlocks):
       Inputs:
           segment_frame_length (`int`, *optional*, defaults to 81):
               TODO: Add description.
-          latent_height (`int`):
-              TODO: Add description.
-          latent_width (`int`):
-              TODO: Add description.
+          reference_image_latents (`Tensor`):
+              The reference conditioning tensor `[20, 1, latent_height, latent_width]`; provides the latent grid
+          driving_video_pixels (`Tensor`):
+              The preprocessed driving video `[1, 3, T, H, W]`, from the video preprocess step
           num_segments (`int`):
               TODO: Add description.
-          y_ref (`Tensor`):
+          effective_segment (`int`):
               TODO: Add description.
           prev_segment_conditioning_frames (`int`, *optional*, defaults to 1):
-              TODO: Add description.
-          height (`int`):
-              TODO: Add description.
-          width (`int`):
               TODO: Add description.
           generator (`None`, *optional*):
               TODO: Add description.
           num_inference_steps (`int`, *optional*, defaults to 40):
               TODO: Add description.
-          condition_latents (`Tensor`):
-              VAE latents of every segment's driving-video slice, `[num_segments, 16, T, H', W']`
-          condition_y (`Tensor`):
-              i2v mask + driving-slice latents per segment, `[num_segments, 20, T, H', W']`
           condition_clip_context (`Tensor`):
               TODO: Add description.
           prompt_ref_embeds (`Tensor`):
+              TODO: Add description.
+          height (`int`):
+              TODO: Add description.
+          width (`int`):
               TODO: Add description.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -275,7 +207,11 @@ class WanAnimate2CoreDenoiseStep(SequentialPipelineBlocks):
               Packed sequence length of the generation tokens
           max_seq_len_ref (`int`):
               Packed sequence length of the reference tokens
-          y (`Tensor`):
+          driving_video_latents (`Tensor`):
+              VAE latents of this segment's driving-video slice
+          driving_video_condition (`Tensor`):
+              i2v mask + driving-slice latents, conditioning the reference-extraction pass
+          reference_latents (`Tensor`):
               The full conditioning tensor: reference half stacked over the segment half
           latents (`Tensor`):
               This segment's initial noise
@@ -312,7 +248,7 @@ BLOCKS = InsertableDict(
         ("text_encoder", WanAnimate2TextEncoderStep()),
         ("image_encoder", WanAnimate2ImageEncodeStep()),
         ("video_encoder", WanAnimate2VideoEncodeStep()),
-        ("vae_encoder", WanAnimate2VaeEncodeStep()),
+        ("vae_encoder", WanAnimate2ImageVaeEncoderStep()),
         ("denoise", WanAnimate2CoreDenoiseStep()),
         ("decode", WanAnimate2DecodeStep()),
     ]
@@ -353,7 +289,6 @@ class WanAnimate2Blocks(SequentialPipelineBlocks):
               See `height`. Overwritten with the resolved frame width.
           driving_video (`list`):
               The driving video that provides the motion, in any format accepted by `VideoProcessor.preprocess_video`.
-              Overwritten with the preprocessed `[1, 3, T, H, W]` tensor.
           driving_video_fps (`float`, *optional*):
               The frame rate `driving_video` was captured at — `load_video(..., return_fps=True)` reports it. When set, the
               driving frames are resampled from it to `fps`; when `None` they are used as-is.

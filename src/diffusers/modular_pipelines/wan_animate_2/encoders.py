@@ -264,10 +264,11 @@ class WanAnimate2ProcessImagesInputStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The letterboxed reference image as a `[1, 3, H, W]` tensor in `[-1, 1]`",
             ),
-            OutputParam("crop_top", type_hint=int, description="Top edge of the content inside the letterbox"),
-            OutputParam("crop_left", type_hint=int, description="Left edge of the content inside the letterbox"),
-            OutputParam("crop_height", type_hint=int, description="Height of the content inside the letterbox"),
-            OutputParam("crop_width", type_hint=int, description="Width of the content inside the letterbox"),
+            OutputParam(
+                "crop_region",
+                type_hint=tuple[int, int, int, int],
+                description="`(top, left, height, width)` of the reference image content inside the letterboxed frame",
+            ),
         ]
 
     @torch.no_grad()
@@ -284,14 +285,11 @@ class WanAnimate2ProcessImagesInputStep(ModularPipelineBlocks):
         block_state.width = int(math.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 
         height, width = block_state.height, block_state.width
-        block_state.crop_width = (
-            width if width / height < image_width / image_height else image_width * height // image_height
-        )
-        block_state.crop_height = (
-            height if width / height >= image_width / image_height else image_height * width // image_width
-        )
-        block_state.crop_top = (height - block_state.crop_height) // 2
-        block_state.crop_left = (width - block_state.crop_width) // 2
+        crop_width = width if width / height < image_width / image_height else image_width * height // image_height
+        crop_height = height if width / height >= image_width / image_height else image_height * width // image_width
+        crop_top = (height - crop_height) // 2
+        crop_left = (width - crop_width) // 2
+        block_state.crop_region = (crop_top, crop_left, crop_height, crop_width)
 
         block_state.image_pixels = components.image_processor.preprocess(
             block_state.image, height=height, width=width, resize_mode="fill"
@@ -332,7 +330,7 @@ class WanAnimate2ProcessVideosInputStep(ModularPipelineBlocks):
                 required=True,
                 type_hint=list[PIL.Image.Image],
                 description="The driving video that provides the motion, in any format accepted by "
-                "`VideoProcessor.preprocess_video`. Overwritten with the preprocessed `[1, 3, T, H, W]` tensor.",
+                "`VideoProcessor.preprocess_video`.",
             ),
             InputParam(
                 "driving_video_fps",
@@ -354,13 +352,30 @@ class WanAnimate2ProcessVideosInputStep(ModularPipelineBlocks):
                 default=1,
                 description="The number of conditioning frames carried over from the previous segment",
             ),
-            InputParam("height", type_hint=int, required=True),
-            InputParam("width", type_hint=int, required=True),
+            InputParam(
+                "height",
+                type_hint=int,
+                default=800,
+                description="The height the driving frames are letterboxed to; must match the reference image's "
+                "resolved height. In the assembled pipeline the image preprocess step supplies the resolved value.",
+            ),
+            InputParam(
+                "width",
+                type_hint=int,
+                default=640,
+                description="See `height`.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
+            OutputParam(
+                "driving_video_pixels",
+                type_hint=torch.Tensor,
+                description="The resampled, letterboxed, and zigzag-padded driving video, `[1, 3, T, height, width]` "
+                "in `[-1, 1]`",
+            ),
             OutputParam(
                 "real_frame_len",
                 type_hint=int,
@@ -380,29 +395,36 @@ class WanAnimate2ProcessVideosInputStep(ModularPipelineBlocks):
 
         device = components._execution_device
 
+        # Resample the driving video to the model's frame rate
         driving_video = block_state.driving_video
         if block_state.driving_video_fps is not None:
             frame_indices = get_frame_indices(len(driving_video), block_state.driving_video_fps, block_state.fps)
             driving_video = [driving_video[i] for i in frame_indices]
 
+        # each frame letterboxed into the target frame -> [1, 3, T, height, width]`
         driving_video = components.video_processor.preprocess_video(
             driving_video, height=block_state.height, width=block_state.width, resize_mode="fill"
         ).to(device, dtype=torch.float32)
 
+        # Segments overlap by `prev_segment_conditioning_frames`, so each segment advances by
+        # `effective_segment` new frames.
         real_frame_len = driving_video.shape[2]
         effective_segment = block_state.segment_frame_length - block_state.prev_segment_conditioning_frames
+        # If the leftover frames don't fill a whole final segment, pad it with a zigzag pattern:
+        # frames [0 1 2 3 4] with 3 padding frames -> [0 1 2 3 4 | 4 3 2]. The frames generated
+        # for the padding are trimmed off again in the decode step.
         if real_frame_len > block_state.prev_segment_conditioning_frames:
-            last_segment_frames = (real_frame_len - block_state.prev_segment_conditioning_frames) % effective_segment
+            leftover_frames = (real_frame_len - block_state.prev_segment_conditioning_frames) % effective_segment
         else:
-            last_segment_frames = 0
-        num_padding = effective_segment - last_segment_frames if last_segment_frames > 0 else 0
+            leftover_frames = 0
+        num_padding = effective_segment - leftover_frames if leftover_frames > 0 else 0
         target_num_frames = real_frame_len + num_padding
 
         if num_padding > 0:
             padding_frames = driving_video[:, :, real_frame_len - num_padding : real_frame_len].flip(2)
             driving_video = torch.cat([driving_video, padding_frames], dim=2)
 
-        block_state.driving_video = driving_video
+        block_state.driving_video_pixels = driving_video
         block_state.real_frame_len = real_frame_len
         block_state.effective_segment = effective_segment
         block_state.num_segments = (
@@ -481,10 +503,10 @@ class WanAnimate2VideoClipEncoderStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(
-                "driving_video",
+                "driving_video_pixels",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The preprocessed driving video `[1, 3, T, H, W]`",
+                description="The preprocessed driving video `[1, 3, T, H, W]`, from the video preprocess step",
             ),
         ]
 
@@ -504,7 +526,7 @@ class WanAnimate2VideoClipEncoderStep(ModularPipelineBlocks):
 
         device = components._execution_device
         block_state.condition_clip_context = clip_visual_encode(
-            components.image_encoder, block_state.driving_video[0, :, 0], device, components.image_encoder.dtype
+            components.image_encoder, block_state.driving_video_pixels[0, :, 0], device, components.image_encoder.dtype
         )
 
         self.set_block_state(state, block_state)
@@ -523,7 +545,7 @@ class WanAnimate2ImageVaeEncoderStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "VAE Encoder step that encodes the letterboxed reference image and stacks the i2v conditioning mask "
-            "on top, producing the reference half of the conditioning tensor `y`"
+            "on top, producing the reference half of the conditioning tensor `reference_latents`"
         )
 
     @property
@@ -536,20 +558,16 @@ class WanAnimate2ImageVaeEncoderStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("image_pixels", required=True, type_hint=torch.Tensor),
-            InputParam("height", type_hint=int, required=True),
-            InputParam("width", type_hint=int, required=True),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
-                "y_ref",
+                "reference_image_latents",
                 type_hint=torch.Tensor,
                 description="i2v mask + reference image latents, `[20, 1, latent_height, latent_width]`",
             ),
-            OutputParam("latent_height", type_hint=int),
-            OutputParam("latent_width", type_hint=int),
         ]
 
     @torch.no_grad()
@@ -560,97 +578,12 @@ class WanAnimate2ImageVaeEncoderStep(ModularPipelineBlocks):
 
         ref_latents = encode_vae(components.vae, block_state.image_pixels.unsqueeze(2))
 
-        block_state.latent_height = block_state.height // components.vae_scale_factor_spatial
-        block_state.latent_width = block_state.width // components.vae_scale_factor_spatial
+        height, width = block_state.image_pixels.shape[-2:]
+        latent_height = height // components.vae_scale_factor_spatial
+        latent_width = width // components.vae_scale_factor_spatial
 
-        mask_ref = get_i2v_mask(1, block_state.latent_height, block_state.latent_width, 1, device=device).to(
-            ref_latents.dtype
-        )
-        block_state.y_ref = torch.cat([mask_ref, ref_latents[0]], dim=0)
-
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class WanAnimate2VideoVaeEncoderStep(ModularPipelineBlocks):
-    model_name = "wan-animate-2"
-
-    @property
-    def description(self) -> str:
-        return (
-            "VAE Encoder step that encodes every segment's slice of the driving video and stacks the i2v "
-            "conditioning mask on top. The Wan VAE is causal in time, so encoding the whole video once and "
-            "slicing the latents would not be equivalent -- each segment restarts the temporal convolution on "
-            "its own slice. A streaming mode would replace this block with one fed segments incrementally."
-        )
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("vae", AutoencoderKLWan),
-        ]
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(
-                "driving_video",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The preprocessed driving video `[1, 3, T, H, W]`",
-            ),
-            InputParam("num_segments", required=True, type_hint=int),
-            InputParam("effective_segment", required=True, type_hint=int),
-            InputParam("segment_frame_length", type_hint=int, default=81),
-            InputParam("latent_height", required=True, type_hint=int),
-            InputParam("latent_width", required=True, type_hint=int),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                "condition_latents",
-                type_hint=torch.Tensor,
-                description="VAE latents of every segment's driving-video slice, `[num_segments, 16, T, H', W']`",
-            ),
-            OutputParam(
-                "condition_y",
-                type_hint=torch.Tensor,
-                description=(
-                    "i2v mask + driving-slice latents per segment, `[num_segments, 20, T, H', W']`, conditioning "
-                    "the reference-extraction pass"
-                ),
-            ),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-
-        device = components._execution_device
-
-        condition_latents = []
-        for k in range(block_state.num_segments):
-            start = k * block_state.effective_segment
-            condition_latents.append(
-                encode_vae(
-                    components.vae, block_state.driving_video[:, :, start : start + block_state.segment_frame_length]
-                )
-            )
-        block_state.condition_latents = torch.cat(condition_latents, dim=0)
-
-        # After zigzag padding every segment is exactly `segment_frame_length` frames, so one mask fits all.
-        condition_mask = get_i2v_mask(
-            block_state.condition_latents.shape[2],
-            block_state.latent_height,
-            block_state.latent_width,
-            block_state.segment_frame_length,
-            device=device,
-        ).to(block_state.condition_latents.dtype)
-        block_state.condition_y = torch.stack(
-            [torch.cat([condition_mask, latents], dim=0) for latents in block_state.condition_latents]
-        )
+        mask_ref = get_i2v_mask(1, latent_height, latent_width, 1, device=device).to(ref_latents.dtype)
+        block_state.reference_image_latents = torch.cat([mask_ref, ref_latents[0]], dim=0)
 
         self.set_block_state(state, block_state)
         return components, state

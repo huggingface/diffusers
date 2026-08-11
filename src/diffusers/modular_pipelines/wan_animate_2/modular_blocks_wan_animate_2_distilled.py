@@ -18,10 +18,9 @@ from ..modular_pipeline_utils import InsertableDict, OutputParam
 from .before_denoise import WanAnimate2PrepareSegmentsStep
 from .decoders import WanAnimate2DecodeStep
 from .denoise import WanAnimate2DistilledDenoiseStep
-from .encoders import WanAnimate2TextEncoderStep
+from .encoders import WanAnimate2ImageVaeEncoderStep, WanAnimate2TextEncoderStep
 from .modular_blocks_wan_animate_2 import (
     WanAnimate2ImageEncodeStep,
-    WanAnimate2VaeEncodeStep,
     WanAnimate2VideoEncodeStep,
 )
 
@@ -51,31 +50,27 @@ class WanAnimate2DistilledCoreDenoiseStep(SequentialPipelineBlocks):
       Inputs:
           segment_frame_length (`int`, *optional*, defaults to 81):
               TODO: Add description.
-          latent_height (`int`):
-              TODO: Add description.
-          latent_width (`int`):
-              TODO: Add description.
+          reference_image_latents (`Tensor`):
+              The reference conditioning tensor `[20, 1, latent_height, latent_width]`; provides the latent grid
+          driving_video_pixels (`Tensor`):
+              The preprocessed driving video `[1, 3, T, H, W]`, from the video preprocess step
           num_segments (`int`):
               TODO: Add description.
-          y_ref (`Tensor`):
+          effective_segment (`int`):
               TODO: Add description.
           prev_segment_conditioning_frames (`int`, *optional*, defaults to 1):
-              TODO: Add description.
-          height (`int`):
-              TODO: Add description.
-          width (`int`):
               TODO: Add description.
           generator (`None`, *optional*):
               TODO: Add description.
           num_inference_steps (`int`, *optional*, defaults to 40):
               TODO: Add description.
-          condition_latents (`Tensor`):
-              VAE latents of every segment's driving-video slice, `[num_segments, 16, T, H', W']`
-          condition_y (`Tensor`):
-              i2v mask + driving-slice latents per segment, `[num_segments, 20, T, H', W']`
           condition_clip_context (`Tensor`):
               TODO: Add description.
           prompt_ref_embeds (`Tensor`):
+              TODO: Add description.
+          height (`int`):
+              TODO: Add description.
+          width (`int`):
               TODO: Add description.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -92,7 +87,11 @@ class WanAnimate2DistilledCoreDenoiseStep(SequentialPipelineBlocks):
               Packed sequence length of the generation tokens
           max_seq_len_ref (`int`):
               Packed sequence length of the reference tokens
-          y (`Tensor`):
+          driving_video_latents (`Tensor`):
+              VAE latents of this segment's driving-video slice
+          driving_video_condition (`Tensor`):
+              i2v mask + driving-slice latents, conditioning the reference-extraction pass
+          reference_latents (`Tensor`):
               The full conditioning tensor: reference half stacked over the segment half
           latents (`Tensor`):
               This segment's initial noise
@@ -123,7 +122,7 @@ DISTILLED_BLOCKS = InsertableDict(
         ("text_encoder", WanAnimate2TextEncoderStep()),
         ("image_encoder", WanAnimate2ImageEncodeStep()),
         ("video_encoder", WanAnimate2VideoEncodeStep()),
-        ("vae_encoder", WanAnimate2VaeEncodeStep()),
+        ("vae_encoder", WanAnimate2ImageVaeEncoderStep()),
         ("denoise", WanAnimate2DistilledCoreDenoiseStep()),
         ("decode", WanAnimate2DecodeStep()),
     ]
@@ -164,7 +163,6 @@ class WanAnimate2DistilledBlocks(SequentialPipelineBlocks):
               See `height`. Overwritten with the resolved frame width.
           driving_video (`list`):
               The driving video that provides the motion, in any format accepted by `VideoProcessor.preprocess_video`.
-              Overwritten with the preprocessed `[1, 3, T, H, W]` tensor.
           driving_video_fps (`float`, *optional*):
               The frame rate `driving_video` was captured at — `load_video(..., return_fps=True)` reports it. When set, the
               driving frames are resampled from it to `fps`; when `None` they are used as-is.
