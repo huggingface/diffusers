@@ -426,7 +426,13 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Prepares the packed video noise latents for text-to-video generation."
+        return (
+            "Prepares the packed video noise latents for text-to-video generation. `noise_scale` is declared with a "
+            "`None` default and resolved to 0.0 here rather than declared as 0.0: a blockset keeps the first "
+            "non-`None` default across its blocks, so a literal 0.0 would shadow the condition workflow's "
+            "`None -> sigmas[0] or 1.0` resolution wherever the two share a blockset (`LTX2AutoBlocks`). The "
+            "resolved value is written back to state for `LTX2PrepareAudioLatentsStep`."
+        )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -451,8 +457,11 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
             InputParam(
                 "noise_scale",
                 type_hint=float,
-                default=0.0,
-                description="Interpolation factor between random noise and any provided latents (0.0 keeps the provided latents).",
+                default=None,
+                description=(
+                    "Interpolation factor between random noise and any provided latents. `None` (default) resolves "
+                    "to 0.0, which keeps the provided latents."
+                ),
             ),
             InputParam.template("generator"),
             InputParam(
@@ -465,7 +474,14 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("latents", type_hint=torch.Tensor, description="Packed noisy video latents.")]
+        return [
+            OutputParam("latents", type_hint=torch.Tensor, description="Packed noisy video latents."),
+            OutputParam(
+                "noise_scale",
+                type_hint=float,
+                description="The resolved interpolation factor, forwarded to the audio latents step.",
+            ),
+        ]
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
@@ -476,6 +492,9 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
         num_channels_latents = components.transformer.config.in_channels
         spatial_patch = components.transformer_spatial_patch_size
         temporal_patch = components.transformer_temporal_patch_size
+
+        if block_state.noise_scale is None:
+            block_state.noise_scale = 0.0
 
         if block_state.latents is not None:
             latents = block_state.latents
@@ -600,7 +619,11 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Prepares the packed audio noise latents and derives the audio latent frame count."
+        return (
+            "Prepares the packed audio noise latents and derives the audio latent frame count. `noise_scale` is "
+            "declared with a `None` default for the reason given on `LTX2PrepareLatentsStep`, which runs first and "
+            "writes the resolved value back to state."
+        )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -630,8 +653,11 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
             InputParam(
                 "noise_scale",
                 type_hint=float,
-                default=0.0,
-                description="Interpolation factor between random noise and any provided latents (0.0 keeps the provided latents).",
+                default=None,
+                description=(
+                    "Interpolation factor between random noise and any provided `audio_latents`. Resolved upstream "
+                    "by `LTX2PrepareLatentsStep` (0.0, which keeps the provided latents)."
+                ),
             ),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("generator"),

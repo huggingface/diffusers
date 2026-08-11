@@ -246,7 +246,6 @@ def main(args):
         "num_frames": num_frames,
         "min_seconds": args.min_seconds,
         "max_seconds": args.max_seconds,
-        "noise_scale": args.noise_scale,
         "frame_rate": args.frame_rate,
         "num_inference_steps": args.num_inference_steps,
         "max_sequence_length": args.max_sequence_length,
@@ -254,6 +253,8 @@ def main(args):
         "use_cross_timestep": USE_CROSS_TIMESTEP,
         "output_type": "latent",
     }
+    if not args.omit_noise_scale:
+        common_kwargs["noise_scale"] = args.noise_scale
 
     # Resolve guidance once (CLI overrides on top of GUIDANCE defaults) and use it for BOTH pipelines.
     guidance = _resolve_guidance(args)
@@ -432,6 +433,12 @@ if __name__ == "__main__":
         "--check_tensor_stats",
         action="store_true",
         help="Whether to print individual tensor stats for std and modular pipeline outputs",
+    )
+
+    parser.add_argument(
+        "--omit_noise_scale",
+        action="store_true",
+        help="Whether to omit the `noise_scale` argument, to test the noise_scale shadowing bug",
     )
 
     args = parser.parse_args()

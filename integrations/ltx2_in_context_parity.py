@@ -235,7 +235,6 @@ def main(args):
         "width": args.width,
         "height": args.height,
         "num_frames": args.num_frames,
-        "noise_scale": args.noise_scale,
         "frame_rate": args.frame_rate,
         "num_inference_steps": args.num_inference_steps,
         "max_sequence_length": args.max_sequence_length,
@@ -243,6 +242,8 @@ def main(args):
         "use_cross_timestep": USE_CROSS_TIMESTEP,
         "output_type": "latent",
     }
+    if not args.omit_noise_scale:
+        common_kwargs["noise_scale"] = args.noise_scale
 
     guidance = _resolve_guidance(args)
 
@@ -344,6 +345,12 @@ if __name__ == "__main__":
     parser.add_argument("--mean_rel_tol", type=float, default=None)
     parser.add_argument("--max_abs_tol", type=float, default=None)
     parser.add_argument("--check_tensor_stats", action="store_true")
+
+    parser.add_argument(
+        "--omit_noise_scale",
+        action="store_true",
+        help="Whether to omit the `noise_scale` argument, to test the noise_scale shadowing bug",
+    )
 
     args = parser.parse_args()
 
