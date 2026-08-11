@@ -730,6 +730,8 @@ decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
 # implementation uses; they are fetched from the Hub by `kernels` (`pip install kernels`), not from a
 # local NATTEN build. Switching the attention *backend* instead raises: only `flex` takes the BlockMask.
 decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
+# Decode in overlapping tiles so peak memory scales with the tile size rather than the video size.
+decoder.enable_tiling()
 
 decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=pipe.scheduler)
 
@@ -751,7 +753,9 @@ encode_video(
 
 To combine this with [two-stage generation](#two-stage-generation-for-ltx-25), ask *stage 2* for `output_type="latent"` and decode that.
 
-The decoder cannot tile — `enable_tiling` raises, because neighborhood attention rejects tiles smaller than its kernel — so lower the resolution or the frame count instead. On a single card it is also worth moving the pipeline out of the way before decoding (`pipe.to("cpu")` and `torch.cuda.empty_cache()`, after capturing `pipe.scheduler` and the vocoder's `output_sampling_rate`), since the decoder needs its own headroom. See [`LTX2VideoDiffusionDecoderModel`] for the attention backends and the rest of the decoder's behaviour.
+`decoder.enable_tiling()` is what keeps a high resolution decode in memory, the same way `pipe.vae.enable_tiling()` does for the convolutional VAE. The memory-dominant part of the decode — the last upsampling stage and the diffusion stage — then runs on overlapping tiles that are blended back together, so peak memory is bounded by the tile size instead of the video size. Tiling only kicks in once the latent exceeds one tile, and the tile and overlap sizes can be tuned via the `tile_sample_min_*` / `tile_sample_stride_*` arguments (defaults match the reference implementation). Since the diffusion stage denoises each tile separately, a tiled decode does not reproduce the untiled result exactly.
+
+On a single card it is also worth moving the pipeline out of the way before decoding (`pipe.to("cpu")` and `torch.cuda.empty_cache()`, after capturing `pipe.scheduler` and the vocoder's `output_sampling_rate`), since the decoder needs its own headroom. See [`LTX2VideoDiffusionDecoderModel`] for the attention backends, the tiling details, and the rest of the decoder's behaviour.
 
 ### Full / SFT transformer
 
