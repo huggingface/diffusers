@@ -258,17 +258,17 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           connector_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Video-branch text conditioning (cond).
           connector_audio_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Audio-branch text conditioning (cond).
           connector_attention_mask (`Tensor`):
-              TODO: Add description.
+              Binary text attention mask (cond).
           negative_connector_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Video-branch text conditioning (uncond).
           negative_connector_audio_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Audio-branch text conditioning (uncond).
           negative_connector_attention_mask (`Tensor`):
-              TODO: Add description.
+              Binary text attention mask (uncond).
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -357,17 +357,17 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           connector_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Video-branch text conditioning (cond).
           connector_audio_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Audio-branch text conditioning (cond).
           connector_attention_mask (`Tensor`):
-              TODO: Add description.
+              Binary text attention mask (cond).
           negative_connector_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Video-branch text conditioning (uncond).
           negative_connector_audio_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Audio-branch text conditioning (uncond).
           negative_connector_attention_mask (`Tensor`):
-              TODO: Add description.
+              Binary text attention mask (uncond).
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -461,17 +461,17 @@ class LTX2AutoCoreDenoiseStep(AutoPipelineBlocks):
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           connector_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Video-branch text conditioning (cond).
           connector_audio_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Audio-branch text conditioning (cond).
           connector_attention_mask (`Tensor`):
-              TODO: Add description.
+              Binary text attention mask (cond).
           negative_connector_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Video-branch text conditioning (uncond).
           negative_connector_audio_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              Audio-branch text conditioning (uncond).
           negative_connector_attention_mask (`Tensor`):
-              TODO: Add description.
+              Binary text attention mask (uncond).
           num_inference_steps (`int`):
               The number of denoising steps.
           timesteps (`Tensor`):

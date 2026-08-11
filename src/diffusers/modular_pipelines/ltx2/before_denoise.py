@@ -190,12 +190,42 @@ class LTX2TextInputStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam("connector_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("connector_audio_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("connector_attention_mask", type_hint=torch.Tensor, required=True),
-            InputParam("negative_connector_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("negative_connector_audio_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("negative_connector_attention_mask", type_hint=torch.Tensor, required=True),
+            InputParam(
+                "connector_prompt_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Video-branch text conditioning (cond).",
+            ),
+            InputParam(
+                "connector_audio_prompt_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Audio-branch text conditioning (cond).",
+            ),
+            InputParam(
+                "connector_attention_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Binary text attention mask (cond).",
+            ),
+            InputParam(
+                "negative_connector_prompt_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Video-branch text conditioning (uncond).",
+            ),
+            InputParam(
+                "negative_connector_audio_prompt_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Audio-branch text conditioning (uncond).",
+            ),
+            InputParam(
+                "negative_connector_attention_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Binary text attention mask (uncond).",
+            ),
         ]
 
     @property
