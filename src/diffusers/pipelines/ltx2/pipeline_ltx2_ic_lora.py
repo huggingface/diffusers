@@ -905,7 +905,7 @@ class LTX2InContextPipeline(
         device: torch.device | None = None,
         generator: torch.Generator | None = None,
         latents: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, int, torch.Tensor | None]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, int, torch.Tensor | None, list[int]]:
         """
         Prepare noisy video latents, applying frame and reference-video conditioning.
 
@@ -923,19 +923,22 @@ class LTX2InContextPipeline(
         existing per-token timestep formula `t * (1 - conditioning_mask)` and the post-process blend `denoised * (1 -
         cond_mask) + clean * cond_mask` drive them through the loop.
 
-        Returns a 6-tuple:
+        Returns a 7-tuple:
             - `latents`: packed noisy latents `(B, base + n_keyframe + n_ref, C)`.
             - `conditioning_mask`: `(B, seq_len, 1)` with values in `[0, 1]` — `1` at first-frame positions, `strength`
               at keyframe / reference positions, `0` elsewhere.
             - `clean_latents`: clean condition values at conditioned positions (zeros elsewhere); same shape as
               `latents`.
-            - `appended_coords`: `[1, 3, n_keyframe + n_ref, 2]` positional coordinates to concat onto `video_coords`,
+            - `appended_coords`: `[B, 3, n_keyframe + n_ref, 2]` positional coordinates to concat onto `video_coords`,
               or `None` if no keyframe/reference conditions are provided.
             - `num_ref_tokens`: count of reference tokens at the END of `latents` (used by the call site to build the
               unified self-attention mask).
             - `ref_cross_mask`: `[1, num_ref_tokens]` per-reference-token cross-attention strengths in `[0, 1]`, or
               `None` when `conditioning_attention_strength == 1.0` and no pixel-space mask is provided (in which case
               attention is uniform).
+            - `ref_token_counts`: packed token count per reference condition, in `reference_conditions` order. Splits
+              `ref_cross_mask` into one attention group per reference at the call site; empty when there are no
+              reference conditions.
         """
         latent_height = height // self.vae_spatial_compression_ratio
         latent_width = width // self.vae_spatial_compression_ratio
@@ -1037,18 +1040,21 @@ class LTX2InContextPipeline(
                 device=device,
             )
 
+            # Conditions are encoded at batch 1, so broadcast the tokens, mask and coords across the generation
+            # batch before they are concatenated onto the batch-`batch_size` noisy sequence.
             num_tokens = cond_packed.shape[1]
             kf_mask = torch.full(
-                (cond_packed.shape[0], num_tokens, 1),
+                (batch_size, num_tokens, 1),
                 float(strength),
                 device=device,
                 dtype=conditioning_mask.dtype,
             )
+            kf_tokens = cond_packed.expand(batch_size, -1, -1)
 
-            kf_tokens_list.append(cond_packed)
-            kf_clean_list.append(cond_packed)
+            kf_tokens_list.append(kf_tokens)
+            kf_clean_list.append(kf_tokens)
             kf_mask_list.append(kf_mask)
-            kf_coords_list.append(coords)
+            kf_coords_list.append(coords.expand(batch_size, -1, -1, -1))
 
         if kf_tokens_list:
             keyframe_coords = torch.cat(kf_coords_list, dim=2)
@@ -1064,9 +1070,10 @@ class LTX2InContextPipeline(
         # for attention masking.
         ref_cross_mask: torch.Tensor | None = None
         ref_coords: torch.Tensor | None = None
+        ref_token_counts: list[int] = []
         num_ref_tokens = 0
         if reference_conditions is not None and len(reference_conditions) > 0:
-            ref_latents_packed, ref_coords, ref_cross_mask = self._encode_reference_conditions(
+            ref_latents_packed, ref_coords, ref_cross_mask, ref_token_counts = self._encode_reference_conditions(
                 reference_conditions=reference_conditions,
                 num_frames=num_frames,
                 height=height,
@@ -1081,19 +1088,18 @@ class LTX2InContextPipeline(
             )
             num_ref_tokens = ref_latents_packed.shape[1]
 
-            # All reference videos preprocess to the same (ref_height, ref_width, num_frames), so their packed
-            # token counts are identical. Split `num_ref_tokens` evenly across the conditions and materialize
-            # the per-token strength mask in `reference_conditions` order, matching the layout the encoder
-            # emitted.
-            n_per_ref = num_ref_tokens // len(reference_conditions)
+            # Materialize the per-token strength mask in `reference_conditions` order, matching the layout the
+            # encoder emitted. The counts come from the encoder rather than an equal split of `num_ref_tokens`, so a
+            # reference shorter than `num_frames` (which encodes to fewer tokens) still gets its own strength across
+            # exactly its own tokens.
             ref_mask_chunks = [
                 torch.full(
-                    (batch_size, n_per_ref, 1),
+                    (batch_size, n, 1),
                     float(ref_cond.strength),
                     device=device,
                     dtype=conditioning_mask.dtype,
                 )
-                for ref_cond in reference_conditions
+                for ref_cond, n in zip(reference_conditions, ref_token_counts)
             ]
             ref_mask_full = torch.cat(ref_mask_chunks, dim=1)
 
@@ -1101,6 +1107,8 @@ class LTX2InContextPipeline(
             latents = torch.cat([latents, ref_latents_packed_b], dim=1)
             conditioning_mask = torch.cat([conditioning_mask, ref_mask_full], dim=1)
             clean_latents = torch.cat([clean_latents, ref_latents_packed_b], dim=1)
+            # Encoded at batch 1 like the keyframe coords above, so broadcast to match `video_coords` at the call site.
+            ref_coords = ref_coords.expand(batch_size, -1, -1, -1)
 
         # Combine keyframe + reference appended-coords into a single block to concat onto `video_coords` at
         # the call site.
@@ -1121,7 +1129,15 @@ class LTX2InContextPipeline(
         scaled_mask = (1.0 - conditioning_mask) * noise_scale  # noise to initial noise level `noise_scale`
         latents = noise * scaled_mask + latents * (1 - scaled_mask)
 
-        return latents, conditioning_mask, clean_latents, appended_coords, num_ref_tokens, ref_cross_mask
+        return (
+            latents,
+            conditioning_mask,
+            clean_latents,
+            appended_coords,
+            num_ref_tokens,
+            ref_cross_mask,
+            ref_token_counts,
+        )
 
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2_condition.LTX2ConditionPipeline.prepare_audio_latents
     def prepare_audio_latents(
@@ -1169,8 +1185,13 @@ class LTX2InContextPipeline(
         dtype: torch.dtype | None = None,
         device: torch.device | None = None,
         generator: torch.Generator | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
-        """Encode IC-LoRA reference videos into `(reference_latents, reference_coords, reference_cross_mask)`.
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, list[int]]:
+        """Encode IC-LoRA reference videos into `(reference_latents, reference_coords, reference_cross_mask,
+        reference_token_counts)`.
+
+        `reference_token_counts` gives each reference's packed token count. Callers need it for two things: to give
+        references of differing lengths the right per-token strengths, and to split `reference_cross_mask` back into
+        one attention group per reference (see `_build_video_self_attention_mask`).
 
         This is the shared encoding core used by both `prepare_latents` (which folds reference tokens into the main
         noisy sequence) and the back-compat shim `prepare_reference_latents` (which exposes the legacy 4-tuple output).
@@ -1184,6 +1205,7 @@ class LTX2InContextPipeline(
         all_ref_latents = []
         all_ref_coords = []
         all_ref_cross_masks = []
+        ref_token_counts = []
 
         for ref_cond in reference_conditions:
             # Preprocess reference video frames to the (possibly downscaled) resolution
@@ -1235,6 +1257,7 @@ class LTX2InContextPipeline(
 
             all_ref_latents.append(ref_latent_packed)
             all_ref_coords.append(ref_coords)
+            ref_token_counts.append(num_tokens)
 
             if mask_needed:
                 # Per-reference cross-attention mask. Start from either a downsampled pixel-space mask or a full-1
@@ -1256,7 +1279,7 @@ class LTX2InContextPipeline(
         reference_coords = torch.cat(all_ref_coords, dim=2)  # [1, 3, total_ref_tokens, 2]
         reference_cross_mask = torch.cat(all_ref_cross_masks, dim=1) if mask_needed else None
 
-        return reference_latents, reference_coords, reference_cross_mask
+        return reference_latents, reference_coords, reference_cross_mask, ref_token_counts
 
     def prepare_reference_latents(
         self,
@@ -1323,38 +1346,30 @@ class LTX2InContextPipeline(
                   1]`, or `None` when `conditioning_attention_strength == 1.0` and no pixel-space mask is provided (in
                   which case attention is unmasked).
         """
-        reference_latents, reference_coords, reference_cross_mask = self._encode_reference_conditions(
-            reference_conditions=reference_conditions,
-            height=height,
-            width=width,
-            num_frames=num_frames,
-            reference_downscale_factor=reference_downscale_factor,
-            frame_rate=frame_rate,
-            conditioning_attention_strength=conditioning_attention_strength,
-            conditioning_attention_mask=conditioning_attention_mask,
-            dtype=dtype,
-            device=device,
-            generator=generator,
+        reference_latents, reference_coords, reference_cross_mask, reference_token_counts = (
+            self._encode_reference_conditions(
+                reference_conditions=reference_conditions,
+                height=height,
+                width=width,
+                num_frames=num_frames,
+                reference_downscale_factor=reference_downscale_factor,
+                frame_rate=frame_rate,
+                conditioning_attention_strength=conditioning_attention_strength,
+                conditioning_attention_mask=conditioning_attention_mask,
+                dtype=dtype,
+                device=device,
+                generator=generator,
+            )
         )
 
         # Materialize per-token denoise factors for callers that still expect the 4-tuple. Each ref video has
-        # `1 - strength` for all of its tokens; we rebuild this from the per-video token counts which we can
-        # back out from `reference_latents.shape[1]` and the input `reference_conditions` order.
-        ref_denoise_chunks: list[torch.Tensor] = []
-        idx = 0
-        # Walk the encoded ref tokens video-by-video. Each ref's token count is fixed by the ref video's latent
-        # shape, which equals (num_frames -> ref_latent_frames) * ref_latent_h * ref_latent_w. Computing it here
-        # would duplicate the encoding math; instead we rely on the shape match across all refs being identical
-        # (same `num_frames`, same downscaled height/width) so we can split equally.
-        n_total = reference_latents.shape[1]
-        n_per_ref = n_total // max(len(reference_conditions), 1)
-        for ref_cond in reference_conditions:
-            ref_denoise_chunks.append(
-                torch.full(
-                    (1, n_per_ref), 1.0 - ref_cond.strength, device=reference_latents.device, dtype=torch.float32
-                )
-            )
-            idx += n_per_ref
+        # `1 - strength` for all of its tokens, laid out in `reference_conditions` order. The token counts come from
+        # the encoder rather than an equal split of the total, so a reference shorter than `num_frames` (which
+        # encodes to fewer tokens) still gets its own strength across exactly its own tokens.
+        ref_denoise_chunks = [
+            torch.full((1, n), 1.0 - ref_cond.strength, device=reference_latents.device, dtype=torch.float32)
+            for ref_cond, n in zip(reference_conditions, reference_token_counts)
+        ]
         reference_denoise_factors = (
             torch.cat(ref_denoise_chunks, dim=1) if ref_denoise_chunks else reference_latents.new_zeros((1, 0))
         )
@@ -1413,43 +1428,55 @@ class LTX2InContextPipeline(
     @staticmethod
     def _build_video_self_attention_mask(
         num_noisy_tokens: int,
+        num_prefix_tokens: int,
         extras_cross_masks: list[torch.Tensor],
         device: torch.device,
         dtype: torch.dtype = torch.float32,
     ) -> torch.Tensor:
         """
-        Build the `(1, T_video, T_video)` self-attention mask over `noisy + extras` tokens, where `extras` is a
-        concatenation of one or more conditioning groups (e.g. keyframes, IC-LoRA references).
+        Build the `(1, T_video, T_video)` self-attention mask over `prefix + extras` tokens, where `prefix` is the
+        noisy (generated-video) tokens followed by any keyframe-condition tokens, and `extras` is a concatenation of
+        one or more IC-LoRA reference groups — one group per `LTX2ReferenceCondition`.
 
         Block structure (mirrors the reference `update_attention_mask` / `ConditioningItemAttentionStrengthWrapper`):
-            - noisy ↔ noisy: 1.0 (full attention)
+            - prefix ↔ prefix: 1.0 (noisy and keyframe tokens attend fully among themselves)
             - noisy ↔ group_i: `extras_cross_masks[i]` broadcast across the noisy-token axis
             - group_i ↔ noisy: `extras_cross_masks[i]` broadcast across the noisy-token axis (symmetric)
             - group_i ↔ group_i: 1.0 (tokens in a group fully attend to themselves)
-            - group_i ↔ group_j (i != j): 0.0 (different conditioning groups don't cross-attend)
+            - keyframe ↔ group_i: 0.0 (reference tokens don't cross-attend with keyframe conditions)
+            - group_i ↔ group_j (i != j): 0.0 (different reference groups don't cross-attend)
+
+        `num_noisy_tokens` counts only the generated-video tokens: keyframe-condition tokens live inside the prefix but
+        are *not* cross-attention partners for the reference groups. In the reference implementation this falls out of
+        applying `build_attention_mask` once per conditioning item, taking `num_noisy_tokens` from the target latent
+        shape and the block offset from the running sequence length.
 
         Args:
             num_noisy_tokens (`int`):
-                Number of noisy video tokens.
+                Number of noisy (generated-video) tokens, at positions `[0:num_noisy_tokens]`.
+            num_prefix_tokens (`int`):
+                Number of tokens preceding the extras block: `num_noisy_tokens` plus any keyframe-condition tokens.
+                Equal to `num_noisy_tokens` when there are no keyframe conditions.
             extras_cross_masks (`list[torch.Tensor]`):
-                List of per-token cross-attention strengths, one per conditioning group. Each entry has shape `(1,
+                List of per-token cross-attention strengths, one per reference group. Each entry has shape `(1,
                 num_tokens_in_group)` with values in `[0, 1]`. Groups must appear in the same order as their tokens in
                 the extras block.
             device, dtype:
                 Tensor device and dtype.
 
         Returns:
-            Multiplicative self-attention mask of shape `(1, num_noisy_tokens + sum(group_sizes), num_noisy_tokens +
+            Multiplicative self-attention mask of shape `(1, num_prefix_tokens + sum(group_sizes), num_prefix_tokens +
             sum(group_sizes))` with values in `[0, 1]`.
         """
         total_extras = sum(m.shape[1] for m in extras_cross_masks)
-        total = num_noisy_tokens + total_extras
+        total = num_prefix_tokens + total_extras
 
-        # Initialize to 0 so that between-group blocks remain masked without explicit assignment.
+        # Initialize to 0 so that the keyframe↔group and between-group blocks remain masked without explicit
+        # assignment.
         attn_mask = torch.zeros((1, total, total), device=device, dtype=dtype)
-        attn_mask[:, :num_noisy_tokens, :num_noisy_tokens] = 1.0  # noisy ↔ noisy
+        attn_mask[:, :num_prefix_tokens, :num_prefix_tokens] = 1.0  # noisy/keyframe ↔ noisy/keyframe
 
-        offset = num_noisy_tokens
+        offset = num_prefix_tokens
         for cross_mask in extras_cross_masks:
             n = cross_mask.shape[1]
             cross = cross_mask.to(device=device, dtype=dtype)
@@ -1852,44 +1879,56 @@ class LTX2InContextPipeline(
             _, _, latent_num_frames, latent_height, latent_width = latents.shape
 
         num_channels_latents = self.transformer.config.in_channels
-        latents, conditioning_mask, clean_latents, appended_coords, num_ref_tokens, ref_cross_mask = (
-            self.prepare_latents(
-                conditions=conditions,
-                reference_conditions=reference_conditions,
-                reference_downscale_factor=reference_downscale_factor,
-                conditioning_attention_strength=conditioning_attention_strength,
-                conditioning_attention_mask=conditioning_attention_mask,
-                batch_size=batch_size * num_videos_per_prompt,
-                num_channels_latents=num_channels_latents,
-                height=height,
-                width=width,
-                num_frames=num_frames,
-                frame_rate=frame_rate,
-                noise_scale=noise_scale,
-                dtype=torch.float32,
-                device=device,
-                generator=generator,
-                latents=latents,
-            )
+        (
+            latents,
+            conditioning_mask,
+            clean_latents,
+            appended_coords,
+            num_ref_tokens,
+            ref_cross_mask,
+            ref_token_counts,
+        ) = self.prepare_latents(
+            conditions=conditions,
+            reference_conditions=reference_conditions,
+            reference_downscale_factor=reference_downscale_factor,
+            conditioning_attention_strength=conditioning_attention_strength,
+            conditioning_attention_mask=conditioning_attention_mask,
+            batch_size=batch_size * num_videos_per_prompt,
+            num_channels_latents=num_channels_latents,
+            height=height,
+            width=width,
+            num_frames=num_frames,
+            frame_rate=frame_rate,
+            noise_scale=noise_scale,
+            dtype=torch.float32,
+            device=device,
+            generator=generator,
+            latents=latents,
         )
         # Track the base token count in the generated video, excluding any appended keyframe and reference-video
         # condition tokens.
         base_token_count = latents.shape[1] - (appended_coords.shape[2] if appended_coords is not None else 0)
 
         has_conditions = conditions is not None and len(conditions) > 0
-        has_appended_tokens = appended_coords is not None
         if self.do_classifier_free_guidance and (has_conditions or num_ref_tokens > 0):
             conditioning_mask = torch.cat([conditioning_mask, conditioning_mask])
 
-        # Build a video self-attention mask over three groups: (1) the noisy latents (2) keyframe conditions, if any
-        # and (3) reference conditions, if any. Tokens are attend to each other across groups as follows:
-        #   - TODO
+        # Build a video self-attention mask over the noisy tokens and the appended reference tokens, matching
+        # `build_attention_mask` in the reference implementation:
+        #   - noisy <-> noisy: 1.0 (full attention)
+        #   - noisy <-> reference group: that group's cross mask, broadcast symmetrically across the noisy-token axis
+        #   - reference group <-> itself: 1.0 (a group fully attends to itself)
+        #   - reference group <-> any other appended group (keyframes, other references): 0.0
+        # `num_noisy_tokens` is `base_token_count`, not `latents.shape[1] - num_ref_tokens`: keyframe tokens sit
+        # between the noisy tokens and the reference groups, and are masked off from the references rather than
+        # cross-attending with them.
+        # Only needed when the references carry a per-token strength; unmasked attention is the default.
         video_self_attention_mask: torch.Tensor | None = None
         if ref_cross_mask is not None:
-            num_noisy_tokens = latents.shape[1] - num_ref_tokens
             video_self_attention_mask = self._build_video_self_attention_mask(
-                num_noisy_tokens=num_noisy_tokens,
-                extras_cross_masks=[ref_cross_mask],
+                num_noisy_tokens=base_token_count,
+                num_prefix_tokens=latents.shape[1] - num_ref_tokens,
+                extras_cross_masks=list(torch.split(ref_cross_mask, ref_token_counts, dim=1)),
                 device=device,
             )
 
@@ -1992,8 +2031,14 @@ class LTX2InContextPipeline(
                 audio_timestep = t_audio.expand(latent_model_input.shape[0])
 
                 # --- Main transformer forward pass (conditional + unconditional for CFG) ---
-                if video_self_attention_mask is not None:
-                    video_self_attention_mask = video_self_attention_mask.expand(latent_model_input.shape[0], -1, -1)
+                # Expand into a per-pass local rather than rebinding `video_self_attention_mask`. The base mask is
+                # built at batch 1; the STG and modality passes below run at `latents.shape[0]` rather than this
+                # CFG-doubled batch, so rebinding here would make their own expand() fail on the second pass.
+                cond_uncond_attention_mask = (
+                    video_self_attention_mask.expand(latent_model_input.shape[0], -1, -1)
+                    if video_self_attention_mask is not None
+                    else None
+                )
                 with self.transformer.cache_context("cond_uncond"):
                     noise_pred_video, noise_pred_audio = self.transformer(
                         hidden_states=latent_model_input,
@@ -2006,7 +2051,7 @@ class LTX2InContextPipeline(
                         audio_sigma=audio_timestep,
                         encoder_attention_mask=connector_attention_mask,
                         audio_encoder_attention_mask=connector_attention_mask,
-                        video_self_attention_mask=video_self_attention_mask,
+                        video_self_attention_mask=cond_uncond_attention_mask,
                         num_frames=latent_num_frames,
                         height=latent_height,
                         width=latent_width,
@@ -2078,8 +2123,11 @@ class LTX2InContextPipeline(
 
                 # --- STG forward pass ---
                 if self.do_spatio_temporal_guidance:
-                    if video_self_attention_mask is not None:
-                        video_self_attention_mask = video_self_attention_mask.expand(latents.shape[0], -1, -1)
+                    single_pass_attention_mask = (
+                        video_self_attention_mask.expand(latents.shape[0], -1, -1)
+                        if video_self_attention_mask is not None
+                        else None
+                    )
                     with self.transformer.cache_context("uncond_stg"):
                         noise_pred_video_uncond_stg, noise_pred_audio_uncond_stg = self.transformer(
                             hidden_states=latents.to(dtype=prompt_embeds.dtype),
@@ -2092,7 +2140,7 @@ class LTX2InContextPipeline(
                             audio_sigma=audio_timestep_single,
                             encoder_attention_mask=prompt_attn_mask,
                             audio_encoder_attention_mask=prompt_attn_mask,
-                            video_self_attention_mask=video_self_attention_mask,
+                            video_self_attention_mask=single_pass_attention_mask,
                             num_frames=latent_num_frames,
                             height=latent_height,
                             width=latent_width,
@@ -2124,8 +2172,11 @@ class LTX2InContextPipeline(
 
                 # --- Modality isolation guidance forward pass ---
                 if self.do_modality_isolation_guidance:
-                    if video_self_attention_mask is not None:
-                        video_self_attention_mask = video_self_attention_mask.expand(latents.shape[0], -1, -1)
+                    single_pass_attention_mask = (
+                        video_self_attention_mask.expand(latents.shape[0], -1, -1)
+                        if video_self_attention_mask is not None
+                        else None
+                    )
                     with self.transformer.cache_context("uncond_modality"):
                         noise_pred_video_uncond_mod, noise_pred_audio_uncond_mod = self.transformer(
                             hidden_states=latents.to(dtype=prompt_embeds.dtype),
@@ -2138,7 +2189,7 @@ class LTX2InContextPipeline(
                             audio_sigma=audio_timestep_single,
                             encoder_attention_mask=prompt_attn_mask,
                             audio_encoder_attention_mask=prompt_attn_mask,
-                            video_self_attention_mask=video_self_attention_mask,
+                            video_self_attention_mask=single_pass_attention_mask,
                             num_frames=latent_num_frames,
                             height=latent_height,
                             width=latent_width,
@@ -2189,8 +2240,12 @@ class LTX2InContextPipeline(
                 else:
                     noise_pred_audio = noise_pred_audio_g
 
-                # Apply frame conditioning mask: blend denoised x0 with clean condition latents
-                if has_conditions:
+                # Apply the conditioning mask: blend denoised x0 with the clean condition latents. Reference tokens
+                # take part in this exactly like frame conditions do -- in the reference implementation
+                # `VideoConditionByReferenceLatent` and `VideoConditionByKeyframeIndex` produce the same
+                # (denoise_mask, clean_latent) pair and `post_process_latent` is applied unconditionally, so
+                # reference tokens must be re-pinned every step or they drift away from the encoded reference.
+                if has_conditions or num_ref_tokens > 0:
                     bsz = noise_pred_video.size(0)
                     denoised_sample_cond = (
                         noise_pred_video * (1 - conditioning_mask[:bsz])

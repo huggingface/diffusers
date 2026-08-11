@@ -995,18 +995,21 @@ class LTX2ConditionPipeline(
                 device=device,
             )
 
+            # Conditions are encoded at batch 1, so broadcast the tokens, mask and coords across the generation
+            # batch before they are concatenated onto the batch-`batch_size` noisy sequence.
             num_tokens = cond_packed.shape[1]
             kf_mask = torch.full(
-                (cond_packed.shape[0], num_tokens, 1),
+                (batch_size, num_tokens, 1),
                 float(strength),
                 device=device,
                 dtype=conditioning_mask.dtype,
             )
+            kf_tokens = cond_packed.expand(batch_size, -1, -1)
 
-            kf_tokens_list.append(cond_packed)
-            kf_clean_list.append(cond_packed)
+            kf_tokens_list.append(kf_tokens)
+            kf_clean_list.append(kf_tokens)
             kf_mask_list.append(kf_mask)
-            kf_coords_list.append(coords)
+            kf_coords_list.append(coords.expand(batch_size, -1, -1, -1))
 
         if kf_tokens_list:
             keyframe_coords = torch.cat(kf_coords_list, dim=2)
