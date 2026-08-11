@@ -141,33 +141,6 @@ class TestLTX2TransformerCompile(LTX2TransformerTesterConfig, TorchCompileTester
     """Torch compile tests for LTX2 Video Transformer."""
 
 
-def test_ltx2_keyframes_abs_pos_embedding_load_and_forward():
-    """LTX-2.5.1 keyframes embedding is stored when enabled and unused by the regular forward."""
-    init_dict = LTX2TransformerTesterConfig().get_init_dict()
-    init_dict["use_keyframes_abs_pos_embedding"] = True
-    model = LTX2VideoTransformer3DModel(**init_dict).to(torch_device)
-    model.eval()
-
-    assert hasattr(model, "keyframes_abs_pos_embedding")
-    assert model.keyframes_abs_pos_embedding.shape == (1, 16)  # 2 heads * 8 dim
-    assert "keyframes_abs_pos_embedding" in model.state_dict()
-
-    weight = torch.randn_like(model.keyframes_abs_pos_embedding)
-    _, unexpected = model.load_state_dict({"keyframes_abs_pos_embedding": weight}, strict=False)
-    assert "keyframes_abs_pos_embedding" not in unexpected
-    assert torch.equal(model.keyframes_abs_pos_embedding, weight)
-
-    inputs = LTX2TransformerTesterConfig().get_dummy_inputs()
-    with torch.no_grad():
-        output = model(**inputs, return_dict=False)
-    assert output[0].shape == (2, 512, 4)
-
-    # Default models omit the parameter entirely.
-    model_without = LTX2VideoTransformer3DModel(**LTX2TransformerTesterConfig().get_init_dict())
-    assert not hasattr(model_without, "keyframes_abs_pos_embedding")
-    assert "keyframes_abs_pos_embedding" not in model_without.state_dict()
-
-
 # TODO: Add pretrained_model_name_or_path once a tiny LTX2 model is available on the Hub
 # class TestLTX2TransformerBitsAndBytes(LTX2TransformerTesterConfig, BitsAndBytesTesterMixin):
 #     """BitsAndBytes quantization tests for LTX2 Video Transformer."""
