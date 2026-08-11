@@ -27,7 +27,14 @@ from diffusers.modular_pipelines import (
 )
 
 from ...testing_utils import torch_device
-from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularGuiderTesterMixin,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 QWEN_IMAGE_TEXT2IMAGE_WORKFLOWS = {
@@ -127,11 +134,10 @@ QWEN_IMAGE_TEXT2IMAGE_WORKFLOWS = {
 }
 
 
-class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
+class QwenImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = QwenImageModularPipeline
     pipeline_blocks_class = QwenImageAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-modular"
-
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_workflow_blocks = QWEN_IMAGE_TEXT2IMAGE_WORKFLOWS
@@ -150,8 +156,26 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuider
         }
         return inputs
 
+
+class TestQwenImageModularPipelineFast(QwenImageModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
+
+
+class TestQwenImageModularPipelineLoading(QwenImageModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestQwenImageModularPipelineWorkflow(QwenImageModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestQwenImageModularPipelineMemory(QwenImageModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class TestQwenImageModularPipelineGuider(QwenImageModularPipelineTesterConfig, ModularGuiderTesterMixin):
+    pass
 
 
 QWEN_IMAGE_EDIT_WORKFLOWS = {
@@ -192,11 +216,10 @@ QWEN_IMAGE_EDIT_WORKFLOWS = {
 }
 
 
-class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
+class QwenImageEditModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = QwenImageEditModularPipeline
     pipeline_blocks_class = QwenImageEditAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-modular"
-
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_workflow_blocks = QWEN_IMAGE_EDIT_WORKFLOWS
@@ -215,15 +238,32 @@ class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGu
         inputs["image"] = PIL.Image.new("RGB", (32, 32), 0)
         return inputs
 
+
+class TestQwenImageEditModularPipelineFast(QwenImageEditModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    pass
+
+
+class TestQwenImageEditModularPipelineLoading(QwenImageEditModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestQwenImageEditModularPipelineWorkflow(QwenImageEditModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestQwenImageEditModularPipelineMemory(QwenImageEditModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class TestQwenImageEditModularPipelineGuider(QwenImageEditModularPipelineTesterConfig, ModularGuiderTesterMixin):
     def test_guider_cfg(self):
         super().test_guider_cfg(7e-5)
 
 
-class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
+class QwenImageEditPlusModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = QwenImageEditPlusModularPipeline
     pipeline_blocks_class = QwenImageEditPlusAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-plus-modular"
-
     # No `mask_image` yet.
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
@@ -242,6 +282,10 @@ class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, Modul
         inputs["image"] = PIL.Image.new("RGB", (32, 32), 0)
         return inputs
 
+
+class TestQwenImageEditPlusModularPipelineFast(
+    QwenImageEditPlusModularPipelineTesterConfig, ModularPipelineTesterMixin
+):
     def test_multi_images_as_input(self):
         inputs = self.get_dummy_inputs()
         image = inputs.pop("image")
@@ -264,5 +308,27 @@ class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, Modul
     def test_inference_batch_single_identical():
         super().test_inference_batch_single_identical()
 
+
+class TestQwenImageEditPlusModularPipelineLoading(
+    QwenImageEditPlusModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
+    pass
+
+
+class TestQwenImageEditPlusModularPipelineWorkflow(
+    QwenImageEditPlusModularPipelineTesterConfig, ModularWorkflowTesterMixin
+):
+    pass
+
+
+class TestQwenImageEditPlusModularPipelineMemory(
+    QwenImageEditPlusModularPipelineTesterConfig, ModularMemoryTesterMixin
+):
+    pass
+
+
+class TestQwenImageEditPlusModularPipelineGuider(
+    QwenImageEditPlusModularPipelineTesterConfig, ModularGuiderTesterMixin
+):
     def test_guider_cfg(self):
         super().test_guider_cfg(1e-6)
