@@ -91,6 +91,7 @@ from .import_utils import (
     is_kornia_available,
     is_librosa_available,
     is_matplotlib_available,
+    is_natten_available,
     is_nltk_available,
     is_note_seq_available,
     is_nvidia_modelopt_available,

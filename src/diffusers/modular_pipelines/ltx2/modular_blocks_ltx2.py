@@ -31,7 +31,12 @@ from .before_denoise import (
     LTX2SetTimestepsStep,
     LTX2TextInputStep,
 )
-from .decoders import LTX2AudioDecoderStep, LTX2TrimConditionTokensStep, LTX2VaeDecoderStep
+from .decoders import (
+    LTX2AudioDecoderStep,
+    LTX2DiffusionVaeDecoderStep,
+    LTX2TrimConditionTokensStep,
+    LTX2VaeDecoderStep,
+)
 from .denoise import LTX2ConditionDenoiseStep, LTX2DenoiseStep, LTX2Image2VideoDenoiseStep
 from .encoders import (
     LTX2ConditionEncoderStep,
@@ -1888,3 +1893,230 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
             OutputParam.template("videos"),
             OutputParam("audio", type_hint=torch.Tensor, description="The generated audio waveform."),
         ]
+
+
+# auto_docstring
+class LTX25DecoderStep(SequentialPipelineBlocks):
+    """
+    Decode stage for LTX-2.5: denoises the video latents with the diffusion decoder and vocodes the audio latents (or
+    returns latents).
+
+      Components:
+          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) audio_vae
+          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+
+      Inputs:
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+          height (`int`, *optional*, defaults to 512):
+              The height in pixels of the generated image.
+          width (`int`, *optional*, defaults to 704):
+              The width in pixels of the generated image.
+          num_frames (`int`, *optional*, defaults to 121):
+              The number of frames in the generated video.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          dtype (`dtype`):
+              The dtype of the model inputs, can be generated in input step.
+          audio_latents (`Tensor`):
+              Denoised audio latents.
+          audio_num_frames (`int`):
+              Number of audio latent frames, used to unpack the audio latent sequence.
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+          audio (`Tensor`):
+              The generated audio waveform.
+    """
+
+    model_name = "ltx2"
+    block_classes = [LTX2DiffusionVaeDecoderStep, LTX2AudioDecoderStep]
+    block_names = ["video_decode", "audio_decode"]
+
+    @property
+    def description(self):
+        return (
+            "Decode stage for LTX-2.5: denoises the video latents with the diffusion decoder and vocodes the audio "
+            "latents (or returns latents)."
+        )
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam.template("videos"),
+            OutputParam("audio", type_hint=torch.Tensor, description="The generated audio waveform."),
+        ]
+
+
+# auto_docstring
+class LTX25ConditionDecoderStep(SequentialPipelineBlocks):
+    """
+    Decode stage for LTX-2.5 condition workflows: drops the appended keyframe-condition tokens, then denoises the video
+    latents with the diffusion decoder and vocodes the audio latents (or returns latents).
+
+      Components:
+          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) audio_vae
+          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+
+      Inputs:
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
+          base_token_count (`int`):
+              Number of generated-video tokens, i.e. the sequence length before appended tokens.
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+          height (`int`, *optional*, defaults to 512):
+              The height in pixels of the generated image.
+          width (`int`, *optional*, defaults to 704):
+              The width in pixels of the generated image.
+          num_frames (`int`, *optional*, defaults to 121):
+              The number of frames in the generated video.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          dtype (`dtype`):
+              The dtype of the model inputs, can be generated in input step.
+          audio_latents (`Tensor`):
+              Denoised audio latents.
+          audio_num_frames (`int`):
+              Number of audio latent frames, used to unpack the audio latent sequence.
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+          audio (`Tensor`):
+              The generated audio waveform.
+    """
+
+    model_name = "ltx2"
+    block_classes = [LTX2TrimConditionTokensStep, LTX2DiffusionVaeDecoderStep, LTX2AudioDecoderStep]
+    block_names = ["trim_condition_tokens", "video_decode", "audio_decode"]
+
+    @property
+    def description(self):
+        return (
+            "Decode stage for LTX-2.5 condition workflows: drops the appended keyframe-condition tokens, then "
+            "denoises the video latents with the diffusion decoder and vocodes the audio latents (or returns "
+            "latents)."
+        )
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam.template("videos"),
+            OutputParam("audio", type_hint=torch.Tensor, description="The generated audio waveform."),
+        ]
+
+
+# auto_docstring
+class LTX25AutoDecoderStep(AutoPipelineBlocks):
+    """
+    Auto decode block for LTX-2.5 that selects the decoder based on inputs.
+       - `LTX25ConditionDecoderStep` when `base_token_count` is present, i.e. the denoised sequence carries appended
+         keyframe / reference tokens (condition, in-context).
+       - `LTX25DecoderStep` otherwise (text-to-video, image-to-video).
+
+      Components:
+          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) audio_vae
+          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+
+      Inputs:
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
+          base_token_count (`int`, *optional*):
+              Number of generated-video tokens, i.e. the sequence length before appended tokens.
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+          height (`int`, *optional*, defaults to 512):
+              The height in pixels of the generated image.
+          width (`int`, *optional*, defaults to 704):
+              The width in pixels of the generated image.
+          num_frames (`int`, *optional*, defaults to 121):
+              The number of frames in the generated video.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          dtype (`dtype`):
+              The dtype of the model inputs, can be generated in input step.
+          audio_latents (`Tensor`):
+              Denoised audio latents.
+          audio_num_frames (`int`):
+              Number of audio latent frames, used to unpack the audio latent sequence.
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+          audio (`Tensor`):
+              The generated audio waveform.
+    """
+
+    model_name = "ltx2"
+    # Mirrors `LTX2AutoDecoderStep` on the same `base_token_count` trigger; only the video decoder differs.
+    block_classes = [LTX25ConditionDecoderStep, LTX25DecoderStep]
+    block_names = ["condition", "default"]
+    block_trigger_inputs = ["base_token_count", None]
+
+    @property
+    def description(self):
+        return (
+            "Auto decode block for LTX-2.5 that selects the decoder based on inputs.\n"
+            " - `LTX25ConditionDecoderStep` when `base_token_count` is present, i.e. the denoised sequence carries "
+            "appended keyframe / reference tokens (condition, in-context).\n"
+            " - `LTX25DecoderStep` otherwise (text-to-video, image-to-video)."
+        )
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam.template("videos"),
+            OutputParam("audio", type_hint=torch.Tensor, description="The generated audio waveform."),
+        ]
+
+
+class LTX25AutoBlocks(LTX2AutoBlocks):
+    """
+    Auto blocks for LTX-2.5, supporting text-to-video, image-to-video, condition-to-video and in-context (IC-LoRA)
+    generation (joint video + audio).
+
+      Supported workflows:
+        - `text2video`: requires `prompt`
+        - `image2video`: requires `image`, `prompt`
+        - `condition`: requires `conditions`, `prompt`
+        - `in_context`: requires `reference_conditions`, `num_frames`, `prompt`
+    """
+
+    model_name = "ltx2"
+    # Both lists are restated rather than inherited: `block_classes` and `block_names` are positional, so a subclass
+    # that overrides one and inherits the other silently desynchronizes when the parent's graph changes. Keep these in
+    # step with `LTX2AutoBlocks`; only the `decode` entry differs.
+    block_classes = [
+        LTX2AutoPromptEnhancerStep,
+        LTX2TextConditioningStep,
+        LTX2AutoDurationStep,
+        LTX2AutoVaeEncoderStep,
+        LTX2AutoConditionEncoderStep,
+        LTX2AutoReferenceEncoderStep,
+        LTX2AutoCoreDenoiseStep,
+        LTX25AutoDecoderStep,
+    ]
+    block_names = [
+        "prompt_enhancer",
+        "text_encoder",
+        "duration",
+        "vae_encoder",
+        "condition_encoder",
+        "reference_encoder",
+        "denoise",
+        "decode",
+    ]
+
+    @property
+    def description(self):
+        return (
+            "Auto blocks for LTX-2.5 supporting text-to-video, image-to-video, condition-to-video and in-context "
+            "(IC-LoRA) generation (joint video + audio). Identical to `LTX2AutoBlocks` except that the video decoder "
+            "is `LTX2DiffusionVaeDecoderStep`, since the diffusion decoder is the native default from LTX-2.5 on. To "
+            'decode with the convolutional VAE instead, swap the decode block: `blocks.sub_blocks["decode"] = '
+            "LTX2AutoDecoderStep()`."
+        )
