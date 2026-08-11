@@ -23,11 +23,11 @@ pipeline's `vae`: run any LTX-2 pipeline with `output_type="latent"`, then decod
 import torch
 from diffusers import LTX2Pipeline, LTX2VideoDiffusionDecodePipeline, LTX2VideoDiffusionDecoderModel
 
-pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2.5", dtype=torch.bfloat16).to("cuda")
+pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2.5-Diffusers", dtype=torch.bfloat16).to("cuda")
 latents = pipe(prompt="a potter shaping a clay vase", output_type="latent").frames
 
 decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
-    "Lightricks/LTX-2.5", subfolder="diffusion_decoder", dtype=torch.bfloat16
+    "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder", dtype=torch.bfloat16
 ).to("cuda")
 decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=pipe.scheduler)
 

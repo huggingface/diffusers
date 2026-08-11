@@ -508,13 +508,17 @@ encode_video(
 
 ## LTX-2.5
 
-LTX-2.5 reuses the same `LTX2Pipeline`/`LTX2VideoTransformer3DModel`/`AutoencoderKLLTX2Video`/etc. classes as LTX-2.3 — there is no separate pipeline class for it. The only user-visible difference is the text encoder: LTX-2.5 is paired with a Gemma 4 (`gemma4_unified`) checkpoint instead of Gemma 3. This is loaded automatically when you call `from_pretrained` on a converted LTX-2.5 checkpoint (via the `transformers` `Auto*` classes), so no extra setup is needed at inference time — just point `from_pretrained` at an LTX-2.5 repo instead of an LTX-2.3 one:
+LTX-2.5 reuses the same `LTX2Pipeline`/`LTX2VideoTransformer3DModel`/`AutoencoderKLLTX2Video`/etc. classes as LTX-2.3 — there is no separate pipeline class for it. The user-visible difference is the text encoder: LTX-2.5 is paired with a Gemma 4 (`gemma4_unified`) checkpoint instead of Gemma 3. This is loaded automatically when you call `from_pretrained` on a converted LTX-2.5 checkpoint (via the `transformers` `Auto*` classes), so no extra setup is needed at inference time — just point `from_pretrained` at an LTX-2.5 repo instead of an LTX-2.3 one.
+
+[`Lightricks/LTX-2.5-Diffusers`](https://huggingface.co/Lightricks/LTX-2.5-Diffusers) ships both transformers: the **distilled** DiT in `transformer/`, which is what `model_index.json` points at, and the full/SFT DiT in `transformer_full/`, which has to be loaded explicitly (see [Full / SFT transformer](#full--sft-transformer)). The repo's `scheduler/` is configured for the distilled checkpoint (`use_dynamic_shifting=False`, `shift_terminal=None`) so that its sigma schedule is used exactly as given. Everything [two-stage generation](#two-stage-generation-for-ltx-25) needs is shipped there too: a `latent_upsampler/` subfolder and the stage 2 distilled LoRA, `ltx-2.5-22b-distilled-lora-450-bf16.safetensors`, at the root of the repo.
+
+Distilled inference is driven by an explicit sigma schedule rather than a step count, and runs unguided (`guidance_scale=1.0`, so `negative_prompt` is unused). Passing `num_inference_steps` instead would hand the model a generic linear schedule and quietly cost quality:
 
 ```py
 import torch
 from diffusers import LTX2Pipeline
 from diffusers.utils import encode_video
-from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
+from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
 
 device = "cuda"
 width = 768
@@ -522,9 +526,9 @@ height = 512
 random_seed = 42
 frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(random_seed)
-model_path = "diffusers/LTX-2.5-Diffusers"
+model_path = "Lightricks/LTX-2.5-Diffusers"
 
-pipe = LTX2Pipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+pipe = LTX2Pipeline.from_pretrained(model_path, dtype=torch.bfloat16)
 pipe.enable_sequential_cpu_offload(device=device)
 pipe.vae.enable_tiling()
 
@@ -532,22 +536,13 @@ prompt = "A cinematic shot of a red fox walking through a snowy forest at dawn, 
 
 video, audio = pipe(
     prompt=prompt,
-    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
     width=width,
     height=height,
     num_frames=121,
     frame_rate=frame_rate,
-    num_inference_steps=30,
-    guidance_scale=3.0,  # Same recommended guidance parameters as LTX-2.3, see Multimodal Guidance above
-    stg_scale=1.0,
-    modality_scale=3.0,
-    guidance_rescale=0.7,
-    audio_guidance_scale=7.0,
-    audio_stg_scale=1.0,
-    audio_modality_scale=3.0,
-    audio_guidance_rescale=0.7,
-    spatio_temporal_guidance_blocks=[28],
-    use_cross_timestep=True,
+    sigmas=DISTILLED_SIGMA_VALUES,
+    guidance_scale=1.0,
+    audio_guidance_scale=1.0,
     generator=generator,
     output_type="np",
     return_dict=False,
@@ -558,50 +553,238 @@ encode_video(
     fps=frame_rate,
     audio=audio[0].float().cpu(),
     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
-    output_path="ltx2_4_t2v.mp4",
+    output_path="ltx2_5_t2v.mp4",
 )
 ```
 
-A few things carry over from LTX-2.3 unchanged: the [Multimodal Guidance](#multimodal-guidance) recommendations above apply equally to LTX-2.5 (including STG on block `28`). One thing does *not* carry over:
+### Two-stage generation for LTX-2.5
 
-- **Single-stage checkpoint only.** LTX-2.5 currently ships as a single-stage (text/image-to-video) checkpoint — the [two-stage generation](#two-stages-generation) workflow (distilled LoRA + latent upsampler) is not yet available for it.
+LTX-2.5 supports both two-stage variants, and `DISTILLED_SIGMA_VALUES` / `STAGE_2_DISTILLED_SIGMA_VALUES` are its reference schedules:
 
-### Prompt Enhancement for LTX-2.5
+- **Distilled checkpoint, both stages** — the reference recipe for the default `transformer/`, and the one shown below. No stage 2 LoRA is involved, since the transformer is already distilled; this is [Distilled checkpoint generation](#distilled-checkpoint-generation) with LTX-2.5 weights.
+- **Full/SFT stage 1 + distilled LoRA stage 2** — [Two-stages Generation](#two-stages-generation) as described at the top of this page, using `transformer_full/` and the shipped LoRA. See [below](#stage-2-with-the-distilled-lora) for what changes.
 
-**Using prompt enhancement is strongly recommended for LTX-2.5; pass `enable_prompt_enhancement=True` to opt in** (same as the Lightricks reference pipelines). Unlike LTX-2.0/2.3, where the same text encoder checkpoint doubles as the enhancer (see [Prompt Enhancement](#prompt-enhancement) above), LTX-2.5's fine-tuned text encoder was not trained for enhancement. Instead, enhancement uses a separate, off-the-shelf `google/gemma-4-E2B-it` checkpoint. Load it into the pipeline's optional `prompt_enhancer`/`processor` components, then enable enhancement — the pipeline defaults to `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT` and the Gemma 4 recipe (`do_sample=False`, `no_repeat_ngram_size=5`, `max_new_tokens=600`). Pass an explicit `system_prompt=` to override:
+Stage 1 runs at half the target resolution, the upsampler doubles it, and stage 2 refines at full resolution — video *and* audio, both reseeded from the stage 1 latents at `noise_scale=STAGE_2_DISTILLED_SIGMA_VALUES[0]`. Height and width must be divisible by 64, since stage 1 halves each axis and still has to land on the VAE's spatial grid.
 
 ```py
 import torch
-from transformers import AutoModelForImageTextToText, AutoProcessor
-from diffusers import LTX2Pipeline
+from diffusers.pipelines.ltx2 import LTX2Pipeline, LTX2LatentUpsamplePipeline
+from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
+from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
-from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 
 device = "cuda"
-width = 768
-height = 512
-random_seed = 42
+width = 1536
+height = 1024
+num_frames = 121
 frame_rate = 24.0
-generator = torch.Generator(device).manual_seed(random_seed)
-model_path = "diffusers/LTX-2.5-Diffusers"
-enhancer_model_id = "google/gemma-4-E2B-it"
+model_path = "Lightricks/LTX-2.5-Diffusers"
 
-pipe = LTX2Pipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
-pipe.enable_model_cpu_offload(device=device)
-pipe.vae.enable_tiling()
-if getattr(pipe, "prompt_enhancer", None) is None:
-    pipe.prompt_enhancer = AutoModelForImageTextToText.from_pretrained(enhancer_model_id)
-    pipe.processor = AutoProcessor.from_pretrained(enhancer_model_id)
+# One generator for the whole call, threaded through both stages, so stage 2 continues the noise
+# stream instead of repeating stage 1's draw.
+generator = torch.Generator(device).manual_seed(42)
+
+pipe = LTX2Pipeline.from_pretrained(model_path, dtype=torch.bfloat16)
+pipe.enable_sequential_cpu_offload(device=device)
 
 prompt = "A cinematic shot of a red fox walking through a snowy forest at dawn, golden light filtering through pine trees."
 
+# Stage 1: half resolution, 8 distilled sigmas
+video_latent, audio_latent = pipe(
+    prompt=prompt,
+    width=width // 2,
+    height=height // 2,
+    num_frames=num_frames,
+    frame_rate=frame_rate,
+    sigmas=DISTILLED_SIGMA_VALUES,
+    guidance_scale=1.0,
+    audio_guidance_scale=1.0,
+    generator=generator,
+    output_type="latent",
+    return_dict=False,
+)
+
+latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
+    model_path,
+    subfolder="latent_upsampler",
+    dtype=torch.bfloat16,
+)
+upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=latent_upsampler)
+upsample_pipe.enable_model_cpu_offload(device=device)
+# `latents_normalized=False`: `output_type="latent"` already applied the latent statistics, and the
+# upsampler is trained on denormalized latents. Stage 2 renormalizes them in `prepare_latents`.
+upscaled_video_latent = upsample_pipe(
+    latents=video_latent,
+    latents_normalized=False,
+    output_type="latent",
+    return_dict=False,
+)[0]
+
+# Stage 2: full resolution, 3 sigmas, reseeded from stage 1. Pass `num_frames` explicitly here --
+# omitting it would run the duration head a second time instead of using the stage 1 length.
+pipe.vae.enable_tiling()
 video, audio = pipe(
     prompt=prompt,
-    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    latents=upscaled_video_latent,
+    audio_latents=audio_latent,
     width=width,
     height=height,
+    num_frames=num_frames,
+    frame_rate=frame_rate,
+    sigmas=STAGE_2_DISTILLED_SIGMA_VALUES,
+    noise_scale=STAGE_2_DISTILLED_SIGMA_VALUES[0],  # renoise with the stage 2 entry sigma
+    guidance_scale=1.0,
+    audio_guidance_scale=1.0,
+    generator=generator,
+    output_type="np",
+    return_dict=False,
+)
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_5_t2v_two_stages.mp4",
+)
+```
+
+When the length comes from the [duration head](#automatic-duration-for-ltx-25) rather than an explicit `num_frames`, let stage 1 decide and recover the realized length from its latents (`[B, C, F, H, W]`) before stage 2 runs, instead of predicting a second time:
+
+```py
+num_frames = (video_latent.shape[2] - 1) * pipe.vae_temporal_compression_ratio + 1
+```
+
+#### Stage 2 with the distilled LoRA
+
+To run [Two-stages Generation](#two-stages-generation) instead — full/SFT DiT for stage 1, distilled LoRA for stage 2 — build the pipeline as in [Full / SFT transformer](#full--sft-transformer) and generate stage 1 latents with that guidance stack. Two things then differ from LTX-2.0/2.3. The LoRA lives in the diffusers repo itself rather than alongside the original weights, and the scheduler flip goes the other way round: LTX-2.5 ships the *distilled* scheduler config, so stage 1 is what turned dynamic shifting on, and stage 2 turns it back off.
+
+```py
+pipe.load_lora_weights(
+    "Lightricks/LTX-2.5-Diffusers",
+    adapter_name="stage_2_distilled",
+    weight_name="ltx-2.5-22b-distilled-lora-450-bf16.safetensors",
+)
+pipe.set_adapters("stage_2_distilled", 1.0)
+pipe.vae.enable_tiling()
+
+pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(
+    pipe.scheduler.config, use_dynamic_shifting=False, shift_terminal=None
+)
+```
+
+The upsample step and the stage 2 call itself are unchanged from the distilled recipe above: same `sigmas=STAGE_2_DISTILLED_SIGMA_VALUES`, same `noise_scale`, and `guidance_scale=1.0`, since stage 2 is running a distilled model either way.
+
+### Convolutional and diffusion decoding
+
+LTX-2.5 ships two video decoders over the same latent space, so latents are interchangeable between them:
+
+- `vae/` — the convolutional VAE ([`AutoencoderKLLTX2Video`]). It is what the pipelines decode with, so every snippet above already uses it, and it is the only one of the two that tiles (`pipe.vae.enable_tiling()`), which is usually what makes a high resolution fit.
+- `diffusion_decoder/` — [`LTX2VideoDiffusionDecoderModel`]. It is a diffusion model in its own right rather than a pipeline component, so it is not passed as a `vae`: run the pipeline with `output_type="latent"` and hand the latents to [`LTX2VideoDiffusionDecodePipeline`].
+
+Encoding always goes through `vae/`, so image and video conditioning are unaffected by the choice.
+
+Two things change when you decode with the diffusion decoder. `output_type="latent"` also skips the vocoder, so the audio comes back as latents and has to be finished by hand, and the NATTEN processor is effectively required at video resolutions:
+
+```py
+import torch
+from diffusers import LTX2Pipeline, LTX2VideoDiffusionDecodePipeline, LTX2VideoDiffusionDecoderModel
+from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
+from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
+from diffusers.utils import encode_video
+
+device = "cuda"
+frame_rate = 24.0
+generator = torch.Generator(device).manual_seed(42)
+model_path = "Lightricks/LTX-2.5-Diffusers"
+
+pipe = LTX2Pipeline.from_pretrained(model_path, dtype=torch.bfloat16)
+pipe.enable_model_cpu_offload(device=device)
+
+prompt = "A cinematic shot of a red fox walking through a snowy forest at dawn, golden light filtering through pine trees."
+
+latents, audio_latents = pipe(
+    prompt=prompt,
+    width=960,
+    height=544,
     num_frames=121,
     frame_rate=frame_rate,
+    sigmas=DISTILLED_SIGMA_VALUES,
+    guidance_scale=1.0,
+    audio_guidance_scale=1.0,
+    generator=generator,
+    output_type="latent",
+    return_dict=False,
+)
+
+# `output_type="latent"` skips the vocoder, so finish the audio by hand. These latents are already
+# denormalized, which is what `audio_vae.decode` expects.
+mel = pipe.audio_vae.decode(audio_latents.to(pipe.audio_vae.dtype), return_dict=False)[0]
+audio = pipe.vocoder(mel)
+
+decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
+    model_path, subfolder="diffusion_decoder", dtype=torch.bfloat16
+).to(device)
+# The decoder runs on the `flex` backend by default, and uncompiled `flex_attention` materializes the
+# full score matrix -- tens of GB at video resolutions. NATTEN's kernels are what the original
+# implementation uses; they are fetched from the Hub by `kernels` (`pip install kernels`), not from a
+# local NATTEN build. Switching the attention *backend* instead raises: only `flex` takes the BlockMask.
+decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
+
+decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=pipe.scheduler)
+
+# `denormalize=False`: `output_type="latent"` already applied the latent statistics, so applying them
+# again would rescale every channel by its std a second time. The decoder draws the noise it denoises,
+# so pass a generator to make decoding reproducible.
+video = decode_pipe(
+    latents, generator=generator, output_type="np", denormalize=False, return_dict=False
+)[0]
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_5_t2v_diffusion_decode.mp4",
+)
+```
+
+To combine this with [two-stage generation](#two-stage-generation-for-ltx-25), ask *stage 2* for `output_type="latent"` and decode that.
+
+The decoder cannot tile — `enable_tiling` raises, because neighborhood attention rejects tiles smaller than its kernel — so lower the resolution or the frame count instead. On a single card it is also worth moving the pipeline out of the way before decoding (`pipe.to("cpu")` and `torch.cuda.empty_cache()`, after capturing `pipe.scheduler` and the vocoder's `output_sampling_rate`), since the decoder needs its own headroom. See [`LTX2VideoDiffusionDecoderModel`] for the attention backends and the rest of the decoder's behaviour.
+
+### Full / SFT transformer
+
+`transformer_full/` is not referenced by `model_index.json`, so load it explicitly. It also needs a different scheduler and a real guidance stack: the shipped `scheduler/` is configured for the distilled checkpoint, and the guidance defaults are LTX-2.0-era generics that leave an LTX-2.5 SFT run visibly under-guided without raising anything. The [Multimodal Guidance](#multimodal-guidance) recommendations apply here unchanged, including STG on block `28`:
+
+```py
+import torch
+from diffusers import FlowMatchEulerDiscreteScheduler, LTX2Pipeline, LTX2VideoTransformer3DModel
+from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
+
+device = "cuda"
+model_path = "Lightricks/LTX-2.5-Diffusers"
+
+# Passing `transformer=` keeps `from_pretrained` from fetching the distilled folder as well.
+transformer = LTX2VideoTransformer3DModel.from_pretrained(
+    model_path, subfolder="transformer_full", dtype=torch.bfloat16
+)
+pipe = LTX2Pipeline.from_pretrained(model_path, transformer=transformer, dtype=torch.bfloat16)
+pipe.enable_sequential_cpu_offload(device=device)
+pipe.vae.enable_tiling()
+
+# Re-enable dynamic shifting and the terminal shift, which the distilled configuration turns off.
+pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(
+    pipe.scheduler.config, use_dynamic_shifting=True, shift_terminal=0.1
+)
+
+video, audio = pipe(
+    prompt="A cinematic shot of a red fox walking through a snowy forest at dawn, golden light filtering through pine trees.",
+    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    width=768,
+    height=512,
+    num_frames=121,
+    frame_rate=24.0,
     num_inference_steps=30,
     guidance_scale=3.0,
     stg_scale=1.0,
@@ -613,6 +796,52 @@ video, audio = pipe(
     audio_guidance_rescale=0.7,
     spatio_temporal_guidance_blocks=[28],
     use_cross_timestep=True,
+    generator=torch.Generator(device).manual_seed(42),
+    output_type="np",
+    return_dict=False,
+)
+```
+
+Drop `sigmas` here — the full DiT takes its schedule from the scheduler.
+
+### Prompt Enhancement for LTX-2.5
+
+**Using prompt enhancement is strongly recommended for LTX-2.5; pass `enable_prompt_enhancement=True` to opt in** (same as the Lightricks reference pipelines). Unlike LTX-2.0/2.3, where the same text encoder checkpoint doubles as the enhancer (see [Prompt Enhancement](#prompt-enhancement) above), LTX-2.5's fine-tuned text encoder was not trained for enhancement. Instead, enhancement uses a separate, off-the-shelf `google/gemma-4-E2B-it` checkpoint. Load it into the pipeline's optional `prompt_enhancer`/`processor` components, then enable enhancement — the pipeline defaults to `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT` and the Gemma 4 recipe (`do_sample=False`, `no_repeat_ngram_size=5`, `max_new_tokens=600`). Pass an explicit `system_prompt=` to override:
+
+```py
+import torch
+from transformers import AutoModelForImageTextToText, AutoProcessor
+from diffusers import LTX2Pipeline
+from diffusers.utils import encode_video
+from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
+
+device = "cuda"
+width = 768
+height = 512
+random_seed = 42
+frame_rate = 24.0
+generator = torch.Generator(device).manual_seed(random_seed)
+model_path = "Lightricks/LTX-2.5-Diffusers"
+enhancer_model_id = "google/gemma-4-E2B-it"
+
+pipe = LTX2Pipeline.from_pretrained(model_path, dtype=torch.bfloat16)
+pipe.enable_model_cpu_offload(device=device)
+pipe.vae.enable_tiling()
+if getattr(pipe, "prompt_enhancer", None) is None:
+    pipe.prompt_enhancer = AutoModelForImageTextToText.from_pretrained(enhancer_model_id)
+    pipe.processor = AutoProcessor.from_pretrained(enhancer_model_id)
+
+prompt = "A cinematic shot of a red fox walking through a snowy forest at dawn, golden light filtering through pine trees."
+
+video, audio = pipe(
+    prompt=prompt,
+    width=width,
+    height=height,
+    num_frames=121,
+    frame_rate=frame_rate,
+    sigmas=DISTILLED_SIGMA_VALUES,
+    guidance_scale=1.0,
+    audio_guidance_scale=1.0,
     enable_prompt_enhancement=True,
     # No `system_prompt=` needed -- defaults to `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT` when `prompt_enhancer` is set.
     generator=generator,
@@ -625,7 +854,7 @@ encode_video(
     fps=frame_rate,
     audio=audio[0].float().cpu(),
     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
-    output_path="ltx2_4_t2v_enhanced.mp4",
+    output_path="ltx2_5_t2v_enhanced.mp4",
 )
 ```
 
@@ -703,6 +932,12 @@ Converting a 2.5 checkpoint picks the head up automatically with `--full_pipelin
 ## LTX2LatentUpsamplePipeline
 
 [[autodoc]] LTX2LatentUpsamplePipeline
+  - all
+  - __call__
+
+## LTX2VideoDiffusionDecodePipeline
+
+[[autodoc]] LTX2VideoDiffusionDecodePipeline
   - all
   - __call__
 
