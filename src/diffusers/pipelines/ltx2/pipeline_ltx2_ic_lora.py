@@ -929,7 +929,7 @@ class LTX2InContextPipeline(
               at keyframe / reference positions, `0` elsewhere.
             - `clean_latents`: clean condition values at conditioned positions (zeros elsewhere); same shape as
               `latents`.
-            - `appended_coords`: `[1, 3, n_keyframe + n_ref, 2]` positional coordinates to concat onto `video_coords`,
+            - `appended_coords`: `[B, 3, n_keyframe + n_ref, 2]` positional coordinates to concat onto `video_coords`,
               or `None` if no keyframe/reference conditions are provided.
             - `num_ref_tokens`: count of reference tokens at the END of `latents` (used by the call site to build the
               unified self-attention mask).
@@ -1040,18 +1040,21 @@ class LTX2InContextPipeline(
                 device=device,
             )
 
+            # Conditions are encoded at batch 1, so broadcast the tokens, mask and coords across the generation
+            # batch before they are concatenated onto the batch-`batch_size` noisy sequence.
             num_tokens = cond_packed.shape[1]
             kf_mask = torch.full(
-                (cond_packed.shape[0], num_tokens, 1),
+                (batch_size, num_tokens, 1),
                 float(strength),
                 device=device,
                 dtype=conditioning_mask.dtype,
             )
+            kf_tokens = cond_packed.expand(batch_size, -1, -1)
 
-            kf_tokens_list.append(cond_packed)
-            kf_clean_list.append(cond_packed)
+            kf_tokens_list.append(kf_tokens)
+            kf_clean_list.append(kf_tokens)
             kf_mask_list.append(kf_mask)
-            kf_coords_list.append(coords)
+            kf_coords_list.append(coords.expand(batch_size, -1, -1, -1))
 
         if kf_tokens_list:
             keyframe_coords = torch.cat(kf_coords_list, dim=2)
@@ -1104,6 +1107,8 @@ class LTX2InContextPipeline(
             latents = torch.cat([latents, ref_latents_packed_b], dim=1)
             conditioning_mask = torch.cat([conditioning_mask, ref_mask_full], dim=1)
             clean_latents = torch.cat([clean_latents, ref_latents_packed_b], dim=1)
+            # Encoded at batch 1 like the keyframe coords above, so broadcast to match `video_coords` at the call site.
+            ref_coords = ref_coords.expand(batch_size, -1, -1, -1)
 
         # Combine keyframe + reference appended-coords into a single block to concat onto `video_coords` at
         # the call site.
@@ -1441,10 +1446,10 @@ class LTX2InContextPipeline(
             - keyframe ↔ group_i: 0.0 (reference tokens don't cross-attend with keyframe conditions)
             - group_i ↔ group_j (i != j): 0.0 (different reference groups don't cross-attend)
 
-        `num_noisy_tokens` counts only the generated-video tokens: keyframe-condition tokens live inside the prefix
-        but are *not* cross-attention partners for the reference groups. In the reference implementation this falls
-        out of applying `build_attention_mask` once per conditioning item, taking `num_noisy_tokens` from the target
-        latent shape and the block offset from the running sequence length.
+        `num_noisy_tokens` counts only the generated-video tokens: keyframe-condition tokens live inside the prefix but
+        are *not* cross-attention partners for the reference groups. In the reference implementation this falls out of
+        applying `build_attention_mask` once per conditioning item, taking `num_noisy_tokens` from the target latent
+        shape and the block offset from the running sequence length.
 
         Args:
             num_noisy_tokens (`int`):
