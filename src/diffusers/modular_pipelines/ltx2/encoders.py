@@ -66,7 +66,7 @@ def _enhance_prompt(
     generation_kwargs: dict[str, Any] | None,
     device: torch.device,
 ) -> list[str]:
-    # Mirrors `LTX2PromptEnhancementMixin.enhance_prompt` for the LTX-2.5 path only: a dedicated `prompt_enhancer`
+    # Mirrors `LTX2Pipeline.enhance_prompt` for the LTX-2.5 path only: a dedicated `prompt_enhancer`
     # (Gemma-4) with the greedy `GEMMA4_PROMPT_ENHANCEMENT_CONFIG` recipe. The LTX-2.0/2.3
     # `text_encoder`-as-enhancer fallback is intentionally dropped (LTX-2.5-only integration).
     config = GEMMA4_PROMPT_ENHANCEMENT_CONFIG
