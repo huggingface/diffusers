@@ -71,13 +71,18 @@ accepts the `BlockMask`. Use the NATTEN processor above instead.
 
 ## Tiling
 
-Tiled decoding is not supported — `enable_tiling` raises. Neighborhood attention rejects any tile smaller than its
-kernel, including a short remnant tile, so tile sizes cannot be chosen freely. Batch slicing (`enable_slicing`)
-works as usual.
+`decoder.enable_tiling()` decodes in overlapping tiles that are blended back together, bounding peak memory by the
+tile size instead of the video size. The cheap early upsampling stages still see the full latent — only the last
+upsampling stage and the diffusion stage, which dominate decode memory, run per tile — so tiling changes the output
+only near tile borders. Because the diffusion stage denoises each tile separately, a tiled decode does not
+reproduce the untiled result exactly; the default tile and overlap sizes match the reference implementation's.
+Neighborhood attention rejects any grid smaller than its kernel, so a trailing remnant tile is merged into its
+neighbor rather than decoded on its own.
 
 ## LTX2VideoDiffusionDecoderModel
 
 [[autodoc]] LTX2VideoDiffusionDecoderModel
     - decode
-    - encode
+    - enable_tiling
+    - disable_tiling
     - all

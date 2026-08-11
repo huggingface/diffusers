@@ -91,11 +91,15 @@ class TestLTX2VideoDiffusionDecoderModelSwiGLUTiling(LTX2VideoDiffusionDecoderMo
     """The SwiGLU evaluates in token tiles to bound decode memory; that must not change the result."""
 
     def test_token_tiled_swiglu_matches_untiled(self):
-        """Force the tiled path at test scale and require bit-identical output.
+        """Force the tiled path at test scale and require near-identical output.
 
         The dummy video is 9x48x48, so its stage-5 grid is 5184 tokens -- an order of magnitude under the
         16384-token tile size, which means every other test in this file exercises only the untiled
         branch. Shrinking the tile size is what actually covers the loop.
+
+        The comparison is a tight `allclose`, not `torch.equal`: the MLP is pointwise across tokens, so
+        tiling cannot change what is computed, but a matmul over a 128-token slice may reduce in a
+        different order than the same rows inside the full-tensor call.
         """
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         inputs = self.get_dummy_inputs()
@@ -118,11 +122,78 @@ class TestLTX2VideoDiffusionDecoderModelSwiGLUTiling(LTX2VideoDiffusionDecoderMo
             ltx2_diffusion_decoder._SWIGLU_TILE_SIZE = original
 
         assert tiled.shape == untiled.shape
-        # Exact, not approximate: the MLP is pointwise across tokens, so tiling changes only how many
-        # hidden-width elements are live, never a value.
-        assert torch.equal(tiled, untiled), (
+        assert torch.allclose(tiled, untiled, rtol=1e-5, atol=1e-5), (
             f"tiled SwiGLU diverged from untiled by {(tiled - untiled).abs().max().item():.3e}"
         )
+
+
+class TestLTX2VideoDiffusionDecoderModelTiling(LTX2VideoDiffusionDecoderModelTesterConfig):
+    """Tiled decoding: the early stages run on the full latent, stages 4-5 run per tile with blending.
+
+    The latent is 3x4x5 (17x64x80 pixels) so every axis is large enough to split: the tiling grid — the
+    stage-4 input grid — is 9x16x20, and the tile sizes below cut it into three temporal and two/three
+    spatial tiles.
+    """
+
+    def get_latent(self):
+        return randn_tensor((1, 8, 3, 4, 5), generator=self.generator, device=torch_device)
+
+    def decode(self, model, latent, num_inference_steps=None):
+        # Re-seed per call: the decoder samples the noise it denoises, so outputs are only comparable
+        # across calls that drew from the same generator state.
+        generator = torch.Generator("cpu").manual_seed(0)
+        with torch.no_grad():
+            return model.decode(latent, generator=generator, num_inference_steps=num_inference_steps)[0]
+
+    def test_tiles_covering_the_video_match_untiled_exactly(self):
+        """A tile schedule with a single covering tile must reproduce the untiled decode bit for bit.
+
+        This pins the per-tile plumbing — the ghost-frame carry/crop, the leading-frame drop, and the
+        stitching — because any offset in them shifts the single tile's output relative to the untiled path.
+        The default tile sizes are larger than the test video, so `tiled_decode` builds exactly one tile.
+        """
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        latent = self.get_latent()
+
+        for num_inference_steps in (None, 3):  # None: the single-step x0 shortcut; 3: the Euler loop
+            untiled = self.decode(model, latent, num_inference_steps)
+            generator = torch.Generator("cpu").manual_seed(0)
+            with torch.no_grad():
+                tiled = model.tiled_decode(latent, generator=generator, num_inference_steps=num_inference_steps)
+            assert torch.equal(tiled, untiled), (
+                f"single-tile tiled decode diverged from untiled by {(tiled - untiled).abs().max().item():.3e} "
+                f"with num_inference_steps={num_inference_steps}"
+            )
+
+    def test_tiled_decode_with_splits(self):
+        """Actually-split tiles must reassemble to the untiled output shape, on both noise paths.
+
+        Values legitimately differ from the untiled decode (each tile sees a truncated attention context at
+        its borders), so this asserts geometry, not closeness. The multi-step run additionally covers the
+        shared noise canvas that overlapping tiles slice from.
+        """
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        latent = self.get_latent()
+        untiled = self.decode(model, latent)
+
+        model.enable_tiling(
+            # Tiling-grid cells are 2 frames x 4 px x 4 px here (last upsample stride (2, 2, 2), patch 2), so
+            # this is a 4-cell tile with a 3-cell stride temporally and 8x8-cell tiles with 6-cell strides
+            # spatially: tiles (0, 4), (3, 7), (6, 9) over T and (0, 8), (6, 16|20) over H/W.
+            tile_sample_min_num_frames=8,
+            tile_sample_stride_num_frames=6,
+            tile_sample_min_height=32,
+            tile_sample_stride_height=24,
+            tile_sample_min_width=32,
+            tile_sample_stride_width=24,
+        )
+        for num_inference_steps in (None, 3):
+            tiled = self.decode(model, latent, num_inference_steps)
+            assert tiled.shape == untiled.shape
+            assert torch.isfinite(tiled).all()
+
+        model.disable_tiling()
+        assert torch.equal(self.decode(model, latent), untiled)
 
 
 class TestLTX2VideoDiffusionDecoderModelMemory(LTX2VideoDiffusionDecoderModelTesterConfig, MemoryTesterMixin):
