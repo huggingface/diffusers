@@ -24,10 +24,10 @@ from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanAnimate2Transformer3DModel
 from ...models.transformers.transformer_wan_animate_2 import WanAnimate2KVCache
+from ...modular_pipelines.wan_animate_2.video_processor import WanAnimate2VideoProcessor
 from ...schedulers import SchedulerMixin
 from ...utils import logging
 from ..pipeline_utils import DiffusionPipeline
-from .image_processor import WanAnimate2VideoProcessor
 from .pipeline_output import WanPipelineOutput
 
 
