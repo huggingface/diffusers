@@ -73,6 +73,10 @@ _CAN_USE_FLEX_ATTN = is_torch_version(">=", _REQUIRED_FLEX_VERSION)
 _CAN_USE_NPU_ATTN = is_torch_npu_available()
 _CAN_USE_XLA_ATTN = is_torch_xla_available() and is_torch_xla_version(">=", _REQUIRED_XLA_VERSION)
 _CAN_USE_XFORMERS_ATTN = is_xformers_available() and is_xformers_version(">=", _REQUIRED_XFORMERS_VERSION)
+# torch>=2.9 hands the LSE to the cuDNN kernels with a trailing dim, (B, H, S, 1); before that the
+# forward returns (B, H, S) and the aten backward wrapper adds the trailing dim itself. Module-level
+# constant to avoid Dynamo tracing into the lru_cache-wrapped `is_torch_version` during torch.compile.
+_CUDNN_LSE_HAS_TRAILING_DIM = is_torch_version(">=", "2.9.0")
 
 
 if _CAN_USE_FLASH_ATTN:
@@ -953,9 +957,12 @@ def _cudnn_attention_forward_op(
 
     out = out.transpose(1, 2).contiguous()
     if compute_log_sumexp:
-        # cuDNN returns LSE as (B, H, S, 1); normalize to model layout (B, S, H) like the other
-        # backends. The backward pass restores the trailing dim the cuDNN kernel expects.
-        lse = lse.squeeze(-1).transpose(1, 2).contiguous()
+        # cuDNN returns LSE as (B, H, S, 1) on torch>=2.9 and (B, H, S) before that; normalize to
+        # model layout (B, S, H) like the other backends. The backward pass restores whichever
+        # trailing dim the running torch version expects.
+        if _CUDNN_LSE_HAS_TRAILING_DIM:
+            lse = lse.squeeze(-1)
+        lse = lse.transpose(1, 2).contiguous()
     # Everything is saved in model layout (B, S, H, D) / (B, S, H) so the ring backward can
     # override query/key/value/out/lse with its per-iteration tensors in the same layout.
     if _save_ctx:
@@ -999,8 +1006,10 @@ def _cudnn_attention_backward_op(
     key = key.transpose(1, 2).contiguous()
     value = value.transpose(1, 2).contiguous()
     out = out.transpose(1, 2).contiguous()
-    # Model layout (B, S, H) -> the (B, H, S, 1) shape the cuDNN backward kernel expects.
-    lse = lse.transpose(1, 2).unsqueeze(-1).contiguous()
+    # Model layout (B, S, H) -> the layout the cuDNN backward kernel expects on this torch version.
+    lse = lse.transpose(1, 2).contiguous()
+    if _CUDNN_LSE_HAS_TRAILING_DIM:
+        lse = lse.unsqueeze(-1)
 
     # Cannot pass first 5 arguments as kwargs because: https://github.com/pytorch/pytorch/blob/d26ca5de058dbcf56ac52bb43e84dd98df2ace97/torch/_dynamo/variables/torch.py#L1341
     grad_query, grad_key, grad_value = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
@@ -2654,7 +2663,10 @@ class TemplatedRingAnythingAttention(torch.autograd.Function):
                 out = out.to(torch.float32)
                 lse = lse.to(torch.float32)
 
-            if is_torch_version("<", "2.9.0"):
+            # lse must be 4-D to broadcast with out (B, S, H, D). Every forward op returns it in
+            # model layout (B, S, H), so add the dim here; the rank check keeps this correct for
+            # any backend that already carries a trailing one.
+            if lse.ndim == 3:
                 lse = lse.unsqueeze(-1)
             if prev_out is not None:
                 out = prev_out - torch.nn.functional.sigmoid(lse - prev_lse) * (prev_out - out)
