@@ -20,8 +20,9 @@ Notes on making the comparison apples-to-apples:
   `LTX2VideoVaeNeighborhoodNattenProcessor`. That means CUDA and float32 rather than the CPU/float32 the
   parity skill prefers — neighborhood attention has no CPU kernel. The flex processor is compared against the
   NATTEN one separately (`--compare-processors`), which is the check that the portable path is equivalent.
-* **Never import the Hub `kernels` build of natten in this process.** pip `natten` and the Hub kernel share
-  static CUTLASS state and whichever loads second returns garbage.
+  The diffusers processor fetches NATTEN from the Hub (`shi-labs/natten`) through the `kernels` package, so this
+  process runs the native side on pip `natten` and the diffusers side on the Hub build. That is safe: with both
+  builds at NATTEN 0.21.7, `na3d` was verified bitwise identical between them in either import order.
 * **Per-channel statistics are neutralised.** The native decoder un-normalises the latent inside
   `forward_pre_diffusion`; on the diffusers side that is the pipeline's job (`latents_mean`/`latents_std`), so
   the native buffers are set to mean 0 / std 1 to take them out of the comparison.
