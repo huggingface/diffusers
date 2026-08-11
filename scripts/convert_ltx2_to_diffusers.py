@@ -396,9 +396,9 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
         }
         rename_dict = LTX_2_3_TRANSFORMER_KEYS_RENAME_DICT
         special_keys_remap = LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP
-    elif version == "2.4":
+    elif version == "2.5":
         config = {
-            "model_id": "Lightricks/LTX-2.4",
+            "model_id": "Lightricks/LTX-2.5",
             "diffusers_config": {
                 "in_channels": 128,
                 "out_channels": 128,
@@ -531,14 +531,14 @@ def get_ltx2_connectors_config(
         }
         rename_dict = LTX_2_3_CONNECTORS_KEYS_RENAME_DICT
         special_keys_remap = LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP
-    elif version == "2.4":
+    elif version == "2.5":
         if gemma_text_config is None:
-            raise ValueError("gemma_text_config is required to derive connector dims for LTX-2.4.")
+            raise ValueError("gemma_text_config is required to derive connector dims for LTX-2.5.")
         config = {
-            "model_id": "Lightricks/LTX-2.4",
+            "model_id": "Lightricks/LTX-2.5",
             "diffusers_config": {
                 # Derived from the Gemma 4 text config rather than hardcoded, since (unlike Gemma-3-12B) the
-                # 2.4 text encoder isn't a single fixed checkpoint. Formula matches the reference
+                # 2.5 text encoder isn't a single fixed checkpoint. Formula matches the reference
                 # (`encoder_configurator._create_feature_extractor`): hidden_size, and num_hidden_layers + 1
                 # for the embedding layer.
                 "caption_channels": gemma_text_config.hidden_size,
@@ -630,7 +630,7 @@ def convert_ltx2_connectors(
 def convert_ltx2_duration_head(original_state_dict: dict[str, Any]) -> LTX2DurationHead | None:
     """Builds an `LTX2DurationHead` from a duration-head state dict, or `None` if the checkpoint has none.
 
-    The duration head ships from LTX-2.4 onward. Its hyperparameters are absent from checkpoint metadata, so the
+    The duration head ships from LTX-2.5 onward. Its hyperparameters are absent from checkpoint metadata, so the
     dimensions are read back from the weight shapes; `num_pooler_heads` cannot be recovered that way and is fixed at
     the value the head was trained with.
 
@@ -639,7 +639,7 @@ def convert_ltx2_duration_head(original_state_dict: dict[str, Any]) -> LTX2Durat
     """
     state_dict = dict(original_state_dict)
     if len(state_dict) == 0:
-        print("No duration_head weights found in the checkpoint; skipping (expected for pre-2.4 checkpoints).")
+        print("No duration_head weights found in the checkpoint; skipping (expected for pre-2.5 checkpoints).")
         return None
 
     in_proj_weight = state_dict.pop("attention_pooler.cross_attn.in_proj_weight")
@@ -787,11 +787,11 @@ def get_ltx2_video_vae_config(
         }
         rename_dict = LTX_2_3_VIDEO_VAE_RENAME_DICT
         special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
-    elif version == "2.4":
+    elif version == "2.5":
         # Same block structure as 2.3 (32x32x8 compression); confirmed against the checkpoint's
         # config["vae"]["encoder_blocks"]/["decoder_blocks"] metadata, which is byte-identical to 2.3's.
         config = {
-            "model_id": "Lightricks/LTX-2.4",
+            "model_id": "Lightricks/LTX-2.5",
             "diffusers_config": {
                 "in_channels": 3,
                 "out_channels": 3,
@@ -859,13 +859,13 @@ def convert_ltx2_video_vae(
 
 
 def get_ltx2_diffusion_video_vae_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    if version != "2.4":
+    if version != "2.5":
         raise ValueError(
             f"The diffusion decoder was introduced in LTX-2.5, which the converter handles under "
-            f"`--version 2.4`; got version {version!r}."
+            f"`--version 2.5`; got version {version!r}."
         )
-    # The encoder half is 2.4's conv VAE encoder, unchanged (its weights are byte identical to 2.3's), so
-    # those entries must stay in sync with `get_ltx2_video_vae_config("2.4")`.
+    # The encoder half is 2.5's conv VAE encoder, unchanged (its weights are byte identical to 2.3's), so
+    # those entries must stay in sync with `get_ltx2_video_vae_config("2.5")`.
     config = {
         "model_id": "Lightricks/LTX-2.5",
         "diffusers_config": {
@@ -1015,9 +1015,9 @@ def get_ltx2_audio_vae_config(version: str) -> tuple[dict[str, Any], dict[str, A
         }
         rename_dict = LTX_2_0_AUDIO_VAE_RENAME_DICT
         special_keys_remap = LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP
-    elif version == "2.4":
+    elif version == "2.5":
         config = {
-            "model_id": "Lightricks/LTX-2.4",
+            "model_id": "Lightricks/LTX-2.5",
             "diffusers_config": {
                 "base_channels": 128,
                 "output_channels": 2,
@@ -1133,9 +1133,9 @@ def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any
         }
         rename_dict = LTX_2_3_VOCODER_RENAME_DICT
         special_keys_remap = LTX_2_3_VOCODER_SPECIAL_KEYS_REMAP
-    elif version == "2.4":
+    elif version == "2.5":
         config = {
-            "model_id": "Lightricks/LTX-2.4",
+            "model_id": "Lightricks/LTX-2.5",
             "diffusers_config": {
                 "in_channels": 128,
                 "hidden_channels": 1536,
@@ -1181,7 +1181,7 @@ def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any
 def convert_ltx2_vocoder(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_vocoder_config(version)
     diffusers_config = config["diffusers_config"]
-    if version in ("2.3", "2.4"):
+    if version in ("2.3", "2.5"):
         vocoder_cls = LTX2VocoderWithBWE
     else:
         vocoder_cls = LTX2Vocoder
@@ -1326,7 +1326,7 @@ def get_args():
         "--version",
         type=str,
         default="2.0",
-        choices=["test", "2.0", "2.3", "2.4"],
+        choices=["test", "2.0", "2.3", "2.5"],
         help="Version of the LTX 2.0 model",
     )
 
@@ -1355,8 +1355,8 @@ def get_args():
         default="google/gemma-3-12b-it-qat-q4_0-unquantized",
         type=none_or_str,
         help=(
-            "HF Hub id for the text encoder model. Default is Gemma 3, used by LTX 2.0/2.3. LTX-2.4 requires a "
-            "Gemma 4 (`gemma4_unified`) checkpoint here instead -- passing the Gemma 3 default with `--version 2.4` "
+            "HF Hub id for the text encoder model. Default is Gemma 3, used by LTX 2.0/2.3. LTX-2.5 requires a "
+            "Gemma 4 (`gemma4_unified`) checkpoint here instead -- passing the Gemma 3 default with `--version 2.5` "
             "raises an error."
         ),
     )
@@ -1372,8 +1372,8 @@ def get_args():
         type=none_or_str,
         help=(
             "HF Hub id for the prompt-enhancer model (used with --add_processor). For LTX-2.0/2.3, defaults to "
-            "--text_encoder_model_id (the same Gemma 3 checkpoint serves both roles). LTX-2.4's fine-tuned text "
-            "encoder is not trained for enhancement, so this must be set explicitly for --version 2.4 -- e.g. to "
+            "--text_encoder_model_id (the same Gemma 3 checkpoint serves both roles). LTX-2.5's fine-tuned text "
+            "encoder is not trained for enhancement, so this must be set explicitly for --version 2.5 -- e.g. to "
             "google/gemma-4-E2B-it or google/gemma-4-E4B-it."
         ),
     )
@@ -1403,7 +1403,7 @@ def get_args():
     parser.add_argument(
         "--duration_head",
         action="store_true",
-        help="Whether to convert the duration head (present in LTX-2.4 and later checkpoints only)",
+        help="Whether to convert the duration head (present in LTX-2.5 and later checkpoints only)",
     )
     parser.add_argument("--vocoder", action="store_true", help="Whether to convert the vocoder model")
     parser.add_argument("--text_encoder", action="store_true", help="Whether to conver the text encoder")
@@ -1477,31 +1477,31 @@ def main(args):
     if args.combined_filename is not None and load_combined_models:
         combined_ckpt = load_original_checkpoint(args, filename=args.combined_filename)
 
-    # LTX-2.4 only works with a Gemma 4 (`gemma4_unified`) text encoder; --text_encoder_model_id defaults to
-    # Gemma 3 (for 2.0/2.3), so silently proceeding would pair a 2.4 checkpoint with the wrong text encoder.
+    # LTX-2.5 only works with a Gemma 4 (`gemma4_unified`) text encoder; --text_encoder_model_id defaults to
+    # Gemma 3 (for 2.0/2.3), so silently proceeding would pair a 2.5 checkpoint with the wrong text encoder.
     gemma_text_config = None
-    if args.version == "2.4" and (args.text_encoder or args.connectors or args.full_pipeline):
+    if args.version == "2.5" and (args.text_encoder or args.connectors or args.full_pipeline):
         gemma_config = AutoConfig.from_pretrained(args.text_encoder_model_id)
         if gemma_config.model_type != "gemma4_unified":
             raise ValueError(
-                f"LTX-2.4 requires a Gemma 4 (`gemma4_unified`) text encoder, but --text_encoder_model_id="
+                f"LTX-2.5 requires a Gemma 4 (`gemma4_unified`) text encoder, but --text_encoder_model_id="
                 f"{args.text_encoder_model_id!r} has model_type={gemma_config.model_type!r}. Pass "
                 "--text_encoder_model_id pointing at a Gemma 4 checkpoint (the default is Gemma 3, for 2.0/2.3)."
             )
         gemma_text_config = gemma_config.text_config
 
-    # LTX-2.4's fine-tuned text encoder is never a valid prompt enhancer (unlike LTX-2.0/2.3, where the same Gemma 3
+    # LTX-2.5's fine-tuned text encoder is never a valid prompt enhancer (unlike LTX-2.0/2.3, where the same Gemma 3
     # checkpoint serves both roles) -- require an explicit, separate --prompt_enhancer_model_id instead of silently
     # falling back to --text_encoder_model_id.
     if (
-        args.version == "2.4"
+        args.version == "2.5"
         and args.add_processor
         and (args.text_encoder or args.full_pipeline)
         and args.prompt_enhancer_model_id is None
     ):
         raise ValueError(
-            "LTX-2.4's text encoder is not trained for prompt enhancement, so --prompt_enhancer_model_id must be "
-            "set explicitly when --add_processor is used with --version 2.4 -- e.g. to google/gemma-4-E2B-it or "
+            "LTX-2.5's text encoder is not trained for prompt enhancement, so --prompt_enhancer_model_id must be "
+            "set explicitly when --add_processor is used with --version 2.5 -- e.g. to google/gemma-4-E2B-it or "
             "google/gemma-4-E4B-it."
         )
 
@@ -1593,7 +1593,7 @@ def main(args):
                 processor.save_pretrained(os.path.join(args.output_path, "processor"))
 
             if args.prompt_enhancer_model_id is not None:
-                # Separate, dedicated enhancer model (required for LTX-2.4); for LTX-2.0/2.3, the same
+                # Separate, dedicated enhancer model (required for LTX-2.5); for LTX-2.0/2.3, the same
                 # `text_encoder` checkpoint already serves as its own enhancer, so nothing extra is saved.
                 prompt_enhancer = AutoModelForImageTextToText.from_pretrained(enhancer_model_id)
                 if not args.full_pipeline:

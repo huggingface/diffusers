@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
-
 import torch
 import torch.nn as nn
 
@@ -25,34 +23,6 @@ from ...utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-@dataclass
-class LTX2AutoDuration:
-    """
-    Request an auto-predicted video duration, clamped to `[min_seconds, max_seconds]`.
-
-    Pass this as a pipeline's `num_frames` argument in place of an integer frame count. The prediction comes from the
-    pipeline's `duration_head` and is snapped to the VAE's causal temporal grid, so the realized duration is quantized.
-
-    Attributes:
-        min_seconds (`float`, defaults to `1.0`):
-            Lower bound on the predicted duration.
-        max_seconds (`float`, defaults to `20.0`):
-            Upper bound on the predicted duration. The bounds keep a misbehaving prediction from requesting a
-            degenerate or OOM-sized generation.
-    """
-
-    min_seconds: float = 1.0
-    max_seconds: float = 20.0
-
-    def __post_init__(self):
-        if self.min_seconds >= self.max_seconds:
-            raise ValueError(
-                f"`min_seconds` ({self.min_seconds}) must be less than `max_seconds` ({self.max_seconds})."
-                " A collapsed range leaves no room for a prediction, and cannot generally be satisfied by a frame"
-                " count on the VAE's temporal grid."
-            )
 
 
 class LTX2DurationAttnProcessor:
@@ -117,7 +87,7 @@ class LTX2DurationHead(ModelMixin, ConfigMixin):
     the pooler can tell them apart, and a small MLP turns the pooled vector into a log-duration. The regression target
     is trained in log-seconds, so `forward` exponentiates and callers always get seconds.
 
-    Ships from LTX-2.4 checkpoints onward.
+    Ships from LTX-2.5 checkpoints onward.
 
     Args:
         video_cross_attention_dim (`int`, defaults to `4096`):

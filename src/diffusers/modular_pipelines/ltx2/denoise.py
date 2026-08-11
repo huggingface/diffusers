@@ -139,6 +139,48 @@ class LTX2Image2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
+class LTX2ConditionLoopBeforeDenoiser(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Condition loop step. Like the text-to-video variant, but scales the per-token video timestep by "
+            "`1 - conditioning_mask`, so first-frame and keyframe condition tokens are seen at a reduced noise "
+            "level (zero for `strength=1`). The audio timestep is unmasked."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("latents", type_hint=torch.Tensor, required=True),
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Packed noisy audio latents to denoise.",
+            ),
+            InputParam(
+                "conditioning_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Packed per-token conditioning strengths of shape [B, S, 1].",
+            ),
+            InputParam(
+                "dtype", type_hint=torch.dtype, required=True, description="The dtype the model inputs are cast to."
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+        block_state.latent_model_input = block_state.latents.to(block_state.dtype)
+        block_state.audio_latent_model_input = block_state.audio_latents.to(block_state.dtype)
+        timestep = t.expand(block_state.latents.shape[0])
+        block_state.video_timestep = timestep.unsqueeze(-1) * (1 - block_state.conditioning_mask.squeeze(-1))
+        block_state.audio_timestep = timestep
+        return components, block_state
+
+
 # Default per-pass conditioning map for `LTX2LoopDenoiser`: transformer argument -> block-state attribute names
 # indexed [cond, uncond, stg, modality]. STG and modality-isolation reuse the conditional (positive) tensors and
 # differ only in their per-pass model flags, which the denoiser sets after preparation.
@@ -215,13 +257,28 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             ComponentSpec(
                 "guider",
                 LTX2Guidance,
-                config=FrozenDict({"guidance_scale": 4.0}),
+                config=FrozenDict(
+                    {
+                        "guidance_scale": 3.0,
+                        "stg_scale": 1.0,
+                        "modality_scale": 3.0,
+                        "guidance_rescale": 0.7,
+                        "spatio_temporal_guidance_blocks": [28],
+                    }
+                ),
                 default_creation_method="from_config",
             ),
             ComponentSpec(
                 "audio_guider",
                 LTX2Guidance,
-                config=FrozenDict({"guidance_scale": 4.0}),
+                config=FrozenDict(
+                    {
+                        "guidance_scale": 7.0,
+                        "stg_scale": 1.0,
+                        "modality_scale": 3.0,
+                        "guidance_rescale": 0.7,
+                    }
+                ),
                 default_creation_method="from_config",
             ),
         ]
@@ -244,7 +301,13 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
@@ -252,7 +315,7 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             InputParam(
                 "use_cross_timestep",
                 type_hint=bool,
-                default=False,
+                default=True,
                 description="Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).",
             ),
             InputParam.template("attention_kwargs"),
@@ -432,7 +495,13 @@ class LTX2Image2VideoLoopAfterDenoiser(ModularPipelineBlocks):
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
+                    "(see `LTX2AutoDurationStep`)."
+                ),
             ),
         ]
 
@@ -462,6 +531,68 @@ class LTX2Image2VideoLoopAfterDenoiser(ModularPipelineBlocks):
         noise_pred_audio = convert_x0_to_velocity(
             block_state.audio_latents, block_state.noise_pred_audio, i, block_state.audio_scheduler
         )
+        block_state.audio_latents = block_state.audio_scheduler.step(
+            noise_pred_audio, t, block_state.audio_latents, return_dict=False
+        )[0]
+        return components, block_state
+
+
+class LTX2ConditionLoopAfterDenoiser(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Condition loop step. Blends the guided x0 prediction with the clean condition latents through the "
+            "`conditioning_mask` (in x0 space, matching the reference `post_process_latent`), converts back to "
+            "velocity, and steps both schedulers. Unlike the image-to-video variant the video step covers the whole "
+            "sequence: appended keyframe tokens stay in place and are pinned by the mask rather than by slicing."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("latents", type_hint=torch.Tensor, required=True),
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Packed noisy audio latents to denoise.",
+            ),
+            InputParam("audio_scheduler", required=True),
+            InputParam(
+                "conditioning_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Packed per-token conditioning strengths of shape [B, S, 1].",
+            ),
+            InputParam(
+                "clean_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Clean condition latents at conditioned positions, zeros elsewhere.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+        # Conditioning strengths run from 0 (always use the denoised sample) to 1 (always use the condition), with
+        # intermediate values specifying how strongly to follow the condition. Applied in x0 space, not velocity
+        # space (which is what the transformer outputs).
+        conditioning_mask = block_state.conditioning_mask
+        denoised = (
+            block_state.noise_pred_video * (1 - conditioning_mask) + block_state.clean_latents * conditioning_mask
+        ).to(block_state.noise_pred_video.dtype)
+
+        noise_pred_video = convert_x0_to_velocity(block_state.latents, denoised, i, components.scheduler)
+        noise_pred_audio = convert_x0_to_velocity(
+            block_state.audio_latents, block_state.noise_pred_audio, i, block_state.audio_scheduler
+        )
+        block_state.latents = components.scheduler.step(noise_pred_video, t, block_state.latents, return_dict=False)[0]
         block_state.audio_latents = block_state.audio_scheduler.step(
             noise_pred_audio, t, block_state.audio_latents, return_dict=False
         )[0]
@@ -533,4 +664,16 @@ class LTX2Image2VideoDenoiseStep(LTX2DenoiseLoopWrapper):
         return (
             "Image-to-video denoise step. Iterates `LTX2DenoiseLoopWrapper.__call__`, running per step:\n"
             " - `LTX2Image2VideoLoopBeforeDenoiser`\n - `LTX2LoopDenoiser`\n - `LTX2Image2VideoLoopAfterDenoiser`"
+        )
+
+
+class LTX2ConditionDenoiseStep(LTX2DenoiseLoopWrapper):
+    block_classes = [LTX2ConditionLoopBeforeDenoiser, LTX2LoopDenoiser, LTX2ConditionLoopAfterDenoiser]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Condition denoise step. Iterates `LTX2DenoiseLoopWrapper.__call__`, running per step:\n"
+            " - `LTX2ConditionLoopBeforeDenoiser`\n - `LTX2LoopDenoiser`\n - `LTX2ConditionLoopAfterDenoiser`"
         )

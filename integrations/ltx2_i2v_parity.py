@@ -1,5 +1,5 @@
 """
-LTX-2.4 image-to-video parity harness: modular `LTX2ImageToVideoBlocks` vs. standard
+LTX-2.5 image-to-video parity harness: modular `LTX2ImageToVideoBlocks` vs. standard
 `LTX2ImageToVideoPipeline`.
 
 TEMPORARY / for-visibility only. This whole `integrations/` directory is meant to be committed
@@ -8,7 +8,7 @@ It is NOT a pytest test and is not wired into CI — run it manually against a r
 
 What it does
 ------------
-Loads `diffusers/LTX-2.4-Diffusers` once, then runs the *same* image-to-video generation through:
+Loads `diffusers/LTX-2.5-Diffusers` once, then runs the *same* image-to-video generation through:
   1. the standard `LTX2ImageToVideoPipeline` (`.__call__`), and
   2. the modular `LTX2ImageToVideoBlocks` i2v blockset (built with `init_pipeline()`),
 
@@ -23,8 +23,10 @@ Both runs:
   - use a freshly-seeded generator with the same seed. The image is VAE-encoded with `argmax` (mode,
     no randomness), so both pipelines then consume randomness in the same order: video noise, audio
     noise;
-  - disable prompt enhancement (`enable_prompt_enhancement=False` on the standard pipeline; the
-    modular `LTX2ImageToVideoBlocks` i2v blockset contains no enhancer block).
+  - disable prompt enhancement (`enable_prompt_enhancement=False` on both pipelines);
+  - skip the image-conditioning H.264 re-compression by default (`--image_crf 0` on both pipelines), so the
+    comparison isolates the block logic rather than the PyAV codec round-trip. Pass `--image_crf -1` to let
+    each pipeline resolve the model default (18 for LTX-2.5) and check parity through the re-compression too.
 
 Usage
 -----
@@ -44,14 +46,13 @@ from PIL import Image
 from diffusers import FlowMatchEulerDiscreteScheduler, LTX2ImageToVideoPipeline
 from diffusers.modular_pipelines.ltx2 import LTX2ImageToVideoBlocks
 from diffusers.modular_pipelines.ltx2.guider import LTX2Guidance
-from diffusers.pipelines.ltx2 import LTX2AutoDuration
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image
 
 
 DEFAULT_PROMPT = "The fox turns its head and blinks slowly as snow begins to fall."
 
-# Full guidance stack (CFG + spatio-temporal guidance + modality-isolation), matching real LTX-2.4 usage.
+# Full guidance stack (CFG + spatio-temporal guidance + modality-isolation), matching real LTX-2.5 usage.
 # The standard pipeline takes these as `__call__` kwargs; the modular pipeline takes them via its video/audio
 # guider components (see `_make_guiders`). Kept identical so the comparison is apples-to-apples.
 GUIDANCE = {
@@ -213,10 +214,8 @@ def main(args):
     else:
         std.to(args.device)
 
-    if args.predict_duration:
-        num_frames = LTX2AutoDuration(min_seconds=args.min_seconds, max_seconds=args.max_seconds)
-    else:
-        num_frames = args.num_frames
+    # `num_frames=None` asks both pipelines to auto-predict the duration via the `duration_head`.
+    num_frames = None if args.predict_duration else args.num_frames
     # Non-guidance call kwargs shared by both pipelines. Guidance is delivered separately: `__call__` kwargs for
     # the standard pipeline, guider components for the modular one.
     common_kwargs = {
@@ -226,6 +225,9 @@ def main(args):
         "width": args.width,
         "height": args.height,
         "num_frames": num_frames,
+        "min_seconds": args.min_seconds,
+        "max_seconds": args.max_seconds,
+        "image_crf": None if args.image_crf < 0 else args.image_crf,
         "frame_rate": args.frame_rate,
         "num_inference_steps": args.num_inference_steps,
         "max_sequence_length": args.max_sequence_length,
@@ -286,7 +288,7 @@ def main(args):
     if args.debug_forward:
         phase["name"] = "mod"
     generator = torch.Generator(args.device).manual_seed(args.seed)
-    state = mod(generator=generator, **common_kwargs)
+    state = mod(generator=generator, enable_prompt_enhancement=False, **common_kwargs)
     video_mod = state.get("videos")
     audio_mod = state.get("audio")
 
@@ -351,6 +353,14 @@ if __name__ == "__main__":
     parser.add_argument("--num_inference_steps", type=int, default=6)
     parser.add_argument("--max_sequence_length", type=int, default=1024)
     parser.add_argument("--num_videos_per_prompt", type=int, default=1)
+
+    parser.add_argument(
+        "--image_crf",
+        type=int,
+        default=0,
+        help="Image-conditioning H.264 CRF for both pipelines. 0 (default) skips re-compression; -1 resolves "
+        "the model default (18 for LTX-2.5).",
+    )
 
     parser.add_argument("--predict_duration", action="store_true")
     parser.add_argument("--min_seconds", type=float, default=1.0)

@@ -25,7 +25,6 @@ from diffusers import (
     LTX2VideoTransformer3DModel,
 )
 from diffusers.pipelines.ltx2 import (
-    LTX2AutoDuration,
     LTX2DurationHead,
     LTX2LatentUpsamplePipeline,
     LTX2TextConnectors,
@@ -206,11 +205,24 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
+            # Pin legacy sampling knobs so deterministic slice tests stay stable when
+            # production defaults track LTX-2.3/2.5 (STG on, modality/rescale, cross-timestep).
+            "stg_scale": 0.0,
+            "modality_scale": 1.0,
+            "guidance_rescale": 0.0,
+            "audio_guidance_scale": 1.0,
+            "audio_stg_scale": 0.0,
+            "audio_modality_scale": 1.0,
+            "audio_guidance_rescale": 0.0,
+            "spatio_temporal_guidance_blocks": None,
+            "use_cross_timestep": False,
             "height": 32,
             "width": 32,
             "num_frames": 5,
             "frame_rate": 25.0,
             "max_sequence_length": 16,
+            # Synthetic float tensors skip H.264 CRF re-compression (training path uses PIL).
+            "image_crf": 0,
             "output_type": "pt",
         }
 
@@ -381,7 +393,9 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_frames"] = LTX2AutoDuration(min_seconds=0.5, max_seconds=2.0)
+        inputs.pop("num_frames")
+        inputs["min_seconds"] = 0.5
+        inputs["max_seconds"] = 2.0
         frames = pipe(**inputs).frames[0]
 
         ratio = pipe.vae_temporal_compression_ratio
@@ -405,7 +419,7 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
     def test_omitting_num_frames_uses_the_legacy_default_without_a_head(self):
-        # Guards backwards compatibility: a pre-2.4 pipeline has no duration_head and must keep 121.
+        # Guards backwards compatibility: a pre-2.5 pipeline has no duration_head and must keep 121.
         components = self.get_dummy_components()
         assert components.get("duration_head") is None
         pipe = self.pipeline_class(**components).to(torch_device)
@@ -444,7 +458,7 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         inputs["prompt"] = ["a robot dancing", "a much longer and quite different scene"]
         inputs["negative_prompt"] = ["", ""]
-        inputs["num_frames"] = LTX2AutoDuration()
+        inputs.pop("num_frames")
 
         with self.assertRaises(ValueError) as ctx:
             pipe(**inputs)
@@ -466,15 +480,3 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         latents = pipe(**inputs).frames
 
         assert latents.shape[0] == 2
-
-    def test_auto_duration_without_a_head_raises(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_frames"] = LTX2AutoDuration()
-
-        with self.assertRaises(ValueError) as ctx:
-            pipe(**inputs)
-        assert "duration_head" in str(ctx.exception)

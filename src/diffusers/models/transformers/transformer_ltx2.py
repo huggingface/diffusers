@@ -1106,7 +1106,7 @@ class LTX2VideoTransformer3DModel(
         qk_norm (`str`, defaults to `"rms_norm_across_heads"`):
             The normalization layer to use.
         ff_bias (`bool`, defaults to `True`):
-            Whether the video feed-forward layer's linear layers include a bias term. `False` for LTX-2.4.
+            Whether the video feed-forward layer's linear layers include a bias term. `False` for LTX-2.5.
         audio_ff_bias (`bool`, defaults to `True`):
             Whether the audio feed-forward layer's linear layers include a bias term.
         use_prompt_adaln_single (`bool`, defaults to `True`):
@@ -1240,7 +1240,7 @@ class LTX2VideoTransformer3DModel(
         self.audio_scale_shift_table = nn.Parameter(torch.randn(2, audio_inner_dim) / audio_inner_dim**0.5)
 
         # 3.4. Prompt Scale/Shift Modulation parameters (LTX-2.3)
-        # When `use_prompt_adaln_single=False` (LTX-2.4 KV-cacheable cross-attention), this MLP is dropped so the
+        # When `use_prompt_adaln_single=False` (LTX-2.5 KV-cacheable cross-attention), this MLP is dropped so the
         # cross-attention K/V modulation becomes timestep-independent (static per-layer table only).
         if self.prompt_modulation and use_prompt_adaln_single:
             self.prompt_adaln = LTX2AdaLayerNormSingle(inner_dim, num_mod_params=2, use_additional_conditions=False)
