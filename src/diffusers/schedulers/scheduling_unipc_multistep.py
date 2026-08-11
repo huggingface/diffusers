@@ -335,6 +335,10 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 automatically.
             mu (`float`, *optional*):
                 Optional mu parameter for dynamic shifting when using exponential time shift type.
+            timesteps (`list[int]`, *optional*):
+                Custom timesteps used to support arbitrary timesteps schedule. If `None`, timesteps will be generated
+                based on the `timestep_spacing` attribute. If `timesteps` is passed, `num_inference_steps` and `sigmas`
+                must be `None`, and `timestep_spacing` attribute will be ignored.
         """
         if self.config.use_dynamic_shifting and mu is None:
             raise ValueError("`mu` must be passed when `use_dynamic_shifting` is set to be `True`")
