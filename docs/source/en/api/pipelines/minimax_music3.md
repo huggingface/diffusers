@@ -27,7 +27,7 @@ import scipy
 import torch
 from diffusers import MiniMaxMusic3Pipeline
 
-pipe = MiniMaxMusic3Pipeline.from_pretrained("MiniMaxAI/MiniMax-Music-3", torch_dtype=torch.bfloat16)
+pipe = MiniMaxMusic3Pipeline.from_pretrained("MiniMaxAI/MiniMax-Music3", torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 lyrics = """[verse]
