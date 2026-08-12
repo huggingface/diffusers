@@ -68,7 +68,6 @@ def get_t5_prompt_embeds(
     return prompt_embeds
 
 
-# Copied from diffusers.pipelines.wan.pipeline_wan_animate_2.clip_visual_encode
 def clip_visual_encode(image_encoder, tensor, device, dtype):
     """Encode tensor to CLIP features (bicubic to 224×224, matching original)."""
     if tensor.ndim == 3:
@@ -82,7 +81,6 @@ def clip_visual_encode(image_encoder, tensor, device, dtype):
     return out.hidden_states[-2]
 
 
-# Copied from diffusers.pipelines.wan.pipeline_wan_animate_2.get_i2v_mask
 def get_i2v_mask(lat_t, lat_h, lat_w, mask_len=1, device="cuda"):
     """Create an i2v mask in latent space.
 
@@ -96,7 +94,6 @@ def get_i2v_mask(lat_t, lat_h, lat_w, mask_len=1, device="cuda"):
     return msk
 
 
-# Copied from diffusers.pipelines.wan.pipeline_wan_animate_2.get_frame_indices
 def get_frame_indices(num_frames, video_fps, target_fps):
     """Nearest-neighbour resample of a `video_fps` clip to `target_fps`."""
     num_target_frames = int(num_frames / video_fps * target_fps)
