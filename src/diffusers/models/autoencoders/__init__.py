@@ -28,4 +28,5 @@ from .autoencoder_rae import AutoencoderRAE
 from .autoencoder_tiny import AutoencoderTiny
 from .autoencoder_vidtok import AutoencoderVidTok
 from .consistency_decoder_vae import ConsistencyDecoderVAE
+from .ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel
 from .vq_model import VQModel
