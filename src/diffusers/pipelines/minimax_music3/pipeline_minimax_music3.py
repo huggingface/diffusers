@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...models.transformers.transformer_minimax_music3 import MiniMaxMusic3Transformer1DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import logging
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_minimax_music3 import (
@@ -70,7 +70,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import MiniMaxMusic3Pipeline
 
-        >>> pipe = MiniMaxMusic3Pipeline.from_pretrained("MiniMaxAI/MiniMax-Music3-Diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = MiniMaxMusic3Pipeline.from_pretrained("MiniMaxAI/MiniMax-Music-3", torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
         >>> lyrics = "[verse]\\nMorning light filtering through the pine\\n[chorus]\\nSoftly the world begins to breathe"
@@ -331,6 +331,7 @@ class MiniMaxMusic3Pipeline(DiffusionPipeline):
         return torch.stack(frame_hiddens, dim=1)
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: str,
