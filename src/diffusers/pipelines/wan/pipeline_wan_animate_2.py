@@ -24,7 +24,6 @@ from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanAnimate2Transformer3DModel
 from ...models.transformers.transformer_wan_animate_2 import WanAnimate2KVCache
-from ...modular_pipelines.wan_animate_2.video_processor import WanAnimate2VideoProcessor
 from ...schedulers import SchedulerMixin
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
@@ -112,6 +111,11 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         transformer: WanAnimate2Transformer3DModel,
     ):
         super().__init__()
+
+        # Imported here rather than at module level: the modular package imports pipeline loading
+        # utilities from `pipelines`, so a module-level import back into `modular_pipelines` is a
+        # circular import under eager (DIFFUSERS_SLOW_IMPORT) initialization.
+        from ...modular_pipelines.wan_animate_2.video_processor import WanAnimate2VideoProcessor
 
         self.register_modules(
             vae=vae,
