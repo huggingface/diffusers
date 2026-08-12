@@ -16,7 +16,7 @@ import torch
 
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict, OutputParam
+from ..modular_pipeline_utils import InputParam, InsertableDict, OutputParam
 from .before_denoise import WanAnimate2PrepareSegmentsStep
 from .decoders import WanAnimate2DecodeStep
 from .denoise import WanAnimate2DistilledDenoiseStep
@@ -184,7 +184,7 @@ class WanAnimate2DistilledCoreDenoiseStep(SequentialPipelineBlocks):
               The number of conditioning frames carried over from the previous segment
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`, *optional*, defaults to 40):
+          num_inference_steps (`int`, *optional*, defaults to 10):
               The number of denoising steps.
           condition_clip_context (`Tensor`):
               CLIP vision features of the driving video's first frame
@@ -217,6 +217,14 @@ class WanAnimate2DistilledCoreDenoiseStep(SequentialPipelineBlocks):
             "Core denoise step for the distilled Wan-Animate-2 checkpoint: computes the segment-invariant geometry "
             "and runs the segment-by-segment denoising loop in few steps without classifier-free guidance."
         )
+
+    @property
+    def inputs(self):
+        # The distilled checkpoint samples in few steps.
+        return [
+            InputParam.template("num_inference_steps", default=10) if param.name == "num_inference_steps" else param
+            for param in super().inputs
+        ]
 
     @property
     def outputs(self):
@@ -282,7 +290,7 @@ class WanAnimate2DistilledBlocks(SequentialPipelineBlocks):
               The number of conditioning frames carried over from the previous segment
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`, *optional*, defaults to 40):
+          num_inference_steps (`int`, *optional*, defaults to 10):
               The number of denoising steps.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.

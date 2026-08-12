@@ -801,13 +801,20 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
             reference_grid_sizes (`torch.Tensor`, *optional*):
                 Patch grid of the reference latents, used for the reference rotary embeddings. Required under
                 `kv_cache_mode="cached"`.
-            origin_len (`int`, *optional*), origin_area (`list[int]`, *optional*):
-                Frame count and spatial size of the full video, which the in-context block mask is built over. Required
-                under `kv_cache_mode="cached"`.
+            origin_len (`int`, *optional*):
+                Frame count of the full video, which the in-context block mask is built over. Required under
+                `kv_cache_mode="cached"`.
+            origin_area (`list[int]`, *optional*):
+                Spatial size `[height, width]` of the full video, which the in-context block mask is built over.
+                Required under `kv_cache_mode="cached"`.
             is_uncondtion (`bool`, *optional*):
                 Whether this is the unconditional branch of classifier-free guidance.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.modeling_outputs.Transformer2DModelOutput`] or `tuple(list[torch.Tensor])`:
+                The predicted sample per input latent, unpatchified; a plain tuple if `return_dict` is `False`.
         """
         if kv_cache_mode not in ("extract", "cached"):
             raise ValueError(f"`kv_cache_mode` must be either 'extract' or 'cached', got {kv_cache_mode}.")

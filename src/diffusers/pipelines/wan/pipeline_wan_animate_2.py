@@ -300,6 +300,13 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The output format.
             return_dict (`bool`, defaults to `True`):
                 Whether to return a `WanPipelineOutput`.
+            callback_on_step_end (`Callable`, *optional*):
+                A function called at the end of each denoising step with `(self, step, timestep, callback_kwargs)`.
+            callback_on_step_end_tensor_inputs (`list[str]`, defaults to `["latents"]`):
+                The tensor inputs passed to `callback_on_step_end` through `callback_kwargs`; only tensors listed in
+                `self._callback_tensor_inputs` are allowed.
+            max_sequence_length (`int`, defaults to `512`):
+                Maximum sequence length for prompt encoding.
         """
         # 1. Check inputs
         self.check_inputs(image, driving_video, prompt, height, width)
