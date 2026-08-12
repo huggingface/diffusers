@@ -30,7 +30,7 @@ from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPip
 class TestWanAnimate2ModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
     pipeline_class = WanAnimate2ModularPipeline
     pipeline_blocks_class = WanAnimate2Blocks
-    pretrained_model_name_or_path = "YiYiXu/tiny-wan-animate-2-modular"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-modular"
 
     params = frozenset(["prompt", "image", "driving_video"])
     batch_params = frozenset()
@@ -78,7 +78,7 @@ class TestWanAnimate2ModularPipelineFast(ModularPipelineTesterMixin, ModularGuid
 class TestWanAnimate2DistilledModularPipelineFast(TestWanAnimate2ModularPipelineFast):
     pipeline_class = WanAnimate2DistilledModularPipeline
     pipeline_blocks_class = WanAnimate2DistilledBlocks
-    pretrained_model_name_or_path = "YiYiXu/tiny-wan-animate-2-distilled-modular"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-distilled-modular"
 
     @pytest.mark.skip(reason="The distilled preset pins its guider to guidance_scale=1.0")
     def test_guider_cfg(self):
