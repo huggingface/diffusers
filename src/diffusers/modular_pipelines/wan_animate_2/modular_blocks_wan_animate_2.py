@@ -49,18 +49,18 @@ WanAnimate2ImageEncoderBlocks = InsertableDict(
 # auto_docstring
 class WanAnimate2ImageEncodeStep(SequentialPipelineBlocks):
     """
-    Image encoder step that letterboxes the reference character image to the resolved resolution and CLIP-encodes it into `encoder_hidden_states_image`.
+    Image encoder step that letterboxes the reference character image to the resolved resolution and CLIP-encodes it
+    into `encoder_hidden_states_image`.
 
       Components:
-          image_processor (`WanAnimate2VideoProcessor`)
-          image_encoder (`CLIPVisionModel`)
+          image_processor (`WanAnimate2VideoProcessor`) image_encoder (`CLIPVisionModel`)
 
       Inputs:
           image (`Image | list`):
               The reference image holding the character to animate.
           height (`int`, *optional*, defaults to 800):
-              Together with `width`, the target *area* of the generated video; the aspect ratio comes from `image`. Overwritten
-              with the resolved frame height.
+              Together with `width`, the target *area* of the generated video; the aspect ratio comes from `image`.
+              Overwritten with the resolved frame height.
           width (`int`, *optional*, defaults to 640):
               See `height`. Overwritten with the resolved frame width.
 
@@ -96,18 +96,18 @@ WanAnimate2VideoEncoderBlocks = InsertableDict(
 # auto_docstring
 class WanAnimate2VideoEncodeStep(SequentialPipelineBlocks):
     """
-    Video encoder step that preprocesses the driving video (fps resample, letterbox, zigzag padding to a whole number of segments) and CLIP-encodes its first frame into `condition_clip_context`.
+    Video encoder step that preprocesses the driving video (fps resample, letterbox, zigzag padding to a whole number
+    of segments) and CLIP-encodes its first frame into `condition_clip_context`.
 
       Components:
-          video_processor (`WanAnimate2VideoProcessor`)
-          image_encoder (`CLIPVisionModel`)
+          video_processor (`WanAnimate2VideoProcessor`) image_encoder (`CLIPVisionModel`)
 
       Inputs:
           driving_video (`list`):
               The driving video that provides the motion, in any format accepted by `VideoProcessor.preprocess_video`.
           driving_video_fps (`float`, *optional*):
-              The frame rate `driving_video` was captured at — `load_video(..., return_fps=True)` reports it. When set, the
-              driving frames are resampled from it to `fps`; when `None` they are used as-is.
+              The frame rate `driving_video` was captured at — `load_video(..., return_fps=True)` reports it. When set,
+              the driving frames are resampled from it to `fps`; when `None` they are used as-is.
           fps (`int`, *optional*, defaults to 24):
               The frame rate the model generates at
           segment_frame_length (`int`, *optional*, defaults to 81):
@@ -115,8 +115,8 @@ class WanAnimate2VideoEncodeStep(SequentialPipelineBlocks):
           prev_segment_conditioning_frames (`int`, *optional*, defaults to 1):
               The number of conditioning frames carried over from the previous segment
           height (`int`, *optional*, defaults to 800):
-              The height the driving frames are letterboxed to; must match the reference image's resolved height. In the
-              assembled pipeline the image preprocess step supplies the resolved value.
+              The height the driving frames are letterboxed to; must match the reference image's resolved height. In
+              the assembled pipeline the image preprocess step supplies the resolved value.
           width (`int`, *optional*, defaults to 640):
               See `height`.
 
@@ -161,13 +161,12 @@ WanAnimate2CoreDenoiseBlocks = InsertableDict(
 # auto_docstring
 class WanAnimate2CoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Core denoise step that computes the segment-invariant geometry and runs the segment-by-segment denoising loop, decoding each segment inside the loop because the next segment conditions on its decoded pixels.
+    Core denoise step that computes the segment-invariant geometry and runs the segment-by-segment denoising loop,
+    decoding each segment inside the loop because the next segment conditions on its decoded pixels.
 
       Components:
-          vae (`AutoencoderKLWan`)
-          transformer (`WanAnimate2Transformer3DModel`)
-          scheduler (`SchedulerMixin`)
-          guider (`ClassifierFreeGuidance`)
+          vae (`AutoencoderKLWan`) transformer (`WanAnimate2Transformer3DModel`) scheduler (`SchedulerMixin`) guider
+          (`ClassifierFreeGuidance`)
 
       Inputs:
           segment_frame_length (`int`, *optional*, defaults to 81):
@@ -179,8 +178,8 @@ class WanAnimate2CoreDenoiseStep(SequentialPipelineBlocks):
           num_segments (`int`):
               Total number of segments in the driving video, from the video preprocess step
           effective_segment (`int`):
-              Frames each segment advances: `segment_frame_length - prev_segment_conditioning_frames`, from the video preprocess
-              step
+              Frames each segment advances: `segment_frame_length - prev_segment_conditioning_frames`, from the video
+              preprocess step
           prev_segment_conditioning_frames (`int`, *optional*, defaults to 1):
               The number of conditioning frames carried over from the previous segment
           generator (`Generator`, *optional*):
@@ -204,8 +203,8 @@ class WanAnimate2CoreDenoiseStep(SequentialPipelineBlocks):
 
       Outputs:
           segment_frames (`list`):
-              Per-segment decoded frames on CPU, each `[1, 3, T, H, W]`; the decode step concatenates, trims, and crops them into
-              the final video
+              Per-segment decoded frames on CPU, each `[1, 3, T, H, W]`; the decode step concatenates, trims, and crops
+              them into the final video
     """
 
     model_name = "wan-animate-2"
@@ -252,18 +251,13 @@ BLOCKS = InsertableDict(
 # auto_docstring
 class WanAnimate2Blocks(SequentialPipelineBlocks):
     """
-    Modular pipeline blocks for Wan-Animate-2 character animation: a reference character image and a driving video produce a video of the character following the driving motion.
+    Modular pipeline blocks for Wan-Animate-2 character animation: a reference character image and a driving video
+    produce a video of the character following the driving motion.
 
       Components:
-          text_encoder (`UMT5EncoderModel`)
-          tokenizer (`AutoTokenizer`)
-          image_processor (`WanAnimate2VideoProcessor`)
-          image_encoder (`CLIPVisionModel`)
-          video_processor (`WanAnimate2VideoProcessor`)
-          vae (`AutoencoderKLWan`)
-          transformer (`WanAnimate2Transformer3DModel`)
-          scheduler (`SchedulerMixin`)
-          guider (`ClassifierFreeGuidance`)
+          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) image_processor (`WanAnimate2VideoProcessor`)
+          image_encoder (`CLIPVisionModel`) video_processor (`WanAnimate2VideoProcessor`) vae (`AutoencoderKLWan`)
+          transformer (`WanAnimate2Transformer3DModel`) scheduler (`SchedulerMixin`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):
@@ -277,15 +271,15 @@ class WanAnimate2Blocks(SequentialPipelineBlocks):
           image (`Image | list`):
               The reference image holding the character to animate.
           height (`int`, *optional*, defaults to 800):
-              Together with `width`, the target *area* of the generated video; the aspect ratio comes from `image`. Overwritten
-              with the resolved frame height.
+              Together with `width`, the target *area* of the generated video; the aspect ratio comes from `image`.
+              Overwritten with the resolved frame height.
           width (`int`, *optional*, defaults to 640):
               See `height`. Overwritten with the resolved frame width.
           driving_video (`list`):
               The driving video that provides the motion, in any format accepted by `VideoProcessor.preprocess_video`.
           driving_video_fps (`float`, *optional*):
-              The frame rate `driving_video` was captured at — `load_video(..., return_fps=True)` reports it. When set, the
-              driving frames are resampled from it to `fps`; when `None` they are used as-is.
+              The frame rate `driving_video` was captured at — `load_video(..., return_fps=True)` reports it. When set,
+              the driving frames are resampled from it to `fps`; when `None` they are used as-is.
           fps (`int`, *optional*, defaults to 24):
               The frame rate the model generates at
           segment_frame_length (`int`, *optional*, defaults to 81):

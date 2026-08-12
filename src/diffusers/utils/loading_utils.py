@@ -69,8 +69,8 @@ def load_video(
             A conversion method to apply to the video after loading it. When set to `None` the images will be converted
             to "RGB".
         return_fps (`bool`, *optional*, defaults to `False`):
-            Whether to also return the frame rate the video was encoded at. Needed by pipelines that resample the
-            input to the frame rate their model works at, since a list of frames does not carry that information.
+            Whether to also return the frame rate the video was encoded at. Needed by pipelines that resample the input
+            to the frame rate their model works at, since a list of frames does not carry that information.
 
     Returns:
         `list[PIL.Image.Image]` or `tuple[list[PIL.Image.Image], float]`:

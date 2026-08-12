@@ -77,10 +77,10 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     Pipeline for character animation using Wan-Animate-2.
 
-    This pipeline takes a reference character image and a driving video, and generates a video where the character
-    is animated following the motion in the driving video. The model uses an in-context attention mechanism with
-    KV cache: a reference video is first encoded to cache K/V tensors, then the generation forward uses the cached
-    K/V with a block mask for frame-level sparse in-context attention.
+    This pipeline takes a reference character image and a driving video, and generates a video where the character is
+    animated following the motion in the driving video. The model uses an in-context attention mechanism with KV cache:
+    a reference video is first encoded to cache K/V tensors, then the generation forward uses the cached K/V with a
+    block mask for frame-level sparse in-context attention.
 
     Args:
         tokenizer ([`AutoTokenizer`]):
@@ -92,9 +92,9 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
         transformer ([`WanAnimate2Transformer3DModel`]):
             The Wan-Animate-2 transformer model.
         scheduler ([`SchedulerMixin`]):
-            A flow-matching scheduler to be used in combination with `transformer` to denoise the encoded latents.
-            The reference implementation samples with `DPMSolverMultistepScheduler` (`flow_shift=5.0`) for the base
-            model and `FlowMatchEulerDiscreteScheduler` (`shift=5.0`) for the distilled one.
+            A flow-matching scheduler to be used in combination with `transformer` to denoise the encoded latents. The
+            reference implementation samples with `DPMSolverMultistepScheduler` (`flow_shift=5.0`) for the base model
+            and `FlowMatchEulerDiscreteScheduler` (`shift=5.0`) for the distilled one.
         vae ([`AutoencoderKLWan`]):
             The Wan VAE model.
     """
@@ -262,8 +262,7 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The reference character image.
             driving_video (`list[PIL.Image.Image]`, `np.ndarray` or `torch.Tensor`):
                 The driving video that provides the motion, in any format accepted by
-                [`~video_processor.VideoProcessor.preprocess_video`]. Load one from disk with
-                [`~utils.load_video`].
+                [`~video_processor.VideoProcessor.preprocess_video`]. Load one from disk with [`~utils.load_video`].
             prompt (`str` or `list[str]`):
                 The text prompt describing the character appearance and background.
             negative_prompt (`str` or `list[str]`, *optional*):
@@ -271,9 +270,9 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt_ref (`str`, defaults to `"人物动作的参考视频"`):
                 The reference prompt for the driving video context.
             height (`int`, defaults to `800`):
-                Together with `width`, the target *area* (`height * width`) of the generated video. The aspect ratio
-                is taken from `image`, so the video is rarely exactly `height` x `width` — both dimensions are
-                rescaled to hit that area and then floored to a multiple of 16.
+                Together with `width`, the target *area* (`height * width`) of the generated video. The aspect ratio is
+                taken from `image`, so the video is rarely exactly `height` x `width` — both dimensions are rescaled to
+                hit that area and then floored to a multiple of 16.
             width (`int`, defaults to `640`):
                 See `height`.
             segment_frame_length (`int`, defaults to `81`):
@@ -281,8 +280,8 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prev_segment_conditioning_frames (`int`, defaults to `1`):
                 The number of conditioning frames from the previous segment.
             fps (`int`, defaults to `24`):
-                The frame rate the model generates at. `driving_video` is resampled to it when
-                `driving_video_fps` is given.
+                The frame rate the model generates at. `driving_video` is resampled to it when `driving_video_fps` is
+                given.
             driving_video_fps (`float`, *optional*):
                 The frame rate `driving_video` was captured at — a list of frames does not carry it, so
                 [`~utils.load_video`] will report it with `return_fps=True`. When set, the driving frames are

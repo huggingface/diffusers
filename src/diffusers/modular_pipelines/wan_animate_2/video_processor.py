@@ -23,12 +23,12 @@ from ...video_processor import VideoProcessor
 
 class WanAnimate2VideoProcessor(VideoProcessor):
     r"""
-    Letterbox processor for Wan-Animate-2: `preprocess` / `preprocess_video` with `resize_mode="fill"` keep the
-    aspect ratio and fill the remainder with `fill_color` (black by default). The resized content is pasted at
-    `((height - src_h) // 2, (width - src_w) // 2)` -- the placement convention of the reference implementation --
-    instead of `VaeImageProcessor`'s `(height // 2 - src_h // 2, ...)`. The two differ by one row or column
-    whenever the frame dimension is even and the content dimension odd, and that one-pixel placement shift is a
-    real difference in what the model sees.
+    Letterbox processor for Wan-Animate-2: `preprocess` / `preprocess_video` with `resize_mode="fill"` keep the aspect
+    ratio and fill the remainder with `fill_color` (black by default). The resized content is pasted at `((height -
+    src_h) // 2, (width - src_w) // 2)` -- the placement convention of the reference implementation -- instead of
+    `VaeImageProcessor`'s `(height // 2 - src_h // 2, ...)`. The two differ by one row or column whenever the frame
+    dimension is even and the content dimension odd, and that one-pixel placement shift is a real difference in what
+    the model sees.
     """
 
     @register_to_config

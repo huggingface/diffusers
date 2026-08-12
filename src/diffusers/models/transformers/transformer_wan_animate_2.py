@@ -115,9 +115,8 @@ def _get_added_kv_projections(attn, encoder_hidden_states_img: torch.Tensor):
 class WanAnimate2KVLayerCache:
     """Per-layer K/V cache for the reference tokens.
 
-    Holds the *pre-RoPE* projections: the generation pass re-applies rotary embeddings to the
-    reference keys using the reference grid and the `refer_offset_*` offsets. Tensor format:
-    `(batch_size, seq_len, num_heads, head_dim)`.
+    Holds the *pre-RoPE* projections: the generation pass re-applies rotary embeddings to the reference keys using the
+    reference grid and the `refer_offset_*` offsets. Tensor format: `(batch_size, seq_len, num_heads, head_dim)`.
     """
 
     def __init__(self):
@@ -517,7 +516,9 @@ class WanAnimate2TransformerBlock(nn.Module):
         )
 
         # 3. Feed-forward
-        norm_hidden_states = (self.norm2(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(hidden_states)
+        norm_hidden_states = (self.norm2(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
+            hidden_states
+        )
         ff_output = self.ffn(norm_hidden_states)
         hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 
@@ -569,10 +570,9 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
 
     Wan-Animate-2 uses an in-context attention mechanism with a KV cache: a reference video is first encoded
     (``kv_cache_mode="extract"``) to populate a [`WanAnimate2KVCache`], then each denoising step
-    (``kv_cache_mode="cached"``) attends
-    jointly over the generation tokens and the cached reference K/V through a flex ``BlockMask``. The generation
-    self-attention therefore runs on the ``flex`` attention backend only; every other attention in the model works
-    on any backend.
+    (``kv_cache_mode="cached"``) attends jointly over the generation tokens and the cached reference K/V through a flex
+    ``BlockMask``. The generation self-attention therefore runs on the ``flex`` attention backend only; every other
+    attention in the model works on any backend.
 
     Args:
         patch_size (`tuple[int]`, defaults to `(1, 2, 2)`):
@@ -787,23 +787,23 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
             kv_cache (`WanAnimate2KVCache`):
                 Written under `kv_cache_mode="extract"`, read under `"cached"`.
             kv_cache_mode (`str`):
-                `"extract"` runs the reference pass and populates `kv_cache`; `"cached"` runs a denoising step
-                against the cached reference tokens.
+                `"extract"` runs the reference pass and populates `kv_cache`; `"cached"` runs a denoising step against
+                the cached reference tokens.
             seq_len (`int`):
                 Token count each sample must hold after patch embedding.
             encoder_hidden_states_image (`torch.Tensor`, *optional*):
                 CLIP image embeddings, used when the model is configured with `use_img_emb`.
             offset_grid_sizes (`torch.Tensor`, *optional*):
                 Patch grid used to resolve any `refer_offset_*` still set to -1. Required under
-                `kv_cache_mode="extract"`; under `"cached"` the grid derived from `hidden_states` is used instead.
-                Note the two are not the same grid — the reference pass runs first and resolves the offsets from
-                whatever it is given here, which the pipeline sets to the *reference* grid.
+                `kv_cache_mode="extract"`; under `"cached"` the grid derived from `hidden_states` is used instead. Note
+                the two are not the same grid — the reference pass runs first and resolves the offsets from whatever it
+                is given here, which the pipeline sets to the *reference* grid.
             reference_grid_sizes (`torch.Tensor`, *optional*):
                 Patch grid of the reference latents, used for the reference rotary embeddings. Required under
                 `kv_cache_mode="cached"`.
             origin_len (`int`, *optional*), origin_area (`list[int]`, *optional*):
-                Frame count and spatial size of the full video, which the in-context block mask is built over.
-                Required under `kv_cache_mode="cached"`.
+                Frame count and spatial size of the full video, which the in-context block mask is built over. Required
+                under `kv_cache_mode="cached"`.
             is_uncondtion (`bool`, *optional*):
                 Whether this is the unconditional branch of classifier-free guidance.
             return_dict (`bool`, *optional*, defaults to `True`):
