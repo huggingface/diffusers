@@ -1,7 +1,6 @@
 # Model conventions and rules
 
 Shared reference for model-related conventions, patterns, and gotchas.
-Linked from `../AGENTS.md`, `../skills/model-integration/SKILL.md`, and `review-rules.md`.
 
 ## Coding style
 

@@ -1,7 +1,6 @@
 # Pipeline conventions and rules
 
 Shared reference for pipeline-related conventions, patterns, and gotchas.
-Linked from `../AGENTS.md`, `../skills/model-integration/SKILL.md`, and `review-rules.md`.
 
 > **Prefer modular for new pipelines.** [Modular Diffusers](modular.md) is the preferred way to add a new pipeline; the standard `DiffusionPipeline` covered below is still supported but is no longer the default. We prefer modular especially for models that don't fit a fixed task-based structure (e.g. modality baked into the checkpoint) or that are actively evolving. The conventions below apply when you do build or review a standard pipeline.
 

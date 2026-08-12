@@ -14,14 +14,17 @@
 """`diffusers-cli skills` — install Agent Skills bundles.
 
 Skill bundles live under `.ai/skills/<name>/` in the diffusers repo and follow the Agent Skills standard: a directory
-containing `SKILL.md` (plus optional resources). Installs to `.agents/skills/<name>/` which Claude, Codex, and Cursor
-all discover.
+containing `SKILL.md` (plus optional resources), including the `references/` copies of the guides it cites. Claude Code
+gets a plugin bundle under `.claude/skills/`; Codex and Cursor get `.agents/skills/<name>/`.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
+import textwrap
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from pathlib import Path
 
@@ -37,7 +40,12 @@ logger = logging.get_logger("diffusers-cli/skills")
 
 
 _REGISTRY_BASE = "https://api.github.com/repos/huggingface/diffusers/contents/.ai/skills"
+_RAW_BASE = "https://raw.githubusercontent.com/huggingface/diffusers"
 _REGISTRY_REF = "main"
+
+# How a skill cites a guide, e.g. `](references/models.md)` or `` `references/testing.md` ``. The install copies exactly
+# the guides named this way, so a skill only has to cite one to get it.
+_CITATION = re.compile(r"(?<![./\w])references/([\w-]+\.md)")
 
 # Native skill-discovery paths per agent. Claude Code reads only `.claude/skills/`; Codex and
 # Cursor read `.agents/skills/` (Cursor also honors `.claude/skills/` via compat, but installing
@@ -60,6 +68,16 @@ _ALL_INSTALL_DIRS: tuple[Path, ...] = (_CLAUDE_SKILLS_DIR, _AGENTS_SKILLS_DIR)
 # installs from user-placed skills at the same paths.
 _MANAGED_MARKER_FILE = ".diffusers-skill-managed"
 
+# Claude Code loads any directory under a skills root that carries a `.claude-plugin/plugin.json`
+# as a plugin, which namespaces the skills it holds as `/diffusers:<name>` and matches what the
+# published plugin gives contributors. Codex and Cursor have no equivalent, so they keep the plain
+# one-skill-per-directory layout their discovery expects.
+_PLUGIN_NAME = "diffusers"
+_PLUGIN_MANIFEST = {
+    "name": _PLUGIN_NAME,
+    "description": "Conventions and task skills for contributing to diffusers",
+}
+
 
 # ---------------------------------------------------------------------------
 # Registry fetch
@@ -70,6 +88,11 @@ def _registry_url(name: str = "") -> str:
     """API URL for the registry root, or for a single skill bundle when `name` is given."""
     path = f"/{name}" if name else ""
     return f"{_REGISTRY_BASE}{path}?ref={_REGISTRY_REF}"
+
+
+def _skill_md_url(name: str) -> str:
+    """Raw URL of a skill's SKILL.md, so `list` can read descriptions without walking each bundle."""
+    return f"{_RAW_BASE}/{_REGISTRY_REF}/.ai/skills/{name}/SKILL.md"
 
 
 def _fetch_json(url: str) -> list[dict]:
@@ -97,6 +120,32 @@ def _walk_skill_files(name: str) -> list[tuple[str, str]]:
 
     _walk(_registry_url(name), "")
     return files
+
+
+def _skill_description(skill_md: str) -> str:
+    """The `description` from a SKILL.md YAML frontmatter, collapsed onto one line.
+
+    Handles both `description: text` and the folded `description: >` form the skills in this repo use. Returns an empty
+    string when the file has no frontmatter or no description.
+    """
+    lines = skill_md.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return ""
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return ""
+        if not line.startswith("description:"):
+            continue
+        value = line[len("description:") :].strip()
+        if value and value not in (">", "|", ">-", "|-"):
+            return value
+        folded = []
+        for continuation in lines[index + 1 :]:
+            if continuation.strip() == "---" or not continuation.startswith((" ", "\t")):
+                break
+            folded.append(continuation.strip())
+        return " ".join(folded)
+    return ""
 
 
 def _download_skill_bundle(name: str) -> dict[str, bytes]:
@@ -128,8 +177,30 @@ def _detect_install_dirs() -> tuple[Path, ...]:
     return _ALL_INSTALL_DIRS
 
 
+def _skill_dir(root: Path, skills_dir: Path, name: str) -> Path:
+    """Where a single skill lands, which differs by target: a plugin bundle for Claude Code, a bare
+    directory for Codex and Cursor."""
+    if skills_dir == _CLAUDE_SKILLS_DIR:
+        return root / skills_dir / _PLUGIN_NAME / "skills" / name
+    return root / skills_dir / name
+
+
+def _install_references(skill_dir: Path, skill_md: bytes) -> None:
+    """Copy the guides a skill cites into its own `references/` directory.
+
+    A skill cites a guide as `references/<guide>.md`, so the guides it needs are exactly the ones its SKILL.md names.
+    The repo keeps one copy of each under `.ai/references/`; an install gets its own so the skill is self-contained.
+    """
+    references_dir = skill_dir / "references"
+    for guide in sorted(set(_CITATION.findall(skill_md.decode()))):
+        resp = httpx.get(f"{_RAW_BASE}/{_REGISTRY_REF}/.ai/references/{guide}", timeout=DIFFUSERS_REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        references_dir.mkdir(parents=True, exist_ok=True)
+        (references_dir / guide).write_bytes(resp.content)
+
+
 def _install_skill(name: str, bundle: dict[str, bytes], root: Path, skills_dir: Path, force: bool) -> Path:
-    skill_dir = root / skills_dir / name
+    skill_dir = _skill_dir(root, skills_dir, name)
     if skill_dir.exists():
         if not force:
             raise SystemExit(f"Skill already installed at {skill_dir}. Use --force to reinstall.")
@@ -140,19 +211,29 @@ def _install_skill(name: str, bundle: dict[str, bytes], root: Path, skills_dir: 
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
     (skill_dir / _MANAGED_MARKER_FILE).touch()
+    _install_references(skill_dir, bundle["SKILL.md"])
+
+    if skills_dir == _CLAUDE_SKILLS_DIR:
+        manifest = root / skills_dir / _PLUGIN_NAME / ".claude-plugin" / "plugin.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(json.dumps(_PLUGIN_MANIFEST, indent=2) + "\n")
+
     return skill_dir
 
 
 def _has_local_changes(skill_dir: Path, bundle: dict[str, bytes]) -> bool:
     """True if the installed skill has any file that differs from `bundle` or has extra files.
 
-    The marker file is ignored. Compares raw bytes so a whitespace-only edit still counts as dirty.
+    The marker file and the copied `references/` guides are ignored — neither comes from the skill bundle. Compares raw
+    bytes so a whitespace-only edit still counts as dirty.
     """
     on_disk: dict[str, bytes] = {}
     for path in skill_dir.rglob("*"):
         if not path.is_file():
             continue
         rel = str(path.relative_to(skill_dir))
+        if rel.startswith("references/"):
+            continue
         if rel == _MANAGED_MARKER_FILE:
             continue
         on_disk[rel] = path.read_bytes()
@@ -164,6 +245,8 @@ def _discover_installed(root: Path) -> list[tuple[Path, str]]:
     found: list[tuple[Path, str]] = []
     for skills_dir in _ALL_INSTALL_DIRS:
         skills_root = root / skills_dir
+        if skills_dir == _CLAUDE_SKILLS_DIR:
+            skills_root = skills_root / _PLUGIN_NAME / "skills"
         if not skills_root.exists():
             continue
         for d in sorted(skills_root.iterdir()):
@@ -195,6 +278,28 @@ class SkillsCommand(BaseDiffusersCLICommand):
             dest="install_all",
             action="store_true",
             help="Install every skill in the registry. Mutually exclusive with a positional name.",
+        )
+        target = add.add_mutually_exclusive_group()
+        target.add_argument(
+            "--claude",
+            dest="install_dirs",
+            action="store_const",
+            const=(_CLAUDE_SKILLS_DIR,),
+            help="Install for Claude Code only, instead of detecting the agent from the environment.",
+        )
+        target.add_argument(
+            "--codex",
+            dest="install_dirs",
+            action="store_const",
+            const=(_AGENTS_SKILLS_DIR,),
+            help="Install for Codex only.",
+        )
+        target.add_argument(
+            "--cursor",
+            dest="install_dirs",
+            action="store_const",
+            const=(_AGENTS_SKILLS_DIR,),
+            help="Install for Cursor only.",
         )
         add.add_argument(
             "--global",
@@ -254,7 +359,7 @@ class SkillsCommand(BaseDiffusersCLICommand):
             raise SystemExit("Pass a skill name (e.g. diffusers-cli) or --all to install every skill.")
 
         root = Path.home() if self.args.install_global else Path.cwd()
-        install_dirs = _detect_install_dirs()
+        install_dirs = self.args.install_dirs or _detect_install_dirs()
         names = self._resolve_names()
 
         installed: list[str] = []
@@ -272,6 +377,7 @@ class SkillsCommand(BaseDiffusersCLICommand):
 
         if not installed:
             raise SystemExit(f"No skills installed. Failed: {failed}")
+
         out.result(
             f"Installed {len(installed)} skill(s)",
             installed=", ".join(installed),
@@ -302,7 +408,7 @@ class SkillsCommand(BaseDiffusersCLICommand):
             try:
                 bundle = _download_skill_bundle(name)
                 for skills_dir in dirs:
-                    skill_dir = root / skills_dir / name
+                    skill_dir = _skill_dir(root, skills_dir, name)
                     if not self.args.force and _has_local_changes(skill_dir, bundle):
                         logger.warning(
                             f"Skill {name!r} at {skill_dir} has local modifications; "
@@ -332,10 +438,18 @@ class SkillsCommand(BaseDiffusersCLICommand):
 
     def _list(self) -> None:
         entries = _fetch_json(_registry_url())
-        skills = [{"name": e["name"]} for e in entries if e["type"] == "dir" and not e["name"].startswith(".")]
-        if not skills:
+        names = sorted(e["name"] for e in entries if e["type"] == "dir" and not e["name"].startswith("."))
+        if not names:
             raise SystemExit("No skills found in registry.")
-        out.table(skills, headers=["name"])
+
+        # Descriptions run several sentences, so they get a wrapped block under each name rather than a table cell.
+        width = min(shutil.get_terminal_size().columns, 100)
+        for name in names:
+            resp = httpx.get(_skill_md_url(name), timeout=DIFFUSERS_REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            description = _skill_description(resp.text)
+            print(f"\n{name}")
+            print(textwrap.fill(description, width=width, initial_indent="  ", subsequent_indent="  "))
 
     def _resolve_names(self) -> list[str]:
         if self.args.install_all:
