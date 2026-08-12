@@ -27,6 +27,52 @@ from diffusers.modular_pipelines import (
 from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
 
 
+# Every component with its class, every input — optional ones with their defaults — and the config values worth
+# watching: the guider scale is what tells the two presets apart.
+_COMPONENTS = {
+    "text_encoder": "UMT5EncoderModel",
+    "tokenizer": "AutoTokenizer",
+    "image_processor": "WanAnimate2VideoProcessor",
+    "image_encoder": "CLIPVisionModel",
+    "video_processor": "WanAnimate2VideoProcessor",
+    "vae": "AutoencoderKLWan",
+    "transformer": "WanAnimate2Transformer3DModel",
+    "scheduler": "SchedulerMixin",
+    "guider": "ClassifierFreeGuidance",
+}
+_INPUTS = {
+    "negative_prompt": None,
+    "prompt_ref": "人物动作的参考视频",
+    "max_sequence_length": 512,
+    "height": 800,
+    "width": 640,
+    "driving_video_fps": None,
+    "fps": 24,
+    "segment_frame_length": 81,
+    "prev_segment_conditioning_frames": 1,
+    "generator": None,
+    "output_type": "np",
+}
+WAN_ANIMATE_2_DEFAULTS = {
+    None: {
+        "components": _COMPONENTS,
+        "configs": {},
+        "required_inputs": ["prompt", "image", "driving_video"],
+        "inputs": {**_INPUTS, "num_inference_steps": 40},
+        "component_configs": {"guider": {"guidance_scale": 3.0}},
+    }
+}
+WAN_ANIMATE_2_DISTILLED_DEFAULTS = {
+    None: {
+        "components": _COMPONENTS,
+        "configs": {},
+        "required_inputs": ["prompt", "image", "driving_video"],
+        "inputs": {**_INPUTS, "num_inference_steps": 10},
+        "component_configs": {"guider": {"guidance_scale": 1.0}},
+    }
+}
+
+
 class TestWanAnimate2ModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
     pipeline_class = WanAnimate2ModularPipeline
     pipeline_blocks_class = WanAnimate2Blocks
@@ -36,6 +82,7 @@ class TestWanAnimate2ModularPipelineFast(ModularPipelineTesterMixin, ModularGuid
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "height", "width", "output_type"])
     output_name = "videos"
+    expected_workflow_defaults = WAN_ANIMATE_2_DEFAULTS
 
     def get_dummy_inputs(self, seed=0):
         rng = np.random.RandomState(seed)
@@ -79,6 +126,7 @@ class TestWanAnimate2DistilledModularPipelineFast(TestWanAnimate2ModularPipeline
     pipeline_class = WanAnimate2DistilledModularPipeline
     pipeline_blocks_class = WanAnimate2DistilledBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-distilled-modular"
+    expected_workflow_defaults = WAN_ANIMATE_2_DISTILLED_DEFAULTS
 
     @pytest.mark.skip(reason="The distilled preset pins its guider to guidance_scale=1.0")
     def test_guider_cfg(self):
