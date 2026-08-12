@@ -212,6 +212,21 @@ class HookRegistry(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class JoyVideoEditKVCacheConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class LayerSkipConfig(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -308,6 +323,10 @@ def apply_faster_cache(*args, **kwargs):
 
 def apply_first_block_cache(*args, **kwargs):
     requires_backends(apply_first_block_cache, ["torch"])
+
+
+def apply_joyvideoedit_kv_cache(*args, **kwargs):
+    requires_backends(apply_joyvideoedit_kv_cache, ["torch"])
 
 
 def apply_layer_skip(*args, **kwargs):
@@ -661,6 +680,21 @@ class AutoencoderKLHunyuanVideo(metaclass=DummyObject):
 
 
 class AutoencoderKLHunyuanVideo15(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class AutoencoderKLJoyVideoEdit(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -1531,6 +1565,21 @@ class JoyImageEditPlusTransformer3DModel(metaclass=DummyObject):
 
 
 class JoyImageEditTransformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class JoyVideoEditTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

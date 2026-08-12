@@ -40,6 +40,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_hunyuanimage"] = ["AutoencoderKLHunyuanImage"]
     _import_structure["autoencoders.autoencoder_kl_hunyuanimage_refiner"] = ["AutoencoderKLHunyuanImageRefiner"]
     _import_structure["autoencoders.autoencoder_kl_hunyuanvideo15"] = ["AutoencoderKLHunyuanVideo15"]
+    _import_structure["autoencoders.autoencoder_kl_joyvideoedit"] = ["AutoencoderKLJoyVideoEdit"]
     _import_structure["autoencoders.autoencoder_kl_kvae"] = ["AutoencoderKLKVAE"]
     _import_structure["autoencoders.autoencoder_kl_kvae_video"] = ["AutoencoderKLKVAEVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
@@ -127,6 +128,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ideogram4"] = ["Ideogram4Transformer2DModel"]
     _import_structure["transformers.transformer_joyimage"] = ["JoyImageEditTransformer3DModel"]
     _import_structure["transformers.transformer_joyimage_edit_plus"] = ["JoyImageEditPlusTransformer3DModel"]
+    _import_structure["transformers.transformer_joyvideoedit"] = ["JoyVideoEditTransformer3DModel"]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_krea2"] = ["Krea2Transformer2DModel"]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
@@ -183,6 +185,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanImageRefiner,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
+            AutoencoderKLJoyVideoEdit,
             AutoencoderKLKVAE,
             AutoencoderKLKVAEVideo,
             AutoencoderKLLTX2Audio,
@@ -264,6 +267,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Ideogram4Transformer2DModel,
             JoyImageEditPlusTransformer3DModel,
             JoyImageEditTransformer3DModel,
+            JoyVideoEditTransformer3DModel,
             Kandinsky5Transformer3DModel,
             Krea2Transformer2DModel,
             LatteTransformer3DModel,
