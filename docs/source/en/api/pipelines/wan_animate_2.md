@@ -27,10 +27,9 @@ pipe = ModularPipeline.from_pretrained("Wan-AI/Wan2.2-Animate-2-14B-Diffusers")
 pipe.load_components(dtype=torch.bfloat16)
 
 # The transformer weights and the per-segment reference KV cache do not co-reside on one 80 GB
-# card at the default resolution, so stream the transformer's blocks. The in-context attention
-# runs on the flex backend; compiling fuses it.
-pipe.transformer.enable_group_offloading(
-    pipe.transformer,
+# card at the default resolution, so stream the transformer's blocks. Compiling the blocks is
+# required as the in-context attention runs on the flex backend
+pipe.transformer.enable_group_offload(
     onload_device=torch.device("cuda"),
     offload_device=torch.device("cpu"),
     offload_type="block_level",

@@ -161,7 +161,10 @@ class WanAnimate2AttnProcessor:
     With `kv_cache_mode="cached"` (the generation pass) the generation tokens and the cached reference tokens are
     packed into a 128-aligned `[generation | reference]` buffer and attended through a flex `BlockMask`, so each
     generation frame attends to every generation token plus the reference tokens at the same frame index. Because the
-    pattern is expressed as a `BlockMask`, this path runs on the `flex` backend only.
+    pattern is expressed as a `BlockMask`, this path runs on the `flex` backend only, and needs to run under
+    `torch.compile` (e.g. `transformer.compile_repeated_blocks()`): uncompiled, PyTorch's flex attention falls back to
+    an eager implementation that materializes the full attention matrix, which does not fit in memory at video
+    resolutions.
     """
 
     _attention_backend = None
