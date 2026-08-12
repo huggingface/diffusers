@@ -695,8 +695,6 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
             self.img_emb = MLPProj(1280, dim)
 
         self.gradient_checkpointing = False
-        # Pure memo caches, keyed by geometry — the only state `forward` writes. Both hold
-        # deterministic values, so hits and misses produce identical outputs.
         self.block_masks = {}
         self.rope_freqs_cache = {}
 
