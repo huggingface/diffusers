@@ -405,6 +405,8 @@
         title: Transformer2DModel
       - local: api/models/transformer_temporal
         title: TransformerTemporalModel
+      - local: api/models/wan_animate_2_transformer_3d
+        title: WanAnimate2Transformer3DModel
       - local: api/models/wan_animate_transformer_3d
         title: WanAnimateTransformer3DModel
       - local: api/models/wan_transformer_3d
@@ -709,6 +711,8 @@
         title: Stable Video Diffusion
       - local: api/pipelines/wan
         title: Wan
+      - local: api/pipelines/wan_animate_2
+        title: Wan-Animate-2
       title: Video
     title: Pipelines
   - sections:
