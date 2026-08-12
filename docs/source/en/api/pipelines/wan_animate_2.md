@@ -40,13 +40,17 @@ pipe.image_encoder.to("cuda")
 pipe.vae.to("cuda")
 pipe.transformer.compile_repeated_blocks(fullgraph=False)
 
-driving_video, driving_video_fps = load_video("driving.mp4", return_fps=True)
+# The first demo from the official repository: https://github.com/Wan-Video/Wan-Animate-2
+demo = "https://raw.githubusercontent.com/Wan-Video/Wan-Animate-2/main/examples/demo1"
+image = load_image(f"{demo}/reference.png")
+driving_video, driving_video_fps = load_video(f"{demo}/template.mp4", return_fps=True)
+prompt = "人物外观描述：一只银灰色虎斑纹的小猫，拥有圆润的脸庞、竖立的耳朵和巨大的圆形眼睛。它身穿一套深蓝色的制服套装，包括一件带有金色纽扣的西装外套和一条百褶裙。外套里面搭配着白色衬衫，领口处系着一个红色的蝴蝶结，袖口露出白色的衬衫边缘。背景描述：背景为纯白色，光线均匀明亮，无其他杂物或装饰。"
 
 videos = pipe(
-    image=load_image("reference.png"),
+    image=image,
     driving_video=driving_video,
     driving_video_fps=driving_video_fps,
-    prompt="A cat in a blue uniform, white background",
+    prompt=prompt,
     output="videos",
 )
 export_to_video(videos[0], "output.mp4", fps=24)
