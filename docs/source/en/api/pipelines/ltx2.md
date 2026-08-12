@@ -915,6 +915,133 @@ print(f"predicted {seconds:.2f}s -> {num_frames} frames")
 
 Converting a 2.5 checkpoint picks the head up automatically with `--full_pipeline`, or on its own with `--duration_head`. Checkpoints predating 2.5 have no such weights, and conversion skips the component rather than failing.
 
+### LTX-2.5 Modular
+
+LTX-2.5 is also available as a modular pipeline. The LTX-2.5 modular pipeline is configured to use the diffusion decoder and duration prediction by default. It implements multimodal guidance (CFG + STG + modality isolation) via video and audio `LTX2Guidance` `guider` components; video- and audio-specific guidance parameters can be specified on their respective guiders. Below is a T2V modular example:
+
+```py
+import torch
+from transformers import AutoModelForImageTextToText, AutoProcessor
+from diffusers import ModularPipeline, ComponentsManager
+from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
+from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
+from diffusers.utils import encode_video
+
+device = "cuda"
+frame_rate = 24.0
+random_seed = 42
+generator = torch.Generator(device).manual_seed(random_seed)
+
+model_path = "Lightricks/LTX-2.5-Diffusers"
+enhancer_model_id = "google/gemma-4-E2B-it"
+
+cm = ComponentsManager()
+pipe = ModularPipeline.from_pretrained(model_path, components_manager=cm)
+pipe.load_components(dtype=torch.bfloat16)
+if getattr(pipe, "prompt_enhancer", None) is None:
+    prompt_enhancer = AutoModelForImageTextToText.from_pretrained(enhancer_model_id, dtype=torch.bfloat16)
+    processor = AutoProcessor.from_pretrained(enhancer_model_id)
+    pipe.update_components(prompt_enhancer=prompt_enhancer, processor=processor)
+# Set memory_reserve_margin higher to more aggressively offload component models
+cm.enable_auto_cpu_offload(device=device, memory_reserve_margin="20GB")
+# The NATTEN processor works if `kernels` is available (`pip install kernels`)
+# Otherwise omit the below line to use the Flex Attention processor
+pipe.diffusion_decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
+pipe.diffusion_decoder.enable_tiling()
+
+prompt = (
+    "A cinematic shot of a red fox walking through a snowy forest at dawn, golden light filtering through pine trees."
+)
+
+output_state = pipe(
+    prompt=prompt,
+    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    width=768,
+    height=512,
+    num_frames=None,  # Set to an int (e.g. 121) to specify a fixed video length
+    frame_rate=frame_rate,
+    num_inference_steps=30,
+    use_cross_timestep=True,
+    enable_prompt_enhancement=True,
+    generator=generator,
+    output_type="np",
+)
+video = output_state.get("videos")
+audio = output_state.get("audio")
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_5_modular_t2v.mp4",
+)
+```
+
+The modular pipeline will automatically switch workflows based on the supplied inputs. For example, if `images` is supplied, an I2V workflow will be used:
+
+```py
+import torch
+from transformers import AutoModelForImageTextToText, AutoProcessor
+from diffusers import ModularPipeline, ComponentsManager
+from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
+from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
+from diffusers.utils import encode_video, load_image
+
+device = "cuda"
+frame_rate = 24.0
+random_seed = 42
+generator = torch.Generator(device).manual_seed(random_seed)
+
+model_path = "Lightricks/LTX-2.5-Diffusers"
+enhancer_model_id = "google/gemma-4-E2B-it"
+
+cm = ComponentsManager()
+pipe = ModularPipeline.from_pretrained(model_path, components_manager=cm)
+pipe.load_components(dtype=torch.bfloat16)
+if getattr(pipe, "prompt_enhancer", None) is None:
+    prompt_enhancer = AutoModelForImageTextToText.from_pretrained(enhancer_model_id, dtype=torch.bfloat16)
+    processor = AutoProcessor.from_pretrained(enhancer_model_id)
+    pipe.update_components(prompt_enhancer=prompt_enhancer, processor=processor)
+cm.enable_auto_cpu_offload(device=device, memory_reserve_margin="20GB")
+pipe.diffusion_decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
+pipe.diffusion_decoder.enable_tiling()
+
+prompt = (
+    "An astronaut hatches from a fragile egg on the surface of the Moon, the shell cracking and peeling apart in "
+    "gentle low-gravity motion."
+)
+image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+image = load_image(image_path)
+
+output_state = pipe(
+    image=image,
+    prompt=prompt,
+    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    width=768,
+    height=512,
+    num_frames=None,  # Set to an int (e.g. 121) to specify a fixed video length
+    frame_rate=frame_rate,
+    num_inference_steps=30,
+    use_cross_timestep=True,
+    enable_prompt_enhancement=True,
+    generator=generator,
+    output_type="np",
+)
+video = output_state.get("videos")
+audio = output_state.get("audio")
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_5_modular_i2v.mp4",
+)
+```
+
+You can see the supported workflows in the docs for each blockset (e.g. `LTX2AutoBlocks`, `LTX25AutoBlocks`).
+
 ## LTX2Pipeline
 
 [[autodoc]] LTX2Pipeline
@@ -954,3 +1081,23 @@ Converting a 2.5 checkpoint picks the head up automatically with `--full_pipelin
 ## LTX2PipelineOutput
 
 [[autodoc]] pipelines.ltx2.pipeline_output.LTX2PipelineOutput
+
+## LTX2ModularPipeline
+
+[[autodoc]] LTX2ModularPipeline
+
+## LTX2AutoBlocks
+
+[[autodoc]] LTX2AutoBlocks
+
+## LTX25ModularPipeline
+
+[[autodoc]] LTX25ModularPipeline
+
+## LTX25AutoBlocks
+
+[[autodoc]] LTX25AutoBlocks
+
+## LTX2Guidance
+
+[[autodoc]] modular_pipelines.ltx2.guider.LTX2Guidance
