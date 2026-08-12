@@ -477,6 +477,8 @@
         title: AutoencoderRAE
       - local: api/models/consistency_decoder_vae
         title: ConsistencyDecoderVAE
+      - local: api/models/ltx2_diffusion_decoder
+        title: LTX2VideoDiffusionDecoderModel
       - local: api/models/autoencoder_oobleck
         title: Oobleck AutoEncoder
       - local: api/models/autoencoder_tiny
