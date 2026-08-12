@@ -2,8 +2,28 @@
 
 ## Setup
 
-- Local Claude Code agents: run `make claude` after cloning to wire the [skills](#skills) under `.claude/`.
-- Local OpenAI Codex agents: run `make codex` after cloning to wire the [skills](#skills) under `.agents/`.
+This file is loaded automatically in a checkout, through the root `AGENTS.md` / `CLAUDE.md` symlinks. The
+[skills](#skills) are not — install them once, by whichever route fits the agent:
+
+```bash
+# Claude Code — installs every skill, namespaced as /diffusers:<name>
+claude plugin marketplace add huggingface/diffusers
+claude plugin install diffusers@diffusers-skills --scope project
+
+# Codex — register the catalog, then install from the Plugins Directory in the ChatGPT desktop app
+codex plugin marketplace add huggingface/diffusers
+
+# Any agent, no marketplace needed
+diffusers-cli skills add --all            # or: skills add <name>, and --claude / --codex / --cursor to pick a target
+```
+
+Installing a skill copies the [reference guides](#reference-guides) it cites into its own `references/` subdirectory,
+so it is self-contained wherever it lands. A skill gets a guide by citing it as `references/<guide>.md`; the guides
+themselves live once at `.ai/references/`. `diffusers-cli skills list` shows what is available, and `diffusers-cli
+skills update` refreshes what you installed.
+
+When editing the skills in this repo, load them from the working tree instead of installing: `claude --plugin-dir .ai`
+for one session, or `make codex` to symlink `.agents/skills` at `.ai/skills` (`make clean-ai` to undo).
 
 ## Coding style
 
@@ -27,10 +47,10 @@ Strive to write code as simple and explicit as possible.
 
 ## Reference guides
 
-- **Models** — see [models.md](models.md) for model conventions, attention pattern, implementation rules, dependencies, and gotchas. For adding or converting a model, use the [model-integration](./skills/model-integration/SKILL.md) skill.
-- **Pipelines** — see [pipelines.md](pipelines.md) for pipeline conventions, patterns, and gotchas.
-- **Modular pipelines** — see [modular.md](modular.md) for modular pipeline conventions, patterns, and gotchas.
-- **Tests** — see [testing.md](testing.md) for test conventions: required test layers, tester mixins, and dummy-component rules.
+- **Models** — see [models.md](references/models.md) for model conventions, attention pattern, implementation rules, dependencies, and gotchas. For adding or converting a model, use the [model-integration](./skills/model-integration/SKILL.md) skill.
+- **Pipelines** — see [pipelines.md](references/pipelines.md) for pipeline conventions, patterns, and gotchas.
+- **Modular pipelines** — see [modular.md](references/modular.md) for modular pipeline conventions, patterns, and gotchas.
+- **Tests** — see [testing.md](references/testing.md) for test conventions: required test layers, tester mixins, and dummy-component rules.
 
 ## Skills
 
@@ -43,4 +63,4 @@ Task-specific guides live in `.ai/skills/` and are loaded on demand by AI agents
 
 ## Self-review before a PR
 
-Before opening a PR, run self-review against [review-rules.md](review-rules.md). The [self-review skill](skills/self-review/SKILL.md) runs this as the same pass the `@claude` CI reviewer uses. Share the final report on the PR (description or comment) — see the skill for details.
+Before opening a PR, run self-review against [review-rules.md](references/review-rules.md). The [self-review skill](skills/self-review/SKILL.md) runs this as the same pass the `@claude` CI reviewer uses. Share the final report on the PR (description or comment) — see the skill for details.
