@@ -29,9 +29,7 @@ pipe.load_components(dtype=torch.bfloat16)
 # The transformer weights and the per-segment reference KV cache do not co-reside on one 80 GB
 # card at the default resolution, so stream the transformer's blocks. The in-context attention
 # runs on the flex backend; compiling fuses it.
-from diffusers.hooks import apply_group_offloading
-
-apply_group_offloading(
+pipe.transformer.enable_group_offloading(
     pipe.transformer,
     onload_device=torch.device("cuda"),
     offload_device=torch.device("cpu"),
