@@ -50,13 +50,12 @@ videos = pipe(
     driving_video=driving_video,
     driving_video_fps=driving_video_fps,
     prompt="A cat in a blue uniform, white background",
-    num_inference_steps=40,
     output="videos",
 )
 export_to_video(videos[0], "output.mp4", fps=24)
 ```
 
-For the distilled checkpoint, load `Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers` the same way and pass `num_inference_steps=10`; no `guidance_scale` argument exists anywhere — guidance is owned by the pipeline's guider component.
+For the distilled checkpoint, load `Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers` the same way — nothing else changes. Each preset carries its own sampling defaults (40 steps for the base checkpoint, 10 for the distilled one), and no `guidance_scale` argument exists anywhere: guidance is owned by the pipeline's guider component (classifier-free guidance at 3.0 for the base preset, disabled for the distilled one).
 
 `height` and `width` (defaults 800 and 640) set the target *area* of the generated video; the actual frame size keeps the reference image's aspect ratio, and the driving frames are letterboxed to it. Inputs that already sit at the target letterbox size pass through the preprocessing untouched, so preprocessing can also be done entirely outside the pipeline.
 
