@@ -27,6 +27,7 @@ from ...models.transformers.transformer_wan_animate_2 import WanAnimate2KVCache
 from ...modular_pipelines.wan_animate_2.video_processor import WanAnimate2VideoProcessor
 from ...schedulers import SchedulerMixin
 from ...utils import logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import WanPipelineOutput
 
@@ -474,14 +475,11 @@ class WanAnimate2Pipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
             # Noise latents temporal dim = y_ref(1) + y_reft/condition_y(T) = total y temporal dim
             lat_t_noise = y.shape[1] if y.ndim == 4 else y.shape[2]
-            noise = torch.randn(
-                16,
-                lat_t_noise,
-                latent_h,
-                latent_w,
-                dtype=torch.float32,
-                device=device,
+            noise = randn_tensor(
+                (16, lat_t_noise, latent_h, latent_w),
                 generator=generator,
+                device=device,
+                dtype=torch.float32,
             )
 
             latents = [noise]

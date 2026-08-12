@@ -39,7 +39,12 @@ class WanAnimate2PrepareSegmentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("segment_frame_length", type_hint=int, default=81),
+            InputParam(
+                "segment_frame_length",
+                type_hint=int,
+                default=81,
+                description="The number of frames in each inference segment",
+            ),
             InputParam(
                 "reference_image_latents",
                 required=True,

@@ -143,15 +143,15 @@ class WanAnimate2TextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("prompt", required=True, type_hint=str),
-            InputParam("negative_prompt", type_hint=str),
+            InputParam.template("prompt"),
+            InputParam.template("negative_prompt"),
             InputParam(
                 "prompt_ref",
                 default="人物动作的参考视频",
                 type_hint=str,
                 description="The reference prompt for the driving video context",
             ),
-            InputParam("max_sequence_length", default=512),
+            InputParam.template("max_sequence_length"),
         ]
 
     @property
@@ -240,7 +240,7 @@ class WanAnimate2ProcessImagesInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("image", type_hint=PIL.Image.Image, required=True),
+            InputParam.template("image", description="The reference image holding the character to animate."),
             InputParam(
                 "height",
                 type_hint=int,
@@ -456,7 +456,12 @@ class WanAnimate2ImageClipEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("image_pixels", required=True, type_hint=torch.Tensor),
+            InputParam(
+                "image_pixels",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The letterboxed reference image `[1, 3, H, W]` in `[-1, 1]`, from the image preprocess step",
+            ),
         ]
 
     @property
@@ -557,7 +562,12 @@ class WanAnimate2ImageVaeEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("image_pixels", required=True, type_hint=torch.Tensor),
+            InputParam(
+                "image_pixels",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The letterboxed reference image `[1, 3, H, W]` in `[-1, 1]`, from the image preprocess step",
+            ),
         ]
 
     @property

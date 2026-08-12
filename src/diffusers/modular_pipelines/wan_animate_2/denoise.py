@@ -24,6 +24,7 @@ from ...models import AutoencoderKLWan, WanAnimate2Transformer3DModel
 from ...models.transformers.transformer_wan_animate_2 import WanAnimate2KVCache
 from ...schedulers.scheduling_utils import SchedulerMixin
 from ...utils import logging
+from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import BlockState, LoopSequentialPipelineBlocks, ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .encoders import encode_vae, get_i2v_mask
@@ -78,9 +79,24 @@ class WanAnimate2SegmentVaeEncoderStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The preprocessed driving video `[1, 3, T, H, W]`, from the video preprocess step",
             ),
-            InputParam("reference_image_latents", required=True, type_hint=torch.Tensor),
-            InputParam("effective_segment", required=True, type_hint=int),
-            InputParam("segment_frame_length", type_hint=int, default=81),
+            InputParam(
+                "reference_image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="i2v mask + reference image latents `[20, 1, latent_height, latent_width]`, from the image VAE encoder step",
+            ),
+            InputParam(
+                "effective_segment",
+                required=True,
+                type_hint=int,
+                description="Frames each segment advances: `segment_frame_length - prev_segment_conditioning_frames`, from the video preprocess step",
+            ),
+            InputParam(
+                "segment_frame_length",
+                type_hint=int,
+                default=81,
+                description="The number of frames in each inference segment",
+            ),
         ]
 
     @property
@@ -143,9 +159,24 @@ class WanAnimate2SegmentPrevFramesStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("reference_image_latents", required=True, type_hint=torch.Tensor),
-            InputParam("segment_frame_length", type_hint=int, default=81),
-            InputParam("prev_segment_conditioning_frames", type_hint=int, default=1),
+            InputParam(
+                "reference_image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="i2v mask + reference image latents `[20, 1, latent_height, latent_width]`, from the image VAE encoder step",
+            ),
+            InputParam(
+                "segment_frame_length",
+                type_hint=int,
+                default=81,
+                description="The number of frames in each inference segment",
+            ),
+            InputParam(
+                "prev_segment_conditioning_frames",
+                type_hint=int,
+                default=1,
+                description="The number of conditioning frames carried over from the previous segment",
+            ),
         ]
 
     @property
@@ -218,8 +249,13 @@ class WanAnimate2SegmentPrepareStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("generator"),
-            InputParam("reference_latents", required=True, type_hint=torch.Tensor),
+            InputParam.template("generator"),
+            InputParam(
+                "reference_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The full conditioning tensor: reference half stacked over the segment half",
+            ),
         ]
 
     @property
@@ -237,14 +273,16 @@ class WanAnimate2SegmentPrepareStep(ModularPipelineBlocks):
     def __call__(self, components, block_state: BlockState, k: int):
         device = components._execution_device
 
-        block_state.latents = torch.randn(
-            components.num_channels_latents,
-            block_state.reference_latents.shape[1],
-            block_state.reference_latents.shape[-2],
-            block_state.reference_latents.shape[-1],
-            dtype=torch.float32,
-            device=device,
+        block_state.latents = randn_tensor(
+            (
+                components.num_channels_latents,
+                block_state.reference_latents.shape[1],
+                block_state.reference_latents.shape[-2],
+                block_state.reference_latents.shape[-1],
+            ),
             generator=block_state.generator,
+            device=device,
+            dtype=torch.float32,
         )
         block_state.kv_cache = WanAnimate2KVCache(components.transformer.config.num_layers)
 
@@ -271,7 +309,7 @@ class WanAnimate2SegmentSchedulerResetStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("num_inference_steps", type_hint=int, default=40),
+            InputParam.template("num_inference_steps", default=40),
         ]
 
     @property
@@ -311,14 +349,54 @@ class WanAnimate2RefExtractStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("driving_video_latents", required=True, type_hint=torch.Tensor),
-            InputParam("driving_video_condition", required=True, type_hint=torch.Tensor),
-            InputParam("condition_clip_context", required=True, type_hint=torch.Tensor),
-            InputParam("prompt_ref_embeds", required=True, type_hint=torch.Tensor),
-            InputParam("kv_cache", required=True, type_hint=WanAnimate2KVCache),
-            InputParam("timesteps", required=True, type_hint=torch.Tensor),
-            InputParam("max_seq_len_ref", required=True, type_hint=int),
-            InputParam("grid_sizes_ref", required=True, type_hint=torch.Tensor),
+            InputParam(
+                "driving_video_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="VAE latents of this segment's driving-video slice",
+            ),
+            InputParam(
+                "driving_video_condition",
+                required=True,
+                type_hint=torch.Tensor,
+                description="i2v mask + driving-slice latents, conditioning the reference-extraction pass",
+            ),
+            InputParam(
+                "condition_clip_context",
+                required=True,
+                type_hint=torch.Tensor,
+                description="CLIP vision features of the driving video's first frame",
+            ),
+            InputParam(
+                "prompt_ref_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Text embeddings of the reference prompt, guiding the reference-extraction pass",
+            ),
+            InputParam(
+                "kv_cache",
+                required=True,
+                type_hint=WanAnimate2KVCache,
+                description="Per-segment cache holding every layer's reference K/V",
+            ),
+            InputParam(
+                "timesteps",
+                required=True,
+                type_hint=torch.Tensor,
+                description="This segment's denoising timesteps",
+            ),
+            InputParam(
+                "max_seq_len_ref",
+                required=True,
+                type_hint=int,
+                description="Packed sequence length of the reference tokens",
+            ),
+            InputParam(
+                "grid_sizes_ref",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Post-patch latent grid `[[T, H/2, W/2]]` of a driving-video segment",
+            ),
         ]
 
     @torch.no_grad()
@@ -375,18 +453,68 @@ class WanAnimate2SegmentDenoiseInner(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("reference_latents", required=True, type_hint=torch.Tensor),
-            InputParam("kv_cache", required=True, type_hint=WanAnimate2KVCache),
-            InputParam("timesteps", required=True, type_hint=torch.Tensor),
-            InputParam("num_inference_steps", type_hint=int, default=40),
-            InputParam("num_segments", required=True, type_hint=int),
-            InputParam("max_seq_len", required=True, type_hint=int),
-            InputParam("grid_sizes_ref", required=True, type_hint=torch.Tensor),
-            InputParam("segment_frame_length", type_hint=int, default=81),
-            InputParam("height", required=True, type_hint=int),
-            InputParam("width", required=True, type_hint=int),
-            InputParam("generator"),
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="This segment's latents",
+            ),
+            InputParam(
+                "reference_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The full conditioning tensor: reference half stacked over the segment half",
+            ),
+            InputParam(
+                "kv_cache",
+                required=True,
+                type_hint=WanAnimate2KVCache,
+                description="Per-segment cache holding every layer's reference K/V",
+            ),
+            InputParam(
+                "timesteps",
+                required=True,
+                type_hint=torch.Tensor,
+                description="This segment's denoising timesteps",
+            ),
+            InputParam.template("num_inference_steps", default=40),
+            InputParam(
+                "num_segments",
+                required=True,
+                type_hint=int,
+                description="Total number of segments in the driving video, from the video preprocess step",
+            ),
+            InputParam(
+                "max_seq_len",
+                required=True,
+                type_hint=int,
+                description="Packed sequence length of the generation tokens",
+            ),
+            InputParam(
+                "grid_sizes_ref",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Post-patch latent grid `[[T, H/2, W/2]]` of a driving-video segment",
+            ),
+            InputParam(
+                "segment_frame_length",
+                type_hint=int,
+                default=81,
+                description="The number of frames in each inference segment",
+            ),
+            InputParam(
+                "height",
+                required=True,
+                type_hint=int,
+                description="The resolved frame height in pixels",
+            ),
+            InputParam(
+                "width",
+                required=True,
+                type_hint=int,
+                description="The resolved frame width in pixels",
+            ),
+            InputParam.template("generator"),
             InputParam.template("prompt_embeds"),
             InputParam.template("negative_prompt_embeds"),
             InputParam.template("denoiser_input_fields"),
@@ -512,9 +640,24 @@ class WanAnimate2SegmentDecodeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("kv_cache", required=True, type_hint=WanAnimate2KVCache),
-            InputParam("prev_segment_conditioning_frames", type_hint=int, default=1),
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="This segment's latents",
+            ),
+            InputParam(
+                "kv_cache",
+                required=True,
+                type_hint=WanAnimate2KVCache,
+                description="Per-segment cache holding every layer's reference K/V",
+            ),
+            InputParam(
+                "prev_segment_conditioning_frames",
+                type_hint=int,
+                default=1,
+                description="The number of conditioning frames carried over from the previous segment",
+            ),
         ]
 
     @property
@@ -566,7 +709,12 @@ class WanAnimate2SegmentLoopWrapper(LoopSequentialPipelineBlocks):
     @property
     def loop_inputs(self) -> list[InputParam]:
         return [
-            InputParam("num_segments", required=True, type_hint=int),
+            InputParam(
+                "num_segments",
+                required=True,
+                type_hint=int,
+                description="Total number of segments in the driving video, from the video preprocess step",
+            ),
         ]
 
     @property
