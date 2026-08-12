@@ -580,11 +580,10 @@ For documentation strings, 🧨 Diffusers follows the [Google style](https://goo
 
 The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai), which is also published as an agent plugin so the on-demand task skills install in one step.
 
-- **Read-only for contributors** — `AGENTS.md` and `.ai/` are maintained by the core maintainers. Please do not edit them (or the root `CLAUDE.md`, or the installed `.agents/skills` / `.claude/skills`) in your PR. If you find something missing or wrong, open an issue or flag it on the PR and a maintainer will update it.
-- **Guidelines** — `AGENTS.md` at the repo root is loaded into every agent session; Codex and Cursor read it
-  directly, and the root `CLAUDE.md` imports it for Claude Code. The reference guides under `.ai/references/` are read
-  on demand when a link is followed:
-  - [`AGENTS.md`](https://github.com/huggingface/diffusers/blob/main/AGENTS.md) — top-level coding guidelines
+- **Read-only for contributors** — `.ai/` is maintained by the core maintainers. Please do not edit files under `.ai/` (or the root-level `AGENTS.md` / `CLAUDE.md` symlinks, or the installed `.agents/skills` / `.claude/skills`) in your PR. If you find something missing or wrong, open an issue or flag it on the PR and a maintainer will update it.
+- **Guidelines** — `.ai/AGENTS.md` is loaded into every agent session through the root `AGENTS.md` / `CLAUDE.md`
+  symlinks; the reference guides under `.ai/references/` are read on demand when a link is followed:
+  - [`.ai/AGENTS.md`](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) — top-level coding guidelines
   - [`.ai/references/models.md`](https://github.com/huggingface/diffusers/blob/main/.ai/references/models.md) — attention pattern, model implementation rules, common conventions
   - [`.ai/references/pipelines.md`](https://github.com/huggingface/diffusers/blob/main/.ai/references/pipelines.md) — pipeline conventions
   - [`.ai/references/modular.md`](https://github.com/huggingface/diffusers/blob/main/.ai/references/modular.md) — modular pipeline conventions and conversion checklist
@@ -596,57 +595,9 @@ The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggi
   - `diffusers-cli` — running pipelines and inspecting schemas from the terminal
   - `custom-blocks` — packaging a `ModularPipelineBlocks` subclass for the Hub
 
-### Installing the skills
-
-All four skills are the same whichever route you take. Pick one — installing through more than one leaves you with two
-copies of every skill.
-
-**Claude Code, from the marketplace.** The usual route. Run these in your shell, or the same commands as `/plugin ...`
-inside a session:
-
-```bash
-claude plugin marketplace add huggingface/diffusers
-claude plugin install diffusers@diffusers-skills --scope project
-```
-
-`--scope project` records the plugin in `.claude/settings.json`, so everyone working in the clone is prompted to install
-it; `--scope local` installs it for you in this repository only, and `--scope user` for you across all projects. In a
-running session, activate it with `/reload-plugins`.
-
-**Claude Code, for one session.** Loads the plugin straight from your checkout without installing anything — useful for
-trying a change to a skill:
-
-```bash
-claude --plugin-dir .ai
-```
-
-**Codex.** Register the same catalog, then install from the Plugins Directory in the ChatGPT desktop app:
-
-```bash
-codex plugin marketplace add huggingface/diffusers
-```
-
-**Any agent, without a marketplace.** The [`skills`](../using-diffusers/cli#skills) CLI command downloads skills from
-`main` and writes them where your agent looks:
-
-```bash
-diffusers-cli skills add --all              # detects the agent from the environment
-diffusers-cli skills add --all --claude     # or --codex / --cursor to pick one
-diffusers-cli skills add self-review        # a single skill
-```
-
-For Claude Code this writes a plugin bundle at `.claude/skills/diffusers/`, which loads once you trust the workspace and
-gives the same `/diffusers:<name>` namespace as the marketplace. Codex and Cursor get `.agents/skills/<name>/`, the
-layout their discovery expects, where skills are invoked by their bare name. Installing a skill also copies the guides
-it cites from [`.ai/references/`](https://github.com/huggingface/diffusers/tree/main/.ai/references) into its own
-`references/` subdirectory, so an installed skill is self-contained outside a checkout. Add `--global` to install for
-every project instead of the current one, and `diffusers-cli skills update` to refresh both the skills and their
-references.
-
-
 ### AI-assisted and agentic contributions
 
-AI agents are welcome for contributing to Diffusers. We encourage you to set up your agent with the Diffusers [agent guide](https://github.com/huggingface/diffusers/blob/main/AGENTS.md) and use the relevant task-specific skills, such as `model-integration` and `self-review`. Install the plugin (or the individual skills) as described above, then follow the guide to scope, implement, test, and review your contribution. You remain responsible for understanding, testing, and maintaining the changes in your PR.
+AI agents are welcome for contributing to Diffusers. We encourage you to set up your agent with the Diffusers [agent guide](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) and use the relevant task-specific skills, such as `model-integration` and `self-review`. Install the plugin (or the individual skills) as described above, then follow the guide to scope, implement, test, and review your contribution. You remain responsible for understanding, testing, and maintaining the changes in your PR.
 
 AI-assisted contributions are welcome, but they must be coordinated, scoped, and verified to keep review load manageable. PRs that do not follow these guidelines may be closed without detailed review.
 
@@ -659,4 +610,4 @@ AI-assisted contributions are welcome, but they must be coordinated, scoped, and
   - The **test commands you ran** and their results (paste relevant output, not just "tests pass").
   - Your **self-review notes** (or a link to the PR comment containing them), as described above.
 
-If you are a model author or part of a team that officially maintains a model, we encourage you to use agents for a new model integration. Follow the repository's [recommended setup](https://github.com/huggingface/diffusers/blob/main/AGENTS.md) and use the [`model-integration`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/model-integration/SKILL.md) skill. Coordinate the scope with maintainers before opening a PR — see [Adding pipelines, models, schedulers](#9-adding-pipelines-models-schedulers).
+If you are a model author or part of a team that officially maintains a model, we encourage you to use agents for a new model integration. Follow the repository's [recommended setup](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) and use the [`model-integration`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/model-integration/SKILL.md) skill. Coordinate the scope with maintainers before opening a PR — see [Adding pipelines, models, schedulers](#9-adding-pipelines-models-schedulers).
