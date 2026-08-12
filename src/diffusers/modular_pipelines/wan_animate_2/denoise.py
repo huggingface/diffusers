@@ -590,6 +590,8 @@ class WanAnimate2SegmentDenoiseInner(ModularPipelineBlocks):
 
 
 class WanAnimate2DistilledSegmentDenoiseInner(WanAnimate2SegmentDenoiseInner):
+    model_name = "wan-animate-2-distilled"
+
     @property
     def description(self) -> str:
         return (
@@ -779,6 +781,8 @@ class WanAnimate2DenoiseStep(WanAnimate2SegmentLoopWrapper):
 
 
 class WanAnimate2DistilledDenoiseStep(WanAnimate2SegmentLoopWrapper):
+    model_name = "wan-animate-2-distilled"
+
     block_classes = [
         WanAnimate2SegmentVaeEncoderStep,
         WanAnimate2SegmentPrevFramesStep,

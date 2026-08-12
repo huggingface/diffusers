@@ -73,7 +73,7 @@ class WanAnimate2DistilledImageEncodeStep(SequentialPipelineBlocks):
               CLIP vision features of the reference image, conditioning every denoising forward
     """
 
-    model_name = "wan-animate-2"
+    model_name = "wan-animate-2-distilled"
     block_classes = WanAnimate2DistilledImageEncoderBlocks.values()
     block_names = WanAnimate2DistilledImageEncoderBlocks.keys()
 
@@ -133,7 +133,7 @@ class WanAnimate2DistilledVideoEncodeStep(SequentialPipelineBlocks):
               CLIP vision features of the driving video's first frame
     """
 
-    model_name = "wan-animate-2"
+    model_name = "wan-animate-2-distilled"
     block_classes = WanAnimate2DistilledVideoEncoderBlocks.values()
     block_names = WanAnimate2DistilledVideoEncoderBlocks.keys()
 
@@ -207,7 +207,7 @@ class WanAnimate2DistilledCoreDenoiseStep(SequentialPipelineBlocks):
               them into the final video
     """
 
-    model_name = "wan-animate-2"
+    model_name = "wan-animate-2-distilled"
     block_classes = WanAnimate2DistilledCoreDenoiseBlocks.values()
     block_names = WanAnimate2DistilledCoreDenoiseBlocks.keys()
 
@@ -302,7 +302,7 @@ class WanAnimate2DistilledBlocks(SequentialPipelineBlocks):
               The generated videos.
     """
 
-    model_name = "wan-animate-2"
+    model_name = "wan-animate-2-distilled"
     block_classes = DISTILLED_BLOCKS.values()
     block_names = DISTILLED_BLOCKS.keys()
 
