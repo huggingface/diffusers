@@ -648,23 +648,9 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         refer_stride: int = 1,
     ):
         super().__init__()
-        self.patch_size = patch_size
-        self.text_len = text_len
-        self.in_dim = in_dim
-        self.dim = dim
-        self.ffn_dim = ffn_dim
-        self.freq_dim = freq_dim
-        self.text_dim = text_dim
-        self.out_dim = out_dim
-        self.num_heads = num_heads
-        self.num_layers = num_layers
-        self.cross_attn_norm = cross_attn_norm
-        self.eps = eps
-        self.use_img_emb = use_img_emb
-        self.refer_offset_t = refer_offset_t
-        self.refer_offset_h = refer_offset_h
-        self.refer_offset_w = refer_offset_w
-        self.refer_stride = refer_stride
+
+        if dim % num_heads != 0 or (dim // num_heads) % 2 != 0:
+            raise ValueError(f"`dim` ({dim}) must split into an even head size across `num_heads` ({num_heads}).")
 
         # [Denoising Transformer]
         # embeddings
@@ -710,7 +696,25 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
 
         self.gradient_checkpointing = False
         self.block_masks = {}
-        self.block_mask_grid_sizes = {}
+        self.rope_freqs_cache = {}
+
+    def _rope_freqs(self, offsets: tuple[int, int, int], device: torch.device) -> torch.Tensor:
+        """RoPE frequency table for a stream whose (t, h, w) axes start at `offsets`."""
+        freqs = self.rope_freqs_cache.get(offsets)
+        if freqs is None:
+            d = self.config.dim // self.config.num_heads
+            freqs = torch.cat(
+                [
+                    rope_params(512, d - 4 * (d // 6), offset=offsets[0]),
+                    rope_params(512, 2 * (d // 6), offset=offsets[1]),
+                    rope_params(512, 2 * (d // 6), offset=offsets[2]),
+                ],
+                dim=1,
+            )
+        if freqs.device != device:
+            freqs = freqs.to(device)
+        self.rope_freqs_cache[offsets] = freqs
+        return freqs
 
     def create_mask(self, origin_latent_f, hw, device):
         q_len = (origin_latent_f + 1) * hw
@@ -794,10 +798,9 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
             encoder_hidden_states_image (`torch.Tensor`, *optional*):
                 CLIP image embeddings, used when the model is configured with `use_img_emb`.
             offset_grid_sizes (`torch.Tensor`, *optional*):
-                Patch grid used to resolve any `refer_offset_*` still set to -1. Required under
-                `kv_cache_mode="extract"`; under `"cached"` the grid derived from `hidden_states` is used instead. Note
-                the two are not the same grid — the reference pass runs first and resolves the offsets from whatever it
-                is given here, which the pipeline sets to the *reference* grid.
+                Patch grid of the reference latents, used to resolve any `refer_offset_*` set to -1. Required under
+                `kv_cache_mode="extract"`; under `"cached"`, `reference_grid_sizes` describes the same grid and is used
+                instead.
             reference_grid_sizes (`torch.Tensor`, *optional*):
                 Patch grid of the reference latents, used for the reference rotary embeddings. Required under
                 `kv_cache_mode="cached"`.
@@ -834,62 +837,43 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
             )
         hidden_states = torch.cat(hidden_states)
 
-        assert (self.dim % self.num_heads) == 0 and (self.dim // self.num_heads) % 2 == 0
-        d = self.dim // self.num_heads
-
-        # 2. Rotary embeddings for the reference stream. The offsets place the reference tokens
-        # past the generation grid, so they are resolved from the generation grid either way.
-        offset_grid_sizes = offset_grid_sizes if kv_cache_mode == "extract" else grid_sizes
-        if self.refer_offset_t < 0:
-            self.refer_offset_t = offset_grid_sizes[0][0].item()
-        if self.refer_offset_h < 0:
-            self.refer_offset_h = offset_grid_sizes[0][1].item()
-        if self.refer_offset_w < 0:
-            self.refer_offset_w = offset_grid_sizes[0][2].item()
-
-        self.freqs_ref = torch.cat(
-            [
-                rope_params(512, d - 4 * (d // 6), offset=self.refer_offset_t),
-                rope_params(512, 2 * (d // 6), offset=self.refer_offset_h),
-                rope_params(512, 2 * (d // 6), offset=self.refer_offset_w),
-            ],
-            dim=1,
+        # 2. Rotary embeddings for the reference stream. The `refer_offset_*` config values place
+        # the reference tokens on a RoPE grid disjoint from the generation tokens; -1 means "use
+        # the reference grid size for that axis", resolved per call from the reference grid, which
+        # arrives as `offset_grid_sizes` under "extract" and as `reference_grid_sizes` under "cached".
+        reference_grid = offset_grid_sizes if kv_cache_mode == "extract" else reference_grid_sizes
+        refer_offsets = tuple(
+            offset if offset >= 0 else reference_grid[0][axis].item()
+            for axis, offset in enumerate(
+                (self.config.refer_offset_t, self.config.refer_offset_h, self.config.refer_offset_w)
+            )
         )
-        if self.freqs_ref.device != device:
-            self.freqs_ref = self.freqs_ref.to(device)
+        freqs_ref = self._rope_freqs(refer_offsets, device)
 
         # 3. Time and context embeddings. The reference pass is modulated at a fixed timestep.
         timestep_input = timestep * 0 + 1 if kv_cache_mode == "extract" else timestep
         temb = self.time_embedding(
             self.timesteps_proj(timestep_input).to(dtype=next(self.time_embedding.parameters()).dtype)
         )
-        timestep_proj = self.time_projection(temb).unflatten(1, (6, self.dim))
+        timestep_proj = self.time_projection(temb).unflatten(1, (6, self.config.dim))
 
         encoder_hidden_states = self.text_embedding(
             torch.stack(
-                [torch.cat([u, u.new_zeros(self.text_len - u.size(0), u.size(1))]) for u in encoder_hidden_states]
+                [
+                    torch.cat([u, u.new_zeros(self.config.text_len - u.size(0), u.size(1))])
+                    for u in encoder_hidden_states
+                ]
             )
         )
-        encoder_hidden_states_image = self.img_emb(encoder_hidden_states_image) if self.use_img_emb else None
+        encoder_hidden_states_image = self.img_emb(encoder_hidden_states_image) if self.config.use_img_emb else None
 
         # 4. Per-mode block arguments.
         if kv_cache_mode == "extract":
             block_kwargs = {
-                "rotary_emb": self.freqs_ref,
+                "rotary_emb": freqs_ref,
                 "grid_sizes": grid_sizes,
             }
         else:
-            self.freqs = torch.cat(
-                [
-                    rope_params(512, d - 4 * (d // 6)),
-                    rope_params(512, 2 * (d // 6)),
-                    rope_params(512, 2 * (d // 6)),
-                ],
-                dim=1,
-            )
-            if self.freqs.device != device:
-                self.freqs = self.freqs.to(device)
-
             # Latent geometry of the full video, which is what the block mask is built over. The
             # current segment is scattered into a buffer of this size inside the attention processor.
             origin_latent_frames = origin_len // 4 + 1
@@ -902,9 +886,9 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
                 )
 
             block_kwargs = {
-                "rotary_emb": self.freqs,
+                "rotary_emb": self._rope_freqs((0, 0, 0), device),
                 "grid_sizes": grid_sizes,
-                "reference_rotary_emb": self.freqs_ref,
+                "reference_rotary_emb": freqs_ref,
                 "reference_grid_sizes": reference_grid_sizes,
                 "attention_mask": self.block_masks[block_mask_id],
                 "origin_latent_frames": origin_latent_frames,
@@ -939,11 +923,11 @@ class WanAnimate2Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         return Transformer2DModelOutput(sample=output)
 
     def unpatchify(self, x, grid_sizes):
-        c = self.out_dim
+        c = self.config.out_dim
         out = []
         for u, v in zip(x, grid_sizes.tolist()):
-            u = u[: math.prod(v)].view(*v, *self.patch_size, c)
+            u = u[: math.prod(v)].view(*v, *self.config.patch_size, c)
             u = torch.einsum("fhwpqrc->cfphqwr", u)
-            u = u.reshape(c, *[i * j for i, j in zip(v, self.patch_size)])
+            u = u.reshape(c, *[i * j for i, j in zip(v, self.config.patch_size)])
             out.append(u)
         return out
