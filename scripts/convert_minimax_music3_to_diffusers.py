@@ -219,7 +219,9 @@ def main(args):
     from diffusers import MiniMaxMusic3Pipeline
 
     tokenizer = AutoTokenizer.from_pretrained(os.path.join(checkpoint_dir, "qwen_7B", "qwen3-8B-tokenizer-music"))
-    scheduler = FlowMatchEulerDiscreteScheduler(shift=1.0, invert_sigmas=True)
+    # num_train_timesteps=1 keeps `scheduler.timesteps` equal to the flow-matching time in [0, 1] that the
+    # transformer's Fourier embedding expects.
+    scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1, shift=1.0, invert_sigmas=True)
 
     pipeline = MiniMaxMusic3Pipeline(
         language_model=language_model,

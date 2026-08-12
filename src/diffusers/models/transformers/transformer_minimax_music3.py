@@ -55,9 +55,7 @@ class MiniMaxMusic3RotaryEmbedding(nn.Module):
 
     @lru_cache_unless_export(maxsize=32)
     def _build(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
-        inv_freq = 1.0 / (
-            self.theta ** (torch.arange(0, self.rotary_dim, 2, device=device).float() / self.rotary_dim)
-        )
+        inv_freq = 1.0 / (self.theta ** (torch.arange(0, self.rotary_dim, 2, device=device).float() / self.rotary_dim))
         steps = torch.arange(seq_len, device=device, dtype=torch.float32)
         freqs = torch.outer(steps, inv_freq)
         freqs = torch.cat((freqs, freqs), dim=-1)
@@ -133,9 +131,7 @@ class MiniMaxMusic3Attention(nn.Module, AttentionModuleMixin):
         self.to_out = nn.ModuleList([nn.Linear(self.inner_dim, dim, bias=False), nn.Dropout(0.0)])
         self.set_processor(processor or MiniMaxMusic3AttnProcessor())
 
-    def forward(
-        self, hidden_states: torch.Tensor, rotary_emb: Tuple[torch.Tensor, torch.Tensor]
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, rotary_emb: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
         return self.processor(self, hidden_states, rotary_emb=rotary_emb)
 
 
@@ -148,9 +144,7 @@ class MiniMaxMusic3TransformerBlock(nn.Module):
         self.ff_in = nn.Linear(dim, ff_inner_dim * 2)
         self.ff_out = nn.Linear(ff_inner_dim, dim)
 
-    def forward(
-        self, hidden_states: torch.Tensor, rotary_emb: Tuple[torch.Tensor, torch.Tensor]
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, rotary_emb: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
         hidden_states = hidden_states + self.attn(self.norm1(hidden_states), rotary_emb)
         gate_states, gate = self.ff_in(self.norm2(hidden_states)).chunk(2, dim=-1)
         hidden_states = hidden_states + self.ff_out(gate_states * torch.nn.functional.silu(gate))
