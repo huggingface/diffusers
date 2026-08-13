@@ -98,9 +98,7 @@ class AudioVisualModelOutput(BaseOutput):
     """
 
     sample: "torch.Tensor"  # noqa: F821
-    # `forward` always populates `audio_sample`; the default is what lets the output be rebuilt from a plain dict of
-    # its fields, which is how the accelerate offload hooks move a `BaseOutput` back to the input device.
-    audio_sample: "torch.Tensor | None" = None  # noqa: F821
+    audio_sample: "torch.Tensor"  # noqa: F821
 
 
 class LTX2AdaLayerNormSingle(nn.Module):
