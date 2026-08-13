@@ -7128,9 +7128,6 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
         if is_unprefixed_diffusers_format:
             state_dict = {f"{cls.transformer_name}.{k.replace('.default.', '.')}": v for k, v in state_dict.items()}
 
-        # ai-toolkit writes the original checkpoint's module names under a `diffusion_model.` prefix, the reference
-        # `generate.py` / ComfyUI checkpoints carry no prefix at all, and musubi-tuner flattens them under
-        # `lora_unet_`, so the module names are what identifies a non-diffusers file.
         is_non_diffusers_format = any(
             k.startswith(("diffusion_model.", "blocks.", "token_refiner.", "final_layer.", "lora_unet_"))
             for k in state_dict
