@@ -7049,23 +7049,15 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
     r"""
     Load LoRA layers into [`MiniMaxH3Transformer3DModel`]. Specific to [`MiniMaxH3ModularPipeline`].
 
-    MiniMax-H3 holds two independently trained DiT partitions in one repository — `transformer/` for the `t2va` and
-    `fl2va` workflows, `transformer_ref/` for `ref2va` — and a workflow loads only its own. The two are separate
-    checkpoints with nothing tied between them, and their module names are identical, so a LoRA trained against one
-    loads without error into the other and silently produces garbage. Nothing in a published H3 LoRA records which
-    partition it was trained against, so the routing is explicit: a converted state dict targets `transformer.`, and
-    `transformer_ref` is reached either by a `transformer_ref.`-prefixed file (what `save_lora_weights` writes) or by
-    passing `load_into_transformer_ref=True`.
+    MiniMax-H3 ships two independent DiT partitions with identical module names (a LoRA for one loads into the other
+    and degrades output), so routing is explicit: converted state dicts target `transformer.`; reach `transformer_ref`
+    with a `transformer_ref.`-prefixed file or `load_into_transformer_ref=True`.
 
-    Two things to know about third-party H3 LoRAs. LoRAs trained against a *pruned* checkpoint do not load: pruned
-    releases replace the timestep MLP with a small interpolation table, so their AdaLN projections take an 8-wide input
-    instead of `time_embed_dim`, and the update cannot be mapped onto the released checkpoint — loading fails with a
-    size mismatch naming the module. And most published H3 LoRAs carry no alpha information while applying as `W +
-    lora_B @ lora_A`, so mixed-rank files are loaded with `alpha == rank` per module (effective scale exactly 1.0) —
-    unless the file records the alpha it was trained with in its own safetensors `__metadata__`, under `alpha`, which
-    is then honored for every module as `alpha / rank`. Their updates are also small enough relative to the base
-    weights that [`~MiniMaxH3LoraLoaderMixin.fuse_lora`] into bfloat16 discards most of the update — prefer the default
-    unfused path.
+    LoRAs trained against a pruned checkpoint (the `*_pruned_*` files in
+    [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3);
+    [joyfox/MiniMax-H3-Turbo](https://huggingface.co/joyfox/MiniMax-H3-Turbo) is one) fail with a size mismatch.
+    Alpha-less files load at `alpha == rank` (scale 1.0); a `__metadata__` `alpha` entry, when present, is honored
+    instead.
     """
 
     _lora_loadable_modules = ["transformer", "transformer_ref"]
@@ -7100,6 +7092,7 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
+        # `return_file_metadata=True` because some H3 LoRAs record their training alpha in the file's `__metadata__`.
         state_dict, metadata, file_metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
@@ -7125,20 +7118,12 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        # One producer publishes its own converter's output: diffusers module names, but with peft's adapter-name
-        # infix left in the keys and no component prefix. Neither needs the module-name conversion below, so the
-        # infix is dropped and the prefix added here. Gating on the infix the way `QwenImageLoraLoaderMixin` and
-        # `ZImageLoraLoaderMixin` do, together with requiring that no key carries a component prefix, keeps this from
-        # shadowing a file diffusers itself wrote — `write_lora_layers` never emits `.default.`.
-        #
-        # The module names really are diffusers' own, not a look-alike basis: that producer ships the same adapter in
-        # both encodings, and converting the original-format copy reproduces this one's `lora_B @ lora_A` exactly, to
-        # 0.0 relative error on all 312 modules.
+        # A peft dump: diffusers module names carrying peft's `.default.` infix and no component prefix. The missing
+        # prefix is what keeps this from shadowing a file diffusers itself wrote.
         is_unprefixed_diffusers_format = any(".default.weight" in k for k in state_dict) and not any(
             k.startswith((f"{cls.transformer_name}.", f"{cls.transformer_ref_name}.")) for k in state_dict
         )
         if is_unprefixed_diffusers_format:
-            # Strips the infix off `lora_B.default.bias` as well, which a `lora_bias=True` adapter carries.
             state_dict = {f"{cls.transformer_name}.{k.replace('.default.', '.')}": v for k, v in state_dict.items()}
 
         # ai-toolkit writes the original checkpoint's module names under a `diffusion_model.` prefix, the reference
@@ -7151,27 +7136,11 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
         if is_non_diffusers_format:
             state_dict = _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict)
 
-        # Every published MiniMax-H3 LoRA is alpha-less, MIXED-RANK (rank 64 on attention and FFN modules, rank 16
-        # on the AdaLN projections) and applies as `W + lora_B @ lora_A`, i.e. at an effective scale of 1.0 *per
-        # module*. `get_peft_kwargs` reads `lora_alpha` off whichever rank it happens to see first and never
-        # re-derives it, so one of the two rank groups would be silently scaled by `alpha / r`. The `LoraConfig` is
-        # therefore built here with `alpha == rank` everywhere and passed on as metadata, which `load_lora_adapter`
-        # uses in place of its own `get_peft_kwargs` inference — that inference recovers everything else (ranks,
-        # target modules), just not this alpha correction. Keying the synthesis off the absence of alpha information
-        # rather than off the conversion is deliberate: the same file also circulates pre-converted to diffusers
-        # keys, and that copy needs the same treatment.
+        # Published H3 LoRAs are alpha-less and mixed-rank (64 on attention and FFN, 16 on the AdaLN projections), and
+        # `get_peft_kwargs` would scale one of the two rank groups by `alpha / r`, so `alpha == rank` is pinned below.
         #
-        # A file that *did* ship `.alpha` scalars is not affected: the converter folds `alpha / rank` into the weights
-        # per module and removes the scalars, so `alpha == rank` here is what leaves that fold applied exactly once.
-        # Folding rather than forwarding is what lets two modules of the same rank carry different alphas, which a
-        # rank-keyed `alpha_pattern` cannot express.
-        #
-        # One producer instead records the single alpha it trained with in the file's own `__metadata__`, under
-        # `alpha`, and ships no scalars: its 8-step turbo LoRA pairs `alpha` "8" with rank 128, i.e. an effective
-        # scale of 0.0625 rather than 1.0. That entry is the only alpha information such a file has, so it is honored
-        # as a uniform network alpha — `lora_alpha` is taken from it and `alpha_pattern` left empty, which has peft
-        # scale every module by `alpha / rank`, the off-majority ranks in `rank_pattern` included. Per-module scalars
-        # win when a file carries both, since the fold above has already applied them.
+        # An alpha-less file may instead record its training alpha in the `__metadata__`, honored as a uniform network
+        # alpha (`alpha / rank` per module). Per-module scalars win, the fold above having already applied them.
         network_alpha = None
         if file_metadata is not None and "alpha" in file_metadata and not has_alpha_tensors:
             try:
@@ -7188,9 +7157,8 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
                     "module is scaled by `alpha / rank`."
                 )
 
-        # `has_alpha_tensors` above was read before the conversion, which folds a file's own `.alpha` scalars into the
-        # weights and drops them; this probe is the post-conversion one, and it is what catches an already-diffusers-
-        # keyed file that carries `.alpha` and never went through the converter at all.
+        # The converter folds per-module `.alpha` scalars into the factors, as the kohya converters do, so the probe
+        # has to run again after it: `has_alpha_tensors` would skip the synthesis converted files still need.
         if metadata is None and not any(k.endswith(".alpha") for k in state_dict):
             metadata = {}
             for prefix in (cls.transformer_name, cls.transformer_ref_name):
@@ -7208,7 +7176,6 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
                     lora_config_kwargs["lora_alpha"] = network_alpha
                     lora_config_kwargs["alpha_pattern"] = {}
                 else:
-                    # The same fix-up `PeftAdapterMixin.load_lora_adapter` applies to SAI control LoRAs.
                     lora_config_kwargs["lora_alpha"] = lora_config_kwargs["r"]
                     lora_config_kwargs["alpha_pattern"] = lora_config_kwargs["rank_pattern"]
                 metadata.update(_pack_dict_with_prefix(lora_config_kwargs, prefix))
@@ -7282,6 +7249,12 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
             )
             return
 
+        if transformer_ref_state_dict and transformer_ref is None:
+            raise ValueError(
+                f"This LoRA has `{self.transformer_ref_name}.`-prefixed layers but the pipeline does not hold a "
+                f'`{self.transformer_ref_name}` component. Load it with `workflow="ref2va"`.'
+            )
+
         if transformer_state_dict:
             # `transformer.`-prefixed layers go to `transformer_ref` when the caller asks for it, and also when
             # `transformer_ref` is the only partition present — which is what `workflow="ref2va"` loads.
@@ -7323,11 +7296,6 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
                 )
 
         if transformer_ref_state_dict:
-            if transformer_ref is None:
-                raise ValueError(
-                    f"This LoRA has `{self.transformer_ref_name}.`-prefixed layers but the pipeline does not hold a "
-                    f'`{self.transformer_ref_name}` component. Load it with `workflow="ref2va"`.'
-                )
             self.load_lora_into_transformer_ref(
                 transformer_ref_state_dict,
                 transformer_ref=transformer_ref,
