@@ -73,7 +73,9 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = MiniMaxMusic3Pipeline.from_pretrained("MiniMaxAI/MiniMax-Music3", torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
-        >>> lyrics = "[verse]\\nMorning light filtering through the pine\\n[chorus]\\nSoftly the world begins to breathe"
+        >>> lyrics = (
+        ...     "[verse]\\nMorning light filtering through the pine\\n[chorus]\\nSoftly the world begins to breathe"
+        ... )
         >>> prompt = "A warm acoustic pop song with intimate female vocals, fingerpicked guitar and soft piano."
         >>> audio = pipe(
         ...     prompt=prompt, lyrics=lyrics, audio_duration=60.0, generator=torch.Generator("cuda").manual_seed(7)
@@ -140,10 +142,10 @@ class MiniMaxMusic3Pipeline(DiffusionPipeline):
     r"""
     Pipeline for lyrics- and caption-conditioned music generation with MiniMax Music 3.
 
-    An autoregressive Qwen3 language model generates per-frame semantic codes and hidden states from the lyrics and
-    the music description; a flow-matching transformer turns the hidden states into Flow-VAE latents chunk by chunk;
-    and a DAC-style vocoder decodes them into a stereo waveform at 44.1 kHz. (The reference server resamples its
-    output to 32 kHz; this pipeline returns the vocoder's native sampling rate.)
+    An autoregressive Qwen3 language model generates per-frame semantic codes and hidden states from the lyrics and the
+    music description; a flow-matching transformer turns the hidden states into Flow-VAE latents chunk by chunk; and a
+    DAC-style vocoder decodes them into a stereo waveform at 44.1 kHz. (The reference server resamples its output to 32
+    kHz; this pipeline returns the vocoder's native sampling rate.)
 
     Args:
         language_model ([`~transformers.Qwen3ForCausalLM`]):
@@ -353,8 +355,8 @@ class MiniMaxMusic3Pipeline(DiffusionPipeline):
                 The music description (genre, mood, vocals, instrumentation, arrangement). For fine-grained control,
                 use a structured caption covering global metadata, vocal details, and arrangement.
             lyrics (`str`):
-                The lyrics to sing. Structure tags such as `[verse]` or `[chorus]` must each be on their own line;
-                text on the same line as a leading tag is dropped by the checkpoint's input contract.
+                The lyrics to sing. Structure tags such as `[verse]` or `[chorus]` must each be on their own line; text
+                on the same line as a leading tag is dropped by the checkpoint's input contract.
             audio_duration (`float`, defaults to `60.0`):
                 Upper bound on the generated audio length in seconds. The language model may stop earlier. Capped at
                 9000 frames (six minutes).
@@ -376,8 +378,8 @@ class MiniMaxMusic3Pipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.AudioPipelineOutput`] or `tuple`: the generated stereo waveform of shape
-            `(batch, channels, samples)` at `pipeline.sampling_rate`.
+            [`~pipelines.AudioPipelineOutput`] or `tuple`: the generated stereo waveform of shape `(batch, channels,
+            samples)` at `pipeline.sampling_rate`.
         """
         self.check_inputs(prompt, lyrics, audio_duration, callback_on_step_end_tensor_inputs)
         self._guidance_scale = guidance_scale
