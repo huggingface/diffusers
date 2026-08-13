@@ -24,7 +24,7 @@ from .modular_pipeline import MiniMaxMusic3ModularPipeline
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-# Neighboring windows share 172 latent frames: when stitching the decoded waveforms, every window after the first
+# Neighboring windows overlap by ~344 latent frames: when stitching the decoded waveforms, every window after the first
 # drops its leading 86 latent frames and every window before the last drops its trailing 344 - 86 latent frames, so
 # the kept spans tile the full song.
 _CROP_LEFT_LATENT = 86

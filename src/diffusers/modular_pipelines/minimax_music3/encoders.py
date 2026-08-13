@@ -284,6 +284,11 @@ class MiniMaxMusic3SemanticGenerationStep(ModularPipelineBlocks):
 
         text_ids = block_state.text_ids
         max_frames = min(int(block_state.audio_duration * components.frame_rate), _MAX_AUDIO_FRAMES)
+        if max_frames == 0:
+            raise ValueError(
+                f"`audio_duration` {block_state.audio_duration} is shorter than one audio frame "
+                f"(1 / {components.frame_rate} s)"
+            )
         generator = block_state.generator
 
         language_model = components.language_model

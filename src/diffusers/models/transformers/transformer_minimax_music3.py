@@ -210,8 +210,7 @@ class MiniMaxMusic3Transformer1DModel(ModelMixin, ConfigMixin):
                 Frame-aligned conditioning from `MiniMaxMusic3ConditionEncoder`. Pass zeros for the unconditional
                 branch of classifier-free guidance.
             return_dict (`bool`, defaults to `True`):
-                Whether to return a [`~models.transformers.transformer_minimax_music3.Transformer2DModelOutput`]
-                instead of a plain tuple.
+                Whether to return a [`~models.modeling_outputs.Transformer2DModelOutput`] instead of a plain tuple.
 
         Returns:
             The predicted flow-matching velocity with the same shape as `hidden_states`.

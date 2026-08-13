@@ -23,8 +23,8 @@ from .modular_pipeline import MiniMaxMusic3ModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Hidden-state chunking: the autoregressive frames are decoded in 200-frame windows with a 100-frame hop; neighboring
-# windows share 172 latent frames, of which the trailing 86 latent frames (86 * 512 samples) are kept from the
-# previous window when cropping the decoded waveform.
+# windows overlap by ~344 latent frames (~3.445 latents per frame), of which the trailing 86 latent frames
+# (86 * 512 samples) are kept from the previous window when cropping the decoded waveform.
 _CHUNK_FRAMES = 200
 _CHUNK_HOP = 100
 

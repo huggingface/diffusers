@@ -14,7 +14,6 @@
 
 import numpy as np
 import torch
-from tqdm.auto import tqdm
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
@@ -35,7 +34,8 @@ from .modular_pipeline import MiniMaxMusic3ModularPipeline
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-# Neighboring windows share 172 latent frames; the previous window's carry spans latent frames [L - 344, L - 172).
+# Neighboring windows overlap by ~344 latent frames (100-frame hop at ~3.445 latents per frame); only the first 172
+# of them are spliced and blended, from the previous window's carry spanning latent frames [L - 344, L - 172).
 _OVERLAP_LATENT_LENGTH = 172
 
 
@@ -204,33 +204,32 @@ class MiniMaxMusic3ChunkDenoiseInner(ModularPipelineBlocks):
             "encoder_hidden_states": (block_state.condition, torch.zeros_like(block_state.condition)),
         }
 
-        with tqdm(total=block_state.num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                if overlap > 0:
-                    time_value = t.to(latents.dtype)
-                    latents[..., :overlap] = (1.0 - (1.0 - 1e-6) * time_value) * block_state.noise_prompt + (
-                        time_value * block_state.previous_latent[..., :overlap]
-                    )
-                # The transformer consumes the scheduler timestep directly: flow-matching time in [0, 1], 0 = noise.
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+        for i, t in enumerate(timesteps):
+            if overlap > 0:
+                time_value = t.to(latents.dtype)
+                latents[..., :overlap] = (1.0 - (1.0 - 1e-6) * time_value) * block_state.noise_prompt + (
+                    time_value * block_state.previous_latent[..., :overlap]
+                )
+            # The transformer consumes the scheduler timestep directly: flow-matching time in [0, 1], 0 = noise.
+            timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
-                guider_state = components.guider.prepare_inputs(guider_inputs)
+            components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+            guider_state = components.guider.prepare_inputs(guider_inputs)
 
-                for guider_state_batch in guider_state:
-                    components.guider.prepare_models(components.transformer)
-                    cond_kwargs = {key: getattr(guider_state_batch, key) for key in guider_inputs}
-                    guider_state_batch.noise_pred = components.transformer(
-                        hidden_states=latents,
-                        timestep=timestep,
-                        return_dict=False,
-                        **cond_kwargs,
-                    )[0]
-                    components.guider.cleanup_models(components.transformer)
+            for guider_state_batch in guider_state:
+                components.guider.prepare_models(components.transformer)
+                cond_kwargs = {key: getattr(guider_state_batch, key) for key in guider_inputs}
+                guider_state_batch.noise_pred = components.transformer(
+                    hidden_states=latents,
+                    timestep=timestep,
+                    return_dict=False,
+                    **cond_kwargs,
+                )[0]
+                components.guider.cleanup_models(components.transformer)
 
-                velocity = components.guider(guider_state)[0]
-                latents = components.scheduler.step(velocity, t, latents, return_dict=False)[0]
-                progress_bar.update()
+            velocity = components.guider(guider_state)[0]
+            latents = components.scheduler.step(velocity, t, latents, return_dict=False)[0]
+            block_state.progress_bar.update()
 
         block_state.latents = latents
         return components, block_state
@@ -300,8 +299,12 @@ class MiniMaxMusic3ChunkLoopWrapper(LoopSequentialPipelineBlocks):
         block_state.previous_latent = None
         block_state.previous_condition = None
 
-        for k in range(len(block_state.chunk_starts)):
-            components, block_state = self.loop_step(components, block_state, k=k)
+        num_chunks = len(block_state.chunk_starts)
+        with self.progress_bar(total=num_chunks * block_state.num_inference_steps) as progress_bar:
+            block_state.progress_bar = progress_bar
+            for k in range(num_chunks):
+                components, block_state = self.loop_step(components, block_state, k=k)
+        block_state.progress_bar = None
 
         self.set_block_state(state, block_state)
         return components, state
