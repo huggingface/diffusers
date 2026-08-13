@@ -236,6 +236,18 @@ def main(args):
     )
     pipeline.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
+    # save_pretrained bakes the local output path into the modular index's loading specs; point them at the
+    # Hub repo the components will be uploaded to instead.
+    index_path = os.path.join(args.output_path, "modular_model_index.json")
+    with open(index_path) as f:
+        index = json.load(f)
+    for entry in index.values():
+        if isinstance(entry, list) and len(entry) == 3 and isinstance(entry[2], dict):
+            if entry[2].get("pretrained_model_name_or_path") == args.output_path:
+                entry[2]["pretrained_model_name_or_path"] = args.repo_id
+    with open(index_path, "w") as f:
+        json.dump(index, f, indent=2, sort_keys=True)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -246,6 +258,12 @@ if __name__ == "__main__":
         help="Local directory or Hugging Face Hub repo id of the original checkpoint.",
     )
     parser.add_argument("--output_path", type=str, required=True)
+    parser.add_argument(
+        "--repo_id",
+        type=str,
+        default="MiniMaxAI/MiniMax-Music3",
+        help="Hub repo id the converted components will live in (written into the modular index loading specs).",
+    )
     parser.add_argument("--dtype", type=lambda name: getattr(torch, name), default="float32")
     args = parser.parse_args()
     main(args)
