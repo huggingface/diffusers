@@ -126,7 +126,7 @@ List each module you want to quantize under `svdq_w4a4` or `awq_w4a16`. A module
 
 The original [Nunchaku](https://github.com/nunchaku-ai/nunchaku) engine gets much of its speed from model-specific fused execution paths. It combines the Q, K, and V projections with RMSNorm and RoPE, and uses a fused GELU kernel for the MLP. Nunchaku Lite instead uses the standard Diffusers model with generic quantized linear layers, so it does not include these fusions.
 
-The following measurements show the latency impact of these fusions in the original Nunchaku engine, measured with Flux Schnell on an RTX 5090.
+The following measurements show the per-step latency impact of these fusions in the original Nunchaku engine, measured with Flux Schnell on an RTX 5090.
 
 | Optimization | Latency with it OFF | Latency with it ON | Speedup |
 | --- | --- | --- | --- |
