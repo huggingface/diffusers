@@ -16,7 +16,7 @@ import re
 
 import torch
 
-from ..utils import is_peft_version, logging, state_dict_all_zero
+from ..utils import logging, state_dict_all_zero
 
 
 logger = logging.get_logger(__name__)
@@ -177,11 +177,6 @@ def _convert_non_diffusers_lora_to_diffusers(state_dict, unet_name="unet", text_
     dora_present_in_unet = any("dora_scale" in k and "lora_unet_" in k for k in state_dict)
     dora_present_in_te = any("dora_scale" in k and ("lora_te_" in k or "lora_te1_" in k) for k in state_dict)
     dora_present_in_te2 = any("dora_scale" in k and "lora_te2_" in k for k in state_dict)
-    if dora_present_in_unet or dora_present_in_te or dora_present_in_te2:
-        if is_peft_version("<", "0.9.0"):
-            raise ValueError(
-                "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-            )
 
     # Iterate over all LoRA weights.
     all_lora_keys = list(state_dict.keys())

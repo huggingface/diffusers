@@ -19,18 +19,16 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import (
-    USE_PEFT_BACKEND,
     deprecate,
     get_peft_kwargs,
     get_submodule_by_name,
     is_bitsandbytes_available,
     is_gguf_available,
     is_peft_available,
-    is_peft_version,
-    is_torch_version,
     is_transformers_available,
     is_transformers_version,
     logging,
+    require_peft_backend,
 )
 from .lora_base import (  # noqa
     LORA_WEIGHT_NAME,
@@ -66,15 +64,9 @@ from .lora_conversion_utils import (
 )
 
 
-_LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
-if is_torch_version(">=", "1.9.0"):
-    if (
-        is_peft_available()
-        and is_peft_version(">=", "0.13.1")
-        and is_transformers_available()
-        and is_transformers_version(">", "4.45.2")
-    ):
-        _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
+_LOW_CPU_MEM_USAGE_DEFAULT_LORA = (
+    is_peft_available() and is_transformers_available() and is_transformers_version(">", "4.45.2")
+)
 
 
 logger = logging.get_logger(__name__)
@@ -148,6 +140,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     unet_name = UNET_NAME
     text_encoder_name = TEXT_ENCODER_NAME
 
+    @require_peft_backend
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -204,14 +197,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -361,6 +347,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         return out
 
     @classmethod
+    @require_peft_backend
     def load_lora_into_unet(
         cls,
         state_dict,
@@ -398,14 +385,6 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
@@ -609,6 +588,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
     unet_name = UNET_NAME
     text_encoder_name = TEXT_ENCODER_NAME
 
+    @require_peft_backend
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -619,14 +599,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # We could have accessed the unet config from `lora_state_dict()` too. We pass
         # it here explicitly to be able to tell that it's coming from an SDXL
@@ -796,6 +769,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         return out
 
     @classmethod
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_unet
     def load_lora_into_unet(
         cls,
@@ -834,14 +808,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
@@ -1057,6 +1023,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -1067,14 +1034,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -1136,11 +1096,6 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -1352,6 +1307,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -1363,14 +1319,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -1409,11 +1358,6 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -1627,6 +1571,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         else:
             return state_dict
 
+    @require_peft_backend
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -1637,14 +1582,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -1744,11 +1682,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -2286,11 +2219,6 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -2480,6 +2408,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -2490,14 +2419,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -2536,11 +2458,6 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -2676,6 +2593,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -2687,14 +2605,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -2733,11 +2644,6 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -2879,6 +2785,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -2890,14 +2797,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -2936,11 +2836,6 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -3089,6 +2984,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
         out = (final_state_dict, metadata) if return_lora_metadata else final_state_dict
         return out
 
+    @require_peft_backend
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -3099,14 +2995,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -3162,11 +3051,6 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {prefix}.")
         transformer.load_lora_adapter(
@@ -3306,6 +3190,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -3317,14 +3202,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -3363,11 +3241,6 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -3509,6 +3382,7 @@ class HeliosLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -3519,14 +3393,7 @@ class HeliosLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -3564,11 +3431,6 @@ class HeliosLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -3710,6 +3572,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -3721,14 +3584,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -3767,11 +3623,6 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -3914,6 +3765,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -3925,14 +3777,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -3971,11 +3816,6 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -4114,6 +3954,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -4125,14 +3966,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -4171,11 +4005,6 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -4365,6 +4194,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
         return state_dict
 
+    @require_peft_backend
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -4375,14 +4205,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -4445,11 +4268,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -4641,6 +4459,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
 
         return state_dict
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.WanLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -4652,14 +4471,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -4722,11 +4534,6 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -4865,6 +4672,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -4876,14 +4684,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -4922,11 +4723,6 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -5068,6 +4864,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -5079,14 +4876,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -5125,11 +4915,6 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -5274,6 +5059,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -5285,14 +5071,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -5331,11 +5110,6 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -5479,6 +5253,7 @@ class Krea2LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -5490,14 +5265,7 @@ class Krea2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -5536,11 +5304,6 @@ class Krea2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -5685,6 +5448,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -5696,14 +5460,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -5742,11 +5499,6 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -5887,6 +5639,7 @@ class AnimaLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -5897,9 +5650,6 @@ class AnimaLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
 
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -6087,6 +5837,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -6098,14 +5849,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -6144,11 +5888,6 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -6294,6 +6033,7 @@ class Ideogram4LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -6305,14 +6045,7 @@ class Ideogram4LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -6351,11 +6084,6 @@ class Ideogram4LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -6505,6 +6233,7 @@ class ErnieImageLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -6516,14 +6245,7 @@ class ErnieImageLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -6562,11 +6284,6 @@ class ErnieImageLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -6706,6 +6423,7 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -6717,14 +6435,7 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -6763,11 +6474,6 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -6908,6 +6614,7 @@ class AceStepLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
@@ -6919,14 +6626,7 @@ class AceStepLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -6965,11 +6665,6 @@ class AceStepLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(

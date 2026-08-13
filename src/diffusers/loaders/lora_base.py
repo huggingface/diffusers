@@ -37,7 +37,6 @@ from ..utils import (
     get_adapter_name,
     is_accelerate_available,
     is_peft_available,
-    is_peft_version,
     is_transformers_available,
     is_transformers_version,
     logging,
@@ -353,10 +352,6 @@ def _load_lora_into_text_encoder(
 
     peft_kwargs = {}
     if low_cpu_mem_usage:
-        if not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
         if not is_transformers_version(">", "4.45.2"):
             # Note from sayakpaul: It's not in `transformers` stable yet.
             # https://github.com/huggingface/transformers/pull/33725/
