@@ -344,6 +344,7 @@ else:
         "LTX2InContextPipeline",
         "LTX2ImageToVideoPipeline",
         "LTX2LatentUpsamplePipeline",
+        "LTX2VideoDiffusionDecodePipeline",
     ]
     _import_structure["joyimage"] = [
         "JoyImageEditPipeline",
@@ -800,6 +801,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2InContextPipeline,
             LTX2LatentUpsamplePipeline,
             LTX2Pipeline,
+            LTX2VideoDiffusionDecodePipeline,
         )
         from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
