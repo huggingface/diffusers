@@ -19,6 +19,7 @@ import torch
 import torch.nn.functional as F
 from transformers import Qwen2Tokenizer, Qwen3ForCausalLM
 
+from ...hooks.group_offloading import _is_group_offload_enabled
 from ...models import MiniMaxMusic3RVQDepthDecoder
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -292,6 +293,23 @@ class MiniMaxMusic3SemanticGenerationStep(ModularPipelineBlocks):
         generator = block_state.generator
 
         language_model = components.language_model
+        # Trigger CPU-offload hooks by hand (same workaround as minimax_h3): the autoregressive loop calls
+        # submodules (`embed_tokens`, `lm_head`, depth-decoder heads) while the hook wraps only the top-level
+        # `forward`. The language model goes first — placing it can evict other models but never the reverse,
+        # and both models are used on every frame, so a placement must not evict the other.
+        hooked = [
+            model
+            for model in (language_model, components.rvq_depth_decoder)
+            if getattr(model, "_hf_hook", None) is not None
+        ]
+        for model in hooked:
+            model._hf_hook.pre_forward(model)
+        resident = [model for model in hooked if not _is_group_offload_enabled(model)]
+        if len(resident) == 2 and resident[0].device != resident[1].device:
+            raise RuntimeError(
+                "The language model and the RVQ depth decoder must fit on the device together for autoregressive "
+                "generation; there is not enough free device memory under CPU offloading."
+            )
         text_embeds = language_model.model.embed_tokens(text_ids)
         output = language_model.model(inputs_embeds=text_embeds, use_cache=True)
         past_key_values = output.past_key_values
