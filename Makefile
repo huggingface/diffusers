@@ -1,4 +1,4 @@
-.PHONY: deps_table_update modified_only_fixup extra_style_checks quality style fixup fix-copies test test-examples codex claude clean-ai
+.PHONY: deps_table_update modified_only_fixup extra_style_checks quality style fixup fix-copies test test-examples
 
 # make sure to test the local checkout in scripts and not the pre-installed one (don't use quotes!)
 export PYTHONPATH = src
@@ -104,17 +104,3 @@ post-release:
 post-patch:
 	python utils/release.py --post_release --patch
 
-# AI agent symlinks
-
-codex:
-	mkdir -p .agents
-	rm -rf .agents/skills
-	ln -snf ../.ai/skills .agents/skills
-
-claude:
-	mkdir -p .claude
-	rm -rf .claude/skills
-	ln -snf ../.ai/skills .claude/skills
-
-clean-ai:
-	rm -rf .agents/skills .claude/skills

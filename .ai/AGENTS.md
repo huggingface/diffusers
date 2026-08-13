@@ -24,6 +24,13 @@ diffusers-cli skills add <skill name>      # install one, or --all for every ski
 
 `diffusers-cli skills update` refreshes what you installed.
 
+`make claude` and `make codex` used to symlink `.claude/skills` and `.agents/skills` at `.ai/skills`. If those symlinks
+are still around, remove them before installing — otherwise the install writes through them into `.ai/` itself:
+
+```bash
+rm .claude/skills .agents/skills
+```
+
 Claude Code and Codex can also install via plugins
 
 ```bash

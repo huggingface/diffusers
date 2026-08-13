@@ -8,7 +8,7 @@ Before reviewing, read and apply the guidelines in:
 - [pipelines.md](pipelines.md) — pipeline conventions, coding style, gotchas
 - [modular.md](modular.md) — modular pipeline conventions, patterns, common mistakes
 - [testing.md](testing.md) — test conventions: required test layers, tester mixins, dummy-component rules. When a PR adds or changes tests, check them against this guide.
-- [skills/model-integration/pitfalls.md](../skills/model-integration/pitfalls.md) — known pitfalls causing numerical discrepancies between the reference implementation and the diffusers port (dtype mismatches, config assumptions, etc.)
+- [skills/model-integration/pitfalls.md](https://github.com/huggingface/diffusers/blob/main/.ai/skills/model-integration/pitfalls.md) — known pitfalls causing numerical discrepancies between the reference implementation and the diffusers port (dtype mismatches, config assumptions, etc.)
 
 ## Common mistakes
 

@@ -211,7 +211,7 @@ Prefer flat sequences over nested compositions. Put the `Auto` / `Conditional` s
 
 ## InputParam / OutputParam
 
-Use `.template("<name>")` for params with a canonical meaning (`prompt`, `negative_prompt`, `image`, `generator`, `num_inference_steps`, `latents`, `prompt_embeds`, `images`, `videos`, etc.) — the template carries a vetted description and type hint. The full registry lives in [`src/diffusers/modular_pipelines/modular_pipeline_utils.py`](../src/diffusers/modular_pipelines/modular_pipeline_utils.py) (`INPUT_PARAM_TEMPLATES`, `OUTPUT_PARAM_TEMPLATES`); read that file rather than relying on a hardcoded list here, since names get added.
+Use `.template("<name>")` for params with a canonical meaning (`prompt`, `negative_prompt`, `image`, `generator`, `num_inference_steps`, `latents`, `prompt_embeds`, `images`, `videos`, etc.) — the template carries a vetted description and type hint. The full registry lives in [`src/diffusers/modular_pipelines/modular_pipeline_utils.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/modular_pipelines/modular_pipeline_utils.py) (`INPUT_PARAM_TEMPLATES`, `OUTPUT_PARAM_TEMPLATES`); read that file rather than relying on a hardcoded list here, since names get added.
 
 For params that don't match a template (model-specific names, custom semantics), declare the field directly:
 
