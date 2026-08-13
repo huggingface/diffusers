@@ -22,7 +22,7 @@ from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNei
 from diffusers.utils import is_kernels_available
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, require_torch_gpu, torch_device
+from ...testing_utils import enable_full_determinism, require_accelerator, require_torch_gpu, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -145,6 +145,7 @@ class TestLTX2VideoDiffusionDecoderModelTiling(LTX2VideoDiffusionDecoderModelTes
         with torch.no_grad():
             return model.decode(latent, generator=generator, num_inference_steps=num_inference_steps)[0]
 
+    @require_accelerator
     def test_tiles_covering_the_video_match_untiled_exactly(self):
         """A tile schedule with a single covering tile must reproduce the untiled decode bit for bit.
 
