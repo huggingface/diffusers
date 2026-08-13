@@ -7056,8 +7056,10 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
     LoRAs trained against a pruned checkpoint (the `*_pruned_*` files in
     [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3);
     [joyfox/MiniMax-H3-Turbo](https://huggingface.co/joyfox/MiniMax-H3-Turbo) is one) fail with a size mismatch.
-    Alpha-less files load at `alpha == rank` (scale 1.0); a `__metadata__` `alpha` entry, when present, is honored
-    instead.
+    Alpha-less files load at `alpha == rank` (scale 1.0, the convention stated by e.g.
+    [larryvrh/MiniMax-H3-Turbo-Lora](https://huggingface.co/larryvrh/MiniMax-H3-Turbo-Lora)); a `__metadata__` `alpha`
+    entry (e.g. [lightx2v/Minimax-h3-Turbo](https://huggingface.co/lightx2v/Minimax-h3-Turbo)'s 8-step file), when
+    present, is honored instead.
     """
 
     _lora_loadable_modules = ["transformer", "transformer_ref"]
