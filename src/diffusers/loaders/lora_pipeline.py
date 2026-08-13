@@ -7156,9 +7156,9 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
                     "module is scaled by `alpha / rank`."
                 )
 
-        # The converter folds per-module `.alpha` scalars into the factors, as the kohya converters do, so the probe
-        # has to run again after it: `has_alpha_tensors` would skip the synthesis converted files still need.
-        if metadata is None and not any(k.endswith(".alpha") for k in state_dict):
+        # Without a `__metadata__` alpha, no metadata is built: `get_peft_kwargs` already derives `alpha == rank` for
+        # alpha-less files, which is the fold's contract too.
+        if metadata is None and network_alpha is not None:
             metadata = {}
             for prefix in (cls.transformer_name, cls.transformer_ref_name):
                 component_state_dict = {
@@ -7171,12 +7171,8 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
                 lora_config_kwargs = get_peft_kwargs(
                     rank, network_alpha_dict=None, peft_state_dict=component_state_dict, is_unet=False
                 )
-                if network_alpha is not None:
-                    lora_config_kwargs["lora_alpha"] = network_alpha
-                    lora_config_kwargs["alpha_pattern"] = {}
-                else:
-                    lora_config_kwargs["lora_alpha"] = lora_config_kwargs["r"]
-                    lora_config_kwargs["alpha_pattern"] = lora_config_kwargs["rank_pattern"]
+                lora_config_kwargs["lora_alpha"] = network_alpha
+                lora_config_kwargs["alpha_pattern"] = {}
                 metadata.update(_pack_dict_with_prefix(lora_config_kwargs, prefix))
             metadata = metadata or None
 
