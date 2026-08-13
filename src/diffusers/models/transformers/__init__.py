@@ -50,6 +50,7 @@ if is_torch_available():
     from .transformer_ltx import LTXVideoTransformer3DModel
     from .transformer_ltx2 import LTX2VideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
+    from .transformer_minimax_h3 import MiniMaxH3Transformer3DModel
     from .transformer_mochi import MochiTransformer3DModel
     from .transformer_motif_video import MotifVideoTransformer3DModel
     from .transformer_nucleusmoe_image import NucleusMoEImageTransformer2DModel
@@ -63,5 +64,6 @@ if is_torch_available():
     from .transformer_temporal import TransformerTemporalModel
     from .transformer_wan import WanTransformer3DModel
     from .transformer_wan_animate import WanAnimateTransformer3DModel
+    from .transformer_wan_animate_2 import WanAnimate2Transformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel
     from .transformer_z_image import ZImageTransformer2DModel

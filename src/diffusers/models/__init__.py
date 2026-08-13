@@ -46,6 +46,8 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_ltx2"] = ["AutoencoderKLLTX2Video"]
     _import_structure["autoencoders.autoencoder_kl_ltx2_audio"] = ["AutoencoderKLLTX2Audio"]
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
+    _import_structure["autoencoders.autoencoder_kl_minimax_h3"] = ["AutoencoderKLMiniMaxH3"]
+    _import_structure["autoencoders.autoencoder_kl_minimax_h3_audio"] = ["AutoencoderKLMiniMaxH3Audio"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
@@ -56,6 +58,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.autoencoder_vidtok"] = ["AutoencoderVidTok"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
+    _import_structure["autoencoders.ltx2_diffusion_decoder"] = ["LTX2VideoDiffusionDecoderModel"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
     _import_structure["condition_embedders.condition_embedder_anima"] = ["AnimaTextConditioner"]
@@ -128,6 +131,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
+    _import_structure["transformers.transformer_minimax_h3"] = ["MiniMaxH3Transformer3DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_motif_video"] = ["MotifVideoTransformer3DModel"]
     _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
@@ -141,6 +145,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
     _import_structure["transformers.transformer_wan_animate"] = ["WanAnimateTransformer3DModel"]
+    _import_structure["transformers.transformer_wan_animate_2"] = ["WanAnimate2Transformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
     _import_structure["transformers.transformer_z_image"] = ["ZImageTransformer2DModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
@@ -180,6 +185,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLLTX2Video,
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
+            AutoencoderKLMiniMaxH3,
+            AutoencoderKLMiniMaxH3Audio,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
             AutoencoderKLTemporalDecoder,
@@ -191,6 +198,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
             Cosmos3AVAEAudioTokenizer,
             LongCatAudioDiTVae,
+            LTX2VideoDiffusionDecoderModel,
             VQModel,
         )
         from .cache_utils import CacheMixin
@@ -260,6 +268,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            MiniMaxH3Transformer3DModel,
             MochiTransformer3DModel,
             MotifVideoTransformer3DModel,
             NucleusMoEImageTransformer2DModel,
@@ -277,6 +286,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
+            WanAnimate2Transformer3DModel,
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
