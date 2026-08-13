@@ -21,15 +21,13 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modular_blocks_ltx2"] = [
-        "LTX2AutoBlocks",
-        "LTX2Blocks",
-        "LTX2ConditionBlocks",
-        "LTX2ImageToVideoBlocks",
-        "LTX2InContextBlocks",
+    _import_structure["modular_blocks_wan_animate_2"] = ["WanAnimate2Blocks"]
+    _import_structure["modular_blocks_wan_animate_2_distilled"] = ["WanAnimate2DistilledBlocks"]
+    _import_structure["modular_pipeline"] = [
+        "WanAnimate2DistilledModularPipeline",
+        "WanAnimate2ModularPipeline",
     ]
-    _import_structure["modular_blocks_ltx25"] = ["LTX25AutoBlocks"]
-    _import_structure["modular_pipeline"] = ["LTX2ModularPipeline", "LTX25ModularPipeline"]
+    _import_structure["video_processor"] = ["WanAnimate2VideoProcessor"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -38,15 +36,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modular_blocks_ltx2 import (
-            LTX2AutoBlocks,
-            LTX2Blocks,
-            LTX2ConditionBlocks,
-            LTX2ImageToVideoBlocks,
-            LTX2InContextBlocks,
+        from .modular_blocks_wan_animate_2 import WanAnimate2Blocks
+        from .modular_blocks_wan_animate_2_distilled import WanAnimate2DistilledBlocks
+        from .modular_pipeline import (
+            WanAnimate2DistilledModularPipeline,
+            WanAnimate2ModularPipeline,
         )
-        from .modular_blocks_ltx25 import LTX25AutoBlocks
-        from .modular_pipeline import LTX2ModularPipeline, LTX25ModularPipeline
+        from .video_processor import WanAnimate2VideoProcessor
 else:
     import sys
 
