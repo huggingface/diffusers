@@ -34,6 +34,16 @@ from .testing_utils import NewAutoencoderTesterMixin
 enable_full_determinism()
 
 
+def _run_nondeterministic(fn):
+    # The encoder's reflect spatial padding has no deterministic CUDA backward
+    # (reflection_pad3d_backward_out_cuda); temporarily relax the requirement for tests that do backward passes.
+    torch.use_deterministic_algorithms(False)
+    try:
+        fn()
+    finally:
+        torch.use_deterministic_algorithms(True)
+
+
 # The temporal geometry is fixed by the released `clip_length` / `token_drop` pair: `17 * n + 5` pixel frames map to
 # `5 * n + 2` latent frames, so 22 frames is the shortest video this autoencoder can round-trip.
 NUM_FRAMES = 22
@@ -134,6 +144,16 @@ class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTester
 class TestAutoencoderKLMiniMaxH3Memory(AutoencoderKLMiniMaxH3TesterConfig, MemoryTesterMixin):
     """Memory optimization tests for the MiniMax-H3 video autoencoder."""
 
+    @pytest.mark.skip(
+        "`_keep_in_fp32_modules` pins every module of this autoencoder, so layerwise casting has nothing to cast and "
+        "the memory footprint does not change."
+    )
+    def test_layerwise_casting_memory(self):
+        pass
+
+    def test_layerwise_casting_training(self):
+        _run_nondeterministic(super().test_layerwise_casting_training)
+
 
 class TestAutoencoderKLMiniMaxH3Training(AutoencoderKLMiniMaxH3TesterConfig, TrainingTesterMixin):
     """Training tests for the MiniMax-H3 video autoencoder."""
@@ -142,6 +162,18 @@ class TestAutoencoderKLMiniMaxH3Training(AutoencoderKLMiniMaxH3TesterConfig, Tra
         super().test_gradient_checkpointing_is_applied(
             expected_set={"MiniMaxH3VideoDownBlock3d", "MiniMaxH3VideoViTDecoder3d"}
         )
+
+    def test_training(self):
+        _run_nondeterministic(super().test_training)
+
+    def test_training_with_ema(self):
+        _run_nondeterministic(super().test_training_with_ema)
+
+    def test_mixed_precision_training(self):
+        _run_nondeterministic(super().test_mixed_precision_training)
+
+    def test_gradient_checkpointing_equivalence(self):
+        _run_nondeterministic(super().test_gradient_checkpointing_equivalence)
 
 
 class TestAutoencoderKLMiniMaxH3Attention(AutoencoderKLMiniMaxH3TesterConfig, AttentionTesterMixin):

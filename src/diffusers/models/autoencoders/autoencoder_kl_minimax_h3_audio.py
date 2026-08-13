@@ -524,6 +524,10 @@ class AutoencoderKLMiniMaxH3Audio(ModelMixin, ConfigMixin, AttentionMixin):
     """
 
     _supports_gradient_checkpointing = False
+    # `torch.nn.utils.weight_norm` recomputes `weight` from `weight_g` / `weight_v` in a pre-forward hook, which
+    # runs before the group-offloading hook has onloaded the parameters, leaving the recomputed weight on the
+    # offload device (same reason the other weight-normed audio autoencoders disable it).
+    _supports_group_offloading = False
     # The released checkpoint is float32 and the DAC/BigVGAN stack (weight-normalized convolutions, Snake
     # activations) degrades audibly under bfloat16 (roughly 20 dB quieter decodes), so a pipeline-level
     # `torch_dtype=torch.bfloat16` must not downcast the weights.

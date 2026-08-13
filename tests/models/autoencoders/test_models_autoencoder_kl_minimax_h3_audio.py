@@ -33,6 +33,16 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
+def _run_nondeterministic(fn):
+    # The causal-attention projection's `F.adaptive_avg_pool1d` has no deterministic CUDA backward
+    # (adaptive_avg_pool2d_backward_cuda); temporarily relax the requirement for tests that do backward passes.
+    torch.use_deterministic_algorithms(False)
+    try:
+        fn()
+    finally:
+        torch.use_deterministic_algorithms(True)
+
+
 # `prod(encoder_rates)` is the hop length, so a waveform of `HOP_LENGTH * NUM_LATENTS` samples encodes to
 # `NUM_LATENTS` latents. MiniMax-H3 carries stereo as two batch items of this mono autoencoder.
 HOP_LENGTH = 4
@@ -130,9 +140,28 @@ class TestAutoencoderKLMiniMaxH3Audio(AutoencoderKLMiniMaxH3AudioTesterConfig, M
 class TestAutoencoderKLMiniMaxH3AudioMemory(AutoencoderKLMiniMaxH3AudioTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for the MiniMax-H3 audio autoencoder."""
 
+    @pytest.mark.skip(
+        "`_keep_in_fp32_modules` pins every module of this autoencoder, so layerwise casting has nothing to cast and "
+        "the memory footprint does not change."
+    )
+    def test_layerwise_casting_memory(self):
+        pass
+
+    def test_layerwise_casting_training(self):
+        _run_nondeterministic(super().test_layerwise_casting_training)
+
 
 class TestAutoencoderKLMiniMaxH3AudioTraining(AutoencoderKLMiniMaxH3AudioTesterConfig, TrainingTesterMixin):
     """Training tests for the MiniMax-H3 audio autoencoder."""
+
+    def test_training(self):
+        _run_nondeterministic(super().test_training)
+
+    def test_training_with_ema(self):
+        _run_nondeterministic(super().test_training_with_ema)
+
+    def test_mixed_precision_training(self):
+        _run_nondeterministic(super().test_mixed_precision_training)
 
 
 class TestAutoencoderKLMiniMaxH3AudioAttention(AutoencoderKLMiniMaxH3AudioTesterConfig, AttentionTesterMixin):
@@ -148,3 +177,9 @@ class TestAutoencoderKLMiniMaxH3AudioAttention(AutoencoderKLMiniMaxH3AudioTester
 
 class TestAutoencoderKLMiniMaxH3AudioTorchCompile(AutoencoderKLMiniMaxH3AudioTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for the MiniMax-H3 audio autoencoder."""
+
+    def test_torch_compile_recompilation_and_graph_break(self):
+        # Under `torch.use_deterministic_algorithms(True)`, `F.pad(mode="replicate")` (used by the anti-aliased
+        # resamplers) routes through an `importlib.import_module` call, which dynamo cannot trace with
+        # fullgraph=True on torch <= 2.10.
+        _run_nondeterministic(super().test_torch_compile_recompilation_and_graph_break)
