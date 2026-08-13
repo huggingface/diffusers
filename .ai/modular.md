@@ -10,7 +10,7 @@ When adding a new modular pipeline (or reviewing one), skim `src/diffusers/modul
 
 This section provides guidance on how to execute pipelines and blocks — in scripts, debugging sessions, and tests alike.
 
-- **Full pipeline from a repo**: `ModularPipeline.from_pretrained(repo_id)` — the base class, not the model subclass; it resolves the right class from the repo's `modular_model_index.json` (falling back to a standard `model_index.json`). Then `pipe.load_components()` and call it. A repo meant for `ModularPipeline.from_pretrained` should always ship a `modular_model_index.json` (its `_class_name` routes to the right pipeline class); the `model_index.json` fallback is a last resort with limited support.
+- **Full pipeline from a repo**: `ModularPipeline.from_pretrained(repo_id)` — the base class, not the model subclass; it resolves the right class from the repo's `modular_model_index.json` (falling back to a standard `model_index.json`). Then `pipe.load_components()` and call it. New modular repositories should include `modular_model_index.json` because it records modular block and component metadata. `model_index.json` remains supported for compatibility with standard repositories, but it cannot express all modular metadata.
 - **A single block or sub-workflow**: convert it to a pipeline first with `init_pipeline()`. Blocks are never executed directly.
 
 ```python
