@@ -30,27 +30,26 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # auto_docstring
 class MiniMaxMusic3Blocks(SequentialPipelineBlocks):
     """
-    Modular pipeline for lyrics- and caption-conditioned music generation using MiniMax Music 3. An autoregressive Qwen3 language model generates per-frame semantic codes and hidden states from the lyrics and the music description; a flow-matching transformer turns the hidden states into Flow-VAE latents chunk by chunk; and a DAC-style vocoder decodes them into a stereo waveform at 44.1 kHz.
+    Modular pipeline for lyrics- and caption-conditioned music generation using MiniMax Music 3. An autoregressive
+    Qwen3 language model generates per-frame semantic codes and hidden states from the lyrics and the music
+    description; a flow-matching transformer turns the hidden states into Flow-VAE latents chunk by chunk; and a
+    DAC-style vocoder decodes them into a stereo waveform at 44.1 kHz.
 
       Components:
-          tokenizer (`Qwen2Tokenizer`)
-          language_model (`Qwen3ForCausalLM`)
-          rvq_depth_decoder (`MiniMaxMusic3RVQDepthDecoder`)
-          condition_encoder (`MiniMaxMusic3ConditionEncoder`)
-          transformer (`MiniMaxMusic3Transformer1DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          guider (`ClassifierFreeGuidance`)
-          vocoder (`MiniMaxMusic3Vocoder`)
+          tokenizer (`Qwen2Tokenizer`) language_model (`Qwen3ForCausalLM`) rvq_depth_decoder
+          (`MiniMaxMusic3RVQDepthDecoder`) condition_encoder (`MiniMaxMusic3ConditionEncoder`) transformer
+          (`MiniMaxMusic3Transformer1DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`ClassifierFreeGuidance`) vocoder (`MiniMaxMusic3Vocoder`)
 
       Inputs:
           prompt (`str`):
               The music description (genre, mood, vocals, instrumentation, arrangement).
           lyrics (`str`):
-              The lyrics to sing. Structure tags such as `[verse]` or `[chorus]` must each be on their own line; text on the same
-              line as a leading tag is dropped by the checkpoint's input contract.
+              The lyrics to sing. Structure tags such as `[verse]` or `[chorus]` must each be on their own line; text
+              on the same line as a leading tag is dropped by the checkpoint's input contract.
           audio_duration (`float`, *optional*, defaults to 60.0):
-              Upper bound on the generated audio length in seconds. The language model may stop earlier. Capped at 9000 frames
-              (six minutes).
+              Upper bound on the generated audio length in seconds. The language model may stop earlier. Capped at 9000
+              frames (six minutes).
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 30):
