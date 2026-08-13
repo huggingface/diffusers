@@ -13,10 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
+import numpy as np
 import pytest
 import torch
 
 from diffusers import VQModel
+from diffusers.models.autoencoders.vae import VectorQuantizer
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import backend_manual_seed, enable_full_determinism, torch_device
@@ -118,6 +122,18 @@ class TestVQModel(VQModelTesterConfig, ModelTesterMixin):
         expected_output = torch.tensor([0.1936])
         # fmt: on
         assert torch.allclose(output, expected_output, atol=1e-3)
+
+    def test_vector_quantizer_logs_remap_configuration(self, caplog, tmp_path):
+        remap_path = tmp_path / "used.npy"
+        np.save(remap_path, np.array([0, 2, 4], dtype=np.int64))
+
+        with caplog.at_level(logging.INFO, logger="diffusers.models.autoencoders.vae"):
+            VectorQuantizer(n_e=8, vq_embed_dim=4, beta=0.25, remap=str(remap_path), unknown_index="extra")
+
+        assert any(
+            "Remapping 8 indices to 4 indices. Using 3 for unknown indices." in record.message
+            for record in caplog.records
+        )
 
 
 class TestVQModelTraining(VQModelTesterConfig, TrainingTesterMixin):
