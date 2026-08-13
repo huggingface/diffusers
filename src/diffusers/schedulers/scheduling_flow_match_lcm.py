@@ -286,6 +286,10 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         """
         one_minus_z = 1 - t
         scale_factor = one_minus_z[-1] / (1 - self.config.shift_terminal)
+        if scale_factor == 0:
+            # The schedule already ends at 1.0 (e.g. a single-step schedule), so there is nothing to
+            # stretch and dividing by `scale_factor` would produce NaN/Inf.
+            return t
         stretched_t = 1 - (one_minus_z / scale_factor)
         return stretched_t
 
@@ -359,11 +363,8 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         else:
             sigmas = self.shift * sigmas / (1 + (self.shift - 1) * sigmas)  # type: ignore
 
-        # 3. If required, stretch the sigmas schedule to terminate at the configured `shift_terminal` value. This is
-        #    skipped when there is only a single step, since there is nothing to stretch and the terminal rescaling
-        #    otherwise divides by zero (with the default schedule the single sigma is always 1.0, so
-        #    `one_minus_z[-1]` is always 0).
-        if self.config.shift_terminal and len(sigmas) > 1:
+        # 3. If required, stretch the sigmas schedule to terminate at the configured `shift_terminal` value.
+        if self.config.shift_terminal:
             sigmas = self.stretch_shift_to_terminal(sigmas)  # type: ignore
 
         # 4. If required, convert sigmas to one of karras, exponential, or beta sigma schedules

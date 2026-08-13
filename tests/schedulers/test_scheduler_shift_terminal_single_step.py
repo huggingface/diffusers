@@ -43,3 +43,11 @@ class ShiftTerminalSingleStepTest(unittest.TestCase):
         scheduler = UniPCMultistepScheduler(use_flow_sigmas=True, shift_terminal=0.1)
         scheduler.set_timesteps(num_inference_steps=1)
         self.assertFalse(torch.isnan(scheduler.sigmas).any())
+
+    def test_flow_match_euler_discrete_custom_schedule_ending_at_one_no_nan(self):
+        # A multi-step custom schedule whose last sigma is already 1.0 hits the same
+        # `one_minus_z[-1] == 0` division-by-zero case as the single-step schedule.
+        scheduler = FlowMatchEulerDiscreteScheduler(shift_terminal=0.1)
+        scheduler.set_timesteps(sigmas=[0.9, 1.0])
+        self.assertFalse(torch.isnan(scheduler.sigmas).any())
+        self.assertFalse(torch.isinf(scheduler.sigmas).any())
