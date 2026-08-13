@@ -1111,3 +1111,87 @@ class TestPipelinePushToHub:
 
         # Reset repo
         delete_repo(repo_id, token=TOKEN)
+
+
+class TestPipelineToPreservesQuantizedBuffers:
+    """Regression test for https://github.com/huggingface/diffusers/issues/14449.
+
+    Custom quantized modules (Int4/Int2) store packed weights as uint8 buffers.
+    `DiffusionPipeline.to(device, dtype)` must not corrupt these integer buffers
+    during device transfer or dtype conversion.
+    """
+
+    def _make_quantized_module(self):
+        """Create a minimal buffer-only quantized module (mimics Int4 packed weights)."""
+
+        class Int4Stub(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                # Packed weights: 2x int4 values per uint8 byte
+                self.register_buffer("packed_weight", torch.randint(0, 255, (64, 32), dtype=torch.uint8))
+                # Quantization metadata in float16
+                self.register_buffer("scales", torch.randn(64, 1, dtype=torch.float16))
+                self.register_buffer("zeros", torch.randn(64, 1, dtype=torch.float16))
+                # Device sentinel for accelerate hook compatibility (zero memory cost)
+                self._device_sentinel = torch.nn.Parameter(torch.empty(0, dtype=torch.float16), requires_grad=False)
+
+            def forward(self, x):
+                # Dequantize and compute (simplified)
+                high = (self.packed_weight >> 4).to(torch.float16)
+                low = (self.packed_weight & 0x0F).to(torch.float16)
+                w = torch.cat([high, low], dim=-1)[:, : x.shape[-1]]
+                w = (w - self.zeros) * self.scales
+                return x @ w.T
+
+        return Int4Stub()
+
+    def test_to_dtype_preserves_uint8_buffers(self):
+        module = self._make_quantized_module()
+        original = module.packed_weight.clone()
+
+        from diffusers.pipelines.pipeline_utils import _module_has_quantized_buffers
+
+        assert _module_has_quantized_buffers(module), "Test module should be detected as quantized"
+
+        # Simulate what pipeline.to(dtype=float16) does
+        module.to(dtype=torch.float16)
+
+        assert module.packed_weight.dtype == torch.uint8, "uint8 buffer dtype must not change"
+        assert torch.equal(module.packed_weight, original), "uint8 buffer values must not change"
+        assert module.scales.dtype == torch.float16, "float16 buffers should remain float16"
+
+    def test_to_device_preserves_uint8_buffers(self):
+        module = self._make_quantized_module()
+        original = module.packed_weight.clone()
+
+        module.to(torch_device)
+
+        assert module.packed_weight.device.type == torch.device(torch_device).type
+        assert module.packed_weight.dtype == torch.uint8
+        assert torch.equal(module.packed_weight.cpu(), original)
+
+    def test_to_device_and_dtype_preserves_uint8_buffers(self):
+        module = self._make_quantized_module()
+        original = module.packed_weight.clone()
+
+        # This is the exact call DiffusionPipeline.to() makes
+        module.to(torch_device, torch.float16)
+
+        assert module.packed_weight.dtype == torch.uint8, "uint8 must survive combined device+dtype transfer"
+        assert torch.equal(module.packed_weight.cpu(), original), "packed values must be intact"
+
+    def test_quantized_module_forward_after_to(self):
+        module = self._make_quantized_module().to(torch_device)
+        x = torch.randn(2, 64, device=torch_device, dtype=torch.float16)
+
+        out = module(x)
+        assert not torch.isnan(out).any(), "Forward must produce valid output after .to()"
+
+    def test_helper_detects_quantized_vs_normal(self):
+        from diffusers.pipelines.pipeline_utils import _module_has_quantized_buffers
+
+        quantized = self._make_quantized_module()
+        normal = torch.nn.Linear(64, 64)
+
+        assert _module_has_quantized_buffers(quantized) is True
+        assert _module_has_quantized_buffers(normal) is False

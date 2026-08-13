@@ -195,6 +195,20 @@ class DeprecatedPipelineMixin:
         super().__init__(*args, **kwargs)
 
 
+def _module_has_quantized_buffers(module: "torch.nn.Module") -> bool:
+    """Return True if *module* contains integer-typed buffers (e.g. packed uint8 for Int4 quantization).
+
+    Custom quantized modules often store weights as non-floating-point buffers.
+    These must not be passed through dtype conversion paths that assume all
+    tensors are float, and they interact poorly with offload hooks that rely
+    on ``next(module.parameters())`` for device detection.
+    """
+    for buf in module.buffers():
+        if not buf.is_floating_point() and buf.numel() > 0:
+            return True
+    return False
+
+
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     r"""
     Base class for all pipelines.
@@ -580,7 +594,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             ):
                 module.to(device=device)
             elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb and not is_group_offloaded:
-                module.to(device, dtype)
+                if dtype is not None and _module_has_quantized_buffers(module):
+                    # Custom quantized modules (e.g. Int4/Int2 packed weights) store data as
+                    # integer buffers (uint8/int8). While PyTorch's Module.to(dtype) already
+                    # skips non-floating-point tensors, some offload hooks (accelerate) inspect
+                    # module.parameters() to detect device placement and fail on buffer-only
+                    # modules. Splitting device and dtype transfer avoids triggering edge cases
+                    # in hook pre_forward logic that assumes parameters exist.
+                    if device is not None:
+                        module.to(device)
+                    # Apply dtype only to floating-point parameters/buffers (leaves int8/uint8 intact)
+                    module.to(dtype=dtype)
+                else:
+                    module.to(device, dtype)
 
             if (
                 module.dtype == torch.float16
