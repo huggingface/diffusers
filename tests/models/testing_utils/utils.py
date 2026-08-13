@@ -24,3 +24,19 @@ def _maybe_cast_to_bf16(backend, model, inputs_dict):
         for k, v in inputs_dict.items()
     }
     return model, inputs_dict
+
+
+def run_nondeterministic(fn):
+    """
+    Run `fn` with `enable_full_determinism`'s deterministic-algorithm requirement lifted.
+
+    Several models reach a backward kernel that has no deterministic CUDA implementation (reflection/replication
+    padding, average pooling), which makes every test doing a backward pass raise under
+    `torch.use_deterministic_algorithms(True)`. Wrap those tests instead of relaxing determinism for the whole module,
+    and name the offending op at the call site.
+    """
+    torch.use_deterministic_algorithms(False)
+    try:
+        fn()
+    finally:
+        torch.use_deterministic_algorithms(True)

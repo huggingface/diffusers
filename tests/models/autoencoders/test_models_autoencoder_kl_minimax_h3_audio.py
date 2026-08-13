@@ -27,20 +27,11 @@ from ..testing_utils import (
     ModelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
+    run_nondeterministic,
 )
 
 
 enable_full_determinism()
-
-
-def _run_nondeterministic(fn):
-    # The causal-attention projection's `F.adaptive_avg_pool1d` has no deterministic CUDA backward
-    # (adaptive_avg_pool2d_backward_cuda); temporarily relax the requirement for tests that do backward passes.
-    torch.use_deterministic_algorithms(False)
-    try:
-        fn()
-    finally:
-        torch.use_deterministic_algorithms(True)
 
 
 # `prod(encoder_rates)` is the hop length, so a waveform of `HOP_LENGTH * NUM_LATENTS` samples encodes to
@@ -147,21 +138,25 @@ class TestAutoencoderKLMiniMaxH3AudioMemory(AutoencoderKLMiniMaxH3AudioTesterCon
     def test_layerwise_casting_memory(self):
         pass
 
+    # The causal-attention projection's `F.adaptive_avg_pool1d` has no deterministic CUDA backward
+    # (adaptive_avg_pool2d_backward_cuda), so every test with a backward pass runs with determinism relaxed.
     def test_layerwise_casting_training(self):
-        _run_nondeterministic(super().test_layerwise_casting_training)
+        run_nondeterministic(super().test_layerwise_casting_training)
 
 
 class TestAutoencoderKLMiniMaxH3AudioTraining(AutoencoderKLMiniMaxH3AudioTesterConfig, TrainingTesterMixin):
     """Training tests for the MiniMax-H3 audio autoencoder."""
 
+    # The causal-attention projection's `F.adaptive_avg_pool1d` has no deterministic CUDA backward
+    # (adaptive_avg_pool2d_backward_cuda), so every test with a backward pass runs with determinism relaxed.
     def test_training(self):
-        _run_nondeterministic(super().test_training)
+        run_nondeterministic(super().test_training)
 
     def test_training_with_ema(self):
-        _run_nondeterministic(super().test_training_with_ema)
+        run_nondeterministic(super().test_training_with_ema)
 
     def test_mixed_precision_training(self):
-        _run_nondeterministic(super().test_mixed_precision_training)
+        run_nondeterministic(super().test_mixed_precision_training)
 
 
 class TestAutoencoderKLMiniMaxH3AudioAttention(AutoencoderKLMiniMaxH3AudioTesterConfig, AttentionTesterMixin):
@@ -182,4 +177,4 @@ class TestAutoencoderKLMiniMaxH3AudioTorchCompile(AutoencoderKLMiniMaxH3AudioTes
         # Under `torch.use_deterministic_algorithms(True)`, `F.pad(mode="replicate")` (used by the anti-aliased
         # resamplers) routes through an `importlib.import_module` call, which dynamo cannot trace with
         # fullgraph=True on torch <= 2.10.
-        _run_nondeterministic(super().test_torch_compile_recompilation_and_graph_break)
+        run_nondeterministic(super().test_torch_compile_recompilation_and_graph_break)

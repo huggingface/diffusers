@@ -857,15 +857,14 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
             The latent distribution of the encoded videos. Note that MiniMax-H3 normalizes the sampled latents with
             `latents_mean` / `latents_std` afterwards.
         """
-        # The whole model is pinned to float32 (`_keep_in_fp32_modules`), so align the input with the encoder's
-        # parameter dtype and hand the caller back its own dtype, mirroring the audio autoencoder.
-        input_dtype = x.dtype
+        # Every module is pinned to float32 by `_keep_in_fp32_modules`, so a pipeline running in a lower `torch_dtype`
+        # hands over lower-precision pixels; align them with the weights, like the audio autoencoder does.
         x = x.to(get_parameter_dtype(self.encoder))
         if self.use_slicing and x.shape[0] > 1:
             moments = torch.cat([self._encode(x_slice) for x_slice in x.split(1)])
         else:
             moments = self._encode(x)
-        posterior = DiagonalGaussianDistribution(moments.to(input_dtype))
+        posterior = DiagonalGaussianDistribution(moments)
         if not return_dict:
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
@@ -885,13 +884,11 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
             [`~models.autoencoders.vae.DecoderOutput`] or `tuple`:
                 The decoded videos, shape `(batch_size, out_channels, num_frames, height, width)`.
         """
-        input_dtype = z.dtype
         z = z.to(get_parameter_dtype(self.decoder))
         if self.use_slicing and z.shape[0] > 1:
             decoded = torch.cat([self._decode(z_slice) for z_slice in z.split(1)])
         else:
             decoded = self._decode(z)
-        decoded = decoded.to(input_dtype)
         if not return_dict:
             return (decoded,)
         return DecoderOutput(sample=decoded)

@@ -50,10 +50,10 @@ class MiniMaxH3TransformerOutput(BaseOutput):
             The audio velocity prediction for the rows addressed by `audio_indices`, in the same order.
     """
 
-    # The `None` defaults keep the class reconstructible from a plain `{field: value}` dict, which is how
-    # accelerate's `send_to_device` rebuilds model outputs when offloading hooks are attached.
-    sample: torch.Tensor = None
-    audio_sample: torch.Tensor = None
+    sample: torch.Tensor
+    # `forward` always populates `audio_sample`; the default is what lets the output be rebuilt from a plain dict of
+    # its fields, which is how the accelerate offload hooks move a `BaseOutput` back to the input device.
+    audio_sample: torch.Tensor | None = None
 
 
 def _apply_rotary_emb(hidden_states: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
