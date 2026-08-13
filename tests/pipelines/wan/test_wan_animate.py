@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import pytest
 import torch
 from PIL import Image
@@ -177,6 +179,28 @@ class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin
 
         video = pipe(**inputs).frames[0]
         assert video.shape == self.output_shape
+
+    def test_prepare_prev_segment_cond_latents_logs_interpolation_warning(self, caplog):
+        pipe = self.get_pipeline()
+        prev_segment_cond_video = torch.zeros((1, 3, 1, 8, 8), dtype=torch.float32)
+
+        with caplog.at_level(logging.WARNING, logger="diffusers.pipelines.wan.pipeline_wan_animate"):
+            pipe.prepare_prev_segment_cond_latents(
+                prev_segment_cond_video=prev_segment_cond_video,
+                batch_size=1,
+                segment_frame_length=5,
+                height=16,
+                width=16,
+                prev_segment_cond_frames=1,
+                task="animate",
+                dtype=torch.float32,
+                device=torch.device("cpu"),
+            )
+
+        assert any(
+            "Interpolating prev segment cond video from (8, 8) to (16, 16)" in record.message
+            for record in caplog.records
+        )
 
     @pytest.mark.skip(
         reason="Setting the Wan Animate latents to zero at the last denoising step does not guarantee that the output"
