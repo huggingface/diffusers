@@ -6892,15 +6892,7 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
                 workflow denoises with — instead of `transformer`. Only needed when both partitions are loaded: a
                 pipeline that holds `transformer_ref` alone routes there on its own.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
@@ -7012,11 +7004,6 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -7047,11 +7034,6 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
         `load_into_transformer_ref=True`. See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
         details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         logger.info(f"Loading {prefix}.")
         transformer_ref.load_lora_adapter(
             state_dict,
