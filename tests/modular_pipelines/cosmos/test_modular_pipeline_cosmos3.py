@@ -17,7 +17,7 @@ import pytest
 import torch
 from PIL import Image
 
-from diffusers import ModularPipeline, UniPCMultistepScheduler
+from diffusers import Cosmos3EdgeUniPCMultistepScheduler, ModularPipeline
 from diffusers.modular_pipelines import (
     Cosmos3OmniBlocks,
     Cosmos3OmniModularPipeline,
@@ -364,7 +364,7 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
         default_timesteps = timesteps_pipe(num_inference_steps=4, output="timesteps")
 
         timesteps_pipe.update_components(
-            scheduler=UniPCMultistepScheduler(num_train_timesteps=100, use_flow_sigmas=True),
+            scheduler=Cosmos3EdgeUniPCMultistepScheduler(num_train_timesteps=100, use_flow_sigmas=True),
             use_native_flow_schedule=True,
         )
         native_timesteps = timesteps_pipe(num_inference_steps=4, output="timesteps")
@@ -373,3 +373,21 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
         torch.testing.assert_close(timesteps_pipe.scheduler.sigmas[:-1], expected_sigmas)
         assert native_timesteps.tolist() == [99, 74, 49, 24]
         assert not torch.equal(native_timesteps, default_timesteps)
+
+    def test_set_timesteps_native_flow_schedule_matches_framework_shift(self):
+        timesteps_pipe = Cosmos3SetTimestepsStep().init_pipeline(self.pretrained_model_name_or_path)
+        timesteps_pipe.load_components()
+        timesteps_pipe.update_components(
+            scheduler=Cosmos3EdgeUniPCMultistepScheduler(
+                num_train_timesteps=1000, use_karras_sigmas=True, use_flow_sigmas=True
+            ),
+            use_native_flow_schedule=True,
+            native_flow_shift=3.0,
+        )
+
+        timesteps = timesteps_pipe(num_inference_steps=50, output="timesteps")
+
+        expected_sigmas = torch.tensor([0.99966645, 0.99290746, 0.9859634, 0.97882646, 0.9714886, 0.9639411])
+        torch.testing.assert_close(timesteps_pipe.scheduler.sigmas[:6], expected_sigmas, atol=1e-7, rtol=0)
+        assert timesteps[:8].tolist() == [999, 992, 985, 978, 971, 963, 956, 948]
+        assert not timesteps_pipe.scheduler.config.use_karras_sigmas

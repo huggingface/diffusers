@@ -3,6 +3,7 @@ from transformers import AutoTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
+from ...pipelines.cosmos.image_processor import Cosmos3VideoProcessor
 from ...pipelines.cosmos.pipeline_cosmos3_omni import (
     _ACTION_RESOLUTION_BINS,
     CosmosActionCondition,
@@ -645,7 +646,8 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
                 f"`height` and `width` must be multiples of {sf}, got ({block_state.height}, {block_state.width})."
             )
 
-        conditioning_frame_2d = components.video_processor.preprocess(
+        processor = Cosmos3VideoProcessor.from_config(components.video_processor.config)
+        conditioning_frame_2d = processor.preprocess_conditioning_image(
             block_state.image, height=block_state.height, width=block_state.width
         ).to(device=device, dtype=dtype)
 

@@ -42,6 +42,7 @@ else:
     _import_structure["scheduling_block_refinement"] = ["BlockRefinementScheduler", "BlockRefinementSchedulerOutput"]
     _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
+    _import_structure["scheduling_cosmos3_unipc"] = ["Cosmos3EdgeUniPCMultistepScheduler"]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
     _import_structure["scheduling_ddim_cogvideox"] = ["CogVideoXDDIMScheduler"]
     _import_structure["scheduling_ddim_inverse"] = ["DDIMInverseScheduler"]
@@ -126,6 +127,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_block_refinement import BlockRefinementScheduler, BlockRefinementSchedulerOutput
         from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
+        from .scheduling_cosmos3_unipc import Cosmos3EdgeUniPCMultistepScheduler
         from .scheduling_ddim import DDIMScheduler
         from .scheduling_ddim_cogvideox import CogVideoXDDIMScheduler
         from .scheduling_ddim_inverse import DDIMInverseScheduler
