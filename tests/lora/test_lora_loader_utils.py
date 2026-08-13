@@ -18,8 +18,6 @@ from unittest.mock import Mock
 import pytest
 import torch
 import torch.nn as nn
-from peft import LoraConfig
-from peft.tuners.tuners_utils import BaseTunerLayer
 from safetensors.torch import save_file
 
 from diffusers.configuration_utils import ConfigMixin
@@ -27,6 +25,14 @@ from diffusers.loaders import StableDiffusionLoraLoaderMixin, lora_base
 from diffusers.loaders.lora_base import LoraBaseMixin
 from diffusers.loaders.peft import PeftAdapterMixin
 from diffusers.models.modeling_utils import ModelMixin
+from diffusers.utils.import_utils import is_peft_available
+
+from ..testing_utils import require_peft_backend
+
+
+if is_peft_available():
+    from peft import LoraConfig
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
 
 LORA_KEY = "unet.test.lora_A.weight"
@@ -109,6 +115,7 @@ def test_local_directory_with_multiple_files_warns_and_uses_first(tmp_path, monk
     assert "contains more than one weights file" in caplog.text
 
 
+@require_peft_backend
 def test_unfuse_lora_partial_components_keeps_merged_adapters_in_sync():
     """Regression test for gh-14214.
 
