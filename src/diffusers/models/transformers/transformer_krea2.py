@@ -74,12 +74,19 @@ class Krea2AttnProcessor:
             query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
             key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
+        enable_gqa = attn.num_heads != attn.num_kv_heads
+        if attention_mask is not None and attention_mask.dtype != torch.bool and enable_gqa:
+            repeats = attn.num_heads // attn.num_kv_heads
+            key = key.repeat_interleave(repeats, dim=2)
+            value = value.repeat_interleave(repeats, dim=2)
+            enable_gqa = False
+
         hidden_states = dispatch_attention_fn(
             query,
             key,
             value,
             attn_mask=attention_mask,
-            enable_gqa=attn.num_heads != attn.num_kv_heads,
+            enable_gqa=enable_gqa,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )
@@ -452,6 +459,8 @@ class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapt
         timestep: torch.Tensor,
         position_ids: torch.Tensor,
         encoder_attention_mask: torch.Tensor | None = None,
+        reference_hidden_states: list[torch.Tensor] | None = None,
+        reference_attention_scale: float | list[float] = 1.0,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
@@ -470,6 +479,12 @@ class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapt
                 latent-grid coordinates.
             encoder_attention_mask (`torch.Tensor` of shape `(batch_size, text_seq_len)`, *optional*):
                 Boolean mask marking valid text tokens. Pass `None` when every text token is valid.
+            reference_hidden_states (`list[torch.Tensor]`, *optional*):
+                Packed clean reference-image latents prepended in list order before the noisy image tokens. Each tensor
+                has shape `(batch_size, reference_seq_len, in_channels)`.
+            reference_attention_scale (`float` or `list[float]`, *optional*, defaults to `1.0`):
+                Multiplier applied to target-token attention probabilities for each reference-image block. A float is
+                applied to every reference; a list sets one multiplier per reference in the same order.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that, when it contains a `scale` entry, sets the LoRA scale applied to this
                 transformer's adapters for the duration of the forward pass.
@@ -485,6 +500,32 @@ class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapt
 
         batch_size, image_seq_len, _ = hidden_states.shape
         text_seq_len = encoder_hidden_states.shape[1]
+        reference_seq_lens = [] if reference_hidden_states is None else [x.shape[1] for x in reference_hidden_states]
+        reference_seq_len = sum(reference_seq_lens)
+
+        if isinstance(reference_attention_scale, list):
+            reference_attention_scales = reference_attention_scale
+        elif reference_hidden_states is None:
+            reference_attention_scales = []
+        else:
+            reference_attention_scales = [reference_attention_scale] * len(reference_hidden_states)
+        if reference_hidden_states is None and reference_attention_scale != 1.0:
+            raise ValueError("`reference_attention_scale` requires `reference_hidden_states`.")
+        if reference_hidden_states is not None and len(reference_hidden_states) == 0:
+            raise ValueError("`reference_hidden_states` must contain at least one tensor.")
+        if len(reference_attention_scales) != len(reference_seq_lens):
+            raise ValueError(
+                "`reference_attention_scale` must contain one value per reference tensor, but got "
+                f"{len(reference_attention_scales)} values for {len(reference_seq_lens)} references."
+            )
+        if any(scale < 0 for scale in reference_attention_scales):
+            raise ValueError(f"`reference_attention_scale` must be non-negative, but is {reference_attention_scale}.")
+        sequence_length = text_seq_len + reference_seq_len + image_seq_len
+        if position_ids.shape[0] != sequence_length:
+            raise ValueError(
+                f"`position_ids` has sequence length {position_ids.shape[0]}, but the combined text, reference, and "
+                f"image sequence has length {sequence_length}."
+            )
 
         temb = self.time_embed(timestep, dtype=hidden_states.dtype)
         temb_mod = self.time_mod_proj(F.gelu(temb, approximate="tanh"))
@@ -495,14 +536,32 @@ class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapt
             # Key-padding masks of shape (B, 1, 1, L): padded text tokens are excluded as attention keys everywhere;
             # their own (garbage) lanes are never read back and are dropped at the output slice.
             text_attention_mask = encoder_attention_mask[:, None, None, :]
-            image_mask = encoder_attention_mask.new_ones((batch_size, image_seq_len))
+            image_mask = encoder_attention_mask.new_ones((batch_size, reference_seq_len + image_seq_len))
             attention_mask = torch.cat([encoder_attention_mask, image_mask], dim=1)[:, None, None, :]
 
         encoder_hidden_states = self.text_fusion(encoder_hidden_states, attention_mask=text_attention_mask)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
         hidden_states = self.img_in(hidden_states)
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+        if reference_hidden_states is not None:
+            reference_hidden_states = [self.img_in(x) for x in reference_hidden_states]
+            hidden_states = torch.cat([encoder_hidden_states, *reference_hidden_states, hidden_states], dim=1)
+        else:
+            hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+
+        if reference_hidden_states is not None and any(scale != 1.0 for scale in reference_attention_scales):
+            reference_attention_bias = hidden_states.new_zeros((batch_size, 1, sequence_length, sequence_length))
+            target_start = text_seq_len + reference_seq_len
+            reference_start = text_seq_len
+            for reference_length, scale in zip(reference_seq_lens, reference_attention_scales):
+                reference_end = reference_start + reference_length
+                reference_attention_bias[:, :, target_start:, reference_start:reference_end] = math.log(
+                    max(scale, 1e-4)
+                )
+                reference_start = reference_end
+            if attention_mask is not None:
+                reference_attention_bias.masked_fill_(~attention_mask, float("-inf"))
+            attention_mask = reference_attention_bias
 
         image_rotary_emb = self.rotary_emb(position_ids)
 
@@ -514,7 +573,7 @@ class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapt
             else:
                 hidden_states = block(hidden_states, temb_mod, image_rotary_emb, attention_mask)
 
-        hidden_states = hidden_states[:, text_seq_len:]
+        hidden_states = hidden_states[:, -image_seq_len:]
         output = self.final_layer(hidden_states, temb)
 
         if not return_dict:
