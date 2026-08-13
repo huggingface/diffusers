@@ -53,20 +53,6 @@ class MiniMaxMusic3ModularPipeline(ModularPipeline):
         return latent_hop_length
 
     @property
-    def num_codebooks(self):
-        num_codebooks = 8
-        if hasattr(self, "rvq_depth_decoder") and self.rvq_depth_decoder is not None:
-            num_codebooks = int(self.rvq_depth_decoder.config.num_codebooks)
-        return num_codebooks
-
-    @property
-    def audio_vocab_size(self):
-        audio_vocab_size = 1024
-        if hasattr(self, "rvq_depth_decoder") and self.rvq_depth_decoder is not None:
-            audio_vocab_size = int(self.rvq_depth_decoder.config.audio_vocab_size)
-        return audio_vocab_size
-
-    @property
     def num_channels_latents(self):
         num_channels_latents = 128
         if hasattr(self, "transformer") and self.transformer is not None:

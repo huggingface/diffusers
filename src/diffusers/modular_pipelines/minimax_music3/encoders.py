@@ -103,53 +103,59 @@ def _sample_top_k(logits: torch.Tensor, generator: Optional[torch.Generator]) ->
     return torch.multinomial(probs.to(sample_device), 1, generator=generator).squeeze(-1).to(probs.device)
 
 
-def _embed_audio_frame(components: MiniMaxMusic3ModularPipeline, frame_codes: torch.Tensor) -> torch.Tensor:
+def _embed_audio_frame(
+    language_model: Qwen3ForCausalLM,
+    rvq_depth_decoder: MiniMaxMusic3RVQDepthDecoder,
+    frame_codes: torch.Tensor,
+) -> torch.Tensor:
     # frame_codes: [2, num_codebooks]. Sum the semantic-code embedding with the residual-code embeddings.
-    embed_tokens = components.language_model.model.embed_tokens
-    embeds = embed_tokens(frame_codes[:, :1] + _AUDIO_CODE_OFFSET)
+    num_codebooks = rvq_depth_decoder.config.num_codebooks
+    embeds = language_model.model.embed_tokens(frame_codes[:, :1] + _AUDIO_CODE_OFFSET)
     offsets = (
-        torch.arange(components.num_codebooks - 1, device=frame_codes.device) * components.audio_vocab_size
+        torch.arange(num_codebooks - 1, device=frame_codes.device) * rvq_depth_decoder.config.audio_vocab_size
     ).unsqueeze(0)
-    extra = components.rvq_depth_decoder.audio_embeddings(frame_codes[:, 1:] + offsets).sum(dim=1, keepdim=True)
+    extra = rvq_depth_decoder.audio_embeddings(frame_codes[:, 1:] + offsets).sum(dim=1, keepdim=True)
     embeds = embeds + extra.to(embeds.dtype)
-    return embeds * components.num_codebooks**-0.5
+    return embeds * num_codebooks**-0.5
 
 
 def _generate_depth_codes(
-    components: MiniMaxMusic3ModularPipeline,
+    language_model: Qwen3ForCausalLM,
+    rvq_depth_decoder: MiniMaxMusic3RVQDepthDecoder,
     last_hidden: torch.Tensor,
     semantic_code: torch.Tensor,
     generator: Optional[torch.Generator],
 ):
     # Autoregressively sample the residual codes c1..c7 for one frame and collect their hidden states.
-    sequence = [components.rvq_depth_decoder.projection(last_hidden).unsqueeze(1)]
-    code_embed = components.language_model.model.embed_tokens(semantic_code + _AUDIO_CODE_OFFSET)
-    sequence.append(components.rvq_depth_decoder.projection(code_embed).unsqueeze(1))
+    num_codebooks = rvq_depth_decoder.config.num_codebooks
+    sequence = [rvq_depth_decoder.projection(last_hidden).unsqueeze(1)]
+    code_embed = language_model.model.embed_tokens(semantic_code + _AUDIO_CODE_OFFSET)
+    sequence.append(rvq_depth_decoder.projection(code_embed).unsqueeze(1))
     codes = [semantic_code]
     hidden_parts = []
-    for index in range(1, components.num_codebooks):
-        hidden = components.rvq_depth_decoder(torch.cat(sequence, dim=1))[:, -1]
+    for index in range(1, num_codebooks):
+        hidden = rvq_depth_decoder(torch.cat(sequence, dim=1))[:, -1]
         hidden_parts.append(hidden[:1])
-        logits = components.rvq_depth_decoder.audio_heads[index - 1](hidden)
+        logits = rvq_depth_decoder.audio_heads[index - 1](hidden)
         conditional, unconditional = logits[:1].float(), logits[1:2].float()
         logits = unconditional + (conditional - unconditional) * _AR_CFG_SCALE
         # The sampled code is repeated so the language-model feedback keeps the [conditional, unconditional] rows.
         code = _sample_top_k(logits, generator).repeat(2)
         codes.append(code)
-        if index < components.num_codebooks - 1:
-            embed = components.rvq_depth_decoder.audio_embeddings(code + (index - 1) * components.audio_vocab_size)
-            sequence.append(components.rvq_depth_decoder.projection(embed).unsqueeze(1))
+        if index < num_codebooks - 1:
+            embed = rvq_depth_decoder.audio_embeddings(code + (index - 1) * rvq_depth_decoder.config.audio_vocab_size)
+            sequence.append(rvq_depth_decoder.projection(embed).unsqueeze(1))
     return torch.stack(codes, dim=1), torch.cat(hidden_parts, dim=-1)
 
 
-class MiniMaxMusic3TextEncoderStep(ModularPipelineBlocks):
+class MiniMaxMusic3TokenizeStep(ModularPipelineBlocks):
     model_name = "minimax-music3"
 
     @property
     def description(self) -> str:
         return (
-            "Text encoder step that assembles the checkpoint's special-token prompt from the music description and "
-            "the lyrics and tokenizes it into the conditional/unconditional token id pair."
+            "Tokenize step that assembles the checkpoint's special-token prompt from the music description and the "
+            "lyrics and tokenizes it into the conditional/unconditional token id pair."
         )
 
     @property
@@ -221,7 +227,7 @@ class MiniMaxMusic3TextEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
-class MiniMaxMusic3SemanticGenerationStep(ModularPipelineBlocks):
+class MiniMaxMusic3AutoregressiveStep(ModularPipelineBlocks):
     model_name = "minimax-music3"
 
     @property
@@ -293,14 +299,13 @@ class MiniMaxMusic3SemanticGenerationStep(ModularPipelineBlocks):
         generator = block_state.generator
 
         language_model = components.language_model
+        rvq_depth_decoder = components.rvq_depth_decoder
         # Trigger CPU-offload hooks by hand (same workaround as minimax_h3): the autoregressive loop calls
         # submodules (`embed_tokens`, `lm_head`, depth-decoder heads) while the hook wraps only the top-level
         # `forward`. The language model goes first — placing it can evict other models but never the reverse,
         # and both models are used on every frame, so a placement must not evict the other.
         hooked = [
-            model
-            for model in (language_model, components.rvq_depth_decoder)
-            if getattr(model, "_hf_hook", None) is not None
+            model for model in (language_model, rvq_depth_decoder) if getattr(model, "_hf_hook", None) is not None
         ]
         for model in hooked:
             model._hf_hook.pre_forward(model)
@@ -337,13 +342,13 @@ class MiniMaxMusic3SemanticGenerationStep(ModularPipelineBlocks):
 
             semantic_code = sampled - _AUDIO_CODE_OFFSET
             frame_codes, depth_hidden = _generate_depth_codes(
-                components, last_hidden, semantic_code.repeat(2), generator
+                language_model, rvq_depth_decoder, last_hidden, semantic_code.repeat(2), generator
             )
             if frame_index > 0:
                 frame_hiddens.append(torch.cat((last_hidden[:1], depth_hidden), dim=-1))
                 if len(frame_hiddens) >= max_frames:
                     break
-            feedback = _embed_audio_frame(components, frame_codes)
+            feedback = _embed_audio_frame(language_model, rvq_depth_decoder, frame_codes)
             output = language_model.model(inputs_embeds=feedback, past_key_values=past_key_values, use_cache=True)
             past_key_values = output.past_key_values
             last_hidden = output.last_hidden_state[:, -1]

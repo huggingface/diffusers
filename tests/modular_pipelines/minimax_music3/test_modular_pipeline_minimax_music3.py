@@ -87,8 +87,7 @@ class TestMiniMaxMusic3ModularPipelineFast(ModularPipelineTesterMixin):
 
     pipeline_class = MiniMaxMusic3ModularPipeline
     pipeline_blocks_class = MiniMaxMusic3Blocks
-    # TODO: placeholder tiny-components repo; move to hf-internal-testing/ once uploaded (see modular.md gotcha #6).
-    pretrained_model_name_or_path = "diffusers-internal-dev/tiny-minimax-music3"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-music3-modular-pipe"
     params = frozenset(["prompt", "lyrics", "audio_duration"])
     # The pipeline generates a single waveform per call; `prompt` and `lyrics` are single strings.
     batch_params = frozenset()

@@ -20,10 +20,6 @@ semantic audio token per frame while a small depth decoder fills in seven residu
 hidden states condition a 2.4B flow-matching transformer that produces Flow-VAE latents in overlapping chunks. A
 DAC-style decoder turns the latents into 44.1 kHz stereo audio.
 
-> [!TIP]
-> Until [#14456](https://github.com/huggingface/diffusers/pull/14456) is merged, install diffusers from the PR branch
-> to use this pipeline: `pip install git+https://github.com/huggingface/diffusers@refs/pull/14456/head`.
-
 ## Usage
 
 MiniMax Music 3 is available as a modular pipeline.
