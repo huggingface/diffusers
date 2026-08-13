@@ -292,8 +292,6 @@ ComponentSpec(
 )
 ```
 
-The guider spec is declared **only by the denoise blocks** — each preset's denoise step pins its scale there (base `FrozenDict({"guidance_scale": 3.0})`, distilled `1.0`), which is how one repo's checkpoint gets the right guidance with no `guidance_scale` input anywhere. The text encoder never declares a guider: it asks `components.requires_unconditional_embeds` (a pipeline-class property that consults the guider when one exists) to decide whether to encode the negative prompt, defaulting it to `""`; an explicitly passed `negative_prompt` is the standalone escape hatch. See `wan_animate_2/encoders.py` / `denoise.py`.
-
 ## Gotchas
 
 1. **Importing from standard pipelines.** The modular and standard pipeline systems are parallel — modular blocks must not import from `diffusers.pipelines.*`. For shared utility methods (e.g. `_pack_latents`, `retrieve_timesteps`), either redefine as standalone functions or use `# Copied from diffusers.pipelines.<model>...` headers. See `wan/before_denoise.py` and `helios/before_denoise.py` for examples.

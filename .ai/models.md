@@ -145,7 +145,7 @@ If `None` (default), all modules follow the requested `torch_dtype`.
 
 **API:** every device-placement hook that moves call inputs — `apply_group_offloading(model, ...)` reads it as `exclude_kwargs` (`hooks/group_offloading.py`), and `from_pretrained(..., device_map=...)` (including the `device_map={"": "cpu"}` offload placement) forwards it to accelerate's `dispatch_model(skip_keys=...)` (`pipelines/pipeline_loading_utils.py`).
 
-These hooks move every tensor in the call's args/kwargs to the execution device before `forward` runs. List the forward kwargs that carry non-tensor runtime objects holding large tensors — a KV-cache, an encoder feature cache — so the hooks leave them alone instead of transferring (or repeatedly re-transferring) their contents on every call.
+These hooks move every tensor in the call's args/kwargs to the execution device before `forward` runs. List the forward kwargs that carry state the model places itself — a KV-cache, an encoder feature cache — so the hooks leave them alone instead of transferring (or repeatedly re-transferring) their contents on every call.
 
 ```python
 # in-tree examples
