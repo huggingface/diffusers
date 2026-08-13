@@ -23,7 +23,7 @@ DAC-style decoder turns the latents into 44.1 kHz stereo audio.
 ## Usage
 
 ```py
-import scipy
+import soundfile as sf
 import torch
 from diffusers import MiniMaxMusic3Pipeline
 
@@ -49,7 +49,7 @@ audio = pipe(
     generator=torch.Generator("cuda").manual_seed(7),
 ).audios[0]
 
-scipy.io.wavfile.write("minimax_music3.wav", rate=pipe.sampling_rate, data=audio.T)
+sf.write("minimax_music3.wav", audio.T, pipe.sampling_rate)
 ```
 
 ## Tips
