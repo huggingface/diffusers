@@ -27,7 +27,7 @@ import scipy
 import torch
 from diffusers import MiniMaxMusic3Pipeline
 
-pipe = MiniMaxMusic3Pipeline.from_pretrained("MiniMaxAI/MiniMax-Music3", torch_dtype=torch.bfloat16)
+pipe = MiniMaxMusic3Pipeline.from_pretrained("MiniMaxAI/MiniMax-Music3", dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 lyrics = """[verse]
@@ -37,8 +37,9 @@ Every quiet street is yours and mine
 Softly the world begins to breathe"""
 
 prompt = (
-    "A warm acoustic pop song with intimate female vocals, fingerpicked guitar, soft piano, "
-    "and a gradual emotional build into a wide final chorus."
+    "Genre: acoustic pop. BPM: 96. Key: C major. Warm and intimate, building gently into the chorus. "
+    "Vocals: soft female lead, close and breathy, light stacked harmonies in the chorus. "
+    "Arrangement: fingerpicked guitar and soft piano; brushed drums and upright bass enter in the chorus."
 )
 
 audio = pipe(

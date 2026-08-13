@@ -70,13 +70,16 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import MiniMaxMusic3Pipeline
 
-        >>> pipe = MiniMaxMusic3Pipeline.from_pretrained("MiniMaxAI/MiniMax-Music3", torch_dtype=torch.bfloat16)
+        >>> pipe = MiniMaxMusic3Pipeline.from_pretrained("MiniMaxAI/MiniMax-Music3", dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
         >>> lyrics = (
         ...     "[verse]\\nMorning light filtering through the pine\\n[chorus]\\nSoftly the world begins to breathe"
         ... )
-        >>> prompt = "A warm acoustic pop song with intimate female vocals, fingerpicked guitar and soft piano."
+        >>> prompt = (
+        ...     "Genre: acoustic pop. BPM: 96. Warm and intimate. Vocals: soft female lead, close and breathy. "
+        ...     "Arrangement: fingerpicked guitar and soft piano; brushed drums enter in the chorus."
+        ... )
         >>> audio = pipe(
         ...     prompt=prompt, lyrics=lyrics, audio_duration=60.0, generator=torch.Generator("cuda").manual_seed(7)
         ... ).audios[0]
