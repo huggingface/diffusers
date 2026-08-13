@@ -7,7 +7,7 @@ import safetensors.torch
 import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
-from transformers import AutoTokenizer, Gemma3ForConditionalGeneration, Gemma3Processor
+from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor, AutoTokenizer
 
 from diffusers import (
     AutoencoderKLLTX2Audio,
@@ -15,9 +15,16 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     LTX2LatentUpsamplePipeline,
     LTX2Pipeline,
+    LTX2VideoDiffusionDecoderModel,
     LTX2VideoTransformer3DModel,
 )
-from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel, LTX2TextConnectors, LTX2Vocoder, LTX2VocoderWithBWE
+from diffusers.pipelines.ltx2 import (
+    LTX2DurationHead,
+    LTX2LatentUpsamplerModel,
+    LTX2TextConnectors,
+    LTX2Vocoder,
+    LTX2VocoderWithBWE,
+)
 from diffusers.utils.import_utils import is_accelerate_available
 
 
@@ -83,6 +90,28 @@ LTX_2_3_VIDEO_VAE_RENAME_DICT = {
     # Decoder extra blocks
     "up_blocks.7": "up_blocks.3.upsamplers.0",
     "up_blocks.8": "up_blocks.3",
+}
+
+# LTX-2.5's diffusion decoder replaces the conv decoder while keeping the same encoder, so only the
+# `decoder.*` half of the VAE checkpoint is renamed with these rules.
+LTX_2_5_DIFFUSION_DECODER_RENAME_DICT = {
+    # The original `t_embedder` *is* diffusers' `PixArtAlphaCombinedTimestepSizeEmbeddings`, saved under
+    # shorter names, so only its two Linears need renaming.
+    "t_embedder.mlp.0.": "t_embedder.timestep_embedder.linear_1.",
+    "t_embedder.mlp.2.": "t_embedder.timestep_embedder.linear_2.",
+    ".attn.proj.": ".attn.to_out.0.",
+    ".attn.q_norm.": ".attn.norm_q.",
+    ".attn.k_norm.": ".attn.norm_k.",
+}
+
+# Where a checkpoint carries static AdaLN gates, each is folded into the Linear it gates (W <- g * W) and
+# dropped, because the decoder's residuals are ungated. Maps a renamed parameter to its gate's suffix.
+LTX_2_5_DIFFUSION_DECODER_GATE_FOLD_TARGETS = {
+    ".attn.to_out.0.weight": ".gate_msa",
+    ".attn.to_out.0.bias": ".gate_msa",
+    ".mlp.w_down.weight": ".gate_mlp",
+    ".context_proj.weight": ".gate_ctx",
+    ".context_proj.bias": ".gate_ctx",
 }
 
 LTX_2_0_AUDIO_VAE_RENAME_DICT = {
@@ -367,10 +396,67 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
         }
         rename_dict = LTX_2_3_TRANSFORMER_KEYS_RENAME_DICT
         special_keys_remap = LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif version == "2.5":
+        config = {
+            "model_id": "Lightricks/LTX-2.5",
+            "diffusers_config": {
+                "in_channels": 128,
+                "out_channels": 128,
+                "patch_size": 1,
+                "patch_size_t": 1,
+                "num_attention_heads": 32,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "vae_scale_factors": (8, 32, 32),
+                "pos_embed_max_pos": 20,
+                "base_height": 2048,
+                "base_width": 2048,
+                "gated_attn": True,
+                "cross_attn_mod": True,
+                "audio_in_channels": 128,
+                "audio_out_channels": 128,
+                "audio_patch_size": 1,
+                "audio_patch_size_t": 1,
+                "audio_num_attention_heads": 32,
+                "audio_attention_head_dim": 64,
+                "audio_cross_attention_dim": 2048,
+                "audio_scale_factor": 4,
+                "audio_pos_embed_max_pos": 20,
+                "audio_sampling_rate": 16000,
+                "audio_hop_length": 160,
+                "audio_gated_attn": True,
+                "audio_cross_attn_mod": True,
+                "num_layers": 48,
+                "activation_fn": "gelu-approximate",
+                "qk_norm": "rms_norm_across_heads",
+                "norm_elementwise_affine": False,
+                "norm_eps": 1e-6,
+                "caption_channels": 3840,
+                "attention_bias": True,
+                "attention_out_bias": True,
+                "rope_theta": 10000.0,
+                "rope_double_precision": True,
+                "causal_offset": 1,
+                "timestep_scale_multiplier": 1000,
+                "cross_attn_timestep_scale_multiplier": 1000,
+                "rope_type": "split",
+                "use_prompt_embeddings": False,
+                "perturbed_attn": True,
+                # The only transformer-level deltas from 2.3: the video FFN drops its bias (audio_ff_bias and
+                # use_prompt_adaln_single keep their True defaults for this checkpoint), and 2.5.1+ carries a
+                # learned keyframe absolute-position embedding.
+                "ff_bias": False,
+                "use_keyframes_abs_pos_embedding": True,
+            },
+        }
+        rename_dict = LTX_2_3_TRANSFORMER_KEYS_RENAME_DICT
+        special_keys_remap = LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
 
-def get_ltx2_connectors_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def get_ltx2_connectors_config(
+    version: str, gemma_text_config: Any | None = None
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "test":
         config = {
             "model_id": "diffusers-internal-dev/dummy-ltx2",
@@ -447,6 +533,41 @@ def get_ltx2_connectors_config(version: str) -> tuple[dict[str, Any], dict[str, 
         }
         rename_dict = LTX_2_3_CONNECTORS_KEYS_RENAME_DICT
         special_keys_remap = LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP
+    elif version == "2.5":
+        if gemma_text_config is None:
+            raise ValueError("gemma_text_config is required to derive connector dims for LTX-2.5.")
+        config = {
+            "model_id": "Lightricks/LTX-2.5",
+            "diffusers_config": {
+                # Derived from the Gemma 4 text config rather than hardcoded, since (unlike Gemma-3-12B) the
+                # 2.5 text encoder isn't a single fixed checkpoint. Formula matches the reference
+                # (`encoder_configurator._create_feature_extractor`): hidden_size, and num_hidden_layers + 1
+                # for the embedding layer.
+                "caption_channels": gemma_text_config.hidden_size,
+                "text_proj_in_factor": gemma_text_config.num_hidden_layers + 1,
+                "video_connector_num_attention_heads": 32,
+                "video_connector_attention_head_dim": 128,
+                "video_connector_num_layers": 8,
+                "video_connector_num_learnable_registers": 128,
+                "video_gated_attn": True,
+                "audio_connector_num_attention_heads": 32,
+                "audio_connector_attention_head_dim": 64,
+                "audio_connector_num_layers": 8,
+                "audio_connector_num_learnable_registers": 128,
+                "audio_gated_attn": True,
+                "connector_rope_base_seq_len": 4096,
+                "rope_theta": 10000.0,
+                "rope_double_precision": True,
+                "causal_temporal_positioning": False,
+                "rope_type": "split",
+                "per_modality_projections": True,
+                "video_hidden_dim": 4096,
+                "audio_hidden_dim": 2048,
+                "proj_bias": True,
+            },
+        }
+        rename_dict = LTX_2_3_CONNECTORS_KEYS_RENAME_DICT
+        special_keys_remap = LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP
 
     return config, rename_dict, special_keys_remap
 
@@ -479,8 +600,10 @@ def convert_ltx2_transformer(original_state_dict: dict[str, Any], version: str) 
     return transformer
 
 
-def convert_ltx2_connectors(original_state_dict: dict[str, Any], version: str) -> LTX2TextConnectors:
-    config, rename_dict, special_keys_remap = get_ltx2_connectors_config(version)
+def convert_ltx2_connectors(
+    original_state_dict: dict[str, Any], version: str, gemma_text_config: Any | None = None
+) -> LTX2TextConnectors:
+    config, rename_dict, special_keys_remap = get_ltx2_connectors_config(version, gemma_text_config=gemma_text_config)
     diffusers_config = config["diffusers_config"]
 
     _, connector_state_dict = split_transformer_and_connector_state_dict(original_state_dict)
@@ -504,6 +627,50 @@ def convert_ltx2_connectors(original_state_dict: dict[str, Any], version: str) -
 
     connectors.load_state_dict(connector_state_dict, strict=True, assign=True)
     return connectors
+
+
+def convert_ltx2_duration_head(original_state_dict: dict[str, Any]) -> LTX2DurationHead | None:
+    """Builds an `LTX2DurationHead` from a duration-head state dict, or `None` if the checkpoint has none.
+
+    The duration head ships from LTX-2.5 onward. Its hyperparameters are absent from checkpoint metadata, so the
+    dimensions are read back from the weight shapes; `num_pooler_heads` cannot be recovered that way and is fixed at
+    the value the head was trained with.
+
+    The original checkpoint stores the pooler's projections fused, in `torch.nn.MultiheadAttention` layout. They are
+    split here into the separate q/k/v projections `LTX2DurationAttentionPooler` uses.
+    """
+    state_dict = dict(original_state_dict)
+    if len(state_dict) == 0:
+        print("No duration_head weights found in the checkpoint; skipping (expected for pre-2.5 checkpoints).")
+        return None
+
+    in_proj_weight = state_dict.pop("attention_pooler.cross_attn.in_proj_weight")
+    in_proj_bias = state_dict.pop("attention_pooler.cross_attn.in_proj_bias")
+    query_weight, key_weight, value_weight = in_proj_weight.chunk(3, dim=0)
+    query_bias, key_bias, value_bias = in_proj_bias.chunk(3, dim=0)
+    state_dict["attention_pooler.to_q.weight"] = query_weight
+    state_dict["attention_pooler.to_k.weight"] = key_weight
+    state_dict["attention_pooler.to_v.weight"] = value_weight
+    state_dict["attention_pooler.to_q.bias"] = query_bias
+    state_dict["attention_pooler.to_k.bias"] = key_bias
+    state_dict["attention_pooler.to_v.bias"] = value_bias
+    state_dict["attention_pooler.to_out.weight"] = state_dict.pop("attention_pooler.cross_attn.out_proj.weight")
+    state_dict["attention_pooler.to_out.bias"] = state_dict.pop("attention_pooler.cross_attn.out_proj.bias")
+
+    diffusers_config = {
+        "video_cross_attention_dim": state_dict["video_input_proj.weight"].shape[1],
+        "audio_cross_attention_dim": state_dict["audio_input_proj.weight"].shape[1],
+        "pooler_hidden_dim": state_dict["attention_pooler.to_q.weight"].shape[1],
+        "num_queries": state_dict["attention_pooler.query_tokens"].shape[0],
+        "mlp_hidden_dim": state_dict["mlp_hidden.weight"].shape[0],
+        "num_pooler_heads": 4,
+    }
+
+    with init_empty_weights():
+        duration_head = LTX2DurationHead.from_config(diffusers_config)
+
+    duration_head.load_state_dict(state_dict, strict=True, assign=True)
+    return duration_head
 
 
 def get_ltx2_video_vae_config(
@@ -622,6 +789,46 @@ def get_ltx2_video_vae_config(
         }
         rename_dict = LTX_2_3_VIDEO_VAE_RENAME_DICT
         special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
+    elif version == "2.5":
+        # Same block structure as 2.3 (32x32x8 compression); confirmed against the checkpoint's
+        # config["vae"]["encoder_blocks"]/["decoder_blocks"] metadata, which is byte-identical to 2.3's.
+        config = {
+            "model_id": "Lightricks/LTX-2.5",
+            "diffusers_config": {
+                "in_channels": 3,
+                "out_channels": 3,
+                "latent_channels": 128,
+                "block_out_channels": (256, 512, 1024, 1024),
+                "down_block_types": (
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                ),
+                "decoder_block_out_channels": (256, 512, 512, 1024),
+                "layers_per_block": (4, 6, 4, 2, 2),
+                "decoder_layers_per_block": (4, 6, 4, 2, 2),
+                "spatio_temporal_scaling": (True, True, True, True),
+                "decoder_spatio_temporal_scaling": (True, True, True, True),
+                "decoder_inject_noise": (False, False, False, False, False),
+                "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+                "upsample_type": ("spatiotemporal", "spatiotemporal", "temporal", "spatial"),
+                "upsample_residual": (False, False, False, False),
+                "upsample_factor": (2, 2, 1, 2),
+                "timestep_conditioning": timestep_conditioning,
+                "patch_size": 4,
+                "patch_size_t": 1,
+                "resnet_norm_eps": 1e-6,
+                "encoder_causal": True,
+                "decoder_causal": False,
+                "encoder_spatial_padding_mode": "zeros",
+                "decoder_spatial_padding_mode": "zeros",
+                "spatial_compression_ratio": 32,
+                "temporal_compression_ratio": 8,
+            },
+        }
+        rename_dict = LTX_2_3_VIDEO_VAE_RENAME_DICT
+        special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
 
@@ -648,6 +855,112 @@ def convert_ltx2_video_vae(
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
+
+    vae.load_state_dict(original_state_dict, strict=True, assign=True)
+    return vae
+
+
+def get_ltx2_diffusion_video_vae_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    if version != "2.5":
+        raise ValueError(
+            f"The diffusion decoder was introduced in LTX-2.5, which the converter handles under "
+            f"`--version 2.5`; got version {version!r}."
+        )
+    # The encoder half is 2.5's conv VAE encoder, unchanged (its weights are byte identical to 2.3's), so
+    # those entries must stay in sync with `get_ltx2_video_vae_config("2.5")`.
+    config = {
+        "model_id": "Lightricks/LTX-2.5",
+        "diffusers_config": {
+            "out_channels": 3,
+            "latent_channels": 128,
+            "patch_size": 4,
+            "decoder_head_dim": 64,
+            "decoder_stage_channels": (2048, 1024, 512, 512, 256),
+            "decoder_stage_depths": (4, 6, 4, 2, 8),
+            "decoder_stage_kernels": ((3, 7, 7), (3, 7, 7), (3, 5, 5), (3, 5, 5)),
+            "decoder_upsample_strides": ((1, 2, 2), (2, 1, 1), (2, 2, 2), (2, 2, 2)),
+            "decoder_upsample_channel_reductions": (2, 2, 1, 2),
+            "decoder_stage5_kernel": (11, 11, 11),
+            "decoder_t_emb_dim": 384,
+            "decoder_timestep_scale_multiplier": 1000.0,
+            "decoder_model_output_type": "x0",
+            "decoder_num_inference_steps": 1,
+            "spatial_compression_ratio": 32,
+            "temporal_compression_ratio": 8,
+        },
+    }
+    return config, LTX_2_3_VIDEO_VAE_RENAME_DICT, LTX_2_0_VAE_SPECIAL_KEYS_REMAP
+
+
+def convert_ltx2_diffusion_video_vae(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
+    config, rename_dict, special_keys_remap = get_ltx2_diffusion_video_vae_config(version)
+    diffusers_config = config["diffusers_config"]
+
+    with init_empty_weights():
+        vae = LTX2VideoDiffusionDecoderModel.from_config(diffusers_config)
+
+    # The checkpoint is a whole VAE, but this model is decoder-only: encoding stays with
+    # `AutoencoderKLLTX2Video`. So keep the `decoder.` half and the per-channel statistics (which become
+    # `latents_mean` / `latents_std`), and drop the encoder outright rather than remapping weights that
+    # have nowhere to land. `load_state_dict` below is strict, so anything left over would raise.
+    decoder_state_dict = {
+        key.removeprefix("decoder."): value for key, value in original_state_dict.items() if key.startswith("decoder.")
+    }
+    for key in list(original_state_dict.keys()):
+        if key.startswith("decoder.") or not key.startswith("per_channel_statistics"):
+            del original_state_dict[key]
+
+    for key in list(original_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in rename_dict.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        update_state_dict_inplace(original_state_dict, key, new_key)
+
+    for key in list(original_state_dict.keys()):
+        for special_key, handler_fn_inplace in special_keys_remap.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, original_state_dict)
+
+    gates = {
+        key: value
+        for key, value in decoder_state_dict.items()
+        if key.endswith((".gate_msa", ".gate_mlp", ".gate_ctx"))
+    }
+    for key, value in decoder_state_dict.items():
+        # Bundled preview heads are not part of the decoder. The sft (dev) checkpoint carries neither these
+        # nor any gate, so both this and the fold below no-op on it; gated distilled checkpoints need them.
+        if key.startswith("coarse_") or ".coarse_" in key or key in gates:
+            continue
+
+        new_key = key[:]
+        for replace_key, rename_key in LTX_2_5_DIFFUSION_DECODER_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+
+        gated_leaf = next(
+            (leaf for leaf in LTX_2_5_DIFFUSION_DECODER_GATE_FOLD_TARGETS if new_key.endswith(leaf)), None
+        )
+        if gated_leaf is not None:
+            # The gate is a sibling of the Linear it gates, so it shares the block prefix.
+            gate = gates.get(new_key[: -len(gated_leaf)] + LTX_2_5_DIFFUSION_DECODER_GATE_FOLD_TARGETS[gated_leaf])
+            if gate is not None:
+                gate = gate.to(torch.float32)
+                folded = (gate.unsqueeze(1) if value.ndim == 2 else gate) * value.to(torch.float32)
+                value = folded.to(value.dtype)
+
+        # The checkpoint stores one fused `Linear(dim, 3 * dim)`; the model owns three separate projections.
+        if new_key.endswith((".qkv.weight", ".qkv.bias")):
+            leaf = "weight" if new_key.endswith(".weight") else "bias"
+            prefix = new_key[: -len(f"qkv.{leaf}")]
+            if value.shape[0] % 3 != 0:
+                raise ValueError(f"Fused QKV param {key!r} leading dim {value.shape[0]} is not divisible by 3.")
+            chunk = value.shape[0] // 3
+            original_state_dict[f"decoder.{prefix}to_q.{leaf}"] = value[:chunk].clone()
+            original_state_dict[f"decoder.{prefix}to_k.{leaf}"] = value[chunk : 2 * chunk].clone()
+            original_state_dict[f"decoder.{prefix}to_v.{leaf}"] = value[2 * chunk :].clone()
+            continue
+
+        original_state_dict[f"decoder.{new_key}"] = value
 
     vae.load_state_dict(original_state_dict, strict=True, assign=True)
     return vae
@@ -701,6 +1014,31 @@ def get_ltx2_audio_vae_config(version: str) -> tuple[dict[str, Any], dict[str, A
                 "mel_bins": 64,
                 "double_z": True,
             },  # Same config as LTX-2.0
+        }
+        rename_dict = LTX_2_0_AUDIO_VAE_RENAME_DICT
+        special_keys_remap = LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP
+    elif version == "2.5":
+        config = {
+            "model_id": "Lightricks/LTX-2.5",
+            "diffusers_config": {
+                "base_channels": 128,
+                "output_channels": 2,
+                "ch_mult": (1, 2, 4),
+                "num_res_blocks": 2,
+                "attn_resolutions": None,
+                "in_channels": 2,
+                "resolution": 256,
+                "latent_channels": 8,
+                "norm_type": "pixel",
+                "causality_axis": "height",
+                "dropout": 0.0,
+                "mid_block_add_attention": False,
+                "sample_rate": 16000,
+                "mel_hop_length": 160,
+                "is_causal": True,
+                "mel_bins": 64,
+                "double_z": True,
+            },  # Same config as LTX-2.0 / 2.3
         }
         rename_dict = LTX_2_0_AUDIO_VAE_RENAME_DICT
         special_keys_remap = LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP
@@ -797,13 +1135,55 @@ def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any
         }
         rename_dict = LTX_2_3_VOCODER_RENAME_DICT
         special_keys_remap = LTX_2_3_VOCODER_SPECIAL_KEYS_REMAP
+    elif version == "2.5":
+        config = {
+            "model_id": "Lightricks/LTX-2.5",
+            "diffusers_config": {
+                "in_channels": 128,
+                "hidden_channels": 1536,
+                "out_channels": 2,
+                "upsample_kernel_sizes": [11, 4, 4, 4, 4, 4],
+                "upsample_factors": [5, 2, 2, 2, 2, 2],
+                "resnet_kernel_sizes": [3, 7, 11],
+                "resnet_dilations": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                "act_fn": "snakebeta",
+                "leaky_relu_negative_slope": 0.1,
+                "antialias": True,
+                "antialias_ratio": 2,
+                "antialias_kernel_size": 12,
+                "final_act_fn": None,
+                "final_bias": False,
+                "bwe_in_channels": 128,
+                "bwe_hidden_channels": 512,
+                "bwe_out_channels": 2,
+                "bwe_upsample_kernel_sizes": [12, 11, 4, 4, 4],
+                "bwe_upsample_factors": [6, 5, 2, 2, 2],
+                "bwe_resnet_kernel_sizes": [3, 7, 11],
+                "bwe_resnet_dilations": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                "bwe_act_fn": "snakebeta",
+                "bwe_leaky_relu_negative_slope": 0.1,
+                "bwe_antialias": True,
+                "bwe_antialias_ratio": 2,
+                "bwe_antialias_kernel_size": 12,
+                "bwe_final_act_fn": None,
+                "bwe_final_bias": False,
+                "filter_length": 512,
+                "hop_length": 80,
+                "window_length": 512,
+                "num_mel_channels": 64,
+                "input_sampling_rate": 16000,
+                "output_sampling_rate": 48000,
+            },  # Same config as LTX-2.3
+        }
+        rename_dict = LTX_2_3_VOCODER_RENAME_DICT
+        special_keys_remap = LTX_2_3_VOCODER_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
 
 def convert_ltx2_vocoder(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_vocoder_config(version)
     diffusers_config = config["diffusers_config"]
-    if version == "2.3":
+    if version in ("2.3", "2.5"):
         vocoder_cls = LTX2VocoderWithBWE
     else:
         vocoder_cls = LTX2Vocoder
@@ -948,7 +1328,7 @@ def get_args():
         "--version",
         type=str,
         default="2.0",
-        choices=["test", "2.0", "2.3"],
+        choices=["test", "2.0", "2.3", "2.5"],
         help="Version of the LTX 2.0 model",
     )
 
@@ -962,6 +1342,7 @@ def get_args():
     parser.add_argument("--audio_vae_prefix", default="audio_vae.", type=str)
     parser.add_argument("--dit_prefix", default="model.diffusion_model.", type=str)
     parser.add_argument("--vocoder_prefix", default="vocoder.", type=str)
+    parser.add_argument("--duration_head_prefix", default="duration_head.", type=str)
 
     parser.add_argument("--vae_filename", default=None, type=str, help="VAE filename; overrides combined ckpt if set")
     parser.add_argument(
@@ -975,13 +1356,28 @@ def get_args():
         "--text_encoder_model_id",
         default="google/gemma-3-12b-it-qat-q4_0-unquantized",
         type=none_or_str,
-        help="HF Hub id for the LTX 2.0 base text encoder model",
+        help=(
+            "HF Hub id for the text encoder model. Default is Gemma 3, used by LTX 2.0/2.3. LTX-2.5 requires a "
+            "Gemma 4 (`gemma4_unified`) checkpoint here instead -- passing the Gemma 3 default with `--version 2.5` "
+            "raises an error."
+        ),
     )
     parser.add_argument(
         "--tokenizer_id",
         default="google/gemma-3-12b-it-qat-q4_0-unquantized",
         type=none_or_str,
-        help="HF Hub id for the LTX 2.0 text tokenizer",
+        help="HF Hub id for the text tokenizer. Should match --text_encoder_model_id's family (Gemma 3 vs Gemma 4).",
+    )
+    parser.add_argument(
+        "--prompt_enhancer_model_id",
+        default=None,
+        type=none_or_str,
+        help=(
+            "HF Hub id for the prompt-enhancer model (used with --add_processor). For LTX-2.0/2.3, defaults to "
+            "--text_encoder_model_id (the same Gemma 3 checkpoint serves both roles). LTX-2.5's fine-tuned text "
+            "encoder is not trained for enhancement, so this must be set explicitly for --version 2.5 -- e.g. to "
+            "google/gemma-4-E2B-it or google/gemma-4-E4B-it."
+        ),
     )
     parser.add_argument(
         "--latent_upsampler_filename",
@@ -994,9 +1390,23 @@ def get_args():
         "--timestep_conditioning", action="store_true", help="Whether to add timestep condition to the video VAE model"
     )
     parser.add_argument("--vae", action="store_true", help="Whether to convert the video VAE model")
+    parser.add_argument(
+        "--diffusion_vae",
+        action="store_true",
+        help=(
+            "Whether to convert the LTX-2.5 diffusion decoder, saved to a `diffusion_decoder` subfolder — the "
+            "component name `LTX2VideoDiffusionDecodePipeline` and the modular blocks resolve it by — so "
+            "`from_pretrained` keeps returning the conv decoder in `vae` by default"
+        ),
+    )
     parser.add_argument("--audio_vae", action="store_true", help="Whether to convert the audio VAE model")
     parser.add_argument("--dit", action="store_true", help="Whether to convert the DiT model")
     parser.add_argument("--connectors", action="store_true", help="Whether to convert the connector model")
+    parser.add_argument(
+        "--duration_head",
+        action="store_true",
+        help="Whether to convert the duration head (present in LTX-2.5 and later checkpoints only)",
+    )
     parser.add_argument("--vocoder", action="store_true", help="Whether to convert the vocoder model")
     parser.add_argument("--text_encoder", action="store_true", help="Whether to conver the text encoder")
     parser.add_argument("--latent_upsampler", action="store_true", help="Whether to convert the latent upsampler")
@@ -1013,7 +1423,7 @@ def get_args():
     parser.add_argument(
         "--add_processor",
         action="store_true",
-        help="Whether to add a Gemma3Processor to the pipeline for prompt enhancement.",
+        help="Whether to add a text-encoder processor to the pipeline for prompt enhancement.",
     )
 
     parser.add_argument("--vae_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
@@ -1057,6 +1467,7 @@ def main(args):
     load_combined_models = any(
         [
             args.vae,
+            args.diffusion_vae,
             args.audio_vae,
             args.dit,
             args.vocoder,
@@ -1068,6 +1479,34 @@ def main(args):
     if args.combined_filename is not None and load_combined_models:
         combined_ckpt = load_original_checkpoint(args, filename=args.combined_filename)
 
+    # LTX-2.5 only works with a Gemma 4 (`gemma4_unified`) text encoder; --text_encoder_model_id defaults to
+    # Gemma 3 (for 2.0/2.3), so silently proceeding would pair a 2.5 checkpoint with the wrong text encoder.
+    gemma_text_config = None
+    if args.version == "2.5" and (args.text_encoder or args.connectors or args.full_pipeline):
+        gemma_config = AutoConfig.from_pretrained(args.text_encoder_model_id)
+        if gemma_config.model_type != "gemma4_unified":
+            raise ValueError(
+                f"LTX-2.5 requires a Gemma 4 (`gemma4_unified`) text encoder, but --text_encoder_model_id="
+                f"{args.text_encoder_model_id!r} has model_type={gemma_config.model_type!r}. Pass "
+                "--text_encoder_model_id pointing at a Gemma 4 checkpoint (the default is Gemma 3, for 2.0/2.3)."
+            )
+        gemma_text_config = gemma_config.text_config
+
+    # LTX-2.5's fine-tuned text encoder is never a valid prompt enhancer (unlike LTX-2.0/2.3, where the same Gemma 3
+    # checkpoint serves both roles) -- require an explicit, separate --prompt_enhancer_model_id instead of silently
+    # falling back to --text_encoder_model_id.
+    if (
+        args.version == "2.5"
+        and args.add_processor
+        and (args.text_encoder or args.full_pipeline)
+        and args.prompt_enhancer_model_id is None
+    ):
+        raise ValueError(
+            "LTX-2.5's text encoder is not trained for prompt enhancement, so --prompt_enhancer_model_id must be "
+            "set explicitly when --add_processor is used with --version 2.5 -- e.g. to google/gemma-4-E2B-it or "
+            "google/gemma-4-E4B-it."
+        )
+
     if args.vae or args.full_pipeline or args.upsample_pipeline:
         if args.vae_filename is not None:
             original_vae_ckpt = load_hub_or_local_checkpoint(filename=args.vae_filename)
@@ -1078,6 +1517,17 @@ def main(args):
         )
         if not args.full_pipeline and not args.upsample_pipeline:
             vae.to(vae_dtype).save_pretrained(os.path.join(args.output_path, "vae"))
+
+    if args.diffusion_vae:
+        if args.vae_filename is not None:
+            original_diffusion_vae_ckpt = load_hub_or_local_checkpoint(filename=args.vae_filename)
+        elif combined_ckpt is not None:
+            original_diffusion_vae_ckpt = get_model_state_dict_from_combined_ckpt(combined_ckpt, args.vae_prefix)
+        diffusion_vae = convert_ltx2_diffusion_video_vae(original_diffusion_vae_ckpt, version=args.version)
+        # "diffusion_decoder", not "vae_diffusion": pipeline-level `from_pretrained` resolves each component
+        # from the subfolder named after it, so this folder name must match the `diffusion_decoder` component
+        # of `LTX2VideoDiffusionDecodePipeline` (and the modular `ComponentSpec`) for those loads to work.
+        diffusion_vae.to(vae_dtype).save_pretrained(os.path.join(args.output_path, "diffusion_decoder"))
 
     if args.audio_vae or args.full_pipeline:
         if args.audio_vae_filename is not None:
@@ -1102,9 +1552,21 @@ def main(args):
             original_connectors_ckpt = load_hub_or_local_checkpoint(filename=args.dit_filename)
         elif combined_ckpt is not None:
             original_connectors_ckpt = get_model_state_dict_from_combined_ckpt(combined_ckpt, args.dit_prefix)
-        connectors = convert_ltx2_connectors(original_connectors_ckpt, version=args.version)
+        connectors = convert_ltx2_connectors(
+            original_connectors_ckpt, version=args.version, gemma_text_config=gemma_text_config
+        )
         if not args.full_pipeline:
             connectors.to(dit_dtype).save_pretrained(os.path.join(args.output_path, "connectors"))
+
+    duration_head = None
+    if args.duration_head or args.full_pipeline:
+        if combined_ckpt is not None:
+            original_duration_head_ckpt = get_model_state_dict_from_combined_ckpt(
+                combined_ckpt, args.duration_head_prefix
+            )
+            duration_head = convert_ltx2_duration_head(original_duration_head_ckpt)
+        if duration_head is not None and not args.full_pipeline:
+            duration_head.to(dit_dtype).save_pretrained(os.path.join(args.output_path, "duration_head"))
 
     if args.vocoder or args.full_pipeline:
         if args.vocoder_filename is not None:
@@ -1116,8 +1578,7 @@ def main(args):
             vocoder.to(vocoder_dtype).save_pretrained(os.path.join(args.output_path, "vocoder"))
 
     if args.text_encoder or args.full_pipeline:
-        # text_encoder = AutoModel.from_pretrained(args.text_encoder_model_id)
-        text_encoder = Gemma3ForConditionalGeneration.from_pretrained(args.text_encoder_model_id)
+        text_encoder = AutoModelForImageTextToText.from_pretrained(args.text_encoder_model_id)
         if not args.full_pipeline:
             text_encoder.to(text_encoder_dtype).save_pretrained(os.path.join(args.output_path, "text_encoder"))
 
@@ -1125,10 +1586,22 @@ def main(args):
         if not args.full_pipeline:
             tokenizer.save_pretrained(os.path.join(args.output_path, "tokenizer"))
 
+        processor = None
+        prompt_enhancer = None
         if args.add_processor:
-            processor = Gemma3Processor.from_pretrained(args.text_encoder_model_id)
+            enhancer_model_id = args.prompt_enhancer_model_id or args.text_encoder_model_id
+            processor = AutoProcessor.from_pretrained(enhancer_model_id)
             if not args.full_pipeline:
                 processor.save_pretrained(os.path.join(args.output_path, "processor"))
+
+            if args.prompt_enhancer_model_id is not None:
+                # Separate, dedicated enhancer model (required for LTX-2.5); for LTX-2.0/2.3, the same
+                # `text_encoder` checkpoint already serves as its own enhancer, so nothing extra is saved.
+                prompt_enhancer = AutoModelForImageTextToText.from_pretrained(enhancer_model_id)
+                if not args.full_pipeline:
+                    prompt_enhancer.to(text_encoder_dtype).save_pretrained(
+                        os.path.join(args.output_path, "prompt_enhancer")
+                    )
 
     if args.latent_upsampler or args.upsample_pipeline:
         original_latent_upsampler_ckpt = load_hub_or_local_checkpoint(
@@ -1174,6 +1647,8 @@ def main(args):
             connectors=connectors,
             transformer=transformer,
             vocoder=vocoder,
+            processor=processor,
+            prompt_enhancer=prompt_enhancer,
         )
 
         pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")

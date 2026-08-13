@@ -141,6 +141,7 @@ from .peft_utils import (
     get_adapter_name,
     get_peft_kwargs,
     recurse_remove_peft_layers,
+    require_peft_backend,
     scale_lora_layers,
     set_adapter_layers,
     set_weights_and_activate_adapters,
