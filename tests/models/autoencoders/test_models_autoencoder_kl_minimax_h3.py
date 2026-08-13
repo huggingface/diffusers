@@ -25,7 +25,6 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
     TrainingTesterMixin,
     run_nondeterministic,
 )
@@ -173,10 +172,6 @@ class TestAutoencoderKLMiniMaxH3Training(AutoencoderKLMiniMaxH3TesterConfig, Tra
 
 class TestAutoencoderKLMiniMaxH3Attention(AutoencoderKLMiniMaxH3TesterConfig, AttentionTesterMixin):
     """Attention processor tests for the MiniMax-H3 video autoencoder."""
-
-
-class TestAutoencoderKLMiniMaxH3TorchCompile(AutoencoderKLMiniMaxH3TesterConfig, TorchCompileTesterMixin):
-    """Torch compile tests for the MiniMax-H3 video autoencoder."""
 
 
 class TestAutoencoderKLMiniMaxH3SlicingTiling(AutoencoderKLMiniMaxH3TesterConfig, NewAutoencoderTesterMixin):

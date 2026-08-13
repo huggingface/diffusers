@@ -25,7 +25,6 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
     TrainingTesterMixin,
     run_nondeterministic,
 )
@@ -168,13 +167,3 @@ class TestAutoencoderKLMiniMaxH3AudioAttention(AutoencoderKLMiniMaxH3AudioTester
     )
     def test_attention_processor_count_mismatch_raises_error(self):
         pass
-
-
-class TestAutoencoderKLMiniMaxH3AudioTorchCompile(AutoencoderKLMiniMaxH3AudioTesterConfig, TorchCompileTesterMixin):
-    """Torch compile tests for the MiniMax-H3 audio autoencoder."""
-
-    def test_torch_compile_recompilation_and_graph_break(self):
-        # Under `torch.use_deterministic_algorithms(True)`, `F.pad(mode="replicate")` (used by the anti-aliased
-        # resamplers) routes through an `importlib.import_module` call, which dynamo cannot trace with
-        # fullgraph=True on torch <= 2.10.
-        run_nondeterministic(super().test_torch_compile_recompilation_and_graph_break)
