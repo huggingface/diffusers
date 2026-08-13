@@ -366,13 +366,12 @@ class ModularPipelineTesterMixin:
         cm.enable_auto_cpu_offload(device=torch_device)
         offload_pipe = self.get_pipeline(components_manager=cm)
 
-        image_slices = []
+        outputs = []
         for pipe in [base_pipe, offload_pipe]:
             inputs = self.get_dummy_inputs()
-            image = pipe(**inputs, output=self.output_name)
-            image_slices.append(image[0, -3:, -3:, -1].flatten())
+            outputs.append(pipe(**inputs, output=self.output_name))
 
-        assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+        assert torch.abs(outputs[0] - outputs[1]).max() < 1e-3
 
     @require_accelerator
     def test_group_offloading_execution_device(self):
@@ -413,13 +412,12 @@ class ModularPipelineTesterMixin:
 
         pipes.append(pipe)
 
-        image_slices = []
+        outputs = []
         for pipe in pipes:
             inputs = self.get_dummy_inputs()
-            image = pipe(**inputs, output=self.output_name)
-            image_slices.append(image[0, -3:, -3:, -1].flatten())
+            outputs.append(pipe(**inputs, output=self.output_name))
 
-        assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+        assert torch.abs(outputs[0] - outputs[1]).max() < 1e-3
 
     def test_load_expected_components_from_pretrained(self, tmp_path):
         pipe = self.get_pipeline()
