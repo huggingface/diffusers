@@ -17,10 +17,11 @@ import os
 import torch
 from safetensors.torch import load_file
 
-from diffusers import FlowMatchEulerDiscreteScheduler, MiniMaxMusic3Transformer1DModel
-from diffusers.pipelines.minimax_music3.modeling_minimax_music3 import (
+from diffusers import (
+    FlowMatchEulerDiscreteScheduler,
     MiniMaxMusic3ConditionEncoder,
     MiniMaxMusic3RVQDepthDecoder,
+    MiniMaxMusic3Transformer1DModel,
     MiniMaxMusic3Vocoder,
 )
 
@@ -216,14 +217,15 @@ def main(args):
 
     from transformers import AutoTokenizer
 
-    from diffusers import MiniMaxMusic3Pipeline
+    from diffusers import MiniMaxMusic3Blocks
 
     tokenizer = AutoTokenizer.from_pretrained(os.path.join(checkpoint_dir, "qwen_7B", "qwen3-8B-tokenizer-music"))
     # num_train_timesteps=1 keeps `scheduler.timesteps` equal to the flow-matching time in [0, 1] that the
     # transformer's Fourier embedding expects.
     scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1, shift=1.0, invert_sigmas=True)
 
-    pipeline = MiniMaxMusic3Pipeline(
+    pipeline = MiniMaxMusic3Blocks().init_pipeline()
+    pipeline.update_components(
         language_model=language_model,
         rvq_depth_decoder=rvq_depth_decoder,
         condition_encoder=condition_encoder,

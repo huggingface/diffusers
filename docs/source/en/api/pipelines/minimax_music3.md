@@ -22,13 +22,16 @@ DAC-style decoder turns the latents into 44.1 kHz stereo audio.
 
 ## Usage
 
+MiniMax Music 3 is available as a modular pipeline.
+
 ```py
 import soundfile as sf
 import torch
-from diffusers import MiniMaxMusic3Pipeline
+from diffusers import ModularPipeline
 
-pipe = MiniMaxMusic3Pipeline.from_pretrained("MiniMaxAI/MiniMax-Music3", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-Music3")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")
 
 lyrics = """[verse]
 Morning light filtering through the pine
@@ -47,7 +50,8 @@ audio = pipe(
     lyrics=lyrics,
     audio_duration=60.0,
     generator=torch.Generator("cuda").manual_seed(7),
-).audios[0]
+    output="audios",
+)[0]
 
 sf.write("minimax_music3.wav", audio.T, pipe.sampling_rate)
 ```
@@ -62,14 +66,18 @@ sf.write("minimax_music3.wav", audio.T, pipe.sampling_rate)
   metadata (genre, BPM, key, emotional progression), vocal details, and arrangement.
 - `audio_duration` is an upper bound — the language model may end the song earlier with a stop token. The
   autoregressive stage generates 25 frames per second of audio and dominates the runtime.
+- The classifier-free guidance scale of the flow-matching stage is a guider setting (the reference inference value is
+  1.7): swap it with `pipe.update_components(guider=ClassifierFreeGuidance(guidance_scale=...))`.
 - The pipeline returns the vocoder's native 44.1 kHz stereo output. The reference server additionally resamples to 32
   kHz; apply your own resampling if you need that exact rate.
 
-## MiniMaxMusic3Pipeline
+## MiniMaxMusic3ModularPipeline
 
-[[autodoc]] MiniMaxMusic3Pipeline
-	- all
-	- __call__
+[[autodoc]] MiniMaxMusic3ModularPipeline
+
+## MiniMaxMusic3Blocks
+
+[[autodoc]] MiniMaxMusic3Blocks
 
 ## MiniMaxMusic3ConditionEncoder
 

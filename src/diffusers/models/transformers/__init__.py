@@ -11,6 +11,7 @@ if is_torch_available():
     from .hunyuan_transformer_2d import HunyuanDiT2DModel
     from .latte_transformer_3d import LatteTransformer3DModel
     from .lumina_nextdit2d import LuminaNextDiT2DModel
+    from .minimax_music3_rvq_depth_decoder import MiniMaxMusic3RVQDepthDecoder
     from .pixart_transformer_2d import PixArtTransformer2DModel
     from .prior_transformer import PriorTransformer
     from .sana_transformer import SanaTransformer2DModel

@@ -21,26 +21,18 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modeling_minimax_music3"] = [
-        "MiniMaxMusic3ConditionEncoder",
-        "MiniMaxMusic3RVQDepthDecoder",
-        "MiniMaxMusic3Vocoder",
-    ]
-    _import_structure["pipeline_minimax_music3"] = ["MiniMaxMusic3Pipeline"]
+    _import_structure["modular_blocks_minimax_music3"] = ["MiniMaxMusic3Blocks"]
+    _import_structure["modular_pipeline"] = ["MiniMaxMusic3ModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_objects import *
+        from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modeling_minimax_music3 import (
-            MiniMaxMusic3ConditionEncoder,
-            MiniMaxMusic3RVQDepthDecoder,
-            MiniMaxMusic3Vocoder,
-        )
-        from .pipeline_minimax_music3 import MiniMaxMusic3Pipeline
+        from .modular_blocks_minimax_music3 import MiniMaxMusic3Blocks
+        from .modular_pipeline import MiniMaxMusic3ModularPipeline
 else:
     import sys
 
@@ -50,5 +42,6 @@ else:
         _import_structure,
         module_spec=__spec__,
     )
+
     for name, value in _dummy_objects.items():
         setattr(sys.modules[__name__], name, value)

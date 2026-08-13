@@ -357,12 +357,6 @@ else:
     _import_structure["lucy"] = ["LucyEditPipeline"]
     _import_structure["longcat_image"] = ["LongCatImagePipeline", "LongCatImageEditPipeline"]
     _import_structure["longcat_audio_dit"] = ["LongCatAudioDiTPipeline"]
-    _import_structure["minimax_music3"] = [
-        "MiniMaxMusic3ConditionEncoder",
-        "MiniMaxMusic3Pipeline",
-        "MiniMaxMusic3RVQDepthDecoder",
-        "MiniMaxMusic3Vocoder",
-    ]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -816,12 +810,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
-        )
-        from .minimax_music3 import (
-            MiniMaxMusic3ConditionEncoder,
-            MiniMaxMusic3Pipeline,
-            MiniMaxMusic3RVQDepthDecoder,
-            MiniMaxMusic3Vocoder,
         )
         from .mochi import MochiPipeline
         from .motif_video import (

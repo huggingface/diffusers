@@ -13,24 +13,18 @@
 # limitations under the License.
 
 import math
-from dataclasses import dataclass
 from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput
 from ...utils.torch_utils import lru_cache_unless_export
 from ..attention import AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import TimestepEmbedding
+from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-
-
-@dataclass
-class MiniMaxMusic3TransformerOutput(BaseOutput):
-    sample: torch.Tensor
 
 
 class MiniMaxMusic3FourierEmbedding(nn.Module):
@@ -54,15 +48,12 @@ class MiniMaxMusic3RotaryEmbedding(nn.Module):
         self.theta = theta
 
     @lru_cache_unless_export(maxsize=32)
-    def _build(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
         inv_freq = 1.0 / (self.theta ** (torch.arange(0, self.rotary_dim, 2, device=device).float() / self.rotary_dim))
         steps = torch.arange(seq_len, device=device, dtype=torch.float32)
         freqs = torch.outer(steps, inv_freq)
         freqs = torch.cat((freqs, freqs), dim=-1)
         return freqs.cos().contiguous(), freqs.sin().contiguous()
-
-    def forward(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self._build(seq_len, device)
 
 
 def _apply_partial_rotary_emb(
@@ -129,7 +120,9 @@ class MiniMaxMusic3Attention(nn.Module, AttentionModuleMixin):
         self.to_k = nn.Linear(dim, self.inner_dim, bias=False)
         self.to_v = nn.Linear(dim, self.inner_dim, bias=False)
         self.to_out = nn.ModuleList([nn.Linear(self.inner_dim, dim, bias=False), nn.Dropout(0.0)])
-        self.set_processor(processor or MiniMaxMusic3AttnProcessor())
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
 
     def forward(self, hidden_states: torch.Tensor, rotary_emb: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
         return self.processor(self, hidden_states, rotary_emb=rotary_emb)
@@ -206,7 +199,7 @@ class MiniMaxMusic3Transformer1DModel(ModelMixin, ConfigMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         return_dict: bool = True,
-    ) -> Tuple[torch.Tensor] | MiniMaxMusic3TransformerOutput:
+    ) -> Tuple[torch.Tensor] | Transformer2DModelOutput:
         r"""
         Args:
             hidden_states (`torch.Tensor` of shape `(batch, in_channels, length)`):
@@ -217,7 +210,7 @@ class MiniMaxMusic3Transformer1DModel(ModelMixin, ConfigMixin):
                 Frame-aligned conditioning from `MiniMaxMusic3ConditionEncoder`. Pass zeros for the unconditional
                 branch of classifier-free guidance.
             return_dict (`bool`, defaults to `True`):
-                Whether to return a [`~models.transformers.transformer_minimax_music3.MiniMaxMusic3TransformerOutput`]
+                Whether to return a [`~models.transformers.transformer_minimax_music3.Transformer2DModelOutput`]
                 instead of a plain tuple.
 
         Returns:
@@ -247,4 +240,4 @@ class MiniMaxMusic3Transformer1DModel(ModelMixin, ConfigMixin):
 
         if not return_dict:
             return (hidden_states,)
-        return MiniMaxMusic3TransformerOutput(sample=hidden_states)
+        return Transformer2DModelOutput(sample=hidden_states)
