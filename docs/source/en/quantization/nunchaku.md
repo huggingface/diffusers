@@ -124,9 +124,9 @@ List each module you want to quantize under `svdq_w4a4` or `awq_w4a16`. A module
 
 ## Fused kernels
 
-The original [Nunchaku](https://github.com/nunchaku-ai/nunchaku) engine gets much of its speed from model-specific fused execution paths: the Q, K, and V projections are grouped into a single matmul with RMSNorm and RoPE applied as a fused epilogue, and the MLP runs with a fused GELU kernel. Nunchaku Lite instead runs the stock Diffusers model with generic quantized linear layers, so it does not include these fusions and cannot match the speed of the original engine.
+The original [Nunchaku](https://github.com/nunchaku-ai/nunchaku) engine gets much of its speed from model-specific fused execution paths. It combines the Q, K, and V projections with RMSNorm and RoPE, and uses a fused GELU kernel for the MLP. Nunchaku Lite instead uses the standard Diffusers model with generic quantized linear layers, so it does not include these fusions.
 
-The table below shows what each fusion contributes in the original Nunchaku engine, measured with Flux Schnell on an RTX 5090.
+The following measurements show the latency impact of these fusions in the original Nunchaku engine, measured with Flux Schnell on an RTX 5090.
 
 | Optimization | Latency with it OFF | Latency with it ON | Speedup |
 | --- | --- | --- | --- |
@@ -135,7 +135,7 @@ The table below shows what each fusion contributes in the original Nunchaku engi
 | — RMSNorm+RoPE epilogue fusion, on top of grouping | 1.034 s | 0.836 s | 1.236× |
 | GELU-MLP fusion | 0.766 s | 0.722 s | **1.06×** |
 
-Without these fusions, the GPU launches each of these operations as a separate kernel, incurring some overhead. However, this overhead can be recovered using [torch.compile](#torchcompile).
+Without these fusions, the GPU launches the projection, normalization, rotary-embedding, and MLP operations as separate kernels, which adds launch overhead. `torch.compile` may reduce some of this overhead, although it does not necessarily reproduce the original engine's fused kernels. Benchmark the compiled pipeline for your model and workload.
 
 ## torch.compile
 
