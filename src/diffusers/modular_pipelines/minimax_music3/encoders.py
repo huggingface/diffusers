@@ -41,6 +41,9 @@ _AUDIO_CODE_OFFSET = 151675
 _SEMANTIC_VOCAB_SIZE = 16384
 _MAX_PROMPT_TOKENS = 5_000
 _MAX_AUDIO_FRAMES = 9_000
+# Continuation prefixes are replayed through the language model in chunks of this many frames per forward pass
+# (bounds prefill activation memory; has no effect on the result).
+_PREFIX_CHUNK_FRAMES = 1_024
 
 # The autoregressive stage's default sampling parameters, from the reference inference recipe. They can be
 # overridden per run through the `cfg_scale` / `top_k` / `temperature` pipeline inputs.
@@ -409,16 +412,22 @@ class MiniMaxMusic3SemanticGenerationStep(ModularPipelineBlocks):
 
         # `fed_codes` records every frame handed back to the language model (prefix first, then new frames); it is
         # returned as `frame_codes` so a later run can replay it as `prefix_frame_codes` and extend further.
-        fed_codes = []
-        # Replay the continuation prefix: feed each prior frame exactly as the loop would, advancing the KV cache and
-        # `last_hidden` without re-emitting its hidden state (the prefix audio already exists).
-        for prefix_index in range(prefix_frames):
-            frame_codes = prefix_frame_codes[prefix_index]
-            feedback = _embed_audio_frame(components, frame_codes)
+        fed_codes = list(prefix_frame_codes) if prefix_frames else []
+        # Replay the continuation prefix into the KV cache at prefill speed: a replayed frame's embedding depends
+        # only on its already-known codes (unlike generation, no sampling feeds back), so whole chunks go through one
+        # causal forward — mathematically the same cache and `last_hidden` the frame-by-frame loop would produce.
+        for chunk_start in range(0, prefix_frames, _PREFIX_CHUNK_FRAMES):
+            chunk = prefix_frame_codes[chunk_start : chunk_start + _PREFIX_CHUNK_FRAMES]  # [frames, 2, codebooks]
+            # Batched `_embed_audio_frame`, with the chunk's frames laid out along the sequence dimension.
+            semantic_embeds = language_model.model.embed_tokens(chunk[:, :, 0].T + _AUDIO_CODE_OFFSET)
+            offsets = torch.arange(components.num_codebooks - 1, device=chunk.device) * components.audio_vocab_size
+            residual_embeds = components.rvq_depth_decoder.audio_embeddings(
+                chunk[:, :, 1:].permute(1, 0, 2) + offsets
+            ).sum(dim=2)
+            feedback = (semantic_embeds + residual_embeds.to(semantic_embeds.dtype)) * components.num_codebooks**-0.5
             output = language_model.model(inputs_embeds=feedback, past_key_values=past_key_values, use_cache=True)
             past_key_values = output.past_key_values
             last_hidden = output.last_hidden_state[:, -1]
-            fed_codes.append(frame_codes)
 
         vocab_mask = torch.ones(language_model.config.vocab_size, dtype=torch.bool, device=text_ids.device)
         vocab_mask[_AUDIO_CODE_OFFSET : _AUDIO_CODE_OFFSET + _SEMANTIC_VOCAB_SIZE] = False
