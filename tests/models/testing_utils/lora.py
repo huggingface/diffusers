@@ -482,7 +482,11 @@ class LoraTesterMixin(BaseModelOutputMixin):
     @torch.no_grad()
     def test_lora_layerwise_casting_inference(self):
         def check_linear_dtype(module, storage_dtype, compute_dtype):
+            # The same set of patterns `enable_layerwise_casting` skips: the defaults, the modules the model pins
+            # to float32, and the model's own extra patterns.
             patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
+            if module._keep_in_fp32_modules is not None:
+                patterns_to_check += tuple(module._keep_in_fp32_modules)
             if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
                 patterns_to_check += tuple(module._skip_layerwise_casting_patterns)
             for name, submodule in module.named_modules():
@@ -574,7 +578,10 @@ class LoraTesterMixin(BaseModelOutputMixin):
         model.add_adapter(lora_config)
         assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
 
+        # Everything `enable_layerwise_casting` would skip except the PEFT layers, which is the point of this test.
         patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
+        if model._keep_in_fp32_modules is not None:
+            patterns_to_check += tuple(model._keep_in_fp32_modules)
         if getattr(model, "_skip_layerwise_casting_patterns", None) is not None:
             patterns_to_check += tuple(model._skip_layerwise_casting_patterns)
 
