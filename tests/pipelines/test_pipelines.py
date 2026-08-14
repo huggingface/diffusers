@@ -1967,11 +1967,9 @@ class TestPipelineFast:
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             sd.save_pretrained(tmpdirname)
-            with self.assertWarns(FutureWarning) as warning_ctx:
+            with pytest.warns(FutureWarning, match=r"`torch_dtype` is deprecated.*Please use `dtype` instead\."):
                 loaded_sd = StableDiffusionPipeline.from_pretrained(tmpdirname, torch_dtype=torch.float16)
 
-        assert "torch_dtype" in str(warning_ctx.warning)
-        assert "Please use `dtype` instead." in str(warning_ctx.warning)
         # The deprecated argument is still honoured until it is removed.
         assert loaded_sd.unet.dtype == torch.float16
 
@@ -2008,10 +2006,10 @@ class TestPipelineFast:
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             sd.save_pretrained(tmpdirname)
-            with self.assertRaises(ValueError) as error_context:
+            with pytest.raises(ValueError) as error_context:
                 _ = StableDiffusionPipeline.from_pretrained(tmpdirname, dtype=torch.float16, torch_dtype=torch.float16)
 
-        assert "passed both `dtype` and `torch_dtype`" in str(error_context.exception)
+        assert "passed both `dtype` and `torch_dtype`" in str(error_context.value)
 
     def test_from_pipe_torch_dtype_is_deprecated(self):
         sd = StableDiffusionPipeline(
@@ -2024,10 +2022,9 @@ class TestPipelineFast:
             feature_extractor=self.dummy_extractor,
         )
 
-        with self.assertWarns(FutureWarning) as warning_ctx:
+        with pytest.warns(FutureWarning, match=r"`torch_dtype` is deprecated"):
             img2img = StableDiffusionImg2ImgPipeline.from_pipe(sd, torch_dtype=torch.float16)
 
-        assert "torch_dtype" in str(warning_ctx.warning)
         assert img2img.unet.dtype == torch.float16
 
     @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
