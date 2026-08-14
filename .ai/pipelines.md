@@ -88,3 +88,5 @@ src/diffusers/pipelines/<model>/
        callback_kwargs[k] = locals()[k]
    ```
    The bug is invisible until someone actually passes `callback_on_step_end` — the `PipelineTesterMixin` callback tests are what catch it.
+
+10. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators work, and the CUDA-generator path is bit-identical to `torch.randn`.

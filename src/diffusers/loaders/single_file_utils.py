@@ -3299,6 +3299,38 @@ def convert_wan_transformer_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 
+def convert_wan_animate_2_transformer_to_diffusers(checkpoint, **kwargs):
+    r"""
+    Converts the state dict of the Wan-Animate-2 transformer from the official checkpoint format to the diffusers
+    format.
+    """
+    attention_renames = {
+        ".q.": ".to_q.",
+        ".k.": ".to_k.",
+        ".v.": ".to_v.",
+        ".o.": ".to_out.0.",
+        ".k_img.": ".add_k_proj.",
+        ".v_img.": ".add_v_proj.",
+        ".norm_k_img.": ".norm_added_k.",
+    }
+
+    converted_state_dict = {}
+    for key in list(checkpoint.keys()):
+        new_key = key.replace("model.diffusion_model.", "")
+        # The official checkpoint wraps every transformer block in an in-context module the
+        # diffusers layout does not have: `blocks.N.block.X` -> `blocks.N.X`.
+        if new_key.startswith("blocks."):
+            new_key = new_key.replace(".block.", ".", 1)
+        if ".self_attn." in new_key or ".cross_attn." in new_key:
+            for old, new in attention_renames.items():
+                if old in new_key:
+                    new_key = new_key.replace(old, new)
+                    break
+        converted_state_dict[new_key] = checkpoint.pop(key)
+
+    return converted_state_dict
+
+
 def convert_wan_vae_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
 

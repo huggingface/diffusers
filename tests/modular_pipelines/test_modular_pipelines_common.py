@@ -1,6 +1,7 @@
 import gc
 import json
 import os
+import weakref
 from typing import Callable
 
 import pytest
@@ -20,11 +21,13 @@ from diffusers.modular_pipelines.modular_pipeline_utils import (
 from diffusers.utils import logging
 
 from ..testing_utils import (
+    CaptureLogger,
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_accelerator,
     torch_device,
 )
+from .utils import backend_memory_allocated
 
 
 def _get_specified_components(path_or_repo_id, cache_dir=None):
@@ -504,6 +507,255 @@ class ModularPipelineTesterMixin:
                     f"Workflow '{workflow_name}': block '{actual_name}' has type "
                     f"{actual_block.__class__.__name__}, expected {expected_class_name}"
                 )
+
+        # a `_workflow_map` value is either one trigger dict or a tuple of trigger dicts — alternative spellings
+        # of the same workflow, which must all resolve the same blocks since `get_workflow` prunes with the first
+        for workflow_name, trigger_inputs in blocks._workflow_map.items():
+            if isinstance(trigger_inputs, dict):
+                continue
+            assert isinstance(trigger_inputs, tuple) and all(
+                isinstance(alternative, dict) for alternative in trigger_inputs
+            ), (
+                f"Workflow '{workflow_name}': a `_workflow_map` value must be a trigger dict or a tuple of "
+                f"trigger dicts, got {trigger_inputs!r}"
+            )
+            resolved = [list(blocks.get_execution_blocks(**alternative).sub_blocks) for alternative in trigger_inputs]
+            for alternative_blocks in resolved[1:]:
+                assert alternative_blocks == resolved[0], (
+                    f"Workflow '{workflow_name}': its trigger spellings resolve different blocks: "
+                    f"{resolved[0]} vs {alternative_blocks}"
+                )
+
+    def test_workflow_defaults(self):
+        if not getattr(self, "expected_workflow_defaults", None):
+            pytest.skip("Skipping test as expected_workflow_defaults is not set")
+
+        blocks = self.pipeline_blocks_class()
+        for workflow_name, expected_defaults in self.expected_workflow_defaults.items():
+            # a pipeline without workflows is tested as the single unnamed workflow `None` over the full blockset
+            workflow_blocks = blocks if workflow_name is None else blocks.get_workflow(workflow_name)
+
+            # components: every one of the workflow is named with its class, so one appearing, disappearing or
+            # changing type fails loudly
+            component_specs = {spec.name: spec for spec in workflow_blocks.expected_components}
+            expected_components = expected_defaults["components"]
+            assert set(component_specs) == set(expected_components), (
+                f"Workflow '{workflow_name}' expects components {sorted(component_specs)}, "
+                f"the test expects {sorted(expected_components)}"
+            )
+            for component_name, expected_class_name in expected_components.items():
+                actual_class_name = component_specs[component_name].type_hint.__name__
+                assert actual_class_name == expected_class_name, (
+                    f"Workflow '{workflow_name}': component '{component_name}' is a {actual_class_name}, "
+                    f"expected {expected_class_name}"
+                )
+
+            # configs: the pipeline-level configs the workflow declares, with their defaults
+            config_specs = {spec.name: spec.default for spec in workflow_blocks.expected_configs}
+            expected_configs = expected_defaults.get("configs", {})
+            assert config_specs == expected_configs, (
+                f"Workflow '{workflow_name}' declares configs {config_specs}, the test expects {expected_configs}"
+            )
+
+            # inputs: `inputs` names every optional input with its default and `required_inputs` the required ones,
+            # and together they are exactly the workflow's inputs. kwargs-style inputs (e.g.
+            # **denoiser_input_fields) have no name and no default to pin
+            input_params = {param.name: param for param in workflow_blocks.inputs if param.name is not None}
+            expected_inputs = expected_defaults["inputs"]
+            expected_required = expected_defaults.get("required_inputs", [])
+            assert set(input_params) == set(expected_inputs) | set(expected_required), (
+                f"Workflow '{workflow_name}' takes inputs {sorted(input_params)}, "
+                f"the test expects {sorted(set(expected_inputs) | set(expected_required))}"
+            )
+            for input_name in expected_required:
+                assert input_params[input_name].required, (
+                    f"Workflow '{workflow_name}': input '{input_name}' should be required"
+                )
+            for input_name, expected_default in expected_inputs.items():
+                param = input_params[input_name]
+                assert not param.required and param.default == expected_default, (
+                    f"Workflow '{workflow_name}': input '{input_name}' default is "
+                    f"{param.default!r} (required={param.required}), expected {expected_default!r}"
+                )
+
+            # component configs, optionally: pinned config values for the `from_config` components worth
+            # watching — e.g. a preset's guider scale — checked against the spec that creates them. Pretrained
+            # components take their config from the repo, so there is nothing block-level to pin.
+            for component_name, expected_config in expected_defaults.get("component_configs", {}).items():
+                actual_config = dict(component_specs[component_name].config or {})
+                for config_name, expected_value in expected_config.items():
+                    assert actual_config.get(config_name) == expected_value, (
+                        f"Workflow '{workflow_name}': component '{component_name}' config "
+                        f"'{config_name}' is {actual_config.get(config_name)!r}, expected {expected_value!r}"
+                    )
+
+    def test_from_pretrained_workflow(self):
+        blocks = self.pipeline_blocks_class()
+        if blocks._workflow_map is None:
+            pytest.skip("Skipping test as _workflow_map is not set")
+
+        for workflow_name in blocks.available_workflows:
+            # the workflow argument should be equivalent to pruning the blocks by hand
+            pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path, workflow=workflow_name)
+            ref_pipe = blocks.get_workflow(workflow_name).init_pipeline(self.pretrained_model_name_or_path)
+            assert set(pipe.component_names) == set(ref_pipe.component_names), (
+                f"Workflow '{workflow_name}': pipeline expects components {sorted(pipe.component_names)}, "
+                f"the workflow blocks expect {sorted(ref_pipe.component_names)}"
+            )
+            for name in pipe.pretrained_component_names:
+                assert pipe.get_component_spec(name) == ref_pipe.get_component_spec(name), (
+                    f"Workflow '{workflow_name}': component '{name}' has a different spec than the one "
+                    f"created from the workflow blocks"
+                )
+
+        with pytest.raises(ValueError, match="Available workflows"):
+            ModularPipeline.from_pretrained(self.pretrained_model_name_or_path, workflow="not_a_workflow")
+
+    def test_load_components_workflow(self):
+        blocks = self.pipeline_blocks_class()
+        if blocks._workflow_map is None:
+            pytest.skip("Skipping test as _workflow_map is not set")
+
+        workflow_name = blocks.available_workflows[0]
+
+        # a full pipeline restricted at load time should load the same components as a pipeline
+        # created from the pruned workflow blocks
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components(workflow=workflow_name)
+        ref_pipe = blocks.get_workflow(workflow_name).init_pipeline(self.pretrained_model_name_or_path)
+        ref_pipe.load_components()
+
+        loaded = {name for name in pipe.pretrained_component_names if pipe.components[name] is not None}
+        ref_loaded = {name for name in ref_pipe.pretrained_component_names if ref_pipe.components[name] is not None}
+        assert loaded == ref_loaded, (
+            f"Workflow '{workflow_name}': load_components(workflow=...) loaded {sorted(loaded)}, "
+            f"the pipeline created from the workflow blocks loaded {sorted(ref_loaded)}"
+        )
+
+        with pytest.raises(ValueError, match="not both"):
+            pipe.load_components(names="unet", workflow=workflow_name)
+
+    def test_unload_components(self):
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components()
+        name = next(name for name in pipe.pretrained_component_names if pipe.components.get(name) is not None)
+        spec_before = pipe._component_specs[name]
+
+        pipe.unload_components(name)
+        assert getattr(pipe, name) is None
+        # `components` is the mapping most callers iterate over: the entry stays, its value becomes None
+        assert pipe.components[name] is None
+        # unloading an already unloaded component is a no-op, not an error
+        pipe.unload_components(name)
+        assert pipe.components[name] is None
+        # the spec survives, so the component can be loaded again
+        assert pipe._component_specs[name] is spec_before
+        pipe.load_components(names=name)
+        assert getattr(pipe, name) is not None
+
+        # with a ComponentsManager attached, unloading also removes the component from the manager
+        manager = ComponentsManager()
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path, components_manager=manager)
+        pipe.load_components(names=name)
+        assert len(manager._lookup_ids(name=name)) == 1
+        pipe.unload_components(name)
+        assert getattr(pipe, name) is None
+        assert len(manager._lookup_ids(name=name)) == 0
+
+    def test_unload_components_multiple_names(self):
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components()
+        names = [name for name in pipe.pretrained_component_names if pipe.components.get(name) is not None]
+        if len(names) < 2:
+            pytest.skip("Skipping test as the pipeline has fewer than two loaded pretrained components.")
+
+        pipe.unload_components(names)
+        assert all(pipe.components[name] is None for name in names)
+
+        pipe.load_components(names=names)
+        assert all(pipe.components[name] is not None for name in names)
+
+    def test_unload_components_invalid_names(self):
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components()
+        name = next(name for name in pipe.pretrained_component_names if pipe.components.get(name) is not None)
+
+        with pytest.raises(ValueError, match="Invalid type for names"):
+            pipe.unload_components((name,))
+        assert pipe.components[name] is not None
+
+        # an unknown name is warned about and skipped; the known names are still unloaded
+        logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline")
+        logger.setLevel(diffusers.logging.WARNING)
+        with CaptureLogger(logger) as cap_logger:
+            pipe.unload_components([name, "not_a_component"])
+
+        assert "not_a_component" in cap_logger.out
+        assert pipe.components[name] is None
+
+    def test_unload_components_releases_component(self):
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components()
+        name = next(
+            name for name in pipe.pretrained_component_names if isinstance(pipe.components.get(name), torch.nn.Module)
+        )
+
+        # a weakref keeps no strong reference, so it goes dead only if nothing in the pipeline holds the
+        # component anymore — which is what makes the memory actually reclaimable
+        component_ref = weakref.ref(pipe.components[name])
+        pipe.unload_components(name)
+
+        assert component_ref() is None
+
+    @require_accelerator
+    def test_unload_components_frees_device_memory(self):
+        pipe = ModularPipeline.from_pretrained(self.pretrained_model_name_or_path)
+        pipe.load_components(dtype=torch.float32)
+        name = next(
+            name for name in pipe.pretrained_component_names if isinstance(pipe.components.get(name), torch.nn.Module)
+        )
+        pipe.to(torch_device)
+
+        component = pipe.components[name]
+        footprint = sum(t.numel() * t.element_size() for t in [*component.parameters(), *component.buffers()])
+        del component
+
+        gc.collect()
+        backend_empty_cache(torch_device)
+        allocated_before = backend_memory_allocated(torch_device)
+
+        pipe.unload_components(name)
+        freed = allocated_before - backend_memory_allocated(torch_device)
+
+        assert freed >= 0.9 * footprint, (
+            f"Unloading '{name}' freed {freed} bytes on {torch_device}, expected around {footprint}"
+        )
+
+    @require_accelerator
+    def test_unload_components_auto_cpu_offload(self):
+        base_pipe = self.get_pipeline().to(torch_device)
+        expected_image = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        cm = ComponentsManager()
+        cm.enable_auto_cpu_offload(device=torch_device)
+        pipe = self.get_pipeline(components_manager=cm)
+        name = next(
+            name for name in pipe.pretrained_component_names if isinstance(pipe.components.get(name), torch.nn.Module)
+        )
+        component_id = f"{name}_{id(pipe.components[name])}"
+
+        pipe.unload_components(name)
+
+        # removing a component re-applies auto offload to the ones that are left
+        assert component_id not in cm.components
+        assert component_id not in {hook.model_id for hook in cm.model_hooks}
+        remaining = [component for component in cm.components.values() if isinstance(component, torch.nn.Module)]
+        assert all(hasattr(component, "_hf_hook") for component in remaining)
+
+        # the reloaded component is hooked up again, so the pipeline still runs
+        pipe.load_components(names=name, dtype=torch.float32)
+        image = pipe(**self.get_dummy_inputs(), output=self.output_name)
+        assert torch.abs(expected_image - image).max() < 1e-3
 
 
 class ModularGuiderTesterMixin:

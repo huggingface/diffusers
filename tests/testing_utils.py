@@ -28,7 +28,7 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
-from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT, USE_PEFT_BACKEND
 from diffusers.utils.import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
@@ -44,6 +44,7 @@ from diffusers.utils.import_utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_peft_available,
+    is_sdnq_available,
     is_timm_available,
     is_torch_available,
     is_torch_neuronx_available,
@@ -72,14 +73,6 @@ global_rng = random.Random()
 
 logger = get_logger(__name__)
 
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
-_required_transformers_version = is_transformers_available() and version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
@@ -477,6 +470,14 @@ def is_modelopt(test_case):
     return pytest.mark.modelopt(test_case)
 
 
+def is_sdnq(test_case):
+    """
+    Decorator marking a test as an SDNQ quantization test. These tests can be filtered using:
+        pytest -m "not sdnq" to skip pytest -m sdnq to run only these tests
+    """
+    return pytest.mark.sdnq(test_case)
+
+
 def is_context_parallel(test_case):
     """
     Decorator marking a test as a context parallel inference test. These tests can be filtered using:
@@ -736,6 +737,13 @@ def require_quanto(test_case):
     Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
     """
     return pytest.mark.skipif(not is_optimum_quanto_available(), reason="test requires quanto")(test_case)
+
+
+def require_sdnq(test_case):
+    """
+    Decorator marking a test that requires sdnq. These tests are skipped when sdnq isn't installed.
+    """
+    return pytest.mark.skipif(not is_sdnq_available(), reason="test requires sdnq")(test_case)
 
 
 def require_accelerate(test_case):
