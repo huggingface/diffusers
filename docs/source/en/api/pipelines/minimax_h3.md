@@ -11,6 +11,12 @@ specific language governing permissions and limitations under the License. -->
 
 # MiniMax-H3
 
+<div class="flex flex-wrap space-x-1">
+  <a href="https://huggingface.co/docs/diffusers/main/en/tutorials/using_peft_for_inference" target="_blank" rel="noopener">
+    <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+  </a>
+</div>
+
 MiniMax-H3 generates video and its soundtrack together. A single transformer denoises one packed sequence containing the text conditioning, conditioning media, and target video and audio latents. There is no separate vocoder and no audio post-hoc pass: video and audio come out of the same denoising loop.
 
 You can find the original MiniMax-H3 checkpoints under the [MiniMaxAI](https://huggingface.co/MiniMaxAI) organization.

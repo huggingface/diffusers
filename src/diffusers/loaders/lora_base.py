@@ -46,7 +46,7 @@ from ..utils import (
     set_weights_and_activate_adapters,
 )
 from ..utils.peft_utils import _create_lora_config
-from ..utils.state_dict_utils import _load_sft_state_dict_metadata
+from ..utils.state_dict_utils import _load_sft_file_metadata, _load_sft_state_dict_metadata
 
 
 if is_transformers_available():
@@ -208,7 +208,15 @@ def _fetch_state_dict(
     user_agent,
     allow_pickle,
     metadata=None,
+    return_file_metadata=False,
 ):
+    """
+    `metadata` is diffusers' own LoRA adapter metadata, parsed out of the file's `__metadata__`. With
+    `return_file_metadata`, that `__metadata__` is returned in full as a third element. It is `None` whenever the
+    weights did not come from a safetensors file — a state dict passed in memory, or a pickled checkpoint — since there
+    is nowhere else for a header to live.
+    """
+    file_metadata = None
     model_file = None
     if not isinstance(pretrained_model_name_or_path_or_dict, dict):
         # Let's first try to load .safetensors weights
@@ -239,6 +247,8 @@ def _fetch_state_dict(
                 )
                 state_dict = safetensors.torch.load_file(model_file, device="cpu")
                 metadata = _load_sft_state_dict_metadata(model_file)
+                if return_file_metadata:
+                    file_metadata = _load_sft_file_metadata(model_file)
 
             except (IOError, safetensors.SafetensorError) as e:
                 if not allow_pickle:
@@ -246,6 +256,7 @@ def _fetch_state_dict(
                 # try loading non-safetensors weights
                 model_file = None
                 metadata = None
+                file_metadata = None
                 pass
 
         if model_file is None:
@@ -270,6 +281,8 @@ def _fetch_state_dict(
     else:
         state_dict = pretrained_model_name_or_path_or_dict
 
+    if return_file_metadata:
+        return state_dict, metadata, file_metadata
     return state_dict, metadata
 
 
