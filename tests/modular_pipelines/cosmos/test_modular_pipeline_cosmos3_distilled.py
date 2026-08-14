@@ -21,7 +21,13 @@ from diffusers import ModularPipeline
 from diffusers.modular_pipelines import Cosmos3DistilledBlocks, Cosmos3DistilledModularPipeline
 
 from ...testing_utils import torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 TINY_DISTILLED_REPO = "hf-internal-testing/tiny-cosmos3-distilled-modular-pipe"
@@ -59,11 +65,10 @@ COSMOS3_DISTILLED_WORKFLOWS = {
 }
 
 
-class TestCosmos3DistilledModularPipelineFast(ModularPipelineTesterMixin):
+class Cosmos3DistilledModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Cosmos3DistilledModularPipeline
     pipeline_blocks_class = Cosmos3DistilledBlocks
     pretrained_model_name_or_path = TINY_DISTILLED_REPO
-
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
@@ -86,20 +91,8 @@ class TestCosmos3DistilledModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "latent",
         }
 
-    def test_save_from_pretrained(self, tmp_path):
-        base_pipe = self.get_pipeline().to(torch_device)
-        base_pipe.save_pretrained(str(tmp_path))
 
-        loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
-        loaded_pipe.load_components(torch_dtype=torch.float32)
-        loaded_pipe.disable_safety_checker()
-        loaded_pipe.to(torch_device)
-
-        base_output = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
-        loaded_output = loaded_pipe(**self.get_dummy_inputs(), output=self.output_name)
-
-        assert torch.abs(base_output - loaded_output).max() < 1e-3
-
+class TestCosmos3DistilledModularPipelineFast(Cosmos3DistilledModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="Cosmos3 does not support batched prompts.")
     def test_inference_batch_consistent(self):
         pass
@@ -153,3 +146,31 @@ class TestCosmos3DistilledModularPipelineFast(ModularPipelineTesterMixin):
 
         with pytest.raises(ValueError, match="`guidance_scale` must be 1.0"):
             pipe(**inputs, output=self.output_name)
+
+
+class TestCosmos3DistilledModularPipelineLoading(
+    Cosmos3DistilledModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
+    def test_save_from_pretrained(self, tmp_path):
+        base_pipe = self.get_pipeline().to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+
+        loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
+        loaded_pipe.load_components(torch_dtype=torch.float32)
+        loaded_pipe.disable_safety_checker()
+        loaded_pipe.to(torch_device)
+
+        base_output = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
+        loaded_output = loaded_pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert torch.abs(base_output - loaded_output).max() < 1e-3
+
+
+class TestCosmos3DistilledModularPipelineWorkflow(
+    Cosmos3DistilledModularPipelineTesterConfig, ModularWorkflowTesterMixin
+):
+    pass
+
+
+class TestCosmos3DistilledModularPipelineMemory(Cosmos3DistilledModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

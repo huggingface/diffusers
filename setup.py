@@ -133,6 +133,7 @@ _deps = [
     "torchao>=0.7.0",
     "bitsandbytes>=0.43.3",
     "nvidia_modelopt[hf]>=0.33.1",
+    "sdnq>=0.2.2",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
@@ -251,6 +252,7 @@ extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
+extras["sdnq"] = deps_list("sdnq")
 extras["flashpack"] = deps_list("flashpack")
 
 extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"]

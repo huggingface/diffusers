@@ -25,7 +25,13 @@ from diffusers.modular_pipelines import (
 )
 
 from ...testing_utils import floats_tensor, torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 FLUX2_KLEIN_WORKFLOWS = {
@@ -42,11 +48,10 @@ FLUX2_KLEIN_WORKFLOWS = {
 }
 
 
-class TestFlux2KleinModularPipelineFast(ModularPipelineTesterMixin):
+class Flux2KleinModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Flux2KleinModularPipeline
     pipeline_blocks_class = Flux2KleinAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-modular"
-
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     not_params = frozenset(["negative_prompt"])
@@ -67,8 +72,22 @@ class TestFlux2KleinModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestFlux2KleinModularPipelineFast(Flux2KleinModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
+
+
+class TestFlux2KleinModularPipelineLoading(Flux2KleinModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestFlux2KleinModularPipelineWorkflow(Flux2KleinModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestFlux2KleinModularPipelineMemory(Flux2KleinModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
 
 
 FLUX2_KLEIN_IMAGE_CONDITIONED_WORKFLOWS = {
@@ -88,11 +107,10 @@ FLUX2_KLEIN_IMAGE_CONDITIONED_WORKFLOWS = {
 }
 
 
-class TestFlux2KleinImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
+class Flux2KleinImageConditionedModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Flux2KleinModularPipeline
     pipeline_blocks_class = Flux2KleinAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-modular"
-
     params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])
     not_params = frozenset(["negative_prompt"])
@@ -118,9 +136,31 @@ class TestFlux2KleinImageConditionedModularPipelineFast(ModularPipelineTesterMix
 
         return inputs
 
+
+class TestFlux2KleinImageConditionedModularPipelineFast(
+    Flux2KleinImageConditionedModularPipelineTesterConfig, ModularPipelineTesterMixin
+):
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
 
     @pytest.mark.skip(reason="batched inference is currently not supported")
     def test_inference_batch_single_identical(self, batch_size=2, expected_max_diff=0.0001):
         return
+
+
+class TestFlux2KleinImageConditionedModularPipelineLoading(
+    Flux2KleinImageConditionedModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
+    pass
+
+
+class TestFlux2KleinImageConditionedModularPipelineWorkflow(
+    Flux2KleinImageConditionedModularPipelineTesterConfig, ModularWorkflowTesterMixin
+):
+    pass
+
+
+class TestFlux2KleinImageConditionedModularPipelineMemory(
+    Flux2KleinImageConditionedModularPipelineTesterConfig, ModularMemoryTesterMixin
+):
+    pass
