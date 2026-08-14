@@ -12,14 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Script to remind PR authors to link an issue.
+Script to remind PR authors to link an issue, and to escalate unresolved reminders.
 
 Behavior:
 - Scans open, non-draft PRs.
 - A PR is considered "linked" if GitHub's GraphQL `closingIssuesReferences` returns > 0
   (covers both `Fixes #N` keywords in the body and issues linked via the GitHub UI).
 - If a PR is not linked and no prior reminder is present, the script posts a single
-  friendly reminder comment.
+  friendly reminder comment warning that the PR may be auto-closed.
+- Once a reminder is `SLACK_DIGEST_DAYS` old and the PR is still not linked, the PR is
+  included in a daily Slack digest so maintainers can rescue it (by linking an issue or
+  adding the `no-issue-needed` label).
+- Once a reminder is `AUTOCLOSE_DAYS` old and the PR is still not linked, the PR is
+  closed with an explanatory comment.
+- Reminders posted before the auto-close notice existed (comments without the
+  `AUTOCLOSE_MARKER`) are never escalated — their authors were not warned about closure.
 - PRs labeled `no-issue-needed` and bot-authored PRs are skipped.
 - PRs authored by maintainers, users with write (or admin) access, and collaborators
   are skipped; the reminder only targets external contributors.
@@ -38,8 +45,19 @@ logger = logging.getLogger(__name__)
 
 REPO = "huggingface/diffusers"
 REMINDER_MARKER = "<!-- pr-link-issue-reminder -->"
+# Present only in reminders that warn about auto-closure; escalation is keyed on this
+# marker so PRs reminded before the warning existed are never auto-closed.
+AUTOCLOSE_MARKER = "<!-- pr-link-issue-autoclose -->"
 BYPASS_LABELS = {"no-issue-needed"}
+# Only PRs created within this window receive a fresh reminder.
 LOOKBACK_DAYS = 2
+# Days after the reminder at which a still-unlinked PR enters the Slack rescue digest.
+SLACK_DIGEST_DAYS = 7
+# Days after the reminder at which a still-unlinked PR is automatically closed.
+AUTOCLOSE_DAYS = 10
+# Upper bound on how far back to paginate open PRs. Reminders only go to PRs at most
+# LOOKBACK_DAYS old, so any PR with a pending escalation is well within this window.
+SCAN_LOOKBACK_DAYS = 30
 # Collaborator permission levels that mark a PR author as a maintainer / writer /
 # collaborator. Authors with any of these are skipped (the reminder is only for
 # external contributors).
@@ -89,10 +107,6 @@ def author_checkbox_checked(pr):
     return bool(AUTHOR_CHECKBOX_PATTERN.search(pr.body or ""))
 
 
-def has_existing_reminder(pr):
-    return any(REMINDER_MARKER in (c.body or "") for c in pr.get_issue_comments())
-
-
 def is_privileged_author(repo, pr, author):
     """Return True if the author is a maintainer, has write/admin access, or is a collaborator."""
     # `author_association` is on the PR payload and needs no extra token scope.
@@ -113,21 +127,55 @@ def is_privileged_author(repo, pr, author):
 def reminder_body(author):
     return (
         f"{REMINDER_MARKER}\n"
+        f"{AUTOCLOSE_MARKER}\n"
         f"Hi @{author}, thanks for the PR! It does not appear to link an issue it fixes. "
         "If this PR addresses an existing issue, please add a closing keyword "
         "(e.g. `Fixes #1234`) to the PR description so the issue is linked. "
         f"See the [contribution guide]({CONTRIBUTION_GUIDE_URL}) for more details. "
         "If this PR intentionally does not fix a tracked issue, a maintainer can "
-        "add the `no-issue-needed` label to silence this reminder."
+        "add the `no-issue-needed` label to silence this reminder.\n\n"
+        f"**Please note that PRs without a linked issue are likely to be automatically "
+        f"closed {AUTOCLOSE_DAYS} days after this notice.**"
     )
+
+
+def autoclose_body():
+    return (
+        "This PR has been automatically closed because it does not link an issue and "
+        f"the reminder above was not addressed within {AUTOCLOSE_DAYS} days. "
+        "If this PR is still relevant, please link the issue it fixes "
+        "(e.g. `Fixes #1234`) or ask a maintainer to add the `no-issue-needed` label, "
+        "and it can be reopened."
+    )
+
+
+def send_slack_digest(webhook_url, mention_ids, at_risk):
+    lines = []
+    if mention_ids:
+        lines.append("cc " + " ".join(f"<@{mid}>" for mid in mention_ids))
+    lines.append(
+        f"⚠️ {len(at_risk)} open PR(s) without a linked issue will be auto-closed soon. "
+        "Link an issue or add the `no-issue-needed` label to rescue them:"
+    )
+    for pr, days_left in at_risk:
+        lines.append(f"• <{pr.html_url}|#{pr.number} {pr.title}> by `{pr.user.login}` — closes in {days_left} day(s)")
+    response = requests.post(webhook_url, json={"text": "\n".join(lines)}, timeout=30)
+    response.raise_for_status()
 
 
 def main():
     token = os.environ["GITHUB_TOKEN"]
+    slack_webhook_url = os.getenv("SLACK_WEBHOOK_URL")
+    # Comma-separated Slack member IDs (e.g. "U0123ABC,U0456DEF") pinged in the digest.
+    mention_ids = [m.strip() for m in os.getenv("SLACK_MENTION_IDS", "").split(",") if m.strip()]
     g = Github(token)
     repo = g.get_repo(REPO)
     owner, name = REPO.split("/", 1)
-    cutoff = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
+    now = datetime.now(timezone.utc)
+    reminder_cutoff = now - timedelta(days=LOOKBACK_DAYS)
+    scan_cutoff = now - timedelta(days=SCAN_LOOKBACK_DAYS)
+    # (pr, days_left) pairs for the Slack rescue digest.
+    at_risk = []
 
     try:
         pulls = repo.get_pulls(state="open", sort="created", direction="desc")
@@ -136,9 +184,9 @@ def main():
                 created_at = pr.created_at
                 if created_at.tzinfo is None:
                     created_at = created_at.replace(tzinfo=timezone.utc)
-                # PRs are sorted newest-first, so once we cross the cutoff every
+                # PRs are sorted newest-first, so once we cross the scan cutoff every
                 # remaining PR is older too and we can stop paginating.
-                if created_at < cutoff:
+                if created_at < scan_cutoff:
                     break
                 if pr.draft:
                     continue
@@ -156,15 +204,36 @@ def main():
                     continue
                 if has_linked_issue(token, owner, name, pr.number):
                     continue
-                if has_existing_reminder(pr):
+                comments = list(pr.get_issue_comments())
+                warning = next((c for c in comments if AUTOCLOSE_MARKER in (c.body or "")), None)
+                if warning is None:
+                    # Old-style reminders (without the auto-close notice) are never
+                    # escalated; only remind recently created, not-yet-reminded PRs.
+                    already_reminded = any(REMINDER_MARKER in (c.body or "") for c in comments)
+                    if created_at >= reminder_cutoff and not already_reminded:
+                        pr.create_issue_comment(reminder_body(author))
                     continue
-                pr.create_issue_comment(reminder_body(author))
+                warned_at = warning.created_at
+                if warned_at.tzinfo is None:
+                    warned_at = warned_at.replace(tzinfo=timezone.utc)
+                days_since_warning = (now - warned_at).days
+                if days_since_warning >= AUTOCLOSE_DAYS:
+                    pr.create_issue_comment(autoclose_body())
+                    pr.edit(state="closed")
+                elif days_since_warning >= SLACK_DIGEST_DAYS:
+                    at_risk.append((pr, AUTOCLOSE_DAYS - days_since_warning))
             except Exception as e:
                 logger.warning("Skipping PR #%s: %s", getattr(pr, "number", "?"), e)
                 continue
     except Exception as e:
         logger.error("Failed to fetch open PRs: %s", e)
         raise
+
+    if at_risk:
+        if slack_webhook_url:
+            send_slack_digest(slack_webhook_url, mention_ids, at_risk)
+        else:
+            logger.warning("SLACK_WEBHOOK_URL is not set; skipping digest for %d at-risk PR(s).", len(at_risk))
 
 
 if __name__ == "__main__":
