@@ -42,10 +42,11 @@ _SEMANTIC_VOCAB_SIZE = 16384
 _MAX_PROMPT_TOKENS = 5_000
 _MAX_AUDIO_FRAMES = 9_000
 
-# The autoregressive stage's sampling parameters are fixed by the reference inference recipe.
+# The autoregressive stage's default sampling parameters, from the reference inference recipe. They can be
+# overridden per run through the `cfg_scale` / `top_k` / `temperature` pipeline inputs.
 _AR_CFG_SCALE = 1.5
-_AR_CFG_TOP_K = 50
-_AR_SAMPLING_TOP_K = 50
+_AR_TOP_K = 50
+_AR_TEMPERATURE = 1.0
 
 _SPECIAL_TAG_RE = re.compile(r"<\|([^|]*)\|>")
 _LEADING_TAGS_RE = re.compile(r"^[ \t]*((?:\[[^\]]+\][ \t]*)+)")
@@ -91,9 +92,14 @@ def _normalize_lyrics(lyrics: str) -> str:
     return f"[start]\n{text}"
 
 
-def _sample_top_k(logits: torch.Tensor, generator: Optional[torch.Generator]) -> torch.Tensor:
-    values = torch.nan_to_num(logits.float(), nan=-1e9, posinf=1e9, neginf=-1e9)
-    top_k = min(_AR_SAMPLING_TOP_K, values.shape[-1])
+def _sample_top_k(
+    logits: torch.Tensor,
+    generator: Optional[torch.Generator],
+    top_k: int = _AR_TOP_K,
+    temperature: float = _AR_TEMPERATURE,
+) -> torch.Tensor:
+    values = torch.nan_to_num(logits.float(), nan=-1e9, posinf=1e9, neginf=-1e9) / temperature
+    top_k = min(top_k, values.shape[-1])
     threshold = torch.topk(values, top_k, dim=-1).values[..., -1, None]
     values = values.masked_fill(values < threshold, -float("inf"))
     probs = torch.nan_to_num(F.softmax(values, dim=-1), nan=0.0)
@@ -120,6 +126,9 @@ def _generate_depth_codes(
     last_hidden: torch.Tensor,
     semantic_code: torch.Tensor,
     generator: Optional[torch.Generator],
+    cfg_scale: float = _AR_CFG_SCALE,
+    top_k: int = _AR_TOP_K,
+    temperature: float = _AR_TEMPERATURE,
 ):
     # Autoregressively sample the residual codes c1..c7 for one frame and collect their hidden states.
     sequence = [components.rvq_depth_decoder.projection(last_hidden).unsqueeze(1)]
@@ -132,9 +141,9 @@ def _generate_depth_codes(
         hidden_parts.append(hidden[:1])
         logits = components.rvq_depth_decoder.audio_heads[index - 1](hidden)
         conditional, unconditional = logits[:1].float(), logits[1:2].float()
-        logits = unconditional + (conditional - unconditional) * _AR_CFG_SCALE
+        logits = unconditional + (conditional - unconditional) * cfg_scale
         # The sampled code is repeated so the language-model feedback keeps the [conditional, unconditional] rows.
-        code = _sample_top_k(logits, generator).repeat(2)
+        code = _sample_top_k(logits, generator, top_k, temperature).repeat(2)
         codes.append(code)
         if index < components.num_codebooks - 1:
             embed = components.rvq_depth_decoder.audio_embeddings(code + (index - 1) * components.audio_vocab_size)
@@ -273,6 +282,32 @@ class MiniMaxMusic3SemanticGenerationStep(ModularPipelineBlocks):
                     "waveform into these codes (see the note in `__call__`)."
                 ),
             ),
+            InputParam(
+                "cfg_scale",
+                default=_AR_CFG_SCALE,
+                type_hint=float,
+                description=(
+                    "Classifier-free guidance scale of the autoregressive stage. Higher values follow the "
+                    "prompt/lyrics harder (including against a continuation prefix's momentum) at the cost of "
+                    "diversity and naturalness; 1.0 disables guidance."
+                ),
+            ),
+            InputParam(
+                "top_k",
+                default=_AR_TOP_K,
+                type_hint=int,
+                description=(
+                    "Top-k cutoff used both to restrict the guided distribution to the conditional branch's top "
+                    "candidates and to sample the semantic and residual codes. Lower is more conservative, higher "
+                    "more adventurous."
+                ),
+            ),
+            InputParam(
+                "temperature",
+                default=_AR_TEMPERATURE,
+                type_hint=float,
+                description="Sampling temperature of the autoregressive stage; higher is more random.",
+            ),
             InputParam.template("generator"),
         ]
 
@@ -303,6 +338,12 @@ class MiniMaxMusic3SemanticGenerationStep(ModularPipelineBlocks):
     def check_inputs(block_state):
         if block_state.audio_duration <= 0:
             raise ValueError(f"`audio_duration` must be positive, got {block_state.audio_duration}")
+        if block_state.cfg_scale < 0:
+            raise ValueError(f"`cfg_scale` must be non-negative, got {block_state.cfg_scale}")
+        if block_state.top_k < 1:
+            raise ValueError(f"`top_k` must be at least 1, got {block_state.top_k}")
+        if block_state.temperature <= 0:
+            raise ValueError(f"`temperature` must be positive, got {block_state.temperature}")
 
     @torch.no_grad()
     def __call__(self, components: MiniMaxMusic3ModularPipeline, state: PipelineState) -> PipelineState:
@@ -339,6 +380,9 @@ class MiniMaxMusic3SemanticGenerationStep(ModularPipelineBlocks):
                 f"(1 / {components.frame_rate} s)"
             )
         generator = block_state.generator
+        cfg_scale = float(block_state.cfg_scale)
+        top_k = int(block_state.top_k)
+        temperature = float(block_state.temperature)
 
         language_model = components.language_model
         # Trigger CPU-offload hooks by hand (same workaround as minimax_h3): the autoregressive loop calls
@@ -388,19 +432,19 @@ class MiniMaxMusic3SemanticGenerationStep(ModularPipelineBlocks):
             logits = language_model.lm_head(last_hidden).float()
             logits = logits.masked_fill(vocab_mask, -float("inf"))
             conditional, unconditional = logits[0:1], logits[1:2]
-            guided = unconditional + (conditional - unconditional) * _AR_CFG_SCALE
+            guided = unconditional + (conditional - unconditional) * cfg_scale
             # Restrict the guided distribution to the conditional branch's top candidates, then re-mask: guidance on
             # two `-inf` logits produces NaN on masked positions.
-            threshold = torch.topk(conditional, _AR_CFG_TOP_K, dim=-1).values[..., -1, None]
+            threshold = torch.topk(conditional, min(top_k, conditional.shape[-1]), dim=-1).values[..., -1, None]
             guided = guided.masked_fill(conditional < threshold, -float("inf"))
             guided = guided.masked_fill(vocab_mask.unsqueeze(0), -float("inf"))
-            sampled = _sample_top_k(guided, generator)
+            sampled = _sample_top_k(guided, generator, top_k, temperature)
             if int(sampled.item()) == _AUDIO_END_TOKEN_ID:
                 break
 
             semantic_code = sampled - _AUDIO_CODE_OFFSET
             frame_codes, depth_hidden = _generate_depth_codes(
-                components, last_hidden, semantic_code.repeat(2), generator
+                components, last_hidden, semantic_code.repeat(2), generator, cfg_scale, top_k, temperature
             )
             if fed_codes:
                 frame_hiddens.append(torch.cat((last_hidden[:1], depth_hidden), dim=-1))
