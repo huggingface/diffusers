@@ -59,9 +59,11 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_vidtok"] = ["AutoencoderVidTok"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.ltx2_diffusion_decoder"] = ["LTX2VideoDiffusionDecoderModel"]
+    _import_structure["autoencoders.minimax_music3_vocoder"] = ["MiniMaxMusic3Vocoder"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
     _import_structure["condition_embedders.condition_embedder_anima"] = ["AnimaTextConditioner"]
+    _import_structure["condition_embedders.condition_embedder_minimax_music3"] = ["MiniMaxMusic3ConditionEncoder"]
     _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
     _import_structure["controlnets.controlnet_cosmos"] = ["CosmosControlNetModel"]
     _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
@@ -92,6 +94,7 @@ if is_torch_available():
     _import_structure["transformers.hunyuan_transformer_2d"] = ["HunyuanDiT2DModel"]
     _import_structure["transformers.latte_transformer_3d"] = ["LatteTransformer3DModel"]
     _import_structure["transformers.lumina_nextdit2d"] = ["LuminaNextDiT2DModel"]
+    _import_structure["transformers.minimax_music3_rvq_depth_decoder"] = ["MiniMaxMusic3RVQDepthDecoder"]
     _import_structure["transformers.pixart_transformer_2d"] = ["PixArtTransformer2DModel"]
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
     _import_structure["transformers.sana_transformer"] = ["SanaTransformer2DModel"]
@@ -132,6 +135,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_minimax_h3"] = ["MiniMaxH3Transformer3DModel"]
+    _import_structure["transformers.transformer_minimax_music3"] = ["MiniMaxMusic3Transformer1DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_motif_video"] = ["MotifVideoTransformer3DModel"]
     _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
@@ -199,10 +203,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos3AVAEAudioTokenizer,
             LongCatAudioDiTVae,
             LTX2VideoDiffusionDecoderModel,
+            MiniMaxMusic3Vocoder,
             VQModel,
         )
         from .cache_utils import CacheMixin
-        from .condition_embedders import AnimaTextConditioner
+        from .condition_embedders import AnimaTextConditioner, MiniMaxMusic3ConditionEncoder
         from .controlnets import (
             ControlNetModel,
             ControlNetUnionModel,
@@ -269,6 +274,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MiniMaxH3Transformer3DModel,
+            MiniMaxMusic3RVQDepthDecoder,
+            MiniMaxMusic3Transformer1DModel,
             MochiTransformer3DModel,
             MotifVideoTransformer3DModel,
             NucleusMoEImageTransformer2DModel,
