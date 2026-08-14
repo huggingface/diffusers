@@ -378,7 +378,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
         pipe.to("cpu")
         model_devices = [
-            component.device.type for component in pipe.components.values() if getattr(component, "device", None)
+            component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
         self.assertTrue(all(device == "cpu" for device in model_devices))
 
@@ -387,7 +387,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
         pipe.to(torch_device)
         model_devices = [
-            component.device.type for component in pipe.components.values() if getattr(component, "device", None)
+            component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
         self.assertTrue(all(device == torch_device for device in model_devices))
 
