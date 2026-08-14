@@ -344,14 +344,11 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
     def test_inference_is_not_nan(self, base_pipe_output):
         assert torch.isnan(base_pipe_output).sum() == 0, "Accelerator Inference returns NaN"
 
-    def test_num_images_per_prompt(self):
+    def test_num_images_per_prompt(self, batch_sizes=[1, 2], num_images_per_prompts=[1, 2]):
         pipe = self.get_pipeline().to(torch_device)
 
         if "num_images_per_prompt" not in pipe.blocks.input_names:
-            pytest.mark.skip("Skipping test as `num_images_per_prompt` is not present in input names.")
-
-        batch_sizes = [1, 2]
-        num_images_per_prompts = [1, 2]
+            pytest.skip("Skipping test as `num_images_per_prompt` is not present in input names.")
 
         for batch_size in batch_sizes:
             for num_images_per_prompt in num_images_per_prompts:

@@ -80,7 +80,8 @@ class ModularWorkflowTesterMixin:
 
         blocks = self.pipeline_blocks_class()
         for workflow_name, expected_defaults in self.expected_workflow_defaults.items():
-            workflow_blocks = blocks.get_workflow(workflow_name)
+            # a pipeline without workflows is tested as the single unnamed workflow `None` over the full blockset
+            workflow_blocks = blocks if workflow_name is None else blocks.get_workflow(workflow_name)
 
             # components: every one of the workflow is named with its class, so one appearing, disappearing or
             # changing type fails loudly
@@ -124,6 +125,16 @@ class ModularWorkflowTesterMixin:
                     f"Workflow '{workflow_name}': input '{input_name}' default is "
                     f"{param.default!r} (required={param.required}), expected {expected_default!r}"
                 )
+
+            # component configs: the values a workflow pins on a component it creates itself — the guidance scale
+            # of its guider, say — which is what tells otherwise identical presets apart
+            for component_name, expected_config in expected_defaults.get("component_configs", {}).items():
+                actual_config = dict(component_specs[component_name].config or {})
+                for config_name, expected_value in expected_config.items():
+                    assert actual_config.get(config_name) == expected_value, (
+                        f"Workflow '{workflow_name}': component '{component_name}' config '{config_name}' is "
+                        f"{actual_config.get(config_name)!r}, expected {expected_value!r}"
+                    )
 
     def test_from_pretrained_workflow(self):
         blocks = self.pipeline_blocks_class()

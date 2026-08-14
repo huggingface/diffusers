@@ -240,7 +240,11 @@ class QwenImageEditModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestQwenImageEditModularPipelineFast(QwenImageEditModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    pass
+    def test_num_images_per_prompt(self):
+        # `QwenImageEditResizeStep` blows the conditioning image up to a ~1024x1024 area before the VL encoder
+        # regardless of how tiny the test image is, so every forward here is expensive — the default four
+        # combinations run past the 60s CI timeout. One combination with both multipliers > 1 pins the same thing.
+        super().test_num_images_per_prompt(batch_sizes=[2], num_images_per_prompts=[2])
 
 
 class TestQwenImageEditModularPipelineLoading(QwenImageEditModularPipelineTesterConfig, ModularLoadingTesterMixin):
