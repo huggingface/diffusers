@@ -26,8 +26,16 @@ from diffusers import (
     CosmosTransformer3DModel,
 )
 
-from ...testing_utils import enable_full_determinism, require_peft_backend
-from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
+from ...testing_utils import enable_full_determinism, is_lora, require_peft_backend
+from ..testing_utils import (
+    BaseModularPipelineOutputMixin,
+    BaseModularPipelineTesterConfig,
+    ModularGuiderTesterMixin,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -96,7 +104,7 @@ class AnimaTextConditionerFastTests(unittest.TestCase):
         self.assertTrue(torch.allclose(output[:, 4:], torch.zeros_like(output[:, 4:]), atol=1e-5))
 
 
-class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
+class AnimaModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = AnimaModularPipeline
     pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
@@ -117,6 +125,8 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
             "output_type": "pt",
         }
 
+
+class TestAnimaModularPipelineFast(AnimaModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_inference_empty_negative_prompt(self):
         pipe = self.get_pipeline()
 
@@ -130,6 +140,8 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
 
+
+class TestAnimaModularPipelineLoading(AnimaModularPipelineTesterConfig, ModularLoadingTesterMixin):
     def test_save_load_components(self):
         pipe = self.get_pipeline()
 
@@ -141,6 +153,9 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
         assert isinstance(pipe.text_conditioner, AnimaTextConditioner)
         assert isinstance(pipe.transformer, CosmosTransformer3DModel)
 
+
+@is_lora
+class TestAnimaModularPipelineLoRA(AnimaModularPipelineTesterConfig, BaseModularPipelineOutputMixin):
     def test_lora_state_dict_conversion(self):
         state_dict = {
             "diffusion_model.blocks.0.self_attn.q_proj.lora_A.weight": torch.randn(2, 32),
@@ -173,7 +188,19 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
         assert "dummy" in pipe.text_conditioner.peft_config
 
 
-class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
+class TestAnimaModularPipelineWorkflow(AnimaModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestAnimaModularPipelineMemory(AnimaModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class TestAnimaModularPipelineGuider(AnimaModularPipelineTesterConfig, ModularGuiderTesterMixin):
+    pass
+
+
+class AnimaImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = AnimaModularPipeline
     pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
@@ -196,6 +223,8 @@ class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "pt",
         }
 
+
+class TestAnimaImg2ImgModularPipelineFast(AnimaImg2ImgModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_inference_basic(self):
         pipe = self.get_pipeline()
         inputs = self.get_dummy_inputs()
@@ -233,3 +262,15 @@ class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
+
+
+class TestAnimaImg2ImgModularPipelineLoading(AnimaImg2ImgModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestAnimaImg2ImgModularPipelineWorkflow(AnimaImg2ImgModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestAnimaImg2ImgModularPipelineMemory(AnimaImg2ImgModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

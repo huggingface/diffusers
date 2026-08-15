@@ -22,19 +22,88 @@ from diffusers.modular_pipelines import LTX2AutoBlocks, LTX25AutoBlocks, LTX25Mo
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 LTX25_REPO_ID = "hf-internal-testing/tiny-ltx2-5-modular-pipe"
 
+LTX25_WORKFLOWS = {
+    "text2video": [
+        ("text_encoder.text_encoder", "LTX2TextEncoderStep"),
+        ("text_encoder.connectors", "LTX2TextConnectorStep"),
+        ("duration", "LTX2DurationStep"),
+        ("denoise.input", "LTX2TextInputStep"),
+        ("denoise.set_timesteps", "LTX2SetTimestepsStep"),
+        ("denoise.prepare_latents", "LTX2PrepareLatentsStep"),
+        ("denoise.prepare_audio_latents", "LTX2PrepareAudioLatentsStep"),
+        ("denoise.prepare_coords", "LTX2PrepareCoordsStep"),
+        ("denoise.denoise", "LTX2DenoiseStep"),
+        ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
+        ("decode.audio_decode", "LTX2AudioDecoderStep"),
+    ],
+    "image2video": [
+        ("text_encoder.text_encoder", "LTX2TextEncoderStep"),
+        ("text_encoder.connectors", "LTX2TextConnectorStep"),
+        ("duration", "LTX2DurationStep"),
+        ("vae_encoder", "LTX2VaeEncoderStep"),
+        ("denoise.input", "LTX2TextInputStep"),
+        ("denoise.set_timesteps", "LTX2SetTimestepsStep"),
+        ("denoise.prepare_latents", "LTX2PrepareLatentsStep"),
+        ("denoise.prepare_i2v_latents", "LTX2Image2VideoPrepareLatentsStep"),
+        ("denoise.prepare_audio_latents", "LTX2PrepareAudioLatentsStep"),
+        ("denoise.prepare_coords", "LTX2PrepareCoordsStep"),
+        ("denoise.denoise", "LTX2Image2VideoDenoiseStep"),
+        ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
+        ("decode.audio_decode", "LTX2AudioDecoderStep"),
+    ],
+    "condition": [
+        ("text_encoder.text_encoder", "LTX2TextEncoderStep"),
+        ("text_encoder.connectors", "LTX2TextConnectorStep"),
+        ("duration", "LTX2DurationStep"),
+        ("condition_encoder", "LTX2ConditionEncoderStep"),
+        ("denoise.input", "LTX2TextInputStep"),
+        ("denoise.prepare_latents", "LTX2ConditionPrepareLatentsStep"),
+        ("denoise.set_timesteps", "LTX2ConditionSetTimestepsStep"),
+        ("denoise.prepare_audio_latents", "LTX2ConditionPrepareAudioLatentsStep"),
+        ("denoise.prepare_coords", "LTX2ConditionPrepareCoordsStep"),
+        ("denoise.denoise", "LTX2ConditionDenoiseStep"),
+        ("decode.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
+        ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
+        ("decode.audio_decode", "LTX2AudioDecoderStep"),
+    ],
+    "in_context": [
+        ("text_encoder.text_encoder", "LTX2TextEncoderStep"),
+        ("text_encoder.connectors", "LTX2TextConnectorStep"),
+        ("condition_encoder", "LTX2ConditionEncoderStep"),
+        ("reference_encoder", "LTX2ReferenceEncoderStep"),
+        ("denoise.input", "LTX2TextInputStep"),
+        ("denoise.prepare_latents", "LTX2InContextPrepareLatentsStep"),
+        ("denoise.set_timesteps", "LTX2ConditionSetTimestepsStep"),
+        ("denoise.prepare_audio_latents", "LTX2ConditionPrepareAudioLatentsStep"),
+        ("denoise.prepare_coords", "LTX2ConditionPrepareCoordsStep"),
+        ("denoise.denoise", "LTX2ConditionDenoiseStep"),
+        ("decode.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
+        ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
+        ("decode.audio_decode", "LTX2AudioDecoderStep"),
+    ],
+}
 
-class LTX25ModularTests(ModularPipelineTesterMixin):
+
+class LTX25ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
+    """Shared configuration for every LTX-2.5 workflow; a variant config adds its own `params` and dummy inputs."""
+
     pipeline_class = LTX25ModularPipeline
     pipeline_blocks_class = LTX25AutoBlocks
     pretrained_model_name_or_path = LTX25_REPO_ID
-
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    expected_workflow_blocks = LTX25_WORKFLOWS
     output_name = "videos"
 
     def get_dummy_inputs(self, seed=0):
@@ -51,6 +120,10 @@ class LTX25ModularTests(ModularPipelineTesterMixin):
             "output_type": "pt",
         }
 
+
+class LTX25ModularPipelineFastTesterMixin(ModularPipelineTesterMixin):
+    """`ModularPipelineTesterMixin` with the two adjustments every LTX-2.5 workflow needs."""
+
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
@@ -59,24 +132,13 @@ class LTX25ModularTests(ModularPipelineTesterMixin):
         super().test_inference_batch_single_identical(expected_max_diff=1e-3)
 
 
-class TestLTX25ModularPipelineFast(LTX25ModularTests):
+class LTX25Text2VideoModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
     params = frozenset(["prompt", "height", "width", "num_frames"])
-    expected_workflow_blocks = {
-        "text2video": [
-            ("text_encoder.text_encoder", "LTX2TextEncoderStep"),
-            ("text_encoder.connectors", "LTX2TextConnectorStep"),
-            ("duration", "LTX2DurationStep"),
-            ("denoise.input", "LTX2TextInputStep"),
-            ("denoise.set_timesteps", "LTX2SetTimestepsStep"),
-            ("denoise.prepare_latents", "LTX2PrepareLatentsStep"),
-            ("denoise.prepare_audio_latents", "LTX2PrepareAudioLatentsStep"),
-            ("denoise.prepare_coords", "LTX2PrepareCoordsStep"),
-            ("denoise.denoise", "LTX2DenoiseStep"),
-            ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
-            ("decode.audio_decode", "LTX2AudioDecoderStep"),
-        ],
-    }
 
+
+class TestLTX25Text2VideoModularPipelineFast(
+    LTX25Text2VideoModularPipelineTesterConfig, LTX25ModularPipelineFastTesterMixin
+):
     def test_diffusion_decoder_output(self):
         pipe = self.get_pipeline().to("cpu")
 
@@ -121,25 +183,21 @@ class TestLTX25ModularPipelineFast(LTX25ModularTests):
         assert 0 < num_frames <= round(2.0 * inputs["frame_rate"])
 
 
-class TestLTX25ModularImage2VideoPipelineFast(LTX25ModularTests):
+class TestLTX25Text2VideoModularPipelineLoading(LTX25Text2VideoModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestLTX25Text2VideoModularPipelineMemory(LTX25Text2VideoModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+# The four workflows share `LTX25AutoBlocks` and the same repo, so one workflow test class covers all of them.
+class TestLTX25ModularPipelineWorkflow(LTX25Text2VideoModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class LTX25Image2VideoModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
     params = frozenset(["prompt", "image", "height", "width", "num_frames"])
-    expected_workflow_blocks = {
-        "image2video": [
-            ("text_encoder.text_encoder", "LTX2TextEncoderStep"),
-            ("text_encoder.connectors", "LTX2TextConnectorStep"),
-            ("duration", "LTX2DurationStep"),
-            ("vae_encoder", "LTX2VaeEncoderStep"),
-            ("denoise.input", "LTX2TextInputStep"),
-            ("denoise.set_timesteps", "LTX2SetTimestepsStep"),
-            ("denoise.prepare_latents", "LTX2PrepareLatentsStep"),
-            ("denoise.prepare_i2v_latents", "LTX2Image2VideoPrepareLatentsStep"),
-            ("denoise.prepare_audio_latents", "LTX2PrepareAudioLatentsStep"),
-            ("denoise.prepare_coords", "LTX2PrepareCoordsStep"),
-            ("denoise.denoise", "LTX2Image2VideoDenoiseStep"),
-            ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
-            ("decode.audio_decode", "LTX2AudioDecoderStep"),
-        ],
-    }
 
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
@@ -151,25 +209,24 @@ class TestLTX25ModularImage2VideoPipelineFast(LTX25ModularTests):
         return inputs
 
 
-class TestLTX25ModularConditionPipelineFast(LTX25ModularTests):
+class TestLTX25Image2VideoModularPipelineFast(
+    LTX25Image2VideoModularPipelineTesterConfig, LTX25ModularPipelineFastTesterMixin
+):
+    pass
+
+
+class TestLTX25Image2VideoModularPipelineLoading(
+    LTX25Image2VideoModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
+    pass
+
+
+class TestLTX25Image2VideoModularPipelineMemory(LTX25Image2VideoModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class LTX25ConditionModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
     params = frozenset(["prompt", "conditions", "height", "width", "num_frames"])
-    expected_workflow_blocks = {
-        "condition": [
-            ("text_encoder.text_encoder", "LTX2TextEncoderStep"),
-            ("text_encoder.connectors", "LTX2TextConnectorStep"),
-            ("duration", "LTX2DurationStep"),
-            ("condition_encoder", "LTX2ConditionEncoderStep"),
-            ("denoise.input", "LTX2TextInputStep"),
-            ("denoise.prepare_latents", "LTX2ConditionPrepareLatentsStep"),
-            ("denoise.set_timesteps", "LTX2ConditionSetTimestepsStep"),
-            ("denoise.prepare_audio_latents", "LTX2ConditionPrepareAudioLatentsStep"),
-            ("denoise.prepare_coords", "LTX2ConditionPrepareCoordsStep"),
-            ("denoise.denoise", "LTX2ConditionDenoiseStep"),
-            ("decode.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
-            ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
-            ("decode.audio_decode", "LTX2AudioDecoderStep"),
-        ],
-    }
 
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
@@ -179,28 +236,39 @@ class TestLTX25ModularConditionPipelineFast(LTX25ModularTests):
         return inputs
 
 
-class TestLTX25ModularInContextPipelineFast(LTX25ModularTests):
+class TestLTX25ConditionModularPipelineFast(
+    LTX25ConditionModularPipelineTesterConfig, LTX25ModularPipelineFastTesterMixin
+):
+    pass
+
+
+class TestLTX25ConditionModularPipelineLoading(LTX25ConditionModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestLTX25ConditionModularPipelineMemory(LTX25ConditionModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class LTX25InContextModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
     params = frozenset(["prompt", "reference_conditions", "height", "width", "num_frames"])
-    expected_workflow_blocks = {
-        "in_context": [
-            ("text_encoder.text_encoder", "LTX2TextEncoderStep"),
-            ("text_encoder.connectors", "LTX2TextConnectorStep"),
-            ("condition_encoder", "LTX2ConditionEncoderStep"),
-            ("reference_encoder", "LTX2ReferenceEncoderStep"),
-            ("denoise.input", "LTX2TextInputStep"),
-            ("denoise.prepare_latents", "LTX2InContextPrepareLatentsStep"),
-            ("denoise.set_timesteps", "LTX2ConditionSetTimestepsStep"),
-            ("denoise.prepare_audio_latents", "LTX2ConditionPrepareAudioLatentsStep"),
-            ("denoise.prepare_coords", "LTX2ConditionPrepareCoordsStep"),
-            ("denoise.denoise", "LTX2ConditionDenoiseStep"),
-            ("decode.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
-            ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
-            ("decode.audio_decode", "LTX2AudioDecoderStep"),
-        ],
-    }
 
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
         video = torch.rand((1, 5, 3, 32, 32), generator=torch.Generator("cpu").manual_seed(seed))
         inputs["reference_conditions"] = LTX2ReferenceCondition(frames=video, strength=1.0)
         return inputs
+
+
+class TestLTX25InContextModularPipelineFast(
+    LTX25InContextModularPipelineTesterConfig, LTX25ModularPipelineFastTesterMixin
+):
+    pass
+
+
+class TestLTX25InContextModularPipelineLoading(LTX25InContextModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestLTX25InContextModularPipelineMemory(LTX25InContextModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
