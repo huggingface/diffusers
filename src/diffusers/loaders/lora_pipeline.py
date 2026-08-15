@@ -6750,7 +6750,9 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
 
     DiffSynth-Studio LoRAs (e.g.
     [DiffSynth-Studio/MiniMax-H3-LoRA-LineartAnime](https://huggingface.co/DiffSynth-Studio/MiniMax-H3-LoRA-LineartAnime))
-    are trained against the raw checkpoint's per-head-interleaved fused QKV and are de-interleaved on conversion.
+    are trained against the raw checkpoint's per-head-interleaved fused QKV and are de-interleaved on conversion. Their
+    fp32 factors make the unfused LoRA path compute in fp32; `.to(torch.bfloat16)` on the model after loading restores
+    the bf16 memory budget.
 
     LoRAs trained against a pruned checkpoint (the `*_pruned_*` files in
     [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3);
