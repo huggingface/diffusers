@@ -219,13 +219,13 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             eos_token_id (`int`, *optional*):
                 EOS token ID for early stopping. Falls back to the processor's tokenizer.
             stability_threshold (`int`, defaults to `1`):
-                Number of consecutive steps the argmax prediction must be unchanged for a block to count as stable.
-                Only used when `confidence_threshold` is set.
+                Number of consecutive steps an example's argmax prediction must remain unchanged for that example to
+                count as stable. Only used when `confidence_threshold` is set.
             confidence_threshold (`float`, *optional*, defaults to `0.005`):
-                Leave a block's denoising loop early once every example is stable (see `stability_threshold`) and the
-                mean per-token entropy of the scheduler-shaped prediction logits is below this value. Speeds up
-                generation at matched quality; the default matches the released checkpoint. Set to `None` to always run
-                all `num_inference_steps`.
+                Freeze each example once it is stable (see `stability_threshold`) and the mean per-token entropy of its
+                scheduler-shaped prediction logits is below this value. The block's denoising loop ends once every
+                example is frozen. Speeds up generation at matched quality; the default matches the released
+                checkpoint. Set to `None` to always run all `num_inference_steps`.
             generator (`torch.Generator`, *optional*):
                 RNG for sampling.
             output_type (`str`, defaults to `"text"`):
@@ -384,9 +384,6 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 # Self-condition on the logits the scheduler sampled from: temperature-shaped for the reference
                 # EntropyBound sampler, the raw denoiser logits for the others.
                 pred_logits = scheduler_output.pred_logits
-                if finished_denoising.any():
-                    canvas = torch.where(finished_denoising[:, None], argmax_canvas, canvas)
-                    pred_logits = torch.where(finished_denoising[:, None, None], self_conditioning_logits, pred_logits)
                 self_conditioning_logits = pred_logits
 
                 # Predictor-corrector (https://huggingface.co/papers/2605.22765): a scheduler exposing `corrector_steps`
