@@ -195,9 +195,11 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         assert not torch.allclose(generation_before, generation_after)
 
     def test_cosmos3_edge_transformer_runs_action_workflow(self):
-        transformer = self.model_class(
-            **self.get_init_dict(), action_dim=3, action_gen=True, num_embodiment_domains=2
-        ).eval()
+        transformer = (
+            self.model_class(**self.get_init_dict(), action_dim=3, action_gen=True, num_embodiment_domains=2)
+            .to(torch_device)
+            .eval()
+        )
         inputs = self.get_dummy_inputs()
         inputs["position_ids"] = torch.zeros((3, 4), dtype=torch.long, device=torch_device)
         inputs["sequence_length"] = 4
