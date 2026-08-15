@@ -2406,6 +2406,39 @@ def _convert_non_diffusers_anima_lora_to_diffusers(state_dict):
 
         converted_state_dict[new_key] = value
 
+    for down_key_suffix, up_key_suffix in (
+        (".lora_down.weight", ".lora_up.weight"),
+        (".lora_A.weight", ".lora_B.weight"),
+    ):
+        all_keys = list(converted_state_dict.keys())
+        for key in all_keys:
+            if not key.endswith(down_key_suffix) or key not in converted_state_dict:
+                continue
+
+            up_key = key[: -len(down_key_suffix)] + up_key_suffix
+            alpha_key = key[: -len(down_key_suffix)] + ".alpha"
+            if up_key not in converted_state_dict:
+                continue
+
+            down_weight = converted_state_dict.pop(key)
+            up_weight = converted_state_dict.pop(up_key)
+            alpha = converted_state_dict.pop(alpha_key, None)
+
+            if alpha is None:
+                scale_down, scale_up = 1.0, 1.0
+            else:
+                scale = alpha.item() / down_weight.shape[0]
+                scale_down, scale_up = scale, 1.0
+                while scale_down * 2 < scale_up:
+                    scale_down *= 2
+                    scale_up /= 2
+
+            converted_down_key = key[: -len(down_key_suffix)] + ".lora_A.weight"
+            converted_up_key = key[: -len(down_key_suffix)] + ".lora_B.weight"
+            converted_state_dict[converted_down_key] = down_weight * scale_down
+            converted_state_dict[converted_up_key] = up_weight * scale_up
+
+    converted_state_dict = {k: v for k, v in converted_state_dict.items() if not k.endswith(".alpha")}
     return converted_state_dict
 
 
