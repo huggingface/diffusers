@@ -18,6 +18,9 @@ Loads `Wan-AI/Wan2.1-T2V-1.3B-Diffusers`, then overlays the released
 `context_k1` row from `Echo-Team/Echo-Memory` after remapping original
 DiffSynth / Wan keys onto the Diffusers transformer.
 
+This is a community overlay, not a new official Wan checkpoint. Extra
+action-MLP / SSM slots stay in the Echo-Memory research stack.
+
 Paper: https://arxiv.org/abs/2606.09803
 Code: https://github.com/Echo-Team-Joy-Future-Academy-JD/Echo-Memory
 """
@@ -29,7 +32,10 @@ from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
 
 from diffusers import WanPipeline
+from diffusers.utils import logging
 
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 DEFAULT_BASE_MODEL = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
 DEFAULT_REPO_ID = "Echo-Team/Echo-Memory"
@@ -46,6 +52,7 @@ SKIP_SUBSTRINGS = (
 )
 
 # Same mapping as `scripts/convert_wan_to_diffusers.py` for Wan 2.1 T2V.
+# Duplicated here because that script is not an importable package.
 TRANSFORMER_KEYS_RENAME_DICT = {
     "time_embedding.0": "condition_embedder.time_embedder.linear_1",
     "time_embedding.2": "condition_embedder.time_embedder.linear_2",
@@ -111,7 +118,11 @@ def convert_echo_memory_transformer_state_dict(
 
 
 class EchoMemoryPipeline(WanPipeline):
-    """Wan 2.1 T2V pipeline with an Echo-Memory `context_k1` overlay."""
+    """Wan 2.1 T2V pipeline with an Echo-Memory `context_k1` overlay.
+
+    `load_echo_memory_weights` replaces `self.transformer` parameters in place.
+    Call it once after `from_pretrained`, before generation.
+    """
 
     def load_echo_memory_weights(
         self,
@@ -121,13 +132,21 @@ class EchoMemoryPipeline(WanPipeline):
         strict: bool = False,
     ):
         """Download one Echo-Memory row and overlay it on `self.transformer`."""
+        if getattr(self, "transformer", None) is None:
+            raise ValueError("pipeline.transformer is empty; load Wan 2.1 1.3B before overlaying Echo-Memory.")
+
         ckpt_path = local_path or hf_hub_download(repo_id=repo_id, filename=filename)
         raw = load_file(ckpt_path)
         converted, skipped = convert_echo_memory_transformer_state_dict(raw)
         missing, unexpected = self.transformer.load_state_dict(converted, strict=strict)
-        print(
-            f"[Echo-Memory] overlaid {len(converted)}/{len(raw)} transformer keys from {ckpt_path} "
-            f"(skipped={len(skipped)}, missing={len(missing)}, unexpected={len(unexpected)})"
+        logger.info(
+            "Overlaid %s/%s transformer keys from %s (skipped=%s, missing=%s, unexpected=%s)",
+            len(converted),
+            len(raw),
+            ckpt_path,
+            len(skipped),
+            len(missing),
+            len(unexpected),
         )
         return missing, unexpected, skipped
 
