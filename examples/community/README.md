@@ -89,6 +89,7 @@ PIXART-α Controlnet pipeline | Implementation of the controlnet model for pixar
 | Stable Diffusion 3 InstructPix2Pix Pipeline | Implementation of Stable Diffusion 3 InstructPix2Pix Pipeline | [Stable Diffusion 3 InstructPix2Pix Pipeline](#stable-diffusion-3-instructpix2pix-pipeline) | [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/BleachNick/SD3_UltraEdit_freeform) [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/CaptainZZZ/sd3-instructpix2pix) | [Jiayu Zhang](https://github.com/xduzhangjiayu) and [Haozhe Zhao](https://github.com/HaozheZhao)|
 | Flux Kontext multiple images | A modified version of the `FluxKontextPipeline` that supports calling Flux Kontext with multiple reference images.| [Flux Kontext multiple input Pipeline](#flux-kontext-multiple-images) | - |  [Net-Mist](https://github.com/Net-Mist) |
 | Flux Fill ControlNet Pipeline | A modified version of the `FluxFillPipeline` and `FluxControlNetInpaintPipeline` that supports Controlnet with Flux Fill model.| [Flux Fill ControlNet Pipeline](#Flux-Fill-ControlNet-Pipeline) | - |  [pratim4dasude](https://github.com/pratim4dasude) |
+| Flux HRDiT | Training-free high-resolution (up to 4096×4096) text-to-image on off-the-shelf FLUX.1-dev via NTK-aware RoPE scaling, Spatial Position Alignment, and structure-guided progressive generation. Adapted from [HRDiT](https://huggingface.co/papers/2608.07003). | [Flux HRDiT](#flux-hrdit) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1AU6QNOGDMCPpGdocVyIyKpXXGt3hoWdo?usp=sharing) | [Terry Rodriguez](https://github.com/smellslikeml) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -5629,3 +5630,25 @@ from datetime import datetime
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 result.images[0].save(f"flux_fill_controlnet_inpaint_depth{timestamp}.jpg")
 ```
+
+## Flux HRDiT
+
+Training-free high-resolution (up to 4096x4096) text-to-image generation with off-the-shelf Flux models, adapted from [HRDiT](https://huggingface.co/papers/2608.07003) ([official implementation](https://github.com/zylwithxy/HRDiT)). No fine-tuning and no new weights. On top of the stock `FluxPipeline` denoise loop it adds, per upscale stage: **NTK-aware RoPE scaling** (the RoPE base is scaled per stage so out-of-range high-resolution positions fall back into the trained band — the primary high-res mechanism); **Spatial Position Alignment (SPA)** on the leading steps (position ids monotonically coarsened into the trained window and averaged over sliding bundle variants inside attention); and a **structure-guided progressive 1024 -> 2048 -> 4096 ladder** (each stage decodes, upscales and re-encodes the previous latent as a structural prior, then injects its low-frequency band each step to prevent high-resolution drift). The default arguments reproduce the reference configuration.
+
+```py
+import torch
+from diffusers import FluxPipeline
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16, custom_pipeline="pipeline_flux_hrdit"
+).to("cuda")
+
+image = pipe(
+    "a photo of a mountain lake at dawn",
+    height=4096,
+    width=4096,
+).images[0]
+image.save("hrdit_4096.png")
+```
+
+Key arguments (all optional, defaulting to the reference configuration): `ntk_factor` (per-stage RoPE-base multiplier, default `[4.0, 10.0]`), `spa_steps` (leading SPA steps per stage, default `[3, 0]`), `group_num` (SPA bundle granularity, default `80`), `alphas`/`betas` (structure-guidance weights, default `[1.0, 0.25]`/`[0.5, 0.5]`), and `guidance_scale_highres` (default `[4.5, 6.0]`). A 4096x4096 generation runs in ~2 min at ~26 GB peak on an A100-80GB.
