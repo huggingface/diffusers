@@ -21,13 +21,28 @@ from diffusers import (
     MiniMaxMusic3Blocks,
     MiniMaxMusic3ConditionEncoder,
     MiniMaxMusic3ModularPipeline,
+    ModularPipeline,
 )
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 enable_full_determinism()
+
+
+_SAMPLING_SKIP = (
+    "MiniMax Music 3's autoregressive stage samples discrete audio tokens; any numeric perturbation "
+    "(dtype, offload-induced kernel changes) legitimately flips sampled tokens, so value-equality "
+    "comparisons cannot hold. Shape and determinism-at-fixed-seed are covered by the other tests."
+)
+_UNBATCHED_SKIP = "MiniMax Music 3 generates a single waveform per call; `prompt` and `lyrics` are single strings."
 
 
 class MiniMaxMusic3ConditionEncoderFastTests(unittest.TestCase):
@@ -50,41 +65,7 @@ class MiniMaxMusic3ConditionEncoderFastTests(unittest.TestCase):
         self.assertEqual(output.shape, (1, expected_length, 16))
 
 
-class TestMiniMaxMusic3ModularPipelineFast(ModularPipelineTesterMixin):
-    _SAMPLING_SKIP = (
-        "MiniMax Music 3's autoregressive stage samples discrete audio tokens; any numeric perturbation "
-        "(dtype, offload-induced kernel changes) legitimately flips sampled tokens, so value-equality "
-        "comparisons cannot hold. Shape and determinism-at-fixed-seed are covered by the other tests."
-    )
-
-    def test_float16_inference(self):
-        pytest.skip(self._SAMPLING_SKIP)
-
-    def test_components_auto_cpu_offload_inference_consistent(self):
-        pytest.skip(self._SAMPLING_SKIP)
-
-    def test_unload_components_auto_cpu_offload(self):
-        pytest.skip(self._SAMPLING_SKIP)
-
-    def test_num_images_per_prompt(self):
-        pytest.skip("The pipeline generates a single waveform per call; there is no num_images_per_prompt input.")
-
-    def test_save_from_pretrained(self, tmp_path):
-        # the common implementation indexes 4-D image outputs; compare the audio waveform directly
-        pipe = self.get_pipeline().to(torch_device)
-        pipe.save_pretrained(str(tmp_path))
-        from diffusers import ModularPipeline
-
-        reloaded = ModularPipeline.from_pretrained(str(tmp_path))
-        reloaded.load_components()
-        reloaded.to(torch_device)
-        inputs = self.get_dummy_inputs()
-        audio = pipe(**inputs, output="audios")
-        inputs = self.get_dummy_inputs()
-        audio_reloaded = reloaded(**inputs, output="audios")
-        assert audio.shape == audio_reloaded.shape
-        assert torch.allclose(audio, audio_reloaded, atol=1e-4)
-
+class MiniMaxMusic3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = MiniMaxMusic3ModularPipeline
     pipeline_blocks_class = MiniMaxMusic3Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-music3-modular-pipe"
@@ -126,17 +107,59 @@ class TestMiniMaxMusic3ModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "pt",
         }
 
-    def test_inference_batch_consistent(self):
-        pytest.skip("MiniMax Music 3 generates a single waveform per call; `prompt` and `lyrics` are single strings.")
 
+class TestMiniMaxMusic3ModularPipelineFast(MiniMaxMusic3ModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @pytest.mark.skip(reason=_SAMPLING_SKIP)
+    def test_float16_inference(self):
+        pass
+
+    @pytest.mark.skip(reason="The pipeline generates a single waveform per call; there is no num_images_per_prompt.")
+    def test_num_images_per_prompt(self):
+        pass
+
+    @pytest.mark.skip(reason=_UNBATCHED_SKIP)
+    def test_inference_batch_consistent(self):
+        pass
+
+    @pytest.mark.skip(reason=_UNBATCHED_SKIP)
     def test_inference_batch_single_identical(self):
-        pytest.skip("MiniMax Music 3 generates a single waveform per call; `prompt` and `lyrics` are single strings.")
+        pass
 
     def test_output_is_stereo_waveform(self):
         pipe = self.get_pipeline()
 
-        audio = pipe(**self.get_dummy_inputs(), output="audios")
+        audio = pipe(**self.get_dummy_inputs(), output=self.output_name)
 
         assert audio.shape[0] == 1
         assert audio.shape[1] == 2
         assert audio.abs().max() <= 1.0
+
+
+class TestMiniMaxMusic3ModularPipelineLoading(MiniMaxMusic3ModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    def test_save_from_pretrained(self, tmp_path, base_pipe_output):
+        # the common implementation indexes 4-D image outputs; compare the audio waveform directly
+        base_pipe = self.get_pipeline().to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+
+        pipe = ModularPipeline.from_pretrained(str(tmp_path))
+        pipe.load_components(dtype=torch.float32)
+        pipe.to(torch_device)
+
+        audio = pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert audio.shape == base_pipe_output.shape
+        assert torch.allclose(audio, base_pipe_output, atol=1e-4)
+
+
+class TestMiniMaxMusic3ModularPipelineWorkflow(MiniMaxMusic3ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestMiniMaxMusic3ModularPipelineMemory(MiniMaxMusic3ModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    @pytest.mark.skip(reason=_SAMPLING_SKIP)
+    def test_components_auto_cpu_offload_inference_consistent(self):
+        pass
+
+    @pytest.mark.skip(reason=_SAMPLING_SKIP)
+    def test_unload_components_auto_cpu_offload(self):
+        pass
