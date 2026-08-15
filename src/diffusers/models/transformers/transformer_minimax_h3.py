@@ -46,13 +46,13 @@ class MiniMaxH3TransformerOutput(BaseOutput):
         sample (`torch.Tensor` of shape `(batch_size, num_video_tokens, in_channels * prod(patch_size))`):
             The video velocity prediction for the rows addressed by `video_indices`, in the same order. Conditioning
             rows are returned unmasked — masking them out before the scheduler step is the caller's job.
-        audio_sample (`torch.Tensor` of shape `(batch_size, num_audio_tokens, audio_in_channels)`):
-            The audio velocity prediction for the rows addressed by `audio_indices`, in the same order.
+        audio_sample (`torch.Tensor` of shape `(batch_size, num_audio_tokens, audio_in_channels)`, defaults to `None`):
+            The audio velocity prediction for the rows addressed by `audio_indices`, in the same order. `forward`
+            always populates it; it only defaults to `None` so that the output can be rebuilt from a plain dict of its
+            fields, which is how the accelerate offload hooks move a `BaseOutput` back to the input device.
     """
 
     sample: torch.Tensor
-    # `forward` always populates `audio_sample`; the default is what lets the output be rebuilt from a plain dict of
-    # its fields, which is how the accelerate offload hooks move a `BaseOutput` back to the input device.
     audio_sample: torch.Tensor | None = None
 
 
