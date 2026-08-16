@@ -1030,6 +1030,117 @@ encode_video(
 
 You can see the supported workflows in the docs for each blockset (e.g. [`LTX2AutoBlocks`], [`LTX25AutoBlocks`]).
 
+### Diffusion Fidelity Rendering (DFR) for LTX-2.5
+
+`LTX2DFRPipeline` trades wall-clock time for detail fidelity. It generates at a fraction of the requested resolution *plus* extra single-pixel-frame **keyframe slots**, then re-renders at the full resolution seeded from both. A slot costs a full latent frame of tokens to buy one pixel frame, which relaxes the effective temporal compression at that position — so the surrounding video is conditioned on genuinely new frames instead of interpolated ones. Slot positions come from a segment grid aligned to the VAE's temporal border (24 or 32 pixel frames, whichever pads the request less); the canvas is padded to a whole number of segments internally and trimmed back before decoding.
+
+This needs a transformer whose config sets `use_keyframes_abs_pos_embedding`, which marks single-pixel-frame latents with a learned embedding. LTX-2.5 checkpoints ship it; the pipeline raises on anything older rather than spending the token budget on tokens the model cannot interpret.
+
+Budget for the extra tokens: each slot adds one latent frame's worth, so stage 2 runs a longer sequence than the equivalent two-stage distilled pass — +31% at 1024x1536 / 121 frames (24576 -> 32256 tokens, 5 slots on a 24-frame segment grid). Peak activation memory scales with that, so a resolution that just fits the plain distilled recipe may need `enable_sequential_cpu_offload`, `vae.enable_tiling()`, or a smaller canvas under DFR.
+
+The full recipe below is the one worth starting from: 1088x1920 image-to-video, one x2 temporal refine round,
+and the x2 spatial detailing IC-LoRA on stage 2. The individual knobs are explained after it.
+
+```py
+import torch
+from diffusers import LTX2DFRPipeline
+from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel
+from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
+from diffusers.utils import encode_video, load_image
+
+# The published `model_index.json` has no upsamplers. The spatial one is a subfolder of the repo; the x2 temporal
+# one is not published — convert it with `--temporal_latent_upsampler` (see "Temporal refinement" below).
+latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
+    "Lightricks/LTX-2.5-Diffusers", subfolder="latent_upsampler", torch_dtype=torch.bfloat16
+)
+temporal_latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
+    "path/to/converted/temporal_latent_upsampler", torch_dtype=torch.bfloat16
+)
+pipe = LTX2DFRPipeline.from_pretrained(
+    "Lightricks/LTX-2.5-Diffusers",
+    latent_upsampler=latent_upsampler,
+    temporal_latent_upsampler=temporal_latent_upsampler,
+    torch_dtype=torch.bfloat16,
+)
+
+# Stage 2 attends to the stage-1 latent through this IC-LoRA. It is calibrated for strength 0.5.
+pipe.load_lora_weights("Lightricks/LTX-2.5-22b-IC-LoRA-Pixel-Spatial-Upscaler", adapter_name="detailing")
+pipe.set_adapters(["detailing"], weights=[0.5])
+pipe.enable_model_cpu_offload()
+
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
+frame_rate = 24.0
+video, audio = pipe(
+    prompt="A tabby cat stretching in a sunlit window, dust motes drifting in the light",
+    conditions=[LTX2VideoCondition(frames=image, index=0, strength=1.0)],
+    height=1088,
+    width=1920,
+    frame_rate=frame_rate,
+    # `num_frames` omitted: the `duration_head` predicts it from the prompt.
+    temporal_upscalings=1,
+    detailing_lora_adapter_name="detailing",
+    generator=torch.Generator(device="cuda").manual_seed(0),
+    output_type="np",
+    return_dict=False,
+)
+
+# One refine round doubles the playback rate.
+playback_fps = frame_rate * 2**1
+encode_video(
+    video[0],
+    fps=playback_fps,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_5_dfr.mp4",
+)
+```
+
+`height` and `width` are the *output* resolution and must be divisible by `2 ** spatial_upscalings` times the VAE's spatial compression ratio (64 for LTX-2.5 at the default `spatial_upscalings=1`, 128 at `spatial_upscalings=2`), since every stage below the output runs at a halved resolution. This is why a 4K run is **3840x2176**, not 3840x2160: UHD height has to be snapped up onto the 128 grid. 1080p is likewise 1920x1088, not 1920x1080. Each stage runs its own fixed distilled schedule (`stage_1_sigmas`, `stage_2_sigmas`), so there is no `num_inference_steps`; the distilled schedules are trained to be used without guidance, so there is no `negative_prompt` or `guidance_scale` either. The shipped audio is stage 1's — stage 2 and the temporal refine tiles still run an audio pass so the video branch has cross-modal attention; the waveform itself is not refined after stage 1.
+
+**Spatial detailing.** Load the 2x spatial detailing IC-LoRA under a named adapter and pass that name as `detailing_lora_adapter_name`. Stage 2 then runs with the adapter active *and* attends to the stage-1 half-resolution latent as an in-context reference; stage 1 and the temporal rounds run with it deactivated, and whatever adapters were active on entry are restored before the call returns.
+
+`detailing_reference_downscale_factor` (default `2`) scales the reference tokens' spatial coordinates into the target's coordinate space, and should match the LoRA's `reference_downscale_factor` metadata. The pipeline only activates and deactivates the adapter — its weight stays whatever you set, so give it the 0.5 it is calibrated for.
+
+**Temporal refinement.** `temporal_upscalings` (0-2) adds rounds that each double the frame rate: the canvas is temporally upsampled, split into `2 ** round` tiles that meet at shared keyframes, given fresh mid-segment slots, and densified with ancestral Euler. Each tile is handed the slice of the frozen stage-1 audio covering its own playback window, resampled to the tile's token count, so both sides of a seam densify against the same sound. Rounds need the optional `temporal_latent_upsampler` component, which is not part of the base repo — convert it with `--temporal_latent_upsampler` and pass it to `from_pretrained`, as in the example above.
+
+You always get `(num_frames - 1) * 2 ** temporal_upscalings + 1` frames back, and the returned video plays at `frame_rate * 2 ** temporal_upscalings`. Conditioning fps is 60 whenever playback is above 30, independently of muxing: RoPE time is `pixel_frame / fps`, so a 120 fps time base would halve every token's temporal span versus the trained distribution, and 48 fps would stretch it. Both lie that they are 60 and treat the decoded frames at the playback rate.
+
+**A third spatial stage.** `spatial_upscalings=2` starts the base canvas one more factor of two down and adds a detailing pass at the output resolution *after* the temporal rounds. A full-resolution forward pass over the refined canvas does not fit in one sequence, so the pass denoises the whole canvas in a single loop and tiles the *transformer call* inside it — two ways on each spatial axis and `2 ** temporal_upscalings` ways in time. Every Euler step therefore steps a canvas whose tiles have already agreed on their overlaps, and conditionings are attached once on the whole canvas and filtered per tile at the token level rather than cropped by hand.
+
+The two axes are seamed differently. Neither side of a spatial border holds a known answer, so those overlaps are blended with trapezoidal weights. The temporal tiles are cut instead, on the same keyframe seams the last refine round stitched on: both windows reproduce a shared keyframe there, so the later one drops its run-up rather than averaging it. The keyframes the rounds settled are handed to the epilogue as content — each is decoded on its own, stretched x2 with Lanczos in RGB, encoded again at the output resolution, and pinned fully clean — so nothing along a seam is generated twice. Since the epilogue is a detailing pass, pass `detailing_lora_adapter_name` with it:
+
+```py
+video, audio = pipe(
+    prompt=prompt,
+    height=1024,
+    width=1920,  # both divisible by 128 at spatial_upscalings=2
+    num_frames=121,
+    spatial_upscalings=2,
+    detailing_lora_adapter_name="detailing",
+    output_type="np",
+    return_dict=False,
+)
+```
+
+**Decoding with the diffusion decoder.** `LTX2DFRPipeline` decodes with its convolutional `vae`. For maximum detail fidelity, run with `output_type="latent"` and hand the latents to [`LTX2VideoDiffusionDecodePipeline`].
+
+```py
+from diffusers import LTX2VideoDiffusionDecodePipeline
+from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel
+
+video_latents, audio_latents = pipe(prompt=prompt, output_type="latent", return_dict=False)
+
+decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
+    "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder", dtype=torch.bfloat16
+)
+decode_pipe = LTX2VideoDiffusionDecodePipeline(
+    diffusion_decoder=decoder, scheduler=pipe.scheduler, vae=pipe.vae
+)
+decode_pipe.enable_model_cpu_offload()
+# `denormalize=False`: the `output_type="latent"` path already applied the latent statistics.
+video = decode_pipe(latents=video_latents, denormalize=False, output_type="np", return_dict=False)[0]
+```
+
 ## LTX2Pipeline
 
 [[autodoc]] LTX2Pipeline

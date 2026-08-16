@@ -28,6 +28,7 @@ else:
     _import_structure["latent_upsampler"] = ["LTX2LatentUpsamplerModel"]
     _import_structure["pipeline_ltx2"] = ["LTX2Pipeline"]
     _import_structure["pipeline_ltx2_condition"] = ["LTX2ConditionPipeline", "LTX2VideoCondition"]
+    _import_structure["pipeline_ltx2_dfr"] = ["LTX2DFRPipeline"]
     _import_structure["pipeline_ltx2_diffusion_decode"] = ["LTX2VideoDiffusionDecodePipeline"]
     _import_structure["pipeline_ltx2_hdr_lora"] = ["LTX2HDRPipeline", "LTX2HDRReferenceCondition"]
     _import_structure["pipeline_ltx2_ic_lora"] = ["LTX2InContextPipeline", "LTX2ReferenceCondition"]
@@ -49,6 +50,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .latent_upsampler import LTX2LatentUpsamplerModel
         from .pipeline_ltx2 import LTX2Pipeline
         from .pipeline_ltx2_condition import LTX2ConditionPipeline, LTX2VideoCondition
+        from .pipeline_ltx2_dfr import LTX2DFRPipeline
         from .pipeline_ltx2_diffusion_decode import LTX2VideoDiffusionDecodePipeline
         from .pipeline_ltx2_hdr_lora import LTX2HDRPipeline, LTX2HDRReferenceCondition
         from .pipeline_ltx2_ic_lora import LTX2InContextPipeline, LTX2ReferenceCondition

@@ -34,6 +34,10 @@ LTX2_5_IMAGE_CRF = 18
 # Reduced schedule for super-resolution stage 2 (subset of distilled values)
 STAGE_2_DISTILLED_SIGMA_VALUES = [0.909375, 0.725, 0.421875]
 
+# Schedule for the DFR pipeline's temporal refine rounds: the distilled schedule from its fifth sigma on. The rounds
+# densify an already-structured canvas, so they skip the near-1.0 head of the schedule.
+TEMPORAL_ROUND_DISTILLED_SIGMA_VALUES = DISTILLED_SIGMA_VALUES[4:]
+
 
 # Default negative prompt from
 # https://github.com/Lightricks/LTX-2/blob/ae855f8538843825f9015a419cf4ba5edaf5eec2/packages/ltx-pipelines/src/ltx_pipelines/utils/constants.py#L131-L143
