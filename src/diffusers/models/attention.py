@@ -122,6 +122,7 @@ class AttentionModuleMixin:
     _default_processor_cls = None
     _available_processors = []
     _supports_qkv_fusion = True
+
     fused_projections = False
 
     def set_processor(self, processor: AttentionProcessor) -> None:

@@ -30,7 +30,7 @@ from ..embeddings import FluxPosEmbed, PixArtAlphaTextProjection, Timesteps, get
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import CombinedTimestepLabelEmbeddings, FP32LayerNorm, RMSNorm
-from .transformer_flux import FluxAttention, FluxAttnProcessor
+from .flux import FluxAttention, FluxAttnProcessor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
