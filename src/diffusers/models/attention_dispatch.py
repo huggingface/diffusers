@@ -32,8 +32,6 @@ if torch.distributed.is_available():
 
 from ..utils import (
     get_logger,
-    is_aiter_available,
-    is_aiter_version,
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
@@ -57,7 +55,6 @@ if TYPE_CHECKING:
     from ._modeling_parallel import ParallelConfig
 
 _REQUIRED_FLASH_VERSION = "2.6.3"
-_REQUIRED_AITER_VERSION = "0.1.5"
 _REQUIRED_SAGE_VERSION = "2.1.1"
 _REQUIRED_FLEX_VERSION = "2.5.0"
 _REQUIRED_XLA_VERSION = "2.2"
@@ -67,7 +64,6 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 _CAN_USE_FLASH_ATTN = is_flash_attn_available() and is_flash_attn_version(">=", _REQUIRED_FLASH_VERSION)
 _CAN_USE_FLASH_ATTN_3 = is_flash_attn_3_available()
-_CAN_USE_AITER_ATTN = is_aiter_available() and is_aiter_version(">=", _REQUIRED_AITER_VERSION)
 _CAN_USE_SAGE_ATTN = is_sageattention_available() and is_sageattention_version(">=", _REQUIRED_SAGE_VERSION)
 _CAN_USE_FLEX_ATTN = is_torch_version(">=", _REQUIRED_FLEX_VERSION)
 _CAN_USE_NPU_ATTN = is_torch_npu_available()
@@ -111,16 +107,6 @@ if _CAN_USE_FLASH_ATTN_3:
 else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
-
-if _CAN_USE_AITER_ATTN:
-    try:
-        from aiter import flash_attn_func as aiter_flash_attn_func
-    except (ImportError, OSError, RuntimeError) as e:
-        logger.warning(f"aiter failed to import: {e}. Falling back to native attention.")
-        _CAN_USE_AITER_ATTN = False
-        aiter_flash_attn_func = None
-else:
-    aiter_flash_attn_func = None
 
 if _CAN_USE_SAGE_ATTN:
     try:
@@ -239,8 +225,8 @@ class AttentionBackendName(str, Enum):
     _FLASH_3_HUB = "_flash_3_hub"
     _FLASH_3_VARLEN_HUB = "_flash_3_varlen_hub"
 
-    # `aiter`
-    AITER = "aiter"
+    # `aiter` (via the `kernels-community/aiter-flash-attn-ck` Hub kernel)
+    AITER_FA2_HUB = "aiter_fa2_hub"
 
     # PyTorch native
     FLEX = "flex"
@@ -372,6 +358,11 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
         function_attr="flash_attn_func",
         version=0,
     ),
+    AttentionBackendName.AITER_FA2_HUB: _HubKernelConfig(
+        repo_id="kernels-community/aiter-flash-attn-ck",
+        function_attr="flash_attn_func",
+        version=1,
+    ),
 }
 
 
@@ -494,6 +485,12 @@ def _check_qkv_dtype_bf16_or_fp16(query: torch.Tensor, key: torch.Tensor, value:
         raise ValueError("Query, key, and value must be either bfloat16 or float16.")
 
 
+def _check_qkv_dtype_bf16(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, **kwargs) -> None:
+    _check_qkv_dtype_match(query, key, value)
+    if query.dtype != torch.bfloat16:
+        raise ValueError("Query, key, and value must be bfloat16.")
+
+
 def _check_shape(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -538,6 +535,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         AttentionBackendName._FLASH_3_VARLEN_HUB,
         AttentionBackendName.SAGE_HUB,
         AttentionBackendName.FLASH_4_HUB,
+        AttentionBackendName.AITER_FA2_HUB,
     ]:
         if not is_kernels_available():
             raise RuntimeError(
@@ -551,12 +549,6 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         if backend == AttentionBackendName.FLASH_4_HUB and not is_kernels_version(">=", "0.12.3"):
             raise RuntimeError(
                 f"Backend '{backend.value}' needs to be used with a `kernels` version of at least 0.12.3. Please update with `pip install -U kernels`."
-            )
-
-    elif backend == AttentionBackendName.AITER:
-        if not _CAN_USE_AITER_ATTN:
-            raise RuntimeError(
-                f"Aiter Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `aiter>={_REQUIRED_AITER_VERSION}`."
             )
 
     elif backend in [
@@ -3489,8 +3481,10 @@ def _flash_varlen_attention_3(
 
 
 @_AttentionBackendRegistry.register(
-    AttentionBackendName.AITER,
-    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    AttentionBackendName.AITER_FA2_HUB,
+    # The `kernels-community/aiter-flash-attn-ck` CK kernel only ships bf16 `mha_fwd` instances;
+    # fp16 raises a cryptic "invalid argument for fmha_fwd" from CK, so reject it up front.
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16, _check_shape],
 )
 def _aiter_flash_attention(
     query: torch.Tensor,
@@ -3506,31 +3500,20 @@ def _aiter_flash_attention(
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not supported for aiter attention")
 
-    if not return_lse and torch.is_grad_enabled():
-        # aiter requires return_lse=True by assertion when gradients are enabled.
-        out, lse, *_ = aiter_flash_attn_func(
-            q=query,
-            k=key,
-            v=value,
-            dropout_p=dropout_p,
-            softmax_scale=scale,
-            causal=is_causal,
-            return_lse=True,
-        )
-    else:
-        out = aiter_flash_attn_func(
-            q=query,
-            k=key,
-            v=value,
-            dropout_p=dropout_p,
-            softmax_scale=scale,
-            causal=is_causal,
-            return_lse=return_lse,
-        )
-        if return_lse:
-            out, lse, *_ = out
-
-    return (out, lse) if return_lse else out
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.AITER_FA2_HUB].kernel_fn
+    out = func(
+        q=query,
+        k=key,
+        v=value,
+        dropout_p=dropout_p,
+        softmax_scale=scale,
+        causal=is_causal,
+        return_lse=return_lse,
+    )
+    if return_lse:
+        out, lse, *_ = out
+        return out, lse
+    return out
 
 
 @_AttentionBackendRegistry.register(
@@ -3802,7 +3785,7 @@ def _native_flash_attention(
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
     if attn_mask is not None:
-        raise ValueError("`attn_mask` is not supported for aiter attention")
+        raise ValueError("`attn_mask` is not supported for native flash attention")
 
     lse = None
     if _parallel_config is None and not return_lse:

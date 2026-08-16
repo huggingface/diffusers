@@ -48,6 +48,7 @@ from .quantization import (
 )
 from .single_file import SingleFileTesterMixin
 from .training import TrainingTesterMixin
+from .utils import run_nondeterministic
 
 
 __all__ = [
@@ -94,6 +95,7 @@ __all__ = [
     "QuantoCompileTesterMixin",
     "QuantoConfigMixin",
     "QuantoTesterMixin",
+    "run_nondeterministic",
     "SDNQCompileTesterMixin",
     "SDNQConfigMixin",
     "SDNQTesterMixin",

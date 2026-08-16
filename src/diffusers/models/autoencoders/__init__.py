@@ -29,4 +29,5 @@ from .autoencoder_tiny import AutoencoderTiny
 from .autoencoder_vidtok import AutoencoderVidTok
 from .consistency_decoder_vae import ConsistencyDecoderVAE
 from .ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel
+from .minimax_music3_vocoder import MiniMaxMusic3Vocoder
 from .vq_model import VQModel

@@ -24,7 +24,7 @@ from diffusers import (
     QwenImageTransformer2DModel,
 )
 
-from ...testing_utils import assert_tensors_close, torch_device
+from ...testing_utils import assert_tensors_close, require_accelerator_memory, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
@@ -170,6 +170,15 @@ class TestQwenImageEditPipeline(QwenImageEditPipelineTesterConfig, PipelineTeste
             "VAE tiling should not affect the inference results."
         )
 
+    # The condition image is always resized to ~1 megapixel before it is encoded, so the VAE attention runs over
+    # 65k tokens no matter how small the dummy inputs are. On GPUs without bf16 SDPA support that attention falls
+    # back to the math backend, which materializes the full attention matrix (~16GB).
+    @require_accelerator_memory(24)
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        super().test_half_precision_inference_no_nan(dtype)
+
     @pytest.mark.xfail(condition=True, reason="Preconfigured embeddings need to be revisited.", strict=True)
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol, rtol)
@@ -200,4 +209,7 @@ class TestQwenImageEditPipeline(QwenImageEditPipelineTesterConfig, PipelineTeste
 
 
 class TestQwenImageEditPipelineMemory(QwenImageEditPipelineTesterConfig, MemoryTesterMixin):
-    pass
+    # Runs the pipeline in bf16, see the note on `test_half_precision_inference_no_nan` above.
+    @require_accelerator_memory(24)
+    def test_layerwise_casting_inference(self):
+        super().test_layerwise_casting_inference()

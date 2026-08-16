@@ -391,13 +391,13 @@ def _create_lora_config(
         raise TypeError("`LoraConfig` class could not be instantiated.") from e
 
 
-def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name):
+def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name: str) -> None:
     warn_msg = ""
     if incompatible_keys is not None:
         # Check only for unexpected keys.
         unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
         if unexpected_keys:
-            lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
+            lora_unexpected_keys = [k for k in unexpected_keys if ".lora_" in k]
             if lora_unexpected_keys:
                 warn_msg = (
                     f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
@@ -407,7 +407,7 @@ def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name):
         # Filter missing keys specific to the current adapter.
         missing_keys = getattr(incompatible_keys, "missing_keys", None)
         if missing_keys:
-            lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
+            lora_missing_keys = [k for k in missing_keys if ".lora_" in k and adapter_name in k]
             if lora_missing_keys:
                 warn_msg += (
                     f"Loading adapter weights from state_dict led to missing keys in the model:"
