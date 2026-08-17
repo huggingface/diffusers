@@ -132,6 +132,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
         ("stable-diffusion-3", _create_default_map_fn("StableDiffusion3ModularPipeline")),
         ("wan", _wan_map_fn),
+        ("wan-animate-2", _create_default_map_fn("WanAnimate2ModularPipeline")),
+        ("wan-animate-2-distilled", _create_default_map_fn("WanAnimate2DistilledModularPipeline")),
         ("wan-i2v", _wan_i2v_map_fn),
         ("flux", _create_default_map_fn("FluxModularPipeline")),
         ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),
@@ -153,6 +155,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("ltx2", _create_default_map_fn("LTX2ModularPipeline")),
         ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
         ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
+        ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
     ]
 )

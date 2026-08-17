@@ -34,9 +34,15 @@ Follow the style introduced in [#14113](https://github.com/huggingface/diffusers
 
 ### Modular pipelines
 
-- Location: `tests/modular_pipelines/<model>/test_modular_pipeline_<model>.py` (one test class per blockset / pipeline variant).
-- Subclass `ModularPipelineTesterMixin` (from `..test_modular_pipelines_common`) — it runs the pipeline end-to-end (call signature, batch consistency, float16, device placement) against a tiny checkpoint.
-- Set `pipeline_class`, `pipeline_blocks_class`, `pretrained_model_name_or_path`, `params` / `batch_params`, and implement `get_dummy_inputs(seed=0)`. Set `expected_workflow_blocks` to pin the block name → class ordering per workflow.
+- Location: `tests/modular_pipelines/<model>/test_modular_pipeline_<model>.py` (one config class + set of test classes per blockset / pipeline variant).
+- **Define one config class**, `<Pipeline>ModularPipelineTesterConfig`, subclassing `BaseModularPipelineTesterConfig` (from `..testing_utils`). Set `pipeline_class`, `pipeline_blocks_class`, `pretrained_model_name_or_path`, `params` / `batch_params`, and implement `get_dummy_inputs(seed=0)`. Set `expected_workflow_blocks` to pin the block name → class ordering per workflow. The config holds the whole testing contract and performs no assertions.
+- **Then one test class per concern**, each composing the config with a tester mixin from `..testing_utils`. Keep them separate — pytest reads class-level markers off the whole MRO, so folding a marked mixin (`@is_memory`, ...) into the same class as the others would tag every test in it:
+  - `ModularPipelineTesterMixin` — call signature, batch consistency, float16, device placement, NaN-free output. Put pipeline-specific tests as methods on this class.
+  - `ModularLoadingTesterMixin` — `save_pretrained`/`from_pretrained` round-trips, `modular_model_index.json` contents, `load_components`/`unload_components`.
+  - `ModularWorkflowTesterMixin` — everything driven by the blocks class's `_workflow_map`; skips itself when there is none.
+  - `ModularMemoryTesterMixin` — auto CPU offload, group offload, device memory reclaimed on unload.
+  - `ModularGuiderTesterMixin` — only for pipelines with a `guider` component.
+  - `ModularAutoOffloadTesterMixin` — opt-in, for pipelines with several offloadable model components; asserts on the offload *decisions* under simulated memory pressure.
 - `pretrained_model_name_or_path` is a tiny repo with real components (tiny transformer, real scheduler / VAE / tokenizer configs). Develop against a personal repo; tiny repos ultimately live under `hf-internal-testing/` — not merge-blocking, a maintainer moves it before or after merge.
 - **The tiny repo must mirror the real checkpoint's shape** — same index file type, same pipeline-level config keys, a scheduler configured like the real one. A fixture that doesn't look like the published repos tests a loading/config path no user will ever hit, while the path users *do* hit stays uncovered. If the model ships variants with different configs (base/distilled, different schedules), make one tiny repo and test class per variant — see the flux2 klein base/distilled split.
 - **Bespoke tests go on the tester class as methods**, not as module-level functions — the mixin is pytest-style, so fixtures (`tmp_path`, `pytest.raises`, parametrize) all work in methods.

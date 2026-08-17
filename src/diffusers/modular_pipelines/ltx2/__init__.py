@@ -27,8 +27,8 @@ else:
         "LTX2ConditionBlocks",
         "LTX2ImageToVideoBlocks",
         "LTX2InContextBlocks",
-        "LTX25AutoBlocks",
     ]
+    _import_structure["modular_blocks_ltx25"] = ["LTX25AutoBlocks"]
     _import_structure["modular_pipeline"] = ["LTX2ModularPipeline", "LTX25ModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -44,8 +44,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2ConditionBlocks,
             LTX2ImageToVideoBlocks,
             LTX2InContextBlocks,
-            LTX25AutoBlocks,
         )
+        from .modular_blocks_ltx25 import LTX25AutoBlocks
         from .modular_pipeline import LTX2ModularPipeline, LTX25ModularPipeline
 else:
     import sys
