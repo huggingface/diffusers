@@ -131,11 +131,7 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
             InputParam("decode_noise_scale", default=None),
             InputParam.template("generator"),
             InputParam.template("batch_size"),
-            InputParam.template("dtype", required=True),
-            # Only read on the deprecated path that still accepts packed `[B, S, C]` latents.
-            InputParam.template("height", default=512),
-            InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=161),
+            InputParam.template("dtype", required=True, default=None),
         ]
 
     @property
