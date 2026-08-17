@@ -297,7 +297,7 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             # `audio_num_frames`, `video_coords`, `audio_coords` arrive tagged `denoiser_input_fields` upstream and
             # are collected from the tagged dict (filtered against the transformer signature) in `__call__`.
             InputParam.template("denoiser_input_fields"),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps"),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
@@ -620,7 +620,7 @@ class LTX2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     def loop_inputs(self) -> list[InputParam]:
         return [
             InputParam("timesteps", type_hint=torch.Tensor, required=True),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps"),
         ]
 
     @torch.no_grad()

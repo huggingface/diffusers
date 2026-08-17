@@ -950,7 +950,7 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps"),
         ]
 
     @property
@@ -1221,7 +1221,7 @@ class Cosmos3TransferSetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [InputParam.template("num_inference_steps", required=True)]
+        return [InputParam.template("num_inference_steps")]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
