@@ -36,7 +36,7 @@ jobs:
       pipeline_test_matrix: ${{ steps.fetch_pipeline_matrix.outputs.pipeline_test_matrix }}
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
       - name: Install dependencies
@@ -55,7 +55,7 @@ jobs:
           echo "pipeline_test_matrix=$matrix" >> $GITHUB_OUTPUT
       - name: Pipeline Tests Artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: test-pipelines.json
           path: reports
@@ -75,7 +75,7 @@ jobs:
       options: --shm-size "16gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
       - name: NVIDIA-SMI
@@ -107,7 +107,7 @@ jobs:
           cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: pipeline_${{ matrix.module }}_test_reports
           path: reports
@@ -129,7 +129,7 @@ jobs:
         module: [models, schedulers, lora, others, single_file]
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 2
 
@@ -164,7 +164,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: torch_cuda_${{ matrix.module }}_test_reports
         path: reports
@@ -181,7 +181,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -222,7 +222,7 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: torch_minimum_version_cuda_test_reports
           path: reports
@@ -239,7 +239,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 2
 
@@ -266,7 +266,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: torch_compile_test_reports
         path: reports
@@ -283,7 +283,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 2
 
@@ -309,7 +309,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: torch_xformers_test_reports
         path: reports
@@ -326,7 +326,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 2
 
@@ -359,7 +359,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: examples_test_reports
         path: reports

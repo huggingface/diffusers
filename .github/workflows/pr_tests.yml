@@ -39,9 +39,9 @@ jobs:
   check_code_quality:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -59,9 +59,9 @@ jobs:
     needs: check_code_quality
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -116,7 +116,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 2
 
@@ -161,7 +161,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
         path: reports
@@ -193,7 +193,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 2
 
@@ -221,7 +221,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports
@@ -244,7 +244,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 2
 
@@ -280,7 +280,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: pr_lora_test_reports
         path: reports
