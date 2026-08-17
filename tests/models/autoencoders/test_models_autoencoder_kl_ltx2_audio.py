@@ -61,10 +61,9 @@ class AutoencoderKLLTX2AudioTesterConfig(BaseModelTesterConfig):
             "double_z": True,
         }
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self, num_frames: int = 8):
         batch_size = 2
         num_channels = 2
-        num_frames = 8
         num_mel_bins = 16
         spectrogram = randn_tensor(
             (batch_size, num_channels, num_frames, num_mel_bins),
@@ -87,6 +86,19 @@ class TestAutoencoderKLLTX2AudioTraining(AutoencoderKLLTX2AudioTesterConfig, Tra
 
 class TestAutoencoderKLLTX2AudioMemory(AutoencoderKLLTX2AudioTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKLLTX2Audio."""
+
+    # The memory tests run on a longer spectrogram than the rest of the file. `test_layerwise_casting_memory` asserts
+    # that bfloat16 compute peaks lower than float32 compute, which only holds once the activations outweigh the
+    # scratch space the convolutions ask for: at 8 frames the forward pass allocates ~0.2 MB of activations, while the
+    # first bfloat16 convolution takes a cuDNN algorithm needing a 0.6 MB workspace where float32 takes one needing
+    # 16 KB. 512 frames put ~4 MB of activations between the two dtypes and keep the peak under 15 MB. The autoencoder
+    # trims 3 frames per round trip, hence the output length below.
+    def get_dummy_inputs(self, num_frames: int = 512):
+        return super().get_dummy_inputs(num_frames=num_frames)
+
+    @property
+    def output_shape(self):
+        return (2, 509, 16)
 
     @is_flaky()
     @pytest.mark.parametrize("record_stream", [False, True])
