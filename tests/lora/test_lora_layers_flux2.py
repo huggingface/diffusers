@@ -148,3 +148,28 @@ class Flux2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Not supported in Flux2.")
     def test_modify_padding_mode(self):
         pass
+
+    def test_load_lora_weights_warns_when_transformer_missing(self):
+        """Regression test for https://github.com/huggingface/diffusers/issues/13487"""
+        components, _, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+
+        # Simulate a modular sub-pipeline that does not have the transformer component.
+        pipe.transformer = None
+
+        # Create a dummy LoRA state dict with valid keys.
+        dummy_lora_state_dict = {
+            "transformer.lora_A.weight": torch.randn(4, 4),
+            "transformer.lora_B.weight": torch.randn(4, 4),
+        }
+
+        from diffusers.utils import logging
+
+        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        from ..testing_utils import CaptureLogger
+
+        with CaptureLogger(logger) as cl:
+            pipe.load_lora_weights(dummy_lora_state_dict)
+
+        self.assertIn("not available", cl.out)
