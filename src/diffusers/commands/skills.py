@@ -444,11 +444,12 @@ class SkillsCommand(BaseDiffusersCLICommand):
 
         # Descriptions run several sentences, so they get a wrapped block under each name rather than a table cell.
         width = min(shutil.get_terminal_size().columns, 100)
+        installed = {name for _, name in _discover_installed(Path.cwd())}
         for name in names:
             resp = httpx.get(_skill_md_url(name), timeout=DIFFUSERS_REQUEST_TIMEOUT)
             resp.raise_for_status()
             description = _skill_description(resp.text)
-            print(f"\n{name}")
+            print(f"\n{name}{' (installed)' if name in installed else ''}")
             print(textwrap.fill(description, width=width, initial_indent="  ", subsequent_indent="  "))
 
     def _resolve_names(self) -> list[str]:

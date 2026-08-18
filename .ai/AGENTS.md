@@ -24,11 +24,19 @@ diffusers-cli skills add <skill name>      # install one, or --all for every ski
 
 `diffusers-cli skills update` refreshes what you installed.
 
-`make claude` and `make codex` used to symlink `.claude/skills` and `.agents/skills` at `.ai/skills`. If those symlinks
-are still around, remove them before installing — otherwise the install writes through them into `.ai/` itself:
+Skills used to be installed through the `Makefile`, which symlinked the project-level `.claude/skills` and
+`.agents/skills` at `.ai/skills` in this repo. Remove those links if they exist — otherwise the install writes through
+them into `.ai/` itself:
 
 ```bash
-rm .claude/skills .agents/skills
+rm -f .claude/skills .agents/skills
+```
+
+At the start of a session, confirm the setup and tell the user what you find:
+
+```bash
+python utils/check_ai.py                  # guides and skills are consistent
+diffusers-cli skills list                 # which skills are installed
 ```
 
 Claude Code and Codex can also install via plugins
@@ -41,28 +49,13 @@ codex plugin marketplace add huggingface/diffusers    # then install from the Pl
 ```
 
 
-## Coding style
-
-Strive to write code as simple and explicit as possible.
-
-- Prefer inlining small helper/utility functions over factoring them out — a reader should be able to follow the full flow without jumping between functions. If a private helper has only one caller, inlining it at the call site is usually the cleaner choice.
-- No defensive code, unused code paths, or legacy stubs — do not add fallback paths, safety checks, or configuration options "just in case"; do not carry unused method parameters "for API consistency", backwards-compatibility aliases for names that never shipped, or deprecation shims for code that was never released. When porting from a research repo, delete training-time code paths, experimental flags, and ablation branches entirely — only keep the inference path you are actually integrating.
-- Do not guess user intent and silently correct behavior. Make the expected inputs clear in the docstring, and raise a concise error for unsupported cases rather than adding complex fallback logic.
-
----
-
 ## Code formatting
 
 - `make style` and `make fix-copies` should be run before opening a PR
 
-### Copied Code
-
-- Many classes are kept in sync with a source via a `# Copied from ...` header comment
-- Do not edit a `# Copied from` block directly — run `make fix-copies` to propagate changes from the source
-- Remove the header to intentionally break the link
-
 ## Reference guides
 
+- **Coding style** — see [code_style.md](references/code_style.md) for how code should read, and the `# Copied from` rules.
 - **Models** — see [models.md](references/models.md) for model conventions, attention pattern, implementation rules, dependencies, and gotchas. For adding or converting a model, use the [model-integration](./skills/model-integration/SKILL.md) skill.
 - **Pipelines** — see [pipelines.md](references/pipelines.md) for pipeline conventions, patterns, and gotchas.
 - **Modular pipelines** — see [modular.md](references/modular.md) for modular pipeline conventions, patterns, and gotchas.

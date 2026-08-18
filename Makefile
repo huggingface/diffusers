@@ -45,6 +45,7 @@ quality:
 	ruff format --check $(check_dirs) setup.py
 	doc-builder style src/diffusers docs/source --max_len 119 --check_only
 	python utils/check_doc_toc.py
+	python utils/check_ai.py
 
 # Format source code automatically and check is there are any problems left that need manual fixing
 

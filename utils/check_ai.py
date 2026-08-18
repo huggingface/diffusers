@@ -29,6 +29,8 @@ import re
 import sys
 from pathlib import Path
 
+from diffusers.commands.skills import _skill_description
+
 
 AI_DIR = Path(__file__).parent.parent / ".ai"
 REFERENCES_DIR = AI_DIR / "references"
@@ -64,14 +66,20 @@ def main() -> int:
                     problems.append(f"{where}: cites 'references/{guide}', which is not in {REFERENCES_DIR.name}/")
 
     for skill_md in sorted(AI_DIR.glob("skills/*/SKILL.md")):
-        declared = FRONTMATTER_NAME.search(skill_md.read_text())
+        where = skill_md.relative_to(AI_DIR.parent)
+        text = skill_md.read_text()
+
+        declared = FRONTMATTER_NAME.search(text)
         if declared is None:
-            problems.append(f"{skill_md.relative_to(AI_DIR.parent)}: no 'name' in frontmatter")
+            problems.append(f"{where}: no 'name' in frontmatter")
         elif declared.group(1) != skill_md.parent.name:
             problems.append(
-                f"{skill_md.relative_to(AI_DIR.parent)}: frontmatter name '{declared.group(1)}' "
-                f"does not match directory '{skill_md.parent.name}'"
+                f"{where}: frontmatter name '{declared.group(1)}' does not match directory '{skill_md.parent.name}'"
             )
+
+        # An agent picks a skill by its description, so a skill without one can never be selected.
+        if not _skill_description(text):
+            problems.append(f"{where}: no 'description' in frontmatter")
 
     if problems:
         print("\n".join(problems), file=sys.stderr)

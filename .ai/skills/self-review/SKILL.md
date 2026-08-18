@@ -32,7 +32,8 @@ files, scope to your own commits: `git log main..HEAD --oneline`, then
 
 `references/review-rules.md` is the canonical rubric (the CI pins it from `main`) — read
 it and review against it; don't rely on a remembered copy. For the areas you
-touched, also read `references/models.md`, `references/pipelines.md`, `references/modular.md`, or `references/testing.md`.
+touched, also read `references/code_style.md`, `references/models.md`, `references/pipelines.md`,
+`references/modular.md`, or `references/testing.md`.
 
 ## 3. Report
 

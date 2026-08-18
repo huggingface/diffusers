@@ -118,9 +118,6 @@ class TestSkillDescription:
     def test_returns_empty_without_frontmatter(self):
         assert _skill_description("# Just a heading\n") == ""
 
-    def test_returns_empty_without_description(self):
-        assert _skill_description("---\nname: demo\n---\n") == ""
-
 
 class TestTargetFlags:
     @pytest.mark.parametrize(

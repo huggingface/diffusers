@@ -595,6 +595,9 @@ The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggi
   - `diffusers-cli` — running pipelines and inspecting schemas from the terminal
   - `custom-blocks` — packaging a `ModularPipelineBlocks` subclass for the Hub
 
+Whichever route you take, ask your agent to confirm its own setup before you start — `python utils/check_ai.py`
+checks that the guides and skills are consistent, and `diffusers-cli skills list` shows which skills it actually has.
+
 ### AI-assisted and agentic contributions
 
 AI agents are welcome for contributing to Diffusers. We encourage you to set up your agent with the Diffusers [agent guide](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) and use the relevant task-specific skills, such as `model-integration` and `self-review`. Install the plugin (or the individual skills) as described above, then follow the guide to scope, implement, test, and review your contribution. You remain responsible for understanding, testing, and maintaining the changes in your PR.
