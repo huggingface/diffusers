@@ -87,12 +87,9 @@ class TestAutoencoderKLLTX2AudioTraining(AutoencoderKLLTX2AudioTesterConfig, Tra
 class TestAutoencoderKLLTX2AudioMemory(AutoencoderKLLTX2AudioTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKLLTX2Audio."""
 
-    # The memory tests run on a longer spectrogram than the rest of the file. `test_layerwise_casting_memory` asserts
-    # that bfloat16 compute peaks lower than float32 compute, which only holds once the activations outweigh the
-    # scratch space the convolutions ask for: at 8 frames the forward pass allocates ~0.2 MB of activations, while the
-    # first bfloat16 convolution takes a cuDNN algorithm needing a 0.6 MB workspace where float32 takes one needing
-    # 16 KB. 512 frames put ~4 MB of activations between the two dtypes and keep the peak under 15 MB. The autoencoder
-    # trims 3 frames per round trip, hence the output length below.
+    # This is specific for this model and also for our CI setup.
+    # The underlying model being so tiny, it doesn't pass some memory-related
+    # tests with even smaller inputs. See: https://github.com/huggingface/diffusers/pull/14505
     def get_dummy_inputs(self, num_frames: int = 512):
         return super().get_dummy_inputs(num_frames=num_frames)
 
