@@ -88,7 +88,7 @@ if num_key_value_groups > 1:
 
 `dim=2` because tensors are `(batch_size, seq_len, num_heads, head_dim)` here. Must be `repeat_interleave`, not `repeat` — the groups are contiguous, and `repeat` gives a silently wrong pairing no shape check catches.
 
-Both compute the same thing, so weigh the two on compatibility and performance, and say in the PR which you picked and why.
+Both compute the same thing, so weigh the two on compatibility and performance and recommend whichever fits the model better.
 
 - **Compatibility.** Most backends do not implement `enable_gqa` yet — flash, FA3, sage, cuDNN and the hub kernels raise on it, as does the context-parallel path. Grep `enable_gqa` in `attention_dispatch.py` for the current list rather than trusting this one; it changes as support lands. The flag limits the model to whichever backends still accept it, while repeating works on all of them.
 
