@@ -33,7 +33,7 @@ from ...testing_utils import (
 from .common import check_device_map_is_respected
 
 
-# Config entries that legitimately differ between a pretrained load and a single file load.
+# Config entries that legitimately differ between a checkpoint that's loaded with `from_pretrained()` and the one loaded with `from_single_file()`.
 PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
 
 
