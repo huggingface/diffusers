@@ -134,18 +134,8 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
             forward_calls += 1
             return SimpleNamespace(logits=logits)
 
-        class DeterministicScheduler:
-            config = SimpleNamespace(corrector_steps=0)
-
-            def set_timesteps(self, num_inference_steps, device=None):
-                self.timesteps = torch.arange(num_inference_steps, device=device)
-
-            def step(self, model_output, timestep, sample, return_dict=True):
-                del timestep, return_dict
-                return SimpleNamespace(prev_sample=model_output.argmax(dim=-1), pred_logits=model_output)
-
         self.pipe.model.forward = forward
-        self.pipe.scheduler = DeterministicScheduler()
+        self.pipe.scheduler = BlockRefinementScheduler()
         output = self._run_adaptive_stopping(["Short prompt.", "A somewhat longer prompt for the second batch row."])
 
         self.assertEqual(forward_calls, 4)
