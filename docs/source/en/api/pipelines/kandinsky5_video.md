@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 
 Kandinsky 5.0 Lite line-up of lightweight video generation models (2B parameters) that ranks #1 among open-source models in its class. It outperforms larger models and offers the best understanding of Russian concepts in the open-source ecosystem.
 
-Kandinsky 5.0 Pro line-up of large high quality video generation models (19B parameters). It offers high qualty generation in HD and more generation formats like I2V.
+Kandinsky 5.0 Pro line-up of large high quality video generation models (19B parameters). It offers high quality generation in HD and more generation formats like I2V.
 
 The model introduces several key innovations:
 - **Latent diffusion pipeline** with **Flow Matching** for improved training stability
@@ -54,7 +54,7 @@ Kandinsky 5.0 T2V Lite:
 ### Basic Text-to-Video Generation
 
 #### Pro
-**⚠️ Warning!** all Pro models should be infered with pipeline.enable_model_cpu_offload()  
+**⚠️ Warning!** all Pro models should be inferred with pipeline.enable_model_cpu_offload()  
 ```python
 import torch
 from diffusers import Kandinsky5T2VPipeline
@@ -65,7 +65,7 @@ model_id = "kandinskylab/Kandinsky-5.0-T2V-Pro-sft-5s-Diffusers"
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
 
 pipe = pipe.to("cuda")
-pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention bakend to Flex
+pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention backend to Flex
 pipeline.enable_model_cpu_offload()                                           # <--- Enable cpu offloading for single GPU inference
 pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs
 
@@ -126,7 +126,7 @@ pipe = pipe.to("cuda")
 
 pipe.transformer.set_attention_backend(
     "flex"
-)                                       # <--- Set attention bakend to Flex
+)                                       # <--- Set attention backend to Flex
 pipe.transformer.compile(
     mode="max-autotune-no-cudagraphs", 
     dynamic=True
@@ -149,7 +149,7 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
 ```
 
 ### Diffusion Distilled model
-**⚠️ Warning!** all nocfg and diffusion distilled models should be infered wothout CFG (```guidance_scale=1.0```):
+**⚠️ Warning!** all nocfg and diffusion distilled models should be inferred without CFG (```guidance_scale=1.0```):
 
 ```python
 model_id = "kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers"
@@ -167,7 +167,7 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
 
 
 ### Basic Image-to-Video Generation
-**⚠️ Warning!** all Pro models should be infered with pipeline.enable_model_cpu_offload()  
+**⚠️ Warning!** all Pro models should be inferred with pipeline.enable_model_cpu_offload()  
 ```python
 import torch
 from diffusers import Kandinsky5T2VPipeline
@@ -178,7 +178,7 @@ model_id = "kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers"
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
 
 pipe = pipe.to("cuda")
-pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention bakend to Flex
+pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention backend to Flex
 pipeline.enable_model_cpu_offload()                                           # <--- Enable cpu offloading for single GPU inference
 pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs
 

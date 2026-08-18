@@ -23,9 +23,9 @@ from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransf
 from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
+    nightly,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 from ..testing_utils import (
@@ -236,9 +236,9 @@ class TestCogVideoXPipelineFirstBlockCache(CogVideoXPipelineTesterConfig, FirstB
     pass
 
 
-@slow
+@nightly
 @require_torch_accelerator
-class TestCogVideoXPipelineSlow:
+class TestCogVideoXPipelineIntegration:
     prompt = "A painting of a squirrel eating a burger."
 
     @pytest.fixture(autouse=True)
