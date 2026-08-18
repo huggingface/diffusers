@@ -251,12 +251,40 @@ class TestFlux2TransformerCompile(Flux2TransformerTesterConfig, TorchCompileTest
         }
 
 
-class TestFlux2TransformerBitsAndBytes(Flux2TransformerTesterConfig, BitsAndBytesTesterMixin):
+class Flux2TransformerQuantTesterConfig(Flux2TransformerTesterConfig):
+    """Shared config for quantized Flux2 Transformer tests (loads the tiny Hub checkpoint)."""
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-flux2"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    def get_dummy_inputs(self, height: int = 4, width: int = 4, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        """Override to match the tiny Hub checkpoint (joint_attention_dim=16) and the quantizer compute dtype."""
+        inputs = super().get_dummy_inputs(height=height, width=width, batch_size=batch_size)
+        inputs["encoder_hidden_states"] = randn_tensor(
+            (batch_size, inputs["encoder_hidden_states"].shape[1], 16), generator=self.generator, device=torch_device
+        )
+        return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
+
+
+class TestFlux2TransformerBitsAndBytes(Flux2TransformerQuantTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Flux2 Transformer."""
 
+    @property
+    def torch_dtype(self):
+        return torch.float16
 
-class TestFlux2TransformerTorchAo(Flux2TransformerTesterConfig, TorchAoTesterMixin):
+
+class TestFlux2TransformerTorchAo(Flux2TransformerQuantTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Flux2 Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
 
 
 class TestFlux2TransformerGGUF(Flux2TransformerTesterConfig, GGUFTesterMixin):
@@ -315,8 +343,12 @@ class TestFlux2TransformerGGUF(Flux2TransformerTesterConfig, GGUFTesterMixin):
         }
 
 
-class TestFlux2TransformerTorchAoCompile(Flux2TransformerTesterConfig, TorchAoCompileTesterMixin):
+class TestFlux2TransformerTorchAoCompile(Flux2TransformerQuantTesterConfig, TorchAoCompileTesterMixin):
     """TorchAO + compile tests for Flux2 Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
 
 
 class TestFlux2TransformerGGUFCompile(Flux2TransformerTesterConfig, GGUFCompileTesterMixin):
