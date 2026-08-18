@@ -353,7 +353,7 @@ class StableAudio3Pipeline(DiffusionPipeline):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
-            latents = latents.to(device)
+            latents = latents.to(device=device, dtype=dtype)
         return latents
 
     def check_inputs(

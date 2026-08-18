@@ -357,7 +357,7 @@ class SAMETransformerResamplingBlock(nn.Module):
                     use_differential=use_differential,
                     ff_mult=ff_mult,
                     # The trailing `sinusoidal_blocks` layers use sin gating (matches the reference).
-                    sinusoidal=(transformer_depth - i) <= sinusoidal_blocks,
+                    sinusoidal=(transformer_depth - i) < sinusoidal_blocks,
                 )
                 for i in range(transformer_depth)
             ]

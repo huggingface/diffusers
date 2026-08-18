@@ -183,14 +183,6 @@ def convert_vae(ref_sd: dict, differential: bool = True) -> dict:
     dec_base = ae_prefix + "decoder.layers"
 
     enc_depth = _infer_trb_depth(ref_sd, enc_base)
-    dec_depth = _infer_trb_depth(ref_sd, dec_base + ".0") if f"{dec_base}.0.new_tokens" in ref_sd else 0
-    # Decoder TRBs start after [Transpose, Linear, Transpose] → indices 3, 4, …
-    if dec_depth == 0:
-        # Count by checking higher indices
-        for check_idx in range(3, 20):
-            if any(k.startswith(f"{dec_base}.{check_idx}.") for k in ref_sd):
-                dec_depth = check_idx - 2  # rough: layers.3 → 1 TRB etc.
-                break
 
     if enc_depth == 0:
         print("WARNING: could not detect encoder TRB depth; defaulting to 1.")
@@ -715,8 +707,6 @@ def convert(args):
         print(f"  Saved -> {output_dir / 'text_encoder'}, {output_dir / 'tokenizer'}")
     except ImportError:
         print("  WARNING: transformers not installed; skipping text_encoder & tokenizer.")
-    except Exception as exc:
-        print(f"  WARNING: text encoder conversion failed: {exc}")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 4. DiT
