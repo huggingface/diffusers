@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import gc
+import os
 
 import pytest
 import torch
@@ -65,6 +67,7 @@ from ...testing_utils import (
 
 
 if is_nvidia_modelopt_available():
+    import modelopt.torch.opt as mto
     import modelopt.torch.quantization as mtq
 
 if is_bitsandbytes_available():
@@ -1133,9 +1136,9 @@ class ModelOptConfigMixin:
     """
 
     MODELOPT_CONFIGS = {
-        "fp8": {"quant_type": "FP8"},
-        "int8": {"quant_type": "INT8"},
-        "int4": {"quant_type": "INT4"},
+        "fp8": {"quant_type": "FP8", "disable_conv_quantization": True},
+        "int8": {"quant_type": "INT8", "disable_conv_quantization": True},
+        "int4": {"quant_type": "INT4", "disable_conv_quantization": True},
     }
 
     MODELOPT_EXPECTED_MEMORY_REDUCTIONS = {
@@ -1233,6 +1236,51 @@ class ModelOptTesterMixin(ModelOptConfigMixin, QuantizationTesterMixin):
     def test_modelopt_dequantize(self):
         """Test that dequantize() works correctly."""
         self._test_dequantize(ModelOptConfigMixin.MODELOPT_CONFIGS["fp8"])
+
+    @torch.no_grad()
+    def test_modelopt_keep_modules_in_fp32(self):
+        fp32_modules = getattr(self.model_class, "_keep_in_fp32_modules", None)
+        if not fp32_modules:
+            pytest.skip(f"{self.model_class.__name__} does not declare _keep_in_fp32_modules")
+
+        model = self._create_quantized_model(ModelOptConfigMixin.MODELOPT_CONFIGS["fp8"])
+        model.to(torch_device)
+
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                if any(fp32_name in name for fp32_name in fp32_modules):
+                    assert module.weight.dtype == torch.float32, (
+                        f"Module {name} should be FP32 but is {module.weight.dtype}"
+                    )
+
+    def test_modelopt_training(self):
+        """Test that quantized models can be used for training with adapters."""
+        self._test_quantization_training(ModelOptConfigMixin.MODELOPT_CONFIGS["fp8"])
+
+    @require_modelopt_version_greater_or_equal("0.44.0")
+    def test_modelopt_prequantized_serialization(self, tmp_path):
+        """Test that a pre-quantized ModelOpt checkpoint round-trips through save/load with a device_map."""
+        mto.enable_huggingface_checkpointing()
+
+        config_kwargs = {"quant_type": "FP8", "modelopt_config": copy.deepcopy(mtq.FP8_DEFAULT_CFG)}
+        model = self._create_quantized_model(config_kwargs)
+
+        model.save_pretrained(str(tmp_path))
+        assert os.path.isfile(os.path.join(str(tmp_path), "modelopt_state.pth")), (
+            "Expected modelopt_state.pth in the saved checkpoint."
+        )
+
+        saved_model = self.model_class.from_pretrained(str(tmp_path), device_map=str(torch_device))
+
+        named_parameters = list(saved_model.named_parameters())
+        named_buffers = list(saved_model.named_buffers())
+        assert any(name.endswith(("_amax", "_scale")) for name, _ in named_buffers), (
+            "The restored model did not contain ModelOpt quantizer buffers."
+        )
+
+        for tensor_kind, named_tensors in (("parameter", named_parameters), ("buffer", named_buffers)):
+            for name, tensor in named_tensors:
+                assert not tensor.is_meta, f"{tensor_kind} {name} was not materialized from meta."
 
 
 @is_quantization
