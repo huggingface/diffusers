@@ -52,7 +52,7 @@ from .common import BaseModelOutputMixin, cast_inputs_to_dtype
 
 
 if is_peft_available():
-    from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+    from peft import LoraConfig
     from peft.tuners.tuners_utils import BaseTunerLayer
     from peft.utils import get_peft_model_state_dict
 
@@ -253,10 +253,11 @@ class LoraTesterMixin(BaseModelOutputMixin):
 
     @require_peft_version_greater("0.13.1")
     @torch.no_grad()
-    def test_lora_low_cpu_mem_usage_with_injection(self):
-        """Tests that the LoRA state dict can be injected with low_cpu_mem_usage."""
+    def test_lora_low_cpu_mem_usage_with_loading(self, tmp_path, atol=1e-4, rtol=1e-4):
+        """Tests that a LoRA adapter can be loaded with `low_cpu_mem_usage=True`."""
 
-        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        inputs_dict = self.get_dummy_inputs()
         lora_config = LoraConfig(
             r=4,
             lora_alpha=4,
@@ -264,20 +265,29 @@ class LoraTesterMixin(BaseModelOutputMixin):
             init_lora_weights=False,
             use_dora=False,
         )
-        inject_adapter_in_model(lora_config, model, low_cpu_mem_usage=True)
+        model.add_adapter(lora_config)
         assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
-        assert "meta" in {p.device.type for p in model.parameters()}, "The LoRA params should be on 'meta' device."
 
-        peft_state_dict = get_peft_model_state_dict(model)
-        assert all(v.device.type == "meta" for v in peft_state_dict.values()), "The LoRA state dict should be on meta."
-        dummy_state_dict = {
-            k: torch.randn(v.shape, device=torch_device, dtype=v.dtype) for k, v in peft_state_dict.items()
-        }
-        set_peft_model_state_dict(model, dummy_state_dict, low_cpu_mem_usage=True)
+        torch.manual_seed(0)
+        output_lora = self._model_output(model, inputs_dict)
+
+        model.save_lora_adapter(tmp_path)
+        model.unload_lora()
+        assert not check_if_lora_correctly_set(model), "LoRA should be unloaded"
+
+        model.load_lora_adapter(tmp_path, prefix=None, use_safetensors=True, low_cpu_mem_usage=True)
+        assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
         assert "meta" not in {p.device.type for p in model.parameters()}, "No param should be on 'meta' device."
 
-        output = self._model_output(model, self.get_dummy_inputs())
-        assert not torch.isnan(output).any(), "Forward pass should work after low_cpu_mem_usage injection."
+        torch.manual_seed(0)
+        output_low_cpu_mem = self._model_output(model, inputs_dict)
+        assert_tensors_close(
+            output_lora,
+            output_low_cpu_mem,
+            atol=atol,
+            rtol=rtol,
+            msg="Loading with `low_cpu_mem_usage` should give the same results.",
+        )
 
     @skip_mps
     @pytest.mark.xfail(
@@ -314,7 +324,7 @@ class LoraTesterMixin(BaseModelOutputMixin):
 
     @require_peft_version_greater("0.13.2")
     @torch.no_grad()
-    def test_lora_B_bias(self, base_model_output, atol=1e-3, rtol=1e-3):
+    def test_lora_B_bias(self, base_model_output, tmp_path, atol=1e-3, rtol=1e-3):
         # Seeded like the `base_model_output` fixture, so that fixture is this model's no-LoRA output.
         torch.manual_seed(0)
         model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
@@ -327,19 +337,7 @@ class LoraTesterMixin(BaseModelOutputMixin):
             "target_modules": ["to_q", "to_k", "to_v", "to_out.0"],
             "init_lora_weights": False,
         }
-        model.add_adapter(LoraConfig(**lora_config_kwargs, lora_bias=False), adapter_name="adapter-1")
-        # `init_lora_weights=False` initializes `lora_A`/`lora_B` randomly, so keep a copy of them and reuse them for
-        # the `lora_bias=True` adapter below. Otherwise the two adapters would differ by their random init and not by
-        # the presence of the LoRA bias.
-        lora_weights = {k: v.clone() for k, v in get_peft_model_state_dict(model, adapter_name="adapter-1").items()}
-        torch.manual_seed(0)
-        lora_bias_false_output = self._model_output(model, inputs_dict)
-        model.delete_adapters("adapter-1")
-
         model.add_adapter(LoraConfig(**lora_config_kwargs, lora_bias=True), adapter_name="adapter-1")
-        # `lora_weights` has no bias entries, so the (randomly initialized, non-zero as `init_lora_weights=False`)
-        # `lora_B` biases are left untouched and are the only difference w.r.t. the `lora_bias=False` adapter.
-        set_peft_model_state_dict(model, lora_weights, adapter_name="adapter-1")
         lora_biases = [
             module.lora_B["adapter-1"].bias
             for module in model.modules()
@@ -350,6 +348,22 @@ class LoraTesterMixin(BaseModelOutputMixin):
         )
         torch.manual_seed(0)
         lora_bias_true_output = self._model_output(model, inputs_dict)
+
+        # `init_lora_weights=False` initializes `lora_A`/`lora_B` randomly, so reload the very same weights (minus the
+        # bias entries) as a `lora_bias=False` adapter. Otherwise the two adapters would differ by their random init
+        # and not by the presence of the LoRA bias.
+        model.save_lora_adapter(tmp_path, adapter_name="adapter-1")
+        model.delete_adapters("adapter-1")
+        state_dict = safetensors.torch.load_file(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
+        state_dict = {k: v for k, v in state_dict.items() if not k.endswith("lora_B.bias")}
+        model.load_lora_adapter(
+            state_dict,
+            prefix=None,
+            adapter_name="adapter-1",
+            metadata={**lora_config_kwargs, "lora_bias": False},
+        )
+        torch.manual_seed(0)
+        lora_bias_false_output = self._model_output(model, inputs_dict)
 
         assert not torch.allclose(original_output, lora_bias_false_output, atol=atol, rtol=rtol)
         assert not torch.allclose(original_output, lora_bias_true_output, atol=atol, rtol=rtol)
