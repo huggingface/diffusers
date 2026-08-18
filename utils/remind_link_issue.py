@@ -48,6 +48,8 @@ REMINDER_MARKER = "<!-- pr-link-issue-reminder -->"
 # Present only in reminders that warn about auto-closure; escalation is keyed on this
 # marker so PRs reminded before the warning existed are never auto-closed.
 AUTOCLOSE_MARKER = "<!-- pr-link-issue-autoclose -->"
+# Login the reminder comments are authored under (the workflow's GITHUB_TOKEN).
+BOT_LOGIN = "github-actions[bot]"
 BYPASS_LABELS = {"no-issue-needed"}
 # Only PRs created within this window receive a fresh reminder.
 LOOKBACK_DAYS = 2
@@ -205,7 +207,16 @@ def main():
                 if has_linked_issue(token, owner, name, pr.number):
                     continue
                 comments = list(pr.get_issue_comments())
-                warning = next((c for c in comments if AUTOCLOSE_MARKER in (c.body or "")), None)
+                # Only a marker comment authored by the bot itself starts the
+                # escalation clock; a pasted marker in a user comment does not.
+                warning = next(
+                    (
+                        c
+                        for c in comments
+                        if AUTOCLOSE_MARKER in (c.body or "") and c.user is not None and c.user.login == BOT_LOGIN
+                    ),
+                    None,
+                )
                 if warning is None:
                     # Old-style reminders (without the auto-close notice) are never
                     # escalated; only remind recently created, not-yet-reminded PRs.
