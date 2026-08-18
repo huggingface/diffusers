@@ -27,6 +27,8 @@ The kernels package supplies the optimized CUDA kernels, which load automaticall
 pip install -U kernels
 ```
 
+Nunchaku Lite loads its kernels from the [`rootonchair/nunchaku-lite-kernels`](https://huggingface.co/rootonchair/nunchaku-lite-kernels) repository, whose publisher is not a trusted kernel publisher on the Hub. Loading it downloads and executes code from the Hub, so Diffusers requires you to explicitly opt in by setting `DIFFUSERS_TRUST_REMOTE_KERNELS=true`. See [Trusting remote kernels](../optimization/attention_backends#trusting-remote-kernels) for details.
+
 ## Load a quantized pipeline
 
 Load the prequantized pipeline with [`~DiffusionPipeline.from_pretrained`], which reads the quantization
@@ -39,7 +41,7 @@ from diffusers import DiffusionPipeline
 model_id = "rootonchair/ERNIE-Image-Turbo-nunchaku-lite-nvfp4"
 
 pipe = DiffusionPipeline.from_pretrained(
-    model_id, torch_dtype=torch.bfloat16,
+    model_id, dtype=torch.bfloat16,
 ).to("cuda")
 
 prompt = "A modern red armchair in a quiet studio, soft window light, realistic product photography"
@@ -119,6 +121,21 @@ List each module you want to quantize under `svdq_w4a4` or `awq_w4a16`. A module
   }
 }
 ```
+
+## Fused kernels
+
+The original [Nunchaku](https://github.com/nunchaku-ai/nunchaku) engine gets much of its speed from model-specific fused execution paths. It combines the Q, K, and V projections with RMSNorm and RoPE, and uses a fused GELU kernel for the MLP. Nunchaku Lite instead uses the standard Diffusers model with generic quantized linear layers, so it does not include these fusions.
+
+The following measurements show the per-step latency impact of these fusions in the original Nunchaku engine, measured with Flux Schnell on an RTX 5090.
+
+| Optimization | Latency with it OFF | Latency with it ON | Speedup |
+| --- | --- | --- | --- |
+| QKV+norm+RoPE fusion (combined) | 1.057 s | 0.834 s | **1.27×** |
+| — grouping Q/K/V into one matmul, alone | 1.059 s | 1.034 s | 1.025× |
+| — RMSNorm+RoPE epilogue fusion, on top of grouping | 1.034 s | 0.836 s | 1.236× |
+| GELU-MLP fusion | 0.766 s | 0.722 s | **1.06×** |
+
+Without these fusions, the GPU launches the projection, normalization, rotary-embedding, and MLP operations as separate kernels, which adds launch overhead. `torch.compile` may reduce some of this overhead, although it does not necessarily reproduce the original engine's fused kernels. Benchmark the compiled pipeline for your model and workload.
 
 ## torch.compile
 

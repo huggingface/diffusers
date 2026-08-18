@@ -16,6 +16,8 @@ from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
 from .autoencoder_kl_ltx2 import AutoencoderKLLTX2Video
 from .autoencoder_kl_ltx2_audio import AutoencoderKLLTX2Audio
 from .autoencoder_kl_magvit import AutoencoderKLMagvit
+from .autoencoder_kl_minimax_h3 import AutoencoderKLMiniMaxH3
+from .autoencoder_kl_minimax_h3_audio import AutoencoderKLMiniMaxH3Audio
 from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
@@ -27,4 +29,6 @@ from .autoencoder_same import AutoencoderSAME
 from .autoencoder_tiny import AutoencoderTiny
 from .autoencoder_vidtok import AutoencoderVidTok
 from .consistency_decoder_vae import ConsistencyDecoderVAE
+from .ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel
+from .minimax_music3_vocoder import MiniMaxMusic3Vocoder
 from .vq_model import VQModel

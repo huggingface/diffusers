@@ -218,6 +218,11 @@ class TestZImageTransformerCompile(ZImageTransformerTesterConfig, TorchCompileTe
     def test_torch_compile_recompilation_and_graph_break(self):
         pass
 
+    def test_torch_compile_repeated_blocks(self):
+        # ZImageTransformerBlock is reused by noise_refiner (modulated), context_refiner (unmodulated), and the
+        # main layers (modulated, different sequence length), so the shared block forward compiles three times.
+        super().test_torch_compile_repeated_blocks(recompile_limit=3)
+
     @pytest.mark.skip("Fullgraph AoT is broken")
     def test_compile_works_with_aot(self, tmp_path):
         pass

@@ -33,6 +33,24 @@ uv pip install diffusers["torch"] transformers
 ```
 
 </hfoption>
+<hfoption id="NVIDIA Spark (ARM64)">
+
+To install Diffusers with PyTorch on NVIDIA Spark devices (such as an RTX Spark laptop) running ARM64, install PyTorch from the NVIDIA PyPI index. These devices require NVIDIA's ARM64 builds of PyTorch, which are not available on the default PyPI index or the standard PyTorch wheel index.
+
+Run the command below to check if your system detects an NVIDIA GPU.
+
+```bash
+nvidia-smi
+```
+
+Install PyTorch from the NVIDIA PyPI index, then install Diffusers.
+
+```bash
+uv pip install torch --index-url https://pypi.nvidia.com
+uv pip install diffusers
+```
+
+</hfoption>
 <hfoption id="conda">
 
 ```bash
