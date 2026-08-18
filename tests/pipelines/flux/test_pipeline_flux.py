@@ -30,7 +30,6 @@ from ...testing_utils import (
     numpy_cosine_similarity_distance,
     require_big_accelerator,
     require_peft_backend,
-    slow,
     torch_device,
 )
 from ..testing_utils import (
@@ -488,7 +487,7 @@ class TestFluxPipelineLoRAMemory(FluxPipelineTesterConfig, LoraMemoryTesterMixin
 
 @nightly
 @require_big_accelerator
-class TestFluxPipelineSlow:
+class TestFluxPipelineIntegration:
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-schnell"
 
@@ -545,9 +544,9 @@ class TestFluxPipelineSlow:
         assert max_diff < 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
 
 
-@slow
+@nightly
 @require_big_accelerator
-class TestFluxIPAdapterPipelineSlow:
+class TestFluxIPAdapterPipelineIntegration:
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-dev"
     image_encoder_pretrained_model_name_or_path = "openai/clip-vit-large-patch14"
