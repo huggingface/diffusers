@@ -18,15 +18,16 @@ Behavior:
 - Scans open, non-draft PRs.
 - A PR is considered "linked" if GitHub's GraphQL `closingIssuesReferences` returns > 0
   (covers both `Fixes #N` keywords in the body and issues linked via the GitHub UI).
-- If a PR is not linked and no prior reminder is present, the script posts a single
-  friendly reminder comment warning that the PR may be auto-closed.
-- Once a reminder is `SLACK_DIGEST_DAYS` old and the PR is still not linked, the PR is
+- If a PR is not linked and has no reminder yet, the script posts a single friendly
+  reminder comment warning that the PR may be auto-closed.
+- If a PR only has an old-style reminder (posted before the auto-close notice existed),
+  the script posts a single follow-up carrying the notice instead, so those PRs enter
+  the same escalation path with the full warning window.
+- Once the warning is `SLACK_DIGEST_DAYS` old and the PR is still not linked, the PR is
   included in a daily Slack digest so maintainers can rescue it (by linking an issue or
   adding the `no-issue-needed` label).
-- Once a reminder is `AUTOCLOSE_DAYS` old and the PR is still not linked, the PR is
+- Once the warning is `AUTOCLOSE_DAYS` old and the PR is still not linked, the PR is
   closed with an explanatory comment.
-- Reminders posted before the auto-close notice existed (comments without the
-  `AUTOCLOSE_MARKER`) are never escalated — their authors were not warned about closure.
 - PRs labeled `no-issue-needed` and bot-authored PRs are skipped.
 - PRs authored by maintainers, users with write (or admin) access, and collaborators
   are skipped; the reminder only targets external contributors.
@@ -45,20 +46,17 @@ logger = logging.getLogger(__name__)
 
 REPO = "huggingface/diffusers"
 REMINDER_MARKER = "<!-- pr-link-issue-reminder -->"
-# Present only in reminders that warn about auto-closure; escalation is keyed on this
-# marker so PRs reminded before the warning existed are never auto-closed.
+# Present only in comments that warn about auto-closure; the escalation clock starts
+# from the bot comment carrying this marker.
 AUTOCLOSE_MARKER = "<!-- pr-link-issue-autoclose -->"
 # Login the reminder comments are authored under (the workflow's GITHUB_TOKEN).
 BOT_LOGIN = "github-actions[bot]"
 BYPASS_LABELS = {"no-issue-needed"}
-# Only PRs created within this window receive a fresh reminder.
-LOOKBACK_DAYS = 2
-# Days after the reminder at which a still-unlinked PR enters the Slack rescue digest.
+# Days after the warning at which a still-unlinked PR enters the Slack rescue digest.
 SLACK_DIGEST_DAYS = 7
-# Days after the reminder at which a still-unlinked PR is automatically closed.
+# Days after the warning at which a still-unlinked PR is automatically closed.
 AUTOCLOSE_DAYS = 10
-# Upper bound on how far back to paginate open PRs. Reminders only go to PRs at most
-# LOOKBACK_DAYS old, so any PR with a pending escalation is well within this window.
+# Upper bound on how far back to paginate open PRs; older PRs are left alone.
 SCAN_LOOKBACK_DAYS = 30
 # Collaborator permission levels that mark a PR author as a maintainer / writer /
 # collaborator. Authors with any of these are skipped (the reminder is only for
@@ -141,6 +139,18 @@ def reminder_body(author):
     )
 
 
+def followup_body(author):
+    return (
+        f"{AUTOCLOSE_MARKER}\n"
+        f"Hi @{author}, a follow-up on the reminder above: this PR still does not link "
+        "an issue it fixes.\n\n"
+        f"**Please note that PRs without a linked issue are likely to be automatically "
+        f"closed {AUTOCLOSE_DAYS} days after this notice.** Adding a closing keyword "
+        "(e.g. `Fixes #1234`) to the PR description, or a maintainer adding the "
+        "`no-issue-needed` label, will prevent that."
+    )
+
+
 def autoclose_body():
     return (
         "This PR has been automatically closed because it does not link an issue and "
@@ -174,7 +184,6 @@ def main():
     repo = g.get_repo(REPO)
     owner, name = REPO.split("/", 1)
     now = datetime.now(timezone.utc)
-    reminder_cutoff = now - timedelta(days=LOOKBACK_DAYS)
     scan_cutoff = now - timedelta(days=SCAN_LOOKBACK_DAYS)
     # (pr, days_left) pairs for the Slack rescue digest.
     at_risk = []
@@ -218,11 +227,11 @@ def main():
                     None,
                 )
                 if warning is None:
-                    # Old-style reminders (without the auto-close notice) are never
-                    # escalated; only remind recently created, not-yet-reminded PRs.
+                    # A PR with only an old-style reminder (without the auto-close
+                    # notice) gets a follow-up carrying the notice; the escalation
+                    # clock starts from whichever comment carries the marker.
                     already_reminded = any(REMINDER_MARKER in (c.body or "") for c in comments)
-                    if created_at >= reminder_cutoff and not already_reminded:
-                        pr.create_issue_comment(reminder_body(author))
+                    pr.create_issue_comment(followup_body(author) if already_reminded else reminder_body(author))
                     continue
                 warned_at = warning.created_at
                 if warned_at.tzinfo is None:
