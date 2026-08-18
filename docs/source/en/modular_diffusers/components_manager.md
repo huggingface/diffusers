@@ -12,6 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # ComponentsManager
 
+> [!WARNING]
+> [`ComponentsManager`] is still under active development and its API may change.
+
 The [`ComponentsManager`] is a model registry and management system for Modular Diffusers. It adds and tracks models, stores useful metadata (model size, device placement, adapters), and supports offloading.
 
 This guide will show you how to use [`ComponentsManager`] to manage components and device memory.
