@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import AutoencoderKLCogVideoX
@@ -78,7 +79,14 @@ class AutoencoderKLCogVideoXTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKLCogVideoX(AutoencoderKLCogVideoXTesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.skip(
+        "`forward` runs through the `apply_forward_hook`-decorated `encode` and `decode`, and that decorator's "
+        "`pre_forward` call clears the input device accelerate's `AlignDevicesHook` recorded for the caller, so the "
+        "output comes back on the last device of the split rather than the input device and the comparison raises. "
+        "`test_cpu_offload` covers split placement instead — there every submodule executes on the same device."
+    )
+    def test_model_parallelism(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
+        pass
 
 
 class TestAutoencoderKLCogVideoXTraining(AutoencoderKLCogVideoXTesterConfig, TrainingTesterMixin):

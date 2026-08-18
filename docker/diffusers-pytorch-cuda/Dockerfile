@@ -10,8 +10,11 @@ RUN apt-get -y update \
     && add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update
 
+# cuda-cudart-dev provides the CUDA headers (cuda.h etc.) AOT-inductor compilation needs;
+# the runtime base image only ships the libraries.
 RUN apt install -y bash \
     build-essential \
+    cuda-cudart-dev-12-9 \
     git \
     git-lfs \
     curl \
