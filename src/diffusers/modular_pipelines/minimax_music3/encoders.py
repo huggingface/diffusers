@@ -320,14 +320,25 @@ class MiniMaxMusic3AutoregressiveStep(ModularPipelineBlocks):
         past_key_values = output.past_key_values
         last_hidden = output.last_hidden_state[:, -1]
 
-        vocab_mask = torch.ones(language_model.config.vocab_size, dtype=torch.bool, device=text_ids.device)
-        vocab_mask[_AUDIO_CODE_OFFSET : _AUDIO_CODE_OFFSET + _SEMANTIC_VOCAB_SIZE] = False
-        vocab_mask[_AUDIO_END_TOKEN_ID] = False
+        # Only the semantic codes and the end-of-audio token can ever be sampled; every other row is masked to
+        # `-inf` anyway. Slicing `lm_head` to the contiguous row range covering exactly those tokens yields
+        # identical logits for every sampleable token while reading ~10x less weight per frame (the full head
+        # is ~1.4GB in bf16 at this vocabulary size, paid at 25 frames per second of audio).
+        head_start = _AUDIO_END_TOKEN_ID
+        head_end = _AUDIO_CODE_OFFSET + _SEMANTIC_VOCAB_SIZE
+        head_weight = language_model.lm_head.weight[head_start:head_end]
+        head_bias = language_model.lm_head.bias
+        if head_bias is not None:
+            head_bias = head_bias[head_start:head_end]
+
+        vocab_mask = torch.ones(head_end - head_start, dtype=torch.bool, device=text_ids.device)
+        vocab_mask[_AUDIO_CODE_OFFSET - head_start : _AUDIO_CODE_OFFSET - head_start + _SEMANTIC_VOCAB_SIZE] = False
+        vocab_mask[_AUDIO_END_TOKEN_ID - head_start] = False
 
         frame_hiddens = []
         # The first decode step only advances the state past `<|audio_start|>` and is not an emitted frame.
         for frame_index in range(max_frames + 1):
-            logits = language_model.lm_head(last_hidden).float()
+            logits = F.linear(last_hidden, head_weight, head_bias).float()
             logits = logits.masked_fill(vocab_mask, -float("inf"))
             conditional, unconditional = logits[0:1], logits[1:2]
             guided = unconditional + (conditional - unconditional) * _AR_CFG_SCALE
@@ -336,7 +347,7 @@ class MiniMaxMusic3AutoregressiveStep(ModularPipelineBlocks):
             threshold = torch.topk(conditional, _AR_CFG_TOP_K, dim=-1).values[..., -1, None]
             guided = guided.masked_fill(conditional < threshold, -float("inf"))
             guided = guided.masked_fill(vocab_mask.unsqueeze(0), -float("inf"))
-            sampled = _sample_top_k(guided, generator)
+            sampled = _sample_top_k(guided, generator) + head_start
             if int(sampled.item()) == _AUDIO_END_TOKEN_ID:
                 break
 
