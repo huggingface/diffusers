@@ -25,7 +25,6 @@ concurrency:
 
 env:
   DIFFUSERS_IS_CI: yes
-  HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
   HF_XET_HIGH_PERFORMANCE: 1
   OMP_NUM_THREADS: 4
   MKL_NUM_THREADS: 4
@@ -115,6 +114,9 @@ jobs:
       run:
         shell: bash
 
+    env:
+      HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v6
@@ -192,9 +194,6 @@ jobs:
       run:
         shell: bash
 
-    env:
-      HF_TOKEN: ""
-
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v6
@@ -245,6 +244,9 @@ jobs:
     defaults:
       run:
         shell: bash
+
+    env:
+      HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
 
     steps:
     - name: Checkout diffusers
