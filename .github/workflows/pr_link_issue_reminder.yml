@@ -7,8 +7,8 @@ on:
 
 jobs:
   remind:
-    # Reminds external contributors to link an issue, sends still-unlinked PRs to a
-    # Slack rescue digest 7 days after the reminder, and auto-closes them 10 days
+    # Reminds external contributors to link an issue, reports still-unlinked PRs to
+    # Slack (one message per PR) 7 days after the reminder, and auto-closes them 10 days
     # after the reminder unless rescued (issue linked or `no-issue-needed` label
     # added). PRs from maintainers, users with write/admin access, and collaborators
     # are skipped by the script.
@@ -22,7 +22,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_PR_LINK_ISSUE }}
-      # Comma-separated Slack member IDs pinged in the rescue digest
+      # Comma-separated Slack member IDs pinged in the Slack rescue messages
       # (Sayak Paul, YiYi Xu, Dhruv Nair, Daniel Gu).
       SLACK_MENTION_IDS: ${{ secrets.SLACK_PR_LINK_ISSUE_MENTION_IDS }}
     steps:

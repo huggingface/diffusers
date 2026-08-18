@@ -23,9 +23,9 @@ Behavior:
 - If a PR only has an old-style reminder (posted before the auto-close notice existed),
   the script posts a single follow-up carrying the notice instead, so those PRs enter
   the same escalation path with the full warning window.
-- Once the warning is `SLACK_DIGEST_DAYS` old and the PR is still not linked, the PR is
-  included in a daily Slack digest so maintainers can rescue it (by linking an issue or
-  adding the `no-issue-needed` label).
+- Once the warning is `SLACK_RESCUE_DAYS` old and the PR is still not linked, it is
+  reported to Slack (one message per PR, so each can be tracked individually) for
+  maintainers to rescue it (by linking an issue or adding the `no-issue-needed` label).
 - Once the warning is `AUTOCLOSE_DAYS` old and the PR is still not linked, the PR is
   closed with an explanatory comment.
 - PRs labeled `no-issue-needed` and bot-authored PRs are skipped.
@@ -52,8 +52,8 @@ AUTOCLOSE_MARKER = "<!-- pr-link-issue-autoclose -->"
 # Login the reminder comments are authored under (the workflow's GITHUB_TOKEN).
 BOT_LOGIN = "github-actions[bot]"
 BYPASS_LABELS = {"no-issue-needed"}
-# Days after the warning at which a still-unlinked PR enters the Slack rescue digest.
-SLACK_DIGEST_DAYS = 7
+# Days after the warning at which a still-unlinked PR is reported to Slack for rescue.
+SLACK_RESCUE_DAYS = 7
 # Days after the warning at which a still-unlinked PR is automatically closed.
 AUTOCLOSE_DAYS = 10
 # Upper bound on how far back to paginate open PRs; older PRs are left alone.
@@ -161,31 +161,38 @@ def autoclose_body():
     )
 
 
-def send_slack_digest(webhook_url, mention_ids, at_risk):
-    lines = []
-    if mention_ids:
-        lines.append("cc " + " ".join(f"<@{mid}>" for mid in mention_ids))
-    lines.append(
+def post_to_slack(webhook_url, text):
+    response = requests.post(webhook_url, json={"text": text}, timeout=30)
+    response.raise_for_status()
+
+
+def send_slack_rescue_messages(webhook_url, mention_ids, at_risk):
+    """Post one header message plus one message per PR, so each PR can be tracked
+    individually (e.g. with a ✅ reaction once handled)."""
+    header = (
         f"⚠️ {len(at_risk)} open PR(s) without a linked issue will be auto-closed soon. "
         "Link an issue or add the `no-issue-needed` label to rescue them:"
     )
+    if mention_ids:
+        header = "cc " + " ".join(f"<@{mid}>" for mid in mention_ids) + "\n" + header
+    post_to_slack(webhook_url, header)
     for pr, days_left in at_risk:
-        lines.append(f"• <{pr.html_url}|#{pr.number} {pr.title}> by `{pr.user.login}` — closes in {days_left} day(s)")
-    response = requests.post(webhook_url, json={"text": "\n".join(lines)}, timeout=30)
-    response.raise_for_status()
+        post_to_slack(
+            webhook_url, f"<{pr.html_url}|#{pr.number} {pr.title}> by `{pr.user.login}` — closes in {days_left} day(s)"
+        )
 
 
 def main():
     token = os.environ["GITHUB_TOKEN"]
     slack_webhook_url = os.getenv("SLACK_WEBHOOK_URL")
-    # Comma-separated Slack member IDs (e.g. "U0123ABC,U0456DEF") pinged in the digest.
+    # Comma-separated Slack member IDs (e.g. "U0123ABC,U0456DEF") pinged in the Slack rescue messages.
     mention_ids = [m.strip() for m in os.getenv("SLACK_MENTION_IDS", "").split(",") if m.strip()]
     g = Github(token)
     repo = g.get_repo(REPO)
     owner, name = REPO.split("/", 1)
     now = datetime.now(timezone.utc)
     scan_cutoff = now - timedelta(days=SCAN_LOOKBACK_DAYS)
-    # (pr, days_left) pairs for the Slack rescue digest.
+    # (pr, days_left) pairs reported to Slack for rescue.
     at_risk = []
 
     try:
@@ -240,7 +247,7 @@ def main():
                 if days_since_warning >= AUTOCLOSE_DAYS:
                     pr.create_issue_comment(autoclose_body())
                     pr.edit(state="closed")
-                elif days_since_warning >= SLACK_DIGEST_DAYS:
+                elif days_since_warning >= SLACK_RESCUE_DAYS:
                     at_risk.append((pr, AUTOCLOSE_DAYS - days_since_warning))
             except Exception as e:
                 logger.warning("Skipping PR #%s: %s", getattr(pr, "number", "?"), e)
@@ -251,9 +258,11 @@ def main():
 
     if at_risk:
         if slack_webhook_url:
-            send_slack_digest(slack_webhook_url, mention_ids, at_risk)
+            send_slack_rescue_messages(slack_webhook_url, mention_ids, at_risk)
         else:
-            logger.warning("SLACK_WEBHOOK_URL is not set; skipping digest for %d at-risk PR(s).", len(at_risk))
+            logger.warning(
+                "SLACK_WEBHOOK_URL is not set; skipping rescue messages for %d at-risk PR(s).", len(at_risk)
+            )
 
 
 if __name__ == "__main__":
