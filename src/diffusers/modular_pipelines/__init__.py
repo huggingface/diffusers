@@ -7,14 +7,8 @@ from ..utils import (
     get_objects_from_module,
     is_torch_available,
     is_transformers_available,
-    logging,
 )
 
-
-logger = logging.get_logger(__name__)
-logger.warning(
-    "Modular Diffusers is currently an experimental feature under active development. The API is subject to breaking changes in future releases."
-)
 
 # These modules contain pipelines from multiple libraries/frameworks
 _dummy_objects = {}
