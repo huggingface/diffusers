@@ -136,6 +136,15 @@ class TestZImageTransformer(ZImageTransformerTesterConfig, ModelTesterMixin):
     def test_outputs_equivalence(self, atol=1e-5, rtol=0):
         pass
 
+    @pytest.mark.skip(
+        "`t_embedder.mlp.0` is a single 256x1024 Linear — `TimestepEmbedder` hardcodes `mid_size=1024`, so it is 1.0 MB "
+        "of this 1.1 MB test model. `get_balanced_memory` hands device 0 about half the model, the Linear does not fit "
+        "there, and so `device_map='auto'` puts the whole model on one device and the map never spans both GPUs. "
+        "`test_cpu_offload` covers split placement instead."
+    )
+    def test_model_parallelism(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
+        pass
+
 
 class TestZImageTransformerMemory(ZImageTransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for Z-Image Transformer."""
@@ -218,6 +227,11 @@ class TestZImageTransformerCompile(ZImageTransformerTesterConfig, TorchCompileTe
     )
     def test_torch_compile_recompilation_and_graph_break(self):
         pass
+
+    def test_torch_compile_repeated_blocks(self):
+        # ZImageTransformerBlock is reused by noise_refiner (modulated), context_refiner (unmodulated), and the
+        # main layers (modulated, different sequence length), so the shared block forward compiles three times.
+        super().test_torch_compile_repeated_blocks(recompile_limit=3)
 
     @pytest.mark.skip("Fullgraph AoT is broken")
     def test_compile_works_with_aot(self, tmp_path):
