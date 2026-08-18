@@ -140,6 +140,20 @@ _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2",
 
 If `None` (default), all modules follow the requested `torch_dtype`.
 
+### `_skip_keys`
+
+**API:** every device-placement hook that moves call inputs — `apply_group_offloading(model, ...)` reads it as `exclude_kwargs` (`hooks/group_offloading.py`), and `from_pretrained(..., device_map=...)` (including the `device_map={"": "cpu"}` offload placement) forwards it to accelerate's `dispatch_model(skip_keys=...)` (`pipelines/pipeline_loading_utils.py`).
+
+These hooks move every tensor in the call's args/kwargs to the execution device before `forward` runs. List the forward kwargs that carry state the model places itself — a KV-cache, an encoder feature cache — so the hooks leave them alone instead of transferring (or repeatedly re-transferring) their contents on every call.
+
+```python
+# in-tree examples
+_skip_keys = ["kv_cache"]                 # transformer_wan_animate_2.py, transformer_flux2.py
+_skip_keys = ["feat_cache", "feat_idx"]   # autoencoder_kl_wan.py
+```
+
+If unset, offloading treats every kwarg as movable input, which at best wastes transfers and at worst breaks the object's device placement mid-inference.
+
 ### `_cp_plan`
 
 **API:** `model.enable_parallelism(config=parallel_config)` — when the config includes `context_parallel_config`, this plan is used by `apply_context_parallel()` to shard tensors across GPUs for sequence parallelism (`modeling_utils.py:1665`).

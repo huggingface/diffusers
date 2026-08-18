@@ -61,10 +61,9 @@ class AutoencoderKLLTX2AudioTesterConfig(BaseModelTesterConfig):
             "double_z": True,
         }
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self, num_frames: int = 8):
         batch_size = 2
         num_channels = 2
-        num_frames = 8
         num_mel_bins = 16
         spectrogram = randn_tensor(
             (batch_size, num_channels, num_frames, num_mel_bins),
@@ -87,6 +86,16 @@ class TestAutoencoderKLLTX2AudioTraining(AutoencoderKLLTX2AudioTesterConfig, Tra
 
 class TestAutoencoderKLLTX2AudioMemory(AutoencoderKLLTX2AudioTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKLLTX2Audio."""
+
+    # This is specific for this model and also for our CI setup.
+    # The underlying model being so tiny, it doesn't pass some memory-related
+    # tests with even smaller inputs. See: https://github.com/huggingface/diffusers/pull/14505
+    def get_dummy_inputs(self, num_frames: int = 512):
+        return super().get_dummy_inputs(num_frames=num_frames)
+
+    @property
+    def output_shape(self):
+        return (2, 509, 16)
 
     @is_flaky()
     @pytest.mark.parametrize("record_stream", [False, True])
