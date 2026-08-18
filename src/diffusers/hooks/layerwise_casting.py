@@ -17,7 +17,7 @@ from typing import Type
 
 import torch
 
-from ..utils import get_logger, is_peft_available, is_peft_version
+from ..utils import get_logger, is_peft_available
 from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
@@ -31,7 +31,7 @@ _PEFT_AUTOCAST_DISABLE_HOOK = "peft_autocast_disable"
 DEFAULT_SKIP_MODULES_PATTERN = ("pos_embed", "patch_embed", "norm", "^proj_in$", "^proj_out$")
 # fmt: on
 
-_SHOULD_DISABLE_PEFT_INPUT_AUTOCAST = is_peft_available() and is_peft_version(">", "0.14.0")
+_SHOULD_DISABLE_PEFT_INPUT_AUTOCAST = is_peft_available()
 if _SHOULD_DISABLE_PEFT_INPUT_AUTOCAST:
     from peft.helpers import disable_input_dtype_casting
     from peft.tuners.tuners_utils import BaseTunerLayer
