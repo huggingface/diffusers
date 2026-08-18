@@ -5,6 +5,12 @@
 - Local Claude Code agents: run `make claude` after cloning to wire the [skills](#skills) under `.claude/`.
 - Local OpenAI Codex agents: run `make codex` after cloning to wire the [skills](#skills) under `.agents/`.
 
+Files under `.ai/` are read through several paths — this file is also `CLAUDE.md` and
+`AGENTS.md` at the repo root, and `.ai/skills/` is also `.claude/skills/` and `.agents/skills/`.
+Write cross-file references as paths from the repo root (`` `.ai/models.md` ``), not as
+relative links: `../../models.md` points at `.ai/` or `.claude/` depending on which path the
+reader arrived through.
+
 ## Coding style
 
 Strive to write code as simple and explicit as possible.
@@ -27,20 +33,20 @@ Strive to write code as simple and explicit as possible.
 
 ## Reference guides
 
-- **Models** — see [models.md](models.md) for model conventions, attention pattern, implementation rules, dependencies, and gotchas. For adding or converting a model, use the [model-integration](./skills/model-integration/SKILL.md) skill.
-- **Pipelines** — see [pipelines.md](pipelines.md) for pipeline conventions, patterns, and gotchas.
-- **Modular pipelines** — see [modular.md](modular.md) for modular pipeline conventions, patterns, and gotchas.
-- **Tests** — see [testing.md](testing.md) for test conventions: required test layers, tester mixins, and dummy-component rules.
+- **Models** — see `.ai/models.md` for model conventions, attention pattern, implementation rules, dependencies, and gotchas. For adding or converting a model, use the `model-integration` skill.
+- **Pipelines** — see `.ai/pipelines.md` for pipeline conventions, patterns, and gotchas.
+- **Modular pipelines** — see `.ai/modular.md` for modular pipeline conventions, patterns, and gotchas.
+- **Tests** — see `.ai/testing.md` for test conventions: required test layers, tester mixins, and dummy-component rules.
 
 ## Skills
 
 Task-specific guides live in `.ai/skills/` and are loaded on demand by AI agents. Available skills include:
 
-- [model-integration](./skills/model-integration/SKILL.md) (adding/converting pipelines)
-- [custom-blocks](./skills/custom-blocks/SKILL.md) (packaging a `ModularPipelineBlocks` subclass for the Hub)
-- [diffusers-cli](./skills/diffusers-cli/SKILL.md) (running pipelines, inspecting schemas, and using the Diffusers CLI)
-- [self-review](./skills/self-review/SKILL.md) (pre-PR self-review against the project rules)
+- `model-integration` (`.ai/skills/model-integration/SKILL.md`) — adding/converting pipelines
+- `custom-blocks` (`.ai/skills/custom-blocks/SKILL.md`) — packaging a `ModularPipelineBlocks` subclass for the Hub
+- `diffusers-cli` (`.ai/skills/diffusers-cli/SKILL.md`) — running pipelines, inspecting schemas, and using the Diffusers CLI
+- `self-review` (`.ai/skills/self-review/SKILL.md`) — pre-PR self-review against the project rules
 
 ## Self-review before a PR
 
-Before opening a PR, run self-review against [review-rules.md](review-rules.md). The [self-review skill](skills/self-review/SKILL.md) runs this as the same pass the `@claude` CI reviewer uses. Share the final report on the PR (description or comment) — see the skill for details.
+Before opening a PR, run self-review against `.ai/review-rules.md`. The `self-review` skill (`.ai/skills/self-review/SKILL.md`) runs this as the same pass the `@claude` CI reviewer uses. Share the final report on the PR (description or comment) — see the skill for details.
