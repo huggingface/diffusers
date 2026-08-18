@@ -25,11 +25,13 @@ else:
     _import_structure["modular_blocks_wan22"] = ["Wan22Blocks"]
     _import_structure["modular_blocks_wan22_i2v"] = ["Wan22Image2VideoBlocks"]
     _import_structure["modular_blocks_wan_i2v"] = ["WanImage2VideoAutoBlocks"]
+    _import_structure["modular_blocks_wan_v2v"] = ["WanVideoToVideoBlocks"]
     _import_structure["modular_pipeline"] = [
         "Wan22Image2VideoModularPipeline",
         "Wan22ModularPipeline",
         "WanImage2VideoModularPipeline",
         "WanModularPipeline",
+        "WanVideoToVideoModularPipeline",
     ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -43,11 +45,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_blocks_wan22 import Wan22Blocks
         from .modular_blocks_wan22_i2v import Wan22Image2VideoBlocks
         from .modular_blocks_wan_i2v import WanImage2VideoAutoBlocks
+        from .modular_blocks_wan_v2v import WanVideoToVideoBlocks
         from .modular_pipeline import (
             Wan22Image2VideoModularPipeline,
             Wan22ModularPipeline,
             WanImage2VideoModularPipeline,
             WanModularPipeline,
+            WanVideoToVideoModularPipeline,
         )
 else:
     import sys
