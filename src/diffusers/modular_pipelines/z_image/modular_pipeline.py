@@ -14,6 +14,7 @@
 
 
 from ...loaders import ZImageLoraLoaderMixin
+from ...models import ZImageControlNetModel
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
 
@@ -32,6 +33,20 @@ class ZImageModularPipeline(
     """
 
     default_blocks_name = "ZImageAutoBlocks"
+
+    def _link_controlnet(self):
+        controlnet = self.components.get("controlnet")
+        transformer = self.components.get("transformer")
+        if controlnet is not None and transformer is not None:
+            ZImageControlNetModel.from_transformer(controlnet, transformer)
+
+    def update_components(self, **kwargs):
+        super().update_components(**kwargs)
+        self._link_controlnet()
+
+    def load_components(self, names: list[str] | str | None = None, workflow: str | None = None, **kwargs):
+        super().load_components(names=names, workflow=workflow, **kwargs)
+        self._link_controlnet()
 
     @property
     def default_height(self):

@@ -16,7 +16,7 @@ import inspect
 
 import torch
 
-from ...models import ZImageTransformer2DModel
+from ...models import ZImageControlNetModel, ZImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
@@ -423,14 +423,20 @@ class ZImagePrepareLatentsStep(ModularPipelineBlocks):
                 type_hint=int,
                 description="Number of prompts, the final batch size of model inputs should be `batch_size * num_images_per_prompt`. Can be generated in input step.",
             ),
-            InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
+            InputParam(
+                "dtype",
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
-                "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
+                "latents",
+                type_hint=torch.Tensor,
+                description="The initial latents to use for the denoising process",
             )
         ]
 
@@ -521,7 +527,9 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
-                "timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"
+                "timesteps",
+                type_hint=torch.Tensor,
+                description="The timesteps to use for the denoising process",
             ),
         ]
 
@@ -530,7 +538,10 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        latent_height, latent_width = block_state.latents.shape[2], block_state.latents.shape[3]
+        latent_height, latent_width = (
+            block_state.latents.shape[2],
+            block_state.latents.shape[3],
+        )
         image_seq_len = (latent_height // 2) * (latent_width // 2)  # sequence length  after patchify
 
         mu = calculate_shift(
@@ -586,7 +597,10 @@ class ZImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
-        init_timestep = min(block_state.num_inference_steps * block_state.strength, block_state.num_inference_steps)
+        init_timestep = min(
+            block_state.num_inference_steps * block_state.strength,
+            block_state.num_inference_steps,
+        )
 
         t_start = int(max(block_state.num_inference_steps - init_timestep, 0))
         timesteps = components.scheduler.timesteps[t_start * components.scheduler.order :]
@@ -623,5 +637,173 @@ class ZImagePrepareLatentswithImageStep(ModularPipelineBlocks):
             block_state.image_latents, latent_timestep, block_state.latents
         )
 
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ZImageInpaintInputStep(ModularPipelineBlocks):
+    model_name = "z-image"
+
+    @property
+    def description(self) -> str:
+        return "Expands source image latents and the inpaint mask to the denoising batch."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("image_latents", required=True, type_hint=torch.Tensor),
+            InputParam("mask", required=True, type_hint=torch.Tensor),
+            InputParam("batch_size", required=True, type_hint=int),
+            InputParam("num_images_per_prompt", default=1, type_hint=int),
+            InputParam("height"),
+            InputParam("width"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        height, width = calculate_dimension_from_latents(
+            block_state.image_latents, components.vae_scale_factor_spatial
+        )
+        block_state.height = block_state.height or height
+        block_state.width = block_state.width or width
+        block_state.image_latents = repeat_tensor_to_batch_size(
+            "image_latents",
+            block_state.image_latents,
+            block_state.batch_size,
+            block_state.num_images_per_prompt,
+        )
+        block_state.mask = torch.nn.functional.interpolate(
+            block_state.mask.to(
+                device=components._execution_device,
+                dtype=block_state.image_latents.dtype,
+            ),
+            size=block_state.image_latents.shape[-2:],
+            mode="nearest",
+        )
+        block_state.mask = repeat_tensor_to_batch_size(
+            "mask",
+            block_state.mask,
+            block_state.batch_size,
+            block_state.num_images_per_prompt,
+        )
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ZImagePrepareInpaintLatentsStep(ModularPipelineBlocks):
+    model_name = "z-image"
+
+    @property
+    def description(self) -> str:
+        return "Adds noise to source-image latents and preserves that noise for inpaint blending."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("latents", required=True, type_hint=torch.Tensor),
+            InputParam("image_latents", required=True, type_hint=torch.Tensor),
+            InputParam("timesteps", required=True, type_hint=torch.Tensor),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "image_noise",
+                type_hint=torch.Tensor,
+                description="Noise used for inpaint blending.",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.image_noise = block_state.latents
+        timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])
+        block_state.latents = components.scheduler.scale_noise(
+            block_state.image_latents, timestep, block_state.image_noise
+        )
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ZImageControlNetInpaintInputStep(ModularPipelineBlocks):
+    model_name = "z-image"
+
+    @property
+    def description(self) -> str:
+        return "Expands the latent ControlNet inpaint condition to the denoising batch."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("control_image_latents", required=True, type_hint=torch.Tensor),
+            InputParam("batch_size", required=True, type_hint=int),
+            InputParam("num_images_per_prompt", default=1, type_hint=int),
+            InputParam("height"),
+            InputParam("width"),
+        ]
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", ZImageTransformer2DModel),
+            ComponentSpec("controlnet", ZImageControlNetModel),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        height = block_state.control_image_latents.shape[-2] * components.vae_scale_factor_spatial // 2
+        width = block_state.control_image_latents.shape[-1] * components.vae_scale_factor_spatial // 2
+        block_state.height = block_state.height or height
+        block_state.width = block_state.width or width
+        block_state.control_image_latents = repeat_tensor_to_batch_size(
+            "control_image_latents",
+            block_state.control_image_latents,
+            block_state.batch_size,
+            block_state.num_images_per_prompt,
+        )
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ZImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
+    model_name = "z-image"
+
+    @property
+    def description(self) -> str:
+        return "Prepares the per-step ControlNet conditioning schedule."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("control_guidance_start"),
+            InputParam.template("control_guidance_end"),
+            InputParam("timesteps", required=True, type_hint=torch.Tensor),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "controlnet_keep",
+                type_hint=list[float],
+                description="Per-step ControlNet conditioning multipliers.",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.controlnet_keep = [
+            1.0
+            - float(
+                i / len(block_state.timesteps) < block_state.control_guidance_start
+                or (i + 1) / len(block_state.timesteps) > block_state.control_guidance_end
+            )
+            for i in range(len(block_state.timesteps))
+        ]
         self.set_block_state(state, block_state)
         return components, state
