@@ -66,7 +66,7 @@ scheduler_config = {
 }
 scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 pipe = DiffusionPipeline.from_pretrained(
-    ckpt_id, scheduler=scheduler, torch_dtype=torch.bfloat16
+    ckpt_id, scheduler=scheduler, dtype=torch.bfloat16
 ).to("cuda")
 pipe.load_lora_weights(
     "lightx2v/Qwen-Image-Lightning", weight_name="Qwen-Image-Lightning-8steps-V1.0.safetensors"
@@ -102,7 +102,7 @@ from diffusers import QwenImageEditPlusPipeline
 from diffusers.utils import load_image
 
 pipe = QwenImageEditPlusPipeline.from_pretrained(
-    "Qwen/Qwen-Image-Edit-2509", torch_dtype=torch.bfloat16
+    "Qwen/Qwen-Image-Edit-2509", dtype=torch.bfloat16
 ).to("cuda")
 
 image_1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/grumpy.jpg")
@@ -124,7 +124,7 @@ Using `torch.compile` on the transformer provides ~2.4x speedup (A100 80GB: 4.70
 import torch
 from diffusers import QwenImagePipeline
 
-pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16).to("cuda")
+pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", dtype=torch.bfloat16).to("cuda")
 pipe.transformer = torch.compile(pipe.transformer)
 
 # First call triggers compilation (~7s overhead)

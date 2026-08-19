@@ -18,19 +18,24 @@ import unittest
 import numpy as np
 import PIL.Image
 import torch
-from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model, T5TokenizerFast
 
 from diffusers import (
     AnimaAutoBlocks,
     AnimaModularPipeline,
     AnimaTextConditioner,
-    AutoencoderKLQwenImage,
     CosmosTransformer3DModel,
-    FlowMatchEulerDiscreteScheduler,
 )
 
-from ...testing_utils import enable_full_determinism, require_peft_backend
-from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
+from ...testing_utils import enable_full_determinism, is_lora, require_peft_backend
+from ..testing_utils import (
+    BaseModularPipelineOutputMixin,
+    BaseModularPipelineTesterConfig,
+    ModularGuiderTesterMixin,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -63,76 +68,6 @@ ANIMA_IMG2IMG_WORKFLOWS = {
         ("decode.postprocess", "AnimaProcessImagesOutputStep"),
     ],
 }
-
-
-def get_dummy_components():
-    torch.manual_seed(0)
-    transformer = CosmosTransformer3DModel(
-        in_channels=4,
-        out_channels=4,
-        num_attention_heads=2,
-        attention_head_dim=16,
-        num_layers=2,
-        mlp_ratio=2,
-        text_embed_dim=16,
-        adaln_lora_dim=4,
-        max_size=(4, 32, 32),
-        patch_size=(1, 2, 2),
-        rope_scale=(1.0, 4.0, 4.0),
-        concat_padding_mask=True,
-        extra_pos_embed_type=None,
-    )
-
-    torch.manual_seed(0)
-    vae = AutoencoderKLQwenImage(
-        base_dim=24,
-        z_dim=4,
-        dim_mult=[1, 2, 4],
-        num_res_blocks=1,
-        temperal_downsample=[False, True],
-        latents_mean=[0.0] * 4,
-        latents_std=[1.0] * 4,
-    )
-
-    torch.manual_seed(0)
-    text_conditioner = AnimaTextConditioner(
-        source_dim=16,
-        target_dim=16,
-        model_dim=16,
-        num_layers=2,
-        num_attention_heads=4,
-        target_vocab_size=32128,
-        min_sequence_length=16,
-    )
-
-    torch.manual_seed(0)
-    text_encoder_config = Qwen3Config(
-        vocab_size=152064,
-        hidden_size=16,
-        intermediate_size=32,
-        num_hidden_layers=2,
-        num_attention_heads=4,
-        num_key_value_heads=2,
-        max_position_embeddings=128,
-        rms_norm_eps=1e-6,
-        rope_theta=1000000.0,
-        head_dim=4,
-        attention_bias=False,
-    )
-    text_encoder = Qwen3Model(text_encoder_config).eval()
-    tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
-    t5_tokenizer = T5TokenizerFast.from_pretrained("hf-internal-testing/tiny-random-t5")
-    scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
-
-    return {
-        "transformer": transformer,
-        "vae": vae,
-        "scheduler": scheduler,
-        "text_encoder": text_encoder,
-        "tokenizer": tokenizer,
-        "t5_tokenizer": t5_tokenizer,
-        "text_conditioner": text_conditioner,
-    }
 
 
 def get_dummy_image(height=32, width=32):
@@ -169,20 +104,13 @@ class AnimaTextConditionerFastTests(unittest.TestCase):
         self.assertTrue(torch.allclose(output[:, 4:], torch.zeros_like(output[:, 4:]), atol=1e-5))
 
 
-class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
+class AnimaModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = AnimaModularPipeline
     pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
     params = frozenset(["prompt", "height", "width", "negative_prompt"])
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_workflow_blocks = ANIMA_TEXT2IMAGE_WORKFLOWS
-
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipe = self.pipeline_blocks_class().init_pipeline(components_manager=components_manager)
-        pipe.update_components(**get_dummy_components())
-        pipe.to(dtype=torch_dtype)
-        pipe.set_progress_bar_config(disable=None)
-        return pipe
 
     def get_dummy_inputs(self, seed=0):
         generator = torch.Generator(device="cpu").manual_seed(seed)
@@ -197,6 +125,8 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
             "output_type": "pt",
         }
 
+
+class TestAnimaModularPipelineFast(AnimaModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_inference_empty_negative_prompt(self):
         pipe = self.get_pipeline()
 
@@ -210,6 +140,8 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
 
+
+class TestAnimaModularPipelineLoading(AnimaModularPipelineTesterConfig, ModularLoadingTesterMixin):
     def test_save_load_components(self):
         pipe = self.get_pipeline()
 
@@ -221,6 +153,9 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
         assert isinstance(pipe.text_conditioner, AnimaTextConditioner)
         assert isinstance(pipe.transformer, CosmosTransformer3DModel)
 
+
+@is_lora
+class TestAnimaModularPipelineLoRA(AnimaModularPipelineTesterConfig, BaseModularPipelineOutputMixin):
     def test_lora_state_dict_conversion(self):
         state_dict = {
             "diffusion_model.blocks.0.self_attn.q_proj.lora_A.weight": torch.randn(2, 32),
@@ -253,20 +188,25 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
         assert "dummy" in pipe.text_conditioner.peft_config
 
 
-class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
+class TestAnimaModularPipelineWorkflow(AnimaModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestAnimaModularPipelineMemory(AnimaModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class TestAnimaModularPipelineGuider(AnimaModularPipelineTesterConfig, ModularGuiderTesterMixin):
+    pass
+
+
+class AnimaImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = AnimaModularPipeline
     pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
     params = frozenset(["prompt", "image", "strength", "height", "width", "negative_prompt"])
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_workflow_blocks = ANIMA_IMG2IMG_WORKFLOWS
-
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipe = self.pipeline_blocks_class().init_pipeline(components_manager=components_manager)
-        pipe.update_components(**get_dummy_components())
-        pipe.to(dtype=torch_dtype)
-        pipe.set_progress_bar_config(disable=None)
-        return pipe
 
     def get_dummy_inputs(self, seed=0):
         generator = torch.Generator(device="cpu").manual_seed(seed)
@@ -283,6 +223,8 @@ class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "pt",
         }
 
+
+class TestAnimaImg2ImgModularPipelineFast(AnimaImg2ImgModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_inference_basic(self):
         pipe = self.get_pipeline()
         inputs = self.get_dummy_inputs()
@@ -320,3 +262,15 @@ class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
+
+
+class TestAnimaImg2ImgModularPipelineLoading(AnimaImg2ImgModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestAnimaImg2ImgModularPipelineWorkflow(AnimaImg2ImgModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestAnimaImg2ImgModularPipelineMemory(AnimaImg2ImgModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

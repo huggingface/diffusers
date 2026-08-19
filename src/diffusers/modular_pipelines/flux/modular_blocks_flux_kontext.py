@@ -521,7 +521,7 @@ class FluxKontextAutoBlocks(SequentialPipelineBlocks):
 
       Components:
           text_encoder (`CLIPTextModel`) tokenizer (`CLIPTokenizer`) text_encoder_2 (`T5EncoderModel`) tokenizer_2
-          (`T5TokenizerFast`) image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`) scheduler
+          (`T5Tokenizer`) image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`) scheduler
           (`FlowMatchEulerDiscreteScheduler`) transformer (`FluxTransformer2DModel`)
 
       Inputs:

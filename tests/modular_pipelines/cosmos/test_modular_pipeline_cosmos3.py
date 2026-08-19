@@ -34,7 +34,13 @@ from diffusers.modular_pipelines.cosmos.before_denoise import (
 from diffusers.modular_pipelines.cosmos.encoders import Cosmos3TextEncoderStep
 
 from ...testing_utils import torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 TEXT_VISION_WORKFLOW = [
@@ -114,19 +120,18 @@ COSMOS3_OMNI_WORKFLOWS = {
 }
 
 
-class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
+class Cosmos3OmniModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Cosmos3OmniModularPipeline
     pipeline_blocks_class = Cosmos3OmniBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-cosmos3-modular-pipe"
-
     params = frozenset(["prompt", "height", "width", "num_frames", "guidance_scale"])
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
     output_name = "videos"
     expected_workflow_blocks = COSMOS3_OMNI_WORKFLOWS
 
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipe = super().get_pipeline(components_manager, torch_dtype)
+    def get_pipeline(self, components_manager=None, dtype=torch.float32):
+        pipe = super().get_pipeline(components_manager, dtype)
         pipe.disable_safety_checker()
         return pipe
 
@@ -143,6 +148,8 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "latent",
         }
 
+
+class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="Cosmos3 does not support batched prompts.")
     def test_inference_batch_consistent(self):
         pass
@@ -158,20 +165,6 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="Cosmos3 checkpoints support bfloat16, not float16, inference.")
     def test_float16_inference(self):
         pass
-
-    def test_save_from_pretrained(self, tmp_path):
-        base_pipe = self.get_pipeline().to(torch_device)
-        base_pipe.save_pretrained(str(tmp_path))
-
-        loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
-        loaded_pipe.load_components(torch_dtype=torch.float32)
-        loaded_pipe.disable_safety_checker()
-        loaded_pipe.to(torch_device)
-
-        base_output = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
-        loaded_output = loaded_pipe(**self.get_dummy_inputs(), output=self.output_name)
-
-        assert torch.abs(base_output - loaded_output).max() < 1e-3
 
     def test_vae_encoder_is_standalone_and_validates_conditioning_inputs(self):
         pipe = self.get_pipeline()
@@ -373,3 +366,27 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
         torch.testing.assert_close(timesteps_pipe.scheduler.sigmas[:-1], expected_sigmas)
         assert native_timesteps.tolist() == [99, 74, 49, 24]
         assert not torch.equal(native_timesteps, default_timesteps)
+
+
+class TestCosmos3OmniModularPipelineLoading(Cosmos3OmniModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    def test_save_from_pretrained(self, tmp_path):
+        base_pipe = self.get_pipeline().to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+
+        loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
+        loaded_pipe.load_components(dtype=torch.float32)
+        loaded_pipe.disable_safety_checker()
+        loaded_pipe.to(torch_device)
+
+        base_output = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
+        loaded_output = loaded_pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert torch.abs(base_output - loaded_output).max() < 1e-3
+
+
+class TestCosmos3OmniModularPipelineWorkflow(Cosmos3OmniModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestCosmos3OmniModularPipelineMemory(Cosmos3OmniModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

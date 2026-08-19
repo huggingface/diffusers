@@ -65,6 +65,7 @@ from ..utils import (
     PushToHubMixin,
     _get_detailed_type,
     _is_valid_type,
+    _resolve_dtype,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -592,7 +593,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     " is not recommended to move them to `cpu` as running them will fail. Please make"
                     " sure to use an accelerator to run the pipeline in inference, due to the lack of"
                     " support for`float16` operations on this device in PyTorch. Please, remove the"
-                    " `torch_dtype=torch.float16` argument, or use another device for inference."
+                    " `dtype=torch.float16` argument, or use another device for inference."
                 )
         return self
 
@@ -600,11 +601,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     def device(self) -> torch.device:
         r"""
         Returns:
-            `torch.device`: The torch device on which the pipeline is located.
+            `torch.device`: The torch device on which the pipeline is located. When components are split across devices
+            (for example, text encoders on CPU while the denoising backbone runs on an accelerator), the accelerator
+            device is returned.
         """
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
+
+        # Prefer a non-CPU, non-meta component so a split pipeline reports the accelerator it computes on,
+        # rather than whichever component happens to sort first.
+        for module in modules:
+            if module.device.type not in ("cpu", "meta"):
+                return module.device
 
         for module in modules:
             return module.device
@@ -740,8 +749,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
             dduf_file(`str`, *optional*):
                 Load weights from the specified dduf file. <Deprecated> This argument is deprecated and will be removed
                 in version 0.41.0. </Deprecated>
@@ -781,10 +789,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        from_flax = kwargs.pop("from_flax", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        dtype = kwargs.pop("dtype", None)
-        torch_dtype = dtype if dtype is not None else torch_dtype
+        dtype = _resolve_dtype(kwargs.pop("dtype", None), torch_dtype)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
         provider = kwargs.pop("provider", None)
@@ -805,11 +811,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         disable_mmap = kwargs.pop("disable_mmap", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
 
-        if torch_dtype is not None and not isinstance(torch_dtype, dict) and not isinstance(torch_dtype, torch.dtype):
-            torch_dtype = torch.float32
-            logger.warning(
-                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
-            )
+        if dtype is not None and not isinstance(dtype, dict) and not isinstance(dtype, torch.dtype):
+            logger.warning(f"Passed `dtype` {dtype} is not a `torch.dtype`. Defaulting to `torch.float32`.")
+            dtype = torch.float32
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
@@ -881,7 +885,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 local_files_only=local_files_only,
                 token=token,
                 revision=revision,
-                from_flax=from_flax,
                 use_safetensors=use_safetensors,
                 use_onnx=use_onnx,
                 custom_pipeline=custom_pipeline,
@@ -992,14 +995,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
-        # Special case: safety_checker must be loaded separately when using `from_flax`
-        if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
-            raise NotImplementedError(
-                "The safety checker cannot be automatically loaded when loading weights `from_flax`."
-                " Please, pass `safety_checker=None` to `from_pretrained`, and load the safety checker"
-                " separately if you need it."
-            )
-
         # 5. Throw nice warnings / errors for fast accelerate loading
         if len(unused_kwargs) > 0:
             logger.warning(
@@ -1019,7 +1014,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 init_dict=init_dict,
                 library=library,
                 max_memory=max_memory,
-                torch_dtype=torch_dtype,
+                dtype=dtype,
                 cached_folder=cached_folder,
                 force_download=force_download,
                 proxies=proxies,
@@ -1047,15 +1042,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 elif isinstance(final_device_map, str):
                     current_device_map = final_device_map
 
-            # 7.2 - now that JAX/Flax is an official framework of the library, we might load from Flax names
-            class_name = class_name[4:] if class_name.startswith("Flax") else class_name
-
-            # 7.3 Define all importable classes
+            # 7.2 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
             importable_classes = ALL_IMPORTABLE_CLASSES
             loaded_sub_model = None
 
-            # 7.4 Use passed sub model or load class_name from library_name
+            # 7.3 Use passed sub model or load class_name from library_name
             if name in passed_class_obj:
                 # if the model is in a pipeline module, then we load it from the pipeline
                 # check that passed_class_obj has correct parent class
@@ -1067,9 +1059,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 # load sub model
                 sub_model_dtype = (
-                    torch_dtype.get(name, torch_dtype.get("default", torch.float32))
-                    if isinstance(torch_dtype, dict)
-                    else torch_dtype
+                    dtype.get(name, dtype.get("default", torch.float32)) if isinstance(dtype, dict) else dtype
                 )
                 loaded_sub_model = load_sub_model(
                     library_name=library_name,
@@ -1078,7 +1068,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     pipelines=pipelines,
                     is_pipeline_module=is_pipeline_module,
                     pipeline_class=pipeline_class,
-                    torch_dtype=sub_model_dtype,
+                    dtype=sub_model_dtype,
                     provider=provider,
                     sess_options=sess_options,
                     device_map=current_device_map,
@@ -1087,7 +1077,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     offload_state_dict=offload_state_dict,
                     model_variants=model_variants,
                     name=name,
-                    from_flax=from_flax,
                     variant=variant,
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
@@ -1466,7 +1455,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             >>> from diffusers import DiffusionPipeline
             >>> import torch
 
-            >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16)
+            >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image", dtype=torch.bfloat16)
 
             >>> pipe.enable_group_offload(
             ...     onload_device=torch.device("cuda"),
@@ -1586,8 +1575,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
             dduf_file(`str`, *optional*):
                 Load weights from the specified DDUF file. <Deprecated> This argument is deprecated and will be removed
                 in version 0.41.0. </Deprecated>
@@ -1622,7 +1610,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        from_flax = kwargs.pop("from_flax", False)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
         variant = kwargs.pop("variant", None)
@@ -1761,7 +1748,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 model_folder_names,
                 filenames,
                 use_safetensors,
-                from_flax,
                 allow_pickle,
                 use_onnx,
                 pipeline_class._is_onnx,
@@ -1839,7 +1825,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
             cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
-            cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name
 
             diffusers_module = importlib.import_module(__name__.split(".")[0])
             pipeline_class = getattr(diffusers_module, cls_name, None) if isinstance(cls_name, str) else None
@@ -2055,7 +2040,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> from diffusers import DiffusionPipeline
         >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
 
-        >>> pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16)
+        >>> pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
         >>> pipe.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
         >>> # Workaround for not accepting attention shape using VAE for Flash Attention
@@ -2114,7 +2099,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         >>> pipe = StableDiffusionPipeline.from_pretrained(
         ...     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     use_safetensors=True,
         ... )
 
@@ -2167,8 +2152,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         original_config = dict(pipeline.config)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        dtype = kwargs.pop("dtype", None)
-        torch_dtype = dtype if dtype is not None else (torch_dtype if torch_dtype is not None else torch.float32)
+        dtype = _resolve_dtype(kwargs.pop("dtype", None), torch_dtype) or torch.float32
         trust_remote_code = kwargs.pop("trust_remote_code", False)
 
         # derive the pipeline class to instantiate
@@ -2266,8 +2250,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             new_pipeline.register_to_config(_name_or_path=pretrained_model_name_or_path)
         new_pipeline.register_to_config(**unused_original_config)
 
-        if torch_dtype is not None:
-            new_pipeline.to(dtype=torch_dtype)
+        new_pipeline.to(dtype=dtype)
 
         return new_pipeline
 

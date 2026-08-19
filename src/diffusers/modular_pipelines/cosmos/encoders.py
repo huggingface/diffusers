@@ -280,6 +280,137 @@ class Cosmos3TransferTextStep(ModularPipelineBlocks):
         return components, state
 
 
+class Cosmos3DistilledTextEncoderStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Prepares distilled prompt token IDs. Classifier-free guidance is baked into the weights, so "
+            "`negative_prompt` is not exposed and the unconditional branch is derived from an empty prompt."
+        )
+
+    @staticmethod
+    def _check_inputs(block_state) -> None:
+        prompt = block_state.prompt
+        if not isinstance(prompt, str):
+            raise ValueError(
+                f"`prompt` must be a str; batched prompts are not supported, got {type(prompt).__name__}."
+            )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("text_tokenizer", AutoTokenizer),
+        ]
+
+    @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [
+            ConfigSpec(name="default_use_system_prompt", default=True),
+            ConfigSpec(name="enable_safety_checker", default=True),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("prompt", description="The text prompt that guides Cosmos3 generation."),
+            InputParam(name="num_frames", type_hint=int, default=None, description="Number of frames to generate."),
+            InputParam(
+                name="height",
+                type_hint=int,
+                default=None,
+                description="Height of the generated video or image in pixels.",
+            ),
+            InputParam(
+                name="width",
+                type_hint=int,
+                default=None,
+                description="Width of the generated video or image in pixels.",
+            ),
+            InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
+            InputParam(
+                name="use_system_prompt",
+                type_hint=bool,
+                default=True,
+                description="Whether to prepend the Cosmos3 system prompt.",
+            ),
+            InputParam(
+                name="add_resolution_template",
+                type_hint=bool,
+                default=True,
+                description="Whether to add resolution metadata to the prompt.",
+            ),
+            InputParam(
+                name="add_duration_template",
+                type_hint=bool,
+                default=True,
+                description="Whether to add duration metadata to the prompt.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("num_frames", type_hint=int, description="Number of frames to generate."),
+            OutputParam("height", type_hint=int, description="Height of the generated video or image in pixels."),
+            OutputParam("width", type_hint=int, description="Width of the generated video or image in pixels."),
+            OutputParam("cond_input_ids", type_hint=torch.Tensor, description="Token IDs for the conditional prompt."),
+            OutputParam(
+                "uncond_input_ids",
+                type_hint=torch.Tensor,
+                description="Token IDs for the unconditional prompt (empty prompt; guidance is baked in).",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        if block_state.num_frames is None:
+            block_state.num_frames = 189
+        if block_state.height is None:
+            block_state.height = 720
+        if block_state.width is None:
+            block_state.width = 1280
+
+        self._check_inputs(block_state)
+        if components.requires_safety_checker:
+            if getattr(components, "safety_checker", None) is None:
+                raise ValueError(
+                    "Cosmos3 requires a safety checker by default. Call `pipe.enable_safety_checker()` to load it "
+                    "(or pass your own), or opt out explicitly with `pipe.disable_safety_checker()`."
+                )
+            device = components._execution_device
+            components.safety_checker.to(device)
+            try:
+                if not components.safety_checker.check_text_safety(block_state.prompt):
+                    raise ValueError(
+                        f"Cosmos Guardrail detected unsafe text in the prompt: {block_state.prompt}. "
+                        "Please ensure that the prompt abides by the NVIDIA Open Model License Agreement."
+                    )
+            finally:
+                components.safety_checker.to("cpu")
+
+        # Guidance is baked into distilled weights: the unconditional branch is built from an empty prompt
+        # (negative_prompt is not a user-facing input) so the downstream text-segment packing contract still holds.
+        block_state.cond_input_ids, block_state.uncond_input_ids = components.tokenize_prompt(
+            block_state.prompt,
+            None,
+            num_frames=block_state.num_frames,
+            height=block_state.height,
+            width=block_state.width,
+            fps=block_state.fps,
+            use_system_prompt=block_state.use_system_prompt,
+            add_resolution_template=block_state.add_resolution_template,
+            add_duration_template=block_state.add_duration_template,
+            action_mode=None,
+            action_view_point=None,
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class Cosmos3ActionTextStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 

@@ -29,7 +29,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
 )
 ```
 
@@ -48,7 +48,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-  "Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
 )
 ```
 
@@ -72,7 +72,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-  "path/to/your/cache", torch_dtype=torch.bfloat16, device_map="cuda"
+  "path/to/your/cache", dtype=torch.bfloat16, device_map="cuda"
 )
 ```
 
@@ -80,9 +80,9 @@ The [`~QwenImagePipeline.from_pretrained`] method won't download files from the 
 
 ## Pipeline data types
 
-Use the `torch_dtype` argument in [`~DiffusionPipeline.from_pretrained`] to load a model with a specific data type. This allows you to load different models in different precisions. For example, loading a large transformer model in half-precision reduces the memory required.
+Use the `dtype` argument in [`~DiffusionPipeline.from_pretrained`] to load a model with a specific data type. This allows you to load different models in different precisions. For example, loading a large transformer model in half-precision reduces the memory required.
 
-Pass the data type for each model as a dictionary to `torch_dtype`. Use the `default` key to set the default data type. If a model isn't in the dictionary and `default` isn't provided, it is loaded in full precision (`torch.float32`).
+Pass the data type for each model as a dictionary to `dtype`. Use the `default` key to set the default data type. If a model isn't in the dictionary and `default` isn't provided, it is loaded in full precision (`torch.float32`).
 
 ```py
 import torch
@@ -90,7 +90,7 @@ from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
   "Qwen/Qwen-Image",
-  torch_dtype={"transformer": torch.bfloat16, "default": torch.float16},
+  dtype={"transformer": torch.bfloat16, "default": torch.float16},
 )
 print(pipeline.transformer.dtype, pipeline.vae.dtype)
 ```
@@ -102,7 +102,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-  "Qwen/Qwen-Image", torch_dtype=torch.bfloat16
+  "Qwen/Qwen-Image", dtype=torch.bfloat16
 )
 print(pipeline.transformer.dtype, pipeline.vae.dtype)
 ```
@@ -127,7 +127,7 @@ from diffusers import DiffusionPipeline
 max_memory = {0: "16GB", 1: "16GB"}
 pipeline = DiffusionPipeline.from_pretrained(
   "Qwen/Qwen-Image", 
-  torch_dtype=torch.bfloat16,
+  dtype=torch.bfloat16,
   device_map="cuda",
 )
 ```
@@ -161,7 +161,7 @@ from diffusers import DiffusionPipeline
 os.environ["HF_ENABLE_PARALLEL_LOADING"] = "YES"
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Wan-AI/Wan2.2-I2V-A14B-Diffusers", torch_dtype=torch.bfloat16, device_map="cuda"
+  "Wan-AI/Wan2.2-I2V-A14B-Diffusers", dtype=torch.bfloat16, device_map="cuda"
 )
 ```
 
@@ -176,13 +176,13 @@ import torch
 from diffusers import DiffusionPipeline, AutoModel
 
 vae = AutoModel.from_pretrained(
-  "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
+  "madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16
 )
 
 pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   vae=vae,
-  torch_dtype=torch.float16,
+  dtype=torch.float16,
   device_map="cuda"
 )
 ```
@@ -203,7 +203,7 @@ import torch
 from diffusers import AutoPipelineForText2Image
 
 pipeline_sdxl = AutoPipelineForText2Image.from_pretrained(
-  "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, device_map="cuda"
+  "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, device_map="cuda"
 )
 prompt = """
 cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California

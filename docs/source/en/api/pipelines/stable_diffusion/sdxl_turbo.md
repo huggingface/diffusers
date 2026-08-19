@@ -44,7 +44,7 @@ Model weights may be stored in separate subfolders on the Hub or locally, in whi
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", torch_dtype=torch.float16, variant="fp16")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", dtype=torch.float16, variant="fp16")
 pipeline = pipeline.to("cuda")
 ```
 
@@ -56,7 +56,7 @@ import torch
 
 pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/sdxl-turbo/blob/main/sd_xl_turbo_1.0_fp16.safetensors",
-    torch_dtype=torch.float16, variant="fp16")
+    dtype=torch.float16, variant="fp16")
 pipeline = pipeline.to("cuda")
 pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config, timestep_spacing="trailing")
 ```
@@ -72,7 +72,7 @@ Increasing the number of steps to 2, 3 or 4 should improve image quality.
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline_text2image = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", torch_dtype=torch.float16, variant="fp16")
+pipeline_text2image = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", dtype=torch.float16, variant="fp16")
 pipeline_text2image = pipeline_text2image.to("cuda")
 
 prompt = "A cinematic shot of a baby racoon wearing an intricate italian priest robe."

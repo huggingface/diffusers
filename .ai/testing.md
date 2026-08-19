@@ -14,20 +14,35 @@ Two test layers must be added for any new pipeline: pipeline-level tests, and (i
 
 ## Pipeline-level tests 
 
-### Stanard pipelines
+### Standard pipelines
 
-- Location: `tests/pipelines/<model>/test_<model>.py` (one file per pipeline variant, e.g. T2V, I2V).
-- Subclass both `PipelineTesterMixin` (from `..test_pipelines_common`) and `unittest.TestCase`.
-- Set `pipeline_class`, `params`, `batch_params`, `image_params` from `..pipeline_params`, and any `required_optional_params` / capability flags (`test_xformers_attention`, `supports_dduf`, etc.) that apply.
-- Implement `get_dummy_components()` (build all sub-modules with tiny configs and a fixed `torch.manual_seed(0)` before each) and `get_dummy_inputs(device, seed=0)`.
-- Skip any inherited tests that don't apply with `@unittest.skip("Test not supported")` rather than deleting them.
-- Reference: `tests/pipelines/wan/test_wan.py`.
+Follow the style introduced in [#14113](https://github.com/huggingface/diffusers/pull/14113), which moved the shared infrastructure into the `tests/pipelines/testing_utils/` package and split the old monolithic `unittest.TestCase` into a **config class + composable pytest mixins**. Reference: `tests/pipelines/flux/test_pipeline_flux.py`.
+
+- Location: `tests/pipelines/<model>/test_pipeline_<model>.py` (one file per pipeline variant, e.g. T2V, I2V).
+- **These are pytest-style, not `unittest`** — no `unittest.TestCase` subclassing, no `setUp`/`tearDown` (a `cleanup` fixture handles VRAM), and skips use `pytest.skip` / `@pytest.mark.skip`, never `@unittest.skip`. Fixtures like `tmp_path` and the cached `base_pipe_output` are injected into test methods as arguments.
+- **Define one config class**, `<Pipeline>PipelineTesterConfig`, subclassing `BasePipelineTesterConfig` (from `..testing_utils`). It holds the whole testing contract and performs no assertions:
+  - Set `pipeline_class`, `required_input_params_in_call_signature` (params that must appear in `__call__`'s signature), and `batch_input_params` (params that get batched). Use the canonical sets in `..pipeline_params` where one fits, or an inline `frozenset([...])`.
+  - Set `output_shape` — the per-sample output shape for `get_dummy_inputs()`, i.e. `(channels, height, width)` for an image pipeline and `(num_frames, channels, height, width)` for a video one. Assert against `self.output_shape` in pipeline-specific tests instead of repeating the literal.
+  - Implement `get_dummy_components(...)` — build every sub-module from the **real classes** at tiny config, each preceded by `torch.manual_seed(0)`.
+  - Implement `get_dummy_inputs()` — **no `device` / `seed` arguments** (unlike the old style). Use `self.get_generator(0)` for the generator, keep sizes tiny, and set `output_type="pt"` so tests compare torch tensors directly with `assert_tensors_close` (no numpy round-trip). Remember `"pt"` images are `(batch, channels, height, width)`.
+- **Compose the config with one mixin per concern**, one test class each, named `Test<Pipeline>...`. Add only the mixins that apply:
+  - `PipelineTesterMixin` — core save/load, dict-vs-tuple equivalence, batching, dtype/device, callbacks. Put pipeline-specific tests as methods on this class.
+  - `MemoryTesterMixin` — CPU offload, group offload, layerwise casting.
+  - Cache mixins — `PyramidAttentionBroadcastTesterMixin`, `FasterCacheTesterMixin`, `FirstBlockCacheTesterMixin`, `TaylorSeerCacheTesterMixin`, `MagCacheTesterMixin`. Guidance-distilled models override the cache config (e.g. `FASTER_CACHE_CONFIG = {... "is_guidance_distilled": True}`). Don't introduce caching related tests in the first iteration. These tests are added on a case-by-case basis.
+  - In the first pass, just add tests related to `PipelineTesterMixin` and `MemoryTesterMixin`.
+- **IP-Adapter tests** live in their own class decorated with `@is_ip_adapter`, subclassing only the config (not `PipelineTesterMixin`).
 
 ### Modular pipelines
 
-- Location: `tests/modular_pipelines/<model>/test_modular_pipeline_<model>.py` (one test class per blocks assembly / pipeline variant).
-- Subclass `ModularPipelineTesterMixin` (from `..test_modular_pipelines_common`) — it runs the pipeline end-to-end (call signature, batch consistency, float16, device placement) against a tiny checkpoint.
-- Set `pipeline_class`, `pipeline_blocks_class`, `pretrained_model_name_or_path`, `params` / `batch_params`, and implement `get_dummy_inputs(seed=0)`. Set `expected_workflow_blocks` to pin the block name → class ordering per workflow.
+- Location: `tests/modular_pipelines/<model>/test_modular_pipeline_<model>.py` (one config class + set of test classes per blockset / pipeline variant).
+- **Define one config class**, `<Pipeline>ModularPipelineTesterConfig`, subclassing `BaseModularPipelineTesterConfig` (from `..testing_utils`). Set `pipeline_class`, `pipeline_blocks_class`, `pretrained_model_name_or_path`, `params` / `batch_params`, and implement `get_dummy_inputs(seed=0)`. Set `expected_workflow_blocks` to pin the block name → class ordering per workflow. The config holds the whole testing contract and performs no assertions.
+- **Then one test class per concern**, each composing the config with a tester mixin from `..testing_utils`. Keep them separate — pytest reads class-level markers off the whole MRO, so folding a marked mixin (`@is_memory`, ...) into the same class as the others would tag every test in it:
+  - `ModularPipelineTesterMixin` — call signature, batch consistency, float16, device placement, NaN-free output. Put pipeline-specific tests as methods on this class.
+  - `ModularLoadingTesterMixin` — `save_pretrained`/`from_pretrained` round-trips, `modular_model_index.json` contents, `load_components`/`unload_components`.
+  - `ModularWorkflowTesterMixin` — everything driven by the blocks class's `_workflow_map`; skips itself when there is none.
+  - `ModularMemoryTesterMixin` — auto CPU offload, group offload, device memory reclaimed on unload.
+  - `ModularGuiderTesterMixin` — only for pipelines with a `guider` component.
+  - `ModularAutoOffloadTesterMixin` — opt-in, for pipelines with several offloadable model components; asserts on the offload *decisions* under simulated memory pressure.
 - `pretrained_model_name_or_path` is a tiny repo with real components (tiny transformer, real scheduler / VAE / tokenizer configs). Develop against a personal repo; tiny repos ultimately live under `hf-internal-testing/` — not merge-blocking, a maintainer moves it before or after merge.
 - **The tiny repo must mirror the real checkpoint's shape** — same index file type, same pipeline-level config keys, a scheduler configured like the real one. A fixture that doesn't look like the published repos tests a loading/config path no user will ever hit, while the path users *do* hit stays uncovered. If the model ships variants with different configs (base/distilled, different schedules), make one tiny repo and test class per variant — see the flux2 klein base/distilled split.
 - **Bespoke tests go on the tester class as methods**, not as module-level functions — the mixin is pytest-style, so fixtures (`tmp_path`, `pytest.raises`, parametrize) all work in methods.

@@ -305,14 +305,6 @@ class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterM
 class TestQwenImageTransformerLoRAHotSwap(QwenImageTransformerTesterConfig, LoraHotSwappingForModelTesterMixin):
     """LoRA hot-swapping tests for QwenImage Transformer."""
 
-    @pytest.mark.xfail(True, reason="Recompilation issues.", strict=True)
-    def test_hotswapping_compiled_model_linear(self):
-        super().test_hotswapping_compiled_model_linear()
-
-    @pytest.mark.xfail(True, reason="Recompilation issues.", strict=True)
-    def test_hotswapping_compiled_model_both_linear_and_other(self):
-        super().test_hotswapping_compiled_model_both_linear_and_other()
-
     @property
     def different_shapes_for_compilation(self):
         return [(4, 4), (4, 8), (8, 8)]
@@ -438,9 +430,37 @@ class TestQwenImageTransformerCompile(QwenImageTransformerTesterConfig, TorchCom
         assert not torch.allclose(output_no_mask.sample, output_with_padding.sample, atol=1e-3)
 
 
-class TestQwenImageTransformerBitsAndBytes(QwenImageTransformerTesterConfig, BitsAndBytesTesterMixin):
+class QwenImageTransformerQuantTesterConfig(QwenImageTransformerTesterConfig):
+    """Shared config for quantized QwenImage Transformer tests (loads the tiny Hub checkpoint)."""
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-qwenimage-pipe"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        """Override to match the compute dtype the quantizer loads the model in."""
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        return {
+            k: v.to(self.torch_dtype) if torch.is_tensor(v) and torch.is_floating_point(v) else v
+            for k, v in inputs.items()
+        }
+
+
+class TestQwenImageTransformerBitsAndBytes(QwenImageTransformerQuantTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for QwenImage Transformer."""
 
+    @property
+    def torch_dtype(self):
+        return torch.float16
 
-class TestQwenImageTransformerTorchAo(QwenImageTransformerTesterConfig, TorchAoTesterMixin):
+
+class TestQwenImageTransformerTorchAo(QwenImageTransformerQuantTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for QwenImage Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
