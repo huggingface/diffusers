@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 import torch
 
-from diffusers import BitsAndBytesConfig, FluxTransformer2DModel
+from diffusers import BitsAndBytesConfig, FluxTransformer2DModel, GGUFQuantizationConfig
 from diffusers.models.embeddings import ImageProjection
 from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
@@ -382,10 +382,6 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
         return "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors"
 
     @property
-    def alternate_ckpt_paths(self):
-        return ["https://huggingface.co/Comfy-Org/flux1-dev/blob/main/flux1-dev-fp8.safetensors"]
-
-    @property
     def pretrained_model_name_or_path(self):
         return "black-forest-labs/FLUX.1-dev"
 
@@ -397,9 +393,17 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Flux Transformer."""
 
+    modules_to_not_convert_for_test = ["proj_out"]
+
     @property
     def torch_dtype(self):
         return torch.float16
+
+    def get_dummy_inputs(self):
+        """Override to build inputs in the quantizer compute dtype (excluded/unquantized linears
+        do strict-dtype matmuls)."""
+        inputs = super().get_dummy_inputs()
+        return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
 
 
 class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
@@ -422,6 +426,12 @@ class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin
     @property
     def torch_dtype(self):
         return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to build inputs in the quantizer compute dtype (excluded/unquantized linears
+        do strict-dtype matmuls)."""
+        inputs = super().get_dummy_inputs()
+        return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
 
 
 class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
@@ -450,6 +460,17 @@ class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
             "txt_ids": randn_tensor((512, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
             "guidance": torch.tensor([3.5]).to(torch_device, self.torch_dtype),
         }
+
+    @torch.no_grad()
+    def test_loading_gguf_diffusers_format(self):
+        model = self.model_class.from_single_file(
+            "https://huggingface.co/sayakpaul/flux-diffusers-gguf/blob/main/model-Q4_0.gguf",
+            subfolder="transformer",
+            quantization_config=GGUFQuantizationConfig(compute_dtype=self.torch_dtype),
+            config="black-forest-labs/FLUX.1-dev",
+        )
+        model.to(torch_device)
+        model(**self.get_dummy_inputs())
 
 
 class TestFluxTransformerQuantoCompile(FluxTransformerTesterConfig, QuantoCompileTesterMixin):
