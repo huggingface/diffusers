@@ -1715,8 +1715,8 @@ class PeftLoraLoaderMixinTests:
         """
         `_merged_adapters` (backing `num_fused_loras`/`fused_loras`) is shared across the whole pipeline,
         while actual merge state is tracked per component by PEFT. Fusing an adapter into every loadable
-        component and then unfusing only *some* of them should not report the adapter as fully unfused,
-        it's still merged into the untouched component(s).
+        component and then unfusing only *some* of them must not report the adapter as fully unfused,
+        it is still merged into the untouched component(s).
         """
         if not self.supports_text_encoder_loras:
             pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
