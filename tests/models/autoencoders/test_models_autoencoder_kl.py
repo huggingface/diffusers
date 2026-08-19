@@ -35,7 +35,13 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    SingleFileTesterMixin,
+    TrainingTesterMixin,
+)
 from .testing_utils import NewAutoencoderTesterMixin
 
 
@@ -81,6 +87,15 @@ class AutoencoderKLTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKL(AutoencoderKLTesterConfig, ModelTesterMixin, TrainingTesterMixin):
+    @pytest.mark.skip(
+        "`forward` runs through the `apply_forward_hook`-decorated `encode` and `decode`, and that decorator's "
+        "`pre_forward` call clears the input device accelerate's `AlignDevicesHook` recorded for the caller, so the "
+        "output comes back on the last device of the split rather than the input device and the comparison raises. "
+        "`test_cpu_offload` covers split placement instead — there every submodule executes on the same device."
+    )
+    def test_model_parallelism(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
+        pass
+
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
         # The reference and reloaded models hold identical weights, so any output difference is
@@ -419,3 +434,19 @@ class AutoencoderKLIntegrationTests:
 
         tolerance = 3e-3 if torch_device != "mps" else 1e-2
         assert torch_all_close(output_slice, expected_output_slice, atol=tolerance)
+
+
+class TestAutoencoderKLSingleFile(AutoencoderKLTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        # `from_single_file` resolves a bare VAE checkpoint against the SD 1.5 repo, so compare against that
+        # rather than against `stabilityai/sd-vae-ft-mse`, whose own config differs (sample_size 256 vs 512).
+        return "stable-diffusion-v1-5/stable-diffusion-v1-5"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "vae"}

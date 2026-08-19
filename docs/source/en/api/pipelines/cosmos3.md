@@ -205,7 +205,7 @@ result.video[0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
 
 ## Image-to-video
 
-Pass a conditioning image via `image=`. The pipeline anchors frame 0 to the supplied image and denoises the rest. Upsample with `--mode image2video` to produce the JSON prompt.
+Pass a conditioning image via `image=`. The pipeline anchors frame 0 to the supplied image and denoises the rest. The image is resized while preserving its aspect ratio, center-cropped to the requested output size, and normalized with uint8-equivalent rounding. Upsample with `--mode image2video` to produce the JSON prompt.
 
 <hfoptions id="model">
 <hfoption id="Nano">

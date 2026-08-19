@@ -26,7 +26,13 @@ from diffusers.modular_pipelines.stable_diffusion_3 import (
 )
 
 from ...testing_utils import floats_tensor, torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 SD3_TEXT2IMAGE_WORKFLOWS = {
@@ -41,19 +47,13 @@ SD3_TEXT2IMAGE_WORKFLOWS = {
 }
 
 
-class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
+class StableDiffusion3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = StableDiffusion3ModularPipeline
     pipeline_blocks_class = StableDiffusion3AutoBlocks
     pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
-
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     expected_workflow_blocks = SD3_TEXT2IMAGE_WORKFLOWS
-
-    def test_pipeline_call_signature(self):
-        # Override to prevent signature check failure for guider configurations
-        # (guidance_scale) which are intentionally omitted from pipeline inputs.
-        pass
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
@@ -67,9 +67,20 @@ class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "pt",
         }
 
-    def get_pipeline(self, components_manager=None, dtype=torch.float32):
-        return super().get_pipeline(components_manager, dtype)
 
+class TestStableDiffusion3ModularPipelineFast(StableDiffusion3ModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_pipeline_call_signature(self):
+        # Override to prevent signature check failure for guider configurations
+        # (guidance_scale) which are intentionally omitted from pipeline inputs.
+        pass
+
+    def test_float16_inference(self):
+        super().test_float16_inference(9e-2)
+
+
+class TestStableDiffusion3ModularPipelineLoading(
+    StableDiffusion3ModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
     def test_save_from_pretrained(self, tmp_path):
         pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
@@ -98,8 +109,15 @@ class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
 
         assert set(base_pipe.components.keys()) == set(pipe.components.keys())
 
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
+
+class TestStableDiffusion3ModularPipelineWorkflow(
+    StableDiffusion3ModularPipelineTesterConfig, ModularWorkflowTesterMixin
+):
+    pass
+
+
+class TestStableDiffusion3ModularPipelineMemory(StableDiffusion3ModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
 
 
 SD3_IMAGE2IMAGE_WORKFLOWS = {
@@ -121,19 +139,13 @@ SD3_IMAGE2IMAGE_WORKFLOWS = {
 }
 
 
-class TestStableDiffusion3Img2ImgModularPipelineFast(ModularPipelineTesterMixin):
+class StableDiffusion3Img2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = StableDiffusion3ModularPipeline
     pipeline_blocks_class = StableDiffusion3AutoBlocks
     pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
-
     params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = SD3_IMAGE2IMAGE_WORKFLOWS
-
-    def test_pipeline_call_signature(self):
-        # Override to prevent signature check failure for guider configurations
-        # (guidance_scale) which are intentionally omitted from pipeline inputs.
-        pass
 
     def get_pipeline(self, components_manager=None, dtype=torch.float32):
         pipeline = super().get_pipeline(components_manager, dtype)
@@ -158,6 +170,22 @@ class TestStableDiffusion3Img2ImgModularPipelineFast(ModularPipelineTesterMixin)
         inputs["strength"] = 0.5
         return inputs
 
+
+class TestStableDiffusion3Img2ImgModularPipelineFast(
+    StableDiffusion3Img2ImgModularPipelineTesterConfig, ModularPipelineTesterMixin
+):
+    def test_pipeline_call_signature(self):
+        # Override to prevent signature check failure for guider configurations
+        # (guidance_scale) which are intentionally omitted from pipeline inputs.
+        pass
+
+    def test_float16_inference(self):
+        super().test_float16_inference(9e-2)
+
+
+class TestStableDiffusion3Img2ImgModularPipelineLoading(
+    StableDiffusion3Img2ImgModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
     def test_save_from_pretrained(self, tmp_path):
         pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
@@ -187,5 +215,14 @@ class TestStableDiffusion3Img2ImgModularPipelineFast(ModularPipelineTesterMixin)
 
         assert set(base_pipe.components.keys()) == set(pipe.components.keys())
 
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
+
+class TestStableDiffusion3Img2ImgModularPipelineWorkflow(
+    StableDiffusion3Img2ImgModularPipelineTesterConfig, ModularWorkflowTesterMixin
+):
+    pass
+
+
+class TestStableDiffusion3Img2ImgModularPipelineMemory(
+    StableDiffusion3Img2ImgModularPipelineTesterConfig, ModularMemoryTesterMixin
+):
+    pass
