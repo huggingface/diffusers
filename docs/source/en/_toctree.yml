@@ -5,93 +5,7 @@
     title: Installation
   - local: quicktour
     title: Quickstart
-  - local: stable_diffusion
-    title: Basic performance
   title: Get started
-- isExpanded: false
-  sections:
-  - local: using-diffusers/loading
-    title: DiffusionPipeline
-  - local: tutorials/autopipeline
-    title: AutoPipeline
-  - local: using-diffusers/custom_pipeline_overview
-    title: Community pipelines and components
-  - local: using-diffusers/callback
-    title: Pipeline callbacks
-  - local: using-diffusers/reusing_seeds
-    title: Reproducibility
-  - local: using-diffusers/schedulers
-    title: Schedulers
-  - local: using-diffusers/guiders
-    title: Guiders
-  - local: using-diffusers/automodel
-    title: AutoModel
-  - local: using-diffusers/other-formats
-    title: Model formats
-  - local: using-diffusers/push_to_hub
-    title: Sharing pipelines and models
-  title: Pipelines
-- isExpanded: false
-  sections:
-  - local: tutorials/using_peft_for_inference
-    title: LoRA
-  - local: using-diffusers/ip_adapter
-    title: IP-Adapter
-  - local: using-diffusers/controlnet
-    title: ControlNet
-  - local: using-diffusers/t2i_adapter
-    title: T2I-Adapter
-  - local: using-diffusers/dreambooth
-    title: DreamBooth
-  - local: using-diffusers/textual_inversion_inference
-    title: Textual inversion
-  title: Adapters
-- isExpanded: false
-  sections:
-  - local: using-diffusers/weighted_prompts
-    title: Prompting
-  - local: using-diffusers/create_a_server
-    title: Create a server
-  - local: using-diffusers/batched_inference
-    title: Batch inference
-  - local: training/distributed_inference
-    title: Distributed inference
-  - local: hybrid_inference/overview
-    title: Remote inference
-  title: Inference
-- isExpanded: false
-  sections:
-  - local: optimization/fp16
-    title: Accelerate inference
-  - local: optimization/cache
-    title: Caching
-  - local: optimization/attention_backends
-    title: Attention backends
-  - local: optimization/memory
-    title: Reduce memory usage
-  - local: optimization/speed-memory-optims
-    title: Compiling and offloading quantized models
-  - sections:
-    - local: optimization/pruna
-      title: Pruna
-    - local: optimization/xformers
-      title: xFormers
-    - local: optimization/tome
-      title: Token merging
-    - local: optimization/deepcache
-      title: DeepCache
-    - local: optimization/cache_dit
-      title: CacheDiT
-    - local: optimization/tgate
-      title: TGATE
-    - local: optimization/xdit
-      title: xDiT
-    - local: optimization/para_attn
-      title: ParaAttention
-    - local: using-diffusers/image_quality
-      title: FreeU
-    title: Community optimizations
-  title: Inference optimization
 - isExpanded: false
   sections:
   - local: modular_diffusers/overview
@@ -121,6 +35,129 @@
   title: Modular Diffusers
 - isExpanded: false
   sections:
+  - sections:
+    - local: using-diffusers/loading
+      title: DiffusionPipeline
+    - local: tutorials/autopipeline
+      title: AutoPipeline
+    - local: using-diffusers/custom_pipeline_overview
+      title: Community pipelines and components
+    - local: using-diffusers/callback
+      title: Pipeline callbacks
+    - local: using-diffusers/reusing_seeds
+      title: Reproducibility
+    - local: using-diffusers/schedulers
+      title: Schedulers
+    - local: using-diffusers/guiders
+      title: Guiders
+    - local: using-diffusers/automodel
+      title: AutoModel
+    - local: using-diffusers/other-formats
+      title: Model formats
+    - local: using-diffusers/push_to_hub
+      title: Sharing pipelines and models
+    title: Use diffusion pipelines
+  - sections:
+    - local: tutorials/using_peft_for_inference
+      title: LoRA
+    - local: using-diffusers/ip_adapter
+      title: IP-Adapter
+    - local: using-diffusers/controlnet
+      title: ControlNet
+    - local: using-diffusers/t2i_adapter
+      title: T2I-Adapter
+    - local: using-diffusers/dreambooth
+      title: DreamBooth
+    - local: using-diffusers/textual_inversion_inference
+      title: Textual inversion
+    title: Adapters and personalization
+  - local: using-diffusers/weighted_prompts
+    title: Prompting
+  title: Inference
+- isExpanded: false
+  sections:
+  - local: stable_diffusion
+    title: Basic performance
+  - sections:
+    - local: optimization/fp16
+      title: Accelerate inference
+    - local: optimization/cache
+      title: Caching
+    - local: optimization/attention_backends
+      title: Attention backends
+    - local: optimization/memory
+      title: Reduce memory usage
+    - local: optimization/speed-memory-optims
+      title: Compiling and offloading quantized models
+    title: Inference optimization
+  - isExpanded: false
+    sections:
+    - local: optimization/pruna
+      title: Pruna
+    - local: optimization/xformers
+      title: xFormers
+    - local: optimization/tome
+      title: Token merging
+    - local: optimization/deepcache
+      title: DeepCache
+    - local: optimization/cache_dit
+      title: CacheDiT
+    - local: optimization/tgate
+      title: TGATE
+    - local: optimization/xdit
+      title: xDiT
+    - local: optimization/para_attn
+      title: ParaAttention
+    - local: using-diffusers/image_quality
+      title: FreeU
+    title: Community optimizations
+  - sections:
+    - local: quantization/overview
+      title: Getting started
+    - local: quantization/bitsandbytes
+      title: bitsandbytes
+    - local: quantization/gguf
+      title: gguf
+    - local: quantization/nunchaku
+      title: Nunchaku Lite
+    - local: quantization/torchao
+      title: torchao
+    - local: quantization/quanto
+      title: quanto
+    - local: quantization/modelopt
+      title: NVIDIA ModelOpt
+    - local: quantization/autoround
+      title: AutoRound
+    - local: quantization/sdnq
+      title: SDNQ
+    title: Quantization
+  - sections:
+    - local: optimization/onnx
+      title: ONNX
+    - local: optimization/open_vino
+      title: OpenVINO
+    - local: optimization/coreml
+      title: Core ML
+    - local: optimization/mps
+      title: Metal Performance Shaders (MPS)
+    - local: optimization/habana
+      title: Intel Gaudi
+    - local: optimization/neuron
+      title: AWS Neuron
+    title: Hardware-specific acceleration
+  - sections:
+    - local: using-diffusers/batched_inference
+      title: Batch inference
+    - local: training/distributed_inference
+      title: Distributed inference
+    - local: hybrid_inference/overview
+      title: Remote inference
+    - local: using-diffusers/create_a_server
+      title: Create a server
+    title: Serving and scaling
+  title: Optimize and scale
+- isExpanded: false
+  sections:
   - local: training/overview
     title: Overview
   - local: training/create_dataset
@@ -148,7 +185,7 @@
       title: InstructPix2Pix
     - local: training/cogvideox
       title: CogVideoX
-    title: Models
+    title: Model recipes
   - sections:
     - local: training/text_inversion
       title: Textual Inversion
@@ -162,46 +199,10 @@
       title: Latent Consistency Distillation
     - local: training/ddpo
       title: Reinforcement learning training with DDPO
-    title: Methods
+    title: Training methods
   - local: training/nemo_automodel
     title: NeMo Automodel
-  title: Training
-- isExpanded: false
-  sections:
-  - local: quantization/overview
-    title: Getting started
-  - local: quantization/bitsandbytes
-    title: bitsandbytes
-  - local: quantization/gguf
-    title: gguf
-  - local: quantization/nunchaku
-    title: Nunchaku Lite
-  - local: quantization/torchao
-    title: torchao
-  - local: quantization/quanto
-    title: quanto
-  - local: quantization/modelopt
-    title: NVIDIA ModelOpt
-  - local: quantization/autoround
-    title: AutoRound
-  - local: quantization/sdnq
-    title: SDNQ
-  title: Quantization
-- isExpanded: false
-  sections:
-  - local: optimization/onnx
-    title: ONNX
-  - local: optimization/open_vino
-    title: OpenVINO
-  - local: optimization/coreml
-    title: Core ML
-  - local: optimization/mps
-    title: Metal Performance Shaders (MPS)
-  - local: optimization/habana
-    title: Intel Gaudi
-  - local: optimization/neuron
-    title: AWS Neuron
-  title: Model accelerators and hardware
+  title: Train and fine-tune
 - isExpanded: false
   sections:
   - sections:
@@ -219,22 +220,27 @@
       title: Video generation
     - local: using-diffusers/depth2img
       title: Depth-to-image
-    title: Task recipes
-  - local: using-diffusers/write_own_pipeline
-    title: Understanding pipelines, models and schedulers
+    title: Recipes
+  - sections:
+    - local: using-diffusers/write_own_pipeline
+      title: Understanding pipelines, models and schedulers
+    - local: using-diffusers/controlling_generation
+      title: Controlled generation
+    title: Concepts and background
   - local: using-diffusers/cli
     title: Command line interface
   - local: community_projects
     title: Projects built with Diffusers
-  - local: conceptual/philosophy
-    title: Philosophy
-  - local: using-diffusers/controlling_generation
-    title: Controlled generation
+  title: Resources
+- isExpanded: false
+  sections:
   - local: conceptual/contribution
-    title: How to contribute?
+    title: How to contribute
   - local: conceptual/ethical_guidelines
     title: Diffusers' Ethical Guidelines
-  title: Resources
+  - local: conceptual/philosophy
+    title: Diffusers philosophy
+  title: Contribute
 - isExpanded: false
   sections:
   - sections:
