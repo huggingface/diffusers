@@ -75,6 +75,27 @@ What you pass as `attn_mask=` to `dispatch_attention_fn` determines which backen
 - **Other mask types (structural, BlockMask, etc.)** — if the model requires a different mask pattern, figure out how to support as many backends as possible (e.g. use `window_size` kwarg for sliding window on flash, `BlockMask` for Flex) and document which backends are supported for that model.
 - **Don't declare `attention_mask` (or `encoder_hidden_states_mask`) in the forward signature if you ignore it.** "For API stability with other transformers" is not a reason; readers assume a declared param is honored, and downstream pipelines will pass padding masks that silently get dropped. Some existing models in the repo carry unused mask params for historical reasons — e.g. `QwenDoubleStreamAttnProcessor2_0.__call__` declares `encoder_hidden_states_mask` but never reads it (the joint mask is routed through `attention_mask` instead), and the block-level forward in `transformer_qwenimage.py` declares it but always receives `None`. This is a legacy behavior and should not be replicated in new models.
 
+### Grouped-query attention
+
+Fewer key/value heads than query heads can be spelled two ways. Either pass `enable_gqa=True` to `dispatch_attention_fn` and let the backend broadcast (`transformer_cosmos3.py`), or repeat the key/value heads in the processor after RoPE and pass no flag (`transformer_krea2.py`):
+
+```python
+num_key_value_groups = attn.num_heads // attn.num_kv_heads
+if num_key_value_groups > 1:
+    key = key.repeat_interleave(num_key_value_groups, dim=2)
+    value = value.repeat_interleave(num_key_value_groups, dim=2)
+```
+
+`dim=2` because tensors are `(batch_size, seq_len, num_heads, head_dim)` here. Must be `repeat_interleave`, not `repeat` — the groups are contiguous, and `repeat` gives a silently wrong pairing no shape check catches.
+
+Both compute the same thing, so weigh the two on compatibility and performance and recommend whichever fits the model better.
+
+- **Compatibility.** Most backends do not implement `enable_gqa` yet — flash, FA3, sage, cuDNN and the hub kernels raise on it, as does the context-parallel path. Grep `enable_gqa` in `attention_dispatch.py` for the current list rather than trusting this one; it changes as support lands. The flag limits the model to whichever backends still accept it, while repeating works on all of them.
+
+- **Performance.** Depends on whether the model passes a mask. With a mask, no fused kernel takes a mask *and* mismatched head counts, so SDPA falls back to math and materializes the full `[batch_size, num_heads, seq_len_q, seq_len_kv]` score matrix — no error, no warning, only memory. Without a mask, flash broadcasts inside the kernel and the flag saves the key/value copy. Both effects scale with sequence length and head count, so measure at the model's real shape; `torch.backends.cuda.can_use_flash_attention(params, debug=True)` and `can_use_efficient_attention` print why a kernel was rejected, which is the fastest way to see which one you actually got.
+
+- **Recommendation.** Repeat by default — it is portable and never pathological. Reach for `enable_gqa=True` only when the model never passes a mask *and* the measured saving justifies the narrower backend support. For scale: on Krea 2 at 1024×1024, masked, the flag cost 9.02 GiB and 26.7 ms per call against 0.16 GiB and 4.1 ms repeated; unmasked at the same shape it saved 0.11 GiB and 0.1 ms. `transformer_cosmos3.py` is the in-repo case where it is defensible — causal, never masked.
+
 ## Model class attributes
 
 Each `ModelMixin` subclass can declare class-level attributes that configure optimization features. Each attribute corresponds to a user-facing API — the attribute controls how that feature behaves for the model. When adding a new transformer, set all that apply — skim `transformer_flux.py`, `transformer_wan.py`, `transformer_qwenimage.py` for examples.

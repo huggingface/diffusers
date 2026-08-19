@@ -28,6 +28,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -133,6 +134,15 @@ class TestZImageTransformer(ZImageTransformerTesterConfig, ModelTesterMixin):
 
     @pytest.mark.skip("Model output `sample` is a list of tensors, not a single tensor.")
     def test_outputs_equivalence(self, atol=1e-5, rtol=0):
+        pass
+
+    @pytest.mark.skip(
+        "`t_embedder.mlp.0` is a single 256x1024 Linear — `TimestepEmbedder` hardcodes `mid_size=1024`, so it is 1.0 MB "
+        "of this 1.1 MB test model. `get_balanced_memory` hands device 0 about half the model, the Linear does not fit "
+        "there, and so `device_map='auto'` puts the whole model on one device and the map never spans both GPUs. "
+        "`test_cpu_offload` covers split placement instead."
+    )
+    def test_model_parallelism(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
         pass
 
 
@@ -349,3 +359,17 @@ class TestZImageTransformerAutoRoundCompile(ZImageTransformerAutoRoundTesterConf
         output = output[0] if isinstance(output, (list, tuple)) else output
         assert output is not None, "Model output is None"
         assert not torch.isnan(output).any(), "Model output contains NaN"
+
+
+class TestZImageTransformer2DSingleFile(ZImageTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Tongyi-MAI/Z-Image-Turbo"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
