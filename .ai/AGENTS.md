@@ -31,6 +31,7 @@ Strive to write code as simple and explicit as possible.
 - **Pipelines** — see [pipelines.md](pipelines.md) for pipeline conventions, patterns, and gotchas.
 - **Modular pipelines** — see [modular.md](modular.md) for modular pipeline conventions, patterns, and gotchas.
 - **Tests** — see [testing.md](testing.md) for test conventions: required test layers, tester mixins, and dummy-component rules.
+- **Reporting** — see [reporting.md](reporting.md) for how to write bug reports (what a reproduction is) and performance claims (end-to-end numbers first).
 
 ## Skills
 
