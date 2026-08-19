@@ -23,6 +23,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -268,3 +269,17 @@ class TestSD35TransformerTorchAo(SD35TransformerQuantTesterConfig, TorchAoTester
     @property
     def torch_dtype(self):
         return torch.bfloat16
+
+
+class TestSD3Transformer2DSingleFile(SD3TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "stabilityai/stable-diffusion-3-medium-diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
