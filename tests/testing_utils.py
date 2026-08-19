@@ -850,6 +850,16 @@ def require_bitsandbytes_version_greater(bnb_version):
     return decorator
 
 
+def require_hf_token(test_case):
+    """
+    Decorator marking a test that requires a Hugging Face auth token (e.g. to access gated repos). The test is
+    skipped when no token is available.
+    """
+    from huggingface_hub import get_token
+
+    return pytest.mark.skipif(get_token() is None, reason="test requires a Hugging Face auth token")(test_case)
+
+
 def require_hf_hub_version_greater(hf_hub_version):
     def decorator(test_case):
         correct_hf_hub_version = version.parse(
