@@ -37,7 +37,6 @@ from ..utils import (
     get_adapter_name,
     is_accelerate_available,
     is_peft_available,
-    is_peft_version,
     is_transformers_available,
     is_transformers_version,
     logging,
@@ -47,7 +46,7 @@ from ..utils import (
     set_weights_and_activate_adapters,
 )
 from ..utils.peft_utils import _create_lora_config
-from ..utils.state_dict_utils import _load_sft_state_dict_metadata
+from ..utils.state_dict_utils import _load_sft_file_metadata, _load_sft_state_dict_metadata
 
 
 if is_transformers_available():
@@ -209,7 +208,15 @@ def _fetch_state_dict(
     user_agent,
     allow_pickle,
     metadata=None,
+    return_file_metadata=False,
 ):
+    """
+    `metadata` is diffusers' own LoRA adapter metadata, parsed out of the file's `__metadata__`. With
+    `return_file_metadata`, that `__metadata__` is returned in full as a third element. It is `None` whenever the
+    weights did not come from a safetensors file — a state dict passed in memory, or a pickled checkpoint — since there
+    is nowhere else for a header to live.
+    """
+    file_metadata = None
     model_file = None
     if not isinstance(pretrained_model_name_or_path_or_dict, dict):
         # Let's first try to load .safetensors weights
@@ -240,6 +247,8 @@ def _fetch_state_dict(
                 )
                 state_dict = safetensors.torch.load_file(model_file, device="cpu")
                 metadata = _load_sft_state_dict_metadata(model_file)
+                if return_file_metadata:
+                    file_metadata = _load_sft_file_metadata(model_file)
 
             except (IOError, safetensors.SafetensorError) as e:
                 if not allow_pickle:
@@ -247,6 +256,7 @@ def _fetch_state_dict(
                 # try loading non-safetensors weights
                 model_file = None
                 metadata = None
+                file_metadata = None
                 pass
 
         if model_file is None:
@@ -271,6 +281,8 @@ def _fetch_state_dict(
     else:
         state_dict = pretrained_model_name_or_path_or_dict
 
+    if return_file_metadata:
+        return state_dict, metadata, file_metadata
     return state_dict, metadata
 
 
@@ -340,10 +352,6 @@ def _load_lora_into_text_encoder(
 
     peft_kwargs = {}
     if low_cpu_mem_usage:
-        if not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
         if not is_transformers_version(">", "4.45.2"):
             # Note from sayakpaul: It's not in `transformers` stable yet.
             # https://github.com/huggingface/transformers/pull/33725/
@@ -544,8 +552,6 @@ class LoraBaseMixin:
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
-        > [!WARNING] > This is an experimental API.
-
         Args:
             components: (`list[str]`): list of LoRA-injectable components to fuse the LoRAs into.
             lora_scale (`float`, defaults to 1.0):
@@ -627,18 +633,12 @@ class LoraBaseMixin:
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
 
-        > [!WARNING] > This is an experimental API.
-
         Args:
             components (`list[str]`): list of LoRA-injectable components to unfuse LoRA from.
             unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
             unfuse_text_encoder (`bool`, defaults to `True`):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
-
-        Note that `fused_loras` is tracked pipeline-wide, not per component. An adapter fused into multiple
-        components only drops out of `fused_loras` once it has been unfused from all of them; unfusing it from
-        only some components leaves it listed as fused.
         """
         if components is None:
             components = []
@@ -668,13 +668,6 @@ class LoraBaseMixin:
         if len(components) == 0:
             raise ValueError("`components` cannot be an empty list.")
 
-        # self._merged_adapters is shared across the whole pipeline (all _lora_loadable_modules), while
-        # merge state is tracked per component by PEFT. The same adapter name can be fused into multiple
-        # components independently, so unmerging it in only some of them doesn't mean it's fully unfused.
-        # Track candidates here and only drop them from the pipeline-wide set once confirmed unmerged
-        # everywhere, below.
-        unmerge_candidates: set[str] = set()
-
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
                 raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
@@ -684,27 +677,18 @@ class LoraBaseMixin:
                 if issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
-                            unmerge_candidates.update(module.merged_adapters)
                             module.unmerge()
 
-        for adapter in unmerge_candidates:
-            if adapter not in self._merged_adapters:
-                continue
-            if not self._is_adapter_merged_in_any_component(adapter):
-                self._merged_adapters = self._merged_adapters - {adapter}
-
-    def _is_adapter_merged_in_any_component(self, adapter_name: str) -> bool:
-        """Whether `adapter_name` is still merged into the base weights of any `_lora_loadable_modules`
-        component, used to keep the pipeline-wide `_merged_adapters` bookkeeping in sync with the real, per-component
-        PEFT merge state after a partial `unfuse_lora(components=...)` call."""
-        for component in self._lora_loadable_modules:
-            model = getattr(self, component, None)
-            if model is None or not issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
-                continue
-            for module in model.modules():
-                if isinstance(module, BaseTunerLayer) and adapter_name in module.merged_adapters:
-                    return True
-        return False
+        # Only remove an adapter from _merged_adapters once it is no longer
+        # physically merged in any remaining loadable component.
+        remaining_merged: set[str] = set()
+        for component_name in self._lora_loadable_modules:
+            component_model = getattr(self, component_name, None)
+            if isinstance(component_model, nn.Module):
+                for module in component_model.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        remaining_merged.update(module.merged_adapters)
+        self._merged_adapters = self._merged_adapters & remaining_merged
 
     def set_adapters(
         self,
