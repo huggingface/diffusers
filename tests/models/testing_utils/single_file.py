@@ -28,6 +28,7 @@ from ...testing_utils import (
     backend_empty_cache,
     is_single_file,
     nightly,
+    require_hf_token,
     torch_device,
 )
 from .common import check_device_map_is_respected
@@ -52,6 +53,10 @@ def fetch_checkpoint_metadata(ckpt_path):
     return HfApi().parse_safetensors_file_metadata(pretrained_model_name_or_path, weight_name)
 
 
+# The checkpoints these tests resolve against include gated repos, so they only run where an
+# authenticated token is available. In CI that is everywhere except fork PRs, whose
+# `pull_request` runs resolve the token secret to an empty value.
+@require_hf_token
 @is_single_file
 class SingleFileTesterMixin:
     """
