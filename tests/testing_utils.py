@@ -28,7 +28,7 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
-from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT, USE_PEFT_BACKEND
 from diffusers.utils.import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
@@ -73,14 +73,6 @@ global_rng = random.Random()
 
 logger = get_logger(__name__)
 
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
-_required_transformers_version = is_transformers_available() and version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
@@ -666,6 +658,28 @@ def require_big_accelerator(test_case):
         total_memory < BIG_GPU_MEMORY,
         reason=f"test requires a hardware accelerator with at least {BIG_GPU_MEMORY} GB memory",
     )(test_case)
+
+
+def require_accelerator_memory(min_memory_gb: int):
+    """
+    Decorator marking a test that needs at least `min_memory_gb` GB of memory on the accelerator it runs on. Tests
+    running on CPU are not affected.
+    """
+
+    def decorator(test_case):
+        if torch_device == "cuda" and torch.cuda.is_available():
+            total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        elif torch_device == "xpu" and torch.xpu.is_available():
+            total_memory = torch.xpu.get_device_properties(0).total_memory / (1024**3)
+        else:
+            return test_case
+
+        return pytest.mark.skipif(
+            total_memory < min_memory_gb,
+            reason=f"test requires an accelerator with at least {min_memory_gb} GB memory",
+        )(test_case)
+
+    return decorator
 
 
 def require_torch_accelerator_with_training(test_case):
