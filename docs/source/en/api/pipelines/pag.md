@@ -48,7 +48,10 @@ You can apply PAG to the [`StableDiffusionXLPipeline`] for tasks such as text-to
 from diffusers import AutoPipelineForText2Image
 from diffusers.utils import load_image
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     enable_pag=True,
@@ -293,7 +296,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     image_encoder=image_encoder,
     enable_pag=True,
     dtype=torch.float16
-).to("cuda")
+).to(device)
 
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter-plus_sdxl_vit-h.bin")
 

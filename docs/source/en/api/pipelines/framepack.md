@@ -42,10 +42,13 @@ The following example shows how to use Framepack with start and end image contro
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import HunyuanVideoFramepackPipeline, HunyuanVideoFramepackTransformer3DModel
 from diffusers.utils import export_to_video, load_image
 from transformers import SiglipImageProcessor, SiglipVisionModel
 
+
+device = get_device()
 transformer = HunyuanVideoFramepackTransformer3DModel.from_pretrained(
     "lllyasviel/FramePackI2V_HY", dtype=torch.bfloat16
 )
@@ -147,7 +150,9 @@ from diffusers import HunyuanVideoFramepackPipeline, HunyuanVideoFramepackTransf
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import SiglipImageProcessor, SiglipVisionModel
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 transformer = HunyuanVideoFramepackTransformer3DModel.from_pretrained(
     "lllyasviel/FramePack_F1_I2V_HY_20250503", dtype=torch.bfloat16
 )
@@ -166,7 +171,7 @@ pipe = HunyuanVideoFramepackPipeline.from_pretrained(
 )
 
 # Enable group offloading
-onload_device = torch.device("cuda")
+onload_device = torch.device(device)
 offload_device = torch.device("cpu")
 list(map(
     lambda x: apply_group_offloading(x, onload_device, offload_device, offload_type="leaf_level", use_stream=True, low_cpu_mem_usage=True),

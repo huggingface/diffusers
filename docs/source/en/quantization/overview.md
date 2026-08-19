@@ -42,9 +42,12 @@ The example below loads the bitsandbytes backend with the following arguments fr
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 
+
+device = get_device()
 pipeline_quant_config = PipelineQuantizationConfig(
     quant_backend="bitsandbytes_4bit",
     quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
@@ -59,7 +62,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 
 image = pipe("photo of a cute dog").images[0]
 ```
@@ -120,7 +123,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 
 image = pipe("photo of a cute dog").images[0]
 ```
@@ -136,7 +139,7 @@ from diffusers import DiffusionPipeline
 pipe = DiffusionPipeline.from_pretrained(
     "rootonchair/ERNIE-Image-Turbo-nunchaku-lite-nvfp4",
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 ```
 
 The following backends support loading prequantized checkpoints out of the box.

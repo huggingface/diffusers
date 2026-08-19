@@ -33,10 +33,13 @@ Stable unCLIP can be leveraged for text-to-image generation by pipelining it wit
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import UnCLIPScheduler, DDPMScheduler, StableUnCLIPPipeline
 from diffusers.models import PriorTransformer
 from transformers import CLIPTokenizer, CLIPTextModelWithProjection
 
+
+device = get_device()
 prior_model_id = "kakaobrain/karlo-v1-alpha"
 data_type = torch.float16
 prior = PriorTransformer.from_pretrained(prior_model_id, subfolder="prior", dtype=data_type)
@@ -59,7 +62,7 @@ pipe = StableUnCLIPPipeline.from_pretrained(
     prior_scheduler=prior_scheduler,
 )
 
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 wave_prompt = "dramatic wave, the Oceans roar, Strong wave spiral across the oceans as the waves unfurl into roaring crests; perfect wave form; perfect wave shape; dramatic wave shape; wave shape unbelievable; wave; wave shape spectacular"
 
 image = pipe(prompt=wave_prompt).images[0]
@@ -74,11 +77,13 @@ image
 from diffusers import StableUnCLIPImg2ImgPipeline
 from diffusers.utils import load_image
 import torch
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1-unclip", dtype=torch.float16, variation="fp16"
 )
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_unclip/tarsila_do_amaral.png"
 init_image = load_image(url)

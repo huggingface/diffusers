@@ -34,6 +34,8 @@ files, scope to your own commits: `git log main..HEAD --oneline`, then
 it and review against it; don't rely on a remembered copy. For the areas you
 touched, also read `.ai/models.md`, `.ai/pipelines.md`, or `.ai/modular.md`.
 
+When reviewing docs in `docs/source/en/`, check that examples are device agnostic by default. Flag newly added `.to("cuda")`, `device="cuda"`, `device_map="cuda"`, `torch.Generator("cuda")`, or similar hardcoded CUDA usage unless the page is explicitly CUDA/NVIDIA-specific, such as CUDA kernels, NCCL/distributed GPU examples, or NVIDIA GPU benchmarks.
+
 ## 3. Report
 
 - **Blocking issues** — numbered. Each: title → explanation → `file.py:line` →

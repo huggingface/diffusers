@@ -23,13 +23,16 @@ Use the [`~loaders.IPAdapterMixin.set_ip_adapter_scale`] parameter to scale the 
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoPipelineForText2Image
 from diffusers.utils import load_image
 
+
+device = get_device()
 pipeline = AutoPipelineForText2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to(device)
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="sdxl_models",
@@ -73,7 +76,7 @@ from diffusers.utils import load_image
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to(device)
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="sdxl_models",
@@ -117,7 +120,7 @@ from diffusers.utils import load_image
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to(device)
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="sdxl_models",
@@ -230,7 +233,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     image_encoder=image_encoder,
     dtype=torch.float16
-).to("cuda")
+).to(device)
 
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
@@ -249,7 +252,7 @@ from transformers import AutoPipelineForText2Image
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16
-).to("cuda")
+).to(device)
 
 pipeline.load_ip_adapter(
   "h94/IP-Adapter-FaceID",
@@ -273,7 +276,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     image_encoder=image_encoder,
     dtype=torch.float16
-).to("cuda")
+).to(device)
 
 pipeline.load_ip_adapter(
   "h94/IP-Adapter-FaceID",
@@ -296,12 +299,12 @@ from diffusers import AutoPipelineForText2Image
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to(device)
 
 image_embeds = pipeline.prepare_ip_adapter_image_embeds(
     ip_adapter_image=image,
     ip_adapter_image_embeds=None,
-    device="cuda",
+    device=device,
     num_images_per_prompt=1,
     do_classifier_free_guidance=True,
 )
@@ -347,7 +350,7 @@ from diffusers.utils import load_image
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to(device)
 
 mask1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_mask1.png")
 mask2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_mask2.png")
@@ -435,7 +438,7 @@ from diffusers.utils import load_image
 pipeline = StableDiffusionPipeline.from_pretrained(
   "stable-diffusion-v1-5/stable-diffusion-v1-5",
   dtype=torch.float16,
-).to("cuda")
+).to(device)
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
@@ -480,7 +483,7 @@ from insightface.app import FaceAnalysis
 pipeline = StableDiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     dtype=torch.float16,
-).to("cuda")
+).to(device)
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter(
   "h94/IP-Adapter-FaceID",
@@ -501,7 +504,7 @@ image = torch.from_numpy(faces[0].normed_embedding)
 ref_images_embeds.append(image.unsqueeze(0))
 ref_images_embeds = torch.stack(ref_images_embeds, dim=0).unsqueeze(0)
 neg_ref_images_embeds = torch.zeros_like(ref_images_embeds)
-id_embeds = torch.cat([neg_ref_images_embeds, ref_images_embeds]).to(dtype=torch.float16, device="cuda")
+id_embeds = torch.cat([neg_ref_images_embeds, ref_images_embeds]).to(dtype=torch.float16, device=device)
 
 pipeline(
     prompt="A photo of a girl",
@@ -514,7 +517,7 @@ The IP-Adapter FaceID Plus and Plus v2 models require CLIP image embeddings. Pre
 
 ```py
 clip_embeds = pipeline.prepare_ip_adapter_image_embeds(
-  [ip_adapter_images], None, torch.device("cuda"), num_images, True)[0]
+  [ip_adapter_images], None, torch.device(device), num_images, True)[0]
 
 pipeline.unet.encoder_hid_proj.image_projection_layers[0].clip_embeds = clip_embeds.to(dtype=torch.float16)
 # set to True if using IP-Adapter FaceID Plus v2
@@ -673,7 +676,7 @@ pipeline = StableDiffusionControlNetPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     controlnet=controlnet,
     dtype=torch.float16
-).to("cuda")
+).to(device)
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="models",
@@ -721,7 +724,7 @@ from diffusers.utils import load_image
 pipeline = AutoPipelineForText2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to(device)
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="sdxl_models",

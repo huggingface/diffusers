@@ -23,11 +23,14 @@ One repository holds both released checkpoint partitions, so the subfolder is wh
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import MiniMaxH3Transformer3DModel
 
+
+device = get_device()
 transformer = MiniMaxH3Transformer3DModel.from_pretrained(
     "MiniMaxAI/MiniMax-H3", subfolder="transformer", dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 ```
 
 The checkpoint is mixed precision: the two input patch projections, the timestep MLP and the two output heads are float32 while the block stack is bfloat16. `from_pretrained` keeps that layout through `_keep_in_fp32_modules`, so pass `dtype=torch.bfloat16` and let it place the float32 modules rather than casting the model with `.to(torch.bfloat16)` afterwards.

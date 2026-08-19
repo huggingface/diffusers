@@ -18,8 +18,11 @@ Load a T2I-Adapter conditioned on a specific control, such as canny edge, and pa
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import T2IAdapter, StableDiffusionXLAdapterPipeline, AutoencoderKL
 
+
+device = get_device()
 t2i_adapter = T2IAdapter.from_pretrained(
     "TencentARC/t2i-adapter-canny-sdxl-1.0",
     dtype=torch.float16,
@@ -58,7 +61,7 @@ pipeline = StableDiffusionXLAdapterPipeline.from_pretrained(
     adapter=t2i_adapter,
     vae=vae,
     dtype=torch.float16,
-).to("cuda")
+).to(device)
 
 prompt = """
 A photorealistic overhead image of a cat reclining sideways in a flamingo pool floatie holding a margarita. 
@@ -130,7 +133,7 @@ pipeline = StableDiffusionXLAdapterPipeline.from_pretrained(
     dtype=torch.float16,
     vae=vae,
     adapter=adapters,
-).to("cuda")
+).to(device)
 
 pipeline(
     prompt,

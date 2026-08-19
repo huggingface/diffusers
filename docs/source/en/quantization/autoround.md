@@ -34,8 +34,11 @@ You can use [`PipelineQuantizationConfig`] to quantize specific components of a 
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline, PipelineQuantizationConfig, AutoRoundConfig
 
+
+device = get_device()
 pipeline_quant_config = PipelineQuantizationConfig(
     quant_mapping={"transformer": AutoRoundConfig(backend="auto")}
 )
@@ -43,7 +46,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "INCModel/Z-Image-W4A16-AutoRound",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map=device,
 )
 
 image = pipe("a cat holding a sign that says hello").images[0]
@@ -55,7 +58,9 @@ Or load a quantized model component directly:
 ```python
 import torch
 from diffusers import ZImageTransformer2DModel, ZImagePipeline, AutoRoundConfig
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 model_id = "INCModel/Z-Image-W4A16-AutoRound"
 
 quantization_config = AutoRoundConfig(backend="auto")
@@ -64,14 +69,14 @@ transformer = ZImageTransformer2DModel.from_pretrained(
     subfolder="transformer",
     quantization_config=quantization_config,
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map=device,
 )
 
 pipe = ZImagePipeline.from_pretrained(
     model_id,
     transformer=transformer,
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map=device,
 )
 
 image = pipe("a cat holding a sign that says hello").images[0]
@@ -88,7 +93,9 @@ AutoRound is compatible with [`torch.compile`](../optimization/fp16#torchcompile
 ```python
 import torch
 from diffusers import DiffusionPipeline, PipelineQuantizationConfig, AutoRoundConfig
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipeline_quant_config = PipelineQuantizationConfig(
     quant_mapping={"transformer": AutoRoundConfig(backend="auto")}
 )
@@ -96,7 +103,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "INCModel/Z-Image-W4A16-AutoRound",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map=device,
 )
 
 pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False)
@@ -165,14 +172,16 @@ For more details on calibration options, see the [AutoRound documentation](https
 ```python
 import torch
 from diffusers import ZImageTransformer2DModel, ZImagePipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 model_id = "INCModel/Z-Image-W4A16-AutoRound"
 
 # The inference backend will be automatically selected.
 pipe = ZImagePipeline.from_pretrained(
     model_id,
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map=device,
 )
 
 image = pipe("a cat holding a sign that says hello").images[0]

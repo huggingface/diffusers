@@ -32,11 +32,14 @@ Use [`ZImageImg2ImgPipeline`] to transform an existing image based on a text pro
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import ZImageImg2ImgPipeline
 from diffusers.utils import load_image
 
+
+device = get_device()
 pipe = ZImageImg2ImgPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 init_image = load_image(url).resize((1024, 1024))
@@ -48,7 +51,7 @@ image = pipe(
     strength=0.6,
     num_inference_steps=8,
     guidance_scale=0.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).images[0]
 image.save("zimage_img2img.png")
 ```
@@ -63,9 +66,11 @@ import numpy as np
 from PIL import Image
 from diffusers import ZImageInpaintPipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = ZImageInpaintPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 init_image = load_image(url).resize((1024, 1024))
@@ -83,7 +88,7 @@ image = pipe(
     strength=1.0,
     num_inference_steps=8,
     guidance_scale=0.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator(device).manual_seed(42),
 ).images[0]
 image.save("zimage_inpaint.png")
 ```

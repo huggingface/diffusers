@@ -31,9 +31,12 @@ Accelerate `PixArtAlphaPipeline` with T-GATE:
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import PixArtAlphaPipeline
 from tgate import TgatePixArtLoader
 
+
+device = get_device()
 pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", dtype=torch.float16)
 
 gate_step = 8
@@ -42,7 +45,7 @@ pipe = TgatePixArtLoader(
        pipe,
        gate_step=gate_step,
        num_inference_steps=inference_step,
-).to("cuda")
+).to(device)
 
 image = pipe.tgate(
        "An alpaca made of colorful building blocks, cyberpunk.",
@@ -75,7 +78,7 @@ pipe = TgateSDXLLoader(
        pipe,
        gate_step=gate_step,
        num_inference_steps=inference_step,
-).to("cuda")
+).to(device)
 
 image = pipe.tgate(
        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
@@ -108,7 +111,7 @@ pipe = TgateSDXLDeepCacheLoader(
        pipe,
        cache_interval=3,
        cache_branch_id=0,
-).to("cuda")
+).to(device)
 
 image = pipe.tgate(
        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
@@ -148,7 +151,7 @@ pipe = TgateSDXLLoader(
        gate_step=gate_step,
        num_inference_steps=inference_step,
        lcm=True
-).to("cuda")
+).to(device)
 
 image = pipe.tgate(
        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",

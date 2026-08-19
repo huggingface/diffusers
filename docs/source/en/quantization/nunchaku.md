@@ -36,13 +36,16 @@ config from `config.json`.
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline
 
+
+device = get_device()
 model_id = "rootonchair/ERNIE-Image-Turbo-nunchaku-lite-nvfp4"
 
 pipe = DiffusionPipeline.from_pretrained(
     model_id, dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 
 prompt = "A modern red armchair in a quiet studio, soft window light, realistic product photography"
 image = pipe(

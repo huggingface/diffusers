@@ -32,9 +32,12 @@ Move the [`DiffusionPipeline`] to [`accelerate.PartialState.device`] to assign a
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from accelerate import PartialState
 from diffusers import DiffusionPipeline
 
+
+device = get_device()
 pipeline = DiffusionPipeline.from_pretrained(
     "Qwen/Qwen-Image", dtype=torch.float16
 )
@@ -215,7 +218,7 @@ import torch
 from diffusers import AutoencoderKL
 from diffusers.image_processor import VaeImageProcessor
 
-vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", dtype=torch.bfloat16).to("cuda")
+vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", dtype=torch.bfloat16).to(device)
 vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
 image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
 

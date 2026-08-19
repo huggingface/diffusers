@@ -28,10 +28,13 @@ Set up and pass a [`PyramidAttentionBroadcastConfig`] to a pipeline's transforme
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import CogVideoXPipeline, PyramidAttentionBroadcastConfig
 
+
+device = get_device()
 pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
-pipeline.to("cuda")
+pipeline.to(device)
 
 config = PyramidAttentionBroadcastConfig(
     spatial_attention_block_skip_range=2,
@@ -52,9 +55,11 @@ Set up and pass a [`FasterCacheConfig`] to a pipeline's transformer to enable it
 ```python
 import torch
 from diffusers import CogVideoXPipeline, FasterCacheConfig
+from diffusers.utils.torch_utils import get_device
 
-pipe line= CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
-pipeline.to("cuda")
+device = get_device()
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
+pipeline.to(device)
 
 config = FasterCacheConfig(
     spatial_attention_block_skip_range=2,
@@ -97,11 +102,13 @@ To enable TaylorSeer Cache, create a [`TaylorSeerCacheConfig`] and pass it to yo
 ```python
 import torch
 from diffusers import FluxPipeline, TaylorSeerCacheConfig
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16,
-).to("cuda")
+).to(device)
 
 config = TaylorSeerCacheConfig(
     cache_interval=5,
@@ -126,11 +133,13 @@ To use MagCache, you typically follow a two-step process: **Calibration** and **
 ```python
 import torch
 from diffusers import FluxPipeline, MagCacheConfig
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-schnell",
     dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 
 # 1. Calibration Step
 # Run full inference to measure model behavior.

@@ -129,7 +129,7 @@ from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
 
-device = "cuda"
+device = get_device()
 width = 768
 height = 512
 random_seed = 42
@@ -209,7 +209,7 @@ from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTI
 from diffusers.utils import encode_video
 from diffusers.utils import load_image
 
-device = "cuda"
+device = get_device()
 width = 768
 height = 512
 random_seed = 42
@@ -299,7 +299,7 @@ from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image, load_video
 
-device = "cuda"
+device = get_device()
 width = 768
 height = 512
 random_seed = 42
@@ -374,7 +374,7 @@ from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image
 
-device = "cuda"
+device = get_device()
 width = 768
 height = 512
 random_seed = 42
@@ -446,7 +446,7 @@ from diffusers import LTX2Pipeline
 from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT, T2V_DEFAULT_SYSTEM_PROMPT
 
-device = "cuda"
+device = get_device()
 width = 768
 height = 512
 random_seed = 42

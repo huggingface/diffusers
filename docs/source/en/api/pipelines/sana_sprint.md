@@ -46,9 +46,12 @@ Refer to the [Quantization](../../quantization/overview) overview to learn more 
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, SanaTransformer2DModel, SanaSprintPipeline
 from transformers import BitsAndBytesConfig as BitsAndBytesConfig, AutoModel
 
+
+device = get_device()
 quant_config = BitsAndBytesConfig(load_in_8bit=True)
 text_encoder_8bit = AutoModel.from_pretrained(
     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers",
@@ -98,7 +101,7 @@ image = load_image(
 pipe = SanaSprintImg2ImgPipeline.from_pretrained(
     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers", 
     dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 image = pipe(
     prompt="a cute pink bear", 

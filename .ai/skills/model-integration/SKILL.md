@@ -41,8 +41,21 @@ A pipeline in Diffusers (be it standard or modular) will have multiple component
   - [ ] Add a LoRA mixin if applicable
   - [ ] Register in the relevant `__init__.py` files (lazy imports)
   - [ ] Pipeline-level tests (see **Testing**)
-- [ ] **Docs** — see **File structure**
+- [ ] **Docs** — see **File structure** and **Docs device examples**
 - [ ] **Style** — `make style` and `make quality`
+
+## Docs device examples
+
+When adding or updating examples in `docs/source/en/`, avoid hardcoding CUDA as the default execution device. Prefer device-agnostic snippets so the docs work on CUDA, XPU, MPS, and other supported accelerators:
+
+```python
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
+pipe.to(device)
+```
+
+Use `device` for `.to(...)`, `device_map`, `torch.Generator(device=...)`, tensors, and component placement where applicable. Only keep explicit CUDA APIs or strings when the guide is truly CUDA/NVIDIA-specific, for example CUDA kernel documentation, NCCL multi-GPU examples, or benchmarks that explicitly target NVIDIA GPUs. In those cases, the surrounding text should make the CUDA-only requirement clear.
 
 ## File structure
 

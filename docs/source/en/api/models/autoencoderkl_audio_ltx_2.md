@@ -17,8 +17,11 @@ The model can be loaded with the following code snippet.
 
 ```python
 from diffusers import AutoencoderKLLTX2Audio
+from diffusers.utils.torch_utils import get_device
 
-vae = AutoencoderKLLTX2Audio.from_pretrained("Lightricks/LTX-2", subfolder="vae", dtype=torch.float32).to("cuda")
+
+device = get_device()
+vae = AutoencoderKLLTX2Audio.from_pretrained("Lightricks/LTX-2", subfolder="vae", dtype=torch.float32).to(device)
 ```
 
 ## AutoencoderKLLTX2Audio

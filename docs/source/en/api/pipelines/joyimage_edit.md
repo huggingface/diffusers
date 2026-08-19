@@ -22,13 +22,16 @@ JoyAI-Image-Edit supports general image editing as well as spatial editing capab
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import JoyImageEditPipeline
 from diffusers.utils import load_image
 
+
+device = get_device()
 pipeline = JoyImageEditPipeline.from_pretrained(
     "jdopensource/JoyAI-Image-Edit-Diffusers", dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to(device)
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg")
 prompt = "Add wings to the astronaut."
@@ -38,7 +41,7 @@ output = pipeline(
     prompt=prompt,
     num_inference_steps=40,
     guidance_scale=4.0,
-    generator=torch.Generator("cuda").manual_seed(0),
+    generator=torch.Generator(device).manual_seed(0),
 ).images[0]
 output.save("joyimage_edit_output.png")
 ```

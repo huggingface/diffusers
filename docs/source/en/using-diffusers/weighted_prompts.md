@@ -75,11 +75,14 @@ Create a weighted prompt and pass it to [get_weighted_text_embeddings_sdxl](http
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline
 from sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl
 
+
+device = get_device()
 pipeline = DiffusionPipeline.from_pretrained(
-    "Lykon/dreamshaper-xl-1-0", dtype=torch.bfloat16, device_map="cuda"
+    "Lykon/dreamshaper-xl-1-0", dtype=torch.bfloat16, device_map=device
 )
 
 prompt = """

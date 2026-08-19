@@ -44,12 +44,15 @@ Available Models:
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AnyFlowPipeline
 from diffusers.utils import export_to_video
 
+
+device = get_device()
 pipe = AnyFlowPipeline.from_pretrained(
     "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 
 prompt = (
     "An astronaut runs smoothly and appears almost weightless on the lunar surface, "
@@ -85,7 +88,7 @@ from diffusers.utils import export_to_video
 
 pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 
 prompt = (
     "An astronaut runs smoothly and appears almost weightless on the lunar surface, "
@@ -106,14 +109,14 @@ from diffusers.utils import export_to_video, load_image
 
 pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 
 # Example conditioning image from the AnyFlow repo.
 first_frame = load_image(
     "https://raw.githubusercontent.com/NVlabs/AnyFlow/main/assets/evaluation/example/images/1.jpg"
 ).resize((832, 480))
 arr = np.asarray(first_frame).astype("float32") / 255.0  # (480, 832, 3)
-context_tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).unsqueeze(1).to("cuda")  # (1, 1, 3, 480, 832)
+context_tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).unsqueeze(1).to(device)  # (1, 1, 3, 480, 832)
 
 prompt = (
     "A towering, battle-scarred humanoid robot, reminiscent of a Transformer with powerful, segmented armor "
@@ -140,14 +143,14 @@ from diffusers.utils import export_to_video, load_video
 
 pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 
 # Example conditioning clip from the AnyFlow repo — take the first 9 frames (3 latent frames at VAE temporal stride 4).
 context_frames = load_video(
     "https://raw.githubusercontent.com/NVlabs/AnyFlow/main/assets/evaluation/example/videos/2.mp4"
 )[:9]
 arr = np.stack([np.asarray(f.resize((832, 480))) for f in context_frames]).astype("float32") / 255.0
-context_tensor = torch.from_numpy(arr).permute(0, 3, 1, 2).unsqueeze(0).to("cuda")  # (1, 9, 3, 480, 832)
+context_tensor = torch.from_numpy(arr).permute(0, 3, 1, 2).unsqueeze(0).to(device)  # (1, 9, 3, 480, 832)
 
 prompt = (
     "A focused trail runner's powerful strides through a dense, sun-dappled forest. "

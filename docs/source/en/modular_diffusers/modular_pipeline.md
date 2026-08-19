@@ -27,11 +27,14 @@ Below are complete examples for text-to-image, image-to-image, and inpainting wi
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import ModularPipeline
 
+
+device = get_device()
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to(device)
 
 image = pipeline(prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
 image.save("modular_t2i_out.png")
@@ -47,7 +50,7 @@ from diffusers.utils import load_image
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to(device)
 
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 init_image = load_image(url)
@@ -66,7 +69,7 @@ from diffusers.utils import load_image
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to(device)
 
 img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 mask_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-inpaint-mask.png"
@@ -88,7 +91,7 @@ This guide will show you how to create a [`ModularPipeline`], manage its compone
 
 There are two ways to create a [`ModularPipeline`]. Assemble and create a pipeline from [`ModularPipelineBlocks`] with [`~ModularPipelineBlocks.init_pipeline`], or load an existing pipeline with [`~ModularPipeline.from_pretrained`].
 
-You can also initialize a [`ComponentsManager`](./components_manager) to handle device placement and memory management. If you don't need automatic offloading, you can skip this and move the pipeline to your device manually with `pipeline.to("cuda")`.
+You can also initialize a [`ComponentsManager`](./components_manager) to handle device placement and memory management. If you don't need automatic offloading, you can skip this and move the pipeline to your device manually with `pipeline.to(device)`.
 
 > [!TIP]
 > Refer to the [ComponentsManager](./components_manager) doc for more details about how it can help manage components across different workflows.
@@ -360,7 +363,7 @@ Since blocks are composable, you can take a pipeline apart and reconstruct it in
 from diffusers import ModularPipeline, ComponentsManager
 import torch
 
-device = "cuda"
+device = get_device()
 dtype = torch.bfloat16
 repo_id = "black-forest-labs/FLUX.2-klein-4B"
 

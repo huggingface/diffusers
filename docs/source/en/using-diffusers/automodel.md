@@ -18,14 +18,17 @@ The example below loads a transformer from Diffusers and a text encoder from Tra
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoModel, DiffusionPipeline
 
+
+device = get_device()
 transformer = AutoModel.from_pretrained(
-    "Qwen/Qwen-Image", subfolder="transformer", dtype=torch.bfloat16, device_map="cuda"
+    "Qwen/Qwen-Image", subfolder="transformer", dtype=torch.bfloat16, device_map=device
 )
 
 text_encoder = AutoModel.from_pretrained(
-    "Qwen/Qwen-Image", subfolder="text_encoder", dtype=torch.bfloat16, device_map="cuda"
+    "Qwen/Qwen-Image", subfolder="text_encoder", dtype=torch.bfloat16, device_map=device
 )
 ```
 
@@ -59,7 +62,7 @@ import torch
 from diffusers import AutoModel
 
 transformer = AutoModel.from_pretrained(
-    "custom/custom-transformer-model", trust_remote_code=True, dtype=torch.bfloat16, device_map="cuda"
+    "custom/custom-transformer-model", trust_remote_code=True, dtype=torch.bfloat16, device_map=device
 )
 ```
 
@@ -82,7 +85,7 @@ import torch
 from diffusers import AutoModel
 
 transformer = AutoModel.from_pretrained(
-    "Overworld/Waypoint-1-Small", subfolder="transformer", trust_remote_code=True, dtype=torch.bfloat16, device_map="cuda"
+    "Overworld/Waypoint-1-Small", subfolder="transformer", trust_remote_code=True, dtype=torch.bfloat16, device_map=device
 )
 ```
 

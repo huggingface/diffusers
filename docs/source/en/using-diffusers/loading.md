@@ -26,10 +26,13 @@ Pass a model id to [`~DiffusionPipeline.from_pretrained`] to load a pipeline.
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline
 
+
+device = get_device()
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map=device
 )
 ```
 
@@ -48,7 +51,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map=device
 )
 ```
 
@@ -72,7 +75,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-  "path/to/your/cache", dtype=torch.bfloat16, device_map="cuda"
+  "path/to/your/cache", dtype=torch.bfloat16, device_map=device
 )
 ```
 
@@ -128,7 +131,7 @@ max_memory = {0: "16GB", 1: "16GB"}
 pipeline = DiffusionPipeline.from_pretrained(
   "Qwen/Qwen-Image", 
   dtype=torch.bfloat16,
-  device_map="cuda",
+  device_map=device,
 )
 ```
 
@@ -161,7 +164,7 @@ from diffusers import DiffusionPipeline
 os.environ["HF_ENABLE_PARALLEL_LOADING"] = "YES"
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Wan-AI/Wan2.2-I2V-A14B-Diffusers", dtype=torch.bfloat16, device_map="cuda"
+  "Wan-AI/Wan2.2-I2V-A14B-Diffusers", dtype=torch.bfloat16, device_map=device
 )
 ```
 
@@ -183,7 +186,7 @@ pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   vae=vae,
   dtype=torch.float16,
-  device_map="cuda"
+  device_map=device
 )
 ```
 
@@ -203,7 +206,7 @@ import torch
 from diffusers import AutoPipelineForText2Image
 
 pipeline_sdxl = AutoPipelineForText2Image.from_pretrained(
-  "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, device_map="cuda"
+  "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, device_map=device
 )
 prompt = """
 cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California

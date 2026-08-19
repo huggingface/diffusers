@@ -89,7 +89,10 @@ By default diffusers makes use of [model cpu offloading](../../optimization/memo
 from diffusers import DiffusionPipeline
 from diffusers.utils import pt_to_pil, make_image_grid
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 # stage 1
 stage_1 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
@@ -317,7 +320,7 @@ The simplest optimization to run IF faster is to move all model components to th
 
 ```py
 pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
-pipe.to("cuda")
+pipe.to(device)
 ```
 
 You can also run the diffusion process for a shorter number of timesteps.
@@ -342,7 +345,7 @@ A smaller number will vary the image less but run faster.
 
 ```py
 pipe = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
-pipe.to("cuda")
+pipe.to(device)
 
 image = pipe(image=image, prompt="<prompt>", strength=0.3).images
 ```
@@ -355,7 +358,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
-pipe.to("cuda")
+pipe.to(device)
 
 pipe.text_encoder = torch.compile(pipe.text_encoder, mode="reduce-overhead", fullgraph=True)
 pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)

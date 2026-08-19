@@ -50,16 +50,19 @@ Start by defining a `SmashConfig` with the optimization algorithms to use. To op
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import FluxPipeline
 
 from pruna import PrunaModel, SmashConfig, smash
 
+
+device = get_device()
 # load the model
 # Try segmind/Segmind-Vega or black-forest-labs/FLUX.1-schnell with a small GPU memory
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 
 # define the configuration
 smash_config = SmashConfig()
@@ -111,6 +114,7 @@ We can load and evaluate an optimized model by using the `EvaluationAgent` and p
 ```python
 import torch
 from diffusers import FluxPipeline
+from diffusers.utils.torch_utils import get_device
 
 from pruna import PrunaModel
 from pruna.data.pruna_datamodule import PrunaDataModule
@@ -123,7 +127,7 @@ from pruna.evaluation.metrics import (
 from pruna.evaluation.task import Task
 
 # define the device
-device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+device = get_device()
 
 # load the model
 # Try PrunaAI/Segmind-Vega-smashed or PrunaAI/FLUX.1-dev-smashed with a small GPU memory

@@ -16,15 +16,18 @@ Use `MotifVideoPipeline` for text-to-video generation:
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import MotifVideoPipeline
 from diffusers.utils import export_to_video
 
 
+
+device = get_device()
 pipe = MotifVideoPipeline.from_pretrained(
     "Motif-Technologies/Motif-Video-2B",
     dtype=torch.bfloat16,
 )
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "A woman with long brown hair and light skin smiles at another woman with long blonde hair."
 negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
@@ -48,13 +51,15 @@ Use `MotifVideoImage2VideoPipeline` for image-to-video generation:
 import torch
 from diffusers import MotifVideoImage2VideoPipeline
 from diffusers.utils import export_to_video, load_image
+from diffusers.utils.torch_utils import get_device
 
 
+device = get_device()
 pipe = MotifVideoImage2VideoPipeline.from_pretrained(
     "Motif-Technologies/Motif-Video-2B",
     dtype=torch.bfloat16,
 )
-pipe.to("cuda")
+pipe.to(device)
 
 image = load_image("input_image.png")
 prompt = "A cinematic scene with vivid colors."

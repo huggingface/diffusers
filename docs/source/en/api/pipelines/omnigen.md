@@ -32,8 +32,11 @@ Model weights may be stored in separate subfolders on the Hub or locally, in whi
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import OmniGenPipeline
 
+
+device = get_device()
 pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1-diffusers", dtype=torch.bfloat16)
 ```
 
@@ -45,12 +48,14 @@ You can try setting the `height` and `width` parameters to generate images with 
 ```python
 import torch
 from diffusers import OmniGenPipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
     dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "Realistic photo. A young woman sits on a sofa, holding a book and facing the camera. She wears delicate silver hoop earrings adorned with tiny, sparkling diamonds that catch the light, with her long chestnut hair cascading over her shoulders. Her eyes are focused and gentle, framed by long, dark lashes. She is dressed in a cozy cream sweater, which complements her warm, inviting smile. Behind her, there is a table with a cup of water in a sleek, minimalist blue mug. The background is a serene indoor setting with soft natural light filtering through a window, adorned with tasteful art and flowers, creating a cozy and peaceful ambiance. 4K, HD."
 image = pipe(
@@ -77,12 +82,14 @@ It is recommended to enable `use_input_image_size_as_output` to keep the edited 
 import torch
 from diffusers import OmniGenPipeline
 from diffusers.utils import load_image 
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
     dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 prompt="<img><|image_1|></img> Remove the woman's earrings. Replace the mug with a clear glass filled with sparkling iced cola."
 input_images=[load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/t2i_woman_with_book.png")]
@@ -136,12 +143,14 @@ OmniGen can handle several classic computer vision tasks. As shown below, OmniGe
 import torch
 from diffusers import OmniGenPipeline
 from diffusers.utils import load_image 
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
     dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 prompt="Detect the skeleton of human in this image: <img><|image_1|></img>"
 input_images=[load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/edit.png")]
@@ -190,12 +199,14 @@ OmniGen can also directly use relevant information from input images to generate
 import torch
 from diffusers import OmniGenPipeline
 from diffusers.utils import load_image 
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
     dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 prompt="Following the pose of this image <img><|image_1|></img>, generate a new photo: A young boy is sitting on a sofa in the library, holding a book. His hair is neatly combed, and a faint smile plays on his lips, with a few freckles scattered across his cheeks. The library is quiet, with rows of shelves filled with books stretching out behind him."
 input_images=[load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/edit.png")]
@@ -226,12 +237,14 @@ Additionally, OmniGen can extract desired objects from an image containing multi
 import torch
 from diffusers import OmniGenPipeline
 from diffusers.utils import load_image 
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
     dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 prompt="A man and a woman are sitting at a classroom desk. The man is the man with yellow hair in <img><|image_1|></img>. The woman is the woman on the left of <img><|image_2|></img>"
 input_image_1 = load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/3.png")
@@ -273,7 +286,7 @@ pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
     dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 prompt="A woman is walking down the street, wearing a white long-sleeve blouse with lace details on the sleeves, paired with a blue pleated skirt. The woman is <img><|image_1|></img>. The long-sleeve blouse and a pleated skirt are <img><|image_2|></img>."
 input_image_1 = load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/emma.jpeg")

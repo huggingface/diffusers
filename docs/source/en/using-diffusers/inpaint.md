@@ -22,9 +22,12 @@ With 🤗 Diffusers, here is how you can do inpainting:
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
+
+device = get_device()
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder-inpaint", dtype=torch.float16
 )
@@ -92,7 +95,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
 from PIL import Image
 
-pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to('cuda')
+pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to(device)
 
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore_mask.png")
 blurred_mask = pipeline.mask_processor.blur(mask, blur_factor=33)
@@ -134,7 +137,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
 mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
-generator = torch.Generator("cuda").manual_seed(92)
+generator = torch.Generator(device).manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
 make_image_grid([init_image, mask_image, image], rows=1, cols=3)
@@ -160,7 +163,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
 mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
-generator = torch.Generator("cuda").manual_seed(92)
+generator = torch.Generator(device).manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
 make_image_grid([init_image, mask_image, image], rows=1, cols=3)
@@ -186,7 +189,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
 mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
-generator = torch.Generator("cuda").manual_seed(92)
+generator = torch.Generator(device).manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
 make_image_grid([init_image, mask_image, image], rows=1, cols=3)
@@ -237,7 +240,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
 mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
-generator = torch.Generator("cuda").manual_seed(92)
+generator = torch.Generator(device).manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
 make_image_grid([init_image, image], rows=1, cols=2)
@@ -262,7 +265,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
 mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
-generator = torch.Generator("cuda").manual_seed(92)
+generator = torch.Generator(device).manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
 make_image_grid([init_image, image], rows=1, cols=2)
@@ -356,7 +359,7 @@ import torch
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
-device = "cuda"
+device = get_device()
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting",
     dtype=torch.float16,
@@ -516,8 +519,8 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
 from PIL import Image
 
-generator = torch.Generator(device='cuda').manual_seed(0)
-pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to('cuda')
+generator = torch.Generator(device=device).manual_seed(0)
+pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to(device)
 
 base = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore.png")
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore_mask.png")

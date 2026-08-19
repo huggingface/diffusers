@@ -34,13 +34,16 @@ HunyuanImage-2.1 applies [Adaptive Projected Guidance (APG)](https://huggingface
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import HunyuanImagePipeline
 
+
+device = get_device()
 pipe = HunyuanImagePipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanImage-2.1-Diffusers", 
     dtype=torch.bfloat16
 )
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 ``` 
 
 You can inspect the `guider` object:
@@ -85,7 +88,7 @@ pipe = HunyuanImagePipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanImage-2.1-Diffusers", 
     dtype=torch.bfloat16
 )
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 # Update the guider configuration
 pipe.guider = pipe.guider.new(guidance_scale=5.0)
@@ -114,7 +117,7 @@ use `distilled_guidance_scale` with the guidance-distilled checkpoint,
 import torch
 from diffusers import HunyuanImagePipeline
 pipe = HunyuanImagePipeline.from_pretrained("hunyuanvideo-community/HunyuanImage-2.1-Distilled-Diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 prompt = (
     "A cute, cartoon-style anthropomorphic penguin plush toy with fluffy fur, standing in a painting studio, "

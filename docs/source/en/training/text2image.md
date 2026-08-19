@@ -167,8 +167,11 @@ Once training is complete, you can use your newly trained model for inference:
 ```py
 from diffusers import StableDiffusionPipeline
 import torch
+from diffusers.utils.torch_utils import get_device
 
-pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", dtype=torch.float16, use_safetensors=True).to("cuda")
+
+device = get_device()
+pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", dtype=torch.float16, use_safetensors=True).to(device)
 
 image = pipeline(prompt="yoda").images[0]
 image.save("yoda-naruto.png")

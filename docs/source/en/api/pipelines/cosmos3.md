@@ -91,16 +91,19 @@ Multi-frame generation conditioned on text alone. Pick `num_frames` based on the
 ```python
 import json
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import Cosmos3OmniPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video
 
+
+device = get_device()
 # JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_t2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map=device
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -129,13 +132,15 @@ import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_t2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map=device
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -169,12 +174,14 @@ Single-frame generation. The model is conditioned only on the text prompt; pass 
 import json
 import torch
 from diffusers import Cosmos3OmniPipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled prompt (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map=device
 )
 
 result = pipe(prompt=json.dumps(json_prompt), num_frames=1, height=720, width=1280)
@@ -188,12 +195,14 @@ result.video[0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
 import json
 import torch
 from diffusers import Cosmos3OmniPipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled prompt (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map=device
 )
 
 result = pipe(prompt=json.dumps(json_prompt), num_frames=1, height=720, width=1280)
@@ -215,13 +224,15 @@ import json
 import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import export_to_video, load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_i2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map=device
 )
 
 image = load_image(
@@ -249,13 +260,15 @@ import json
 import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import export_to_video, load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_i2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map=device
 )
 
 image = load_image(
@@ -293,13 +306,15 @@ import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map=device
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -335,13 +350,15 @@ import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map=device
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -384,13 +401,15 @@ import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import encode_video, load_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map=device
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -431,13 +450,15 @@ import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import encode_video, load_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map=device
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -486,13 +507,15 @@ import json
 import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import encode_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_t2v_sound_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map=device
 )
 
 result = pipe(
@@ -522,13 +545,15 @@ import json
 import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import encode_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_t2v_sound_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map=device
 )
 
 result = pipe(
@@ -573,9 +598,11 @@ import torch
 from diffusers import Cosmos3OmniPipeline, CosmosActionCondition
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map=device
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -620,9 +647,11 @@ import torch
 from diffusers import Cosmos3OmniPipeline, CosmosActionCondition
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map=device
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -817,11 +846,13 @@ The checker is mandatory under the NVIDIA Open Model License Agreement. The two 
 ```python
 import torch
 from diffusers import Cosmos3OmniPipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano",
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map=device,
     enable_safety_checker=False,
 )
 ```
@@ -842,10 +873,13 @@ result = pipe(
 To supply a custom checker (e.g., a no-op subclass for fast tests), pass it as `safety_checker=`:
 
 ```python
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano",
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map=device,
     safety_checker=MyCustomSafetyChecker(),
 )
 ```
@@ -915,11 +949,13 @@ import torch
 from diffusers import Cosmos3OmniModularPipeline, CosmosActionCondition
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import encode_video, export_to_video, load_image, load_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", dtype=torch.bfloat16)
 pipe.load_components(dtype=torch.bfloat16)
 pipe.enable_safety_checker()
-pipe.to("cuda")
+pipe.to(device)
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
 )
@@ -1079,10 +1115,12 @@ import torch
 from diffusers import Cosmos3OmniModularPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", dtype=torch.bfloat16)
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
 )
@@ -1126,14 +1164,16 @@ import json
 import torch
 from diffusers import Cosmos3DistilledModularPipeline
 from diffusers.utils import export_to_video, load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # JSON-upsampled prompt (see "Prompt upsampling" above).
 json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 
 repo = "nvidia/Cosmos3-Super-Text2Image-4Step"
 pipe = Cosmos3DistilledModularPipeline.from_pretrained(repo, dtype=torch.bfloat16)
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 # text-to-image (distilled)
 videos = pipe(
@@ -1153,7 +1193,7 @@ json_prompt_i2v = json.load(open("assets/example_i2v_prompt.json"))
 repo_i2v = "nvidia/Cosmos3-Super-Image2Video-4Step"
 pipe = Cosmos3DistilledModularPipeline.from_pretrained(repo_i2v, dtype=torch.bfloat16)
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 image = load_image(
     "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/vision/robot_153.jpg"

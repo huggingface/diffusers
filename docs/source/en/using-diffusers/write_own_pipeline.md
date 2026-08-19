@@ -25,7 +25,7 @@ A pipeline is a quick and easy way to run a model for inference, requiring no mo
 ```py
 >>> from diffusers import DDPMPipeline
 
->>> ddpm = DDPMPipeline.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to("cuda")
+>>> ddpm = DDPMPipeline.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to(device)
 >>> image = ddpm(num_inference_steps=25).images[0]
 >>> image
 ```
@@ -46,7 +46,7 @@ To recreate the pipeline with the model and scheduler separately, let's write ou
 >>> from diffusers import DDPMScheduler, UNet2DModel
 
 >>> scheduler = DDPMScheduler.from_pretrained("google/ddpm-cat-256")
->>> model = UNet2DModel.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to("cuda")
+>>> model = UNet2DModel.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to(device)
 ```
 
 2. Set the number of timesteps to run the denoising process for:
@@ -71,7 +71,7 @@ tensor([980, 960, 940, 920, 900, 880, 860, 840, 820, 800, 780, 760, 740, 720,
 >>> import torch
 
 >>> sample_size = model.config.sample_size
->>> noise = torch.randn((1, 3, sample_size, sample_size), device="cuda")
+>>> noise = torch.randn((1, 3, sample_size, sample_size), device=device)
 ```
 
 5. Now write a loop to iterate over the timesteps. At each timestep, the model does a [`UNet2DModel.forward`] pass and returns the noisy residual. The scheduler's [`~DDPMScheduler.step`] method takes the noisy residual, timestep, and input and it predicts the image at the previous timestep. This output becomes the next input to the model in the denoising loop, and it'll repeat until it reaches the end of the `timesteps` array.
@@ -142,7 +142,7 @@ Instead of the default [`PNDMScheduler`], exchange it for the [`UniPCMultistepSc
 To speed up inference, move the models to a GPU since, unlike the scheduler, they have trainable weights:
 
 ```py
->>> torch_device = "cuda"
+>>> torch_device = get_device()
 >>> vae.to(torch_device)
 >>> text_encoder.to(torch_device)
 >>> unet.to(torch_device)

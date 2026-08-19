@@ -42,10 +42,13 @@ Official checkpoints:
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DreamLitePipeline
 
+
+device = get_device()
 pipe = DreamLitePipeline.from_pretrained("carlofkl/DreamLite-base", revision="diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 image = pipe(
     prompt="a dog running on the grass",
@@ -67,9 +70,11 @@ Pass an `image` to enter edit mode. Both `guidance_scale` (text branch) and `ima
 import torch
 from diffusers import DreamLitePipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = DreamLitePipeline.from_pretrained("carlofkl/DreamLite-base", revision="diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 source = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
 
@@ -93,9 +98,11 @@ same `prompt` / `height` / `width` / `num_inference_steps` arguments, but **igno
 ```python
 import torch
 from diffusers import DreamLiteMobilePipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = DreamLiteMobilePipeline.from_pretrained("carlofkl/DreamLite-mobile", revision="diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 image = pipe(
     prompt="a dog running on the grass",
@@ -113,9 +120,11 @@ image.save("dreamlite_mobile_t2i.png")
 import torch
 from diffusers import DreamLiteMobilePipeline
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = DreamLiteMobilePipeline.from_pretrained("carlofkl/DreamLite-mobile", revision="diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to(device)
 
 source = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
 

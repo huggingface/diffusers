@@ -192,8 +192,11 @@ After training is complete, you can use your newly trained model for inference l
 ```py
 from diffusers import StableDiffusionPipeline
 import torch
+from diffusers.utils.torch_utils import get_device
 
-pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to("cuda")
+
+device = get_device()
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to(device)
 pipeline.load_textual_inversion("sd-concepts-library/cat-toy")
 image = pipeline("A <cat-toy> train", num_inference_steps=50).images[0]
 image.save("cat-train.png")

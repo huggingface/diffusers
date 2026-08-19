@@ -49,9 +49,12 @@ The following example demonstrates how to use a *MotionAdapter* checkpoint with 
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
 from diffusers.utils import export_to_gif
 
+
+device = get_device()
 # Load the motion adapter
 adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", dtype=torch.float16)
 # load SD 1.5 based finetuned model
@@ -111,12 +114,14 @@ AnimateDiff can also be used with ControlNets ControlNet was introduced in [Addi
 
 ```python
 import torch
+from controlnet_aux.processor import ZoeDetector
 from diffusers import AnimateDiffControlNetPipeline, AutoencoderKL, ControlNetModel, MotionAdapter, LCMScheduler
 from diffusers.utils import export_to_gif, load_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # Additionally, you will need a preprocess videos before they can be used with the ControlNet
 # HF maintains just the right package for it: `pip install controlnet_aux`
-from controlnet_aux.processor import ZoeDetector
 
 # Download controlnets from https://huggingface.co/lllyasviel/ControlNet-v1-1 to use .from_single_file
 # Download Diffusers-format controlnets, such as https://huggingface.co/lllyasviel/sd-controlnet-depth, to use .from_pretrained()
@@ -131,12 +136,12 @@ pipe: AnimateDiffControlNetPipeline = AnimateDiffControlNetPipeline.from_pretrai
     motion_adapter=motion_adapter,
     controlnet=controlnet,
     vae=vae,
-).to(device="cuda", dtype=torch.float16)
+).to(device=device, dtype=torch.float16)
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
 pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora")
 pipe.set_adapters(["lcm-lora"], [0.8])
 
-depth_detector = ZoeDetector.from_pretrained("lllyasviel/Annotators").to("cuda")
+depth_detector = ZoeDetector.from_pretrained("lllyasviel/Annotators").to(device)
 video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
 conditioning_frames = []
 
@@ -204,14 +209,16 @@ from diffusers import AnimateDiffSparseControlNetPipeline
 from diffusers.models import AutoencoderKL, MotionAdapter, SparseControlNetModel
 from diffusers.schedulers import DPMSolverMultistepScheduler
 from diffusers.utils import export_to_gif, load_image
+from diffusers.utils.torch_utils import get_device
 
 
+device = get_device()
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
 controlnet_id = "guoyww/animatediff-sparsectrl-scribble"
 lora_adapter_id = "guoyww/animatediff-motion-lora-v1-5-3"
 vae_id = "stabilityai/sd-vae-ft-mse"
-device = "cuda"
+device = get_device()
 
 motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, dtype=torch.float16).to(device)
 controlnet = SparseControlNetModel.from_pretrained(controlnet_id, dtype=torch.float16).to(device)
@@ -300,14 +307,16 @@ from diffusers import AnimateDiffSparseControlNetPipeline
 from diffusers.models import AutoencoderKL, MotionAdapter, SparseControlNetModel
 from diffusers.schedulers import DPMSolverMultistepScheduler
 from diffusers.utils import export_to_gif, load_image
+from diffusers.utils.torch_utils import get_device
 
 
+device = get_device()
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
 controlnet_id = "guoyww/animatediff-sparsectrl-rgb"
 lora_adapter_id = "guoyww/animatediff-motion-lora-v1-5-3"
 vae_id = "stabilityai/sd-vae-ft-mse"
-device = "cuda"
+device = get_device()
 
 motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, dtype=torch.float16).to(device)
 controlnet = SparseControlNetModel.from_pretrained(controlnet_id, dtype=torch.float16).to(device)
@@ -374,7 +383,9 @@ import torch
 from diffusers.models import MotionAdapter
 from diffusers import AnimateDiffSDXLPipeline, DDIMScheduler
 from diffusers.utils import export_to_gif
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-sdxl-beta", dtype=torch.float16)
 
 model_id = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -392,7 +403,7 @@ pipe = AnimateDiffSDXLPipeline.from_pretrained(
     scheduler=scheduler,
     dtype=torch.float16,
     variant="fp16",
-).to("cuda")
+).to(device)
 
 # enable memory savings
 pipe.vae.enable_slicing()
@@ -537,7 +548,9 @@ from controlnet_aux.processor import OpenposeDetector
 from diffusers import AnimateDiffVideoToVideoControlNetPipeline
 from diffusers.utils import export_to_gif, load_video
 from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter, LCMScheduler
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # Load the ControlNet
 controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose", dtype=torch.float16)
 # Load the motion adapter
@@ -549,7 +562,7 @@ pipe = AnimateDiffVideoToVideoControlNetPipeline.from_pretrained(
     motion_adapter=motion_adapter,
     controlnet=controlnet,
     vae=vae,
-).to(device="cuda", dtype=torch.float16)
+).to(device=device, dtype=torch.float16)
 
 # Enable LCM to speed up inference
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
@@ -563,7 +576,7 @@ prompt = "astronaut in space, dancing"
 negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
 
 # Create controlnet preprocessor
-open_pose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to("cuda")
+open_pose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(device)
 
 # Preprocess controlnet images
 conditioning_frames = []
@@ -758,10 +771,12 @@ The following example demonstrates the usage of FreeInit.
 import torch
 from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
 from diffusers.utils import export_to_gif
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
-pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, dtype=torch.float16).to("cuda")
+pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, dtype=torch.float16).to(device)
 pipe.scheduler = DDIMScheduler.from_pretrained(
     model_id,
     subfolder="scheduler",
@@ -935,7 +950,9 @@ Full example:
 import torch
 from diffusers import AutoencoderKL, AnimateDiffPipeline, LCMScheduler, MotionAdapter
 from diffusers.utils import export_to_video, load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # Load pipeline
 dtype = torch.float16
 motion_adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM", dtype=dtype)
@@ -951,7 +968,7 @@ pipe.set_adapters(["lcm_lora"], [0.8])
 
 # Enable FreeNoise for long prompt generation
 pipe.enable_free_noise(context_length=16, context_stride=4)
-pipe.to("cuda")
+pipe.to(device)
 
 # Can be a single prompt, or a dictionary with frame timesteps
 prompt = {

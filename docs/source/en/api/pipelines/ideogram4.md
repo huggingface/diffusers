@@ -29,14 +29,17 @@ Key inference-time knobs are exposed via the pipeline call:
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import Ideogram4Pipeline
 
+
+device = get_device()
 pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-v4", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "A photo of a cat holding a sign that says hello world"
 # The defaults are the recommended settings for best quality.
-image = pipe(prompt, height=1024, width=1024, generator=torch.Generator("cuda").manual_seed(0)).images[0]
+image = pipe(prompt, height=1024, width=1024, generator=torch.Generator(device).manual_seed(0)).images[0]
 image.save("ideogram4.png")
 ```
 
@@ -55,9 +58,11 @@ import json
 import requests
 import torch
 from diffusers import Ideogram4Pipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to(device)
 
 # Expand the prompt into a structured JSON caption with Ideogram's hosted magic-prompt API.
 response = requests.post(
@@ -68,7 +73,7 @@ response = requests.post(
 caption = json.dumps(response["json_prompt"])
 
 # The caption is already upsampled, so pass it directly (no prompt_upsampling).
-image = pipe(caption, height=1024, width=1024, generator=torch.Generator("cuda").manual_seed(0)).images[0]
+image = pipe(caption, height=1024, width=1024, generator=torch.Generator(device).manual_seed(0)).images[0]
 image.save("ideogram4_upsampled.png")
 ```
 
@@ -82,14 +87,16 @@ checkpoint also needs `bitsandbytes`):
 ```python
 import torch
 from diffusers import Ideogram4Pipeline, Ideogram4PromptEnhancerHead
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 prompt_enhancer_head = Ideogram4PromptEnhancerHead.from_pretrained(
     "diffusers/qwen3-vl-8b-instruct-lm-head", dtype=torch.bfloat16
 )
 pipe = Ideogram4Pipeline.from_pretrained(
     "ideogram-ai/ideogram-4-nf4", prompt_enhancer_head=prompt_enhancer_head, dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "A photo of a cat holding a sign that says hello world"
 image = pipe(
@@ -97,7 +104,7 @@ image = pipe(
     height=1024,
     width=1024,
     prompt_upsampling=True,
-    generator=torch.Generator("cuda").manual_seed(0),
+    generator=torch.Generator(device).manual_seed(0),
 ).images[0]
 image.save("ideogram4_upsampled.png")
 ```

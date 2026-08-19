@@ -23,11 +23,14 @@ The temporal geometry is fixed by `clip_length` (17 pixel frames per encoder chu
 
 ```python
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import AutoencoderKLMiniMaxH3
 
+
+device = get_device()
 vae = AutoencoderKLMiniMaxH3.from_pretrained(
     "MiniMaxAI/MiniMax-H3", subfolder="vae", dtype=torch.float32
-).to("cuda")
+).to(device)
 ```
 
 ## AutoencoderKLMiniMaxH3

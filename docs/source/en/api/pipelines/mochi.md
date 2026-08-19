@@ -37,10 +37,13 @@ Refer to the [Quantization](../../quantization/overview) overview to learn more 
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, MochiTransformer3DModel, MochiPipeline
 from diffusers.utils import export_to_video
 from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
 
+
+device = get_device()
 quant_config = BitsAndBytesConfig(load_in_8bit=True)
 text_encoder_8bit = T5EncoderModel.from_pretrained(
     "genmo/mochi-1-preview",
@@ -136,7 +139,9 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from diffusers import MochiPipeline
 from diffusers.utils import export_to_video
 from diffusers.video_processor import VideoProcessor
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", force_zeros_for_empty_prompt=True)
 pipe.vae.enable_tiling()
 pipe.enable_model_cpu_offload()
@@ -160,7 +165,7 @@ with torch.autocast("cuda", torch.bfloat16):
             height=480,
             width=848,
             num_frames=163,
-            generator=torch.Generator("cuda").manual_seed(0),
+            generator=torch.Generator(device).manual_seed(0),
             output_type="latent",
             return_dict=False,
         )[0]
@@ -194,7 +199,9 @@ It is possible to split the large Mochi transformer across multiple GPUs using t
 import torch
 from diffusers import MochiPipeline, MochiTransformer3DModel
 from diffusers.utils import export_to_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 model_id = "genmo/mochi-1-preview"
 transformer = MochiTransformer3DModel.from_pretrained(
     model_id,
@@ -217,7 +224,7 @@ with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=Fals
         num_inference_steps=50,
         guidance_scale=4.5,
         num_videos_per_prompt=1,
-        generator=torch.Generator(device="cuda").manual_seed(0),
+        generator=torch.Generator(device=device).manual_seed(0),
         max_sequence_length=256,
         output_type="pil",
     ).frames[0]
@@ -236,7 +243,9 @@ You can use `from_single_file` to load the Mochi transformer in its original for
 import torch
 from diffusers import MochiPipeline, MochiTransformer3DModel
 from diffusers.utils import export_to_video
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 model_id = "genmo/mochi-1-preview"
 
 ckpt_path = "https://huggingface.co/Comfy-Org/mochi_preview_repackaged/blob/main/split_files/diffusion_models/mochi_preview_bf16.safetensors"
@@ -257,7 +266,7 @@ with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=Fals
         num_inference_steps=50,
         guidance_scale=4.5,
         num_videos_per_prompt=1,
-        generator=torch.Generator(device="cuda").manual_seed(0),
+        generator=torch.Generator(device=device).manual_seed(0),
         max_sequence_length=256,
         output_type="pil",
     ).frames[0]

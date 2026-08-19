@@ -44,7 +44,10 @@ A couple of notes to keep in mind when using LCMs are:
 ```python
 from diffusers import StableDiffusionXLPipeline, UNet2DConditionModel, LCMScheduler
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
     dtype=torch.float16,
@@ -52,7 +55,7 @@ unet = UNet2DConditionModel.from_pretrained(
 )
 pipe = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", unet=unet, dtype=torch.float16, variant="fp16",
-).to("cuda")
+).to(device)
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
 prompt = "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
@@ -86,7 +89,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     variant="fp16",
     dtype=torch.float16
-).to("cuda")
+).to(device)
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 pipe.load_lora_weights("latent-consistency/lcm-lora-sdxl")
 
@@ -119,7 +122,9 @@ To use LCMs for image-to-image, you need to load the LCM checkpoint for your sup
 import torch
 from diffusers import AutoPipelineForImage2Image, UNet2DConditionModel, LCMScheduler
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 unet = UNet2DConditionModel.from_pretrained(
     "SimianLuo/LCM_Dreamshaper_v7",
     subfolder="unet",
@@ -131,7 +136,7 @@ pipe = AutoPipelineForImage2Image.from_pretrained(
     unet=unet,
     dtype=torch.float16,
     variant="fp16",
-).to("cuda")
+).to(device)
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png")
@@ -176,7 +181,7 @@ pipe = AutoPipelineForImage2Image.from_pretrained(
     "Lykon/dreamshaper-7",
     dtype=torch.float16,
     variant="fp16",
-).to("cuda")
+).to(device)
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -224,7 +229,7 @@ pipe = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting",
     dtype=torch.float16,
     variant="fp16",
-).to("cuda")
+).to(device)
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -273,7 +278,9 @@ Load the LCM checkpoint for your supported model into [`UNet2DConditionModel`] a
 ```python
 from diffusers import StableDiffusionXLPipeline, UNet2DConditionModel, LCMScheduler
 import torch
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
     dtype=torch.float16,
@@ -281,7 +288,7 @@ unet = UNet2DConditionModel.from_pretrained(
 )
 pipe = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", unet=unet, dtype=torch.float16, variant="fp16",
-).to("cuda")
+).to(device)
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 pipe.load_lora_weights("TheLastBen/Papercut_SDXL", weight_name="papercut.safetensors", adapter_name="papercut")
 
@@ -310,7 +317,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     variant="fp16",
     dtype=torch.float16
-).to("cuda")
+).to(device)
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -354,7 +361,9 @@ from PIL import Image
 
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, LCMScheduler
 from diffusers.utils import load_image, make_image_grid
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 image = load_image(
     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
 ).resize((512, 512))
@@ -375,7 +384,7 @@ pipe = StableDiffusionControlNetPipeline.from_pretrained(
     controlnet=controlnet,
     dtype=torch.float16,
     safety_checker=None,
-).to("cuda")
+).to(device)
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
 generator = torch.manual_seed(0)
@@ -430,7 +439,7 @@ pipe = StableDiffusionControlNetPipeline.from_pretrained(
     dtype=torch.float16,
     safety_checker=None,
     variant="fp16"
-).to("cuda")
+).to(device)
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -475,7 +484,9 @@ from PIL import Image
 
 from diffusers import StableDiffusionXLAdapterPipeline, UNet2DConditionModel, T2IAdapter, LCMScheduler
 from diffusers.utils import load_image, make_image_grid
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 # detect the canny map in low resolution to avoid high-frequency details
 image = load_image(
     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
@@ -491,7 +502,7 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image).resize((1024, 1216))
 
-adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16, variant="fp16").to("cuda")
+adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16, variant="fp16").to(device)
 
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
@@ -504,7 +515,7 @@ pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
     adapter=adapter,
     dtype=torch.float16,
     variant="fp16",
-).to("cuda")
+).to(device)
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -557,14 +568,14 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image).resize((1024, 1024))
 
-adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16, variant="fp16").to("cuda")
+adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16, variant="fp16").to(device)
 
 pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     adapter=adapter,
     dtype=torch.float16,
     variant="fp16",
-).to("cuda")
+).to(device)
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -608,7 +619,7 @@ adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5"
 pipe = AnimateDiffPipeline.from_pretrained(
     "frankjoshua/toonyou_beta6",
     motion_adapter=adapter,
-).to("cuda")
+).to(device)
 
 # set scheduler
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)

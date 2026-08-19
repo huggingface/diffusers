@@ -17,8 +17,11 @@ The model can be loaded with the following code snippet.
 
 ```python
 from diffusers import AutoencoderKLMagvit
+from diffusers.utils.torch_utils import get_device
 
-vae = AutoencoderKLMagvit.from_pretrained("alibaba-pai/EasyAnimateV5.1-12b-zh", subfolder="vae", dtype=torch.float16).to("cuda")
+
+device = get_device()
+vae = AutoencoderKLMagvit.from_pretrained("alibaba-pai/EasyAnimateV5.1-12b-zh", subfolder="vae", dtype=torch.float16).to(device)
 ```
 
 ## AutoencoderKLMagvit

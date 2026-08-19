@@ -53,7 +53,10 @@ Then load the text encoder in 8-bit:
 from transformers import T5EncoderModel
 from diffusers import PixArtSigmaPipeline
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 text_encoder = T5EncoderModel.from_pretrained(
     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
     subfolder="text_encoder",
@@ -93,11 +96,14 @@ flush()
 Then compute the latents with the prompt embeddings as inputs:
 
 ```python
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 pipe = PixArtSigmaPipeline.from_pretrained(
     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
     text_encoder=None,
     dtype=torch.float16,
-).to("cuda")
+).to(device)
 
 latents = pipe(
     negative_prompt=None,

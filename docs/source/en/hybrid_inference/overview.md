@@ -34,15 +34,18 @@ Pass an image to [`~utils.remote_encode`] to encode it. The specific `scaling_fa
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import FluxPipeline
 from diffusers.utils import load_image
 from diffusers.utils.remote_utils import remote_encode
 
+
+device = get_device()
 pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-schnell",
     dtype=torch.float16,
     vae=None,
-    device_map="cuda"
+    device_map=device
 )
 
 init_image = load_image(
@@ -74,7 +77,7 @@ pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-schnell",
     dtype=torch.bfloat16,
     vae=None,
-    device_map="cuda"
+    device_map=device
 )
 
 prompt = """
@@ -109,7 +112,7 @@ transformer = HunyuanVideoTransformer3DModel.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo", subfolder="transformer", dtype=torch.bfloat16
 )
 pipeline = HunyuanVideoPipeline.from_pretrained(
-    model_id, transformer=transformer, vae=None, dtype=torch.float16, device_map="cuda"
+    model_id, transformer=transformer, vae=None, dtype=torch.float16, device_map=device
 )
 
 latent = pipeline(
@@ -178,7 +181,7 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16,
     vae=None,
-    device_map="cuda"
+    device_map=device
 )
 
 pipeline.unet = pipeline.unet.to(memory_format=torch.channels_last)

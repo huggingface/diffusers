@@ -33,13 +33,16 @@ Load either community pipeline types by passing the `custom_pipeline` argument t
 
 ```py
 import torch
+from diffusers.utils.torch_utils import get_device
 from diffusers import DiffusionPipeline
 
+
+device = get_device()
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
     custom_pipeline="pipeline_stable_diffusion_3_instruct_pix2pix",
     dtype=torch.float16,
-    device_map="cuda"
+    device_map=device
 )
 ```
 
@@ -54,7 +57,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="pipeline_stable_diffusion_3_instruct_pix2pix",
     custom_revision="main"
     dtype=torch.float16,
-    device_map="cuda"
+    device_map=device
 )
 ```
 
@@ -73,7 +76,7 @@ There are a few ways to load a community pipeline.
       "stabilityai/stable-diffusion-3-medium-diffusers",
       custom_pipeline="path/to/pipeline_directory",
       dtype=torch.float16,
-      device_map="cuda"
+      device_map=device
   )
   ```
 
@@ -83,9 +86,9 @@ There are a few ways to load a community pipeline.
   import torch
   from diffusers import DiffusionPipeline
 
-  pipeline_sd = DiffusionPipeline.from_pretrained("emilianJR/CyberRealistic_V3", dtype=torch.float16, device_map="cuda")
+  pipeline_sd = DiffusionPipeline.from_pretrained("emilianJR/CyberRealistic_V3", dtype=torch.float16, device_map=device)
   pipeline_lpw = DiffusionPipeline.from_pipe(
-      pipeline_sd, custom_pipeline="lpw_stable_diffusion", device_map="cuda"
+      pipeline_sd, custom_pipeline="lpw_stable_diffusion", device_map=device
   )
   ```
 
@@ -128,14 +131,16 @@ Initialize `TextToVideoIFPipeline` with `ShowOneUNet3DConditionModel`.
 ```python
 import torch
 from pipeline_t2v_base_pixel import TextToVideoIFPipeline
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 pipeline = TextToVideoIFPipeline(
     unet=unet,
     text_encoder=text_encoder,
     tokenizer=tokenizer,
     scheduler=scheduler,
     feature_extractor=feature_extractor,
-    device_map="cuda",
+    device_map=device,
     dtype=torch.float16
 )
 ```

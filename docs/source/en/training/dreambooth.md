@@ -317,7 +317,8 @@ Once training is complete, you can use your newly trained model for inference!
 > from diffusers import DiffusionPipeline, UNet2DConditionModel
 > from transformers import CLIPTextModel
 > import torch
->
+> from diffusers.utils.torch_utils import get_device
+> device = get_device()
 > unet = UNet2DConditionModel.from_pretrained("path/to/model/checkpoint-100/unet")
 >
 > # if you have trained with `--args.train_text_encoder` make sure to also load the text encoder
@@ -325,7 +326,7 @@ Once training is complete, you can use your newly trained model for inference!
 >
 > pipeline = DiffusionPipeline.from_pretrained(
 >     "stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, text_encoder=text_encoder, dtype=torch.float16,
-> ).to("cuda")
+> ).to(device)
 >
 > image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
 > image.save("dog-bucket.png")
@@ -334,8 +335,11 @@ Once training is complete, you can use your newly trained model for inference!
 ```py
 from diffusers import DiffusionPipeline
 import torch
+from diffusers.utils.torch_utils import get_device
 
-pipeline = DiffusionPipeline.from_pretrained("path_to_saved_model", dtype=torch.float16, use_safetensors=True).to("cuda")
+
+device = get_device()
+pipeline = DiffusionPipeline.from_pretrained("path_to_saved_model", dtype=torch.float16, use_safetensors=True).to(device)
 image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
 image.save("dog-bucket.png")
 ```

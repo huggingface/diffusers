@@ -30,7 +30,10 @@ Create a [`ComponentsManager`] and pass it to a [`ModularPipeline`] with either 
 ```py
 from diffusers import ModularPipeline, ComponentsManager
 import torch
+from diffusers.utils.torch_utils import get_device
 
+
+device = get_device()
 manager = ComponentsManager()
 pipe = ModularPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", components_manager=manager)
 pipe.load_components(dtype=torch.bfloat16)
@@ -87,7 +90,7 @@ The table shows models (with device, dtype, and memory info) separately from oth
 The [`~ComponentsManager.enable_auto_cpu_offload`] method is a global offloading strategy that works across all models regardless of which pipeline is using them. Once enabled, you don't need to worry about device placement if you add or remove components.
 
 ```py
-manager.enable_auto_cpu_offload(device="cuda")
+manager.enable_auto_cpu_offload(device=device)
 ```
 
 All models begin on the CPU and [`ComponentsManager`] moves them to the appropriate device right before they're needed, and moves other models back to the CPU when GPU memory is low.
