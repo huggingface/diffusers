@@ -53,7 +53,6 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     test_xformers_attention = False
     test_attention_slicing = False
-    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)

@@ -343,7 +343,7 @@ class Flux2KleinBaseAutoBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`Qwen3ForCausalLM`) tokenizer (`Qwen2TokenizerFast`) guider (`ClassifierFreeGuidance`)
+          text_encoder (`Qwen3ForCausalLM`) tokenizer (`Qwen2Tokenizer`) guider (`ClassifierFreeGuidance`)
           image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`) scheduler
           (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
 

@@ -20,7 +20,13 @@ from diffusers import AutoencoderDC
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, torch_device
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    SingleFileTesterMixin,
+    TrainingTesterMixin,
+)
 from .testing_utils import NewAutoencoderTesterMixin
 
 
@@ -102,3 +108,13 @@ class TestAutoencoderDCMemory(AutoencoderDCTesterConfig, MemoryTesterMixin):
 
 class TestAutoencoderDCSlicingTiling(AutoencoderDCTesterConfig, NewAutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderDC."""
+
+
+class TestAutoencoderDCSingleFile(AutoencoderDCTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/mit-han-lab/dc-ae-f32c32-sana-1.0/blob/main/model.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers"

@@ -111,15 +111,15 @@ Load the inpainting ControlNet, ZoeDepth model, VAE and pass them to the [`Stabl
 ```py
 controlnets = [
     ControlNetModel.from_pretrained(
-        "destitech/controlnet-inpaint-dreamer-sdxl", torch_dtype=torch.float16, variant="fp16"
+        "destitech/controlnet-inpaint-dreamer-sdxl", dtype=torch.float16, variant="fp16"
     ),
     ControlNetModel.from_pretrained(
-        "diffusers/controlnet-zoe-depth-sdxl-1.0", torch_dtype=torch.float16
+        "diffusers/controlnet-zoe-depth-sdxl-1.0", dtype=torch.float16
     ),
 ]
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16).to("cuda")
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16).to("cuda")
 pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
-    "SG161222/RealVisXL_V4.0", torch_dtype=torch.float16, variant="fp16", controlnet=controlnets, vae=vae
+    "SG161222/RealVisXL_V4.0", dtype=torch.float16, variant="fp16", controlnet=controlnets, vae=vae
 ).to("cuda")
 
 def generate_image(prompt, negative_prompt, inpaint_image, zoe_image, seed: int = None):
@@ -173,7 +173,7 @@ Now that you have an initial outpainted image, load the [`StableDiffusionXLInpai
 ```py
 pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
     "OzzyGT/RealVisXL_V4.0_inpainting",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
     vae=vae,
 ).to("cuda")

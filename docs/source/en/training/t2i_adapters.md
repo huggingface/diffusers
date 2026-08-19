@@ -192,9 +192,9 @@ from diffusers import StableDiffusionXLAdapterPipeline, T2IAdapter, EulerAncestr
 from diffusers.utils import load_image
 import torch
 
-adapter = T2IAdapter.from_pretrained("path/to/adapter", torch_dtype=torch.float16)
+adapter = T2IAdapter.from_pretrained("path/to/adapter", dtype=torch.float16)
 pipeline = StableDiffusionXLAdapterPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", adapter=adapter, torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-xl-base-1.0", adapter=adapter, dtype=torch.float16
 )
 
 pipeline.scheduler = EulerAncestralDiscreteSchedulerTest.from_config(pipe.scheduler.config)
