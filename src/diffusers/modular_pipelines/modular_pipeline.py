@@ -1456,8 +1456,8 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 class IterativePipelineBlocks(SequentialPipelineBlocks):
     """
     A pipeline blocks that runs its sub-blocks multiple times. Subclasses declare their loop-variable names in
-    `loop_variables` and implement `__call__` with their loop logic — the same way leaf blocks implement
-    `__call__` around `get_block_state` — calling `loop_step` once per iteration with the loop variables:
+    `loop_variables` and implement `__call__` with their loop logic — the same way leaf blocks implement `__call__`
+    around `get_block_state` — calling `loop_step` once per iteration with the loop variables:
 
     ```python
     @property
@@ -1478,10 +1478,10 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
     one — loops can be nested and composed freely. Sub-blocks must be [`ModularLoopPipelineBlocks`] (loop steps) or
     nested `IterativePipelineBlocks`, which is validated at construction.
 
-    Loop variables are passed to sub-blocks as call arguments: every sub-block must have the signature
-    `__call__(self, components, state, <loop_variables...>)`, which is validated against `loop_variables` at
-    construction. A nested loop accepts the outer loop's variables in its own hand-written `__call__` (ignoring or
-    forwarding them) and passes its own `loop_variables` to its own sub-blocks:
+    Loop variables are passed to sub-blocks as call arguments: every sub-block must have the signature `__call__(self,
+    components, state, <loop_variables...>)`, which is validated against `loop_variables` at construction. A nested
+    loop accepts the outer loop's variables in its own hand-written `__call__` (ignoring or forwarding them) and passes
+    its own `loop_variables` to its own sub-blocks:
 
     ```python
     class InnerDenoiseLoop(IterativePipelineBlocks):
