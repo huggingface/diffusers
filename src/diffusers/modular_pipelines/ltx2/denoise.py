@@ -22,12 +22,11 @@ from ...configuration_utils import FrozenDict
 from ...models import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ..modular_pipeline import (
-    BlockState,
-    LoopSequentialPipelineBlocks,
-    ModularPipelineBlocks,
+    IterativePipelineBlocks,
+    ModularLoopPipelineBlocks,
     PipelineState,
 )
-from ..modular_pipeline_utils import ComponentSpec, InputParam
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .guider import LTX2Guidance
 
 
@@ -71,7 +70,7 @@ def _unpack_latents(
     return latents
 
 
-class LTX2LoopBeforeDenoiser(ModularPipelineBlocks):
+class LTX2LoopBeforeDenoiser(ModularLoopPipelineBlocks):
     model_name = "ltx2"
 
     @property
@@ -93,17 +92,32 @@ class LTX2LoopBeforeDenoiser(ModularPipelineBlocks):
             ),
         ]
 
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("latent_model_input", type_hint=torch.Tensor, description="Video latents cast to model dtype"),
+            OutputParam(
+                "audio_latent_model_input", type_hint=torch.Tensor, description="Audio latents cast to model dtype"
+            ),
+            OutputParam("video_timestep", type_hint=torch.Tensor, description="This step's video timestep"),
+            OutputParam("audio_timestep", type_hint=torch.Tensor, description="This step's audio timestep"),
+        ]
+
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(self, components, state: PipelineState, i: int, t: torch.Tensor):
+        block_state = self.get_block_state(state)
+
         block_state.latent_model_input = block_state.latents.to(block_state.dtype)
         block_state.audio_latent_model_input = block_state.audio_latents.to(block_state.dtype)
         timestep = t.expand(block_state.latents.shape[0])
         block_state.video_timestep = timestep
         block_state.audio_timestep = timestep
-        return components, block_state
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
-class LTX2Image2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
+class LTX2Image2VideoLoopBeforeDenoiser(ModularLoopPipelineBlocks):
     model_name = "ltx2"
 
     @property
@@ -129,17 +143,32 @@ class LTX2Image2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
             ),
         ]
 
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("latent_model_input", type_hint=torch.Tensor, description="Video latents cast to model dtype"),
+            OutputParam(
+                "audio_latent_model_input", type_hint=torch.Tensor, description="Audio latents cast to model dtype"
+            ),
+            OutputParam("video_timestep", type_hint=torch.Tensor, description="This step's masked video timestep"),
+            OutputParam("audio_timestep", type_hint=torch.Tensor, description="This step's audio timestep"),
+        ]
+
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(self, components, state: PipelineState, i: int, t: torch.Tensor):
+        block_state = self.get_block_state(state)
+
         block_state.latent_model_input = block_state.latents.to(block_state.dtype)
         block_state.audio_latent_model_input = block_state.audio_latents.to(block_state.dtype)
         timestep = t.expand(block_state.latents.shape[0])
         block_state.video_timestep = timestep.unsqueeze(-1) * (1 - block_state.conditioning_mask)
         block_state.audio_timestep = timestep
-        return components, block_state
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
-class LTX2ConditionLoopBeforeDenoiser(ModularPipelineBlocks):
+class LTX2ConditionLoopBeforeDenoiser(ModularLoopPipelineBlocks):
     model_name = "ltx2"
 
     @property
@@ -171,14 +200,29 @@ class LTX2ConditionLoopBeforeDenoiser(ModularPipelineBlocks):
             ),
         ]
 
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("latent_model_input", type_hint=torch.Tensor, description="Video latents cast to model dtype"),
+            OutputParam(
+                "audio_latent_model_input", type_hint=torch.Tensor, description="Audio latents cast to model dtype"
+            ),
+            OutputParam("video_timestep", type_hint=torch.Tensor, description="This step's masked video timestep"),
+            OutputParam("audio_timestep", type_hint=torch.Tensor, description="This step's audio timestep"),
+        ]
+
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(self, components, state: PipelineState, i: int, t: torch.Tensor):
+        block_state = self.get_block_state(state)
+
         block_state.latent_model_input = block_state.latents.to(block_state.dtype)
         block_state.audio_latent_model_input = block_state.audio_latents.to(block_state.dtype)
         timestep = t.expand(block_state.latents.shape[0])
         block_state.video_timestep = timestep.unsqueeze(-1) * (1 - block_state.conditioning_mask.squeeze(-1))
         block_state.audio_timestep = timestep
-        return components, block_state
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
 # Default per-pass conditioning map for `LTX2LoopDenoiser`: transformer argument -> block-state attribute names
@@ -212,7 +256,7 @@ _DEFAULT_GUIDER_INPUT_FIELDS = {
 }
 
 
-class LTX2LoopDenoiser(ModularPipelineBlocks):
+class LTX2LoopDenoiser(ModularLoopPipelineBlocks):
     model_name = "ltx2"
 
     def __init__(self, guider_input_fields: dict[str, Any] = _DEFAULT_GUIDER_INPUT_FIELDS):
@@ -293,6 +337,30 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
                 required=True,
                 description="Packed noisy audio latents to denoise.",
             ),
+            InputParam(
+                "latent_model_input",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Video latents cast to model dtype, from the before-denoiser step.",
+            ),
+            InputParam(
+                "audio_latent_model_input",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Audio latents cast to model dtype, from the before-denoiser step.",
+            ),
+            InputParam(
+                "video_timestep",
+                type_hint=torch.Tensor,
+                required=True,
+                description="This step's video timestep, from the before-denoiser step.",
+            ),
+            InputParam(
+                "audio_timestep",
+                type_hint=torch.Tensor,
+                required=True,
+                description="This step's audio timestep, from the before-denoiser step.",
+            ),
             InputParam("audio_scheduler", required=True),
             # `audio_num_frames`, `video_coords`, `audio_coords` arrive tagged `denoiser_input_fields` upstream and
             # are collected from the tagged dict (filtered against the transformer signature) in `__call__`.
@@ -336,8 +404,21 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             )
         return inputs
 
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "noise_pred_video", type_hint=torch.Tensor, description="Guided x0 prediction for the video latents"
+            ),
+            OutputParam(
+                "noise_pred_audio", type_hint=torch.Tensor, description="Guided x0 prediction for the audio latents"
+            ),
+        ]
+
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(self, components, state: PipelineState, i: int, t: torch.Tensor):
+        block_state = self.get_block_state(state)
+
         latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
         latent_height = block_state.height // components.vae_spatial_compression_ratio
         latent_width = block_state.width // components.vae_spatial_compression_ratio
@@ -425,10 +506,12 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
 
         block_state.noise_pred_video = _combine(components.guider, "video_pred")
         block_state.noise_pred_audio = _combine(components.audio_guider, "audio_pred")
-        return components, block_state
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
-class LTX2LoopAfterDenoiser(ModularPipelineBlocks):
+class LTX2LoopAfterDenoiser(ModularLoopPipelineBlocks):
     model_name = "ltx2"
 
     @property
@@ -450,10 +533,31 @@ class LTX2LoopAfterDenoiser(ModularPipelineBlocks):
                 description="Packed noisy audio latents to denoise.",
             ),
             InputParam("audio_scheduler", required=True),
+            InputParam(
+                "noise_pred_video",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Guided x0 prediction for the video latents, from the denoiser step.",
+            ),
+            InputParam(
+                "noise_pred_audio",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Guided x0 prediction for the audio latents, from the denoiser step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("latents", type_hint=torch.Tensor, description="The denoised video latents"),
+            OutputParam("audio_latents", type_hint=torch.Tensor, description="The denoised audio latents"),
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(self, components, state: PipelineState, i: int, t: torch.Tensor):
+        block_state = self.get_block_state(state)
+
         noise_pred_video = convert_x0_to_velocity(
             block_state.latents, block_state.noise_pred_video, i, components.scheduler
         )
@@ -464,10 +568,12 @@ class LTX2LoopAfterDenoiser(ModularPipelineBlocks):
         block_state.audio_latents = block_state.audio_scheduler.step(
             noise_pred_audio, t, block_state.audio_latents, return_dict=False
         )[0]
-        return components, block_state
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
-class LTX2Image2VideoLoopAfterDenoiser(ModularPipelineBlocks):
+class LTX2Image2VideoLoopAfterDenoiser(ModularLoopPipelineBlocks):
     model_name = "ltx2"
 
     @property
@@ -492,6 +598,18 @@ class LTX2Image2VideoLoopAfterDenoiser(ModularPipelineBlocks):
                 description="Packed noisy audio latents to denoise.",
             ),
             InputParam("audio_scheduler", required=True),
+            InputParam(
+                "noise_pred_video",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Guided x0 prediction for the video latents, from the denoiser step.",
+            ),
+            InputParam(
+                "noise_pred_audio",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Guided x0 prediction for the audio latents, from the denoiser step.",
+            ),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
@@ -505,8 +623,17 @@ class LTX2Image2VideoLoopAfterDenoiser(ModularPipelineBlocks):
             ),
         ]
 
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("latents", type_hint=torch.Tensor, description="The denoised video latents"),
+            OutputParam("audio_latents", type_hint=torch.Tensor, description="The denoised audio latents"),
+        ]
+
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(self, components, state: PipelineState, i: int, t: torch.Tensor):
+        block_state = self.get_block_state(state)
+
         spatial_patch = components.transformer_spatial_patch_size
         temporal_patch = components.transformer_temporal_patch_size
         latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
@@ -534,10 +661,12 @@ class LTX2Image2VideoLoopAfterDenoiser(ModularPipelineBlocks):
         block_state.audio_latents = block_state.audio_scheduler.step(
             noise_pred_audio, t, block_state.audio_latents, return_dict=False
         )[0]
-        return components, block_state
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
-class LTX2ConditionLoopAfterDenoiser(ModularPipelineBlocks):
+class LTX2ConditionLoopAfterDenoiser(ModularLoopPipelineBlocks):
     model_name = "ltx2"
 
     @property
@@ -565,6 +694,18 @@ class LTX2ConditionLoopAfterDenoiser(ModularPipelineBlocks):
             ),
             InputParam("audio_scheduler", required=True),
             InputParam(
+                "noise_pred_video",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Guided x0 prediction for the video latents, from the denoiser step.",
+            ),
+            InputParam(
+                "noise_pred_audio",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Guided x0 prediction for the audio latents, from the denoiser step.",
+            ),
+            InputParam(
                 "conditioning_mask",
                 type_hint=torch.Tensor,
                 required=True,
@@ -578,8 +719,17 @@ class LTX2ConditionLoopAfterDenoiser(ModularPipelineBlocks):
             ),
         ]
 
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("latents", type_hint=torch.Tensor, description="The denoised video latents"),
+            OutputParam("audio_latents", type_hint=torch.Tensor, description="The denoised audio latents"),
+        ]
+
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(self, components, state: PipelineState, i: int, t: torch.Tensor):
+        block_state = self.get_block_state(state)
+
         # Conditioning strengths run from 0 (always use the denoised sample) to 1 (always use the condition), with
         # intermediate values specifying how strongly to follow the condition. Applied in x0 space, not velocity
         # space (which is what the transformer outputs).
@@ -596,11 +746,17 @@ class LTX2ConditionLoopAfterDenoiser(ModularPipelineBlocks):
         block_state.audio_latents = block_state.audio_scheduler.step(
             noise_pred_audio, t, block_state.audio_latents, return_dict=False
         )[0]
-        return components, block_state
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
-class LTX2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+class LTX2DenoiseLoopWrapper(IterativePipelineBlocks):
     model_name = "ltx2"
+
+    @property
+    def loop_variables(self) -> list[str]:
+        return ["i", "t"]
 
     @property
     def description(self) -> str:
@@ -610,36 +766,48 @@ class LTX2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         )
 
     @property
-    def loop_expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
-            ComponentSpec("transformer", LTX2VideoTransformer3DModel),
-        ]
+    def expected_components(self) -> list[ComponentSpec]:
+        expected_components = super().expected_components
+        # the loop logic itself reads `scheduler.order` for the warmup-step computation
+        scheduler = ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)
+        if scheduler not in expected_components:
+            expected_components.append(scheduler)
+        return expected_components
 
     @property
-    def loop_inputs(self) -> list[InputParam]:
-        return [
+    def inputs(self) -> list[InputParam]:
+        inputs = super().inputs
+        names = {param.name for param in inputs}
+        # inputs consumed by the loop logic itself, on top of what the sub-blocks declare
+        loop_inputs = [
             InputParam("timesteps", type_hint=torch.Tensor, required=True),
             InputParam.template("num_inference_steps", required=True),
         ]
+        return [param for param in loop_inputs if param.name not in names] + inputs
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.num_warmup_steps = max(
+        num_warmup_steps = max(
             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0
         )
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(components, block_state, i=i, t=t)
+                components, state = self.loop_step(components, state, i=i, t=t)
                 if i == len(block_state.timesteps) - 1 or (
-                    (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
+                    (i + 1) > num_warmup_steps and (i + 1) % components.scheduler.order == 0
                 ):
                     progress_bar.update()
 
-        self.set_block_state(state, block_state)
+        return components, state
+
+    @torch.no_grad()
+    def stream(self, components, state: PipelineState):
+        block_state = self.get_block_state(state)
+        for i, t in enumerate(block_state.timesteps):
+            components, state = yield from self.stream_step(components, state, i=i, t=t)
         return components, state
 
 
