@@ -103,9 +103,9 @@ Check out the [Quickstart](https://huggingface.co/docs/diffusers/quicktour) to l
 
 | **Documentation**                                                   | **What can I learn?**                                                                                                                                                                           |
 |---------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [Tutorial](https://huggingface.co/docs/diffusers/tutorials/tutorial_overview)                                                            | A basic crash course for learning how to use the library's most important features like using models and schedulers to build your own diffusion system, and training your own diffusion model.  |
+| [Quickstart](https://huggingface.co/docs/diffusers/quicktour)                                                            | A basic crash course for loading pipelines, generating outputs, and applying common inference optimizations.  |
 | [Loading](https://huggingface.co/docs/diffusers/using-diffusers/loading)                                                             | Guides for how to load and configure all the components (pipelines, models, and schedulers) of the library, as well as how to use different schedulers.                                         |
-| [Pipelines for inference](https://huggingface.co/docs/diffusers/using-diffusers/overview_techniques)                                             | Guides for how to use pipelines for different inference tasks, batched generation, controlling generated outputs and randomness, and how to contribute a pipeline to the library.               |
+| [Modular Diffusers](https://huggingface.co/docs/diffusers/main/en/modular_diffusers/overview)                                             | Build flexible diffusion systems from modular pipeline components.               |
 | [Optimization](https://huggingface.co/docs/diffusers/optimization/fp16)                                                        | Guides for how to optimize your diffusion model to run faster and consume less memory.                                                                                                          |
 | [Training](https://huggingface.co/docs/diffusers/training/overview) | Guides for how to train a diffusion model for different tasks with different training techniques.                                                                                               |
 ## Contribution
@@ -141,7 +141,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
   </tr>
   <tr>
     <td>Text-to-Image</td>
-    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/unclip">unCLIP</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_unclip">unCLIP</a></td>
       <td><a href="https://huggingface.co/kakaobrain/karlo-v1-alpha"> kakaobrain/karlo-v1-alpha </a></td>
   </tr>
   <tr>

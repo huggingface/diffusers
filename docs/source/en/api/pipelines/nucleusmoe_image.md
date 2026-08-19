@@ -17,7 +17,7 @@
 [NucleusMoE-Image](https://huggingface.co/NucleusAI/NucleusMoE-Image) is a text-to-image model that pairs a single-stream DiT with Mixture-of-Experts feed-forward layers, cross-attention to a Qwen3-VL text encoder, and a flow-matching Euler discrete scheduler.
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 ## NucleusMoEImagePipeline
 

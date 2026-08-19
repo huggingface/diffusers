@@ -91,7 +91,7 @@ print(pipeline.hf_device_map)
 </hfoption>
 <hfoption id="model level">
 
-The `device_map` is useful for loading large models, such as the Flux diffusion transformer which has 12.5B parameters. Set it to `"auto"` to automatically distribute a model across the fastest device first before moving to slower devices. Refer to the [Model sharding](../training/distributed_inference#model-sharding) docs for more details.
+The `device_map` is useful for loading large models, such as the Flux diffusion transformer which has 12.5B parameters. Set it to `"auto"` to automatically distribute a model across the fastest device first before moving to slower devices. Refer to the [Sharded checkpoints](#sharded-checkpoints) section for more details.
 
 ```py
 import torch
