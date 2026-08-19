@@ -508,6 +508,15 @@ class Flux2DenoiseLoopWrapper(IterativePipelineBlocks):
 
         return components, state
 
+    @torch.no_grad()
+    def stream(self, components: Flux2ModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+        for i, t in enumerate(block_state.timesteps):
+            components, state = yield from self.stream_step(components, state, i=i, t=t)
+            if XLA_AVAILABLE:
+                xm.mark_step()
+        return components, state
+
 
 class Flux2DenoiseStep(Flux2DenoiseLoopWrapper):
     block_classes = [Flux2LoopDenoiser, Flux2LoopAfterDenoiser]

@@ -305,6 +305,26 @@ class BlockState:
         return f"BlockState(\n{attributes}\n)"
 
 
+@dataclass
+class StreamEvent:
+    """
+    One iteration of a loop block, as yielded by `stream()`.
+
+    Attributes:
+        path:
+            Dotted name of the loop block from the top of the pipeline, e.g. `"denoise"` or, for a loop nested inside
+            another, `"denoise.denoise_inner"`.
+        block: The [`IterativePipelineBlocks`] that just finished the iteration.
+        loop_kwargs: The loop variables of that iteration, e.g. `{"i": 3, "t": tensor(...)}`.
+        state: The live [`PipelineState`] after the iteration — not a copy. Clone anything you keep.
+    """
+
+    path: str
+    block: "IterativePipelineBlocks"
+    loop_kwargs: dict[str, Any]
+    state: PipelineState
+
+
 class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     """
     Base class for all Pipeline Blocks: ConditionalPipelineBlocks, AutoPipelineBlocks, SequentialPipelineBlocks,
@@ -599,15 +619,36 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     def __call__(self, components, state: PipelineState) -> PipelineState:
         raise NotImplementedError(f"`__call__` method must be implemented in {self.__class__.__name__}")
 
+    def stream(self, components, state: PipelineState):
+        """
+        Run the block as a generator that yields a [`StreamEvent`] after every iteration of every loop block it
+        contains, and returns `(components, state)` when done. A block with no loops runs to completion and yields
+        nothing; composite blocks re-yield their sub-blocks' events with the sub-block name prepended to `event.path`.
+        """
+        yield from ()
+        return self(components, state)
+
+    @property
+    def supports_streaming(self) -> bool:
+        """
+        Whether the block can be streamed: `True` unless it contains a loop that can't yield per iteration — an
+        [`IterativePipelineBlocks`] that doesn't implement `stream`, or a legacy [`LoopSequentialPipelineBlocks`].
+        """
+        for block in self.sub_blocks.values():
+            if not block.supports_streaming:
+                return False
+        # a leaf block (no sub_blocks) always streams: it runs to completion and yields nothing
+        return True
+
 
 class ModularLoopPipelineBlocks(ModularPipelineBlocks):
     """
     Base class for leaf blocks that run inside an [`IterativePipelineBlocks`] loop.
 
-    The only difference from [`ModularPipelineBlocks`] is the `__call__` contract: in addition to
-    `(components, state)`, the block accepts the enclosing loop's variables as call arguments — its signature
-    must name exactly the loop's `loop_variables` (e.g. `def __call__(self, components, state, i, t)`), which
-    the loop validates before the first iteration.
+    The only difference from [`ModularPipelineBlocks`] is the `__call__` contract: in addition to `(components,
+    state)`, the block accepts the enclosing loop's variables as call arguments — its signature must name exactly the
+    loop's `loop_variables` (e.g. `def __call__(self, components, state, i, t)`), which the loop validates before the
+    first iteration.
 
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
@@ -810,12 +851,40 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             logger.error(error_msg)
             raise
 
+    def stream(self, pipeline, state: PipelineState):
+        # Same branch selection as `__call__`. The branch is transparent in event paths, as it is in
+        # `get_execution_blocks`: events carry the name this conditional block has in its parent, not the branch name.
+        trigger_kwargs = {name: state.get(name) for name in self.block_trigger_inputs if name is not None}
+        block_name = self.select_block(**trigger_kwargs)
+
+        if block_name is None:
+            block_name = self.default_block_name
+
+        if block_name is None:
+            logger.info(f"skipping conditional block: {self.__class__.__name__}")
+            return pipeline, state
+
+        block = self.sub_blocks[block_name]
+
+        try:
+            logger.info(f"Running block: {block.__class__.__name__}")
+            return (yield from block.stream(pipeline, state))
+        except Exception as e:
+            error_msg = (
+                f"\nError in block: {block.__class__.__name__}\n"
+                f"Error details: {str(e)}\n"
+                f"Traceback:\n{traceback.format_exc()}"
+            )
+            logger.error(error_msg)
+            raise
+
     def get_execution_blocks(self, **kwargs) -> ModularPipelineBlocks | None:
         """
         Get the block(s) that would execute given the inputs.
 
         Recursively resolves nested ConditionalPipelineBlocks until reaching either:
-        - A leaf block (no sub_blocks, or a loop block: IterativePipelineBlocks / LoopSequentialPipelineBlocks) → returns single `ModularPipelineBlocks`
+        - A leaf block (no sub_blocks, or a loop block: IterativePipelineBlocks / LoopSequentialPipelineBlocks) →
+          returns single `ModularPipelineBlocks`
         - A `SequentialPipelineBlocks` → delegates to its `get_execution_blocks()` which returns
         a `SequentialPipelineBlocks` containing the resolved execution blocks
 
@@ -1166,6 +1235,28 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                 raise
         return pipeline, state
 
+    def stream(self, pipeline, state: PipelineState):
+        for block_name, block in self.sub_blocks.items():
+            # re-yield the sub-block's events with its name prepended to the path; its return value is the new state
+            generator = block.stream(pipeline, state)
+            while True:
+                try:
+                    event = next(generator)
+                except StopIteration as e:
+                    pipeline, state = e.value
+                    break
+                except Exception as e:
+                    error_msg = (
+                        f"\nError in block: ({block_name}, {block.__class__.__name__})\n"
+                        f"Error details: {str(e)}\n"
+                        f"Traceback:\n{traceback.format_exc()}"
+                    )
+                    logger.error(error_msg)
+                    raise
+                event.path = f"{block_name}.{event.path}" if event.path else block_name
+                yield event
+        return pipeline, state
+
     # used for `__repr__`
     def _get_trigger_inputs(self):
         """
@@ -1346,6 +1437,7 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
     def loop_variables(self):
         return ["i", "t"]
 
+
     @torch.no_grad()
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
@@ -1355,23 +1447,23 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
     ```
 
     Unlike [`LoopSequentialPipelineBlocks`], sub-blocks operate on the full [`PipelineState`] with the regular
-    `get_block_state`/`set_block_state` behavior, so an `IterativePipelineBlocks` can itself be a sub-block of
-    another one — loops can be nested and composed freely. Sub-blocks must be [`ModularLoopPipelineBlocks`]
-    (loop steps) or nested `IterativePipelineBlocks`, which is validated at construction.
+    `get_block_state`/`set_block_state` behavior, so an `IterativePipelineBlocks` can itself be a sub-block of another
+    one — loops can be nested and composed freely. Sub-blocks must be [`ModularLoopPipelineBlocks`] (loop steps) or
+    nested `IterativePipelineBlocks`, which is validated at construction.
 
     Loop variables are passed to sub-blocks as call arguments: every sub-block must have the signature
     `__call__(self, components, state, <loop_variables...>)`, which is validated against `loop_variables` at
-    construction. A nested loop accepts the outer loop's variables in its own hand-written `__call__`
-    (ignoring or forwarding them) and passes its own `loop_variables` to its own sub-blocks:
+    construction. A nested loop accepts the outer loop's variables in its own hand-written `__call__` (ignoring or
+    forwarding them) and passes its own `loop_variables` to its own sub-blocks:
 
     ```python
     class InnerDenoiseLoop(IterativePipelineBlocks):
         @property
         def loop_variables(self):
-            return ["i", "t"]                          # what it passes to ITS sub-blocks
+            return ["i", "t"]  # what it passes to ITS sub-blocks
 
         @torch.no_grad()
-        def __call__(self, components, state, k):      # accepts the OUTER chunk loop's variable
+        def __call__(self, components, state, k):  # accepts the OUTER chunk loop's variable
             block_state = self.get_block_state(state)
             for i, t in enumerate(block_state.timesteps):
                 components, state = self.loop_step(components, state, i=i, t=t)
@@ -1381,6 +1473,20 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
     Sub-block outputs are written to the pipeline state as usual and persist after the loop. If the loop logic in
     `__call__` itself consumes inputs (e.g. `timesteps`) or uses components (e.g. the scheduler) beyond what the
     sub-blocks declare, override the aggregated `inputs` / `expected_components` / ... properties to add them.
+
+    Streaming is opt-in: to let `pipe.stream(...)` hand back the live [`PipelineState`] after every iteration, also
+    implement `stream` — the same loop, written as a generator over `stream_step` (which runs one iteration like
+    `loop_step` and additionally yields a [`StreamEvent`] for it, after any events of a nested loop):
+
+    ```python
+    def stream(self, components, state):
+        block_state = self.get_block_state(state)
+        for i, t in enumerate(block_state.timesteps):
+            components, state = yield from self.stream_step(components, state, i=i, t=t)
+        return components, state
+    ```
+
+    A nested loop's `stream` takes the outer loop's variables exactly like its `__call__` does.
 
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
@@ -1446,6 +1552,52 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
         # e.g. `def __call__(self, components, state, k)`.
         raise NotImplementedError("`__call__` method needs to be implemented by the subclass")
 
+    def stream_step(self, components, state: PipelineState, **loop_kwargs):
+        """
+        The streaming counterpart of `loop_step`: a generator that runs all sub-blocks once, re-yields the events of
+        any nested loop, then yields one [`StreamEvent`] for this iteration and returns `(components, state)`. Call it
+        with `yield from` inside `stream`.
+        """
+        for block_name, block in self.sub_blocks.items():
+            try:
+                if isinstance(block, IterativePipelineBlocks):
+                    # a nested loop streams too: re-yield its events with its name prepended to the path
+                    generator = block.stream(components, state, **loop_kwargs)
+                    while True:
+                        try:
+                            event = next(generator)
+                        except StopIteration as e:
+                            components, state = e.value
+                            break
+                        event.path = f"{block_name}.{event.path}" if event.path else block_name
+                        yield event
+                else:
+                    components, state = block(components, state, **loop_kwargs)
+            except Exception as e:
+                error_msg = (
+                    f"\nError in block: ({block_name}, {block.__class__.__name__})\n"
+                    f"Error details: {str(e)}\n"
+                    f"Traceback:\n{traceback.format_exc()}"
+                )
+                logger.error(error_msg)
+                raise
+        yield StreamEvent(path="", block=self, loop_kwargs=dict(loop_kwargs), state=state)
+        return components, state
+
+    def stream(self, components, state: PipelineState, **kwargs):
+        # Optional. Subclasses that support streaming implement their loop logic here a second time, as a generator
+        # running `yield from self.stream_step(...)` once per iteration, with the same signature as their `__call__`
+        # (`**kwargs` stands for the outer loop's variables when this loop is nested, e.g. `stream(self, components,
+        # state, k)`).
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support streaming: implement `stream` (the loop written as a "
+            "generator over `stream_step`) to use it with `pipe.stream(...)`."
+        )
+
+    @property
+    def supports_streaming(self) -> bool:
+        return type(self).stream is not IterativePipelineBlocks.stream and super().supports_streaming
+
 
 class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     """
@@ -1465,6 +1617,10 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     model_name = None
     block_classes = []
     block_names = []
+
+    # this legacy loop runs all iterations in one call and cannot yield per iteration; it will be deprecated in
+    # favor of `IterativePipelineBlocks` once all pipelines are ported to it
+    supports_streaming = False
 
     @property
     def description(self) -> str:
@@ -2980,3 +3136,66 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             return state.get(output)
         else:
             raise ValueError(f"Output '{output}' is not a valid output type")
+
+    def stream(self, state: PipelineState = None, **kwargs):
+        """
+        Run the pipeline as a generator that yields a [`StreamEvent`] after every iteration of every loop block — each
+        denoising step, each segment of a chunked video, and so on — with the live [`PipelineState`] attached. The
+        generator's return value is the final state, the same one `__call__` returns.
+
+        Args:
+            state (`PipelineState`, optional):
+                Same as in `__call__`.
+            **kwargs:
+                Same as in `__call__`.
+
+        Examples:
+            ```python
+            for event in pipeline.stream(prompt="A beautiful sunset", num_inference_steps=20):
+                print(event.path, event.loop_kwargs)  # "denoise" {"i": 0, "t": tensor(...)}
+                latents = event.state.get("latents")  # live state — clone anything you keep
+
+            # stop early: just stop iterating (or call `.close()` on the generator)
+            ```
+        """
+        if state is None:
+            state = PipelineState()
+        else:
+            state = deepcopy(state)
+
+        # Make a copy of the input kwargs
+        passed_kwargs = kwargs.copy()
+
+        # Add inputs to state, using defaults if not provided in the kwargs or the state
+        # if same input already in the state, will override it if provided in the kwargs
+        for expected_input_param in self._blocks.inputs:
+            name = expected_input_param.name
+            default = expected_input_param.default
+            kwargs_type = expected_input_param.kwargs_type
+            if name in passed_kwargs:
+                state.set(name, passed_kwargs.pop(name), kwargs_type)
+            elif kwargs_type is not None and kwargs_type in passed_kwargs:
+                kwargs_dict = passed_kwargs.pop(kwargs_type)
+                for k, v in kwargs_dict.items():
+                    state.set(k, v, kwargs_type)
+            elif name is not None and name not in state.values:
+                state.set(name, default, kwargs_type)
+
+        # Warn about unexpected inputs
+        if len(passed_kwargs) > 0:
+            warnings.warn(f"Unexpected input '{passed_kwargs.keys()}' provided. This input will be ignored.")
+
+        # `torch.no_grad()` is held only while blocks run, not while the caller holds an event.
+        generator = self._blocks.stream(self, state)
+        while True:
+            with torch.no_grad():
+                try:
+                    event = next(generator)
+                except StopIteration as e:
+                    _, state = e.value
+                    return state
+                except Exception:
+                    error_msg = f"Error in block: ({self._blocks.__class__.__name__}):\n"
+                    logger.error(error_msg)
+                    raise
+            yield event

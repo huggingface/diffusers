@@ -380,6 +380,68 @@ output = pipeline(
 
 If pipeline stages share components (e.g., the same VAE used for encoding and decoding), you can use [`~ModularPipeline.update_components`] to pass an already-loaded component to another pipeline instead of loading it again.
 
+## Streaming
+
+[`~ModularPipeline.stream`] runs the same pipeline as a generator. It yields a [`StreamEvent`] after every iteration of every loop block — each denoising step, each segment of a chunked video — with the live [`PipelineState`] attached, so you can show progress, decode a preview, or stop early. The generator's return value is the final state, exactly what `__call__` returns.
+
+```py
+generator = pipeline.stream(prompt="a cat", num_inference_steps=20)
+for event in generator:
+    print(event.path, event.loop_kwargs)   # "denoise.denoise" {"i": 0, "t": tensor(1000.)}
+    latents = event.state.get("latents")   # the live state — clone anything you keep
+```
+
+`event.path` is the loop block's dotted name from the top of the pipeline, and `event.loop_kwargs` its loop variables for that iteration. When loops are nested — an autoregressive video that denoises one chunk at a time — the inner loop's events surface too, so a consumer that only wants finished chunks filters on the outer path:
+
+```py
+for event in pipeline.stream(...):
+    if event.path == "denoise":            # the chunk loop, not "denoise.denoise_inner"
+        show(event.state.get("out_frames"))
+```
+
+To stop early, stop iterating (or call `generator.close()`); nothing needs cleaning up. Blocks without loops run to completion and yield nothing.
+
+Streaming is opt-in per loop block. An [`IterativePipelineBlocks`] implements its loop in `__call__` as usual and, to support streaming, also implements `stream` — the same loop written as a generator over `stream_step`, which runs one iteration like `loop_step` and additionally yields the event for it:
+
+```py
+class DenoiseLoop(IterativePipelineBlocks):
+    @property
+    def loop_variables(self):
+        return ["i", "t"]
+
+    @torch.no_grad()
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        for i, t in enumerate(block_state.timesteps):
+            components, state = self.loop_step(components, state, i=i, t=t)
+        return components, state
+
+    def stream(self, components, state):
+        block_state = self.get_block_state(state)
+        for i, t in enumerate(block_state.timesteps):
+            components, state = yield from self.stream_step(components, state, i=i, t=t)
+        return components, state
+```
+
+`pipeline.stream(...)` raises `NotImplementedError` if a loop on its path doesn't implement `stream`. Check `pipeline.blocks.supports_streaming` to find out ahead of time — it is `True` unless the blocks contain a loop that can't yield per iteration (an `IterativePipelineBlocks` that doesn't implement `stream`, or a legacy `LoopSequentialPipelineBlocks`).
+
+If you need to own the loop yourself — a serving engine that advances every request by one denoising step per tick, or a real-time pipeline fed one chunk of input at a time — run the blocks before the loop, then call the loop block's `loop_step` once per iteration. Anything you write into the state between calls is seen by the next iteration:
+
+```py
+from diffusers.modular_pipelines import PipelineState
+
+loop = pipeline.blocks.sub_blocks["denoise"]
+
+state = PipelineState()
+for param in pipeline.blocks.inputs:  # seed the declared defaults
+    state.set(param.name, param.default)
+state.set("prompt", "a cat")
+state.set("num_inference_steps", 20)
+# ... run the blocks before `denoise` on `state` ...
+for i, t in enumerate(state.get("timesteps")):
+    _, state = loop.loop_step(pipeline, state, i=i, t=t)
+```
+
 ## Modular repository
 
 A repository is required if the pipeline blocks use *pretrained components*. The repository supplies loading specifications and metadata.
