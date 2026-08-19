@@ -822,7 +822,6 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                 "*k_bmm_quantizer": {},
                 "*v_bmm_quantizer": {},
                 "*softmax_quantizer": {},
-                **mtq.config._default_disabled_quantizer_cfg,
             },
             "algorithm": self.calib_cfg,
         }
@@ -872,6 +871,28 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                     }
                 )
 
+        # Splice in ModelOpt's default-disabled quantizers and emit the `quant_cfg` shape the
+        # installed ModelOpt expects. ModelOpt < 0.44 consumes a `{pattern: cfg}` mapping (and
+        # exposes its default-disabled set as one); >= 0.44 consumes a list of `{"quantizer_name":
+        # ...}` entries (and exposes the default set as a list). Key the choice off that shape. See
+        # https://nvidia.github.io/Model-Optimizer/guides/_quant_cfg.html
+        default_disabled_quantizer_cfg = mtq.config._default_disabled_quantizer_cfg
+        if isinstance(default_disabled_quantizer_cfg, dict):
+            quant_cfg.update(default_disabled_quantizer_cfg)
+            return BASE_CONFIG
+
+        entries = []
+        for k in quant_cfg:
+            entry = {"quantizer_name": k}
+            if "enable" in quant_cfg[k]:
+                entry["enable"] = quant_cfg[k].pop("enable")
+            if quant_cfg[k]:
+                entry["cfg"] = quant_cfg[k]
+            elif "enable" not in entry:
+                entry["enable"] = True
+            entries.append(entry)
+        entries.extend(default_disabled_quantizer_cfg)
+        BASE_CONFIG["quant_cfg"] = entries
         return BASE_CONFIG
 
 
