@@ -61,9 +61,23 @@ def main() -> int:
                 problems.append(f"{where}: '{link}' does not exist")
 
         if path.name == "SKILL.md":
-            for guide in sorted(set(CITATION.findall(prose))):
+            cited = set(CITATION.findall(prose))
+            for guide in sorted(cited):
                 if not (REFERENCES_DIR / guide).exists():
                     problems.append(f"{where}: cites 'references/{guide}', which is not in {REFERENCES_DIR.name}/")
+
+            # A cited guide links to its siblings, and only cited guides are installed — so a guide reachable from one
+            # the skill cites has to be cited too, or that link is dead in an installed skill.
+            for guide in sorted(cited):
+                source = REFERENCES_DIR / guide
+                if not source.exists():
+                    continue
+                for sibling in sorted(set(re.findall(r"\]\(([\w-]+\.md)\)", source.read_text()))):
+                    if sibling not in cited and (REFERENCES_DIR / sibling).exists():
+                        problems.append(
+                            f"{where}: 'references/{guide}' links to '{sibling}', which the skill does not cite — "
+                            f"add 'references/{sibling}' so it is installed alongside"
+                        )
 
     for skill_md in sorted(AI_DIR.glob("skills/*/SKILL.md")):
         where = skill_md.relative_to(AI_DIR.parent)

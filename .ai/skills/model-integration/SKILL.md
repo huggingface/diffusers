@@ -91,7 +91,7 @@ Two test layers must be added for any new pipeline: pipeline-level tests, and (i
 
 ## Model parity test
 
-Confirm the diffusers implementation matches the reference. Test each component on **CPU/float32** with a strict tolerance (`max_diff < 1e-3`), comparing the **freshly converted** weights against the reference in a single script — both sides side by side, nothing saved to disk in between. See [pitfalls.md](pitfalls.md) for the common sources of numerical discrepancy.
+Confirm the diffusers implementation matches the reference. Test each component on **CPU/float32** with a strict tolerance (`max_diff < 1e-3`), comparing the **freshly converted** weights against the reference in a single script — both sides side by side, nothing saved to disk in between. See [pitfalls.md](references/pitfalls.md) for the common sources of numerical discrepancy.
 
 This is an **internal verification tool for integration — it should not be shipped in the PR** (it imports the reference repo). The tests that ship with the PR are the model-level and pipeline-level tests in [testing.md](references/testing.md).
 
