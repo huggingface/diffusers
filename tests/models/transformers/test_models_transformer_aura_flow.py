@@ -109,8 +109,8 @@ class TestAuraFlowTransformerTraining(AuraFlowTransformerTesterConfig, TrainingT
 
 class TestAuraFlowTransformerLoRA(AuraFlowTransformerTesterConfig, LoraTesterMixin):
     # The tiny AuraFlow model produces LoRA deltas below the default 1e-3 tolerance.
-    def test_lora_B_bias(self, base_model_output):
-        super().test_lora_B_bias(base_model_output, atol=1e-4, rtol=1e-4)
+    def test_lora_B_bias(self, base_model_output, tmp_path):
+        super().test_lora_B_bias(base_model_output, tmp_path, atol=1e-4, rtol=1e-4)
 
     def test_correct_lora_configs_with_different_ranks(self, base_model_output):
         super().test_correct_lora_configs_with_different_ranks(base_model_output, atol=1e-4, rtol=1e-4)
