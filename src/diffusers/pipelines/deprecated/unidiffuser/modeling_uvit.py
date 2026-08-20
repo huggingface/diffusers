@@ -1068,7 +1068,7 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
 
 
         Returns:
-            `tuple`: Returns relevant parts of the model's noise prediction: the first element of the tuple is tbe VAE
+            `tuple`: Returns relevant parts of the model's noise prediction: the first element of the tuple is the VAE
             image embedding, the second element is the CLIP image embedding, and the third element is the CLIP text
             embedding.
         """
