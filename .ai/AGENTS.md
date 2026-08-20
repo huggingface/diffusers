@@ -27,6 +27,8 @@ Strive to write code as simple and explicit as possible.
 
 ## Reference guides
 
+Read the relevant guide before writing code in its area — existing code may predate the current conventions.
+
 - **Models** — see [models.md](models.md) for model conventions, attention pattern, implementation rules, dependencies, and gotchas. For adding or converting a model, use the [model-integration](./skills/model-integration/SKILL.md) skill.
 - **Pipelines** — see [pipelines.md](pipelines.md) for pipeline conventions, patterns, and gotchas.
 - **Modular pipelines** — see [modular.md](modular.md) for modular pipeline conventions, patterns, and gotchas.

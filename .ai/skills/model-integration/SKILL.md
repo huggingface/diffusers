@@ -29,7 +29,7 @@ Then work through the **Integration checklist** below
 A pipeline in Diffusers (be it standard or modular) will have multiple components. These components can be models, schedulers, processors, etc.
 
 - [ ] **Transformer model**
-  - [ ] Implement the model with `from_pretrained` support (conventions: [models.md](../../models.md))
+  - [ ] Read [models.md](../../models.md), then implement the model with `from_pretrained` support
   - [ ] Convert weights (see **Weight / Checkpoint Conversion**)
   - [ ] Parity test against the reference (internal, not shipped — see **Model parity test**)
   - [ ] Register in the relevant `__init__.py` files (lazy imports)
@@ -37,7 +37,8 @@ A pipeline in Diffusers (be it standard or modular) will have multiple component
 - [ ] **VAE** (if applicable) — reuse an existing `AutoencoderKL*` if possible; if a new one is needed, follow the same sub-steps as the transformer
 - [ ] **Scheduler** — reuse an existing scheduler, or add a custom one
 - [ ] **Pipeline**
-  - [ ] Implement the pipeline — see [modular.md](../../modular.md) for modular pipeline, or [pipelines.md](../../pipelines.md) for standard pipeline
+  - [ ] Read [modular.md](../../modular.md) (or [pipelines.md](../../pipelines.md) for a standard pipeline), then
+        implement the pipeline
   - [ ] Add a LoRA mixin if applicable
   - [ ] Register in the relevant `__init__.py` files (lazy imports)
   - [ ] Pipeline-level tests (see **Testing**)
@@ -87,7 +88,7 @@ Common conversion patterns to watch for model-level components:
 
 ## Testing
 
-Two test layers must be added for any new pipeline: pipeline-level tests, and (if a new model is introduced) model-level tests. Conventions for both layers — file locations, tester mixins, dummy-component rules — live in [testing.md](../../testing.md); follow it when writing the tests.
+Two test layers must be added for any new pipeline: pipeline-level tests, and (if a new model is introduced) model-level tests. Read [testing.md](../../testing.md) before writing them — file locations, tester mixins, and dummy-component rules all live there.
 
 ## Model parity test
 
