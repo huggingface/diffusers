@@ -159,7 +159,8 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --enable_xformers_memory_efficient_attention \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
   --output_dir="sd-naruto-model" \
-  --push_to_hub
+  --push_to_hub \
+  --validation_prompts="a photo of a cat"
 ```
 
 Once training is complete, you can use your newly trained model for inference:
