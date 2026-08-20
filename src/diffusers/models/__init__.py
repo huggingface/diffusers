@@ -103,6 +103,7 @@ if is_torch_available():
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_2d_dreamlite"] = ["DreamLiteTransformer2DModel"]
+    _import_structure["transformers.transformer_abot_world"] = ["ABotWorldTransformer3DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
     _import_structure["transformers.transformer_anyflow"] = ["AnyFlowTransformer3DModel"]
     _import_structure["transformers.transformer_anyflow_far"] = ["AnyFlowFARTransformer3DModel"]
@@ -234,6 +235,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
+            ABotWorldTransformer3DModel,
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
             AnyFlowFARTransformer3DModel,
