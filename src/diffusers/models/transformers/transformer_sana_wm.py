@@ -29,48 +29,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.batchnorm import _BatchNorm
 
-
-# Optional third-party deps. These are kept optional so that `import diffusers`
-# (and `from diffusers import SanaWMPipeline`) succeed in environments without
-# `fla` / `timm` / `termcolor`. Each shim raises a clear error if anyone
-# actually constructs the SANA-WM transformer without the real package
-# installed; class-body definitions that subclass these stand-ins still parse
-# fine at module load time.
-try:
-    from fla.modules import ShortConvolution
-except ImportError:
-
-    class ShortConvolution(nn.Module):
-        def __init__(self, *args, **kwargs):
-            raise ImportError(
-                "`fla` (flash-linear-attention) is required to run SANA-WM. Install with `pip install fla-core`."
-            )
-
-
-try:
-    from termcolor import colored
-except ImportError:
-
-    def colored(text, *args, **kwargs):
-        return text  # log-only helper; plain text is a fine fallback
-
-
-try:
-    from timm.models.layers import DropPath
-    from timm.models.vision_transformer import Attention as Attention_
-    from timm.models.vision_transformer import Mlp
-except ImportError:
-
-    class _MissingTimm(nn.Module):
-        def __init__(self, *args, **kwargs):
-            raise ImportError("`timm` is required to run SANA-WM. Install with `pip install timm`.")
-
-    DropPath = _MissingTimm  # type: ignore[assignment]
-    Attention_ = _MissingTimm  # type: ignore[assignment]
-    Mlp = _MissingTimm  # type: ignore[assignment]
-
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import logging
+from ...utils import is_timm_available, logging
 from ..embeddings import get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -91,6 +51,70 @@ from .transformer_sana_wm_kernels import (
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+_CAN_USE_TIMM = is_timm_available()
+
+if _CAN_USE_TIMM:
+    from timm.models.layers import DropPath
+    from timm.models.vision_transformer import Attention as Attention_
+    from timm.models.vision_transformer import Mlp
+else:
+    # Several layers below subclass these, so they must exist as classes at module
+    # import time — this module is imported eagerly by `diffusers.models`. The
+    # placeholder defers the error to construction time, keeping `import diffusers`
+    # working without `timm` installed.
+    class _TimmPlaceholder(nn.Module):
+        def __init__(self, *args, **kwargs):
+            raise ImportError("`timm` is required to run SANA-WM. Install it with `pip install timm`.")
+
+    DropPath = Attention_ = Mlp = _TimmPlaceholder
+
+
+class ShortConvolution(nn.Module):
+    """Depthwise causal 1D convolution over the temporal axis.
+
+    SANA-WM's GDN attention applies a short causal depthwise conv to Q/K/V before the linear-attention kernel. This is
+    a self-contained PyTorch implementation of the `fla.modules.ShortConvolution` layer the reference implementation
+    used (with `activation=None`), so the model needs no `fla-core` dependency and can be built on any device.
+
+    Args:
+        hidden_size (`int`): Number of channels (the conv is depthwise, one group per channel).
+        kernel_size (`int`): Temporal kernel width.
+        bias (`bool`, defaults to `False`): Whether to add a per-channel bias.
+    """
+
+    def __init__(self, hidden_size: int, kernel_size: int, bias: bool = False, activation: str | None = None) -> None:
+        super().__init__()
+        if activation is not None:
+            raise ValueError(f"SANA-WM only uses `activation=None` short convolutions, got {activation!r}.")
+        self.hidden_size = hidden_size
+        self.kernel_size = kernel_size
+        # Same parameter layout as the reference implementation: (C, 1, K).
+        self.weight = nn.Parameter(torch.empty(hidden_size, 1, kernel_size))
+        self.bias = nn.Parameter(torch.zeros(hidden_size)) if bias else None
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, None]:
+        """Apply the causal conv.
+
+        Args:
+            x (`torch.Tensor`): Input of shape `(batch, seq_len, hidden_size)`.
+
+        Returns:
+            `tuple[torch.Tensor, None]`: `(output, cache)`; the cache slot is kept for signature compatibility with the
+            reference implementation but is unused for the bidirectional (non-streaming) forward SANA-WM runs.
+        """
+        seq_len = x.shape[1]
+        # Left-pad by (K - 1) and drop the tail so output[t] only sees inputs <= t.
+        y = F.conv1d(
+            x.transpose(1, 2),
+            self.weight.to(x.dtype),
+            None if self.bias is None else self.bias.to(x.dtype),
+            groups=self.hidden_size,
+            padding=self.kernel_size - 1,
+        )[..., :seq_len]
+        return y.transpose(1, 2), None
 
 
 # ============================================================================
@@ -5961,8 +5985,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         if self.y_norm:
             self.attention_y_norm = RMSNorm(hidden_size, scale_factor=y_norm_scale_factor, eps=norm_eps)
 
-        self.logger = print
-
         # --- Video camera-controlled DiT modules (from SanaMSVideoCamCtrl.__init__) ---
         self.chunk_size = chunk_size
         self.chunk_split_strategy = chunk_split_strategy
@@ -6092,7 +6114,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                 camctrl_type_list,
                 softmax_every_n,
             )
-            self.logger(
+            logger.info(
                 f"Hybrid attention (softmax_every_n={softmax_every_n}):\n"
                 f"  attn_type_list = {attn_type_list}\n"
                 f"  camctrl_type_list = {camctrl_type_list}"
@@ -6136,11 +6158,11 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         self.final_layer = T2IFinalLayer(hidden_size, patch_size, self.out_channels)
 
         if ffn_type == "GLUMBConvTemp":
-            self.logger(f"{ffn_type} Temporal kernal: {t_kernel_size}")
+            logger.info(f"{ffn_type} Temporal kernal: {t_kernel_size}")
         if flash_attn_layer_idx is not None:
-            self.logger(f"additional flash attn layer idx: {flash_attn_layer_idx}, type: {flash_attn_layer_type}")
+            logger.info(f"additional flash attn layer idx: {flash_attn_layer_idx}, type: {flash_attn_layer_type}")
             if flash_attn_layer_type == "window_flash":
-                self.logger(f"flash attn window count: {flash_attn_window_count}")
+                logger.info(f"flash attn window count: {flash_attn_window_count}")
 
         self.initialize()
         self.save_block_output = False
@@ -6518,15 +6540,16 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         nn.init.normal_(self.y_embedder.y_proj.fc1.weight, std=0.02)
         nn.init.normal_(self.y_embedder.y_proj.fc2.weight, std=0.02)
 
-        # load null embed
-        try:
-            null_embed = torch.load(self.null_embed_path, map_location="cpu")
-            self.y_embedder.y_embedding.data = null_embed["uncond_prompt_embeds"][0]
-            self.logger(colored(f"Load null embed from {self.null_embed_path}....", "green"))
-        except Exception as e:
-            self.logger(
-                colored(
-                    f"Failed to load null embed from {self.null_embed_path}....{e}. Ignore the error during inference",
-                    "red",
+        # Optionally seed the null (unconditional) caption embedding. The public
+        # checkpoint ships it inside the state dict, so `null_embed_path` is unset
+        # there and this is skipped.
+        if self.null_embed_path is not None:
+            try:
+                null_embed = torch.load(self.null_embed_path, map_location="cpu", weights_only=True)
+                self.y_embedder.y_embedding.data = null_embed["uncond_prompt_embeds"][0]
+                logger.info(f"Loaded null embedding from {self.null_embed_path}.")
+            except Exception as e:  # noqa: BLE001 — best-effort; weights are overwritten on load
+                logger.warning(
+                    f"Failed to load null embedding from {self.null_embed_path} ({e}); "
+                    f"ignore this if you are loading a pretrained checkpoint."
                 )
-            )
