@@ -23,6 +23,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -113,3 +114,17 @@ class TestSanaTransformerTraining(SanaTransformerTesterConfig, TrainingTesterMix
 
 class TestSanaTransformerAttention(SanaTransformerTesterConfig, AttentionTesterMixin):
     pass
+
+
+class TestSanaTransformer2DSingleFile(SanaTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px/blob/main/checkpoints/Sana_1600M_1024px.pth"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Efficient-Large-Model/Sana_1600M_1024px_diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
