@@ -41,6 +41,7 @@ from .controlnet_sd3 import (
     StableDiffusion3ControlNetInpaintingPipeline,
     StableDiffusion3ControlNetPipeline,
 )
+from .cosmos import Cosmos3OmniPipeline
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .deprecated.wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .flux import (
@@ -115,6 +116,7 @@ from .qwenimage import (
 )
 from .sana import SanaPipeline
 from .stable_audio import StableAudioPipeline
+from .stable_audio_3 import StableAudio3Pipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
@@ -204,6 +206,7 @@ AUTO_TEXT2AUDIO_PIPELINES_MAPPING = OrderedDict(
     [
         ("audioldm2", AudioLDM2Pipeline),
         ("stable-audio", StableAudioPipeline),
+        ("stable-audio-3", StableAudio3Pipeline),
         ("longcat-audio-dit", LongCatAudioDiTPipeline),
     ]
 )
@@ -270,6 +273,12 @@ AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
     ]
 )
 
+AUTO_CONDITION2VIDEO_PIPELINES_MAPPING = OrderedDict(
+    [
+        ("cosmos3-omni", Cosmos3OmniPipeline),
+    ]
+)
+
 AUTO_IMAGE2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
         ("anyflow-far", AnyFlowFARPipeline),
@@ -318,6 +327,7 @@ SUPPORTED_TASKS_MAPPINGS = [
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
     AUTO_INPAINT_PIPELINES_MAPPING,
     AUTO_TEXT2VIDEO_PIPELINES_MAPPING,
+    AUTO_CONDITION2VIDEO_PIPELINES_MAPPING,
     AUTO_IMAGE2VIDEO_PIPELINES_MAPPING,
     AUTO_VIDEO2VIDEO_PIPELINES_MAPPING,
     AUTO_TEXT2AUDIO_PIPELINES_MAPPING,
@@ -418,7 +428,7 @@ class AutoPipelineForText2Image(ConfigMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
@@ -480,8 +490,7 @@ class AutoPipelineForText2Image(ConfigMixin):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
         > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
         with `hf > auth login`.
@@ -709,7 +718,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
-            torch_dtype (`str` or `torch.dtype`, *optional*):
+            dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
@@ -771,8 +780,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
         > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
         with `hf > auth login`.
@@ -1014,7 +1022,7 @@ class AutoPipelineForInpainting(ConfigMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
-            torch_dtype (`str` or `torch.dtype`, *optional*):
+            dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
@@ -1076,8 +1084,7 @@ class AutoPipelineForInpainting(ConfigMixin):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
         > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
         with `hf > auth login`.
@@ -1304,7 +1311,7 @@ class AutoPipelineForText2Audio(ConfigMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
@@ -1366,8 +1373,7 @@ class AutoPipelineForText2Audio(ConfigMixin):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
         > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
         with `hf > auth login`.

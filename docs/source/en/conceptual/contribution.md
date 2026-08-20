@@ -12,6 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # How to contribute to Diffusers 🧨
 
+> [!TIP]
+> If you use an AI agent to contribute, make sure you read the [AI-assisted and agentic contributions](#ai-assisted-and-agentic-contributions) section for our expectations and guidelines.
+
 We ❤️ contributions from the open-source community! Everyone is welcome, and all types of participation –not just code– are valued and appreciated. Answering questions, helping others, reaching out, and improving the documentation are all immensely valuable to the community, so don't be afraid and get involved if you're up for it!
 
 Everyone is encouraged to start by saying 👋 in our public Discord channel. We discuss the latest trends in diffusion models, ask questions, show off personal projects, help each other with contributions, or just hang out ☕. <a href="https://Discord.gg/G7tWnz98XR"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a>
@@ -329,6 +332,11 @@ Good second issues are usually more difficult to get merged compared to good fir
 
 ### 9. Adding pipelines, models, schedulers
 
+> [!TIP]
+> If you are the model's author, please get in touch so we can coordinate the integration with you: open a feature request, or drop a comment if one is already open.
+>
+> If you are a community contributor, please also let us know you're interested under the feature request, and start with a Hub repo at the same time. See the [Modular Diffusers](../modular_diffusers/overview) guide to get started, and [custom blocks](../modular_diffusers/custom_blocks) or [custom models](../using-diffusers/automodel) for publishing as remote code on the Hub.
+
 Pipelines, models, and schedulers are the most important pieces of the Diffusers library.
 They provide easy access to state-of-the-art diffusion technologies and thus allow the community to
 build powerful generative AI applications.
@@ -589,11 +597,17 @@ The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggi
 
 ### AI-assisted and agentic contributions
 
+AI agents are welcome for contributing to Diffusers. We encourage you to set up your agent with the Diffusers [agent guide](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) and use the relevant task-specific skills, such as `model-integration` and `self-review`. Run `make codex` or `make claude` to use the skills with your agent, then follow the guide to scope, implement, test, and review your contribution. You remain responsible for understanding, testing, and maintaining the changes in your PR.
+
 AI-assisted contributions are welcome, but they must be coordinated, scoped, and verified to keep review load manageable. PRs that do not follow these guidelines may be closed without detailed review.
 
 - **Coordinate before opening a PR.** Find or open an issue, review similar PRs (open and recently closed), and wait for an explicit acknowledgment from a maintainer on that issue before opening a PR. This gives us a chance to discuss scope, avoid duplicate work, and confirm the approach.
-- **Fix patterns, not one-offs.** If you spot an recurring issue, search the codebase for similar instances and open a *single* issue with a clear, systematic scope (e.g. "fix mutable defaults across all schedulers") rather than many issues or PRs for individual instances. 
-- **Self-review before opening.** Run the [`self-review`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/self-review/SKILL.md) skill (or review your diff against [`.ai/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/review-rules.md)) and address what it reports — it's a helper, not authoritative, and can be wrong. Focus on the blocking issues that make sense to you, and clean up dead/unused code as much as possible. If you disagree with a suggestion, it's fine to leave it for the reviewer to discuss after the PR is opened — just add a brief note in the PR description for anything you intentionally skipped, so the reviewer knows it was a deliberate call.
+- **Fix patterns, not one-offs.** If you spot an recurring issue, search the codebase for similar instances and open a *single* issue with a clear, systematic scope (e.g. "fix mutable defaults across all schedulers") rather than many issues or PRs for individual instances.
+- **Self-review before opening.** Run the [`self-review`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/self-review/SKILL.md) skill — it reviews your diff against [`.ai/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/review-rules.md), the same rubric the `@claude` CI reviewer uses — and address what it reports — it's a helper, not authoritative, and can be wrong. Focus on the blocking issues that make sense to you, and clean up dead/unused code as much as possible. If you disagree with a suggestion, it's fine to leave it for the reviewer to discuss after the PR is opened — the notes you share (see below) tell the reviewer it was a deliberate call.
+- **Share your self-review notes.** Please post the final self-review report — the round that reflects the diff you're submitting — on the PR, in the description or as a comment, including findings you intentionally did not fix and why. It helps the reviewer see what has already been checked and which calls were deliberate, and usually saves a few rounds of back-and-forth.
 - **Include in the PR description:**
   - A **coordination link** to the issue or discussion where a maintainer acknowledged the work.
   - The **test commands you ran** and their results (paste relevant output, not just "tests pass").
+  - Your **self-review notes** (or a link to the PR comment containing them), as described above.
+
+If you are a model author or part of a team that officially maintains a model, we encourage you to use agents for a new model integration. Follow the repository's [recommended setup](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) and use the [`model-integration`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/model-integration/SKILL.md) skill. Coordinate the scope with maintainers before opening a PR — see [Adding pipelines, models, schedulers](#9-adding-pipelines-models-schedulers).

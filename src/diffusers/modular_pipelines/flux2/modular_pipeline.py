@@ -25,7 +25,6 @@ class Flux2ModularPipeline(ModularPipeline, Flux2LoraLoaderMixin):
     """
     A ModularPipeline for Flux2.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "Flux2AutoBlocks"
@@ -61,7 +60,6 @@ class Flux2KleinModularPipeline(Flux2ModularPipeline):
     """
     A ModularPipeline for Flux2-Klein (distilled model).
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "Flux2KleinAutoBlocks"
@@ -82,7 +80,6 @@ class Flux2KleinBaseModularPipeline(Flux2ModularPipeline):
     """
     A ModularPipeline for Flux2-Klein (base model).
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "Flux2KleinBaseAutoBlocks"

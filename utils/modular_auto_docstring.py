@@ -23,7 +23,8 @@ Run from the root of the repo:
     python utils/modular_auto_docstring.py [path] [--fix_and_overwrite]
 
 Examples:
-    # Check for auto_docstring markers (will error if found without proper docstring)
+    # Check mode (will error if a marked class's docstring is missing or out of date — the check regenerates
+    # each docstring the same way --fix_and_overwrite would and compares the result with the file)
     python utils/modular_auto_docstring.py
 
     # Check specific directory
@@ -50,6 +51,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 
 # All paths are set with the intent you should run this script from the root of the repo
@@ -198,7 +200,7 @@ def format_docstring(doc: str, indent: str = "    ") -> str:
         return "".join(result)
 
 
-def run_ruff_format(filepath: str):
+def run_ruff_format(filepath: str, quiet: bool = False):
     """Run ruff check --fix, ruff format, and doc-builder style on a file to ensure consistent formatting."""
     try:
         # First run ruff check --fix to fix any linting issues (including line length)
@@ -222,13 +224,27 @@ def run_ruff_format(filepath: str):
             capture_output=True,
             text=True,
         )
-        print(f"Formatted {filepath}")
+        if not quiet:
+            print(f"Formatted {filepath}")
     except subprocess.CalledProcessError as e:
         print(f"Warning: formatting failed for {filepath}: {e.stderr}")
     except FileNotFoundError as e:
         print(f"Warning: tool not found ({e}). Skipping formatting.")
     except Exception as e:
         print(f"Warning: unexpected error formatting {filepath}: {e}")
+
+
+def format_content(content: str, filepath: str) -> str:
+    """Run the same formatters fix mode uses on a temporary copy of `content` and return the result."""
+    fd, tmp_path = tempfile.mkstemp(suffix=".py", dir=os.path.dirname(filepath) or ".")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(content)
+        run_ruff_format(tmp_path, quiet=True)
+        with open(tmp_path, "r", encoding="utf-8", newline="\n") as f:
+            return f.read()
+    finally:
+        os.remove(tmp_path)
 
 
 def get_existing_docstring(lines: list, class_line: int, docstring_end_line: int) -> str:
@@ -239,35 +255,18 @@ def get_existing_docstring(lines: list, class_line: int, docstring_end_line: int
     return "".join(docstring_lines)
 
 
-def process_file(filepath: str, overwrite: bool = False) -> list:
+def build_updated_lines(filepath: str, classes_to_update: list) -> tuple:
     """
-    Process a file and find/insert docstrings for # auto_docstring marked classes.
-
-    Returns list of classes that need updating.
+    Return the file's lines with every marked class's docstring regenerated (pre-formatting), plus the names of the
+    classes that were regenerated.
     """
-    classes_to_update = find_auto_docstring_classes(filepath)
-
-    if not classes_to_update:
-        return []
-
-    if not overwrite:
-        # Check mode: only verify that docstrings exist
-        # Content comparison is not reliable due to formatting differences
-        classes_needing_update = []
-        for class_name, class_line, has_docstring, docstring_end_line in classes_to_update:
-            if not has_docstring:
-                # No docstring exists, needs update
-                classes_needing_update.append((filepath, class_name, class_line))
-        return classes_needing_update
-
-    # Load the module to get doc properties
     module = load_module(filepath)
 
     with open(filepath, "r", encoding="utf-8", newline="\n") as f:
         lines = f.readlines()
 
     # Process in reverse order to maintain line numbers
-    updated = False
+    updated_names = []
     for class_name, class_line, has_docstring, docstring_end_line in reversed(classes_to_update):
         doc = get_doc_from_class(module, class_name)
 
@@ -291,16 +290,66 @@ def process_file(filepath: str, overwrite: bool = False) -> list:
             # Insert at position class_line (which is right after the class line)
             lines = lines[:class_line] + [new_docstring] + lines[class_line:]
 
-        updated = True
-        print(f"Updated docstring for {class_name} in {filepath}")
+        updated_names.append(class_name)
 
-    if updated:
-        with open(filepath, "w", encoding="utf-8", newline="\n") as f:
-            f.writelines(lines)
-        # Run ruff format to ensure consistent line wrapping
-        run_ruff_format(filepath)
+    return lines, updated_names
 
-    return [(filepath, cls_name, line) for cls_name, line, _, _ in classes_to_update]
+
+def _class_docstrings(content: str) -> dict:
+    """Map class name -> raw docstring value for every class in `content`."""
+    tree = ast.parse(content)
+    return {
+        node.name: ast.get_docstring(node, clean=False) for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    }
+
+
+def process_file(filepath: str, overwrite: bool = False) -> list:
+    """
+    Process a file and find/insert docstrings for # auto_docstring marked classes.
+
+    In fix mode, regenerates every marked docstring in place. In check mode, regenerates them on a temporary copy
+    through the same formatting pipeline and returns the classes whose checked-in docstring differs from the
+    regenerated one (missing docstrings included).
+
+    Returns list of classes that need updating.
+    """
+    classes_to_update = find_auto_docstring_classes(filepath)
+
+    if not classes_to_update:
+        return []
+
+    lines, updated_names = build_updated_lines(filepath, classes_to_update)
+
+    if overwrite:
+        if updated_names:
+            with open(filepath, "w", encoding="utf-8", newline="\n") as f:
+                f.writelines(lines)
+            # Run ruff format to ensure consistent line wrapping
+            run_ruff_format(filepath)
+            for class_name in reversed(updated_names):
+                print(f"Updated docstring for {class_name} in {filepath}")
+        return [(filepath, cls_name, line) for cls_name, line, _, _ in classes_to_update]
+
+    # Check mode: regenerate through the same formatting pipeline and compare with the checked-in file
+    with open(filepath, "r", encoding="utf-8", newline="\n") as f:
+        current_content = f.read()
+
+    new_content = format_content("".join(lines), filepath)
+    if new_content == current_content:
+        return []
+
+    current_docs = _class_docstrings(current_content)
+    new_docs = _class_docstrings(new_content)
+    stale = [
+        (filepath, class_name, class_line)
+        for class_name, class_line, _, _ in classes_to_update
+        if current_docs.get(class_name) != new_docs.get(class_name)
+    ]
+    if not stale:
+        # the regenerated file differs outside the marked docstrings (e.g. the file itself is not
+        # ruff/doc-builder clean); attribute it to the file so the mismatch is not silently ignored
+        stale = [(filepath, classes_to_update[0][0], classes_to_update[0][1])]
+    return stale
 
 
 def check_auto_docstrings(path: str = None, overwrite: bool = False):
@@ -324,14 +373,16 @@ def check_auto_docstrings(path: str = None, overwrite: bool = False):
     if not overwrite and len(all_markers) > 0:
         message = "\n".join([f"- {f}: {cls} at line {line}" for f, cls, line in all_markers])
         raise ValueError(
-            f"Found the following # auto_docstring markers that need docstrings:\n{message}\n\n"
-            f"Run `python utils/modular_auto_docstring.py --fix_and_overwrite` to fix them."
+            f"The following # auto_docstring docstrings are missing or out of date:\n{message}\n\n"
+            f"These docstrings are generated from the block declarations (which may live in other files), so a "
+            f"change elsewhere can make them stale. Run `python utils/modular_auto_docstring.py --fix_and_overwrite` "
+            f"from the root of the repo to regenerate them."
         )
 
     if overwrite and len(all_markers) > 0:
         print(f"\nProcessed {len(all_markers)} docstring(s).")
     elif not overwrite and len(all_markers) == 0:
-        print("All # auto_docstring markers have valid docstrings.")
+        print("All # auto_docstring markers have up-to-date docstrings.")
     elif len(all_markers) == 0:
         print("No # auto_docstring markers found.")
 

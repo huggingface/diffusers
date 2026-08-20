@@ -51,7 +51,6 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     required_optional_params = PipelineTesterMixin.required_optional_params
     test_xformers_attention = False
     test_layerwise_casting = True
-    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)

@@ -22,6 +22,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -95,3 +96,17 @@ class TestLumina2TransformerTraining(Lumina2TransformerTesterConfig, TrainingTes
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Lumina2Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestLumina2Transformer2DSingleFile(Lumina2TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/blob/main/split_files/diffusion_models/lumina_2_model_bf16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Alpha-VLLM/Lumina-Image-2.0"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

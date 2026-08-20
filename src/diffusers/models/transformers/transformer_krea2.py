@@ -74,12 +74,20 @@ class Krea2AttnProcessor:
             query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
             key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
+        # Krea 2 always attends with a text padding mask, and no fused attention kernel handles grouped-query
+        # attention together with a mask — SDPA would fall back to its math backend and materialize the full
+        # [batch_size, num_heads, seq_len, seq_len] attention matrix. Repeat the key/value heads here instead: the
+        # result is identical, and it keeps every attention backend usable since they all reject `enable_gqa`.
+        num_key_value_groups = attn.num_heads // attn.num_kv_heads
+        if num_key_value_groups > 1:
+            key = key.repeat_interleave(num_key_value_groups, dim=2)
+            value = value.repeat_interleave(num_key_value_groups, dim=2)
+
         hidden_states = dispatch_attention_fn(
             query,
             key,
             value,
             attn_mask=attention_mask,
-            enable_gqa=attn.num_heads != attn.num_kv_heads,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )

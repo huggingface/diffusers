@@ -49,12 +49,12 @@ import torch
 from diffusers import AutoModel, StableDiffusionXLPipeline
 
 unet = AutoModel.from_pretrained(
-    "username/sdxl-unet-sharded", torch_dtype=torch.float16
+    "username/sdxl-unet-sharded", dtype=torch.float16
 )
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     unet=unet,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 ```
 
@@ -76,7 +76,7 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced"
 )
 ```
@@ -101,7 +101,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map="auto",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 ```
 
@@ -137,7 +137,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map=device_map,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 ```
 
@@ -150,7 +150,7 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 max_memory = {0:"1GB", 1:"1GB"}
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
     max_memory=max_memory
 )
@@ -181,7 +181,7 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 pipeline.vae.enable_slicing()
 pipeline(["An astronaut riding a horse on Mars"]*32).images[0]
@@ -203,7 +203,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16
 ).to("cuda")
 pipeline.vae.enable_tiling()
 
@@ -238,7 +238,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16
 )
 pipeline.enable_sequential_cpu_offload()
 
@@ -267,7 +267,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16
 )
 pipeline.enable_model_cpu_offload()
 
@@ -312,7 +312,7 @@ from diffusers.utils import export_to_video
 onload_device = torch.device("cuda")
 offload_device = torch.device("cpu")
 
-pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
 pipeline.enable_group_offload(
     onload_device=onload_device,
     offload_device=offload_device,
@@ -346,7 +346,7 @@ from diffusers.utils import export_to_video
 
 onload_device = torch.device("cuda")
 offload_device = torch.device("cpu")
-pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
 
 # Use the enable_group_offload method for Diffusers model implementations
 pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level")
@@ -424,13 +424,13 @@ from diffusers.utils import export_to_video
 transformer = CogVideoXTransformer3DModel.from_pretrained(
     "THUDM/CogVideoX-5b",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
 
 pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b",
     transformer=transformer,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 ).to("cuda")
 prompt = (
     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
@@ -455,7 +455,7 @@ from diffusers.hooks import apply_layerwise_casting
 transformer = CogVideoXTransformer3DModel.from_pretrained(
     "THUDM/CogVideoX-5b",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 
 # skip the normalization layer

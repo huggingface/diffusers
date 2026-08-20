@@ -161,9 +161,11 @@ class TestModelUtils:
                     repo_id, subfolder="transformer", cache_dir=tmpdir, local_files_only=True
                 )
 
-            # Verify error mentions the missing shard
+            # Verify error mentions the missing shard. `huggingface_hub>=1.22.0` reports it via
+            # `IncompleteSnapshotError` (repo-relative path), older versions via diffusers' own check on the
+            # cached folder (absolute path), so match on the shard's filename.
             error_msg = str(context.value)
-            assert cached_shard_file in error_msg or "required according to the checkpoint index" in error_msg, (
+            assert os.path.basename(cached_shard_file) in error_msg, (
                 f"Expected error about missing shard, got: {error_msg}"
             )
 

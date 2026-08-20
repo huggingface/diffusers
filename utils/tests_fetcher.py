@@ -703,7 +703,7 @@ def init_test_examples_dependencies() -> Tuple[Dict[str, List[str]], List[str]]:
     """
     test_example_deps = {}
     all_examples = []
-    for framework in ["flax", "pytorch", "tensorflow"]:
+    for framework in ["pytorch", "tensorflow"]:
         test_files = list((PATH_TO_EXAMPLES / framework).glob("test_*.py"))
         all_examples.extend(test_files)
         # Remove the files at the root of examples/framework since they are not proper examples (they are either utils
