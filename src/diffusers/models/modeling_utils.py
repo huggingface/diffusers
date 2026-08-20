@@ -575,6 +575,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 "2. Or, run a forward pass with tiling disabled (can still use small dummy inputs)."
             )
             logger.warning(msg)
+        if self._parallel_config is not None and self._parallel_config.tensor_parallel_config is not None:
+            raise ValueError(
+                f"'{self.__class__.__name__}' is sharded with tensor parallelism, which cannot be combined with group "
+                "offloading: both decide where a parameter lives. Tensor parallelism already keeps only one shard of "
+                "each weight per rank, so offloading is not needed on top of it."
+            )
         if not self._supports_group_offloading:
             raise ValueError(
                 f"{self.__class__.__name__} does not support group offloading. Please make sure to set the boolean attribute "
@@ -739,6 +745,22 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             return
 
         hf_quantizer = getattr(self, "hf_quantizer", None)
+
+        tp_config = None
+        if self._parallel_config is not None:
+            tp_config = self._parallel_config.tensor_parallel_config
+
+        if hf_quantizer is not None and tp_config is not None:
+            # Checked before the serializability check below, so that the reason reported is this one rather than a
+            # generic "not serializable". Neither save path can honour both: the `dcp=True` branch returns before
+            # `hf_quantizer.get_state_dict_and_metadata` runs, which would leave the shards without their
+            # quantization metadata, and the gathered path would hand the quantizer tensors that have been through a
+            # DTensor round trip. Tensor parallelism and quantization cannot be combined in the first place.
+            raise ValueError(
+                "A quantized tensor-parallel model cannot be saved: tensor parallelism and quantization cannot be "
+                "combined in the first place."
+            )
+
         if hf_quantizer is not None:
             quantization_serializable = (
                 hf_quantizer is not None
@@ -754,10 +776,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     f"The model is quantized with {hf_quantizer.quantization_config.quant_method} and is not serializable - check out the warnings from"
                     " the logger on the traceback to understand the reason why the quantized model is not serializable."
                 )
-
-        tp_config = None
-        if self._parallel_config is not None:
-            tp_config = self._parallel_config.tensor_parallel_config
 
         if dcp:
             if tp_config is None:
@@ -1249,6 +1267,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     for name, value in (
                         ("device_map", device_map),
                         ("quantization_config", quantization_config),
+                        # The config's own entry, not just the kwarg: this branch returns before `pre_quantized` is
+                        # computed, so a pre-quantized checkpoint directory would otherwise load silently.
+                        ("a quantized checkpoint", config.get("quantization_config") is not None),
                         ("use_flashpack", use_flashpack),
                         ("variant", variant),
                         ("dduf_entries", dduf_entries),
@@ -1260,6 +1281,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     raise ValueError(
                         f"{unsupported} cannot be combined with the distributed checkpoint at {dcp_dir}: its "
                         "shards are read in place onto each rank's device."
+                    )
+                if cls._tp_plan is None:
+                    raise ValueError(
+                        f"`_tp_plan` must be set on the model class to read the distributed checkpoint at "
+                        f"{dcp_dir}, whose shards are those of a tensor-parallel model. '{cls.__name__}' does not "
+                        f"define one."
                     )
                 return cls._load_dcp_checkpoint(
                     dcp_dir, config, unused_kwargs, torch_dtype=torch_dtype, parallel_config=parallel_config
@@ -1790,8 +1817,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         The shards are those of a tensor-parallel model, so a tensor-parallel `parallel_config` is required, at the
         `tp_degree` the checkpoint was written with — see the note where it is written. Use the ordinary safetensors
-        path to move a model between degrees; it streams each rank's slice, so it costs no more memory than this
-        does.
+        path to move a model between degrees; it streams each rank's slice, so it costs no more memory than this does.
 
         DCP loads **in place**, so every parameter has to be allocated first with its local shape and on the device it
         will end up on.
@@ -1920,8 +1946,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
         if hf_quantizer is not None:
             raise ValueError(
-                "`quantization_config` cannot be combined with a tensor-parallel `parallel_config`. Load the "
-                "model unquantized, or shard it after loading with `enable_parallelism`."
+                "`quantization_config` cannot be combined with a tensor-parallel `parallel_config`: quantized "
+                "parameters are packed into a quantizer-specific layout that cannot be sharded into `DTensor`s. "
+                "Load the model unquantized to shard it."
             )
         if not low_cpu_mem_usage:
             raise ValueError(

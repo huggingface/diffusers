@@ -17,7 +17,7 @@ from typing import NamedTuple
 import torch
 
 from ..models._modeling_parallel import TensorParallelConfig
-from ..utils import get_logger
+from ..utils import get_logger, is_peft_available
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -401,6 +401,55 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
     return resolved
 
 
+def _check_tp_model_state(model: torch.nn.Module) -> None:
+    """Reject a model whose parameters tensor parallelism cannot take over.
+
+    Tensor parallelism replaces every planned `weight` and `bias` with a `DTensor` shard. That only works on plain
+    parameters owned by the model itself, so a model whose parameters are quantized, held elsewhere by an offloading
+    hook, or wrapped by an adapter is rejected up front rather than failing deep inside `parallelize_module` — or,
+    worse, sharding successfully and producing wrong numbers.
+
+    `from_pretrained` rejects the same combinations earlier and with a message naming the offending argument; this is
+    the only guard on the `enable_parallelism` path, where the model already exists and only its state can be read.
+    """
+    if getattr(model, "hf_quantizer", None) is not None or getattr(model, "is_quantized", False):
+        raise ValueError(
+            f"'{model.__class__.__name__}' is quantized, which cannot be combined with tensor parallelism: its "
+            "parameters are packed into a quantizer-specific layout that cannot be sharded into `DTensor`s. Load "
+            "the model unquantized to shard it."
+        )
+
+    from .group_offloading import _is_group_offload_enabled
+
+    if _is_group_offload_enabled(model):
+        raise ValueError(
+            f"'{model.__class__.__name__}' has group offloading enabled, which cannot be combined with tensor "
+            "parallelism: both decide where a parameter lives. Tensor parallelism already keeps only one shard of "
+            "each weight per rank, so offloading is not needed on top of it."
+        )
+
+    # `device_map` dispatch and accelerate's CPU offloading both leave an `_hf_hook` on every module they placed, and
+    # the weights they offloaded are `meta` tensors that `DTensor.from_local` cannot shard.
+    if getattr(model, "hf_device_map", None) is not None or any(
+        hasattr(module, "_hf_hook") for module in model.modules()
+    ):
+        raise ValueError(
+            f"'{model.__class__.__name__}' is placed by accelerate — through `device_map` or CPU offloading — which "
+            "cannot be combined with tensor parallelism: tensor parallelism already places each rank's shard on that "
+            "rank's device. Load the model without `device_map` and without offloading to shard it."
+        )
+
+    if is_peft_available():
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        if any(isinstance(module, BaseTunerLayer) for module in model.modules()):
+            raise ValueError(
+                f"'{model.__class__.__name__}' has adapter (LoRA) layers injected, which cannot be combined with "
+                "tensor parallelism: `_tp_plan` covers the base `Linear` layers only, so the adapter weights would "
+                "stay unsharded and the result would be wrong. Unload the adapter before sharding."
+            )
+
+
 def apply_tensor_parallel(
     model: torch.nn.Module,
     config: TensorParallelConfig,
@@ -427,6 +476,10 @@ def apply_tensor_parallel(
     num_heads = getattr(model.config, "num_attention_heads", None)
     if num_heads is not None and num_heads % config._tp_degree != 0:
         raise ValueError(f"`tp_degree` ({config._tp_degree}) must divide the number of attention heads ({num_heads}).")
+
+    # Before the device-type check below, so that a quantized or offloaded model reports what is actually wrong with
+    # it rather than being turned away for its device type.
+    _check_tp_model_state(model)
 
     if tp_mesh.device_type not in _SUPPORTED_TP_DEVICES:
         raise ValueError(
