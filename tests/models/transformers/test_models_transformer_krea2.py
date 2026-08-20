@@ -22,6 +22,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -154,3 +155,7 @@ class TestKrea2TransformerTraining(Krea2TransformerTesterConfig, TrainingTesterM
 
 class TestKrea2TransformerAttention(Krea2TransformerTesterConfig, AttentionTesterMixin):
     """Attention processor tests for the Krea 2 Transformer."""
+
+
+class TestKrea2TransformerLoRA(Krea2TransformerTesterConfig, LoraTesterMixin):
+    pass

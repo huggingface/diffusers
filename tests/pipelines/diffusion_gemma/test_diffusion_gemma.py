@@ -4,7 +4,12 @@ from types import SimpleNamespace
 import torch
 
 from diffusers import BlockRefinementScheduler, DiffusionGemmaPipeline, EntropyBoundScheduler
+from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import require_peft_backend, require_peft_version_greater
+
+
+if is_peft_available():
+    from peft import LoraConfig
 
 
 # --- Lightweight stand-in for input-validation tests that never reach the model ---
@@ -230,8 +235,6 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
     @require_peft_backend
     @require_peft_version_greater("0.18.9")
     def test_peft_adapter_api(self):
-        from peft import LoraConfig
-
         # Adapters are managed on the model component directly (the adapter API is adapter-type-agnostic; LoRA stands
         # in for any PEFT adapter: DoRA, IA3, ...).
         self.pipe.model.add_adapter(
