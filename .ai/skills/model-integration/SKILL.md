@@ -29,7 +29,8 @@ Then work through the **Integration checklist** below
 A pipeline in Diffusers (be it standard or modular) will have multiple components. These components can be models, schedulers, processors, etc.
 
 - [ ] **Transformer model**
-  - [ ] Read [models.md](../../models.md), then implement the model with `from_pretrained` support
+  - [ ] Read [models.md](../../models.md)
+  - [ ] Implement the model with `from_pretrained` support
   - [ ] Convert weights (see **Weight / Checkpoint Conversion**)
   - [ ] Parity test against the reference (internal, not shipped — see **Model parity test**)
   - [ ] Register in the relevant `__init__.py` files (lazy imports)
@@ -37,8 +38,8 @@ A pipeline in Diffusers (be it standard or modular) will have multiple component
 - [ ] **VAE** (if applicable) — reuse an existing `AutoencoderKL*` if possible; if a new one is needed, follow the same sub-steps as the transformer
 - [ ] **Scheduler** — reuse an existing scheduler, or add a custom one
 - [ ] **Pipeline**
-  - [ ] Read [modular.md](../../modular.md) (or [pipelines.md](../../pipelines.md) for a standard pipeline), then
-        implement the pipeline
+  - [ ] Read [modular.md](../../modular.md) — or [pipelines.md](../../pipelines.md) for a standard pipeline
+  - [ ] Implement the pipeline
   - [ ] Add a LoRA mixin if applicable
   - [ ] Register in the relevant `__init__.py` files (lazy imports)
   - [ ] Pipeline-level tests (see **Testing**)
