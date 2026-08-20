@@ -35,7 +35,13 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    SingleFileTesterMixin,
+    TrainingTesterMixin,
+)
 from .testing_utils import NewAutoencoderTesterMixin
 
 
@@ -428,3 +434,19 @@ class AutoencoderKLIntegrationTests:
 
         tolerance = 3e-3 if torch_device != "mps" else 1e-2
         assert torch_all_close(output_slice, expected_output_slice, atol=tolerance)
+
+
+class TestAutoencoderKLSingleFile(AutoencoderKLTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        # `from_single_file` resolves a bare VAE checkpoint against the SD 1.5 repo, so compare against that
+        # rather than against `stabilityai/sd-vae-ft-mse`, whose own config differs (sample_size 256 vs 512).
+        return "stable-diffusion-v1-5/stable-diffusion-v1-5"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "vae"}

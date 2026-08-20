@@ -35,7 +35,6 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 # - Unified Attention
 # - More dispatcher attention backends
 # - CFG/Data Parallel
-# - Tensor Parallel
 
 
 @dataclass
@@ -155,6 +154,46 @@ class ContextParallelConfig:
 
 
 @dataclass
+class TensorParallelConfig:
+    """
+    Configuration for tensor parallelism.
+
+    Tensor parallelism shards weight matrices (column-wise and row-wise) across devices. Each device computes a partial
+    result; an AllReduce/AllGather at layer boundaries reconstructs the full output. Uses
+    `torch.distributed.tensor.parallelize_module` with `ColwiseParallel` / `RowwiseParallel` sharding styles. Supported
+    device types are `"cuda"` and `"neuron"`.
+
+    Args:
+        tp_degree (`int`, defaults to `1`):
+            Number of devices to shard across. Must be a divisor of the number of attention heads (and FFN hidden
+            dimensions) of the model being parallelised.
+        mesh (`torch.distributed.device_mesh.DeviceMesh`, *optional*):
+            A custom device mesh to use. If provided, `tp_degree` is inferred from `mesh.size()` and the argument is
+            ignored. Useful when combining TP with other parallelism strategies (e.g. CP) that share the same mesh.
+    """
+
+    tp_degree: int = 1
+    mesh: torch.distributed.device_mesh.DeviceMesh | None = None
+
+    _rank: int = None
+    _world_size: int = None
+    _device: torch.device = None
+    _mesh: torch.distributed.device_mesh.DeviceMesh = None
+    _tp_degree: int = None
+
+    def __post_init__(self):
+        if self.tp_degree < 1:
+            raise ValueError("`tp_degree` must be >= 1.")
+
+    def setup(self, rank: int, world_size: int, device: torch.device, mesh: torch.distributed.device_mesh.DeviceMesh):
+        self._rank = rank
+        self._world_size = world_size
+        self._device = device
+        self._mesh = mesh
+        self._tp_degree = mesh.size()
+
+
+@dataclass
 class ParallelConfig:
     """
     Configuration for applying different parallelisms.
@@ -162,14 +201,24 @@ class ParallelConfig:
     Args:
         context_parallel_config (`ContextParallelConfig`, *optional*):
             Configuration for context parallelism.
+        tensor_parallel_config (`TensorParallelConfig`, *optional*):
+            Configuration for tensor parallelism.
     """
 
     context_parallel_config: ContextParallelConfig | None = None
+    tensor_parallel_config: TensorParallelConfig | None = None
 
     _rank: int = None
     _world_size: int = None
     _device: torch.device = None
     _mesh: torch.distributed.device_mesh.DeviceMesh = None
+
+    def __post_init__(self):
+        if self.context_parallel_config is not None and self.tensor_parallel_config is not None:
+            raise ValueError(
+                "Combining context parallelism and tensor parallelism in a single `ParallelConfig` is not supported. "
+                "Please specify only one of `context_parallel_config` or `tensor_parallel_config`."
+            )
 
     def setup(
         self,
@@ -185,6 +234,8 @@ class ParallelConfig:
         self._mesh = mesh
         if self.context_parallel_config is not None:
             self.context_parallel_config.setup(rank, world_size, device, mesh)
+        if self.tensor_parallel_config is not None:
+            self.tensor_parallel_config.setup(rank, world_size, device, mesh)
 
 
 @dataclass(frozen=True)
