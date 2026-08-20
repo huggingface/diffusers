@@ -26,6 +26,7 @@ from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFa
 from ...models import AutoencoderKLLTX2Video, SanaWMTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
+from ...utils.torch_utils import empty_device_cache
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .cam_utils import (
@@ -230,6 +231,14 @@ class SanaWMPipeline(DiffusionPipeline):
                 vae.use_framewise_decoding = True
                 vae.tile_sample_stride_num_frames = 64
                 vae.tile_sample_min_num_frames = 96
+
+    def _model_cpu_offload_active(self) -> bool:
+        """Whether `enable_model_cpu_offload` currently owns module placement.
+
+        Mirrors the check `DiffusionPipeline` uses internally: the hooks list only exists (and is non-empty) while
+        model CPU offload is installed, and `remove_all_hooks()` empties it again.
+        """
+        return hasattr(self, "_all_hooks") and len(self._all_hooks) > 0
 
     # ------------------------------------------------------------------
     # Prompt encoding
@@ -619,11 +628,11 @@ class SanaWMPipeline(DiffusionPipeline):
             # refiner (nested pipeline, manages its own placement) has the device
             # to itself. Skip when accelerate offload is active — it owns
             # placement then. The VAE is moved back for decode below.
-            if not getattr(self, "_all_hooks", None):
+            if not self._model_cpu_offload_active():
                 self.text_encoder.to("cpu")
                 self.transformer.to("cpu")
                 self.vae.to("cpu")
-                torch.cuda.empty_cache()
+                empty_device_cache(device.type)
             # The refiner is a nested pipeline, so it doesn't follow the parent's
             # ``.to(device)`` / offload hooks. Rather than bulk-moving its (~87 GB)
             # weights up front, pass the execution device and let it move its own
@@ -639,9 +648,9 @@ class SanaWMPipeline(DiffusionPipeline):
             )
             # Bring the VAE back for decode (moved to CPU above to free the GPU
             # for the refiner). No-op under accelerate offload.
-            if not getattr(self, "_all_hooks", None):
+            if not self._model_cpu_offload_active():
                 self.vae.to(device)
-                torch.cuda.empty_cache()
+                empty_device_cache(device.type)
             decoded = self._decode_latents(refined)  # (B=1, C=3, F, H, W) in [-1, 1]
             decoded = decoded[:, :, 1:]  # refiner drops the sink anchor frame
             video_c2w = c2w[1:num_frames]

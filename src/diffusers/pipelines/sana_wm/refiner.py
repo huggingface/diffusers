@@ -296,7 +296,9 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             checkpoint_dir.mkdir(parents=True, exist_ok=True)
             state_path = checkpoint_dir / "state.pt"
             if state_path.is_file():
-                ckpt = torch.load(state_path, map_location=device, weights_only=False)
+                # The payload is plain tensors / ints / tuples / dicts (plus the
+                # generator's uint8 state), so it round-trips under the safe loader.
+                ckpt = torch.load(state_path, map_location=device, weights_only=True)
                 ckpt_blocks = int(ckpt.get("n_blocks", n_blocks))
                 ckpt_sink_size = int(ckpt.get("sink_size", sink_size))
                 ckpt_block_size = int(ckpt.get("block_size", block_size))
@@ -713,10 +715,13 @@ class _RefinerChunkRunner:
         self._n_layers = len(transformer.transformer_blocks)
         H, W = spatial_shape
         self._H, self._W = int(H), int(W)
+        # ``_pack_latents`` emits ``(T // patch_size_t) * (H // p) * (W // p)`` tokens,
+        # so a single latent frame contributes ``(H // p) * (W // p) / patch_size_t``
+        # tokens. (No-op for LTX-2, which uses ``patch_size_t=1``.)
         self._tokens_per_frame = (
             int(H // transformer.config.patch_size)
             * int(W // transformer.config.patch_size)
-            * int(transformer.config.patch_size_t)
+            // int(transformer.config.patch_size_t)
         )
 
         self._sink_kv_pre: list[tuple[torch.Tensor, torch.Tensor]] | None = None

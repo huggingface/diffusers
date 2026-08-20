@@ -119,9 +119,9 @@ def action_string_to_c2w(
         right = R_new[:, 0].copy()
         right[1] = 0.0
         if (fn := float(np.linalg.norm(forward))) > 0:
-            forward /= fn + 1e-6
+            forward /= fn
         if (rn := float(np.linalg.norm(right))) > 0:
-            right /= rn + 1e-6
+            right /= rn
         move = np.zeros(3, dtype=np.float64)
         if "w" in held:
             move += forward * translation_speed
