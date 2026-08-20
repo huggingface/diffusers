@@ -1216,6 +1216,8 @@ def _flash_attention_backward_op(
     value = saved_value if value is None else value
     out = saved_out if out is None else out
     lse = saved_lse if lse is None else lse
+    # The backward kernel expects LSE in (B, H, S); the forward saves it in model layout (B, S, H).
+    lse = lse.permute(0, 2, 1).contiguous()
     grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
 
     lse_d = _wrapped_flash_attn_backward(  # noqa: F841
@@ -1342,6 +1344,8 @@ def _flash_attention_hub_backward_op(
     value = saved_value if value is None else value
     out = saved_out if out is None else out
     lse = saved_lse if lse is None else lse
+    # The backward kernel expects LSE in (B, H, S); the forward saves it in model layout (B, S, H).
+    lse = lse.permute(0, 2, 1).contiguous()
     grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
 
     _ = wrapped_backward_fn(
@@ -1484,6 +1488,11 @@ def _flash_varlen_attention_hub_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_VARLEN_HUB]
@@ -1494,7 +1503,20 @@ def _flash_varlen_attention_hub_backward_op(
             "for context parallel execution."
         )
 
-    query_packed, key_packed, value_packed, out_packed, lse, rng_state, cu_seqlens_q, cu_seqlens_k = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    # The ring loop rotates the tensors saved via `_save_ctx`, so query/key/value overrides already
+    # arrive in the packed varlen layout (total_tokens, H, D) they were saved in; out/lse are the
+    # fully-reduced tensors in model layout (B, S, H, D) / (B, S, H) and are packed back to the
+    # kernel layout here.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, rng_state, cu_seqlens_q, cu_seqlens_k = (
+        ctx.saved_tensors
+    )
+    query_packed = saved_query if query is None else query
+    key_packed = saved_key if key is None else key
+    value_packed = saved_value if value is None else value
+    out_packed = saved_out if out is None else out.flatten(0, 1)
+    # Model layout (B, S, H) -> kernel layout (num_heads, total_q).
+    lse = saved_lse if lse is None else lse.permute(2, 0, 1).reshape(ctx.num_heads, -1).contiguous()
 
     grad_out_packed = grad_out.flatten(0, 1)
     grad_query, grad_key, grad_value = (
@@ -1826,6 +1848,11 @@ def _flash_attention_3_varlen_hub_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_VARLEN_HUB]
@@ -1836,7 +1863,18 @@ def _flash_attention_3_varlen_hub_backward_op(
             "for context parallel execution."
         )
 
-    query_packed, key_packed, value_packed, out_packed, softmax_lse, cu_seqlens_q, cu_seqlens_k = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    # The ring loop rotates the tensors saved via `_save_ctx`, so query/key/value overrides already
+    # arrive in the packed varlen layout (total_tokens, H, D) they were saved in; out/lse are the
+    # fully-reduced tensors in model layout (B, S, H, D) / (B, S, H) and are packed back to the
+    # kernel layout here.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, cu_seqlens_q, cu_seqlens_k = ctx.saved_tensors
+    query_packed = saved_query if query is None else query
+    key_packed = saved_key if key is None else key
+    value_packed = saved_value if value is None else value
+    out_packed = saved_out if out is None else out.flatten(0, 1)
+    # Model layout (B, S, H) -> kernel layout (num_heads, total_q).
+    softmax_lse = saved_lse if lse is None else lse.permute(2, 0, 1).reshape(ctx.num_heads, -1).contiguous()
 
     grad_out_packed = grad_out.flatten(0, 1)
     grad_query, grad_key, grad_value = (
@@ -3073,8 +3111,16 @@ def _flash_varlen_attention_hub(
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
-    if _parallel_config is not None and _parallel_config.context_parallel_config.ring_degree > 1:
-        raise NotImplementedError("`ring_degree > 1` is not yet supported for the FLASH_VARLEN_HUB backend.")
+    # The ring loop reuses the local attention mask and packed KV sizes for every rotated KV chunk,
+    # which is only correct without a mask.
+    if (
+        attn_mask is not None
+        and _parallel_config is not None
+        and _parallel_config.context_parallel_config.ring_degree > 1
+    ):
+        raise NotImplementedError(
+            "`attn_mask` is not yet supported for the FLASH_VARLEN_HUB backend with `ring_degree > 1`."
+        )
 
     lse = None
     batch_size, seq_len_q, _, _ = query.shape
@@ -3319,8 +3365,16 @@ def _flash_attention_3_varlen_hub(
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
-    if _parallel_config is not None and _parallel_config.context_parallel_config.ring_degree > 1:
-        raise NotImplementedError("`ring_degree > 1` is not yet supported for the _FLASH_3_VARLEN_HUB backend.")
+    # The ring loop reuses the local attention mask and packed KV sizes for every rotated KV chunk,
+    # which is only correct without a mask.
+    if (
+        attn_mask is not None
+        and _parallel_config is not None
+        and _parallel_config.context_parallel_config.ring_degree > 1
+    ):
+        raise NotImplementedError(
+            "`attn_mask` is not yet supported for the _FLASH_3_VARLEN_HUB backend with `ring_degree > 1`."
+        )
 
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape

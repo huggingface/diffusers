@@ -126,7 +126,15 @@ class TestContextParallelAttentionBackward:
                 marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
             ),
             pytest.param(
+                "flash_varlen_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+            pytest.param(
                 "_flash_3_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+            pytest.param(
+                "_flash_3_varlen_hub",
                 marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
             ),
         ],
