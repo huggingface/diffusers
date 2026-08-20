@@ -195,9 +195,47 @@ class Kandinsky5I2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    @unittest.skip("TODO: revisit, Batch isnot yet supported in this pipeline")
     def test_num_images_per_prompt(self):
-        pass
+        pipe = self.pipeline_class(**self.get_dummy_components()).to("cpu")
+        pipe.resolutions = [(64, 64)]
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs("cpu")
+
+        image = pipe(**inputs, num_images_per_prompt=2).image
+
+        self.assertEqual(image.shape, (2, 3, 64, 64))
+
+    def test_precomputed_embeddings_with_classifier_free_guidance(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to("cpu")
+        pipe.resolutions = [(64, 64)]
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs("cpu")
+        prompt_embeds = pipe.encode_prompt(inputs.pop("prompt"), image=inputs["image"], max_sequence_length=8)
+        negative_prompt_embeds = pipe.encode_prompt("", image=inputs["image"], max_sequence_length=8)
+        inputs.update(
+            prompt_embeds_qwen=prompt_embeds[0],
+            prompt_embeds_clip=prompt_embeds[1],
+            prompt_cu_seqlens=prompt_embeds[2],
+            negative_prompt_embeds_qwen=negative_prompt_embeds[0],
+            negative_prompt_embeds_clip=negative_prompt_embeds[1],
+            negative_prompt_cu_seqlens=negative_prompt_embeds[2],
+        )
+        inputs["num_images_per_prompt"] = 2
+
+        image = pipe(**inputs).image
+
+        self.assertEqual(image.shape, (2, 3, 64, 64))
+
+    def test_tensor_image_input(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to("cpu")
+        pipe.resolutions = [(64, 64)]
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs("cpu")
+        inputs["image"] = torch.zeros(1, 3, 64, 64)
+
+        image = pipe(**inputs).image
+
+        self.assertEqual(image.shape, (1, 3, 64, 64))
 
     @unittest.skip("TODO: revisit, Batch isnot yet supported in this pipeline")
     def test_inference_batch_single_identical(self):
