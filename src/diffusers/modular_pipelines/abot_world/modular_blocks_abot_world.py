@@ -62,6 +62,8 @@ class ABotWorldCoreDenoiseStep(SequentialPipelineBlocks):
               Normalized VAE latent of the starting frame `[B, C, 1, h, w]`
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          reference_mask (`Tensor`):
+              Per-slot validity mask `[B, K]` for the reference views
 
       Outputs:
           actions (`Tensor`):
@@ -146,6 +148,8 @@ class ABotWorldStreamingCoreDenoiseStep(SequentialPipelineBlocks):
               Normalized VAE latent of the starting frame `[B, C, 1, h, w]`
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          reference_mask (`Tensor`):
+              Per-slot validity mask `[B, K]` for the reference views
 
       Outputs:
           actions (`Tensor`):
@@ -212,8 +216,9 @@ class ABotWorldStreamingBlocks(SequentialPipelineBlocks):
               Height of the generated video in pixels
           width (`int`, *optional*, defaults to 1280):
               Width of the generated video in pixels
-          reference_images (`list`):
-              The character reference views; each is resized to `reference_resolution`
+          reference_images (`list`, *optional*):
+              The character reference views; each is resized to `reference_resolution`. Omit for a plain scene rollout
+              without a reference character.
           reference_resolution (`int`, *optional*, defaults to 512):
               Side length the reference views are resized to before encoding
           actions (`list`, *optional*):
@@ -238,6 +243,8 @@ class ABotWorldStreamingBlocks(SequentialPipelineBlocks):
               Normalized VAE latent of the starting frame `[B, C, 1, h, w]`
           reference_latents (`Tensor`):
               Normalized VAE latents of the reference views `[B, K, C, 1, h, w]`
+          reference_mask (`Tensor`):
+              Per-slot validity mask `[B, K]`: ones for encoded views, zeros in the ref-less mode
           actions (`Tensor`):
               The actions as a `[num_blocks, 8]` tensor
           denoise_timesteps (`Tensor`):
@@ -295,8 +302,9 @@ class ABotWorldBlocks(SequentialPipelineBlocks):
               Height of the generated video in pixels
           width (`int`, *optional*, defaults to 1280):
               Width of the generated video in pixels
-          reference_images (`list`):
-              The character reference views; each is resized to `reference_resolution`
+          reference_images (`list`, *optional*):
+              The character reference views; each is resized to `reference_resolution`. Omit for a plain scene rollout
+              without a reference character.
           reference_resolution (`int`, *optional*, defaults to 512):
               Side length the reference views are resized to before encoding
           actions (`list`, *optional*):
@@ -319,6 +327,8 @@ class ABotWorldBlocks(SequentialPipelineBlocks):
               Normalized VAE latent of the starting frame `[B, C, 1, h, w]`
           reference_latents (`Tensor`):
               Normalized VAE latents of the reference views `[B, K, C, 1, h, w]`
+          reference_mask (`Tensor`):
+              Per-slot validity mask `[B, K]`: ones for encoded views, zeros in the ref-less mode
           actions (`Tensor`):
               The actions as a `[num_blocks, 8]` tensor
           denoise_timesteps (`Tensor`):

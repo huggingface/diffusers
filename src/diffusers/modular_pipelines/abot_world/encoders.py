@@ -155,7 +155,8 @@ class ABotWorldRefImagesEncoderStep(ModularPipelineBlocks):
             "Reference encoder step that VAE-encodes the character reference views (e.g. head/left/right/front/back "
             "at 512x512) into `reference_latents`. The transformer pins these tokens at the head of its K/V cache, "
             "so every generated frame attends to them — this is what keeps the character consistent over an "
-            "unbounded rollout."
+            "unbounded rollout. Without `reference_images` (a plain scene rollout), zero latents with a zero "
+            "`reference_mask` are emitted, matching the reference implementation's ref-less mode."
         )
 
     @property
@@ -169,9 +170,11 @@ class ABotWorldRefImagesEncoderStep(ModularPipelineBlocks):
         return [
             InputParam(
                 "reference_images",
-                required=True,
                 type_hint=list[PIL.Image.Image],
-                description="The character reference views; each is resized to `reference_resolution`",
+                description=(
+                    "The character reference views; each is resized to `reference_resolution`. Omit for a plain "
+                    "scene rollout without a reference character."
+                ),
             ),
             InputParam(
                 "reference_resolution",
@@ -189,6 +192,11 @@ class ABotWorldRefImagesEncoderStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Normalized VAE latents of the reference views `[B, K, C, 1, h, w]`",
             ),
+            OutputParam(
+                "reference_mask",
+                type_hint=torch.Tensor,
+                description="Per-slot validity mask `[B, K]`: ones for encoded views, zeros in the ref-less mode",
+            ),
         ]
 
     @torch.no_grad()
@@ -196,12 +204,21 @@ class ABotWorldRefImagesEncoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        size = (block_state.reference_resolution, block_state.reference_resolution)
-        latents = [
-            encode_image_to_latent(components.vae, img.convert("RGB").resize(size), device, components.vae.dtype)
-            for img in block_state.reference_images
-        ]
-        block_state.reference_latents = torch.stack(latents, dim=1)  # [B, K, C, 1, h, w]
+        if block_state.reference_images is None:
+            # ref-less rollout: zero latents in the standard 5 slots, masked out entirely
+            latent_size = block_state.reference_resolution // 16
+            block_state.reference_latents = torch.zeros(
+                1, 5, components.vae.config.z_dim, 1, latent_size, latent_size, device=device
+            )
+            block_state.reference_mask = torch.zeros(1, 5, device=device)
+        else:
+            size = (block_state.reference_resolution, block_state.reference_resolution)
+            latents = [
+                encode_image_to_latent(components.vae, img.convert("RGB").resize(size), device, components.vae.dtype)
+                for img in block_state.reference_images
+            ]
+            block_state.reference_latents = torch.stack(latents, dim=1)  # [B, K, C, 1, h, w]
+            block_state.reference_mask = torch.ones(1, len(latents), device=device)
 
         self.set_block_state(state, block_state)
         return components, state

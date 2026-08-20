@@ -211,6 +211,12 @@ class ABotWorldLoopDenoiser(ModularLoopPipelineBlocks):
                 description="Normalized VAE latents of the reference views `[B, K, C, 1, h, w]`",
             ),
             InputParam(
+                "reference_mask",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Per-slot validity mask `[B, K]` for the reference views",
+            ),
+            InputParam(
                 "first_frame_latents",
                 required=True,
                 type_hint=torch.Tensor,
@@ -266,6 +272,7 @@ class ABotWorldLoopDenoiser(ModularLoopPipelineBlocks):
             encoder_hidden_states=block_state.prompt_embeds.to(components.transformer.dtype),
             action_hidden_states=block_state.action_planes,
             reference_hidden_states=block_state.reference_latents.to(components.transformer.dtype),
+            reference_mask=block_state.reference_mask,
             kv_cache=block_state.kv_cache,
             current_start=block_state.current_start,
             return_dict=False,
@@ -388,6 +395,12 @@ class ABotWorldCacheUpdateStep(ModularLoopPipelineBlocks):
                 description="Normalized VAE latents of the reference views `[B, K, C, 1, h, w]`",
             ),
             InputParam(
+                "reference_mask",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Per-slot validity mask `[B, K]` for the reference views",
+            ),
+            InputParam(
                 "kv_cache",
                 required=True,
                 type_hint=ABotWorldKVCache,
@@ -415,6 +428,7 @@ class ABotWorldCacheUpdateStep(ModularLoopPipelineBlocks):
             encoder_hidden_states=block_state.prompt_embeds.to(components.transformer.dtype),
             action_hidden_states=block_state.action_planes,
             reference_hidden_states=block_state.reference_latents.to(components.transformer.dtype),
+            reference_mask=block_state.reference_mask,
             kv_cache=block_state.kv_cache,
             current_start=block_state.current_start,
             return_dict=False,
