@@ -114,6 +114,9 @@ jobs:
       run:
         shell: bash
 
+    env:
+      HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v6
@@ -241,6 +244,9 @@ jobs:
     defaults:
       run:
         shell: bash
+
+    env:
+      HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
 
     steps:
     - name: Checkout diffusers

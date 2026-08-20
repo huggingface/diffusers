@@ -23,6 +23,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     LoraTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -103,3 +104,17 @@ class TestMochiTransformerTraining(MochiTransformerTesterConfig, TrainingTesterM
 
 class TestMochiTransformerLoRA(MochiTransformerTesterConfig, LoraTesterMixin):
     pass
+
+
+class TestMochiTransformer3DSingleFile(MochiTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/mochi_preview_repackaged/blob/main/split_files/diffusion_models/mochi_preview_bf16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "genmo/mochi-1-preview"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

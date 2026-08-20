@@ -24,6 +24,7 @@ from ..testing_utils import (
     BitsAndBytesTesterMixin,
     LoraTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -219,13 +220,71 @@ class TestSD35TransformerCompile(SD35TransformerTesterConfig, TorchCompileTester
     pass
 
 
-class TestSD35TransformerBitsAndBytes(SD35TransformerTesterConfig, BitsAndBytesTesterMixin):
+class SD35TransformerQuantTesterConfig(SD35TransformerTesterConfig):
+    """Shared config for quantized SD3.5 Transformer tests (matches the tiny Hub checkpoint)."""
+
+    def get_dummy_inputs(self, batch_size: int = 2) -> dict[str, torch.Tensor]:
+        """Override to match the tiny Hub checkpoint (in_channels=8) and the quantizer compute dtype."""
+        num_channels = 8
+        height = width = embedding_dim = 32
+        pooled_embedding_dim = embedding_dim * 2
+        sequence_length = 154
+
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_channels, height, width),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, embedding_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "pooled_projections": randn_tensor(
+                (batch_size, pooled_embedding_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
+        }
+
+
+class TestSD35TransformerBitsAndBytes(SD35TransformerQuantTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for SD3.5 Transformer."""
 
+    # The tiny SD3.5 transformer has a smaller linear fraction than the 4-bit default expectation of 3.0x.
+    BNB_EXPECTED_MEMORY_REDUCTIONS = {"4bit_nf4": 2.5, "4bit_fp4": 2.5, "8bit": 1.5}
 
-class TestSD35TransformerTorchAo(SD35TransformerTesterConfig, TorchAoTesterMixin):
+    @property
+    def torch_dtype(self):
+        return torch.float16
+
+
+class TestSD35TransformerTorchAo(SD35TransformerQuantTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for SD3.5 Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
 
 
 class TestSD3TransformerLoRA(SD3TransformerTesterConfig, LoraTesterMixin):
     pass
+
+
+class TestSD3Transformer2DSingleFile(SD3TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "stabilityai/stable-diffusion-3-medium-diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

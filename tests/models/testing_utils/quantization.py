@@ -16,6 +16,7 @@
 import gc
 
 import pytest
+import safetensors.torch
 import torch
 
 from diffusers import (
@@ -151,14 +152,15 @@ class QuantizationTesterMixin:
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
         raise NotImplementedError("Subclass must implement _verify_if_layer_quantized")
 
-    def _is_module_quantized(self, module):
+    def _is_module_quantized(self, module, config_kwargs=None):
         """
         Check if a module is quantized. Returns True if quantized, False otherwise.
-        Default implementation tries _verify_if_layer_quantized and catches exceptions.
+        Default implementation tries _verify_if_layer_quantized and catches exceptions. Backends whose
+        verifier depends on the quantization config (e.g. bnb's 4-bit/8-bit split) need config_kwargs.
         Subclasses can override for more efficient checking.
         """
         try:
-            self._verify_if_layer_quantized("", module, {})
+            self._verify_if_layer_quantized("", module, config_kwargs or {})
             return True
         except (AssertionError, AttributeError):
             return False
@@ -245,6 +247,14 @@ class QuantizationTesterMixin:
         assert output is not None, "Model output is None with LoRA"
         assert not torch.isnan(output).any(), "Model output contains NaN with LoRA"
 
+    # Backends opt into the sharded-serialization test by setting this to a quantization config dict.
+    sharded_serialization_config = None
+
+    def test_quantization_sharded_serialization(self, tmp_path):
+        if self.sharded_serialization_config is None:
+            pytest.skip("sharded_serialization_config not defined for this backend")
+        self._test_quantization_serialization(self.sharded_serialization_config, tmp_path, max_shard_size="auto")
+
     @torch.no_grad()
     def _test_quantization_serialization(self, config_kwargs, tmp_path, max_shard_size=None):
         """
@@ -253,13 +263,19 @@ class QuantizationTesterMixin:
         Args:
             config_kwargs: Quantization config parameters
             tmp_path: Directory the model is serialized into
-            max_shard_size: When set, the checkpoint is sharded and the shard/index files are checked
+            max_shard_size: When set, the checkpoint is sharded and the shard/index files are checked.
+                "auto" derives a size from the model footprint that yields a handful of shards; sizes
+                far below the largest tensor can split a weight from its quantization components
+                (e.g. bnb's SCB), which the shard-by-shard loader does not support.
         """
         model = self._create_quantized_model(config_kwargs)
         model.to(torch_device)
 
         inputs = self.get_dummy_inputs()
         expected_output = model(**inputs, return_dict=False)[0].detach().cpu()
+
+        if max_shard_size == "auto":
+            max_shard_size = max(int(model.get_memory_footprint() // 2), 1)
 
         save_kwargs = {"safe_serialization": True}
         if max_shard_size is not None:
@@ -362,17 +378,22 @@ class QuantizationTesterMixin:
                     f"Module {name} should be FP32 but is {module.weight.dtype}"
                 )
 
-    def _test_quantization_modules_to_not_convert(self, config_kwargs, modules_to_not_convert):
+    @torch.no_grad()
+    def _test_quantization_modules_to_not_convert(
+        self, config_kwargs, modules_to_not_convert, exclusion_key="modules_to_not_convert"
+    ):
         """
         Test that modules specified in modules_to_not_convert are not quantized.
 
         Args:
             config_kwargs: Base quantization config kwargs
             modules_to_not_convert: List of module names to exclude from quantization
+            exclusion_key: Name of the config parameter carrying the exclusion list
+                (BitsAndBytesConfig calls it `llm_int8_skip_modules`)
         """
-        # Create config with modules_to_not_convert
+        # Create config with the exclusion list
         config_kwargs_with_exclusion = config_kwargs.copy()
-        config_kwargs_with_exclusion["modules_to_not_convert"] = modules_to_not_convert
+        config_kwargs_with_exclusion[exclusion_key] = modules_to_not_convert
 
         model_with_exclusion = self._create_quantized_model(config_kwargs_with_exclusion)
 
@@ -384,7 +405,7 @@ class QuantizationTesterMixin:
                 if any(excluded in name for excluded in modules_to_not_convert):
                     found_excluded = True
                     # This module should NOT be quantized
-                    assert not self._is_module_quantized(module), (
+                    assert not self._is_module_quantized(module, config_kwargs), (
                         f"Module {name} should not be quantized but was found to be quantized"
                     )
 
@@ -396,11 +417,18 @@ class QuantizationTesterMixin:
             if isinstance(module, torch.nn.Linear):
                 # Check if this module is NOT in the exclusion list
                 if not any(excluded in name for excluded in modules_to_not_convert):
-                    if self._is_module_quantized(module):
+                    if self._is_module_quantized(module, config_kwargs):
                         found_quantized = True
                         break
 
         assert found_quantized, "No quantized layers found outside of excluded modules"
+
+        # Inference must work on the mixed model: excluded modules run in the compute dtype next to
+        # quantized ones (excluded linears do strict-dtype matmuls).
+        model_with_exclusion.to(torch_device)
+        output = model_with_exclusion(**self.get_dummy_inputs(), return_dict=False)[0]
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
 
         # Compare memory footprint with fully quantized model
         model_fully_quantized = self._create_quantized_model(config_kwargs)
@@ -424,6 +452,15 @@ class QuantizationTesterMixin:
 
         assert hasattr(model, "hf_device_map"), "Model should have hf_device_map attribute"
         assert model.hf_device_map is not None, "hf_device_map should not be None"
+
+        map_devices = {torch.device(d).type for d in model.hf_device_map.values()}
+        for kind, named_tensors in (("parameter", model.named_parameters()), ("buffer", model.named_buffers())):
+            for name, tensor in named_tensors:
+                assert tensor.device.type != "meta", f"{kind} {name} was left on the meta device"
+                if len(map_devices) == 1:
+                    assert tensor.device.type == next(iter(map_devices)), (
+                        f"Expected device {next(iter(map_devices))} for {kind} {name}, got {tensor.device}"
+                    )
 
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
@@ -463,7 +500,9 @@ class QuantizationTesterMixin:
 
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear):
-                assert not self._is_module_quantized(module), f"Module {name} is still quantized after dequantize()"
+                assert not self._is_module_quantized(module, config_kwargs), (
+                    f"Module {name} is still quantized after dequantize()"
+                )
 
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
@@ -513,8 +552,9 @@ class QuantizationTesterMixin:
         # Step 3: run forward and backward pass
         inputs = self.get_dummy_inputs()
 
-        # Use bfloat16 on XPU to avoid gradient underflow with quantized layers
-        autocast_dtype = torch.bfloat16 if torch_device == "xpu" else torch.float16
+        # Use bfloat16 on XPU and for bfloat16 models to avoid gradient underflow with quantized layers
+        use_bf16 = torch_device == "xpu" or getattr(self, "torch_dtype", None) == torch.bfloat16
+        autocast_dtype = torch.bfloat16 if use_bf16 else torch.float16
         with torch.amp.autocast(torch_device, dtype=autocast_dtype):
             out = model(**inputs, return_dict=False)[0]
             out.norm().backward()
@@ -562,6 +602,8 @@ class BitsAndBytesConfigMixin:
         "4bit_fp4": 3.0,
         "8bit": 1.5,
     }
+
+    sharded_serialization_config = BNB_CONFIGS["8bit"]
 
     def _create_quantized_model(self, config_kwargs, **extra_kwargs):
         config = BitsAndBytesConfig(**config_kwargs)
@@ -614,7 +656,7 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
         ids=list(BitsAndBytesConfigMixin.BNB_CONFIGS.keys()),
     )
     def test_bnb_quantization_memory_footprint(self, config_name):
-        expected = BitsAndBytesConfigMixin.BNB_EXPECTED_MEMORY_REDUCTIONS.get(config_name, 1.2)
+        expected = self.BNB_EXPECTED_MEMORY_REDUCTIONS.get(config_name, 1.2)
         self._test_quantization_memory_footprint(
             BitsAndBytesConfigMixin.BNB_CONFIGS[config_name], expected_memory_reduction=expected
         )
@@ -627,15 +669,32 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
     def test_bnb_quantization_inference(self, config_name):
         self._test_quantization_inference(BitsAndBytesConfigMixin.BNB_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", ["4bit_nf4"], ids=["4bit_nf4"])
+    @pytest.mark.parametrize("config_name", ["4bit_nf4", "8bit"], ids=["4bit_nf4", "8bit"])
     def test_bnb_quantization_dtype_assignment(self, config_name):
         self._test_quantization_dtype_assignment(BitsAndBytesConfigMixin.BNB_CONFIGS[config_name])
+
+    def test_bnb_device_assignment(self):
+        """Test that a 4-bit model moves between CPU and accelerator without changing its memory footprint."""
+        model = self._create_quantized_model(BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"])
+        mem_before = model.get_memory_footprint()
+
+        model.to("cpu")
+        assert model.device.type == "cpu"
+        assert model.get_memory_footprint() == pytest.approx(mem_before)
+
+        model.to(torch_device)
+        assert model.device.type == torch.device(torch_device).type
+        assert model.get_memory_footprint() == pytest.approx(mem_before)
 
     @pytest.mark.parametrize("config_name", ["4bit_nf4"], ids=["4bit_nf4"])
     def test_bnb_quantization_lora_inference(self, config_name):
         self._test_quantization_lora_inference(BitsAndBytesConfigMixin.BNB_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", ["4bit_nf4"], ids=["4bit_nf4"])
+    @pytest.mark.parametrize(
+        "config_name",
+        list(BitsAndBytesConfigMixin.BNB_CONFIGS.keys()),
+        ids=list(BitsAndBytesConfigMixin.BNB_CONFIGS.keys()),
+    )
     def test_bnb_quantization_serialization(self, config_name, tmp_path):
         self._test_quantization_serialization(BitsAndBytesConfigMixin.BNB_CONFIGS[config_name], tmp_path)
 
@@ -661,15 +720,38 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
     def test_bnb_keep_modules_in_fp32(self):
         self._test_keep_modules_in_fp32(BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"])
 
-    def test_bnb_modules_to_not_convert(self):
-        """Test that modules_to_not_convert parameter works correctly."""
+    @pytest.mark.parametrize("config_name", ["4bit_nf4", "8bit"], ids=["4bit_nf4", "8bit"])
+    def test_bnb_modules_to_not_convert(self, config_name):
+        """Test module exclusion, which BitsAndBytesConfig exposes as `llm_int8_skip_modules` (despite the
+        name, it also applies to 4-bit quantization)."""
         modules_to_exclude = getattr(self, "modules_to_not_convert_for_test", None)
         if modules_to_exclude is None:
             pytest.skip("modules_to_not_convert_for_test not defined for this model")
 
         self._test_quantization_modules_to_not_convert(
-            BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"], modules_to_exclude
+            BitsAndBytesConfigMixin.BNB_CONFIGS[config_name],
+            modules_to_exclude,
+            exclusion_key="llm_int8_skip_modules",
         )
+
+    def test_bnb_errors_loading_incorrect_state_dict(self, tmp_path):
+        """Test that loading a checkpoint with a corrupted quantized weight raises a helpful error."""
+        model = self._create_quantized_model(BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"])
+        model.save_pretrained(str(tmp_path))
+        del model
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+        weights_file = tmp_path / "diffusion_pytorch_model.safetensors"
+        state_dict = safetensors.torch.load_file(str(weights_file))
+        key_to_target = next(k for k in state_dict if k.endswith(".weight") and state_dict[k].dtype == torch.uint8)
+        corrupted_param = torch.randn(state_dict[key_to_target].shape[0] - 1, 1)
+        state_dict[key_to_target] = bnb.nn.Params4bit(corrupted_param, requires_grad=False)
+        safetensors.torch.save_file(state_dict, str(weights_file))
+
+        with pytest.raises(ValueError) as err_context:
+            _ = self.model_class.from_pretrained(str(tmp_path))
+        assert key_to_target in str(err_context.value)
 
     @pytest.mark.parametrize("config_name", ["4bit_nf4", "8bit"], ids=["4bit_nf4", "8bit"])
     def test_bnb_device_map(self, config_name):
@@ -680,9 +762,10 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
         """Test that dequantize() works correctly."""
         self._test_dequantize(BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"])
 
-    def test_bnb_training(self):
+    @pytest.mark.parametrize("config_name", ["4bit_nf4", "8bit"], ids=["4bit_nf4", "8bit"])
+    def test_bnb_training(self, config_name):
         """Test that quantized models can be used for training with adapters."""
-        self._test_quantization_training(BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"])
+        self._test_quantization_training(BitsAndBytesConfigMixin.BNB_CONFIGS[config_name])
 
     @pytest.mark.parametrize(
         "config_name",
@@ -1014,9 +1097,64 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
 
         assert found_excluded, f"No linear layers found in excluded modules: {modules_to_exclude}"
 
+        # Inference must work on the mixed model (see _test_quantization_modules_to_not_convert).
+        with torch.no_grad():
+            output = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
+
     def test_torchao_device_map(self):
         """Test that device_map='auto' works correctly with quantization."""
         self._test_quantization_device_map(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
+
+    @torch.no_grad()
+    def test_torchao_cpu_disk_offload_device_map(self, tmp_path):
+        """Test custom device maps with cpu/disk offload: offloaded modules stay unquantized, inference works."""
+        from torchao.utils import TorchAOBaseTensor
+
+        model = self._create_quantized_model(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
+
+        # Offload the first two linear-bearing top-level modules to cpu and disk, keep the rest on the
+        # accelerator. Root-level parameters and buffers (e.g. Wan's `scale_shift_table`) need their own
+        # device-map entries since they belong to no child module.
+        device_map = {}
+        offload_targets = []
+        for name, child in model.named_children():
+            if len(offload_targets) < 2 and any(isinstance(m, torch.nn.Linear) for m in child.modules()):
+                device_map[name] = "disk" if offload_targets else "cpu"
+                offload_targets.append(name)
+            else:
+                device_map[name] = str(torch_device)
+        for name, _ in list(model.named_parameters(recurse=False)) + list(model.named_buffers(recurse=False)):
+            device_map[name] = str(torch_device)
+        del model
+        gc.collect()
+        backend_empty_cache(torch_device)
+        if len(offload_targets) < 2:
+            pytest.skip("Model does not have enough linear-bearing top-level modules for offload testing")
+
+        model = self._create_quantized_model(
+            TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"], device_map=device_map, offload_folder=str(tmp_path)
+        )
+
+        # Weights offloaded to cpu/disk are not quantized, only (some of) the weights on the accelerator
+        # are. Not every accelerator module is necessarily quantized: the offload exclusion matches
+        # module names by substring, so an offloaded `blocks` also excludes e.g. Wan's `vace_blocks`.
+        found_quantized = False
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                if name.split(".")[0] in offload_targets:
+                    assert not isinstance(module.weight, TorchAOBaseTensor), (
+                        f"Offloaded module {name} should not be quantized"
+                    )
+                elif isinstance(module.weight, TorchAOBaseTensor):
+                    found_quantized = True
+        assert found_quantized, "No quantized layers found outside the offloaded modules"
+
+        inputs = self.get_dummy_inputs()
+        output = model(**inputs, return_dict=False)[0]
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
 
     def test_torchao_dequantize(self):
         """Test that dequantize() works correctly."""
@@ -1595,7 +1733,7 @@ class NunchakuLiteTesterMixin(NunchakuLiteConfigMixin, QuantizationTesterMixin):
     def test_nunchaku_lite_quantization_inference(self):
         self._test_quantization_inference(self.config_dict)
 
-    def _is_module_quantized(self, module):
+    def _is_module_quantized(self, module, config_kwargs=None):
         from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear, SVDQW4A4Linear
 
         return isinstance(module, (SVDQW4A4Linear, AWQW4A16Linear))

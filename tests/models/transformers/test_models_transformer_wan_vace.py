@@ -28,6 +28,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -256,3 +257,17 @@ class TestWanVACETransformer3DGGUFCompile(WanVACETransformer3DTesterConfig, GGUF
 
 class TestWanVACETransformer3DLoRA(WanVACETransformer3DTesterConfig, LoraTesterMixin):
     pass
+
+
+class TestWanVACETransformer3DSingleFile(WanVACETransformer3DTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_vace_1.3B_fp16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Wan-AI/Wan2.1-VACE-1.3B-diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
