@@ -49,11 +49,11 @@ class ABotWorldPrepareStep(ModularPipelineBlocks):
         return [
             InputParam(
                 "actions",
-                required=True,
                 type_hint=list[list[int]],
                 description=(
                     "Per-block actions, one `[W, A, S, D, I, J, K, L]` 0/1 vector per generated block "
-                    "(W/A/S/D move, I/J/K/L turn the camera). The rollout generates `len(actions)` blocks."
+                    "(W/A/S/D move, I/J/K/L turn the camera); the scripted rollout generates `len(actions)` "
+                    "blocks. Omit when driving the rollout interactively through `loop_step`."
                 ),
             ),
             InputParam(
@@ -89,9 +89,12 @@ class ABotWorldPrepareStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        block_state.actions = torch.tensor(block_state.actions, dtype=torch.float32)
-        if block_state.actions.ndim != 2 or block_state.actions.shape[1] != 8:
-            raise ValueError(f"`actions` must be a list of 8-element vectors, got shape {block_state.actions.shape}")
+        if block_state.actions is not None:
+            block_state.actions = torch.tensor(block_state.actions, dtype=torch.float32)
+            if block_state.actions.ndim != 2 or block_state.actions.shape[1] != 8:
+                raise ValueError(
+                    f"`actions` must be a list of 8-element vectors, got shape {block_state.actions.shape}"
+                )
 
         # the full 1000-point flow-match grid the reference warps its step list through: the scheduler
         # applies its configured shift to sigmas = linspace(1, 0, 1001)[:-1]

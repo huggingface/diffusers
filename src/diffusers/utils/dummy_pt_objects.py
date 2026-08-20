@@ -405,7 +405,7 @@ class VaeImageProcessorLDM3D(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class AceStepTransformer1DModel(metaclass=DummyObject):
+class ABotWorldTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -420,7 +420,7 @@ class AceStepTransformer1DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class ABotWorldTransformer3DModel(metaclass=DummyObject):
+class AceStepTransformer1DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

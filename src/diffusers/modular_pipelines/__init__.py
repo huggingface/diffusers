@@ -105,6 +105,7 @@ else:
     _import_structure["abot_world"] = [
         "ABotWorldBlocks",
         "ABotWorldModularPipeline",
+        "ABotWorldStreamingBlocks",
     ]
     _import_structure["anima"] = [
         "AnimaAutoBlocks",
@@ -155,7 +156,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .abot_world import ABotWorldBlocks, ABotWorldModularPipeline
+        from .abot_world import ABotWorldBlocks, ABotWorldModularPipeline, ABotWorldStreamingBlocks
         from .anima import AnimaAutoBlocks, AnimaModularPipeline
         from .components_manager import ComponentsManager
         from .cosmos import (

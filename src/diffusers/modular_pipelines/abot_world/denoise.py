@@ -12,14 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Callable
+
+import numpy as np
 import torch
 from tqdm import tqdm
 
-from ...models import ABotWorldTransformer3DModel
+from ...configuration_utils import FrozenDict
+from ...models import ABotWorldTransformer3DModel, AutoencoderKLWan
 from ...models.transformers.transformer_abot_world import ABotWorldKVCache
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..modular_pipeline import IterativePipelineBlocks, ModularLoopPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
@@ -464,6 +469,11 @@ class ABotWorldRolloutWrapper(IterativePipelineBlocks):
     @torch.no_grad()
     def __call__(self, components, state: PipelineState):
         block_state = self.get_block_state(state)
+        if block_state.actions is None:
+            raise ValueError(
+                "A scripted rollout requires `actions` (one vector per block); to drive the rollout "
+                "interactively, call `loop_step` yourself and write `action` into the state between calls."
+            )
 
         video_latents = []
         with tqdm(total=block_state.actions.shape[0], desc="Rollout") as progress_bar:
@@ -478,6 +488,11 @@ class ABotWorldRolloutWrapper(IterativePipelineBlocks):
     @torch.no_grad()
     def stream(self, components, state: PipelineState):
         block_state = self.get_block_state(state)
+        if block_state.actions is None:
+            raise ValueError(
+                "A scripted rollout requires `actions` (one vector per block); to drive the rollout "
+                "interactively, call `loop_step` yourself and write `action` into the state between calls."
+            )
 
         video_latents = []
         for k in range(block_state.actions.shape[0]):
@@ -503,4 +518,256 @@ class ABotWorldRolloutStep(ABotWorldRolloutWrapper):
             "Rollout step that generates the world block by block.\n"
             "At each block: set_action -> prepare_noise -> denoise (a nested distilled denoising loop) -> "
             "cache_update."
+        )
+
+
+class ABotWorldCurrentActionStep(ModularLoopPipelineBlocks):
+    model_name = "abot-world"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the streaming rollout loop that broadcasts the *current* `[W, A, S, D, I, J, K, L]` action "
+            "vector (the `action` state value) into the conditioning planes. The scripted `__call__`/`stream` set "
+            "`action` from the `actions` list each iteration; a live driver writes it into the state between "
+            "`loop_step` calls."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", ABotWorldTransformer3DModel),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "action",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The current block's `[W, A, S, D, I, J, K, L]` 0/1 action vector",
+            ),
+            InputParam("height", type_hint=int, default=704, description="Height of the generated video in pixels"),
+            InputParam("width", type_hint=int, default=1280, description="Width of the generated video in pixels"),
+            InputParam(
+                "num_frames_per_block",
+                type_hint=int,
+                default=3,
+                description="Latent frames generated per block (the model was trained with 3)",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "action_planes",
+                type_hint=torch.Tensor,
+                description="This block's broadcast action planes `[B, 32, F, height, width]`",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState, k: int):
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        action = torch.as_tensor(block_state.action, dtype=torch.float32)
+        action = action.to(device=device, dtype=components.transformer.dtype)
+        block_state.action_planes = (
+            action.view(1, 8, 1, 1, 1)
+            .repeat_interleave(4, dim=1)
+            .repeat(1, 1, block_state.num_frames_per_block, block_state.height, block_state.width)
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ABotWorldStreamingDecodeStep(ModularLoopPipelineBlocks):
+    model_name = "abot-world"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the streaming rollout loop that decodes the finished block to pixels. The causal VAE needs "
+            "temporal context, so the previous block's latents are decoded alongside and only the new block's "
+            "frames are kept."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("latents", required=True, type_hint=torch.Tensor, description="The denoised block latents"),
+            InputParam(
+                "previous_latents",
+                type_hint=torch.Tensor,
+                description="The previous block's latents, decoded as temporal context; `None` for the first block",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("frames", type_hint=np.ndarray, description="This block's decoded frames `[T, H, W, 3]`"),
+            OutputParam(
+                "previous_latents",
+                type_hint=torch.Tensor,
+                description="This block's latents, kept as the next block's decode context",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState, k: int):
+        block_state = self.get_block_state(state)
+        vae = components.vae
+
+        latents = block_state.latents
+        if block_state.previous_latents is None:
+            decode_input = latents
+            new_frames = None  # keep everything
+        else:
+            decode_input = torch.cat([block_state.previous_latents, latents], dim=2)
+            new_frames = latents.shape[2] * 4
+
+        decode_input = decode_input.to(vae.dtype)
+        latents_mean = torch.tensor(vae.config.latents_mean, device=decode_input.device, dtype=vae.dtype).view(
+            1, -1, 1, 1, 1
+        )
+        latents_std = torch.tensor(vae.config.latents_std, device=decode_input.device, dtype=vae.dtype).view(
+            1, -1, 1, 1, 1
+        )
+        video = vae.decode(decode_input * latents_std + latents_mean, return_dict=False)[0]
+        video = components.video_processor.postprocess_video(video, output_type="np")[0]
+
+        block_state.frames = video if new_frames is None else video[-new_frames:]
+        block_state.previous_latents = latents
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ABotWorldStreamingRolloutWrapper(IterativePipelineBlocks):
+    model_name = "abot-world"
+
+    @property
+    def loop_variables(self) -> list[str]:
+        return ["k"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Pipeline block that rolls the world out block by block and decodes each block to pixels inside the "
+            "loop. Scripted runs iterate the `actions` list (each iteration writes the block's `action` into the "
+            "state, exactly as a live driver would); interactive drivers own the loop via "
+            "`loop_step(components, state, k=k)` and write `action` between calls."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        # `action` and `previous_latents` are loop-carried — supplied per iteration by the loop logic (or a live
+        # driver) and by the decode step of the previous iteration — never user-provided.
+        inputs = [param for param in super().inputs if param.name not in ("action", "previous_latents")]
+        names = {param.name for param in inputs}
+        # inputs consumed by the loop logic itself
+        loop_inputs = [
+            InputParam(
+                "actions",
+                type_hint=torch.Tensor,
+                description="Per-block action vectors `[num_blocks, 8]`, from the prepare step",
+            ),
+            InputParam(
+                "action_source",
+                type_hint=Callable,
+                description=(
+                    "Interactive alternative to `actions`: a callable `(block_index) -> action vector or None` "
+                    "polled once per block — return the current `[W, A, S, D, I, J, K, L]` input to keep rolling, "
+                    "or `None` to stop. The rollout is unbounded while it returns actions."
+                ),
+            ),
+        ]
+        return [param for param in loop_inputs if param.name not in names] + inputs
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        # produced by the loop logic itself, which collects each block's decoded frames
+        return super().intermediate_outputs + [
+            OutputParam("videos", type_hint=list[np.ndarray], description="The generated videos"),
+        ]
+
+    def _next_action(self, block_state, k):
+        if block_state.actions is not None:
+            return block_state.actions[k] if k < block_state.actions.shape[0] else None
+        if block_state.action_source is not None:
+            action = block_state.action_source(k)
+            return None if action is None else torch.as_tensor(action, dtype=torch.float32)
+        raise ValueError(
+            "The streaming rollout needs `actions` (a scripted list) or `action_source` (a callable polled per "
+            "block); to own the loop yourself instead, call `loop_step` and write `action` into the state "
+            "between calls."
+        )
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState):
+        block_state = self.get_block_state(state)
+        if block_state.actions is None and block_state.action_source is not None:
+            raise ValueError(
+                "`action_source` needs `stream()`: with `__call__` no frames flow back between polls, so there "
+                "is nothing to react to. Use `pipe.stream(...)`, or pass a scripted `actions` list instead."
+            )
+
+        frames, k = [], 0
+        while (action := self._next_action(block_state, k)) is not None:
+            state.set("action", action)
+            components, state = self.loop_step(components, state, k=k)
+            frames.append(state.get("frames"))
+            k += 1
+        state.set("videos", [np.concatenate(frames, axis=0)])
+
+        return components, state
+
+    @torch.no_grad()
+    def stream(self, components, state: PipelineState):
+        block_state = self.get_block_state(state)
+
+        frames, k = [], 0
+        while (action := self._next_action(block_state, k)) is not None:
+            state.set("action", action)
+            components, state = yield from self.stream_step(components, state, k=k)
+            frames.append(state.get("frames"))
+            k += 1
+        state.set("videos", [np.concatenate(frames, axis=0)])
+
+        return components, state
+
+
+class ABotWorldStreamingRolloutStep(ABotWorldStreamingRolloutWrapper):
+    block_classes = [
+        ABotWorldCurrentActionStep,
+        ABotWorldPrepareNoiseStep,
+        ABotWorldDenoiseStep,
+        ABotWorldCacheUpdateStep,
+        ABotWorldStreamingDecodeStep,
+    ]
+    block_names = ["set_action", "prepare_noise", "denoise", "cache_update", "decode"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Streaming rollout step that generates and decodes the world block by block.\n"
+            "At each block: set_action -> prepare_noise -> denoise (a nested distilled denoising loop) -> "
+            "cache_update -> decode."
         )
