@@ -601,11 +601,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     def device(self) -> torch.device:
         r"""
         Returns:
-            `torch.device`: The torch device on which the pipeline is located.
+            `torch.device`: The torch device on which the pipeline is located. When components are split across devices
+            (for example, text encoders on CPU while the denoising backbone runs on an accelerator), the accelerator
+            device is returned.
         """
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
+
+        # Prefer a non-CPU, non-meta component so a split pipeline reports the accelerator it computes on,
+        # rather than whichever component happens to sort first.
+        for module in modules:
+            if module.device.type not in ("cpu", "meta"):
+                return module.device
 
         for module in modules:
             return module.device

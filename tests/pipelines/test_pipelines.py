@@ -1944,6 +1944,34 @@ class PipelineFastTests(unittest.TestCase):
         assert sd1.device.type == device_type
         assert sd2.device.type == device_type
 
+    @require_torch_accelerator
+    def test_pipe_device_split_across_devices(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        device_type = torch.device(torch_device).type
+
+        # Text encoder stays on CPU while the denoising backbone runs on the accelerator. `text_encoder` sorts
+        # before `unet`/`vae`, so a first-component rule would report `cpu` here.
+        sd.unet.to(torch_device)
+        sd.vae.to(torch_device)
+
+        assert sd.text_encoder.device.type == "cpu"
+        assert sd.device.type == device_type
+
     def test_pipe_same_device_id_offload(self):
         unet = self.dummy_cond_unet()
         scheduler = PNDMScheduler(skip_prk_steps=True)
