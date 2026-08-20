@@ -42,6 +42,7 @@ from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
+    DCP_CONFIG_NAME,
     FLASHPACK_WEIGHTS_NAME,
     HF_ENABLE_PARALLEL_LOADING,
     SAFE_WEIGHTS_INDEX_NAME,
@@ -76,6 +77,7 @@ from .model_loading_utils import (
     _fetch_index_file,
     _fetch_index_file_legacy,
     _load_shard_file,
+    _load_shard_file_tp,
     _load_shard_files_with_threadpool,
     load_state_dict,
 )
@@ -686,6 +688,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         max_shard_size: int | str = "10GB",
         push_to_hub: bool = False,
         use_flashpack: bool = False,
+        dcp: bool = False,
         **kwargs,
     ):
         """
@@ -718,8 +721,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
+            dcp (`bool`, *optional*, defaults to `False`):
+                Write a [`torch.distributed.checkpoint`](https://pytorch.org/docs/stable/distributed.checkpoint.html)
+                directory instead of safetensors files. Only valid for a tensor-parallel model: every rank writes its
+                own shards, so no full tensor is ever materialized, which matters for models too large to gather onto
+                one rank. Read it back with `from_pretrained`, which detects the directory automatically and can
+                reshard it to a different `tp_degree`.
             kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
+
+        A tensor-parallel model is gathered back into ordinary full tensors before saving, so the result is a normal
+        checkpoint that loads without tensor parallelism. Gathering is a collective: call `save_pretrained` on every
+        rank, not just the main process. Only rank 0 writes.
         """
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
@@ -741,6 +754,76 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     f"The model is quantized with {hf_quantizer.quantization_config.quant_method} and is not serializable - check out the warnings from"
                     " the logger on the traceback to understand the reason why the quantized model is not serializable."
                 )
+
+        tp_config = None
+        if self._parallel_config is not None:
+            tp_config = self._parallel_config.tensor_parallel_config
+
+        if dcp:
+            if tp_config is None:
+                raise ValueError(
+                    "`dcp=True` is only meaningful for a tensor-parallel model, whose parameters are sharded "
+                    "across ranks. Save an unsharded model with the default safetensors path."
+                )
+            unsupported = [
+                name
+                for name, value in (
+                    ("use_flashpack", use_flashpack),
+                    ("variant", variant),
+                    ("safe_serialization=False", not safe_serialization),
+                    ("save_function", save_function),
+                )
+                if value
+            ]
+            if unsupported:
+                raise ValueError(
+                    f"{unsupported} cannot be combined with `dcp=True`: a distributed checkpoint is a directory "
+                    "of `.distcp` shards, not a single named weights file."
+                )
+            if push_to_hub:
+                # `from_pretrained` only recognizes a distributed checkpoint by looking for `.metadata` in a
+                # local directory, so one cannot be loaded back from the Hub.
+                raise ValueError(
+                    "`push_to_hub=True` cannot be combined with `dcp=True`: a distributed checkpoint can only "
+                    "be loaded from a local directory. Save it with the default safetensors path to push it."
+                )
+
+            import torch.distributed.checkpoint as dcp_api
+
+            os.makedirs(save_directory, exist_ok=True)
+            if tp_config._mesh.get_local_rank() == 0:
+                self.save_config(save_directory)
+                # A packed weight's local shard is `cat(block_0_shard, block_1_shard, ...)`, which DTensor —
+                # and therefore DCP — records as plain chunk `rank` of the global tensor. The stored layout is
+                # thus interleaved by the saving `tp_degree`, so the checkpoint can only be read back at that
+                # same degree. Record it so a mismatch fails clearly instead of silently loading garbage.
+                with open(os.path.join(save_directory, DCP_CONFIG_NAME), "w", encoding="utf-8") as f:
+                    json.dump({"tp_degree": tp_config._tp_degree}, f, indent=2)
+            # Written from the sharded state dict, so no rank ever holds a full tensor. Collective, so every
+            # rank takes part.
+            dcp_api.save(self.state_dict(), checkpoint_id=save_directory)
+            logger.info(f"Distributed checkpoint saved in {save_directory}")
+            return
+
+        # Under tensor parallelism the parameters are DTensor shards, so they have to be gathered before
+        # anything can be written. `state_dict()` is read here rather than further down because the gather is
+        # a collective: every rank must reach it, while only rank 0 may go on to touch the filesystem or the
+        # Hub. Non-TP saves keep the original ordering.
+        state_dict = None
+        if tp_config is not None:
+            if use_flashpack:
+                raise ValueError(
+                    "`use_flashpack=True` is not supported for a tensor-parallel model. Save it with "
+                    "`safe_serialization=True`, or use `dcp=True` to write a sharded checkpoint."
+                )
+            from ..hooks.tensor_parallel import gather_tp_state_dict, resolve_tp_shard_specs
+
+            state_dict = gather_tp_state_dict(
+                self.state_dict(), resolve_tp_shard_specs(self, self._tp_plan), tp_config
+            )
+            if tp_config._mesh.get_local_rank() != 0:
+                # `is_main_process` defaults to True on every rank, so it cannot be used for this.
+                return
 
         weights_name = WEIGHTS_NAME
         if use_flashpack:
@@ -772,7 +855,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             model_to_save.save_config(save_directory)
 
         # Save the model
-        state_dict = model_to_save.state_dict()
+        if state_dict is None:
+            state_dict = model_to_save.state_dict()
         quantization_metadata = {}
         if hf_quantizer is not None:
             state_dict, quantization_metadata = hf_quantizer.get_state_dict_and_metadata(
@@ -1037,7 +1121,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: dict[str, DDUFEntry] | None = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
-        parallel_config: ParallelConfig | ContextParallelConfig | None = kwargs.pop("parallel_config", None)
+        parallel_config: ParallelConfig | ContextParallelConfig | TensorParallelConfig | None = kwargs.pop(
+            "parallel_config", None
+        )
         use_flashpack = kwargs.pop("use_flashpack", False)
         flashpack_kwargs = kwargs.pop("flashpack_kwargs", {})
 
@@ -1150,6 +1236,35 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # no in-place modification of the original config.
         config = copy.deepcopy(config)
 
+        # A `torch.distributed.checkpoint` directory written by `save_pretrained(..., dcp=True)` holds
+        # `.distcp` shards rather than safetensors, so it bypasses the checkpoint-file resolution below.
+        if os.path.isdir(pretrained_model_name_or_path):
+            dcp_dir = os.path.join(pretrained_model_name_or_path, subfolder or "")
+            if os.path.isfile(os.path.join(dcp_dir, ".metadata")):
+                # Checked here rather than in `_load_dcp_checkpoint` because this branch returns before the
+                # quantizer is built and before `_check_tp_streaming_supported` runs, so nothing else would
+                # look at these.
+                unsupported = [
+                    name
+                    for name, value in (
+                        ("device_map", device_map),
+                        ("quantization_config", quantization_config),
+                        ("use_flashpack", use_flashpack),
+                        ("variant", variant),
+                        ("dduf_entries", dduf_entries),
+                        ("low_cpu_mem_usage=False", not low_cpu_mem_usage),
+                    )
+                    if value
+                ]
+                if unsupported:
+                    raise ValueError(
+                        f"{unsupported} cannot be combined with the distributed checkpoint at {dcp_dir}: its "
+                        "shards are read in place onto each rank's device."
+                    )
+                return cls._load_dcp_checkpoint(
+                    dcp_dir, config, unused_kwargs, torch_dtype=torch_dtype, parallel_config=parallel_config
+                )
+
         # determine initial quantization config.
         #######################################
         pre_quantized = "quantization_config" in config and config["quantization_config"] is not None
@@ -1203,6 +1318,27 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 raise ValueError("`low_cpu_mem_usage` cannot be False when `keep_in_fp32_modules` is True.")
         else:
             keep_in_fp32_modules = []
+
+        # A tensor-parallel `parallel_config` makes `from_pretrained` shard while it reads, so each rank only
+        # ever materializes its own slice. Validate the combination before any file is fetched.
+        tp_config = None
+        if parallel_config is not None:
+            tp_config = (
+                parallel_config
+                if isinstance(parallel_config, TensorParallelConfig)
+                else parallel_config.tensor_parallel_config
+            )
+            if tp_config is not None and tp_config.tp_degree == 1 and tp_config.mesh is None:
+                # Nothing to shard, so take the ordinary loader rather than building 1-rank DTensors.
+                tp_config = None
+        if tp_config is not None:
+            cls._check_tp_streaming_supported(
+                device_map=device_map,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                use_flashpack=use_flashpack,
+                hf_quantizer=hf_quantizer,
+                dduf_entries=dduf_entries,
+            )
 
         is_sharded = False
         resolved_model_file = None
@@ -1320,6 +1456,27 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         with ContextManagers(init_contexts):
             model = cls.from_config(config, **unused_kwargs)
 
+        # Resolve the tensor-parallel mesh before any weights are read, so each rank can stream only its own
+        # slice of every planned parameter straight into a DTensor instead of materializing the full
+        # checkpoint and resharding it afterwards.
+        tp_shard_specs = None
+        if tp_config is not None:
+            from ..hooks.tensor_parallel import resolve_tp_shard_specs
+
+            non_safetensors = [f for f in resolved_model_file if not str(f).endswith(".safetensors")]
+            if non_safetensors:
+                raise ValueError(
+                    f"A tensor-parallel `parallel_config` requires safetensors weights, so that each rank can "
+                    f"read only its own slice of each tensor. Got {non_safetensors}."
+                )
+
+            parallel_config = model._resolve_parallel_config(parallel_config)
+            tp_config = parallel_config.tensor_parallel_config
+            tp_shard_specs = resolve_tp_shard_specs(model, cls._tp_plan)
+            # Each rank opens every shard file but only reads its own slices, so threading the files buys
+            # nothing and would have several threads calling `register_parameter` on the same modules.
+            is_parallel_loading_enabled = False
+
         if use_flashpack:
             if is_flashpack_available():
                 import flashpack
@@ -1362,7 +1519,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             torch.set_default_dtype(dtype_orig)
 
         state_dict = None
-        if not is_sharded:
+        if not is_sharded and tp_shard_specs is None:
             # Time to load the checkpoint
             state_dict = load_state_dict(resolved_model_file[0], disable_mmap=disable_mmap, dduf_entries=dduf_entries)
             # We only fix it for non sharded checkpoints as we don't need it yet for sharded one.
@@ -1370,6 +1527,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if is_sharded:
             loaded_keys = sharded_metadata["all_checkpoint_keys"]
+        elif tp_shard_specs is not None:
+            # Read the key names out of the safetensors header without materializing any tensor, and leave
+            # `state_dict` as None so `_load_pretrained_model` keeps reading from the file itself.
+            from safetensors import safe_open
+
+            with safe_open(resolved_model_file[0], framework="pt") as f:
+                loaded_keys = list(f.keys())
         else:
             loaded_keys = list(state_dict.keys())
 
@@ -1418,6 +1582,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             dduf_entries=dduf_entries,
             is_parallel_loading_enabled=is_parallel_loading_enabled,
             disable_mmap=disable_mmap,
+            tp_shard_specs=tp_shard_specs,
+            tp_config=tp_config,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1457,7 +1623,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
 
-        if parallel_config is not None:
+        if tp_shard_specs is not None:
+            # The weights are already sharded, so this only registers the forward hooks. `_parallel_config`
+            # was recorded by `_resolve_parallel_config` before loading.
+            from ..hooks.tensor_parallel import apply_tensor_parallel
+
+            apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
+        elif parallel_config is not None:
             model.enable_parallelism(config=parallel_config)
 
         if output_loading_info:
@@ -1604,25 +1776,182 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"Regional compilation failed because {repeated_blocks} classes are not found in the model. "
             )
 
-    def enable_parallelism(
-        self,
+    @classmethod
+    def _load_dcp_checkpoint(
+        cls,
+        checkpoint_dir: str,
+        config: dict,
+        unused_kwargs: dict,
         *,
-        config: ParallelConfig | ContextParallelConfig | TensorParallelConfig,
-        cp_plan: dict[str, ContextParallelModelPlan] | None = None,
+        torch_dtype: torch.dtype | None,
+        parallel_config: ParallelConfig | ContextParallelConfig | TensorParallelConfig | None,
     ):
-        logger.warning(
-            "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
-        )
+        """Load a `torch.distributed.checkpoint` directory written by `save_pretrained(..., dcp=True)`.
 
-        if not torch.distributed.is_available() and not torch.distributed.is_initialized():
+        The shards are those of a tensor-parallel model, so a tensor-parallel `parallel_config` is required, at the
+        `tp_degree` the checkpoint was written with — see the note where it is written. Use the ordinary safetensors
+        path to move a model between degrees; it streams each rank's slice, so it costs no more memory than this
+        does.
+
+        DCP loads **in place**, so every parameter has to be allocated first with its local shape and on the device it
+        will end up on.
+        """
+        import torch.distributed.checkpoint as dcp
+        from torch.distributed.tensor import DTensor, Replicate, Shard
+
+        from ..hooks.tensor_parallel import apply_tensor_parallel, resolve_tp_shard_specs
+
+        with open(os.path.join(checkpoint_dir, DCP_CONFIG_NAME), encoding="utf-8") as f:
+            saved_tp_degree = json.load(f)["tp_degree"]
+
+        with ContextManagers([no_init_weights(), accelerate.init_empty_weights()]):
+            model = cls.from_config(config, **unused_kwargs)
+
+        tp_config = None
+        if parallel_config is not None:
+            tp_config = (
+                parallel_config
+                if isinstance(parallel_config, TensorParallelConfig)
+                else parallel_config.tensor_parallel_config
+            )
+        if tp_config is None:
+            raise ValueError(
+                f"The distributed checkpoint at {checkpoint_dir} holds the shards of a tensor-parallel model, so "
+                f"it can only be read back with a tensor-parallel `parallel_config` of `tp_degree="
+                f"{saved_tp_degree}`. To load it without tensor parallelism, re-save the model with "
+                f"`save_pretrained(...)`, which gathers the shards into ordinary safetensors."
+            )
+        # An explicit `mesh` overrides `tp_degree` (see `TensorParallelConfig`), and `_tp_degree` is only set
+        # by `setup()`, which has not run yet — so the effective degree has to be resolved by hand here.
+        requested_tp_degree = tp_config.mesh.size() if tp_config.mesh is not None else tp_config.tp_degree
+        if requested_tp_degree != saved_tp_degree:
+            raise ValueError(
+                f"The distributed checkpoint at {checkpoint_dir} was written with `tp_degree={saved_tp_degree}` "
+                f"and can only be loaded with the same degree, but {requested_tp_degree} was requested. Packed "
+                f"projections are stored interleaved by the writing degree, so reading at another degree would "
+                f"silently produce wrong weights. To change degree, re-save the model with "
+                f"`save_pretrained(...)` (which gathers to ordinary safetensors) and load that with "
+                f"`from_pretrained(..., parallel_config=...)`."
+            )
+        parallel_config = model._resolve_parallel_config(parallel_config)
+        tp_config = parallel_config.tensor_parallel_config
+        tp_shard_specs = resolve_tp_shard_specs(model, cls._tp_plan)
+        tp_mesh = tp_config._mesh
+        device = torch.neuron.current_device() if tp_mesh.device_type == "neuron" else tp_config._device
+
+        for name, meta_param in model.state_dict().items():
+            dtype = torch_dtype if torch_dtype is not None and meta_param.is_floating_point() else meta_param.dtype
+            spec = tp_shard_specs.get(name)
+            if spec is None or spec.dim is None:
+                local = torch.empty(meta_param.shape, dtype=dtype, device=device)
+            else:
+                shape = list(meta_param.shape)
+                shape[spec.dim] //= tp_config._tp_degree
+                local = torch.empty(shape, dtype=dtype, device=device)
+
+            module_path, _, param_name = name.rpartition(".")
+            module = model.get_submodule(module_path) if module_path else model
+            if spec is None:
+                value = local
+            else:
+                placement = Replicate() if spec.dim is None else Shard(spec.dim)
+                value = DTensor.from_local(local, tp_mesh, [placement], run_check=False)
+            if param_name in module._buffers:
+                module._buffers[param_name] = value
+            else:
+                module.register_parameter(param_name, torch.nn.Parameter(value, requires_grad=False))
+
+        state_dict = model.state_dict()
+        dcp.load(state_dict, checkpoint_id=checkpoint_dir)
+
+        # `dcp.load` silently does nothing for a parameter left on `meta`, so a mistake above would
+        # otherwise produce a model of uninitialized weights with no diagnostic at all.
+        still_meta = sorted(name for name, value in state_dict.items() if value.device.type == "meta")
+        if still_meta:
             raise RuntimeError(
-                "torch.distributed must be available and initialized before calling `enable_parallelism`."
+                f"Loading the distributed checkpoint at {checkpoint_dir} left these parameters on the meta "
+                f"device: {still_meta}."
             )
 
-        from ..hooks.context_parallel import apply_context_parallel
-        from .attention import AttentionModuleMixin
-        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
-        from .attention_processor import Attention, MochiAttention
+        # Non-persistent buffers are absent from both the state dict and the checkpoint, and
+        # `init_empty_weights` leaves them as real CPU tensors, so move them across explicitly.
+        for name, buffer in model.named_buffers():
+            if buffer.device != device and not isinstance(buffer, DTensor):
+                module_path, _, buffer_name = name.rpartition(".")
+                module = model.get_submodule(module_path) if module_path else model
+                module._buffers[buffer_name] = buffer.to(device)
+
+        model.register_to_config(_name_or_path=checkpoint_dir)
+        model.eval()
+
+        apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
+
+        return model
+
+    @classmethod
+    def _check_tp_streaming_supported(
+        cls,
+        *,
+        device_map,
+        low_cpu_mem_usage: bool,
+        use_flashpack: bool,
+        hf_quantizer,
+        dduf_entries,
+    ) -> None:
+        """Reject the `from_pretrained` options that cannot be combined with a tensor-parallel load.
+
+        Sharding on load needs a meta-initialized model and lazily sliceable safetensors files. Rather than silently
+        falling back to loading the full checkpoint and resharding it — which would quietly give up the memory saving
+        that is the whole point — each unsupported combination raises.
+
+        Called before the checkpoint files are resolved, so that e.g. `use_flashpack` fails with the real reason
+        instead of a missing-file error. The weights-format check lives at the point where the resolved file list is
+        known.
+        """
+        if cls._tp_plan is None:
+            raise ValueError(
+                f"`_tp_plan` must be set on the model class to use tensor parallelism. "
+                f"'{cls.__name__}' does not define one."
+            )
+        if device_map is not None:
+            raise ValueError(
+                "`device_map` cannot be combined with a tensor-parallel `parallel_config`: tensor parallelism "
+                "already places each rank's shard on that rank's device. Drop `device_map`."
+            )
+        if hf_quantizer is not None:
+            raise ValueError(
+                "`quantization_config` cannot be combined with a tensor-parallel `parallel_config`. Load the "
+                "model unquantized, or shard it after loading with `enable_parallelism`."
+            )
+        if not low_cpu_mem_usage:
+            raise ValueError(
+                "`low_cpu_mem_usage=False` cannot be combined with a tensor-parallel `parallel_config`: "
+                "streaming each rank's shard requires the model to be initialized on the meta device."
+            )
+        if use_flashpack:
+            raise ValueError(
+                "`use_flashpack=True` cannot be combined with a tensor-parallel `parallel_config`; FlashPack "
+                "checkpoints cannot be sliced per rank."
+            )
+        if dduf_entries:
+            raise ValueError(
+                "DDUF checkpoints cannot be combined with a tensor-parallel `parallel_config`; their tensors "
+                "cannot be sliced per rank."
+            )
+
+    def _resolve_parallel_config(
+        self, config: ParallelConfig | ContextParallelConfig | TensorParallelConfig
+    ) -> ParallelConfig:
+        """Normalize `config`, build its device mesh, and record it on the model.
+
+        Split out of `enable_parallelism` because `from_pretrained` needs the mesh *before* it reads any weights, in
+        order to stream each rank's shard straight into place. Whichever of the two runs first builds the mesh exactly
+        once.
+        """
+        if not torch.distributed.is_available() or not torch.distributed.is_initialized():
+            raise RuntimeError(
+                "torch.distributed must be available and initialized before applying a `parallel_config`."
+            )
 
         if isinstance(config, ContextParallelConfig):
             config = ParallelConfig(context_parallel_config=config)
@@ -1634,6 +1963,51 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         device_type = torch._C._get_accelerator().type
         device_module = torch.get_device_module(device_type)
         device = torch.device(device_type, rank % device_module.device_count())
+
+        mesh = None
+        if config.context_parallel_config is not None:
+            cp_config = config.context_parallel_config
+            mesh = cp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
+                device_type=device_type,
+                mesh_shape=cp_config.mesh_shape,
+                mesh_dim_names=cp_config.mesh_dim_names,
+            )
+        elif config.tensor_parallel_config is not None:
+            tp_config = config.tensor_parallel_config
+            mesh = tp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
+                device_type=device_type,
+                mesh_shape=(tp_config.tp_degree,),
+                mesh_dim_names=("tp",),
+            )
+
+        # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
+        config.setup(rank, world_size, device, mesh=mesh)
+        self._parallel_config = config
+        return config
+
+    def enable_parallelism(
+        self,
+        *,
+        config: ParallelConfig | ContextParallelConfig | TensorParallelConfig,
+        cp_plan: dict[str, ContextParallelModelPlan] | None = None,
+    ):
+        logger.warning(
+            "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
+        )
+
+        from ..hooks.context_parallel import apply_context_parallel
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+        from .attention_processor import Attention, MochiAttention
+
+        if self._parallel_config is not None:
+            raise RuntimeError(
+                f"Parallelism is already applied to this {self.__class__.__name__}. `enable_parallelism` cannot be "
+                "called twice, and it must not be called on a model loaded with `from_pretrained(..., "
+                "parallel_config=...)` — that already sharded the weights while reading the checkpoint."
+            )
+
+        config = self._resolve_parallel_config(config)
 
         attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
 
@@ -1665,26 +2039,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 # iterate over all modules after checking the first processor
                 break
 
-        mesh = None
-        if config.context_parallel_config is not None:
-            cp_config = config.context_parallel_config
-            mesh = cp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
-                device_type=device_type,
-                mesh_shape=cp_config.mesh_shape,
-                mesh_dim_names=cp_config.mesh_dim_names,
-            )
-        elif config.tensor_parallel_config is not None:
-            tp_config = config.tensor_parallel_config
-            mesh = tp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
-                device_type=device_type,
-                mesh_shape=(tp_config.tp_degree,),
-                mesh_dim_names=("tp",),
-            )
-
-        # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
-        config.setup(rank, world_size, device, mesh=mesh)
-        self._parallel_config = config
-
         # Only context parallelism needs the config inside attention: it replaces the attention computation itself
         # (Ulysses all-to-all / ring). Tensor parallelism only shards `Linear` weights, so each rank runs the ordinary
         # attention op over its own heads and the processors must stay unaware of it.
@@ -1705,16 +2059,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             apply_context_parallel(self, config.context_parallel_config, cp_plan)
 
         if config.tensor_parallel_config is not None:
-            if self._tp_plan is None:
-                raise ValueError(
-                    "`_tp_plan` must be set on the model class to use tensor parallelism. "
-                    f"'{self.__class__.__name__}' does not define one."
-                )
-            tp_degree = config.tensor_parallel_config._tp_degree
-            num_heads = getattr(self.config, "num_attention_heads", None)
-            if num_heads is not None and num_heads % tp_degree != 0:
-                raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
-
             from ..hooks.tensor_parallel import apply_tensor_parallel
 
             apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
@@ -1739,6 +2083,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         dduf_entries: dict[str, DDUFEntry] | None = None,
         is_parallel_loading_enabled: bool | None = False,
         disable_mmap: bool = False,
+        tp_shard_specs: dict | None = None,
+        tp_config: TensorParallelConfig | None = None,
     ):
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
@@ -1754,6 +2100,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         mismatched_keys = []
         error_msgs = []
+
+        if tp_shard_specs is not None:
+            # `_hooks_only_styles` lets `parallelize_module` broadcast any planned parameter it finds still
+            # plain, and for a key the checkpoint does not carry that broadcast would be issued on a `meta`
+            # tensor.
+            missing_planned_keys = sorted(set(tp_shard_specs) & set(missing_keys))
+            if missing_planned_keys:
+                raise ValueError(
+                    f"Cannot shard {cls.__name__} across tensor-parallel ranks because its `_tp_plan` covers "
+                    f"parameters that the checkpoint does not contain: {missing_planned_keys}."
+                )
 
         # Deal with offload
         if device_map is not None and "disk" in device_map.values():
@@ -1790,25 +2147,38 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             resolved_model_file = [state_dict]
 
         # Prepare the loading function sharing the attributes shared between them.
-        load_fn = functools.partial(
-            _load_shard_files_with_threadpool if is_parallel_loading_enabled else _load_shard_file,
-            model=model,
-            model_state_dict=model_state_dict,
-            device_map=device_map,
-            dtype=dtype,
-            hf_quantizer=hf_quantizer,
-            keep_in_fp32_modules=keep_in_fp32_modules,
-            dduf_entries=dduf_entries,
-            loaded_keys=loaded_keys,
-            unexpected_keys=unexpected_keys,
-            offload_index=offload_index,
-            offload_folder=offload_folder,
-            state_dict_index=state_dict_index,
-            state_dict_folder=state_dict_folder,
-            ignore_mismatched_sizes=ignore_mismatched_sizes,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            disable_mmap=disable_mmap,
-        )
+        if tp_shard_specs is not None:
+            load_fn = functools.partial(
+                _load_shard_file_tp,
+                model=model,
+                model_state_dict=model_state_dict,
+                tp_shard_specs=tp_shard_specs,
+                tp_config=tp_config,
+                dtype=dtype,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+                unexpected_keys=unexpected_keys,
+                ignore_mismatched_sizes=ignore_mismatched_sizes,
+            )
+        else:
+            load_fn = functools.partial(
+                _load_shard_files_with_threadpool if is_parallel_loading_enabled else _load_shard_file,
+                model=model,
+                model_state_dict=model_state_dict,
+                device_map=device_map,
+                dtype=dtype,
+                hf_quantizer=hf_quantizer,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+                dduf_entries=dduf_entries,
+                loaded_keys=loaded_keys,
+                unexpected_keys=unexpected_keys,
+                offload_index=offload_index,
+                offload_folder=offload_folder,
+                state_dict_index=state_dict_index,
+                state_dict_folder=state_dict_folder,
+                ignore_mismatched_sizes=ignore_mismatched_sizes,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                disable_mmap=disable_mmap,
+            )
 
         if is_parallel_loading_enabled:
             offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(resolved_model_file)
