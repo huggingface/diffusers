@@ -917,7 +917,7 @@ Converting a 2.5 checkpoint picks the head up automatically with `--full_pipelin
 
 ### LTX-2.5 Modular
 
-LTX-2.5 is also available as a modular pipeline. The LTX-2.5 modular pipeline is configured to use the diffusion decoder and duration prediction by default. It implements multimodal guidance (CFG + STG + modality isolation) via video and audio `LTX2Guidance` `guider` components; video- and audio-specific guidance parameters can be specified on their respective guiders. Below is a T2V modular example:
+LTX-2.5 is also available as a modular pipeline. The LTX-2.5 modular pipeline is configured to use the diffusion decoder and duration prediction by default. It implements multimodal guidance (CFG + STG + modality isolation) via video and audio [`LTX2Guidance`] `guider` components; video- and audio-specific guidance parameters can be specified on their respective guiders. By default, the modular pipeline will donwload the prompt enhancer and processor from the [google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) repo. Below is a T2V modular example:
 
 ```py
 import torch
@@ -933,15 +933,10 @@ random_seed = 42
 generator = torch.Generator(device).manual_seed(random_seed)
 
 model_path = "Lightricks/LTX-2.5-Diffusers"
-enhancer_model_id = "google/gemma-4-E2B-it"
 
 cm = ComponentsManager()
 pipe = ModularPipeline.from_pretrained(model_path, components_manager=cm)
 pipe.load_components(dtype=torch.bfloat16)
-if getattr(pipe, "prompt_enhancer", None) is None:
-    prompt_enhancer = AutoModelForImageTextToText.from_pretrained(enhancer_model_id, dtype=torch.bfloat16)
-    processor = AutoProcessor.from_pretrained(enhancer_model_id)
-    pipe.update_components(prompt_enhancer=prompt_enhancer, processor=processor)
 # Set memory_reserve_margin higher to more aggressively offload component models
 cm.enable_auto_cpu_offload(device=device, memory_reserve_margin="20GB")
 # The NATTEN processor works if `kernels` is available (`pip install kernels`)
@@ -994,15 +989,10 @@ random_seed = 42
 generator = torch.Generator(device).manual_seed(random_seed)
 
 model_path = "Lightricks/LTX-2.5-Diffusers"
-enhancer_model_id = "google/gemma-4-E2B-it"
 
 cm = ComponentsManager()
 pipe = ModularPipeline.from_pretrained(model_path, components_manager=cm)
 pipe.load_components(dtype=torch.bfloat16)
-if getattr(pipe, "prompt_enhancer", None) is None:
-    prompt_enhancer = AutoModelForImageTextToText.from_pretrained(enhancer_model_id, dtype=torch.bfloat16)
-    processor = AutoProcessor.from_pretrained(enhancer_model_id)
-    pipe.update_components(prompt_enhancer=prompt_enhancer, processor=processor)
 cm.enable_auto_cpu_offload(device=device, memory_reserve_margin="20GB")
 pipe.diffusion_decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
 pipe.diffusion_decoder.enable_tiling()
@@ -1040,7 +1030,7 @@ encode_video(
 )
 ```
 
-You can see the supported workflows in the docs for each blockset (e.g. `LTX2AutoBlocks`, `LTX25AutoBlocks`).
+You can see the supported workflows in the docs for each blockset (e.g. [`LTX2AutoBlocks`], [`LTX25AutoBlocks`]).
 
 ## LTX2Pipeline
 
