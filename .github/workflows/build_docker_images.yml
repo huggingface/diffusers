@@ -54,6 +54,7 @@ jobs:
             diffusers-pytorch-xformers-cuda
             diffusers-pytorch-minimum-cuda
             diffusers-doc-builder
+            diffusers-cli-cuda
           )
 
           declare -A IMAGES_TO_BUILD=()
@@ -102,6 +103,7 @@ jobs:
           - diffusers-pytorch-xformers-cuda
           - diffusers-pytorch-minimum-cuda
           - diffusers-doc-builder
+          - diffusers-cli-cuda
 
     steps:
       - name: Checkout repository
