@@ -166,8 +166,8 @@ class ABotWorldStreamingCoreDenoiseStep(SequentialPipelineBlocks):
               Token offset of this block in the rollout: `k * F * tokens_per_frame`
           frames (`ndarray`):
               This block's decoded frames `[T, H, W, 3]`
-          previous_latents (`Tensor`):
-              This block's latents, kept as the next block's decode context
+          decode_cache (`WanDecodeCache`):
+              The VAE's causal-conv cache after this block, carried to the next block
           videos (`list`):
               The generated videos
     """
@@ -259,8 +259,8 @@ class ABotWorldStreamingBlocks(SequentialPipelineBlocks):
               Token offset of this block in the rollout: `k * F * tokens_per_frame`
           frames (`ndarray`):
               This block's decoded frames `[T, H, W, 3]`
-          previous_latents (`Tensor`):
-              This block's latents, kept as the next block's decode context
+          decode_cache (`WanDecodeCache`):
+              The VAE's causal-conv cache after this block, carried to the next block
           videos (`list`):
               The generated videos
     """
