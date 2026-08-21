@@ -24,6 +24,7 @@ from ..testing_utils import (
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -155,3 +156,17 @@ class TestChromaTransformerLoRAHotSwap(ChromaTransformerTesterConfig, LoraHotSwa
             "txt_ids": randn_tensor((sequence_length, num_image_channels), device=torch_device),
             "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
         }
+
+
+class TestChromaTransformer2DSingleFile(ChromaTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "lodestones/Chroma1-HD"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

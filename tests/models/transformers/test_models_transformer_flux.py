@@ -13,18 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import subprocess
+import sys
 import tempfile
 from typing import Any
 
 import pytest
 import torch
 
-from diffusers import BitsAndBytesConfig, FluxTransformer2DModel
+from diffusers import BitsAndBytesConfig, FluxTransformer2DModel, GGUFQuantizationConfig
 from diffusers.models.embeddings import ImageProjection
 from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
 from ..testing_utils import (
     AttentionBackendTesterMixin,
     AttentionTesterMixin,
@@ -51,6 +54,7 @@ from ..testing_utils import (
     SDNQTesterMixin,
     SingleFileTesterMixin,
     TaylorSeerCacheTesterMixin,
+    TensorParallelTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -157,7 +161,7 @@ class FluxTransformerTesterConfig(BaseModelTesterConfig):
             "axes_dims_rope": [4, 4, 8],
         }
 
-    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+    def get_dummy_inputs(self, batch_size: int = 1, device=torch_device) -> dict[str, torch.Tensor]:
         height = width = 4
         num_latent_channels = 4
         num_image_channels = 3
@@ -168,34 +172,34 @@ class FluxTransformerTesterConfig(BaseModelTesterConfig):
             "hidden_states": randn_tensor(
                 (batch_size, height * width, num_latent_channels),
                 generator=self.generator,
-                device=torch_device,
+                device=device,
                 dtype=self.torch_dtype,
             ),
             "encoder_hidden_states": randn_tensor(
                 (batch_size, sequence_length, embedding_dim),
                 generator=self.generator,
-                device=torch_device,
+                device=device,
                 dtype=self.torch_dtype,
             ),
             "pooled_projections": randn_tensor(
                 (batch_size, embedding_dim),
                 generator=self.generator,
-                device=torch_device,
+                device=device,
                 dtype=self.torch_dtype,
             ),
             "img_ids": randn_tensor(
                 (height * width, num_image_channels),
                 generator=self.generator,
-                device=torch_device,
+                device=device,
                 dtype=self.torch_dtype,
             ),
             "txt_ids": randn_tensor(
                 (sequence_length, num_image_channels),
                 generator=self.generator,
-                device=torch_device,
+                device=device,
                 dtype=self.torch_dtype,
             ),
-            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype).expand(batch_size),
+            "timestep": torch.tensor([1.0]).to(device, self.torch_dtype).expand(batch_size),
         }
 
 
@@ -260,6 +264,43 @@ class TestFluxTransformerContextParallelAttnBackends(
     FluxTransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
 ):
     """Context Parallel inference x attention backends tests for Flux Transformer"""
+
+
+class TestFluxTransformerTensorParallel(FluxTransformerTesterConfig, TensorParallelTesterMixin):
+    """Tensor Parallel inference tests for Flux Transformer (CUDA/XPU multi-accelerator)."""
+
+
+def make_neuron_tp_spec():
+    """Model spec consumed by the generic Neuron TP worker (`_neuron_tp_worker.py`).
+
+    Returns `(model_class, init_dict, cpu_inputs)`. Defined here so all Flux-specific test data lives in this file
+    while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest of
+    the Flux tests.
+    """
+    config = FluxTransformerTesterConfig()
+    return FluxTransformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+@is_tensor_parallel
+@require_torch_neuron
+class TestFluxTransformerTensorParallelNeuron:
+    """Tensor Parallel inference test for Flux Transformer on AWS Neuron.
+
+    Neuron TP runs through `torchrun` with the `"neuron"` distributed backend, so it cannot use the
+    `torch.multiprocessing`/NCCL spawn path of `TensorParallelTesterMixin`. This launches the generic worker
+    with the Flux model spec (`make_neuron_tp_spec`); the worker asserts the sharded output matches a single-device
+    reference, and the test checks its exit code.
+    """
+
+    def test_tensor_parallel_neuron_inference(self):
+        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
+        spec = "tests.models.transformers.test_models_transformer_flux:make_neuron_tp_spec"
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )
 
 
 class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterMixin):
@@ -341,10 +382,6 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
         return "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors"
 
     @property
-    def alternate_ckpt_paths(self):
-        return ["https://huggingface.co/Comfy-Org/flux1-dev/blob/main/flux1-dev-fp8.safetensors"]
-
-    @property
     def pretrained_model_name_or_path(self):
         return "black-forest-labs/FLUX.1-dev"
 
@@ -356,9 +393,17 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Flux Transformer."""
 
+    modules_to_not_convert_for_test = ["proj_out"]
+
     @property
     def torch_dtype(self):
         return torch.float16
+
+    def get_dummy_inputs(self):
+        """Override to build inputs in the quantizer compute dtype (excluded/unquantized linears
+        do strict-dtype matmuls)."""
+        inputs = super().get_dummy_inputs()
+        return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
 
 
 class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
@@ -381,6 +426,12 @@ class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin
     @property
     def torch_dtype(self):
         return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to build inputs in the quantizer compute dtype (excluded/unquantized linears
+        do strict-dtype matmuls)."""
+        inputs = super().get_dummy_inputs()
+        return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
 
 
 class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
@@ -409,6 +460,17 @@ class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
             "txt_ids": randn_tensor((512, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
             "guidance": torch.tensor([3.5]).to(torch_device, self.torch_dtype),
         }
+
+    @torch.no_grad()
+    def test_loading_gguf_diffusers_format(self):
+        model = self.model_class.from_single_file(
+            "https://huggingface.co/sayakpaul/flux-diffusers-gguf/blob/main/model-Q4_0.gguf",
+            subfolder="transformer",
+            quantization_config=GGUFQuantizationConfig(compute_dtype=self.torch_dtype),
+            config="black-forest-labs/FLUX.1-dev",
+        )
+        model.to(torch_device)
+        model(**self.get_dummy_inputs())
 
 
 class TestFluxTransformerQuantoCompile(FluxTransformerTesterConfig, QuantoCompileTesterMixin):

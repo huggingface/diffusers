@@ -153,8 +153,8 @@ class BasePipelineTesterConfig:
 
 
 class BasePipelineOutputMixin:
-    """Provides the `get_pipeline` builder and the class-scoped `base_pipe_output` fixture shared across tester
-    mixins.
+    """Provides the `get_pipeline` builder, the `run_pipe` helper and the class-scoped `base_pipe_output` fixture
+    shared across tester mixins.
 
     Kept separate from `BasePipelineTesterConfig` — which only declares the testing contract and performs no
     computation — so any mixin that needs to build a pipeline or read the cached reference output
@@ -177,14 +177,21 @@ class BasePipelineOutputMixin:
 
         return pipe
 
+    def run_pipe(self, pipe, **extra_inputs):
+        """Run the pipeline on the standard dummy inputs (fresh seeded generator) and return the first output.
+
+        `base_pipe_output` is produced by this same helper, so outputs are directly comparable against it. Pass
+        `extra_inputs` to override individual dummy inputs.
+        """
+        inputs = self.get_dummy_inputs()
+        inputs.update(extra_inputs)
+        torch.manual_seed(0)
+        return pipe(**inputs)[0]
+
     @pytest.fixture(scope="class")
     def base_pipe_output(self):
         """Output of a freshly constructed pipeline on the standard dummy inputs, computed once per test class."""
-        pipe = self.get_pipeline().to(torch_device)
-
-        inputs = self.get_dummy_inputs()
-        torch.manual_seed(0)
-        return pipe(**inputs)[0]
+        return self.run_pipe(self.get_pipeline().to(torch_device))
 
 
 class PipelineTesterMixin(BasePipelineOutputMixin):
