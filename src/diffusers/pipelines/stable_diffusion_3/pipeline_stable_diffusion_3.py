@@ -426,6 +426,13 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         else:
             batch_size = prompt_embeds.shape[0]
 
+        # The internal `_get_*_prompt_embeds` helpers expand the encoded embeddings
+        # by `num_images_per_prompt`, but user-supplied embeddings bypass that path.
+        # Track that here so we can apply the same expansion at the end and keep the
+        # batch dimension consistent with `prepare_latents` (see #10712).
+        prompt_embeds_was_provided = prompt_embeds is not None
+        negative_prompt_embeds_was_provided = negative_prompt_embeds is not None
+
         if prompt_embeds is None:
             prompt_2 = prompt_2 or prompt
             prompt_2 = [prompt_2] if isinstance(prompt_2, str) else prompt_2
@@ -520,6 +527,28 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             negative_prompt_embeds = torch.cat([negative_clip_prompt_embeds, t5_negative_prompt_embed], dim=-2)
             negative_pooled_prompt_embeds = torch.cat(
                 [negative_pooled_prompt_embed, negative_pooled_prompt_2_embed], dim=-1
+            )
+
+        # Apply `num_images_per_prompt` expansion to user-supplied embeddings to match
+        # what `_get_*_prompt_embeds` already does for freshly-encoded ones (#10712).
+        if prompt_embeds_was_provided and num_images_per_prompt > 1:
+            seq_len, hidden_dim = prompt_embeds.shape[-2], prompt_embeds.shape[-1]
+            prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, hidden_dim)
+            pooled_dim = pooled_prompt_embeds.shape[-1]
+            pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt)
+            pooled_prompt_embeds = pooled_prompt_embeds.view(batch_size * num_images_per_prompt, pooled_dim)
+
+        if do_classifier_free_guidance and negative_prompt_embeds_was_provided and num_images_per_prompt > 1:
+            seq_len, hidden_dim = negative_prompt_embeds.shape[-2], negative_prompt_embeds.shape[-1]
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(
+                batch_size * num_images_per_prompt, seq_len, hidden_dim
+            )
+            pooled_dim = negative_pooled_prompt_embeds.shape[-1]
+            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt)
+            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.view(
+                batch_size * num_images_per_prompt, pooled_dim
             )
 
         if self.text_encoder is not None:

@@ -223,6 +223,44 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
         self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
 
+    def test_pipeline_accepts_prompt_embeds_with_num_images_per_prompt(self):
+        # Regression test for https://github.com/huggingface/diffusers/issues/10712: pre-computed
+        # `prompt_embeds` produced by `encode_prompt(num_images_per_prompt=k)` would crash the
+        # pipeline when the matching `num_images_per_prompt=k` was passed to `__call__` because
+        # only the prompt-encoding path expanded by `num_images_per_prompt`.
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        prompt = inputs.pop("prompt")
+        num_images_per_prompt = 2
+
+        prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = (
+            pipe.encode_prompt(
+                prompt=prompt,
+                prompt_2=None,
+                prompt_3=None,
+                device=torch_device,
+                num_images_per_prompt=num_images_per_prompt,
+                do_classifier_free_guidance=True,
+            )
+        )
+
+        images = pipe(
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+            num_images_per_prompt=num_images_per_prompt,
+            **inputs,
+        ).images
+
+        # 1 prompt * num_images_per_prompt (the pre-encoded batch dim) * num_images_per_prompt again
+        # — matches the SDXL behaviour of expanding once per `__call__`; the important assertion is
+        # that the pipeline no longer crashes.
+        self.assertEqual(images.shape[0], num_images_per_prompt * num_images_per_prompt)
+
 
 @slow
 @require_big_accelerator
