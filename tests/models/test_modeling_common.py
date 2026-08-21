@@ -279,12 +279,18 @@ class TestModelUtils:
         SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
 
     @require_torch_accelerator
-    def test_sharded_checkpoint_device_map_matches_cpu_load(self):
+    @pytest.mark.parametrize("parallel_loading", [False, True])
+    def test_sharded_checkpoint_device_map_matches_cpu_load(self, parallel_loading, monkeypatch):
         # Loading a sharded checkpoint directly onto an accelerator with a dtype conversion must
         # produce exactly the same weights as loading on CPU. Regression test for silent weight
         # corruption on MPS with torch < 2.13, where the loader's non-blocking copies could read
         # already-released source memory (https://github.com/huggingface/diffusers/issues/13227,
-        # https://github.com/pytorch/pytorch/issues/189690).
+        # https://github.com/pytorch/pytorch/issues/189690). Runs against both the serial and the
+        # threadpool shard loaders, which share the same per-parameter device placement.
+        if parallel_loading:
+            import diffusers.models.modeling_utils as modeling_utils
+
+            monkeypatch.setattr(modeling_utils, "HF_ENABLE_PARALLEL_LOADING", True)
         torch.manual_seed(0)
         config = {
             "block_out_channels": (32, 64),
