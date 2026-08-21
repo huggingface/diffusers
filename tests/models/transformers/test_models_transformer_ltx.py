@@ -20,8 +20,10 @@ from diffusers.utils.torch_utils import randn_tensor
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -116,3 +118,21 @@ class TestLTXTransformerCompile(LTXTransformerTesterConfig, TorchCompileTesterMi
 # TODO: Add pretrained_model_name_or_path once a tiny LTX model is available on the Hub
 # class TestLTXTransformerTorchAo(LTXTransformerTesterConfig, TorchAoTesterMixin):
 #     """TorchAo quantization tests for LTX Video Transformer."""
+
+
+class TestLTXTransformerLoRA(LTXTransformerTesterConfig, LoraTesterMixin):
+    pass
+
+
+class TestLTXVideoTransformer3DSingleFile(LTXTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "diffusers/LTX-Video-0.9.0"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

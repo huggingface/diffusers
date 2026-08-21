@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import numpy as np
 import pytest
 import torch
@@ -35,7 +36,13 @@ from diffusers.modular_pipelines.minimax_h3.encoders import (
 )
 from diffusers.modular_pipelines.minimax_h3.modular_pipeline import MINIMAX_H3_FPS
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 # The blocks every workflow of [`MiniMaxH3Blocks`] runs, in order. A keyframe adds the canvas block and the one
@@ -146,13 +153,12 @@ MINIMAX_H3_REF2VA_WORKFLOW_DEFAULTS = {
 }
 
 
-class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
+class MiniMaxH3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     """The `t2va` and `fl2va` requests of [`MiniMaxH3Blocks`]: a prompt, optionally with keyframes."""
 
     pipeline_class = MiniMaxH3ModularPipeline
     pipeline_blocks_class = MiniMaxH3Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-h3-modular-pipe"
-
     params = frozenset(["prompt", "image", "last_image", "height", "width", "num_frames"])
     # MiniMax-H3 packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     batch_params = frozenset()
@@ -163,6 +169,22 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
     expected_workflow_blocks = MINIMAX_H3_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_WORKFLOW_DEFAULTS
 
+    def get_dummy_inputs(self, seed=0):
+        return {
+            "prompt": "a robot dancing",
+            "generator": self.get_generator(seed),
+            "num_inference_steps": 2,
+            # MiniMax-H3 generates 5 to 15 seconds at a fixed 24 fps, so 124 frames (`17 * 7 + 5`, the next length
+            # the video VAE can decode) is the shortest admissible request; a 32 pixel canvas is one `(1, 2, 2)`
+            # patch row per latent frame, which is what makes it affordable on CPU.
+            "height": 32,
+            "width": 32,
+            "num_frames": 124,
+            "output_type": "pt",
+        }
+
+
+class TestMiniMaxH3ModularPipelineFast(MiniMaxH3ModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="MiniMax-H3 packs one request into one sequence, so a batch of prompts is not a thing.")
     def test_inference_batch_consistent(self):
         pass
@@ -187,20 +209,6 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
 
         with pytest.raises(ValueError, match="rounded up to 362"):
             pipe(**inputs)
-
-    def get_dummy_inputs(self, seed=0):
-        return {
-            "prompt": "a robot dancing",
-            "generator": self.get_generator(seed),
-            "num_inference_steps": 2,
-            # MiniMax-H3 generates 5 to 15 seconds at a fixed 24 fps, so 124 frames (`17 * 7 + 5`, the next length
-            # the video VAE can decode) is the shortest admissible request; a 32 pixel canvas is one `(1, 2, 2)`
-            # patch row per latent frame, which is what makes it affordable on CPU.
-            "height": 32,
-            "width": 32,
-            "num_frames": 124,
-            "output_type": "pt",
-        }
 
     def test_video_and_audio_outputs(self):
         r"""One call denoises both modalities out of the one packed sequence, and returns both."""
@@ -395,13 +403,24 @@ class TestMiniMaxH3ModularPipelineFast(ModularPipelineTesterMixin):
             pipe(**inputs)
 
 
-class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
+class TestMiniMaxH3ModularPipelineLoading(MiniMaxH3ModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestMiniMaxH3ModularPipelineWorkflow(MiniMaxH3ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestMiniMaxH3ModularPipelineMemory(MiniMaxH3ModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class MiniMaxH3Ref2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     """The `ref2va` requests of [`MiniMaxH3Blocks`]: a prompt and an ordered list of references."""
 
     pipeline_class = MiniMaxH3ModularPipeline
     pipeline_blocks_class = MiniMaxH3Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-h3-modular-pipe"
-
     params = frozenset(["prompt", "references", "height", "width", "num_frames"])
     # MiniMax-H3 packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     batch_params = frozenset()
@@ -430,6 +449,23 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
         pipeline.set_progress_bar_config(disable=None)
         return pipeline
 
+    def get_dummy_inputs(self, seed=0):
+        return {
+            "prompt": "a robot dancing",
+            "references": [MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80)))],
+            "generator": self.get_generator(seed),
+            "num_inference_steps": 2,
+            # MiniMax-H3 generates 5 to 15 seconds at a fixed 24 fps, so 124 frames (`17 * 7 + 5`, the next length
+            # the video VAE can decode) is the shortest admissible request; a 32 pixel canvas is one `(1, 2, 2)`
+            # patch row per latent frame, which is what makes it affordable on CPU.
+            "height": 32,
+            "width": 32,
+            "num_frames": 124,
+            "output_type": "pt",
+        }
+
+
+class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3Ref2VAModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="MiniMax-H3 packs one request into one sequence, so a batch of prompts is not a thing.")
     def test_inference_batch_consistent(self):
         pass
@@ -457,21 +493,6 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
 
         with pytest.raises(ValueError, match="rounded up to 362"):
             pipe(**inputs)
-
-    def get_dummy_inputs(self, seed=0):
-        return {
-            "prompt": "a robot dancing",
-            "references": [MiniMaxH3ImageReference(image=Image.new("RGB", (48, 80)))],
-            "generator": self.get_generator(seed),
-            "num_inference_steps": 2,
-            # MiniMax-H3 generates 5 to 15 seconds at a fixed 24 fps, so 124 frames (`17 * 7 + 5`, the next length
-            # the video VAE can decode) is the shortest admissible request; a 32 pixel canvas is one `(1, 2, 2)`
-            # patch row per latent frame, which is what makes it affordable on CPU.
-            "height": 32,
-            "width": 32,
-            "num_frames": 124,
-            "output_type": "pt",
-        }
 
     def test_video_and_audio_outputs(self):
         r"""A reference conditions the request without binding the generated geometry."""
@@ -739,6 +760,20 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(ModularPipelineTesterMixin):
 
         with pytest.raises(ValueError, match=message):
             pipe(**inputs)
+
+
+class TestMiniMaxH3Ref2VAModularPipelineLoading(MiniMaxH3Ref2VAModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestMiniMaxH3Ref2VAModularPipelineWorkflow(
+    MiniMaxH3Ref2VAModularPipelineTesterConfig, ModularWorkflowTesterMixin
+):
+    pass
+
+
+class TestMiniMaxH3Ref2VAModularPipelineMemory(MiniMaxH3Ref2VAModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
 
 
 class TestMiniMaxH3Reference:

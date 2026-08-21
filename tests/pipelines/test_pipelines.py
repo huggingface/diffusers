@@ -64,6 +64,7 @@ from diffusers import (
 )
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, is_transformers_version
+from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 from ..testing_utils import (
@@ -88,6 +89,10 @@ from ..testing_utils import (
     slow,
     torch_device,
 )
+
+
+if is_peft_available():
+    from peft import LoraConfig, get_peft_model_state_dict
 
 
 enable_full_determinism()
@@ -1944,6 +1949,34 @@ class PipelineFastTests(unittest.TestCase):
         assert sd1.device.type == device_type
         assert sd2.device.type == device_type
 
+    @require_torch_accelerator
+    def test_pipe_device_split_across_devices(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        device_type = torch.device(torch_device).type
+
+        # Text encoder stays on CPU while the denoising backbone runs on the accelerator. `text_encoder` sorts
+        # before `unet`/`vae`, so a first-component rule would report `cpu` here.
+        sd.unet.to(torch_device)
+        sd.vae.to(torch_device)
+
+        assert sd.text_encoder.device.type == "cpu"
+        assert sd.device.type == device_type
+
     def test_pipe_same_device_id_offload(self):
         unet = self.dummy_cond_unet()
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -2360,8 +2393,6 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
 
     def get_unet_lora_config(self, lora_rank, lora_alpha, target_modules):
         # from diffusers test_models_unet_2d_condition.py
-        from peft import LoraConfig
-
         unet_lora_config = LoraConfig(
             r=lora_rank,
             lora_alpha=lora_alpha,
@@ -2372,8 +2403,6 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         return unet_lora_config
 
     def get_lora_state_dicts(self, modules_to_save, adapter_name):
-        from peft import get_peft_model_state_dict
-
         state_dicts = {}
         for module_name, module in modules_to_save.items():
             if module is not None:
@@ -2554,8 +2583,6 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
 
     def test_hotswap_component_not_supported_raises(self):
         # right now, not some components don't support hotswapping, e.g. the text_encoder
-        from peft import LoraConfig
-
         pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
         lora_config0 = LoraConfig(target_modules=["q_proj"])
         lora_config1 = LoraConfig(target_modules=["q_proj"])
