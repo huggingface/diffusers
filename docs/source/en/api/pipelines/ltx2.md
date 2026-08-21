@@ -921,7 +921,6 @@ LTX-2.5 is also available as a modular pipeline. The default blockset uses the d
 
 ```py
 import torch
-from transformers import AutoModelForImageTextToText, AutoProcessor
 from diffusers import ModularPipeline, ComponentsManager
 from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
@@ -977,7 +976,6 @@ The modular pipeline will automatically switch workflows based on the supplied i
 
 ```py
 import torch
-from transformers import AutoModelForImageTextToText, AutoProcessor
 from diffusers import ModularPipeline, ComponentsManager
 from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
