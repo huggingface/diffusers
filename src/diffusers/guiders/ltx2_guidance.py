@@ -33,12 +33,16 @@
 # close-but-not-bitwise check.
 
 import math
+from typing import TYPE_CHECKING
 
 import torch
 
-from ...configuration_utils import register_to_config
-from ...guiders.guider_utils import BaseGuidance, GuiderOutput, rescale_noise_cfg
-from ..modular_pipeline import BlockState
+from ..configuration_utils import register_to_config
+from .guider_utils import BaseGuidance, GuiderOutput, rescale_noise_cfg
+
+
+if TYPE_CHECKING:
+    from ..modular_pipelines.modular_pipeline import BlockState
 
 
 class LTX2Guidance(BaseGuidance):
@@ -121,7 +125,7 @@ class LTX2Guidance(BaseGuidance):
     # conditioning as `pred_cond` while the denoiser overrides their per-pass model flags after preparation.
     _PREDICTION_INDEX = {"pred_cond": 0, "pred_uncond": 1, "pred_cond_stg": 2, "pred_cond_modality": 3}
 
-    def prepare_inputs(self, guider_inputs: dict) -> list[BlockState]:
+    def prepare_inputs(self, guider_inputs: dict) -> list["BlockState"]:
         # One identifier-tagged batch per active pass. Every value in `guider_inputs` is a 4-tuple indexed by
         # `_PREDICTION_INDEX` ([cond, uncond, stg, modality]); each pass reads its own slot, so the per-pass model
         # flags (`spatio_temporal_guidance_blocks`, `isolate_modalities`) are carried exactly like the encoder
@@ -131,7 +135,7 @@ class LTX2Guidance(BaseGuidance):
             for pred in self.active_predictions()
         ]
 
-    def prepare_inputs_from_block_state(self, data: BlockState, input_fields: dict) -> list[BlockState]:
+    def prepare_inputs_from_block_state(self, data: "BlockState", input_fields: dict) -> list["BlockState"]:
         # One identifier-tagged batch per active pass. Each value in `input_fields` maps a transformer argument to a
         # 4-tuple of block-state attribute names indexed by `_PREDICTION_INDEX` ([cond, uncond, stg, modality]); the
         # base helper reads the pass's slot off `data`. The denoiser then sets the per-pass model flags and fills

@@ -19,6 +19,7 @@ from typing import Any
 import torch
 
 from ...configuration_utils import FrozenDict
+from ...guiders import LTX2Guidance
 from ...models import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ..modular_pipeline import (
@@ -28,7 +29,6 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam
-from .guider import LTX2Guidance
 
 
 # Velocity-space helpers, mirrored from `diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline` and redefined here
