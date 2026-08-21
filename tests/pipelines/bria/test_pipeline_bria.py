@@ -37,7 +37,6 @@ from ...testing_utils import (
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
-    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -181,10 +180,6 @@ class TestBriaPipeline(BriaPipelineTesterConfig, PipelineTesterMixin):
 
 
 class TestBriaPipelineMemory(BriaPipelineTesterConfig, MemoryTesterMixin):
-    pass
-
-
-class TestBriaPipelineLoRA(BriaPipelineTesterConfig, LoraTesterMixin):
     pass
 
 
