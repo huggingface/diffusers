@@ -1,25 +1,25 @@
-import unittest
-
-import numpy as np
 import torch
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxControlPipeline, FluxTransformer2DModel
 
-from ...testing_utils import torch_device
-from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
+from ...testing_utils import assert_tensors_close, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+    check_qkv_fused_layers_exist,
+)
 
 
-class FluxControlPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class FluxControlPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = FluxControlPipeline
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
-    batch_params = frozenset(["prompt"])
-
-    # there is no xformers processor for Flux
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"]
+    )
+    batch_input_params = frozenset(["prompt"])
+    output_shape = (3, 8, 8)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -86,84 +86,88 @@ class FluxControlPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "vae": vae,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
+    def get_dummy_inputs(self):
         control_image = Image.new("RGB", (16, 16), 0)
 
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "control_image": control_image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "height": 8,
             "width": 8,
             "max_sequence_length": 48,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
         return inputs
 
-    def test_flux_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+class TestFluxControlPipeline(FluxControlPipelineTesterConfig, PipelineTesterMixin):
+    def test_flux_different_prompts(self):
+        pipe = self.get_pipeline().to(torch_device)
+
+        inputs = self.get_dummy_inputs()
         output_same_prompt = pipe(**inputs).images[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt_2"] = "a different prompt"
         output_different_prompts = pipe(**inputs).images[0]
 
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+        max_diff = (output_same_prompt - output_different_prompts).abs().max()
 
         # Outputs should be different here
         # For some reasons, they don't show large differences
-        assert max_diff > 1e-6
+        assert max_diff > 1e-6, "Outputs should be different for different prompts."
 
     def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        # Run on CPU to ensure determinism for the device-dependent torch.Generator.
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        original_image_slice = image[0, -3:, -3:, -1]
+        inputs = self.get_dummy_inputs()
+        original_image_slice = pipe(**inputs).images[0, -3:, -3:, -1]
 
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
-        self.assertTrue(
-            check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]),
-            ("Something wrong with the fused attention layers. Expected all the attention projections to be fused."),
+        assert check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]), (
+            "Something wrong with the fused attention layers. Expected all the attention projections to be fused."
         )
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
+        inputs = self.get_dummy_inputs()
+        image_slice_fused = pipe(**inputs).images[0, -3:, -3:, -1]
 
         pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
+        inputs = self.get_dummy_inputs()
+        image_slice_disabled = pipe(**inputs).images[0, -3:, -3:, -1]
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
-            "Fusion of QKV projections shouldn't affect the outputs."
+        assert_tensors_close(
+            image_slice_fused,
+            original_image_slice,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Fusion of QKV projections shouldn't affect the outputs.",
         )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert_tensors_close(
+            image_slice_disabled,
+            image_slice_fused,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
         )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
+        assert_tensors_close(
+            image_slice_disabled,
+            original_image_slice,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Original outputs should match when fused QKV projections are disabled.",
         )
 
     def test_flux_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (72, 57)]
         for height, width in height_width_pairs:
@@ -172,5 +176,11 @@ class FluxControlPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
             inputs.update({"height": height, "width": width})
             image = pipe(**inputs).images[0]
-            output_height, output_width, _ = image.shape
-            assert (output_height, output_width) == (expected_height, expected_width)
+            _, output_height, output_width = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width), (
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}"
+            )
+
+
+class TestFluxControlPipelineMemory(FluxControlPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux control pipeline."""
