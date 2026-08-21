@@ -917,7 +917,7 @@ Converting a 2.5 checkpoint picks the head up automatically with `--full_pipelin
 
 ### LTX-2.5 Modular
 
-LTX-2.5 is also available as a modular pipeline. The LTX-2.5 modular pipeline is configured to use the diffusion decoder and duration prediction by default. It implements multimodal guidance (CFG + STG + modality isolation) via video and audio `LTX2Guidance` `guider` components; video- and audio-specific guidance parameters can be specified on their respective guiders. By default, the modular pipeline will donwload the prompt enhancer and processor from the [google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) repo. Below is a T2V modular example:
+LTX-2.5 is also available as a modular pipeline. The LTX-2.5 modular pipeline is configured to use the diffusion decoder and duration prediction by default. It implements multimodal guidance (CFG + STG + modality isolation) via video and audio `LTX2Guidance` `guider` components; video- and audio-specific guidance parameters can be specified on their respective guiders. By default, the modular pipeline will download the prompt enhancer and processor from the [google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) repo. Below is a T2V modular example:
 
 ```py
 import torch
