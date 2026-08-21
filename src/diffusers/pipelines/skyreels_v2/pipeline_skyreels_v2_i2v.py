@@ -25,7 +25,7 @@ from ...image_processor import PipelineImageInput
 from ...loaders import SkyReelsV2LoraLoaderMixin
 from ...models import AutoencoderKLWan, SkyReelsV2Transformer3DModel
 from ...schedulers import UniPCMultistepScheduler
-from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
+from ...utils import BACKENDS_MAPPING, is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -94,7 +94,10 @@ EXAMPLE_DOC_STRING = """\
 
 
 def basic_clean(text):
-    text = ftfy.fix_text(text)
+    if is_ftfy_available():
+        text = ftfy.fix_text(text)
+    else:
+        logger.warning(BACKENDS_MAPPING["ftfy"][-1].format("Cleaning prompts"))
     text = html.unescape(html.unescape(text))
     return text.strip()
 
