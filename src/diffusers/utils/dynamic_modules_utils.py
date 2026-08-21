@@ -14,6 +14,7 @@
 # limitations under the License.
 """Utilities to dynamically load objects from the Hub."""
 
+import hashlib
 import importlib
 import inspect
 import json
@@ -199,6 +200,10 @@ def get_class_in_module(class_name, module_path, force_reload=False):
         cached_module: ModuleType | None = sys.modules.get(name)
         module_spec = importlib.util.spec_from_file_location(name, location=module_file)
 
+        # Hash the module file and all its relative imports to check if we need to reload it
+        module_files: list[Path] = [module_file] + sorted(map(Path, get_relative_import_files(module_file)))
+        module_hash: str = hashlib.sha256(b"".join(bytes(f) + f.read_bytes() for f in module_files)).hexdigest()
+
         module: ModuleType
         if cached_module is None:
             module = importlib.util.module_from_spec(module_spec)
@@ -207,7 +212,10 @@ def get_class_in_module(class_name, module_path, force_reload=False):
         else:
             module = cached_module
 
-        module_spec.loader.exec_module(module)
+        # reload in both cases, unless the module is already imported and the hash hits
+        if getattr(module, "__diffusers_module_hash__", "") != module_hash:
+            module_spec.loader.exec_module(module)
+            module.__diffusers_module_hash__ = module_hash
 
     if class_name is None:
         return find_pipeline_class(module)
