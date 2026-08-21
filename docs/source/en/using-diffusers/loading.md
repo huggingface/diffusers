@@ -147,7 +147,7 @@ pipeline.reset_device_map()
 
 ## Parallel loading
 
-Large models are often [sharded](../training/distributed_inference#model-sharding) into smaller files so that they are easier to load. Diffusers supports loading shards in parallel to speed up the loading process.
+Large models are often [sharded](../optimization/memory#sharded-checkpoints) into smaller files so that they are easier to load. Diffusers supports loading shards in parallel to speed up the loading process.
 
 Set `HF_ENABLE_PARALLEL_LOADING` to `"YES"` to enable parallel loading of shards.
 
