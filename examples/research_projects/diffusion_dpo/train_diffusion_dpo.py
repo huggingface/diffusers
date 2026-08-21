@@ -881,7 +881,7 @@ def main(args):
                 elif args.loss_type == "hinge":
                     loss = torch.relu(1 - args.beta_dpo * logits).mean()
                 elif args.loss_type == "ipo":
-                    losses = (logits - 1 / (2 * args.beta)) ** 2
+                    losses = (logits - 1 / (2 * args.beta_dpo)) ** 2
                     loss = losses.mean()
                 else:
                     raise ValueError(f"Unknown loss type {args.loss_type}")
