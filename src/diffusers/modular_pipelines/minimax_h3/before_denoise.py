@@ -1208,6 +1208,13 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
         Returns:
             `tuple[torch.Tensor, torch.Tensor]`: the distinct timesteps, sorted, and the index of every row into them.
         """
+        # The row plan is built on CPU and the caller moves the finished pair to the denoiser's device: `unique`
+        # has a data-dependent output shape, which an accelerator would rather not trace. The layout step hands the
+        # index tensors over already on that device, so bring them back for the scatter below — indexing a CPU
+        # tensor with an accelerator one does not work.
+        video_indices = video_indices.cpu()
+        audio_indices = audio_indices.cpu()
+
         sequence_length = int(video_indices.numel() + audio_indices.numel() + num_text_tokens)
         row_timesteps = torch.full((sequence_length,), video_timestep, dtype=torch.float32)
         row_timesteps[video_indices[:num_condition_video_rows]] = condition_video_timestep
