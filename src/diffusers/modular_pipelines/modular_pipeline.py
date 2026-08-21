@@ -758,6 +758,9 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         is because `get_execution_blocks()` resolves conditions statically by propagating intermediate output names
         without their runtime values.
 
+        Note: Trigger values arrive with their declared `InputParam` defaults applied — a trigger that is unset (None)
+        resolves to its declared default, both at runtime and in `get_execution_blocks()`.
+
         Args:
             **kwargs: Trigger input names and their values from the state.
 
@@ -766,9 +769,23 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         """
         raise NotImplementedError(f"Subclass {self.__class__.__name__} must implement the `select_block` method.")
 
+    def _resolve_trigger_kwargs(self, get_value):
+        """Build the kwargs for `select_block`: a trigger value of None means "unset" (matching input resolution
+        everywhere else), so it falls back to the trigger input's declared `InputParam` default. This is what makes
+        declared defaults reach `select_block` from `get_execution_blocks`, whose raw caller kwargs never pass
+        through `PipelineState`."""
+        defaults = {param.name: param.default for param in self.inputs if param.name in self.block_trigger_inputs}
+        trigger_kwargs = {}
+        for name in self.block_trigger_inputs:
+            if name is None:
+                continue
+            value = get_value(name)
+            trigger_kwargs[name] = value if value is not None else defaults.get(name)
+        return trigger_kwargs
+
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        trigger_kwargs = {name: state.get(name) for name in self.block_trigger_inputs if name is not None}
+        trigger_kwargs = self._resolve_trigger_kwargs(state.get)
         block_name = self.select_block(**trigger_kwargs)
 
         if block_name is None:
@@ -808,7 +825,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             - `ModularPipelineBlocks`: A leaf block or resolved `SequentialPipelineBlocks`
             - `None`: If this block would be skipped (no trigger matched and no default)
         """
-        trigger_kwargs = {name: kwargs.get(name) for name in self.block_trigger_inputs if name is not None}
+        trigger_kwargs = self._resolve_trigger_kwargs(kwargs.get)
         block_name = self.select_block(**trigger_kwargs)
 
         if block_name is None:
