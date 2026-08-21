@@ -70,7 +70,7 @@ diffusers-cli run \
 `--pipeline-kwargs` takes a JSON object that's forwarded to `pipeline(**kwargs)`. String values at known
 media-input keys are auto-loaded:
 
-- Images (`image`, `mask_image`, `control_image`, `ip_adapter_image`, `image_2`) → `PIL.Image` via
+- Images (`image`, `last_image`, `mask_image`, `control_image`, `ip_adapter_image`, `image_2`) → `PIL.Image` via
   `load_image`.
 - Videos (`video`, `control_video`) → `list[PIL.Image]` via `load_video`.
 - Audio (`initial_audio_waveforms`, `reference_audio`, `src_audio`) → `torch.Tensor` via `torchaudio.load`.
@@ -123,11 +123,17 @@ Configure how the CLI loads model weights and custom pipeline code.
 
 ### Optimizations
 
-- `--cpu-offload {model, group}` — `model` calls `enable_model_cpu_offload`; `group` calls
+- `--cpu-offload {model, group, auto}` — `model` calls `enable_model_cpu_offload`; `group` calls
   `enable_group_offload(offload_type="leaf_level", use_stream=True)`. Onload target comes from `--device-map`
   (which must be a plain device string for offload). See
   [Model offloading](../optimization/memory#model-offloading) and
-  [Group offloading](../optimization/memory#group-offloading).
+  [Group offloading](../optimization/memory#group-offloading). Modular pipelines support only `auto`, which
+  offloads through their [`ComponentsManager`](../modular_diffusers/components_manager); the standard modes
+  raise for them, and `auto` raises for standard pipelines.
+- `--offload-margin <size>` — device memory kept free for activations under `--cpu-offload auto`, passed to
+  `enable_auto_cpu_offload` as `memory_reserve_margin` (default `3GB`). Raise it when a large canvas runs out
+  of memory mid-forward: the offloader keeps components resident while they fit, so on a high-VRAM card the
+  default margin can leave too little room for the activations of a long video.
 - `--attention-backend {default, flash_hub, flash_varlen_hub, flash_4_hub, sage_hub}` — Hub-hosted attention
   kernels, auto-downloaded on first use. Transformer-based pipelines only; ignored with a warning on legacy UNet
   pipelines. See [Attention backends](../optimization/attention_backends).
@@ -140,6 +146,44 @@ Configure how the CLI loads model weights and custom pipeline code.
 - `--context-parallel` — Ulysses-style context parallelism on a DiT-based pipeline. Locally requires torchrun;
   under `--remote` the CLI wraps `torchrun --nproc-per-node=gpu` for you. See
   [Context parallelism](../training/distributed_inference#context-parallelism).
+
+### Modular pipelines
+
+`run` detects a [modular repo](../modular_diffusers/overview) automatically — either because it ships a
+`modular_model_index.json`, or because its `model_index.json` names a `ModularPipeline` subclass — so no flag
+is needed to opt in.
+
+Some modular repos define several **workflows**: named tasks that share components but differ in which blocks
+run and which inputs they take. [MiniMax-H3](../api/pipelines/minimax_h3), for example, offers `t2va` (text to
+video and audio), `fl2va` (first and/or last keyframe) and `ref2va` (an ordered mix of image, video and audio
+references). Pass `--workflow` to select one:
+
+```bash
+diffusers-cli run \
+    --model MiniMaxAI/MiniMax-H3 --workflow fl2va \
+    --pipeline-kwargs '{
+        "prompt": "the camera pushes in slowly as rain falls",
+        "image": "opening-frame.png",
+        "last_image": "closing-frame.png",
+        "num_frames": 124
+    }' \
+    --output-key videos --output-key audio \
+    --fps 24 --sampling-rate 32000 \
+    --cpu-offload auto --dtype bf16
+```
+
+Selecting a workflow keeps only that task's blocks, so the pipeline declares only the components it needs and
+`load_components` fetches only their subfolders. Omit `--workflow` to keep every workflow available and let the
+pipeline pick per call from the inputs it is given.
+
+```bash
+diffusers-cli --format json schema --model MiniMaxAI/MiniMax-H3 --trust-remote-code
+```
+
+`--workflow` applies to modular pipelines only; it is ignored with a warning on standard pipelines.
+
+A modular pipeline returns a [`PipelineState`](../modular_diffusers/modular_pipeline) rather than a single output object, so `--output-key` names the intermediate to save.
+
 
 ### Outputs
 
@@ -276,7 +320,7 @@ diffusers-cli skills add "<skill name>"
 # Install every skill in the registry
 diffusers-cli skills add --all
 
-# List available skills
+# List available skills with a one-line summary of each
 diffusers-cli skills list
 
 # Preview a skill's SKILL.md without installing
@@ -287,6 +331,13 @@ diffusers-cli skills update
 
 # Install to the user-level directory instead of the current project
 diffusers-cli skills add diffusers-cli --global
+
+# Install for one agent instead of detecting it from the environment
+diffusers-cli skills add --all --claude   # or --codex / --cursor
 ```
+
+Without a target flag, the CLI installs for whichever agent launched it, or for every agent when it can't tell.
+For Claude Code the skills are written as a plugin bundle at `.claude/skills/diffusers/`, so they are namespaced
+as `/diffusers:<skill name>`; Codex and Cursor get `.agents/skills/<skill name>/`.
 
 

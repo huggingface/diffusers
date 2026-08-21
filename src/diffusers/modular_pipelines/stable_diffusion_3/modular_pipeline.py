@@ -24,7 +24,6 @@ class StableDiffusion3ModularPipeline(ModularPipeline, SD3LoraLoaderMixin, FromS
     """
     A ModularPipeline for Stable Diffusion 3.
 
-    >[!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "StableDiffusion3AutoBlocks"

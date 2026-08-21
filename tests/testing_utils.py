@@ -486,6 +486,14 @@ def is_context_parallel(test_case):
     return pytest.mark.context_parallel(test_case)
 
 
+def is_tensor_parallel(test_case):
+    """
+    Decorator marking a test as a tensor parallel inference test. These tests can be filtered using:
+        pytest -m "not tensor_parallel" to skip pytest -m tensor_parallel to run only these tests
+    """
+    return pytest.mark.tensor_parallel(test_case)
+
+
 def is_cache(test_case):
     """
     Decorator marking a test as a cache test. These tests can be filtered using:
@@ -840,6 +848,16 @@ def require_bitsandbytes_version_greater(bnb_version):
         )(test_case)
 
     return decorator
+
+
+def require_hf_token(test_case):
+    """
+    Decorator marking a test that requires a Hugging Face auth token (e.g. to access gated repos). The test is
+    skipped when no token is available.
+    """
+    from huggingface_hub import get_token
+
+    return pytest.mark.skipif(get_token() is None, reason="test requires a Hugging Face auth token")(test_case)
 
 
 def require_hf_hub_version_greater(hf_hub_version):

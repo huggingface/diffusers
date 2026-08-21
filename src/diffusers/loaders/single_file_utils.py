@@ -149,6 +149,10 @@ CHECKPOINT_KEY_NAMES = {
         "net.pos_embedder.dim_spatial_range",
     ],
     "flux2": ["model.diffusion_model.single_stream_modulation.lin.weight", "single_stream_modulation.lin.weight"],
+    "chroma": [
+        "model.diffusion_model.distilled_guidance_layer.in_proj.bias",
+        "distilled_guidance_layer.in_proj.bias",
+    ],
     "ltx2": [
         "model.diffusion_model.av_ca_a2v_gate_adaln_single.emb.timestep_embedder.linear_1.weight",
         "vae.per_channel_statistics.mean-of-means",
@@ -204,6 +208,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "flux-depth": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Depth-dev"},
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
     "flux-2-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.2-dev"},
+    "chroma": {"pretrained_model_name_or_path": "lodestones/Chroma1-HD"},
     "ltx-video": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.0"},
     "ltx-video-0.9.1": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.1"},
     "ltx-video-0.9.5": {"pretrained_model_name_or_path": "Lightricks/LTX-Video-0.9.5"},
@@ -683,6 +688,9 @@ def infer_diffusers_model_type(checkpoint):
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux2"]):
         model_type = "flux-2-dev"
 
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["chroma"]):
+        model_type = "chroma"
+
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux"]):
         if any(
             g in checkpoint for g in ["guidance_in.in_layer.bias", "model.diffusion_model.guidance_in.in_layer.bias"]
@@ -754,17 +762,19 @@ def infer_diffusers_model_type(checkpoint):
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["wan"]):
         if "model.diffusion_model.patch_embedding.weight" in checkpoint:
-            target_key = "model.diffusion_model.patch_embedding.weight"
+            prefix = "model.diffusion_model."
         else:
-            target_key = "patch_embedding.weight"
+            prefix = ""
 
-        if CHECKPOINT_KEY_NAMES["wan_vace"] in checkpoint:
+        target_key = f"{prefix}patch_embedding.weight"
+
+        if f"{prefix}{CHECKPOINT_KEY_NAMES['wan_vace']}" in checkpoint:
             if checkpoint[target_key].shape[0] == 1536:
                 model_type = "wan-vace-1.3B"
             elif checkpoint[target_key].shape[0] == 5120:
                 model_type = "wan-vace-14B"
 
-        if CHECKPOINT_KEY_NAMES["wan_animate"] in checkpoint:
+        elif f"{prefix}{CHECKPOINT_KEY_NAMES['wan_animate']}" in checkpoint:
             model_type = "wan-animate-14B"
 
         elif checkpoint[target_key].shape[0] == 1536:

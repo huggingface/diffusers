@@ -77,7 +77,7 @@ There are a few ways to load a community pipeline.
   )
   ```
 
-- The `custom_pipeline` argument is also supported by [`~DiffusionPipeline.from_pipe`], which is useful for [reusing pipelines](./loading#reuse-a-pipeline) without using additional memory. It limits the memory usage to only the largest pipeline loaded.
+- The `custom_pipeline` argument is also supported by [`~DiffusionPipeline.from_pipe`], which is useful for [reusing pipelines](./loading#reusing-models-in-multiple-pipelines) without using additional memory. It limits the memory usage to only the largest pipeline loaded.
 
   ```py
   import torch

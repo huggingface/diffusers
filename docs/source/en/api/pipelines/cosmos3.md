@@ -41,7 +41,7 @@ Under the hood, a single `Cosmos3OmniTransformer` runs a Qwen-style language mod
 Two checkpoints are released on the Hub — [`nvidia/Cosmos3-Nano`](https://huggingface.co/nvidia/Cosmos3-Nano) (smaller, faster) and [`nvidia/Cosmos3-Super`](https://huggingface.co/nvidia/Cosmos3-Super) (larger, higher quality). The same pipeline class supports text-to-image, text-to-video, image-to-video, and (with a sound-capable checkpoint) text+image-to-video-with-sound — pick a repo and use the per-model tab in each workflow below.
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 ## Prompt upsampling
 
@@ -205,7 +205,7 @@ result.video[0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
 
 ## Image-to-video
 
-Pass a conditioning image via `image=`. The pipeline anchors frame 0 to the supplied image and denoises the rest. Upsample with `--mode image2video` to produce the JSON prompt.
+Pass a conditioning image via `image=`. The pipeline anchors frame 0 to the supplied image and denoises the rest. The image is resized while preserving its aspect ratio, center-cropped to the requested output size, and normalized with uint8-equivalent rounding. Upsample with `--mode image2video` to produce the JSON prompt.
 
 <hfoptions id="model">
 <hfoption id="Nano">

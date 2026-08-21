@@ -20,7 +20,13 @@ from diffusers import AutoencoderKLWan
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    SingleFileTesterMixin,
+    TrainingTesterMixin,
+)
 from .testing_utils import NewAutoencoderTesterMixin
 
 
@@ -86,3 +92,17 @@ class TestAutoencoderKLWanMemory(AutoencoderKLWanTesterConfig, MemoryTesterMixin
 
 class TestAutoencoderKLWanSlicingTiling(AutoencoderKLWanTesterConfig, NewAutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLWan."""
+
+
+class TestAutoencoderKLWanSingleFile(AutoencoderKLWanTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "vae"}
