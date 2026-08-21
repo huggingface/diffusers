@@ -16,7 +16,6 @@ from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import ABotWorldPrepareStep
-from .decoders import ABotWorldDecodeStep
 from .denoise import ABotWorldRolloutStep, ABotWorldStreamingRolloutStep
 from .encoders import ABotWorldImageEncoderStep, ABotWorldRefImagesEncoderStep, ABotWorldTextEncoderStep
 
@@ -39,7 +38,8 @@ class ABotWorldCoreDenoiseStep(SequentialPipelineBlocks):
     block conditioned on the per-block actions.
 
       Components:
-          transformer (`ABotWorldTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          transformer (`ABotWorldTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) vae
+          (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
 
       Inputs:
           actions (`list`, *optional*):
@@ -78,8 +78,12 @@ class ABotWorldCoreDenoiseStep(SequentialPipelineBlocks):
               This block's working latents `[B, C, F, h, w]`
           current_start (`int`):
               Token offset of this block in the rollout: `k * F * tokens_per_frame`
-          video_latents (`Tensor`):
-              The rollout's accumulated latents `[B, C, num_blocks * F, h, w]`
+          frames (`ndarray`):
+              This block's decoded frames `[T, H, W, 3]`
+          decode_cache (`WanDecodeCache`):
+              The VAE's causal-conv cache after this block, carried to the next block
+          videos (`list`):
+              The generated videos
     """
 
     model_name = "abot-world"
@@ -100,7 +104,6 @@ BLOCKS = InsertableDict(
         ("image_encoder", ABotWorldImageEncoderStep()),
         ("ref_encoder", ABotWorldRefImagesEncoderStep()),
         ("denoise", ABotWorldCoreDenoiseStep()),
-        ("decode", ABotWorldDecodeStep()),
     ]
 )
 
@@ -120,8 +123,8 @@ class ABotWorldStreamingCoreDenoiseStep(SequentialPipelineBlocks):
     the world out block by block, decoding each block to pixels inside the loop.
 
       Components:
-          transformer (`ABotWorldTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) vae
-          (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          transformer (`ABotWorldTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) tiny_vae
+          (`AutoencoderTinyVideo`) video_processor (`VideoProcessor`)
 
       Inputs:
           actions (`list`, *optional*):
@@ -166,8 +169,8 @@ class ABotWorldStreamingCoreDenoiseStep(SequentialPipelineBlocks):
               Token offset of this block in the rollout: `k * F * tokens_per_frame`
           frames (`ndarray`):
               This block's decoded frames `[T, H, W, 3]`
-          decode_cache (`WanDecodeCache`):
-              The VAE's causal-conv cache after this block, carried to the next block
+          decode_cache (`TinyVideoDecodeCache`):
+              The tiny VAE's memory after this block, carried to the next block
           videos (`list`):
               The generated videos
     """
@@ -204,8 +207,8 @@ class ABotWorldStreamingBlocks(SequentialPipelineBlocks):
 
       Components:
           text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) vae (`AutoencoderKLWan`) transformer
-          (`ABotWorldTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) video_processor
-          (`VideoProcessor`)
+          (`ABotWorldTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) tiny_vae
+          (`AutoencoderTinyVideo`) video_processor (`VideoProcessor`)
 
       Inputs:
           prompt (`str`):
@@ -259,8 +262,8 @@ class ABotWorldStreamingBlocks(SequentialPipelineBlocks):
               Token offset of this block in the rollout: `k * F * tokens_per_frame`
           frames (`ndarray`):
               This block's decoded frames `[T, H, W, 3]`
-          decode_cache (`WanDecodeCache`):
-              The VAE's causal-conv cache after this block, carried to the next block
+          decode_cache (`TinyVideoDecodeCache`):
+              The tiny VAE's memory after this block, carried to the next block
           videos (`list`):
               The generated videos
     """
@@ -317,8 +320,6 @@ class ABotWorldBlocks(SequentialPipelineBlocks):
               Latent frames generated per block (the model was trained with 3)
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          output_type (`None`, *optional*, defaults to np):
-              TODO: Add description.
 
       Outputs:
           prompt_embeds (`Tensor`):
@@ -341,9 +342,11 @@ class ABotWorldBlocks(SequentialPipelineBlocks):
               This block's working latents `[B, C, F, h, w]`
           current_start (`int`):
               Token offset of this block in the rollout: `k * F * tokens_per_frame`
-          video_latents (`Tensor`):
-              The rollout's accumulated latents `[B, C, num_blocks * F, h, w]`
-          videos (`list | list | list`):
+          frames (`ndarray`):
+              This block's decoded frames `[T, H, W, 3]`
+          decode_cache (`WanDecodeCache`):
+              The VAE's causal-conv cache after this block, carried to the next block
+          videos (`list`):
               The generated videos
     """
 

@@ -19,8 +19,9 @@ import torch
 from tqdm import tqdm
 
 from ...configuration_utils import FrozenDict
-from ...models import ABotWorldTransformer3DModel, AutoencoderKLWan
+from ...models import ABotWorldTransformer3DModel, AutoencoderKLWan, AutoencoderTinyVideo
 from ...models.autoencoders.autoencoder_kl_wan import WanDecodeCache
+from ...models.autoencoders.autoencoder_tiny_video import TinyVideoDecodeCache
 from ...models.transformers.transformer_abot_world import ABotWorldKVCache
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
@@ -439,6 +440,131 @@ class ABotWorldCacheUpdateStep(ModularLoopPipelineBlocks):
         return components, state
 
 
+class ABotWorldDecodeStep(ModularLoopPipelineBlocks):
+    model_name = "abot-world"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the rollout loop that decodes the finished block to pixels with the full Wan VAE. The causal "
+            "VAE continues from the previous blocks through a loop-carried decode cache, so only the new block's "
+            "latents are decoded and the frames match a single decode of the whole rollout."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("latents", required=True, type_hint=torch.Tensor, description="The denoised block latents"),
+            InputParam(
+                "decode_cache",
+                type_hint=WanDecodeCache,
+                description="The VAE's causal-conv cache carried over from the previous blocks; `None` for the first block",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("frames", type_hint=np.ndarray, description="This block's decoded frames `[T, H, W, 3]`"),
+            OutputParam(
+                "decode_cache",
+                type_hint=WanDecodeCache,
+                description="The VAE's causal-conv cache after this block, carried to the next block",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState, k: int):
+        block_state = self.get_block_state(state)
+        vae = components.vae
+
+        latents = block_state.latents.to(vae.dtype)
+        latents_mean = torch.tensor(vae.config.latents_mean, device=latents.device, dtype=vae.dtype).view(
+            1, -1, 1, 1, 1
+        )
+        latents_std = torch.tensor(vae.config.latents_std, device=latents.device, dtype=vae.dtype).view(1, -1, 1, 1, 1)
+
+        cache = block_state.decode_cache if block_state.decode_cache is not None else WanDecodeCache()
+        video = vae.decode(latents * latents_std + latents_mean, return_dict=False, cache=cache)[0]
+        block_state.frames = components.video_processor.postprocess_video(video, output_type="np")[0]
+        block_state.decode_cache = cache
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ABotWorldTinyDecodeStep(ModularLoopPipelineBlocks):
+    model_name = "abot-world"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the rollout loop that decodes the finished block to pixels with the tiny VAE (`taew2_2`), "
+            "fast enough for real-time play. The decoder continues from the previous blocks through a loop-carried "
+            "decode cache, so only the new block's latents are decoded."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("tiny_vae", AutoencoderTinyVideo),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("latents", required=True, type_hint=torch.Tensor, description="The denoised block latents"),
+            InputParam(
+                "decode_cache",
+                type_hint=TinyVideoDecodeCache,
+                description="The tiny VAE's memory carried over from the previous blocks; `None` for the first block",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("frames", type_hint=np.ndarray, description="This block's decoded frames `[T, H, W, 3]`"),
+            OutputParam(
+                "decode_cache",
+                type_hint=TinyVideoDecodeCache,
+                description="The tiny VAE's memory after this block, carried to the next block",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState, k: int):
+        block_state = self.get_block_state(state)
+        tiny_vae = components.tiny_vae
+
+        # the tiny VAE works in the normalized latent space the transformer produces
+        cache = block_state.decode_cache if block_state.decode_cache is not None else TinyVideoDecodeCache()
+        video = tiny_vae.decode(block_state.latents.to(tiny_vae.dtype), return_dict=False, cache=cache)[0]
+        block_state.frames = components.video_processor.postprocess_video(video, output_type="np")[0]
+        block_state.decode_cache = cache
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class ABotWorldRolloutWrapper(IterativePipelineBlocks):
     model_name = "abot-world"
 
@@ -450,14 +576,15 @@ class ABotWorldRolloutWrapper(IterativePipelineBlocks):
     def description(self) -> str:
         return (
             "Pipeline block that rolls the world out block by block: at each block it encodes the block's action, "
-            "draws noise, runs the distilled denoising loop against the rolling K/V cache, and writes the finished "
-            "block back into the cache. Drive it through `loop_step(components, state, k=k)` to own the iteration — "
-            "write new `actions` into the state between calls for live interaction."
+            "draws noise, runs the distilled denoising loop against the rolling K/V cache, writes the finished block "
+            "back into the cache and decodes it to pixels. Drive it through `loop_step(components, state, k=k)` to "
+            "own the iteration — write new `actions` into the state between calls for live interaction."
         )
 
     @property
     def inputs(self) -> list[InputParam]:
-        inputs = super().inputs
+        # `decode_cache` is loop-carried — produced by the decode step of the previous iteration, never user-provided
+        inputs = [param for param in super().inputs if param.name != "decode_cache"]
         names = {param.name for param in inputs}
         # `actions` is also consumed by the loop logic itself (the rollout length)
         loop_inputs = [
@@ -472,13 +599,9 @@ class ABotWorldRolloutWrapper(IterativePipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        # produced by the loop logic itself, which collects each finished block
+        # produced by the loop logic itself, which collects each block's decoded frames
         return super().intermediate_outputs + [
-            OutputParam(
-                "video_latents",
-                type_hint=torch.Tensor,
-                description="The rollout's accumulated latents `[B, C, num_blocks * F, h, w]`",
-            ),
+            OutputParam("videos", type_hint=list[np.ndarray], description="The generated videos"),
         ]
 
     @torch.no_grad()
@@ -490,13 +613,13 @@ class ABotWorldRolloutWrapper(IterativePipelineBlocks):
                 "interactively, call `loop_step` yourself and write `action` into the state between calls."
             )
 
-        video_latents = []
+        frames = []
         with tqdm(total=block_state.actions.shape[0], desc="Rollout") as progress_bar:
             for k in range(block_state.actions.shape[0]):
                 components, state = self.loop_step(components, state, k=k)
-                video_latents.append(state.get("latents"))
+                frames.append(state.get("frames"))
                 progress_bar.update()
-        state.set("video_latents", torch.cat(video_latents, dim=2))
+        state.set("videos", [np.concatenate(frames, axis=0)])
 
         return components, state
 
@@ -509,11 +632,11 @@ class ABotWorldRolloutWrapper(IterativePipelineBlocks):
                 "interactively, call `loop_step` yourself and write `action` into the state between calls."
             )
 
-        video_latents = []
+        frames = []
         for k in range(block_state.actions.shape[0]):
             components, state = yield from self.stream_step(components, state, k=k)
-            video_latents.append(state.get("latents"))
-        state.set("video_latents", torch.cat(video_latents, dim=2))
+            frames.append(state.get("frames"))
+        state.set("videos", [np.concatenate(frames, axis=0)])
 
         return components, state
 
@@ -524,15 +647,16 @@ class ABotWorldRolloutStep(ABotWorldRolloutWrapper):
         ABotWorldPrepareNoiseStep,
         ABotWorldDenoiseStep,
         ABotWorldCacheUpdateStep,
+        ABotWorldDecodeStep,
     ]
-    block_names = ["set_action", "prepare_noise", "denoise", "cache_update"]
+    block_names = ["set_action", "prepare_noise", "denoise", "cache_update", "decode"]
 
     @property
     def description(self) -> str:
         return (
-            "Rollout step that generates the world block by block.\n"
+            "Rollout step that generates and decodes the world block by block.\n"
             "At each block: set_action -> prepare_noise -> denoise (a nested distilled denoising loop) -> "
-            "cache_update."
+            "cache_update -> decode."
         )
 
 
@@ -595,71 +719,6 @@ class ABotWorldCurrentActionStep(ModularLoopPipelineBlocks):
             .repeat_interleave(4, dim=1)
             .repeat(1, 1, block_state.num_frames_per_block, block_state.height, block_state.width)
         )
-
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class ABotWorldStreamingDecodeStep(ModularLoopPipelineBlocks):
-    model_name = "abot-world"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Step within the streaming rollout loop that decodes the finished block to pixels. The causal VAE "
-            "continues from the previous blocks through a loop-carried decode cache, so only the new block's latents "
-            "are decoded and the frames match a single decode of the whole rollout."
-        )
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("vae", AutoencoderKLWan),
-            ComponentSpec(
-                "video_processor",
-                VideoProcessor,
-                config=FrozenDict({"vae_scale_factor": 16}),
-                default_creation_method="from_config",
-            ),
-        ]
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam("latents", required=True, type_hint=torch.Tensor, description="The denoised block latents"),
-            InputParam(
-                "decode_cache",
-                type_hint=WanDecodeCache,
-                description="The VAE's causal-conv cache carried over from the previous blocks; `None` for the first block",
-            ),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam("frames", type_hint=np.ndarray, description="This block's decoded frames `[T, H, W, 3]`"),
-            OutputParam(
-                "decode_cache",
-                type_hint=WanDecodeCache,
-                description="The VAE's causal-conv cache after this block, carried to the next block",
-            ),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components, state: PipelineState, k: int):
-        block_state = self.get_block_state(state)
-        vae = components.vae
-
-        latents = block_state.latents.to(vae.dtype)
-        latents_mean = torch.tensor(vae.config.latents_mean, device=latents.device, dtype=vae.dtype).view(
-            1, -1, 1, 1, 1
-        )
-        latents_std = torch.tensor(vae.config.latents_std, device=latents.device, dtype=vae.dtype).view(1, -1, 1, 1, 1)
-
-        cache = block_state.decode_cache if block_state.decode_cache is not None else WanDecodeCache()
-        video = vae.decode(latents * latents_std + latents_mean, return_dict=False, cache=cache)[0]
-        block_state.frames = components.video_processor.postprocess_video(video, output_type="np")[0]
-        block_state.decode_cache = cache
 
         self.set_block_state(state, block_state)
         return components, state
@@ -765,7 +824,7 @@ class ABotWorldStreamingRolloutStep(ABotWorldStreamingRolloutWrapper):
         ABotWorldPrepareNoiseStep,
         ABotWorldDenoiseStep,
         ABotWorldCacheUpdateStep,
-        ABotWorldStreamingDecodeStep,
+        ABotWorldTinyDecodeStep,
     ]
     block_names = ["set_action", "prepare_noise", "denoise", "cache_update", "decode"]
 

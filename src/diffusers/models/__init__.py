@@ -57,6 +57,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_rae"] = ["AutoencoderRAE"]
     _import_structure["autoencoders.autoencoder_same"] = ["AutoencoderSAME"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
+    _import_structure["autoencoders.autoencoder_tiny_video"] = ["AutoencoderTinyVideo"]
     _import_structure["autoencoders.autoencoder_vidtok"] = ["AutoencoderVidTok"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.ltx2_diffusion_decoder"] = ["LTX2VideoDiffusionDecoderModel"]
@@ -202,6 +203,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderRAE,
             AutoencoderSAME,
             AutoencoderTiny,
+            AutoencoderTinyVideo,
             AutoencoderVidTok,
             ConsistencyDecoderVAE,
             Cosmos3AVAEAudioTokenizer,
