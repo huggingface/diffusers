@@ -15,13 +15,12 @@
 import sys
 import unittest
 
-import numpy as np
 import torch
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, ZImagePipeline, ZImageTransformer2DModel
 
-from ..testing_utils import floats_tensor, is_peft_available, require_peft_backend, skip_mps, torch_device
+from ..testing_utils import floats_tensor, is_peft_available, require_peft_backend
 
 
 if is_peft_available():
@@ -30,7 +29,7 @@ if is_peft_available():
 
 sys.path.append(".")
 
-from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
@@ -162,87 +161,6 @@ class ZImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return pipeline_components, text_lora_config, denoiser_lora_config
 
-    def test_correct_lora_configs_with_different_ranks(self):
-        components, _, denoiser_lora_config = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-
-        lora_output_same_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        pipe.transformer.delete_adapters("adapter-1")
-
-        denoiser = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-        for name, _ in denoiser.named_modules():
-            if "to_k" in name and "attention" in name and "lora" not in name:
-                module_name_to_rank_update = name.replace(".base_layer.", ".")
-                break
-
-        # change the rank_pattern
-        updated_rank = denoiser_lora_config.r * 2
-        denoiser_lora_config.rank_pattern = {module_name_to_rank_update: updated_rank}
-
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-        updated_rank_pattern = pipe.transformer.peft_config["adapter-1"].rank_pattern
-
-        self.assertTrue(updated_rank_pattern == {module_name_to_rank_update: updated_rank})
-
-        lora_output_diff_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        self.assertTrue(not np.allclose(original_output, lora_output_same_rank, atol=1e-3, rtol=1e-3))
-        self.assertTrue(not np.allclose(lora_output_diff_rank, lora_output_same_rank, atol=1e-3, rtol=1e-3))
-
-        pipe.transformer.delete_adapters("adapter-1")
-
-        # similarly change the alpha_pattern
-        updated_alpha = denoiser_lora_config.lora_alpha * 2
-        denoiser_lora_config.alpha_pattern = {module_name_to_rank_update: updated_alpha}
-
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-        self.assertTrue(
-            pipe.transformer.peft_config["adapter-1"].alpha_pattern == {module_name_to_rank_update: updated_alpha}
-        )
-
-        lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
-        self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
-
-    @skip_mps
-    def test_lora_fuse_nan(self):
-        components, _, denoiser_lora_config = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
-        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
-        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
-
-        # corrupt one LoRA weight with `inf` values
-        with torch.no_grad():
-            possible_tower_names = ["noise_refiner"]
-            filtered_tower_names = [
-                tower_name for tower_name in possible_tower_names if hasattr(pipe.transformer, tower_name)
-            ]
-            for tower_name in filtered_tower_names:
-                transformer_tower = getattr(pipe.transformer, tower_name)
-                transformer_tower[0].attention.to_q.lora_A["adapter-1"].weight += float("inf")
-
-        # with `safe_fusing=True` we should see an Error
-        with self.assertRaises(ValueError):
-            pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=True)
-
-        # without we should not see an error, but every image will be black
-        pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
-        out = pipe(**inputs)[0]
-
-        self.assertTrue(np.isnan(out).all())
-
     def test_lora_scale_kwargs_match_fusion(self):
         super().test_lora_scale_kwargs_match_fusion(5e-2, 5e-2)
 
@@ -260,8 +178,4 @@ class ZImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @unittest.skip("Not supported in ZImage.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
-        pass
-
-    @unittest.skip("Not supported in ZImage.")
-    def test_modify_padding_mode(self):
         pass

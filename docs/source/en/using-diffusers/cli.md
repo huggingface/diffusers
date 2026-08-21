@@ -320,7 +320,7 @@ diffusers-cli skills add "<skill name>"
 # Install every skill in the registry
 diffusers-cli skills add --all
 
-# List available skills
+# List available skills with a one-line summary of each
 diffusers-cli skills list
 
 # Preview a skill's SKILL.md without installing
@@ -331,6 +331,13 @@ diffusers-cli skills update
 
 # Install to the user-level directory instead of the current project
 diffusers-cli skills add diffusers-cli --global
+
+# Install for one agent instead of detecting it from the environment
+diffusers-cli skills add --all --claude   # or --codex / --cursor
 ```
+
+Without a target flag, the CLI installs for whichever agent launched it, or for every agent when it can't tell.
+For Claude Code the skills are written as a plugin bundle at `.claude/skills/diffusers/`, so they are namespaced
+as `/diffusers:<skill name>`; Codex and Cursor get `.agents/skills/<skill name>/`.
 
 
