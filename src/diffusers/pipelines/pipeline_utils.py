@@ -1208,6 +1208,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 automatically detect the available accelerator and use.
         """
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
+        self._maybe_raise_error_if_tensor_parallel_active(raise_error=True)
 
         is_pipeline_device_mapped = self._is_pipeline_device_mapped()
         if is_pipeline_device_mapped:
@@ -1326,6 +1327,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 automatically detect the available accelerator and use.
         """
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
+        self._maybe_raise_error_if_tensor_parallel_active(raise_error=True)
 
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
@@ -2268,6 +2270,29 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                         "You are trying to apply model/sequential CPU offloading to a pipeline that contains components "
                         "with group offloading enabled. This is not supported. Please disable group offloading for "
                         "components of the pipeline to use other offloading methods."
+                    )
+                return True
+        return False
+
+    def _maybe_raise_error_if_tensor_parallel_active(
+        self, raise_error: bool = False, module: torch.nn.Module | None = None
+    ) -> bool:
+        """Whether any component is sharded with tensor parallelism, which CPU offloading cannot be applied on top of.
+
+        A tensor-parallel component's parameters are `DTensor` shards tied to that rank's device and process group;
+        moving them to CPU and back, as the offload hooks do, is not supported.
+        """
+        components = self.components.values() if module is None else [module]
+        components = [component for component in components if isinstance(component, torch.nn.Module)]
+        for component in components:
+            parallel_config = getattr(component, "_parallel_config", None)
+            if parallel_config is not None and parallel_config.tensor_parallel_config is not None:
+                if raise_error:
+                    raise ValueError(
+                        f"You are trying to apply model/sequential CPU offloading to a pipeline whose "
+                        f"'{component.__class__.__name__}' is sharded with tensor parallelism. This is not supported: "
+                        f"tensor parallelism already keeps only one shard of each weight per rank, so offloading is "
+                        f"not needed on top of it."
                     )
                 return True
         return False
