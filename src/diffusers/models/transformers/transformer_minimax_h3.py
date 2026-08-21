@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...hooks.tensor_parallel import PackedColwiseParallel
+from ...hooks.tensor_parallel import PackedColwiseParallel, ReplicatedInputRowwiseParallel
 from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
@@ -457,10 +457,20 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
     # packed projection is the SwiGLU input `ff.net.0.proj`, a single Linear producing `[value; gate]` in equal
     # halves, hence PackedColwiseParallel([1, 1]) so each half is sharded independently.
     #
+    # `adaln_proj.linear` is the one projection that has to keep its full output width: the six modulation
+    # parameters it produces scale and shift the full hidden dim of the packed sequence, which is already all-reduced
+    # by the time they are applied. Sharding it colwise would need an all-gather to rebuild that width, so it is
+    # sharded `ReplicatedInputRowwiseParallel` instead — over its `time_embed_dim` input, reading the replicated
+    # `temb` and all-reducing the result. It is worth the collective: at `6 * hidden_size * MINIMAX_H3_MODALITY_NUM`
+    # outputs per block it is ~40% of the denoiser's weights, and leaving it replicated puts the per-rank floor above
+    # a single device's memory at any TP degree. The all-reduce itself is over `num_timesteps * 6 * hidden_size *
+    # MINIMAX_H3_MODALITY_NUM` elements, i.e. hundreds of KB, once per block per step.
+    #
     # Intentionally absent, i.e. replicated on every rank: the RMSNorms (`norm1`, `norm2`,
     # `token_refiner.final_norm`, `norm_out.norm`); the QK-norms, which apply over `head_dim` after the heads are
-    # already split; the AdaLN modulation (`adaln_proj.linear`, `norm_out.linear`), which indexes the full hidden
-    # dim; and the patch/text embedders and the two output heads.
+    # already split; `norm_out.linear`, which indexes the full hidden dim as `adaln_proj` does but is a single
+    # `2 * hidden_size` projection rather than one per block, so sharding it would buy nothing; and the patch/text
+    # embedders and the two output heads.
     #
     # `attn.to_qkv` is deliberately not listed: it only exists after `fuse_projections()`, and the plan is
     # resolved by attribute lookup, so an unconditional entry would break the ordinary unfused model.
@@ -472,6 +482,7 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         "transformer_blocks.*.attn.to_out.0": "rowwise",
         "transformer_blocks.*.ff.net.0.proj": PackedColwiseParallel([1, 1]),
         "transformer_blocks.*.ff.net.2": "rowwise",
+        "transformer_blocks.*.adaln_proj.linear": ReplicatedInputRowwiseParallel(),
         # the token-refiner blocks are the same attention + SwiGLU FFN, minus AdaLN and rotary
         "token_refiner.refiner_blocks.*.attn.to_q": "colwise",
         "token_refiner.refiner_blocks.*.attn.to_k": "colwise",

@@ -50,6 +50,20 @@ class PackedRowwiseParallel:
         self.blocks = blocks
 
 
+class ReplicatedInputRowwiseParallel:
+    """Row-wise sharding for a Linear whose input arrives replicated instead of column-sharded.
+
+    Plain `"rowwise"` is the second half of a colwise/rowwise pair, so it expects its input to already be `Shard(-1)`
+    — which it is when the preceding Linear was colwise-sharded. A Linear that instead reads a replicated activation,
+    such as a modulation projection off the shared timestep embedding, needs its input sharded on the way in (a local
+    narrow, no collective) and its partial output all-reduced on the way out.
+
+    Weight and bias shard exactly as for plain `"rowwise"`: the weight over its input columns, the bias replicated and
+    added after the all-reduce. Use this to shard a large standalone projection whose output must keep the full
+    feature dimension, where colwise sharding would need an extra all-gather to rebuild it.
+    """
+
+
 def _blocks_to_block_sizes(total_size: int, blocks: "list[int]") -> "list[int]":
     """Convert proportional block counts to absolute sizes.
 
@@ -187,7 +201,8 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict) -> "dict[str, 
             if style == "colwise":
                 weight_spec = TPShardSpec(0, [submodule.weight.shape[0]])
                 bias_spec = weight_spec
-            elif style == "rowwise":
+            elif style == "rowwise" or isinstance(style, ReplicatedInputRowwiseParallel):
+                # Both place the weight the same way; they differ only in the forward input/output hooks.
                 weight_spec = TPShardSpec(1, [submodule.weight.shape[1]])
                 bias_spec = TPShardSpec(None, None)
             elif isinstance(style, PackedColwiseParallel):
@@ -201,7 +216,8 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict) -> "dict[str, 
             else:
                 raise ValueError(
                     f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                    f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                    f"Expected 'colwise', 'rowwise', PackedColwiseParallel, PackedRowwiseParallel, or "
+                    f"ReplicatedInputRowwiseParallel."
                 )
 
             specs[f"{path}.weight"] = weight_spec
@@ -256,9 +272,10 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
 def _styles(relative_plan: dict) -> dict:
     """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
 
-    Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel` marker
-    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`, each subclassed to
-    reject a sharded dim that is not divisible by the TP degree.
+    Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel` /
+    `ReplicatedInputRowwiseParallel` marker instances. Returns `{relative_path: ColwiseParallel() |
+    RowwiseParallel() | <packed impl>}`, each subclassed to reject a sharded dim that is not divisible by the TP
+    degree.
     """
     import torch.nn as nn
     from torch.distributed.tensor import DTensor, Replicate, Shard, distribute_tensor
@@ -334,7 +351,7 @@ def _styles(relative_plan: dict) -> dict:
 
         return _CheckedColwiseImpl()
 
-    def _make_checked_row(path: str) -> RowwiseParallel:
+    def _make_checked_row(path: str, replicated_input: bool = False) -> RowwiseParallel:
         class _CheckedRowwiseImpl(RowwiseParallel):
             def _partition_linear_fn(self, name, module, device_mesh):
                 tp_size = device_mesh.size()
@@ -346,7 +363,10 @@ def _styles(relative_plan: dict) -> dict:
                     )
                 super()._partition_linear_fn(name, module, device_mesh)
 
-        return _CheckedRowwiseImpl()
+        # `input_layouts=Replicate()` makes `prepare_input` narrow the replicated activation down to this rank's
+        # columns rather than trusting it to already be `Shard(-1)`; the default would read a full-width tensor as
+        # if it were one rank's shard.
+        return _CheckedRowwiseImpl(input_layouts=Replicate()) if replicated_input else _CheckedRowwiseImpl()
 
     resolved = {}
     for path, style in relative_plan.items():
@@ -354,6 +374,8 @@ def _styles(relative_plan: dict) -> dict:
             resolved[path] = _make_checked_col(path)
         elif style == "rowwise":
             resolved[path] = _make_checked_row(path)
+        elif isinstance(style, ReplicatedInputRowwiseParallel):
+            resolved[path] = _make_checked_row(path, replicated_input=True)
         elif isinstance(style, PackedColwiseParallel):
             resolved[path] = _make_packed_col(style)
         elif isinstance(style, PackedRowwiseParallel):
@@ -361,7 +383,8 @@ def _styles(relative_plan: dict) -> dict:
         else:
             raise ValueError(
                 f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, PackedRowwiseParallel, or "
+                f"ReplicatedInputRowwiseParallel."
             )
     return resolved
 
@@ -377,6 +400,7 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
     targeted module into a `Replicate()` DTensor via a broadcast. Callers should therefore place every planned
     parameter themselves, and must ensure none is left on `meta` — the broadcast would be issued on a meta tensor.
     """
+    from torch.distributed.tensor import Replicate
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
 
     class _NoPartitionColwise(ColwiseParallel):
@@ -393,10 +417,13 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
             resolved[path] = _NoPartitionColwise()
         elif style == "rowwise" or isinstance(style, PackedRowwiseParallel):
             resolved[path] = _NoPartitionRowwise()
+        elif isinstance(style, ReplicatedInputRowwiseParallel):
+            resolved[path] = _NoPartitionRowwise(input_layouts=Replicate())
         else:
             raise ValueError(
                 f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, PackedRowwiseParallel, or "
+                f"ReplicatedInputRowwiseParallel."
             )
     return resolved
 
