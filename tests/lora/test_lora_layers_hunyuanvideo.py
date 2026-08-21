@@ -170,10 +170,6 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in HunyuanVideo.")
-    def test_modify_padding_mode(self):
-        pass
-
 
 @nightly
 @require_torch_accelerator

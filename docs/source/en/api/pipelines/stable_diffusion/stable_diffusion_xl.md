@@ -426,7 +426,7 @@ image
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-double-prompt.png" alt="generated image of an astronaut in a jungle in the style of a van gogh painting"/>
 </div>
 
-The dual text-encoders also support textual inversion embeddings that need to be loaded separately as explained in the [SDXL textual inversion](../../../using-diffusers/textual_inversion_inference#stable-diffusion-xl) section.
+The dual text-encoders also support textual inversion embeddings that need to be loaded separately as explained in the [textual inversion](../../../using-diffusers/textual_inversion_inference) guide.
 
 ## Optimizations
 

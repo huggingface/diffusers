@@ -18,7 +18,7 @@ The abstract from the paper is:
 The original codebase can be found at [openai/shap-e](https://github.com/openai/shap-e).
 
 > [!TIP]
-> See the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> See the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 Make sure you have the following libraries installed.
 
