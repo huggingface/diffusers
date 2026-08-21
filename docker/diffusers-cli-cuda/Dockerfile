@@ -37,9 +37,11 @@ ENV PATH="/root/.local/bin:$PATH"
 # instead if that assumption ever stops holding.
 RUN python -c "import torch, torchvision, torchaudio"
 
-# `uv pip install --system` targets the base image's Python (/opt/conda), which is the same
-# interpreter the CLI installs into at runtime when `--dependencies` adds extras on top.
-RUN uv pip install --system --no-cache-dir \
+# `uv pip install --system` targets the base image's Python — Ubuntu's system interpreter, which
+# is where torch already lives and where the CLI installs `--dependencies` extras at runtime.
+# --break-system-packages bypasses the PEP 668 marker that interpreter carries; harmless in a
+# single-purpose image, and it matches what the CLI does inside the sandbox.
+RUN uv pip install --system --break-system-packages --no-cache-dir \
     "huggingface_hub[hf_xet]>=1.23" \
     accelerate \
     transformers \
@@ -50,7 +52,7 @@ RUN uv pip install --system --no-cache-dir \
     imageio \
     imageio-ffmpeg
 
-RUN uv pip install --system --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers"
+RUN uv pip install --system --break-system-packages --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers"
 
 # Smoke-test the console script the sandbox invokes, so a broken install fails the build.
 RUN diffusers-cli env
