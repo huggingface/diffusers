@@ -23,6 +23,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import torch_device
 from ..testing_utils import (
+    AttentionBackendTesterMixin,
     BaseModelTesterConfig,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -130,3 +131,7 @@ class TestErnieImageTransformerCompile(ErnieImageTransformerTesterConfig, TorchC
     @pytest.mark.skip(reason="Fullgraph is broken.")
     def test_compile_on_different_shapes(self):
         super().test_compile_on_different_shapes()
+
+
+class TestErnieImageTransformerAttentionBackend(ErnieImageTransformerTesterConfig, AttentionBackendTesterMixin):
+    """Attention backend tests for ErnieImage Transformer."""
