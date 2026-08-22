@@ -11,30 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# This file is modified from https://github.com/PixArt-alpha/PixArt-sigma
 
 from __future__ import annotations
 
 import copy
 import math
-import os
 from collections.abc import Iterable
 from copy import deepcopy
 from functools import lru_cache, partial
 from itertools import repeat as _itertools_repeat
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.modules.batchnorm import _BatchNorm
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_timm_available, logging
 from ..embeddings import get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import FP32LayerNorm
 from .transformer_sana_wm_kernels import (
     _prepare_ucpe_rope_tables,
     _process_camera_conditions_raymats_only,
@@ -91,7 +89,7 @@ class ShortConvolution(nn.Module):
         self.hidden_size = hidden_size
         self.kernel_size = kernel_size
         # Same parameter layout as the reference implementation: (C, 1, K).
-        self.weight = nn.Parameter(torch.empty(hidden_size, 1, kernel_size))
+        self.weight = nn.Parameter(torch.zeros(hidden_size, 1, kernel_size))
         self.bias = nn.Parameter(torch.zeros(hidden_size)) if bias else None
         nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
 
@@ -153,41 +151,17 @@ def build_act(name: Optional[str], **kwargs) -> Optional[nn.Module]:
         raise ValueError(f"do not support: {name}")
 
 
-def get_act_name(act: Optional[nn.Module]) -> Optional[str]:
-    if act is None:
-        return None
-    module2name = {}
-    for key, config in REGISTERED_ACT_DICT.items():
-        module2name[config[0].__name__] = key
-    return module2name.get(type(act).__name__, "unknown")
-
-
-class LayerNorm2d(nn.LayerNorm):
-    rmsnorm = False
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = x if LayerNorm2d.rmsnorm else x - torch.mean(x, dim=1, keepdim=True)
-        out = out / torch.sqrt(torch.square(out).mean(dim=1, keepdim=True) + self.eps)
-        if self.elementwise_affine:
-            out = out * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)
-        return out
-
-    def extra_repr(self) -> str:
-        return f"{self.normalized_shape}, eps={self.eps}, elementwise_affine={self.elementwise_affine}, rmsnorm={self.rmsnorm}"
-
-
 # register normalization function here
 #   name: module, kwargs with default values
 REGISTERED_NORMALIZATION_DICT: dict[str, tuple[type, dict[str, Any]]] = {
     "bn2d": (nn.BatchNorm2d, {"num_features": None, "eps": 1e-5, "momentum": 0.1, "affine": True}),
     "syncbn": (nn.SyncBatchNorm, {"num_features": None, "eps": 1e-5, "momentum": 0.1, "affine": True}),
     "ln": (nn.LayerNorm, {"normalized_shape": None, "eps": 1e-5, "elementwise_affine": True}),
-    "ln2d": (LayerNorm2d, {"normalized_shape": None, "eps": 1e-5, "elementwise_affine": True}),
 }
 
 
 def build_norm(name="bn2d", num_features=None, affine=True, **kwargs) -> Optional[nn.Module]:
-    if name in ["ln", "ln2d"]:
+    if name == "ln":
         kwargs["normalized_shape"] = num_features
         kwargs["elementwise_affine"] = affine
     else:
@@ -203,31 +177,6 @@ def build_norm(name="bn2d", num_features=None, affine=True, **kwargs) -> Optiona
         return None
     else:
         raise ValueError("do not support: %s" % name)
-
-
-def get_norm_name(norm: Optional[nn.Module]) -> Optional[str]:
-    if norm is None:
-        return None
-    module2name = {}
-    for key, config in REGISTERED_NORMALIZATION_DICT.items():
-        module2name[config[0].__name__] = key
-    return module2name.get(type(norm).__name__, "unknown")
-
-
-def remove_bn(model: nn.Module) -> None:
-    for m in model.modules():
-        if isinstance(m, _BatchNorm):
-            m.weight = m.bias = None
-            m.forward = lambda x: x
-
-
-def set_norm_eps(model: nn.Module, eps: Optional[float] = None, momentum: Optional[float] = None) -> None:
-    for m in model.modules():
-        if isinstance(m, (nn.GroupNorm, nn.LayerNorm, _BatchNorm)):
-            if eps is not None:
-                m.eps = eps
-            if momentum is not None:
-                m.momentum = momentum
 
 
 class RMSNorm(torch.nn.Module):
@@ -295,15 +244,6 @@ to_2tuple = _ntuple(2)
 to_3tuple = _ntuple(3)
 
 
-def set_fp32_attention(model):
-    assert isinstance(model, nn.Module)
-
-    def set_attr(module):
-        module.fp32_attention = True
-
-    model.apply(set_attr)
-
-
 def val2list(x: list or tuple or any, repeat_time=1) -> list:  # type: ignore
     """Repeat `val` for `repeat_time` times and return the list or val if list/tuple."""
     if isinstance(x, (list, tuple)):
@@ -329,17 +269,6 @@ def get_same_padding(kernel_size: int or tuple[int, ...]) -> int or tuple[int, .
     else:
         assert kernel_size % 2 > 0, f"kernel size {kernel_size} should be odd number"
         return kernel_size // 2
-
-
-def get_weight_dtype(mixed_precision):
-    if mixed_precision in ["fp16", "float16"]:
-        return torch.float16
-    elif mixed_precision in ["bf16", "bfloat16"]:
-        return torch.bfloat16
-    elif mixed_precision in ["fp32", "float32", "float"]:
-        return torch.float32
-    else:
-        raise ValueError(f"weigh precision {mixed_precision} is not defined")
 
 
 def chunk_index_from_chunk_size(
@@ -436,28 +365,6 @@ def compute_chunk_sizes(chunk_index: List[int], T: int) -> List[int]:
     return sizes
 
 
-def size1_chunk_position_indices(chunk_index: List[int]) -> List[int]:
-    """Return frame-time positions belonging to size-1 (singleton) chunks.
-
-    A size-1 chunk has no intra-chunk lookahead, so the anti-causal branch (backward GDN scan and the per-chunk
-    backward conv path) contributes nothing for these positions in a chunk-causal layer. This helper exposes those
-    positions so downstream code can skip the reverse-direction compute (and zero-out the contribution).
-
-    Args:
-        chunk_index: Normalized chunk indices, including the trailing
-            ``T`` boundary, e.g. ``[0, 1, 2, ..., K, K+G]`` for the ``cond_chunk_mode='frame_causal'`` layout.
-
-    Returns:
-        List of frame-time positions ``p`` for which ``[p, p+1)`` is a chunk of size 1. Returns ``[]`` when no size-1
-        chunks exist (e.g. uniform ``chunk_size=3`` patterns).
-
-    Examples:
-        >>> size1_chunk_position_indices([0, 3, 6, 9]) # uniform size 3 [] >>> size1_chunk_position_indices([0, 1, 2,
-        3, 4, 7]) # frame_causal, K=4, G=3 [0, 1, 2, 3]
-    """
-    return [s for s, e in zip(chunk_index[:-1], chunk_index[1:]) if e - s == 1]
-
-
 def is_uniform_chunking(
     chunk_index: List[int],
     T: int,
@@ -507,87 +414,6 @@ def is_uniform_chunking(
                 return False
 
     return True
-
-
-def analyze_chunk_pattern(
-    chunk_index: List[int],
-    T: int,
-    chunk_size: int,
-) -> Tuple[str, Dict[str, Any]]:
-    """Analyze chunk pattern and return vectorization strategy.
-
-    Detects special patterns that allow hybrid vectorization:
-    - uniform: All chunks equal except possibly last (vectorized baseline)
-    - first_frame: [1, 4, 4, 4, ...] - first frame alone, then uniform tail
-    - first_plus_one: [5, 4, 4, 4, ...] - first chunk+1, then uniform tail
-    - arbitrary: Other patterns (no optimization available)
-
-    Args:
-        chunk_index: List of chunk start indices (e.g., [0, 4, 8, 12]).
-        T: Total number of frames.
-        chunk_size: Base chunk size for pattern detection.
-
-    Returns:
-        (pattern_type, metadata) where:
-            pattern_type: "uniform", "first_frame", "first_plus_one", or "arbitrary" metadata: Dict with vectorization
-            hints:
-                - vectorizable: bool (True if optimization available)
-                - first_chunk_size: int (size of first special chunk)
-                - tail_start_index: int (where uniform tail begins in chunk_index)
-                - tail_chunk_size: int (uniform size of tail chunks)
-                - tail_is_uniform: bool (whether tail is vectorizable)
-
-    Example:
-        >>> analyze_chunk_pattern([0, 1, 5, 9, 13, 17], T=21, chunk_size=4) ("first_frame", {
-            "vectorizable": True, "first_chunk_size": 1, "tail_start_index": 1, "tail_chunk_size": 4,
-            "tail_is_uniform": True,
-        })
-    """
-    sizes = compute_chunk_sizes(chunk_index, T)
-
-    if not sizes:
-        return "uniform", {"vectorizable": True}
-
-    # Check uniform: all chunks equal to chunk_size except possibly last
-    if is_uniform_chunking(chunk_index, T, chunk_size):
-        return "uniform", {"vectorizable": True}
-
-    # Check first_frame pattern: [1, 4, 4, 4, ...]
-    if sizes[0] == 1:
-        # Check if tail (sizes[1:]) is uniform
-        tail_is_uniform = all(s == chunk_size for s in sizes[1:-1])
-        # Allow last chunk to be <= chunk_size (remainder)
-        if len(sizes) > 1:
-            tail_is_uniform = tail_is_uniform and (sizes[-1] <= chunk_size)
-
-        if tail_is_uniform:
-            return "first_frame", {
-                "vectorizable": True,
-                "first_chunk_size": 1,
-                "tail_start_index": 1,  # Skip first frame
-                "tail_chunk_size": chunk_size,
-                "tail_is_uniform": True,
-            }
-
-    # Check first_plus_one pattern: [chunk_size+1, chunk_size, chunk_size, ...]
-    if sizes[0] == chunk_size + 1:
-        # Check if tail (sizes[1:]) is uniform
-        tail_is_uniform = all(s == chunk_size for s in sizes[1:-1])
-        # Allow last chunk to be <= chunk_size (remainder)
-        if len(sizes) > 1:
-            tail_is_uniform = tail_is_uniform and (sizes[-1] <= chunk_size)
-
-        if tail_is_uniform:
-            return "first_plus_one", {
-                "vectorizable": True,
-                "first_chunk_size": chunk_size + 1,
-                "tail_start_index": chunk_size + 1,  # Skip first chunk
-                "tail_chunk_size": chunk_size,
-                "tail_is_uniform": True,
-            }
-
-    # Arbitrary pattern - no vectorization available
-    return "arbitrary", {"vectorizable": False}
 
 
 def normalize_chunk_index(
@@ -668,9 +494,9 @@ def normalize_chunk_index(
 # Attention blocks (sana / sana-camctrl / GDN / GDN-camctrl / softmax variants)
 # ============================================================================
 
-# String-keyed registry for the GDN/softmax attention block variants used by
-# the SANA-WM DiT. ``modeling_sana_wm`` looks up classes here by ``attn_type``
-# / ``camctrl_type`` strings.
+# String-keyed registry for the GDN/softmax attention block variants used by the
+# SANA-WM DiT. `SanaWMTransformer3DModel` looks classes up here by its `attn_type`
+# / `camctrl_type` config strings.
 ATTENTION_BLOCKS: dict[str, type] = {}
 
 
@@ -724,9 +550,6 @@ def _warn_triton_fallback_once(requested: str, fallback: str, role: str) -> None
         f"to its pure-PyTorch parent {role}={fallback!r}. Install Triton and run on "
         f"CUDA to use the fused-kernel fast path."
     )
-
-
-# This file is modified from https://github.com/PixArt-alpha/PixArt-sigma
 
 
 class ConvLayer(nn.Module):
@@ -1036,24 +859,6 @@ class Mlp(Mlp):
         return x
 
 
-if __name__ == "__main__":
-    model = GLUMBConv(
-        1152,
-        1152 * 4,
-        1152,
-        use_bias=(True, True, False),
-        norm=(None, None, None),
-        act=("silu", "silu", None),
-    ).cuda()
-    input = torch.randn(4, 256, 1152).cuda()
-    output = model(input)
-
-
-# SANA-WM inference uses SDPA; xformers branches are kept for parity but
-# never taken at this entry point.
-_xformers_available = False
-
-
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
@@ -1086,84 +891,18 @@ class MultiHeadCrossAttention(nn.Module):
     def forward(self, x, cond, mask=None):
         # query: img tokens; key/value: condition; mask: if padding tokens
         B, N, C = x.shape
-        first_dim = 1 if _xformers_available else B
-
         q = self.q_linear(x)
-        kv = self.kv_linear(cond).view(first_dim, -1, 2, C)
+        kv = self.kv_linear(cond).view(B, -1, 2, C)
         k, v = kv.unbind(2)
-        q = self.q_norm(q).view(first_dim, -1, self.num_heads, self.head_dim)
-        k = self.k_norm(k).view(first_dim, -1, self.num_heads, self.head_dim)
-        v = v.view(first_dim, -1, self.num_heads, self.head_dim)
-
-        if _xformers_available:
-            attn_bias = None
-            if mask is not None:
-                attn_bias = xformers.ops.fmha.BlockDiagonalMask.from_seqlens([N] * B, mask)  # noqa: F821
-            x = xformers.ops.memory_efficient_attention(q, k, v, p=self.attn_drop.p, attn_bias=attn_bias)  # noqa: F821
-        else:
-            q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-            if mask is not None and mask.ndim == 2:
-                mask = (1 - mask.to(q.dtype)) * -10000.0
-                mask = mask[:, None, None].repeat(1, self.num_heads, 1, 1)
-            x = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False)
-            x = x.transpose(1, 2)
-
-        x = x.view(B, -1, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-
-        return x
-
-
-class MultiHeadCrossAttentionImageEmbed(nn.Module):
-    def __init__(self, d_model, num_heads, attn_drop=0.0, proj_drop=0.0, qk_norm=False, **block_kwargs):
-        super().__init__()
-        assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
-
-        self.d_model = d_model
-        self.num_heads = num_heads
-        self.head_dim = d_model // num_heads
-
-        self.q_linear = nn.Linear(d_model, d_model)
-        self.kv_linear = nn.Linear(d_model, d_model * 2)
-        self.image_kv_linear = nn.Linear(d_model, d_model * 2)
-
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(d_model, d_model)
-        self.proj_drop = nn.Dropout(proj_drop)
-        if qk_norm:
-            self.q_norm = RMSNorm(d_model, scale_factor=1.0, eps=1e-6)
-            self.k_norm = RMSNorm(d_model, scale_factor=1.0, eps=1e-6)
-            self.image_k_norm = RMSNorm(d_model, scale_factor=1.0, eps=1e-6)
-        else:
-            self.q_norm = nn.Identity()
-            self.k_norm = nn.Identity()
-            self.image_k_norm = nn.Identity()
-
-    def forward(self, x, cond, mask=None, image_embeds=None):
-        # query: img tokens; key/value: condition; mask: if padding tokens
-        B, N, C = x.shape
-
-        q = self.q_linear(x)
-        text_kv = self.kv_linear(cond).view(B, -1, 2, C)
-        text_k, text_v = text_kv.unbind(2)
-
-        image_kv = self.image_kv_linear(image_embeds).view(B, -1, 2, C)
-        image_k, image_v = image_kv.unbind(2)
-
         q = self.q_norm(q).view(B, -1, self.num_heads, self.head_dim)
-        text_k = self.k_norm(text_k).view(B, -1, self.num_heads, self.head_dim)
-        text_v = text_v.view(B, -1, self.num_heads, self.head_dim)
-        image_k = self.image_k_norm(image_k).view(B, -1, self.num_heads, self.head_dim)
-        image_v = image_v.view(B, -1, self.num_heads, self.head_dim)
+        k = self.k_norm(k).view(B, -1, self.num_heads, self.head_dim)
+        v = v.view(B, -1, self.num_heads, self.head_dim)
 
-        q, text_k, text_v = q.transpose(1, 2), text_k.transpose(1, 2), text_v.transpose(1, 2)
-        image_k, image_v = image_k.transpose(1, 2), image_v.transpose(1, 2)
+        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
         if mask is not None and mask.ndim == 2:
             mask = (1 - mask.to(q.dtype)) * -10000.0
             mask = mask[:, None, None].repeat(1, self.num_heads, 1, 1)
-        x = F.scaled_dot_product_attention(q, text_k, text_v, attn_mask=mask, dropout_p=0.0, is_causal=False)
-        x = x + F.scaled_dot_product_attention(q, image_k, image_v, dropout_p=0.0, is_causal=False)
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False)
         x = x.transpose(1, 2)
 
         x = x.view(B, -1, C)
@@ -1173,267 +912,9 @@ class MultiHeadCrossAttentionImageEmbed(nn.Module):
         return x
 
 
-class MultiHeadCrossVallinaAttention(MultiHeadCrossAttention):
-    @staticmethod
-    def scaled_dot_product_attention(
-        query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None
-    ) -> torch.Tensor:
-        B, H, L, S = *query.size()[:-1], key.size(-2)
-        scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
-        attn_bias = torch.zeros(B, H, L, S, dtype=query.dtype, device=query.device)
-
-        if attn_mask is not None:
-            if attn_mask.dtype == torch.bool:
-                attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
-            else:
-                attn_bias += attn_mask
-        attn_weight = query @ key.transpose(-2, -1) * scale_factor
-        attn_weight += attn_bias
-        attn_weight = torch.softmax(attn_weight, dim=-1)
-        attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
-        return attn_weight @ value
-
-    def forward(self, x, cond, mask=None):
-        # query: img tokens; key/value: condition; mask: if padding tokens
-        B, N, C = x.shape
-
-        q = self.q_linear(x)
-        kv = self.kv_linear(cond).view(B, -1, 2, C)
-        k, v = kv.unbind(2)
-        q = self.q_norm(q).view(B, -1, self.num_heads, self.head_dim)
-        k = self.k_norm(k).view(B, -1, self.num_heads, self.head_dim)
-        v = v.view(B, -1, self.num_heads, self.head_dim)
-
-        # Cast for sCM
-        dtype = q.dtype
-        q, k, v = q.float(), k.float(), v.float()
-
-        # vanilla attention
-        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-        if mask is not None and mask.ndim == 2:
-            mask = (1 - mask.to(q.dtype)) * -10000.0
-            mask = mask[:, None, None].repeat(1, self.num_heads, 1, 1)
-
-        x = self.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False)
-        x = x.to(dtype)
-        x = x.transpose(1, 2).contiguous()
-
-        x = x.view(B, -1, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-
-        return x
-
-
-class LiteLA(Attention_):
-    r"""Lightweight linear attention"""
-
-    PAD_VAL = 1
-
-    def __init__(
-        self,
-        in_dim: int,
-        out_dim: int,
-        heads: Optional[int] = None,
-        heads_ratio: float = 1.0,
-        dim=32,
-        eps=1e-15,
-        use_bias=False,
-        qk_norm=False,
-        norm_eps=1e-5,
-    ):
-        heads = heads or int(out_dim // dim * heads_ratio)
-        super().__init__(in_dim, num_heads=heads, qkv_bias=use_bias)
-
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.heads = heads
-        self.dim = out_dim // heads  # TODO: need some change
-        self.eps = eps
-
-        self.kernel_func = nn.ReLU(inplace=False)
-        if qk_norm:
-            self.q_norm = RMSNorm(in_dim, scale_factor=1.0, eps=norm_eps)
-            self.k_norm = RMSNorm(in_dim, scale_factor=1.0, eps=norm_eps)
-        else:
-            self.q_norm = nn.Identity()
-            self.k_norm = nn.Identity()
-
-    @torch.amp.autocast("cuda", enabled=os.environ.get("AUTOCAST_LINEAR_ATTN", False) == "true")
-    def attn_matmul(self, q, k, v: torch.Tensor) -> torch.Tensor:
-        # lightweight linear attention
-        q = self.kernel_func(q)  # B, h, h_d, N
-        k = self.kernel_func(k)
-
-        use_fp32_attention = getattr(self, "fp32_attention", False)  # necessary for NAN loss
-        if use_fp32_attention:
-            q, k, v = q.float(), k.float(), v.float()
-
-        v = F.pad(v, (0, 0, 0, 1), mode="constant", value=LiteLA.PAD_VAL)
-        vk = torch.matmul(v, k)
-        out = torch.matmul(vk, q)
-
-        if out.dtype in [torch.float16, torch.bfloat16]:
-            out = out.float()
-        out = out[:, :, :-1] / (out[:, :, -1:] + self.eps)
-
-        return out
-
-    def forward(
-        self, x: torch.Tensor, mask=None, HW=None, rotary_emb=None, block_id=None, block_mask=None
-    ) -> torch.Tensor:
-        B, N, C = x.shape
-
-        qkv = self.qkv(x).reshape(B, N, 3, C)
-        q, k, v = qkv.unbind(2)  # B, N, 3, C --> B, N, C
-        dtype = q.dtype
-
-        q = self.q_norm(q).transpose(-1, -2)  # (B, N, C) -> (B, C, N)
-        k = self.k_norm(k).transpose(-1, -2)  # (B, N, C) -> (B, C, N)
-        v = v.transpose(-1, -2)
-
-        q = q.reshape(B, C // self.dim, self.dim, N)  # (B, h, h_d, N)
-        k = k.reshape(B, C // self.dim, self.dim, N)  # (B, h, h_d, N)
-        v = v.reshape(B, C // self.dim, self.dim, N)  # (B, h, h_d, N)
-
-        if rotary_emb is not None:
-            q = apply_rotary_emb(q, rotary_emb, use_real_unbind_dim=-2)
-            k = apply_rotary_emb(k, rotary_emb, use_real_unbind_dim=-2)
-
-        out = self.attn_matmul(q, k.transpose(-1, -2), v).to(dtype)
-
-        out = out.view(B, C, N).permute(0, 2, 1)  # B, N, C
-        out = self.proj(out)
-
-        return out
-
-    @property
-    def module_str(self) -> str:
-        _str = type(self).__name__ + "("
-        eps = f"{self.eps:.1E}"
-        _str += f"i={self.in_dim},o={self.out_dim},h={self.heads},d={self.dim},eps={eps}"
-        return _str
-
-    def __repr__(self):
-        return f"EPS{self.eps}-" + super().__repr__()
-
-
-class FlashAttention(Attention_):
-    """Multi-head Flash Attention block with qk norm."""
-
-    def __init__(
-        self,
-        dim,
-        num_heads=8,
-        qkv_bias=True,
-        qk_norm=False,
-        **block_kwargs,
-    ):
-        """
-        Args:
-            dim (int): Number of input channels.
-            num_heads (int): Number of attention heads.
-            qkv_bias (bool:  If True, add a learnable bias to query, key, value.
-        """
-        super().__init__(dim, num_heads=num_heads, qkv_bias=qkv_bias, **block_kwargs)
-
-        if qk_norm:
-            self.q_norm = nn.LayerNorm(dim)
-            self.k_norm = nn.LayerNorm(dim)
-        else:
-            self.q_norm = nn.Identity()
-            self.k_norm = nn.Identity()
-
-    def forward(self, x, mask=None, HW=None, rotary_emb=None, block_id=None, block_mask=None, **kwargs):
-        B, N, C = x.shape
-
-        qkv = self.qkv(x).reshape(B, N, 3, C)
-        q, k, v = qkv.unbind(2)
-        dtype = q.dtype
-
-        q = self.q_norm(q)
-        k = self.k_norm(k)
-
-        q = q.reshape(B, N, self.num_heads, C // self.num_heads).to(dtype)
-        k = k.reshape(B, N, self.num_heads, C // self.num_heads).to(dtype)
-        v = v.reshape(B, N, self.num_heads, C // self.num_heads).to(dtype)
-
-        use_fp32_attention = getattr(self, "fp32_attention", False)  # necessary for NAN loss
-        if use_fp32_attention:
-            q, k, v = q.float(), k.float(), v.float()
-
-        attn_bias = None
-        if mask is not None:
-            attn_bias = torch.zeros([B * self.num_heads, q.shape[1], k.shape[1]], dtype=q.dtype, device=q.device)
-            attn_bias.masked_fill_(mask.squeeze(1).repeat(self.num_heads, 1, 1) == 0, float("-inf"))
-
-        def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-            x_rotated = torch.view_as_complex(hidden_states.transpose(1, 2).to(torch.float64).unflatten(3, (-1, 2)))
-            x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4).transpose(1, 2)
-            return x_out.type_as(hidden_states)
-
-        if rotary_emb is not None:
-            q = apply_rotary_emb(q, rotary_emb)
-            k = apply_rotary_emb(k, rotary_emb)
-
-        if _xformers_available:
-            x = xformers.ops.memory_efficient_attention(q, k, v, p=self.attn_drop.p, attn_bias=attn_bias)  # noqa: F821
-        else:
-            q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-            if mask is not None and mask.ndim == 2:
-                mask = (1 - mask.to(q.dtype)) * -10000.0
-                mask = mask[:, None, None].repeat(1, self.num_heads, 1, 1)
-
-            x = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False)
-            x = x.transpose(1, 2)
-
-        x = x.view(B, N, C).to(dtype)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-
-        return x
-
-
 #################################################################################
 #   AMP attention with fp32 softmax to fix loss NaN problem during training     #
 #################################################################################
-class Attention(Attention_):
-    def forward(self, x, HW=None, **kwargs):
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        # B,N,3,H,C -> B,H,N,C
-        q, k, v = qkv.unbind(0)  # make torchscript happy (cannot use tensor as tuple)
-        use_fp32_attention = getattr(self, "fp32_attention", False)
-        if use_fp32_attention:
-            q, k = q.float(), k.float()
-
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-
-        attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
-
-
-class FinalLayer(nn.Module):
-    """
-    The final layer of Sana.
-    """
-
-    def __init__(self, hidden_size, patch_size, out_channels):
-        super().__init__()
-        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
-        self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 2 * hidden_size, bias=True))
-
-    def forward(self, x, c):
-        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
-        x = modulate(self.norm_final(x), shift, scale)
-        x = self.linear(x)
-        return x
 
 
 class T2IFinalLayer(nn.Module):
@@ -1520,43 +1001,6 @@ class TimestepEmbedder(nn.Module):
             return torch.float32
 
 
-class SizeEmbedder(TimestepEmbedder):
-    """
-    Embeds scalar timesteps into vector representations.
-    """
-
-    def __init__(self, hidden_size, frequency_embedding_size=256):
-        super().__init__(hidden_size=hidden_size, frequency_embedding_size=frequency_embedding_size)
-        self.mlp = nn.Sequential(
-            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
-            nn.SiLU(),
-            nn.Linear(hidden_size, hidden_size, bias=True),
-        )
-        self.frequency_embedding_size = frequency_embedding_size
-        self.outdim = hidden_size
-
-    def forward(self, s, bs):
-        if s.ndim == 1:
-            s = s[:, None]
-        assert s.ndim == 2
-        if s.shape[0] != bs:
-            s = s.repeat(bs // s.shape[0], 1)
-            assert s.shape[0] == bs
-        b, dims = s.shape[0], s.shape[1]
-        s = s.reshape(b * dims)
-        s_freq = self.timestep_embedding(s, self.frequency_embedding_size).to(self.dtype)
-        s_emb = self.mlp(s_freq)
-        s_emb = s_emb.reshape(b, dims * self.outdim)
-        return s_emb
-
-    @property
-    def dtype(self):
-        try:
-            return next(self.parameters()).dtype
-        except StopIteration:
-            return torch.float32
-
-
 class CaptionEmbedder(nn.Module):
     """
     Embeds class labels into vector representations. Also handles label dropout for classifier-free guidance.
@@ -1566,7 +1010,6 @@ class CaptionEmbedder(nn.Module):
         self,
         in_channels,
         hidden_size,
-        uncond_prob,
         act_layer=nn.GELU(approximate="tanh"),
         token_num=120,
     ):
@@ -1575,60 +1018,9 @@ class CaptionEmbedder(nn.Module):
             in_features=in_channels, hidden_features=hidden_size, out_features=hidden_size, act_layer=act_layer, drop=0
         )
         self.register_buffer("y_embedding", nn.Parameter(torch.randn(token_num, in_channels) / in_channels**0.5))
-        self.uncond_prob = uncond_prob
 
-    def initialize_gemma_params(self, model_name="google/gemma-2b-it"):
-        from transformers import AutoModelForCausalLM  # noqa: PLC0415 — training-only path
-
-        num_layers = len(self.custom_gemma_layers)
-        text_encoder = AutoModelForCausalLM.from_pretrained(model_name).get_decoder()
-        pretrained_layers = text_encoder.layers[-num_layers:]
-        for custom_layer, pretrained_layer in zip(self.custom_gemma_layers, pretrained_layers):
-            info = custom_layer.load_state_dict(pretrained_layer.state_dict(), strict=False)
-            print(f"**** {info} ****")
-        print(f"**** Initialized {num_layers} Gemma layers from pretrained model: {model_name} ****")
-
-    def token_drop(self, caption, force_drop_ids=None, y_embedding=None):
-        """
-        Drops labels to enable classifier-free guidance.
-        """
-        if force_drop_ids is None:
-            drop_ids = torch.rand(caption.shape[0]).cuda() < self.uncond_prob
-        else:
-            drop_ids = force_drop_ids == 1
-        caption = torch.where(drop_ids[:, None, None, None], y_embedding, caption)
-        return caption
-
-    def forward(self, caption, train, force_drop_ids=None, mask=None):
-        y_embedding = self.y_embedding
-        if train:
-            if caption.shape[-2] < self.y_embedding.shape[-2]:
-                y_embedding = self.y_embedding[: caption.shape[-2], :]
-            else:
-                assert caption.shape[2:] == self.y_embedding.shape, (
-                    f"caption.shape: {caption.shape}, self.y_embedding.shape: {self.y_embedding.shape}"
-                )
-        use_dropout = self.uncond_prob > 0
-        if (train and use_dropout) or (force_drop_ids is not None):
-            caption = self.token_drop(caption, force_drop_ids, y_embedding)
-
-        caption = self.y_proj(caption)
-
-        return caption
-
-
-# copy from https://github.com/huggingface/diffusers/blob/01abfc873659e29a8d002f20782fa5b5e6d03f9c/src/diffusers/models/transformers/transformer_hunyuan_video_framepack.py#L72
-class ClipVisionProjection(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int):
-        super().__init__()
-        self.up = nn.Linear(in_channels, out_channels * 3)
-        self.down = nn.Linear(out_channels * 3, out_channels)
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.up(hidden_states)
-        hidden_states = F.silu(hidden_states)
-        hidden_states = self.down(hidden_states)
-        return hidden_states
+    def forward(self, caption):
+        return self.y_proj(caption)
 
 
 class PatchEmbedMS3D(nn.Module):
@@ -1667,60 +1059,6 @@ class PatchEmbedMS3D(nn.Module):
         return x
 
 
-class RopePosEmbed(nn.Module):
-    # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
-    def __init__(self, theta: int, axes_dim: List[int]):
-        super().__init__()
-        self.theta = theta
-        self.axes_dim = axes_dim
-
-    def forward(self, ids: torch.Tensor) -> torch.Tensor:
-        n_axes = ids.shape[-1]
-        cos_out = []
-        sin_out = []
-        pos = ids.float()
-        is_mps = ids.device.type == "mps"
-        is_npu = ids.device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
-        for i in range(n_axes):
-            cos, sin = get_1d_rotary_pos_embed(
-                self.axes_dim[i],
-                pos[:, i],
-                theta=self.theta,
-                repeat_interleave_real=True,
-                use_real=True,
-                freqs_dtype=freqs_dtype,
-            )
-            cos_out.append(cos)
-            sin_out.append(sin)
-        freqs_cos = torch.cat(cos_out, dim=-1).to(ids.device)
-        freqs_sin = torch.cat(sin_out, dim=-1).to(ids.device)
-        return freqs_cos, freqs_sin
-
-    @staticmethod
-    def _prepare_latent_image_ids(batch_size, height, width, device, dtype, frame=None):
-        if frame is None:
-            frame = 1
-        latent_image_ids = torch.zeros(frame, height, width, 3)
-
-        latent_image_ids[..., 0] = latent_image_ids[..., 0] + torch.arange(frame)[:, None, None]
-        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[None, :, None]
-        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
-
-        (
-            latent_image_id_frame,
-            latent_image_id_height,
-            latent_image_id_width,
-            latent_image_id_channels,
-        ) = latent_image_ids.shape
-
-        latent_image_ids = latent_image_ids.reshape(
-            latent_image_id_frame * latent_image_id_height * latent_image_id_width, latent_image_id_channels
-        )
-
-        return latent_image_ids.to(device=device, dtype=dtype)
-
-
 class WanRotaryPosEmbed(nn.Module):
     def __init__(
         self,
@@ -1748,15 +1086,14 @@ class WanRotaryPosEmbed(nn.Module):
         freqs = []
         for dim in [t_dim, h_dim, w_dim]:
             freq = get_1d_rotary_pos_embed(
-                dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=torch.float64
+                dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=torch.float32
             )
             freqs.append(freq)
-        self.freqs = torch.cat(freqs, dim=1)
+        self.register_buffer("freqs", torch.cat(freqs, dim=1), persistent=False)
 
-    def forward(self, fhw: torch.Tensor, device: torch.device) -> torch.Tensor:
+    def forward(self, fhw: Tuple[int, int, int]) -> torch.Tensor:
         ppf, pph, ppw = fhw
 
-        self.freqs = self.freqs.to(device)
         freqs = self.freqs.split_with_sizes(
             [
                 self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
@@ -1770,63 +1107,6 @@ class WanRotaryPosEmbed(nn.Module):
         freqs_h = freqs[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
         freqs_w = freqs[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
         freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
-        return freqs
-
-
-class CausalWanRotaryPosEmbed(WanRotaryPosEmbed):
-    def forward(self, fhw: torch.Tensor, device: torch.device) -> torch.Tensor:
-        (f_start, f_end), pph, ppw = fhw
-
-        self.freqs = self.freqs.to(device)
-        freqs = self.freqs.split_with_sizes(
-            [
-                self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
-                self.attention_head_dim // 6,
-                self.attention_head_dim // 6,
-            ],
-            dim=1,
-        )
-        ppf = f_end - f_start
-        freqs_f = freqs[0][f_start:f_end].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs_h = freqs[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs_w = freqs[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
-        freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
-        return freqs
-
-
-class WanRotaryTemporalPosEmbed(nn.Module):
-    def __init__(
-        self, attention_head_dim: int, patch_size: Tuple[int, int, int], max_seq_len: int, theta: float = 10000.0
-    ):
-        super().__init__()
-
-        self.attention_head_dim = attention_head_dim
-        self.patch_size = patch_size
-        self.max_seq_len = max_seq_len
-
-        t_dim = attention_head_dim
-
-        freqs = []
-        for dim in [t_dim]:
-            freq = get_1d_rotary_pos_embed(
-                dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=torch.float64
-            )
-            freqs.append(freq)
-        self.freqs = torch.cat(freqs, dim=1)
-
-    def forward(self, fhw: torch.Tensor, device: torch.device) -> torch.Tensor:
-        ppf, pph, ppw = fhw
-
-        self.freqs = self.freqs.to(device)
-        freqs = self.freqs.split_with_sizes(
-            [
-                self.attention_head_dim // 2,
-            ],
-            dim=1,
-        )
-
-        freqs_f = freqs[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs = torch.cat([freqs_f], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
         return freqs
 
 
@@ -1881,216 +1161,9 @@ def apply_rotary_emb(
         return x_out.type_as(x)
 
 
-class WindowAttention(FlashAttention):
-    """Window Attention based on Flash Attention for temporal-spatial windows.
-
-    Computes attention within dynamic HWT windows. For window_count=(2, 2, 1), creates 2x2=4 spatial windows across 1
-    temporal group, with window sizes dynamically calculated based on input dimensions.
-    """
-
-    def __init__(
-        self,
-        dim,
-        num_heads=8,
-        qkv_bias=True,
-        qk_norm=False,
-        window_count=(2, 2, 1),  # (spatial_h_count, spatial_w_count, temporal_count)
-        pad_if_needed=True,
-        **block_kwargs,
-    ):
-        """
-        Args:
-            dim (int): Number of input channels.
-            num_heads (int): Number of attention heads.
-            qkv_bias (bool): If True, add a learnable bias to query, key, value.
-            qk_norm (bool): If True, apply layer norm to query and key.
-            window_count (tuple): (spatial_h_count, spatial_w_count, temporal_count) number of windows.
-            pad_if_needed (bool): If True, pad input when dimensions don't divide evenly.
-        """
-        super().__init__(dim, num_heads, qkv_bias, qk_norm, **block_kwargs)
-        self.window_count = window_count
-        self.spatial_window_h_count, self.spatial_window_w_count, self.temporal_window_count = window_count
-        self.pad_if_needed = pad_if_needed
-
-    def forward(self, x, HW=None, rotary_emb=None, block_id=None, **kwargs):
-        """
-        Args:
-            x: Input tensor of shape [B, N, C] where N = T*H*W
-            HW: Tuple of (H, W) spatial dimensions
-            rotary_emb: Rotary positional embeddings
-            block_id: Block identifier
-        """
-        B, N, C = x.shape
-
-        assert len(HW) == 3, "HW must be a tuple of (T, H, W)"
-        T, H, W = HW
-
-        original_T, original_H, original_W = T, H, W
-
-        # 1. calculate window size
-        temporal_window = T // self.temporal_window_count
-        spatial_window_h = H // self.spatial_window_h_count
-        spatial_window_w = W // self.spatial_window_w_count
-
-        remainder_t = T % self.temporal_window_count
-        remainder_h = H % self.spatial_window_h_count
-        remainder_w = W % self.spatial_window_w_count
-
-        if remainder_t > 0 or remainder_h > 0 or remainder_w > 0:
-            if self.pad_if_needed:
-                # 向上调整window尺寸以覆盖所有tokens
-                temporal_window = (T + self.temporal_window_count - 1) // self.temporal_window_count
-                spatial_window_h = (H + self.spatial_window_h_count - 1) // self.spatial_window_h_count
-                spatial_window_w = (W + self.spatial_window_w_count - 1) // self.spatial_window_w_count
-            else:
-                raise ValueError(
-                    f"Input dimensions ({T}, {H}, {W}) cannot be evenly divided by "
-                    f"window_count {self.window_count}. Set pad_if_needed=True to handle this."
-                )
-
-        qkv = self.qkv(x).reshape(B, N, 3, C)  # [B, N, 3, C]
-        q, k, v = qkv.unbind(2)  # Each: [B, N, C]
-        dtype = q.dtype
-
-        q = self.q_norm(q)
-        k = self.k_norm(k)
-
-        q = q.reshape(B, N, self.num_heads, C // self.num_heads).to(dtype)
-        k = k.reshape(B, N, self.num_heads, C // self.num_heads).to(dtype)
-        v = v.reshape(B, N, self.num_heads, C // self.num_heads).to(dtype)
-
-        # 3. apply RoPE
-        def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-            x_rotated = torch.view_as_complex(hidden_states.transpose(1, 2).to(torch.float64).unflatten(3, (-1, 2)))
-            x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4).transpose(1, 2)
-            return x_out.type_as(hidden_states)
-
-        if rotary_emb is not None:
-            q = apply_rotary_emb(q, rotary_emb)
-            k = apply_rotary_emb(k, rotary_emb)
-
-        # 4. calculate padding
-        target_T = temporal_window * self.temporal_window_count
-        target_H = spatial_window_h * self.spatial_window_h_count
-        target_W = spatial_window_w * self.spatial_window_w_count
-
-        pad_t = target_T - T
-        pad_h = target_H - H
-        pad_w = target_W - W
-
-        if self.pad_if_needed and (pad_t > 0 or pad_h > 0 or pad_w > 0):
-            q = q.view(B, T, H, W, self.num_heads, C // self.num_heads)
-            k = k.view(B, T, H, W, self.num_heads, C // self.num_heads)
-            v = v.view(B, T, H, W, self.num_heads, C // self.num_heads)
-
-            # Pad: (left, right, top, bottom, front, back)
-            q = F.pad(q, (0, 0, 0, 0, 0, pad_w, 0, pad_h, 0, pad_t), mode="constant", value=0)
-            k = F.pad(k, (0, 0, 0, 0, 0, pad_w, 0, pad_h, 0, pad_t), mode="constant", value=0)
-            v = F.pad(v, (0, 0, 0, 0, 0, pad_w, 0, pad_h, 0, pad_t), mode="constant", value=0)
-
-            T_padded, H_padded, W_padded = target_T, target_H, target_W
-        else:
-            T_padded, H_padded, W_padded = T, H, W
-            q = q.view(B, T, H, W, self.num_heads, C // self.num_heads)
-            k = k.view(B, T, H, W, self.num_heads, C // self.num_heads)
-            v = v.view(B, T, H, W, self.num_heads, C // self.num_heads)
-
-        # 5. Window attention计算
-        num_windows_t = self.temporal_window_count
-        num_windows_h = self.spatial_window_h_count
-        num_windows_w = self.spatial_window_w_count
-        total_windows = num_windows_t * num_windows_h * num_windows_w
-
-        qkv_combined = torch.stack([q, k, v], dim=4)  # [B, T, H, W, 3, num_heads, C//num_heads]
-
-        # view to [B, num_windows_t, num_windows_h, num_windows_w, temporal_window, spatial_window_h, spatial_window_w, 3, num_heads, C//num_heads]
-        qkv_windowed = qkv_combined.view(
-            B,
-            num_windows_t,
-            temporal_window,
-            num_windows_h,
-            spatial_window_h,
-            num_windows_w,
-            spatial_window_w,
-            3,
-            self.num_heads,
-            C // self.num_heads,
-        )
-
-        # permute to [B, num_windows_t, num_windows_h, num_windows_w, temporal_window, spatial_window_h, spatial_window_w, 3, num_heads, C//num_heads]
-        qkv_windowed = qkv_windowed.permute(0, 1, 3, 5, 2, 4, 6, 7, 8, 9)
-
-        tokens_per_window = temporal_window * spatial_window_h * spatial_window_w
-        qkv_windowed = qkv_windowed.contiguous().view(
-            B * total_windows, tokens_per_window, 3, self.num_heads, C // self.num_heads
-        )
-
-        q_windowed, k_windowed, v_windowed = qkv_windowed.unbind(2)
-
-        q_windowed = q_windowed.transpose(1, 2)  # [B*windows, num_heads, tokens_per_window, C//num_heads]
-        k_windowed = k_windowed.transpose(1, 2)
-        v_windowed = v_windowed.transpose(1, 2)
-
-        # Apply attention within each window
-        use_fp32_attention = getattr(self, "fp32_attention", False)
-        if use_fp32_attention:
-            q_windowed, k_windowed, v_windowed = q_windowed.float(), k_windowed.float(), v_windowed.float()
-
-        # Attention is all you need
-        x_windowed = F.scaled_dot_product_attention(
-            q_windowed, k_windowed, v_windowed, attn_mask=None, dropout_p=0.0, is_causal=False
-        )
-        x_windowed = x_windowed.transpose(1, 2)  # [B*windows, tokens_per_window, num_heads, C//num_heads]
-
-        # Reshape back to feature dimension
-        x_windowed = x_windowed.contiguous().view(B * total_windows, tokens_per_window, C)
-
-        x = x_windowed.view(
-            B, num_windows_t, num_windows_h, num_windows_w, temporal_window, spatial_window_h, spatial_window_w, C
-        )
-
-        x = x.permute(
-            0, 1, 4, 2, 5, 3, 6, 7
-        )  # [B, num_windows_t, temporal_window, num_windows_h, spatial_h, num_windows_w, spatial_w, C]
-
-        x = x.contiguous().view(B, T_padded, H_padded, W_padded, C)
-
-        # 6. remove padding
-        if pad_t > 0 or pad_h > 0 or pad_w > 0:
-            x = x[:, :original_T, :original_H, :original_W, :]
-
-        x = x.contiguous().view(B, original_T * original_H * original_W, C)
-
-        x = self.proj(x)
-        x = self.proj_drop(x)
-
-        return x
-
-    def extra_repr(self) -> str:
-        return f"window_count={self.window_count}, pad_if_needed={self.pad_if_needed}"
-
-
-_COMPILE_DISABLE = os.environ.get("GDN_DISABLE_COMPILE", "0") not in ("0", "false")
-
-
 # ---------------------------------------------------------------------------
 # Camera-branch dropout
 # ---------------------------------------------------------------------------
-
-
-def _maybe_drop_cam_branch(camera_conditions, cam_branch_drop_prob, training, device):
-    """Optionally zero-out the camera branch during training (drop-path style)."""
-    if camera_conditions is None:
-        return None
-    if not training:
-        return camera_conditions
-    if not cam_branch_drop_prob:
-        return camera_conditions
-    if cam_branch_drop_prob >= 1.0:
-        return None
-    if torch.rand((), device=device) < cam_branch_drop_prob:
-        return None
-    return camera_conditions
 
 
 # ---------------------------------------------------------------------------
@@ -2168,7 +1241,7 @@ def _process_camera_conditions_ucpe(camera_conditions, B, HW, patch_size):
 # ---------------------------------------------------------------------------
 
 
-@torch.compile(disable=_COMPILE_DISABLE)
+@torch.compile
 def _apply_ray_projmat(
     feats: torch.Tensor,  # (batch, num_heads, seqlen, feat_dim)
     matrix: torch.Tensor,  # (batch, seqlen, 4, 4)
@@ -2183,37 +1256,14 @@ def _apply_ray_projmat(
     ).reshape(feats.shape)
 
 
-@torch.compile(disable=_COMPILE_DISABLE)
-def _apply_tiled_projmat(
-    feats: torch.Tensor,  # (batch, num_heads, seqlen, feat_dim)
-    matrix: torch.Tensor,  # (batch, cameras, D, D)
-) -> torch.Tensor:
-    """Apply a per-camera projection matrix tiled across the spatial axis."""
-    (batch, num_heads, seqlen, feat_dim) = feats.shape
-    D = matrix.shape[-1]
-    assert feat_dim % D == 0, f"feat_dim={feat_dim} must be divisible by D={D}"
-    if matrix.shape[1] == seqlen:
-        feats_ = feats.view(batch, num_heads, seqlen, feat_dim // D, D)
-        out = torch.einsum("btij,bntpj->bntpi", matrix, feats_)
-        return out.reshape(feats.shape)
-
-    cameras = matrix.shape[1]
-    assert seqlen >= cameras and seqlen % cameras == 0
-    return torch.einsum(
-        "bcij,bncpkj->bncpki",
-        matrix,
-        feats.reshape((batch, num_heads, cameras, -1, feat_dim // D, D)),
-    ).reshape(feats.shape)
-
-
-@torch.compile(disable=_COMPILE_DISABLE)
+@torch.compile
 def _apply_complex_rope(
     hidden_states: torch.Tensor,
     freqs: torch.Tensor,
     inverse: bool = False,
 ) -> torch.Tensor:
     """Apply complex RoPE (compiled: fuses fp64 cast + view_as_complex + multiply chain)."""
-    x_real = hidden_states.to(torch.float64)
+    x_real = hidden_states.to(torch.float32)
     if x_real.stride(-1) != 1:
         x_real = x_real.contiguous()
     x_complex = torch.view_as_complex(x_real.unflatten(-1, (-1, 2)))
@@ -2378,15 +1428,7 @@ def prepare_prope_fns(
     return _prepare_ray_apply_fns(head_dim=head_dim, P=P, P_T=P_T, P_inv=P_inv, rotary_emb=rotary_emb_cam)
 
 
-_HAS_FLEX_ATTENTION = bool(int(os.environ.get("SANA_USE_FLEX_ATTENTION", "0")))
-
 OUTPUT_GATE_INIT_BIAS = 1.278464542761074  # silu(x)=1.0
-
-
-def l2norm(x: torch.FloatTensor, dim: int = -1, eps: float = 1e-6):
-    """This function is intended to align with the l2norm implementation in the FLA library."""
-    inv_norm = torch.rsqrt((x * x).sum(dim=dim, keepdim=True) + eps)
-    return x * inv_norm
 
 
 def flip_and_shift(x, dim=2, shift_val=0.0):
@@ -2430,107 +1472,6 @@ def _contiguous_backward(x: torch.Tensor) -> torch.Tensor:
     return _IdentityForwardContiguousBackward.apply(x)
 
 
-def torch_recurrent_sana_gdn(q, k, v, q_rot, k_rot, beta, decay, recall_gate, eps=1e-6, return_components=False):
-    """Apply the frame-wise Gated Delta Rule.
-
-    The update uses full spatial frames per time step while maintaining recurrent KV and Z states.
-
-    Args:
-        q: Query tensor of shape (B, H, D, T*S).
-        k: Key tensor of shape (B, H, D, T*S).
-        v: Value tensor of shape (B, H, D, T*S).
-        q_rot: Rotary-embedded queries, same shape as ``q``.
-        k_rot: Rotary-embedded keys, same shape as ``k``.
-        beta: Update gate of shape (B, H, T) or (B, H, T, S).
-        decay: Decay gate of shape (B, H, T).
-        recall_gate: Recall scale (broadcasted across batch/time).
-        eps: Small constant for numerical stability.
-
-    Returns:
-        Output tensor of shape (B, H, D, T*S).
-    """
-    # Reshape inputs to (B, H, T, D, S).
-    B, H, D, N = q.shape
-    # beta has shape (B, H, T) or (B, H, T, S); T is always dim=2.
-    T = beta.shape[2]
-    S = N // T
-
-    target_z = 1.0
-
-    def to_frame_seq(x):
-        return x.view(B, H, D, T, S).permute(0, 1, 3, 2, 4)
-
-    q = to_frame_seq(q)
-    k = to_frame_seq(k)
-    v = to_frame_seq(v)
-    q_rot = to_frame_seq(q_rot)
-    k_rot = to_frame_seq(k_rot)
-
-    # beta: (B, H, T) -> (B, H, T, 1, 1) or (B, H, T, S) -> (B, H, T, 1, S)
-    if beta.ndim == 4:
-        beta = beta.unsqueeze(3)
-    else:
-        beta = beta.view(B, H, T, 1, 1)
-
-    decay = decay.view(B, H, T, 1, 1)
-
-    # Scale: (1,) -> (1, 1, 1, 1, 1)
-    scale = 1  # recall_gate.view(1, 1, 1, 1)
-
-    state_kv = torch.zeros(B, H, D, D, device=q.device, dtype=q.dtype)
-    state_z = torch.zeros(B, H, D, 1, device=q.device, dtype=q.dtype)
-
-    num_list = []
-    den_list = []
-
-    for t in range(T):
-        # Slice
-        qt, kt, vt = q[:, :, t], k[:, :, t], v[:, :, t]
-        qrt, krt = q_rot[:, :, t], k_rot[:, :, t]
-        bt, gt = beta[:, :, t], decay[:, :, t]
-
-        # Decay
-        state_kv = state_kv * gt
-        state_z = state_z * gt
-
-        # KV Update
-        v_pred = torch.matmul(state_kv, krt)
-        delta_v = (vt - scale * v_pred) * bt
-        state_kv = state_kv + torch.matmul(delta_v, krt.transpose(-1, -2))
-
-        # Z Update
-        z_pred = torch.matmul(state_z.transpose(-1, -2), kt)
-        delta_z = (target_z - scale * z_pred) * bt
-        state_z = state_z + torch.matmul(kt, delta_z.transpose(-1, -2))
-
-        # Output Components
-        # num: (B, H, D, S)
-        out_num = torch.matmul(state_kv, qrt)
-        # den: (B, H, 1, S)
-        out_den = torch.matmul(state_z.transpose(-1, -2), qt)
-
-        num_list.append(out_num)
-        den_list.append(out_den)
-
-    # 4. Stack & Reshape
-    # (B, H, T, D, S)
-    num_stacked = torch.stack(num_list, dim=2)
-    # (B, H, T, 1, S)
-    den_stacked = torch.stack(den_list, dim=2)
-
-    def restore_shape(tensor, target_d):
-        # tensor: (B, H, T, d_in, S) -> (B, H, d_in, T*S)
-        return tensor.permute(0, 1, 3, 2, 4).reshape(B, H, target_d, N)
-
-    final_num = restore_shape(num_stacked, D)
-    final_den = restore_shape(den_stacked, 1)
-
-    if return_components:
-        return final_num, final_den
-
-    return final_num / (final_den + eps)
-
-
 @torch.compile
 def torch_chunk_sana_gdn(
     q,
@@ -2545,7 +1486,7 @@ def torch_chunk_sana_gdn(
     eps: float = 1e-6,
     return_components: bool = False,
 ):
-    del recall_gate  # Currently unused; kept for API parity.
+    del recall_gate  # Accepted so the chunk and fused scan share one signature; unused by this rule.
 
     B, H, D, N = q.shape
     if beta.ndim not in (3, 4):
@@ -2652,10 +1593,8 @@ def torch_chunk_sana_gdn(
 # Compiled helpers for hot-path operations (fuses elementwise chains)
 # ---------------------------------------------------------------------------
 
-_COMPILE_DISABLE = os.environ.get("GDN_DISABLE_COMPILE", "0") not in ("0", "false")
 
-
-@torch.compile(disable=_COMPILE_DISABLE)
+@torch.compile
 def _compute_frame_gates(
     x: torch.Tensor,
     T: int,
@@ -2679,20 +1618,20 @@ def _compute_frame_gates(
     return beta, decay
 
 
-@torch.compile(disable=_COMPILE_DISABLE)
+@torch.compile
 def _apply_rotary_emb(
     hidden_states: torch.Tensor,
     freqs: torch.Tensor,
 ) -> torch.Tensor:
     """Compiled rotary embedding application (fuses view_as_complex + multiply chain)."""
     x_rotated = torch.view_as_complex(
-        hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2)),
+        hidden_states.permute(0, 1, 3, 2).to(torch.float32).unflatten(3, (-1, 2)),
     )
     x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4).permute(0, 1, 3, 2)
     return x_out.type_as(hidden_states)
 
 
-@torch.compile(disable=_COMPILE_DISABLE)
+@torch.compile
 def _apply_output_gate(
     out: torch.Tensor,
     gate_x: torch.Tensor,
@@ -2758,9 +1697,8 @@ class GDN(Attention_):
         self.beta_proj = nn.Linear(in_dim, heads, bias=True)
         self.gate_proj = nn.Linear(in_dim, heads, bias=True)
 
-        A = torch.empty(self.heads, dtype=torch.float32).uniform_(0, 16)
+        A = torch.zeros(self.heads, dtype=torch.float32).uniform_(0, 16)
         self.A_log = nn.Parameter(torch.log(A))
-        self.A_log._no_weight_decay = True
         dt_min = 0.001
         dt_max = 0.1
         dt_init_floor = 1e-4
@@ -2771,12 +1709,8 @@ class GDN(Attention_):
         # Inverse of softplus: https://github.com/pytorch/pytorch/issues/72759
         inv_dt = dt + torch.log(-torch.expm1(-dt))
         self.dt_bias = nn.Parameter(inv_dt)
-        # Explicitly skip weight decay (biases are excluded in param grouping).
-        self.dt_bias._no_weight_decay = True
 
-        # recall_gate is unused (computation commented out) but kept as buffer
-        # for checkpoint backward compatibility. Converted from Parameter to buffer
-        # because FSDP2's set_optimizer_state_dict fails on scalar parameters.
+        # `recall_gate` is unused by the forward; kept as a buffer for checkpoint compatibility.
         self.register_buffer("recall_gate", torch.zeros(1))
 
         self.use_output_gate = use_output_gate
@@ -2785,14 +1719,9 @@ class GDN(Attention_):
         else:
             self.output_gate = None
 
-        if update_rule_func == "torch_recurrent_sana_gdn":
-            self.update_rule_func = torch_recurrent_sana_gdn
-        elif update_rule_func == "torch_chunk_sana_gdn":
-            from functools import partial
-
-            self.update_rule_func = partial(torch_chunk_sana_gdn, chunk_size=chunk_gdn_chunk_size)
-        else:
+        if update_rule_func != "torch_chunk_sana_gdn":
             raise ValueError(f"Unsupported update rule function: {update_rule_func}")
+        self.update_rule_func = partial(torch_chunk_sana_gdn, chunk_size=chunk_gdn_chunk_size)
 
         # Short Convolutions (FLA causal depthwise Conv1d along T)
         self.conv_kernel_size = conv_kernel_size
@@ -2821,8 +1750,6 @@ class GDN(Attention_):
             self.conv_k = None
             self.conv_v = None
 
-        self._init_gdn_gates_for_linear_equiv()
-
     def _key_scale(self, spatial_tokens: int) -> float:
         """Return the post-ReLU key scale used by frame-wise GDN."""
         if self.key_scale_mode == "dim_spatial":
@@ -2832,42 +1759,6 @@ class GDN(Attention_):
         if self.key_scale_mode == "none":
             return 1.0
         raise ValueError(f"Unsupported GDN key_scale_mode: {self.key_scale_mode}")
-
-    def _init_short_conv_for_linear_equiv(self) -> None:
-        """Initialize short conv as identity to match no-conv behavior at step 0."""
-        if self.conv_k is None:
-            return
-
-        for conv in (self.conv_q, self.conv_k, self.conv_v):
-            if conv is None:
-                continue
-            with torch.no_grad():
-                # FLA ShortConvolution uses causal kernels. The last tap is x[t].
-                conv.weight.zero_()
-                conv.weight[:, 0, -1] = 1.0
-                if getattr(conv, "bias", None) is not None:
-                    conv.bias.zero_()
-
-    def _init_gdn_gates_for_linear_equiv(self) -> None:
-        """Initialize gates near identity to mimic Linear Attention at start."""
-        self.recall_gate.zero_()  # buffer, not parameter
-
-        # Beta ≈ 1.0
-        # Sigmoid(5.0) ≈ 0.993
-        nn.init.zeros_(self.beta_proj.weight)
-        nn.init.constant_(self.beta_proj.bias, 5.0)
-
-        nn.init.zeros_(self.gate_proj.weight)
-        nn.init.zeros_(self.gate_proj.bias)
-        with torch.no_grad():
-            self.dt_bias.fill_(-5.0)
-            self.A_log.fill_(math.log(1.0))
-
-        if self.use_output_gate and self.output_gate is not None:
-            nn.init.zeros_(self.output_gate.weight)
-            nn.init.constant_(self.output_gate.bias, OUTPUT_GATE_INIT_BIAS)
-
-        self._init_short_conv_for_linear_equiv()
 
     def _apply_output_gate(self, out: torch.Tensor, gate_x: torch.Tensor) -> torch.Tensor:
         if not (self.use_output_gate and self.output_gate is not None):
@@ -3177,20 +2068,19 @@ class GDN(Attention_):
         # Force FP32 to preserve recurrent stability.
         dtype_orig = x.dtype
         recall_gate = self.recall_gate
-        if getattr(self, "fp32_attention", True):
-            q = q.float()
-            k = k.float()
-            v = v.float()
-            q_rot = q_rot.float()
-            k_rot = k_rot.float()
-            beta = beta.float()
-            decay = decay.float()
-            recall_gate = recall_gate.float()
+        q = q.float()
+        k = k.float()
+        v = v.float()
+        q_rot = q_rot.float()
+        k_rot = k_rot.float()
+        beta = beta.float()
+        decay = decay.float()
+        recall_gate = recall_gate.float()
 
         out = self.update_rule_func(q, k, v, q_rot, k_rot, beta, decay, recall_gate=recall_gate, eps=self.eps)
 
         # Reshape and project output.
-        if getattr(self, "fp32_attention", True) and dtype_orig != torch.float32:
+        if dtype_orig != torch.float32:
             out = out.to(dtype_orig)
 
         out = out.permute(0, 3, 1, 2)
@@ -3201,7 +2091,7 @@ class GDN(Attention_):
 
         if apply_output_gate:
             out = self._apply_output_gate(out, x)
-            out = self.proj(out.to(self.proj.weight.dtype))
+            out = self.proj(out.to(x.dtype))
             if token_valid_mask is not None:
                 out = out * token_valid_mask.view(B, N_out, 1).to(out.dtype)
             return out
@@ -3358,15 +2248,14 @@ class BidirectionalGDN(GDN):
         # Force FP32 to preserve recurrent stability.
         dtype_orig = x.dtype
         recall_gate = self.recall_gate
-        if getattr(self, "fp32_attention", True):
-            q = q.float()
-            k = k.float()
-            v = v.float()
-            q_rot = q_rot.float()
-            k_rot = k_rot.float()
-            beta = beta.float()
-            decay = decay.float()
-            recall_gate = recall_gate.float()
+        q = q.float()
+        k = k.float()
+        v = v.float()
+        q_rot = q_rot.float()
+        k_rot = k_rot.float()
+        beta = beta.float()
+        decay = decay.float()
+        recall_gate = recall_gate.float()
 
         # Forward pass (inclusive: 1..t).
         num_fwd, den_fwd = self.update_rule_func(
@@ -3428,7 +2317,7 @@ class BidirectionalGDN(GDN):
         out = total_num / (total_den + self.eps)
 
         # Reshape and project output.
-        if getattr(self, "fp32_attention", True) and dtype_orig != torch.float32:
+        if dtype_orig != torch.float32:
             out = out.to(dtype_orig)
 
         out = out.permute(0, 3, 1, 2)
@@ -3439,7 +2328,7 @@ class BidirectionalGDN(GDN):
 
         if apply_output_gate:
             out = self._apply_output_gate(out, x)
-            out = self.proj(out.to(self.proj.weight.dtype))
+            out = self.proj(out.to(x.dtype))
             if token_valid_mask is not None:
                 out = out * token_valid_mask.view(B, N_out, 1).to(out.dtype)
             return out
@@ -3539,167 +2428,11 @@ def _forward_softmax_attn(
 
 
 # ---------------------------------------------------------------------------
-# Softmax-block KV cache helpers.
-#
-# Project Q/K/V for a softmax-attention block, apply RoPE (main branch) or
-# UCPE per-position transforms (cam branch), and return the post-transform
-# tensors without running SDPA. The AR KV-cache uses these to stash K and V
-# in a per-block cache and replay them across AR sub-steps.
-# ---------------------------------------------------------------------------
-
-
-def _prepare_softmax_main_qkv_post_rope(
-    block: GDN,
-    x: torch.Tensor,
-    HW: tuple[int, int, int],
-    rotary_emb: torch.Tensor | None,
-    **kwargs: object,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.dtype]:
-    """Project Q/K/V for the softmax main branch, apply norm and RoPE.
-
-    Returns post-norm, post-RoPE, post-bf16 cast tensors without running SDPA, so the caller can either run SDPA itself
-    or stash K/V in a cache.
-
-    Args:
-        block: A :class:`GDN` (or subclass) that owns the softmax-attn
-            params (``qkv``, ``q_norm``, ``k_norm``).
-        x: Input tokens of shape ``(B, N, C)``.
-        HW: ``(T, H, W)`` token layout.
-        rotary_emb: Optional RoPE table; ``None`` skips RoPE.
-
-    Returns:
-        ``(q, k, v, dtype_orig)`` where Q/K/V are shape ``(B, H, N, D)`` and ``dtype_orig`` is the original
-        ``x.dtype``.
-    """
-    B, N, C = x.shape
-    T, H_sp, W_sp = HW
-    S = H_sp * W_sp
-
-    frame_valid_mask = kwargs.get("frame_valid_mask", None)
-    token_valid_mask, _, _ = GDN._prepare_frame_valid_masks(
-        frame_valid_mask,
-        B=B,
-        T=T,
-        S=S,
-        device=x.device,
-        dtype=x.dtype,
-    )
-    if token_valid_mask is not None:
-        x = x * token_valid_mask.view(B, N, 1)
-
-    qkv = block.qkv(x).reshape(B, N, 3, block.heads, block.dim)
-    q, k, v = qkv.unbind(2)
-    if token_valid_mask is not None:
-        m = token_valid_mask.view(B, N, 1, 1)
-        q, k, v = q * m, k * m, v * m
-
-    q = block.q_norm(q.reshape(B, N, C)).reshape(B, N, block.heads, block.dim)
-    k = block.k_norm(k.reshape(B, N, C)).reshape(B, N, block.heads, block.dim)
-
-    if rotary_emb is not None:
-        q_perm = q.permute(0, 2, 3, 1)
-        k_perm = k.permute(0, 2, 3, 1)
-        q_perm = GDN._apply_rotary_emb(q_perm, rotary_emb)
-        k_perm = GDN._apply_rotary_emb(k_perm, rotary_emb)
-        q = q_perm.permute(0, 3, 1, 2)
-        k = k_perm.permute(0, 3, 1, 2)
-
-    if token_valid_mask is not None:
-        m = token_valid_mask.view(B, N, 1, 1)
-        q, k, v = q * m, k * m, v * m
-
-    q = q.transpose(1, 2)  # (B, H, N, D)
-    k = k.transpose(1, 2)
-    v = v.transpose(1, 2)
-
-    dtype_orig = x.dtype
-    if q.dtype == torch.float32:
-        q, k, v = q.bfloat16(), k.bfloat16(), v.bfloat16()
-
-    return q, k, v, dtype_orig
-
-
-def _sdpa_unmasked_with_pad(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-) -> torch.Tensor:
-    """Run ``F.scaled_dot_product_attention(q, k, v)`` with FA-friendly head_dim padding.
-
-    FlashAttention-2 only supports head_dim in {32, 64, 128, 256}. Other head_dims (e.g. 112) fall back to the math
-    backend. We pad head_dim up to the next supported size, run SDPA, then slice back to the original head_dim. Mirrors
-    the no-mask path in :func:`_forward_softmax_attn` (lines ~3034-3061).
-
-    Args:
-        q, k, v: ``(B, H, N_q, D)``, ``(B, H, N_kv, D)``, ``(B, H, N_kv, D)``.
-
-    Returns:
-        ``(B, H, N_q, D)`` attention output.
-    """
-    D = q.shape[-1]
-    _need_pad = D not in (32, 64, 128, 256) and D < 256
-    if _need_pad:
-        _pad_to = 128 if D <= 128 else 256
-        _pad_size = _pad_to - D
-        q = F.pad(q, (0, _pad_size))
-        k = F.pad(k, (0, _pad_size))
-        v = F.pad(v, (0, _pad_size))
-    out = F.scaled_dot_product_attention(q, k, v)
-    if _need_pad:
-        out = out[..., :D]
-    return out
-
-
-# ---------------------------------------------------------------------------
 # Base class
 # ---------------------------------------------------------------------------
 
 
-def torch_recurrent_cam_single_path_delta_rule(
-    q_rot: torch.Tensor,
-    k_rot: torch.Tensor,
-    v: torch.Tensor,
-    beta: torch.Tensor,
-    decay: torch.Tensor,
-) -> torch.Tensor:
-    """Numerator-only delta-rule recurrence for experimental camera ablations."""
-    B, H, D, N = q_rot.shape
-    T = beta.shape[2]
-    S = N // T
-
-    def to_frame_seq(x: torch.Tensor) -> torch.Tensor:
-        return x.view(B, H, D, T, S).permute(0, 1, 3, 2, 4)
-
-    q_rot_f = to_frame_seq(q_rot)
-    k_rot_f = to_frame_seq(k_rot)
-    v_f = to_frame_seq(v)
-
-    if beta.ndim == 4:
-        beta = beta.unsqueeze(3)
-    else:
-        beta = beta.view(B, H, T, 1, 1)
-    decay = decay.view(B, H, T, 1, 1)
-
-    state_kv = torch.zeros(B, H, D, D, device=q_rot.device, dtype=q_rot.dtype)
-    out_list: list[torch.Tensor] = []
-    for t in range(T):
-        qrt = q_rot_f[:, :, t]
-        krt = k_rot_f[:, :, t]
-        vt = v_f[:, :, t]
-        bt = beta[:, :, t]
-        gt = decay[:, :, t]
-
-        state_kv = state_kv * gt
-        v_pred = torch.matmul(state_kv, krt)
-        delta_v = (vt - v_pred) * bt
-        state_kv = state_kv + torch.matmul(delta_v, krt.transpose(-1, -2))
-        out_list.append(torch.matmul(state_kv, qrt))
-
-    out = torch.stack(out_list, dim=2)
-    return out.permute(0, 1, 3, 2, 4).reshape(B, H, D, N)
-
-
-@torch.compile(dynamic=True, disable=os.environ.get("GDN_DISABLE_COMPILE", "0") not in ("0", "false"))
+@torch.compile(dynamic=True)
 def torch_chunk_cam_single_path_delta_rule(
     q_rot: torch.Tensor,
     k_rot: torch.Tensor,
@@ -3710,9 +2443,9 @@ def torch_chunk_cam_single_path_delta_rule(
 ) -> torch.Tensor:
     """Parallel chunk-scan version of the single-path delta-rule recurrence.
 
-    Algebraically equivalent to ``torch_recurrent_cam_single_path_delta_rule`` but restructured as a linear recurrence
-    in D x D state space so that Phases 1 (transition-matrix construction) and 3 (output projection) are fully parallel
-    over T, while Phase 2 (the D x D state scan) is chunked and benefits from ``@torch.compile``.
+    Restructured as a linear recurrence in D x D state space so that Phases 1 (transition-matrix construction) and 3
+    (output projection) are fully parallel over T, while Phase 2 (the D x D state scan) is chunked and benefits from
+    ``@torch.compile``.
 
     The recurrence:
         state[t] = state[t-1] * g[t] + delta_v[t] @ k_rot[t]^T
@@ -3819,8 +2552,6 @@ class _GDNUCPEBase(GDN):
         patch_size: tuple[int, int, int] = (1, 2, 2),
         **kwargs: object,
     ) -> None:
-        cam_debug_ratios = bool(kwargs.pop("cam_debug_ratios", False))
-        cam_debug_log_per_block = bool(kwargs.pop("cam_debug_log_per_block", False))
         cam_update_rule_func: str = str(kwargs.pop("cam_update_rule_func", "torch_chunk"))
         super().__init__(in_dim, out_dim, **kwargs)
 
@@ -3828,24 +2559,14 @@ class _GDNUCPEBase(GDN):
         self.cam_dim = cam_dim
         self.cam_heads = cam_heads
         self.cam_head_dim = cam_dim // cam_heads
-        self.cam_debug_ratios = cam_debug_ratios
-        self.cam_debug_log_per_block = cam_debug_log_per_block
-        self._cam_debug_stats: dict[str, float] = {}
-        self._cam_debug_step_counter: int = 0
-        self._cam_debug_log_interval: int = 50
-
-        from functools import partial
 
         chunk_gdn_chunk_size = kwargs.get("chunk_gdn_chunk_size", 21)
-        if cam_update_rule_func == "torch_recurrent":
-            self._cam_single_path_fn = torch_recurrent_cam_single_path_delta_rule
-        elif cam_update_rule_func == "torch_chunk":
-            self._cam_single_path_fn = partial(
-                torch_chunk_cam_single_path_delta_rule,
-                chunk_size=chunk_gdn_chunk_size,
-            )
-        else:
+        if cam_update_rule_func != "torch_chunk":
             raise ValueError(f"Unsupported cam_update_rule_func: {cam_update_rule_func}")
+        self._cam_single_path_fn = partial(
+            torch_chunk_cam_single_path_delta_rule,
+            chunk_size=chunk_gdn_chunk_size,
+        )
 
         if cam_dim != in_dim:
             raise ValueError(f"Parameter sharing requires cam_dim == in_dim, got cam_dim={cam_dim}, in_dim={in_dim}.")
@@ -3894,64 +2615,10 @@ class _GDNUCPEBase(GDN):
                     kernel_size=self.conv_kernel_size,
                     activation=None,
                 )
-            self._init_cam_short_conv_for_linear_equiv()
         else:
             self.conv_q_cam = None
             self.conv_k_cam = None
             self.conv_v_cam = None
-
-    # ------------------------------------------------------------------
-    # Initialization helpers
-    # ------------------------------------------------------------------
-
-    def _init_cam_short_conv_for_linear_equiv(self) -> None:
-        """Initialize camera short convs as identity to match base at step 0."""
-        if self.conv_k_cam is None:
-            return
-        for conv in (self.conv_q_cam, self.conv_k_cam, self.conv_v_cam):
-            if conv is None:
-                continue
-            with torch.no_grad():
-                conv.weight.zero_()
-                conv.weight[:, 0, -1] = 1.0
-                if getattr(conv, "bias", None) is not None:
-                    conv.bias.zero_()
-
-    def init_cam_branch_weights(self) -> None:
-        """Copy main-branch QKV weights into the camera branch for transfer learning."""
-        if self.cam_dim != self.dim * self.heads:
-            print(
-                f"Warning: Skipping init_cam_branch_weights because "
-                f"cam_dim ({self.cam_dim}) != dim ({self.dim}) * heads ({self.heads})"
-            )
-            return
-
-        print(f"Initializing camera branch QKV from base model QKV for {self.__class__.__name__}")
-        w = self.qkv.weight
-        b = self.qkv.bias
-        dim = self.cam_dim
-
-        self.q_proj_cam.weight.data.copy_(w[:dim])
-        self.k_proj_cam.weight.data.copy_(w[dim : 2 * dim])
-        self.v_proj_cam.weight.data.copy_(w[2 * dim :])
-        if b is not None:
-            self.q_proj_cam.bias.data.copy_(b[:dim])
-            self.k_proj_cam.bias.data.copy_(b[dim : 2 * dim])
-            self.v_proj_cam.bias.data.copy_(b[2 * dim :])
-
-        # Mirror main-branch Q/K norm initialization into camera-specific norms.
-        if hasattr(self.q_norm, "state_dict") and hasattr(self.q_norm_cam, "load_state_dict"):
-            self.q_norm_cam.load_state_dict(self.q_norm.state_dict(), strict=False)
-        if hasattr(self.k_norm, "state_dict") and hasattr(self.k_norm_cam, "load_state_dict"):
-            self.k_norm_cam.load_state_dict(self.k_norm.state_dict(), strict=False)
-
-        # Copy short conv weights from base to camera branch.
-        if self.conv_k_cam is not None and self.conv_k is not None:
-            self.conv_k_cam.load_state_dict(self.conv_k.state_dict())
-        if self.conv_q_cam is not None and self.conv_q is not None:
-            self.conv_q_cam.load_state_dict(self.conv_q.state_dict())
-        if self.conv_v_cam is not None and self.conv_v is not None:
-            self.conv_v_cam.load_state_dict(self.conv_v.state_dict())
 
     @staticmethod
     def _downscale_to_reference_rms(
@@ -3973,151 +2640,6 @@ class _GDNUCPEBase(GDN):
         tr_rms = transformed.square().mean(dim=2, keepdim=True).add(eps).sqrt()
         scale = (ref_rms / tr_rms.clamp_min(eps)).clamp(max=1.0)
         return transformed * scale
-
-    def reset_cam_debug_stats(self) -> None:
-        """Clear debug-only camera branch ratio summaries."""
-        self._cam_debug_stats = {}
-
-    def pop_cam_debug_stats(self) -> dict[str, float]:
-        """Return and clear debug-only camera branch ratio summaries."""
-        stats = dict(self._cam_debug_stats)
-        self._cam_debug_stats = {}
-        return stats
-
-    def _record_cam_debug_stat(self, name: str, value: float) -> None:
-        """Store one debug scalar when camera ratio logging is enabled."""
-        if not self.cam_debug_ratios:
-            return
-        self._cam_debug_stats[name] = float(value)
-
-    @staticmethod
-    def _compute_cam_ratio_summary(
-        ref: torch.Tensor,
-        transformed: torch.Tensor,
-        token_valid_mask: torch.Tensor | None = None,
-        eps: float = 1e-6,
-    ) -> tuple[float, float]:
-        """Compute mean/max channel-norm amplification ratios."""
-        ref_norm = torch.linalg.vector_norm(ref.float(), dim=2).clamp_min(eps)
-        transformed_norm = torch.linalg.vector_norm(transformed.float(), dim=2)
-        ratio = (transformed_norm / ref_norm).detach()
-        if token_valid_mask is not None:
-            valid = token_valid_mask.to(torch.bool).unsqueeze(1).expand_as(ratio)
-            ratio = ratio.masked_select(valid)
-            if ratio.numel() == 0:
-                return 0.0, 0.0
-        return float(ratio.mean().item()), float(ratio.max().item())
-
-    @staticmethod
-    def _compute_cam_norm_summary(
-        tensor: torch.Tensor,
-        token_valid_mask: torch.Tensor | None = None,
-    ) -> tuple[float, float]:
-        """Compute mean/max channel norms for debug-only logging."""
-        norms = torch.linalg.vector_norm(tensor.float(), dim=2).detach()
-        if token_valid_mask is not None:
-            valid = token_valid_mask.to(torch.bool).unsqueeze(1).expand_as(norms)
-            norms = norms.masked_select(valid)
-            if norms.numel() == 0:
-                return 0.0, 0.0
-        return float(norms.mean().item()), float(norms.max().item())
-
-    def _record_cam_inflation_stats(
-        self,
-        prefix: str,
-        k_cam: torch.Tensor,
-        k_cam_trans: torch.Tensor,
-        token_valid_mask: torch.Tensor | None = None,
-    ) -> None:
-        """Record squared key inflation statistics for one transform stage."""
-        k_ratio_sq = (
-            (
-                torch.linalg.vector_norm(k_cam_trans.float(), dim=2).clamp_min(1e-6)
-                / torch.linalg.vector_norm(k_cam.float(), dim=2).clamp_min(1e-6)
-            )
-            .pow(2)
-            .detach()
-        )
-        if token_valid_mask is not None:
-            valid = token_valid_mask.to(torch.bool).unsqueeze(1).expand_as(k_ratio_sq)
-            k_ratio_sq = k_ratio_sq.masked_select(valid)
-            if k_ratio_sq.numel() == 0:
-                self._record_cam_debug_stat(f"{prefix}_inflation_sq_mean", 0.0)
-                self._record_cam_debug_stat(f"{prefix}_inflation_sq_max", 0.0)
-                return
-        self._record_cam_debug_stat(f"{prefix}_inflation_sq_mean", float(k_ratio_sq.mean().item()))
-        self._record_cam_debug_stat(f"{prefix}_inflation_sq_max", float(k_ratio_sq.max().item()))
-
-    def _should_log_cam_debug(self) -> bool:
-        """Check whether cam debug stats should be recorded this step."""
-        if not self.cam_debug_ratios:
-            return False
-        return self._cam_debug_step_counter % self._cam_debug_log_interval == 0
-
-    def _record_cam_transform_stats(
-        self,
-        stage_prefix: str,
-        q_cam: torch.Tensor,
-        k_cam: torch.Tensor,
-        v_cam: torch.Tensor,
-        q_cam_trans: torch.Tensor,
-        k_cam_trans: torch.Tensor,
-        v_cam_trans: torch.Tensor,
-        token_valid_mask: torch.Tensor | None = None,
-    ) -> None:
-        """Record debug-only camera transform ratios for one transform stage."""
-        if not self._should_log_cam_debug():
-            return
-
-        for tensor_prefix, ref, transformed in (
-            ("q_cam", q_cam, q_cam_trans),
-            ("k_cam", k_cam, k_cam_trans),
-            ("v_cam", v_cam, v_cam_trans),
-        ):
-            ratio_mean, ratio_max = self._compute_cam_ratio_summary(
-                ref,
-                transformed,
-                token_valid_mask=token_valid_mask,
-            )
-            self._record_cam_debug_stat(f"{stage_prefix}_{tensor_prefix}_ratio_mean", ratio_mean)
-            self._record_cam_debug_stat(f"{stage_prefix}_{tensor_prefix}_ratio_max", ratio_max)
-
-        self._record_cam_inflation_stats(
-            stage_prefix,
-            k_cam,
-            k_cam_trans,
-            token_valid_mask=token_valid_mask,
-        )
-
-    def _maybe_record_cam_output_stats(
-        self,
-        pre_output_transform: torch.Tensor,
-        post_output_transform: torch.Tensor,
-        token_valid_mask: torch.Tensor | None = None,
-    ) -> None:
-        """Record inverse-UCPE output transform amplification ratios."""
-        if not self._should_log_cam_debug():
-            return
-
-        ratio_mean, ratio_max = self._compute_cam_ratio_summary(
-            pre_output_transform,
-            post_output_transform,
-            token_valid_mask=token_valid_mask,
-        )
-        self._record_cam_debug_stat("o_cam_ratio_mean", ratio_mean)
-        self._record_cam_debug_stat("o_cam_ratio_max", ratio_max)
-        pre_norm_mean, pre_norm_max = self._compute_cam_norm_summary(
-            pre_output_transform,
-            token_valid_mask=token_valid_mask,
-        )
-        post_norm_mean, post_norm_max = self._compute_cam_norm_summary(
-            post_output_transform,
-            token_valid_mask=token_valid_mask,
-        )
-        self._record_cam_debug_stat("o_cam_pre_norm_mean", pre_norm_mean)
-        self._record_cam_debug_stat("o_cam_pre_norm_max", pre_norm_max)
-        self._record_cam_debug_stat("o_cam_post_norm_mean", post_norm_mean)
-        self._record_cam_debug_stat("o_cam_post_norm_max", post_norm_max)
 
     def _stabilize_cam_transforms(
         self,
@@ -4234,16 +2756,6 @@ class _GDNUCPEBase(GDN):
         kv_cam_trans = apply_fn_kv(kv_cam.transpose(-1, -2)).transpose(-1, -2).contiguous()
         k_cam_trans, v_cam_trans = torch.chunk(kv_cam_trans, chunks=2, dim=1)
 
-        self._record_cam_transform_stats(
-            stage_prefix="raw",
-            q_cam=q_cam,
-            k_cam=k_cam,
-            v_cam=v_cam,
-            q_cam_trans=q_cam_trans,
-            k_cam_trans=k_cam_trans,
-            v_cam_trans=v_cam_trans,
-            token_valid_mask=token_valid_mask,
-        )
         q_cam_trans, k_cam_trans, v_cam_trans = self._stabilize_cam_transforms(
             q_cam=q_cam,
             k_cam=k_cam,
@@ -4251,16 +2763,6 @@ class _GDNUCPEBase(GDN):
             q_cam_trans=q_cam_trans,
             k_cam_trans=k_cam_trans,
             v_cam_trans=v_cam_trans,
-        )
-        self._record_cam_transform_stats(
-            stage_prefix="post_stab",
-            q_cam=q_cam,
-            k_cam=k_cam,
-            v_cam=v_cam,
-            q_cam_trans=q_cam_trans,
-            k_cam_trans=k_cam_trans,
-            v_cam_trans=v_cam_trans,
-            token_valid_mask=token_valid_mask,
         )
 
         # Measure inflated geometric norm after UCPE
@@ -4286,15 +2788,14 @@ class _GDNUCPEBase(GDN):
         Uses shared ``self.recall_gate``. Handles FP32 casting. Returns ``num / (den + eps)`` shaped ``(B, H, D, N)``.
         """
         recall_gate = self.recall_gate
-        if getattr(self, "fp32_attention", True):
-            q = q.float()
-            k = k.float()
-            v = v.float()
-            q_rot = q_rot.float()
-            k_rot = k_rot.float()
-            beta = beta.float()
-            decay = decay.float()
-            recall_gate = recall_gate.float()
+        q = q.float()
+        k = k.float()
+        v = v.float()
+        q_rot = q_rot.float()
+        k_rot = k_rot.float()
+        beta = beta.float()
+        decay = decay.float()
+        recall_gate = recall_gate.float()
 
         return self.update_rule_func(
             q,
@@ -4320,15 +2821,14 @@ class _GDNUCPEBase(GDN):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Like ``_run_cam_gdn`` but returns ``(num, den)`` components."""
         recall_gate = self.recall_gate
-        if getattr(self, "fp32_attention", True):
-            q = q.float()
-            k = k.float()
-            v = v.float()
-            q_rot = q_rot.float()
-            k_rot = k_rot.float()
-            beta = beta.float()
-            decay = decay.float()
-            recall_gate = recall_gate.float()
+        q = q.float()
+        k = k.float()
+        v = v.float()
+        q_rot = q_rot.float()
+        k_rot = k_rot.float()
+        beta = beta.float()
+        decay = decay.float()
+        recall_gate = recall_gate.float()
 
         return self.update_rule_func(
             q,
@@ -4351,17 +2851,12 @@ class _GDNUCPEBase(GDN):
         beta: torch.Tensor,
         decay: torch.Tensor,
     ) -> torch.Tensor:
-        """Run the numerator-only camera delta-rule recurrence.
-
-        Dispatches to either the recurrent reference or the parallel chunk scan depending on ``cam_update_rule_func``
-        set at init time.
-        """
-        if getattr(self, "fp32_attention", True):
-            q_rot = q_rot.float()
-            k_rot = k_rot.float()
-            v = v.float()
-            beta = beta.float()
-            decay = decay.float()
+        """Run the numerator-only camera delta-rule recurrence (parallel chunk scan)."""
+        q_rot = q_rot.float()
+        k_rot = k_rot.float()
+        v = v.float()
+        beta = beta.float()
+        decay = decay.float()
         return self._cam_single_path_fn(q_rot, k_rot, v, beta, decay)
 
     # ------------------------------------------------------------------
@@ -4448,15 +2943,13 @@ class _GDNUCPEBase(GDN):
             decay,
         )
 
-        if getattr(self, "fp32_attention", True) and dtype_orig != torch.float32:
+        if dtype_orig != torch.float32:
             out = out.to(dtype_orig)
         if token_valid_mask is not None:
             out = out * token_valid_mask.view(B, 1, 1, N).to(out.dtype)
 
         # Inverse UCPE transform on output.
-        out_before_apply_fn_o = out
         out = apply_fn_o(out.transpose(-1, -2)).transpose(-1, -2).contiguous()
-        self._maybe_record_cam_output_stats(out_before_apply_fn_o, out, token_valid_mask=token_valid_mask)
         out = out.reshape(B, self.cam_dim, N).permute(0, 2, 1)
         if token_valid_mask is not None:
             out = out * token_valid_mask.view(B, N, 1).to(out.dtype)
@@ -4485,11 +2978,6 @@ class _GDNUCPEBase(GDN):
             3. combined = main_raw + out_proj_cam(cam_raw) [zero at init]
             4. output = proj(output_gate(combined)) [shared, once]
         """
-        if self.cam_debug_ratios:
-            self.reset_cam_debug_stats()
-        if self.training:
-            self._cam_debug_step_counter += 1
-
         # Pre-compute shared gates once for both branches.
         if HW is not None:
             precomputed_gates = self._compute_frame_gates(x, HW)
@@ -4511,12 +2999,6 @@ class _GDNUCPEBase(GDN):
 
         # Camera branch.
         cam_contrib: torch.Tensor | int = 0
-        camera_conditions = _maybe_drop_cam_branch(
-            camera_conditions,
-            kwargs.get("cam_branch_drop_prob", 0.0),
-            self.training,
-            x.device,
-        )
         if camera_conditions is not None:
             if HW is None:
                 raise ValueError("HW (T, H, W) must be provided for UCPE camera branch.")
@@ -4534,7 +3016,7 @@ class _GDNUCPEBase(GDN):
         # Combine, then shared gate + projection (applied once).
         combined = main_raw + cam_contrib
         combined = self._apply_output_gate(combined, x)
-        return self.proj(combined.to(self.proj.weight.dtype))
+        return self.proj(combined.to(x.dtype))
 
 
 # ---------------------------------------------------------------------------
@@ -4664,14 +3146,12 @@ class BidirectionalGDNUCPELiteLA(_GDNUCPEBase, BidirectionalGDN):
         den_bwd = flip_back(den_bwd_f)
         out = (num_fwd + num_bwd) / (den_fwd + den_bwd + self.eps)
 
-        if getattr(self, "fp32_attention", True) and dtype_orig != torch.float32:
+        if dtype_orig != torch.float32:
             out = out.to(dtype_orig)
         if token_valid_mask is not None:
             out = out * token_valid_mask.view(B, 1, 1, N).to(out.dtype)
 
-        out_before_apply_fn_o = out
         out = apply_fn_o(out.transpose(-1, -2)).transpose(-1, -2).contiguous()
-        self._maybe_record_cam_output_stats(out_before_apply_fn_o, out, token_valid_mask=token_valid_mask)
         out = out.reshape(B, self.cam_dim, N).permute(0, 2, 1)
         if token_valid_mask is not None:
             out = out * token_valid_mask.view(B, N, 1).to(out.dtype)
@@ -4805,14 +3285,12 @@ class BidirectionalGDNUCPESinglePathLiteLA(BidirectionalGDNUCPELiteLAPostUCPERen
         ).reshape(B, H_heads, D_head, N)
         out = out_fwd + out_bwd
 
-        if getattr(self, "fp32_attention", True) and dtype_orig != torch.float32:
+        if dtype_orig != torch.float32:
             out = out.to(dtype_orig)
         if token_valid_mask is not None:
             out = out * token_valid_mask.view(B, 1, 1, N).to(out.dtype)
 
-        out_before_apply_fn_o = out
         out = apply_fn_o(out.transpose(-1, -2)).transpose(-1, -2).contiguous()
-        self._maybe_record_cam_output_stats(out_before_apply_fn_o, out, token_valid_mask=token_valid_mask)
         out = out.reshape(B, self.cam_dim, N).permute(0, 2, 1)
         if token_valid_mask is not None:
             out = out * token_valid_mask.view(B, N, 1).to(out.dtype)
@@ -4937,8 +3415,7 @@ def _forward_cam_branch_softmax(
     v_sdpa = v_cam_trans.transpose(-1, -2)
 
     dtype_orig = x.dtype
-    if getattr(self, "fp32_attention", True):
-        q_sdpa, k_sdpa, v_sdpa = q_sdpa.float(), k_sdpa.float(), v_sdpa.float()
+    q_sdpa, k_sdpa, v_sdpa = q_sdpa.float(), k_sdpa.float(), v_sdpa.float()
     # SDPA / FlashAttention only supports bf16/fp16; fp32 falls back to math backend.
     if q_sdpa.dtype == torch.float32:
         q_sdpa, k_sdpa, v_sdpa = q_sdpa.bfloat16(), k_sdpa.bfloat16(), v_sdpa.bfloat16()
@@ -5005,11 +3482,6 @@ class _SoftmaxUCPESinglePathLiteLA(
         chunk_size: int | None = None,
         **kwargs: object,
     ) -> torch.Tensor:
-        if self.cam_debug_ratios:
-            self.reset_cam_debug_stats()
-        if self.training:
-            self._cam_debug_step_counter += 1
-
         main_raw = _forward_softmax_attn(
             self,
             x,
@@ -5022,12 +3494,6 @@ class _SoftmaxUCPESinglePathLiteLA(
         )
 
         cam_contrib: torch.Tensor | int = 0
-        camera_conditions = _maybe_drop_cam_branch(
-            camera_conditions,
-            kwargs.get("cam_branch_drop_prob", 0.0),
-            self.training,
-            x.device,
-        )
         if camera_conditions is not None:
             if HW is None:
                 raise ValueError("HW must be provided for UCPE camera branch.")
@@ -5048,28 +3514,19 @@ class _SoftmaxUCPESinglePathLiteLA(
         return self.proj(combined.to(x.dtype))
 
 
-# Aliases for backward compatibility and clear intent in mappings.
+# Name used by the `camctrl_type` config string and the block-name mappings below.
 BidirectionalSoftmaxUCPESinglePathLiteLA = _SoftmaxUCPESinglePathLiteLA
-ChunkCausalSoftmaxUCPESinglePathLiteLA = _SoftmaxUCPESinglePathLiteLA
 
 
 @_register_block()
 class BidirectionalGDNTriton(BidirectionalGDN):
-    """Bidirectional GDN with a fused Triton scan (inference + opt-in autograd).
+    """Bidirectional GDN with a fused Triton scan.
 
-    Subclasses :class:`BidirectionalGDN` and only overrides :meth:`__init__` (to accept ``use_autograd_kernel``) and
-    :meth:`forward`. Every learned sub-module (``qkv``, ``proj``, ``q_norm``, ``k_norm``, ``conv_k``, ``beta_proj``,
-    ``gate_proj``, ``A_log``, ``dt_bias``, ``output_gate``) and helper (``_apply_temporal_short_conv``,
-    ``_compute_frame_gates``, ``_apply_output_gate``) is inherited unchanged so existing checkpoints load with zero
-    conversion.
-
-    When ``use_autograd_kernel=True`` the fused-kernel call switches to :func:`fused_bigdn_forward_with_grad`
-    (autograd-enabled, identical forward, real Triton backward kernel for the main branch).
+    Subclasses :class:`BidirectionalGDN` and only overrides :meth:`forward`. Every learned sub-module (``qkv``,
+    ``proj``, ``q_norm``, ``k_norm``, ``conv_k``, ``beta_proj``, ``gate_proj``, ``A_log``, ``dt_bias``,
+    ``output_gate``) and helper (``_apply_temporal_short_conv``, ``_compute_frame_gates``, ``_apply_output_gate``) is
+    inherited unchanged so existing checkpoints load with zero conversion.
     """
-
-    def __init__(self, *args, use_autograd_kernel: bool = False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.use_autograd_kernel = use_autograd_kernel
 
     def forward(
         self,
@@ -5165,7 +3622,7 @@ class BidirectionalGDNTriton(BidirectionalGDN):
         out = out.reshape(B, N, C)
         if apply_output_gate:
             out = self._apply_output_gate(out, x)
-            out = self.proj(out.to(self.proj.weight.dtype))
+            out = self.proj(out.to(x.dtype))
         return out
 
 
@@ -5182,15 +3639,9 @@ class BidirectionalGDNUCPESinglePathLiteLATriton(BidirectionalGDNUCPESinglePathL
     :class:`BidirectionalGDN`, not our Triton variant — we re-implement the dual-branch forward here to explicitly call
     ``BidirectionalGDNTriton.forward(self, ...)``. The body is otherwise bit-identical to the parent's ``forward``.
 
-    The ``use_autograd_kernel`` flag is stored on this instance and consulted inside
-    :meth:`BidirectionalGDNTriton.forward` (the dispatch passes ``self``, so the flag is visible to the main-branch
-    forward). The cam branch is the inherited torch path; use :class:`BidirectionalGDNUCPESinglePathLiteLABothTriton`
-    for a fully Triton + autograd-aware cam branch.
+    The cam branch is the inherited torch path; use :class:`BidirectionalGDNUCPESinglePathLiteLABothTriton` for a fully
+    Triton cam branch.
     """
-
-    def __init__(self, *args, use_autograd_kernel: bool = False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.use_autograd_kernel = use_autograd_kernel
 
     def forward(
         self,
@@ -5203,11 +3654,6 @@ class BidirectionalGDNUCPESinglePathLiteLATriton(BidirectionalGDNUCPESinglePathL
         chunk_size: int | None = None,
         **kwargs: object,
     ) -> torch.Tensor:
-        if self.cam_debug_ratios:
-            self.reset_cam_debug_stats()
-        if self.training:
-            self._cam_debug_step_counter += 1
-
         # Pre-compute shared gates once for both branches.
         if HW is not None:
             precomputed_gates = self._compute_frame_gates(x, HW)
@@ -5230,12 +3676,6 @@ class BidirectionalGDNUCPESinglePathLiteLATriton(BidirectionalGDNUCPESinglePathL
 
         # Camera branch (inherited torch implementation).
         cam_contrib: torch.Tensor | int = 0
-        camera_conditions = _maybe_drop_cam_branch(
-            camera_conditions,
-            kwargs.get("cam_branch_drop_prob", 0.0),
-            self.training,
-            x.device,
-        )
         if camera_conditions is not None:
             if HW is None:
                 raise ValueError("HW (T, H, W) must be provided for UCPE camera branch.")
@@ -5252,7 +3692,7 @@ class BidirectionalGDNUCPESinglePathLiteLATriton(BidirectionalGDNUCPESinglePathL
 
         combined = main_raw + cam_contrib
         combined = self._apply_output_gate(combined, x)
-        return self.proj(combined.to(self.proj.weight.dtype))
+        return self.proj(combined.to(x.dtype))
 
 
 @_register_block()
@@ -5274,11 +3714,6 @@ class BidirectionalGDNUCPESinglePathLiteLABothTriton(BidirectionalGDNUCPESingleP
         8. Inverse UCPE (``apply_fn_o``) in torch.
 
     State-dict keys are identical to :class:`BidirectionalGDNUCPESinglePathLiteLA`.
-
-    Set ``use_autograd_kernel=True`` (inherited from :class:`BidirectionalGDNUCPESinglePathLiteLATriton`) to enable
-    autograd mode for both branches: the main branch goes through :func:`fused_bigdn_forward_with_grad` and the cam
-    branch through :func:`cam_prep_func_with_grad` + :func:`cam_scan_func_with_grad` (torch-recompute backward
-    fallback). Forward cost is unchanged.
     """
 
     def _forward_cam_branch(
@@ -5390,12 +3825,11 @@ class BidirectionalGDNUCPESinglePathLiteLABothTriton(BidirectionalGDNUCPESingleP
             beta = beta / frame_inflation_sq.unsqueeze(-1).clamp_min(1.0)
 
         # ---- 6. fp32 cast + broadcast beta to (B, H, F, S) -------------
-        if getattr(self, "fp32_attention", True):
-            q_cam_trans = q_cam_trans.float()
-            k_cam_trans = k_cam_trans.float()
-            v_cam_trans = v_cam_trans.float()
-            beta = beta.float()
-            decay = decay.float()
+        q_cam_trans = q_cam_trans.float()
+        k_cam_trans = k_cam_trans.float()
+        v_cam_trans = v_cam_trans.float()
+        beta = beta.float()
+        decay = decay.float()
         if beta.ndim == 3:
             beta = beta.unsqueeze(-1).expand(B, H_heads, T, S).contiguous()
         else:
@@ -5411,7 +3845,7 @@ class BidirectionalGDNUCPESinglePathLiteLABothTriton(BidirectionalGDNUCPESingleP
         out = cam_scan_bidi_chunkwise(q_cam_trans, k_cam_trans, v_cam_trans, beta, decay)
 
         # ---- 9. Cast back to input dtype, then inverse UCPE. -----------
-        if getattr(self, "fp32_attention", True) and dtype_orig != torch.float32:
+        if dtype_orig != torch.float32:
             out = out.to(dtype_orig)
 
         _, _, apply_fn_o = _prepare_ray_apply_fns(
@@ -5431,82 +3865,6 @@ class BidirectionalGDNUCPESinglePathLiteLABothTriton(BidirectionalGDNUCPESingleP
 # ============================================================================
 
 
-def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0, pe_interpolation=1.0, base_size=16):
-    """
-    grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
-    [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
-    """
-    if isinstance(grid_size, int):
-        grid_size = to_2tuple(grid_size)
-    grid_h = np.arange(grid_size[0], dtype=np.float32) / (grid_size[0] / base_size) / pe_interpolation
-    grid_w = np.arange(grid_size[1], dtype=np.float32) / (grid_size[1] / base_size) / pe_interpolation
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)
-    grid = grid.reshape([2, 1, grid_size[1], grid_size[0]])
-
-    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
-    if cls_token and extra_tokens > 0:
-        pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
-    return pos_embed
-
-
-def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
-    assert embed_dim % 2 == 0
-
-    # use half of dimensions to encode grid_h
-    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
-    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
-
-    emb = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
-    return emb
-
-
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
-    """
-    embed_dim: output dimension for each position pos: a list of positions to be encoded: size (M,) out: (M, D)
-    """
-    assert embed_dim % 2 == 0
-    omega = np.arange(embed_dim // 2, dtype=np.float64)
-    omega /= embed_dim / 2.0
-    omega = 1.0 / 10000**omega  # (D/2,)
-
-    pos = pos.reshape(-1)  # (M,)
-    out = np.einsum("m,d->md", pos, omega)  # (M, D/2), outer product
-
-    emb_sin = np.sin(out)  # (M, D/2)
-    emb_cos = np.cos(out)  # (M, D/2)
-
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
-    return emb
-
-
-# SANA-WM inference uses SDPA; xformers branches are kept for parity but
-# never taken at this entry point.
-_xformers_available = False
-
-
-class DeltaActionEmbedder(nn.Module):
-    def __init__(self, input_dim, hidden_size, act_layer=nn.GELU):
-        super().__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(input_dim, hidden_size),
-            act_layer(),
-            nn.Linear(hidden_size, hidden_size),
-        )
-
-    def forward(self, x):
-        return self.mlp(x)
-
-
-class FP32NormProxy(nn.Module):
-    def __init__(self, norm_module):
-        super().__init__()
-        self.norm = norm_module
-
-    def forward(self, x):
-        return self.norm(x.float()).type_as(x)
-
-
 class SanaVideoMSCamCtrlBlock(nn.Module):
     """
     A Sana block with global shared adaptive layer norm zero (adaLN-Zero) conditioning.
@@ -5524,17 +3882,12 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         mlp_acts=("silu", "silu", None),
         linear_head_dim=32,
         cross_norm=False,
-        cross_attn_image_embeds=False,
         t_kernel_size=3,
-        additional_flash_attn=False,
-        flash_attn_window_count=None,
         camctrl_type=None,
         patch_size=(1, 2, 2),
         cam_attn_compress=2,
-        fp32_norm=False,
         chunk_size=10,
         chunk_split_strategy="uniform",
-        use_delta_pose_additive=False,
         use_chunk_plucker_post_attn=False,
         **block_kwargs,
     ):
@@ -5543,20 +3896,12 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         self.chunk_size = chunk_size
         self.chunk_split_strategy = chunk_split_strategy
 
-        if use_delta_pose_additive:
-            self.delta_pose_proj = nn.Linear(hidden_size, hidden_size, bias=True)
-            nn.init.zeros_(self.delta_pose_proj.weight)
-            nn.init.zeros_(self.delta_pose_proj.bias)
-
         if use_chunk_plucker_post_attn:
             self.plucker_proj = nn.Linear(hidden_size, hidden_size, bias=True)
             nn.init.zeros_(self.plucker_proj.weight)
             nn.init.zeros_(self.plucker_proj.bias)
 
-        if fp32_norm:
-            self.norm1 = FP32LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        else:
-            self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         # Camera-branch attention. The ``*Triton`` variants share the constructor
         # signature with their pure-PyTorch parents (``BidirectionalGDNUCPESinglePathLiteLA``)
         # so we can route them through ``_resolve_attention_block`` and get an
@@ -5604,51 +3949,8 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
                 qk_norm=qk_norm,
             )
 
-        if additional_flash_attn == "flash":
-            self.learnable_fa_scale = nn.Parameter(torch.ones(1) * 100)
-            self.flash_attn_additional = FlashAttention(
-                hidden_size,
-                num_heads=num_heads,
-                qkv_bias=True,
-                qk_norm=qk_norm,
-                **block_kwargs,
-            )
-        elif additional_flash_attn == "window_flash":
-            self.learnable_fa_scale = nn.Parameter(torch.ones(1) * 100)
-            self.flash_attn_additional = WindowAttention(
-                hidden_size,
-                num_heads=num_heads,
-                qkv_bias=True,
-                qk_norm=qk_norm,
-                window_count=flash_attn_window_count,
-                pad_if_needed=True,
-                **block_kwargs,
-            )
-        else:
-            self.flash_attn_additional = None
-
-        # Cross Attention
-        self.cross_attn_image_embeds = cross_attn_image_embeds
-        if cross_attn_image_embeds:
-            self.cross_attn = MultiHeadCrossAttentionImageEmbed(
-                hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs
-            )
-        else:
-            self.cross_attn = MultiHeadCrossAttention(hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs)
-        if fp32_norm:
-            self.norm2 = FP32LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        else:
-            self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-
-        if fp32_norm and self.attn is not None:
-            if hasattr(self.attn, "q_norm"):
-                self.attn.q_norm = FP32NormProxy(self.attn.q_norm)
-            if hasattr(self.attn, "k_norm"):
-                self.attn.k_norm = FP32NormProxy(self.attn.k_norm)
-            if hasattr(self.attn, "norm_q"):
-                self.attn.norm_q = FP32NormProxy(self.attn.norm_q)
-            if hasattr(self.attn, "norm_k"):
-                self.attn.norm_k = FP32NormProxy(self.attn.norm_k)
+        self.cross_attn = MultiHeadCrossAttention(hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs)
+        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
         # MLP
         if ffn_type == "glumbconv":
@@ -5681,7 +3983,6 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
 
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.scale_shift_table = nn.Parameter(torch.randn(6, hidden_size) / hidden_size**0.5)
-        self.block_hook: Optional[Callable] = None
 
     @staticmethod
     def _build_frame_token_mask(
@@ -5745,18 +4046,15 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
             "camera_embedding": kwargs.get("camera_embedding", None),
             "frame_valid_mask": frame_valid_mask,
         }
-        cam_branch_drop_prob = kwargs.get("cam_branch_drop_prob", None)
-        if cam_branch_drop_prob is not None:
-            self_attn_kwargs["cam_branch_drop_prob"] = cam_branch_drop_prob
         if chunk_index is not None:
             self_attn_kwargs["chunk_index"] = chunk_index[:]  # NOTE: important, copy the list
         if kwargs.get("chunk_index_global", None) is not None:
             self_attn_kwargs["chunk_index_global"] = kwargs.get("chunk_index_global")
-        chunk_split_strategy = kwargs.get("chunk_split_strategy", getattr(self, "chunk_split_strategy", "uniform"))
+        chunk_split_strategy = kwargs.get("chunk_split_strategy", self.chunk_split_strategy)
         if chunk_split_strategy is not None:
             self_attn_kwargs["chunk_split_strategy"] = chunk_split_strategy
 
-        chunk_size = kwargs.get("chunk_size", getattr(self, "chunk_size", 10))
+        chunk_size = kwargs.get("chunk_size", self.chunk_size)
         if chunk_size is not None:
             self_attn_kwargs["chunk_size"] = chunk_size
 
@@ -5772,25 +4070,11 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         if frame_token_mask is not None:
             x = x * frame_token_mask
 
-        delta_pose_emb = kwargs.get("delta_pose_emb", None)
-        if delta_pose_emb is not None and hasattr(self, "delta_pose_proj"):
-            S = N // num_frames
-            dpe = delta_pose_emb.unsqueeze(2).expand(-1, -1, S, -1).reshape(B, N, C)
-            x = x + self.delta_pose_proj(dpe)
-
         plucker_emb = kwargs.get("plucker_emb", None)
         if plucker_emb is not None and hasattr(self, "plucker_proj"):
             x = x + self.plucker_proj(plucker_emb)
 
-        if self.flash_attn_additional:
-            x = x + self.flash_attn_additional(x, HW=THW)
-            if frame_token_mask is not None:
-                x = x * frame_token_mask
-
-        if self.cross_attn_image_embeds:
-            x = x + self.cross_attn(x, y, mask=mask, image_embeds=kwargs.get("image_embeds", None))
-        else:
-            x = x + self.cross_attn(x, y, mask=mask)
+        x = x + self.cross_attn(x, y, mask=mask)
         if frame_token_mask is not None:
             x = x * frame_token_mask
 
@@ -5805,7 +4089,7 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         if chunk_split_strategy is not None:
             mlp_kwargs["chunk_split_strategy"] = chunk_split_strategy
 
-        chunk_size = kwargs.get("chunk_size", getattr(self, "chunk_size", 10))
+        chunk_size = kwargs.get("chunk_size", self.chunk_size)
         if chunk_size is not None:
             mlp_kwargs["chunk_size"] = chunk_size
 
@@ -5873,12 +4157,14 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         cross_norm (`bool`, defaults to True): RMSNorm on cross-attention K.
         y_norm (`bool`, defaults to True): Apply ``attention_y_norm`` to text embeddings.
         y_norm_scale_factor (`float`, defaults to 0.01): Scale factor for ``attention_y_norm``.
-        init_cam_from_base (`bool`, defaults to True): Initialize camera branch QKV from main.
+        init_cam_from_base (`bool`, defaults to True): Unused; the camera branch is loaded from the checkpoint.
+            Kept so released `config.json` files load.
         chunk_split_strategy (`str`, defaults to ``"first_chunk_plus_one"``).
         use_chunk_plucker_post_attn (`bool`, defaults to True).
         chunk_plucker_channels (`int`, defaults to 48): ``6 dims * temporal_stride 8``.
         chunk_plucker_post_attn_blocks (`int`, defaults to 20): All blocks.
-        fp32_attention (`bool`, defaults to True): Run attention in fp32.
+        fp32_attention (`bool`, defaults to True): Unused; attention always runs in fp32. Kept so released
+            `config.json` files load.
         image_size (`int`, defaults to 720): Nominal image size.
         caption_channels (`int`, defaults to 2304): Gemma-2 hidden size.
         model_max_length (`int`, defaults to 300): Max prompt tokens.
@@ -5888,12 +4174,22 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = False
-    _no_split_modules = ["blocks"]
+    _no_split_modules = ["SanaVideoMSCamCtrlBlock"]
+    _repeated_blocks = ["SanaVideoMSCamCtrlBlock"]
+    _skip_layerwise_casting_patterns = ["x_embedder", "plucker_embedder", "norm"]
+    # NOTE: `_keep_in_fp32_modules` is intentionally unset. SANA-WM's blocks apply the
+    # timestep modulation inline (`t2i_modulate`), so holding `t_embedder` / `t_block` /
+    # `scale_shift_table` in fp32 would upcast the hidden states and feed fp32 activations
+    # to bf16 weights. Supporting it needs explicit casts in the block forward first.
 
     @register_to_config
     def __init__(
         self,
         in_channels: int = 128,
+        num_layers: int = 20,
+        hidden_size: int = 2240,
+        num_attention_heads: int = 20,
+        patch_size: tuple[int, int, int] = (1, 1, 1),
         attn_type: str = "BidirectionalGDNTriton",
         camctrl_type: str = "BidirectionalGDNUCPESinglePathLiteLABothTriton",
         softmax_every_n: int = 4,
@@ -5926,39 +4222,25 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
     ) -> None:
         super().__init__()
 
-        # Hardcoded architecture of the public SANA-WM_bidirectional release.
-        depth = 20
-        hidden_size = 2240
-        patch_size = (1, 1, 1)
-        num_heads = 20
+        # The defaults describe the public SANA-WM_bidirectional release; they are
+        # configurable so a small variant can be built (e.g. for tests).
+        depth = num_layers
+        num_heads = num_attention_heads
+        patch_size = tuple(patch_size)
 
         # Remaining SanaMSVideoCamCtrl.__init__ defaults not exposed by the config signature.
         mlp_acts = list(mlp_acts)
-        class_dropout_prob = 0.1
         drop_path = 0.0
         pe_interpolation = 1.0
         norm_eps = 1e-5
         patch_embed_kernel = None
         cfg_embed = False
         timestep_norm_scale_factor = 1.0
-        null_embed_path = None
-        cross_attn_image_embeds = False
-        image_embed_channels = 1152
         rope_fhw_dim = None
-        flash_attn_layer_idx = None
-        flash_attn_layer_type = None
-        flash_attn_window_count = None
         pack_latents = False
         camctrl_layers_num = None
-        use_delta_actions = False
-        delta_action_dim = 16 * 4
-        use_delta_translation = False
-        fp32_norm = False
         chunk_size = 10
-        use_delta_pose_additive = False
-        delta_pose_additive_dim = 64
         use_chunk_plucker_input = False
-        use_autograd_kernel = False
 
         # --- Base DiT config attributes (from Sana.__init__) ---
         self.pred_sigma = pred_sigma
@@ -5973,8 +4255,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         self.pos_embed_type = pos_embed_type
         self.y_norm = y_norm
         # NOTE: ``self.config`` is provided (read-only) by ConfigMixin via @register_to_config.
-        self.fp32_attention = False
-        self.null_embed_path = null_embed_path
         self.timestep_norm_scale_factor = timestep_norm_scale_factor
 
         self.t_embedder = TimestepEmbedder(hidden_size)
@@ -6007,10 +4287,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.camctrl_layers_num = camctrl_layers_num if camctrl_layers_num is not None else depth
         self.cam_attn_compress = cam_attn_compress
-        self.init_cam_from_base = init_cam_from_base
-        self.use_delta_actions = use_delta_actions
-        self.use_delta_translation = use_delta_translation
-        self.use_delta_pose_additive = use_delta_pose_additive
 
         kernel_size = patch_embed_kernel or patch_size
         x_embedder_in_channels = in_channels
@@ -6025,35 +4301,9 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         self.y_embedder = CaptionEmbedder(
             in_channels=caption_channels,
             hidden_size=hidden_size,
-            uncond_prob=class_dropout_prob,
             act_layer=approx_gelu,
             token_num=model_max_length,
         )
-
-        if self.use_delta_actions:
-            self.delta_action_embedder = DeltaActionEmbedder(
-                input_dim=delta_action_dim,
-                hidden_size=hidden_size,
-                act_layer=approx_gelu,
-            )
-            nn.init.zeros_(self.delta_action_embedder.mlp[-1].weight)
-            nn.init.zeros_(self.delta_action_embedder.mlp[-1].bias)
-
-        if self.use_delta_translation:
-            self.delta_translation_embedder = DeltaActionEmbedder(
-                input_dim=3,
-                hidden_size=hidden_size,
-                act_layer=approx_gelu,
-            )
-            nn.init.zeros_(self.delta_translation_embedder.mlp[-1].weight)
-            nn.init.zeros_(self.delta_translation_embedder.mlp[-1].bias)
-
-        if self.use_delta_pose_additive:
-            self.delta_pose_embedder = DeltaActionEmbedder(
-                input_dim=delta_pose_additive_dim,
-                hidden_size=hidden_size,
-                act_layer=approx_gelu,
-            )
 
         self.use_chunk_plucker_input = use_chunk_plucker_input
         self.use_chunk_plucker_post_attn = use_chunk_plucker_post_attn
@@ -6067,39 +4317,19 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         # UCPE-style camera branch uses a 3-channel absmap (up_map + lat_map).
         self.raymap_embedder = PatchEmbedMS3D(patch_size, 3, hidden_size, kernel_size=kernel_size, bias=True)
 
-        if cross_attn_image_embeds:
-            self.image_embedder = ClipVisionProjection(image_embed_channels, hidden_size)
-        else:
-            self.image_embedder = None
-
         if attn_type in ["flash", "FlexLinearAttention", "flex"]:
             attention_head_dim = hidden_size // num_heads
         else:
             attention_head_dim = linear_head_dim
 
-        if use_pe and pos_embed_type == "wan_rope":
+        if use_pe:
+            if pos_embed_type != "wan_rope":
+                raise ValueError(f'`pos_embed_type` must be "wan_rope", got {pos_embed_type!r}.')
             self.rope = WanRotaryPosEmbed(
                 attention_head_dim=attention_head_dim, patch_size=patch_size, max_seq_len=1024, fhw_dim=rope_fhw_dim
             )
-        elif use_pe and pos_embed_type == "casual_wan_rope":
-            self.rope = CausalWanRotaryPosEmbed(
-                attention_head_dim=attention_head_dim, patch_size=patch_size, max_seq_len=1024
-            )
-        elif use_pe and pos_embed_type == "wan_temporal_rope":
-            self.rope = WanRotaryTemporalPosEmbed(
-                attention_head_dim=attention_head_dim, patch_size=patch_size, max_seq_len=1024
-            )
         # stochastic depth decay rule (build on CPU so meta-device construction works)
         drop_path = [x.item() for x in torch.linspace(0, drop_path, depth, device="cpu")]
-
-        # insert flash attention layers
-        if flash_attn_layer_idx is not None and flash_attn_layer_type is not None:
-            assert int(flash_attn_layer_idx[-1]) < depth
-            additional_flash_attn = [
-                flash_attn_layer_type if i in flash_attn_layer_idx else False for i in range(depth)
-            ]
-        else:
-            additional_flash_attn = [False] * depth
 
         self.softmax_every_n = softmax_every_n
         attn_type_list = [attn_type] * depth
@@ -6133,24 +4363,18 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                     mlp_acts=mlp_acts,
                     linear_head_dim=linear_head_dim,
                     cross_norm=cross_norm,
-                    cross_attn_image_embeds=cross_attn_image_embeds,
                     t_kernel_size=t_kernel_size,
-                    additional_flash_attn=additional_flash_attn[i],
-                    flash_attn_window_count=flash_attn_window_count,
                     camctrl_type=camctrl_type_list[i],
                     patch_size=patch_size,
                     cam_attn_compress=self.cam_attn_compress,
-                    fp32_norm=fp32_norm,
                     chunk_size=chunk_size,
                     chunk_split_strategy=chunk_split_strategy,
                     conv_kernel_size=conv_kernel_size,
                     k_conv_only=k_conv_only,
-                    use_delta_pose_additive=use_delta_pose_additive,
                     use_chunk_plucker_post_attn=(
                         use_chunk_plucker_post_attn
                         and (chunk_plucker_post_attn_blocks < 0 or i < chunk_plucker_post_attn_blocks)
                     ),
-                    use_autograd_kernel=use_autograd_kernel,
                 )
                 for i in range(depth)
             ]
@@ -6159,17 +4383,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
 
         if ffn_type == "GLUMBConvTemp":
             logger.info(f"{ffn_type} Temporal kernal: {t_kernel_size}")
-        if flash_attn_layer_idx is not None:
-            logger.info(f"additional flash attn layer idx: {flash_attn_layer_idx}, type: {flash_attn_layer_type}")
-            if flash_attn_layer_type == "window_flash":
-                logger.info(f"flash attn window count: {flash_attn_window_count}")
 
-        self.initialize()
-        self.save_block_output = False
-        self.block_output_buffer = {}
-
-        if fp32_attention:
-            set_fp32_attention(self)
         self.in_channels = self.out_channels = in_channels
 
     @staticmethod
@@ -6191,10 +4405,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         latents = latents.reshape(batch_size, channels // (2 * 2), frame, height, width)
 
         return latents
-
-    def _compute_rope_with_cp(self, device: torch.device, h: int, w: int) -> torch.Tensor:
-        """Compute RoPE frequencies for the local frame window."""
-        return self.rope((self.f, h, w), device)
 
     def forward(
         self,
@@ -6247,27 +4457,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         data_info = kwargs.get("data_info", {})
         if data_info.get("image_vae_embeds", None) is not None:
             x = torch.cat([x, data_info["image_vae_embeds"].to(self.dtype)], dim=1)
-        if data_info.get("image_embeds", None) is not None:
-            image_embeds = data_info["image_embeds"].to(self.dtype)
-            image_embeds = self.image_embedder(image_embeds)
-            kwargs["image_embeds"] = image_embeds
-
-        if self.save_block_output:
-            self.inference_timestep = int(timestep[0].item())
-
         cam_embeds = kwargs.get("camera_conditions", None)
-        cam_branch_drop_prob = kwargs.get("cam_branch_drop_prob", 0.0)
-        if cam_embeds is not None and cam_branch_drop_prob:
-            # Keep drop-path semantics consistent: when camera branch is dropped,
-            # skip both camera-attention branch and camera embedding injection.
-            cam_embeds = _maybe_drop_cam_branch(
-                cam_embeds,
-                cam_branch_drop_prob,
-                self.training,
-                x.device,
-            )
-            if cam_embeds is None:
-                kwargs["camera_conditions"] = None
         if self.pack_latents:
             x = self._pack_latents(x, bs, self.in_channels, self.h, self.w, self.f)
             if cam_embeds is not None:
@@ -6297,34 +4487,24 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                 )
                 cam_embeds = cam_embeds.permute(0, 4, 1, 2, 3).to(self.dtype)
                 kwargs["raymats"] = raymats
-            _skip_absmap = getattr(self, "use_chunk_plucker_input", False) or getattr(
-                self, "use_chunk_plucker_post_attn", False
-            )
-            if not _skip_absmap:
+            if not (self.use_chunk_plucker_input or self.use_chunk_plucker_post_attn):
                 cam_embeds = self.raymap_embedder(cam_embeds)
                 x = x + cam_embeds
                 kwargs["camera_embedding"] = cam_embeds
                 kwargs["camera_conditions"] = raw_cam_conditions
 
-        if getattr(self, "use_chunk_plucker_input", False) and "chunk_plucker" in kwargs:
+        if self.use_chunk_plucker_input and "chunk_plucker" in kwargs:
             plucker_input = kwargs["chunk_plucker"].to(self.dtype)
             plucker_emb = self.plucker_embedder(plucker_input)
             x = x + plucker_emb
 
-        if getattr(self, "use_chunk_plucker_post_attn", False) and "chunk_plucker" in kwargs:
+        if self.use_chunk_plucker_post_attn and "chunk_plucker" in kwargs:
             plucker_input = kwargs["chunk_plucker"].to(self.dtype)
             kwargs["plucker_emb"] = self.plucker_embedder(plucker_input)
 
         image_pos_embed = kwargs.get("pos_embeds", None)
         if self.use_pe and image_pos_embed is None:
-            if self.pos_embed_type == "wan_rope":
-                image_pos_embed = self._compute_rope_with_cp(x.device, self.h, self.w)
-            elif self.pos_embed_type == "casual_wan_rope":
-                image_pos_embed = self.rope((self.f, self.h, self.w), x.device)
-            elif self.pos_embed_type == "wan_temporal_rope":
-                image_pos_embed = self._compute_rope_with_cp(x.device, self.h, self.w)
-            else:
-                raise ValueError(f"Unknown pos_embed_type: {self.pos_embed_type}")
+            image_pos_embed = self.rope((self.f, self.h, self.w))
         elif image_pos_embed is not None:
             image_pos_embed = image_pos_embed.to(x.device)
             while image_pos_embed.ndim > 4:
@@ -6335,43 +4515,19 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         t = t.unflatten(dim=0, sizes=timestep.shape)
         t0 = t0.unflatten(dim=0, sizes=timestep.shape)
 
-        # Compute delta embeddings for final_layer (stored separately, not touching t/t0)
-        _delta_t_emb = None
-        if getattr(self, "use_delta_actions", False) and "delta_actions" in kwargs:
-            da = kwargs["delta_actions"].to(self.dtype)
-            _delta_t_emb = self.delta_action_embedder(da)  # (B, T, D)
-
-        if getattr(self, "use_delta_translation", False) and kwargs.get("camera_conditions") is not None:
-            cam_cond = kwargs["camera_conditions"].to(self.dtype)
-            c2w = cam_cond[:, :, :16].view(cam_cond.shape[0], cam_cond.shape[1], 4, 4)
-            t_cam = c2w[:, :, :3, 3]  # (B, T, 3)
-            delta_t = t_cam[:, 1:, :] - t_cam[:, :-1, :]
-            delta_t = torch.cat([torch.zeros_like(delta_t[:, :1, :]), delta_t], dim=1)
-            dt_emb = self.delta_translation_embedder(delta_t)  # (B, T, D)
-            _delta_t_emb = dt_emb if _delta_t_emb is None else _delta_t_emb + dt_emb
-
-        if getattr(self, "use_delta_pose_additive", False) and "delta_actions" in kwargs:
-            da = kwargs["delta_actions"].to(self.dtype)
-            kwargs["delta_pose_emb"] = self.delta_pose_embedder(da)  # (B, T, D)
-
-        y = self.y_embedder(y, self.training, mask=mask)  # (N, D)
+        y = self.y_embedder(y)  # (N, D)
         if self.y_norm:
             y = self.attention_y_norm(y)
 
-        if mask is not None:
-            mask = mask.to(torch.int16)
-            mask = mask.repeat(y.shape[0] // mask.shape[0], 1) if mask.shape[0] != y.shape[0] else mask
-            mask = mask.squeeze(1).squeeze(1)
-            if _xformers_available:
-                y = y.squeeze(1).masked_select(mask.unsqueeze(-1) != 0).view(1, -1, x.shape[-1])
-                y_lens = mask.sum(dim=1).tolist()
-            else:
-                y_lens = mask
-        elif _xformers_available:
-            y_lens = [y.shape[2]] * y.shape[0]
-            y = y.squeeze(1).view(1, -1, x.shape[-1])
-        else:
-            raise ValueError(f"Attention type is not available due to _xformers_available={_xformers_available}.")
+        if mask is None:
+            raise ValueError(
+                "`mask` is required: SANA-WM's cross-attention needs the text padding mask to build its attention "
+                "bias. Pass the prompt attention mask returned by the pipeline's `encode_prompt`."
+            )
+        mask = mask.to(torch.int16)
+        mask = mask.repeat(y.shape[0] // mask.shape[0], 1) if mask.shape[0] != y.shape[0] else mask
+        mask = mask.squeeze(1).squeeze(1)
+        y_lens = mask
 
         block_mask = None
 
@@ -6419,22 +4575,11 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                 **kwargs,
             )  # (N, T, D)
 
-        if _delta_t_emb is not None:
-            if t.ndim == 2:
-                t = t.unsqueeze(1).expand(-1, _delta_t_emb.shape[1], -1)
-            elif t.ndim == 4:
-                t = t.squeeze(1)
-            t = t + _delta_t_emb
-            t = t.unsqueeze(1)
-
         x = self.final_layer(x, t)  # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)  # (N, out_channels, H, W)
         if self.pack_latents:
             x = self._unpack_latents(x, self.h * 2, self.w * 2, self.f)
 
-        if self.save_block_output:
-            block_output = self.get_block_output()
-            self.block_output_buffer[self.inference_timestep] = block_output
         return Transformer2DModelOutput(sample=x) if return_dict else (x,)
 
     def unpatchify(self, x):
@@ -6451,105 +4596,3 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         imgs = x.reshape(shape=(x.shape[0], c, self.f * p_f, h * p_h, w * p_w))
 
         return imgs
-
-    def initialize(self):
-        self.initialize_weights()
-
-        # Initialize transformer layers:
-        def _basic_init(module):
-            if isinstance(module, nn.Linear):
-                torch.nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-
-        self.apply(_basic_init)
-
-        # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
-        w = self.x_embedder.proj.weight.data
-        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-
-        # Initialize timestep embedding MLP:
-        nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
-        nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
-        nn.init.normal_(self.t_block[1].weight, std=0.02)
-
-        # Initialize caption embedding MLP:
-        nn.init.normal_(self.y_embedder.y_proj.fc1.weight, std=0.02)
-        nn.init.normal_(self.y_embedder.y_proj.fc2.weight, std=0.02)
-
-        # Initialize cfg embedder
-        if self.cfg_embedder:
-            nn.init.normal_(self.cfg_embedder.mlp[0].weight, std=0.02)
-            nn.init.zeros_(self.cfg_embedder.mlp[2].weight)
-            if hasattr(self.cfg_embedder.mlp[2], "bias") and self.cfg_embedder.mlp[2].bias is not None:
-                nn.init.zeros_(self.cfg_embedder.mlp[2].bias)
-
-        for block in self.blocks:
-            if hasattr(block, "flash_attn_additional") and block.flash_attn_additional is not None:
-                nn.init.zeros_(block.flash_attn_additional.proj.weight)
-                nn.init.zeros_(block.flash_attn_additional.proj.bias)
-
-            if hasattr(block, "cross_attn") and hasattr(block.cross_attn, "image_kv_linear"):
-                nn.init.zeros_(block.cross_attn.image_kv_linear.weight)
-                nn.init.zeros_(block.cross_attn.image_kv_linear.bias)
-
-            if hasattr(block, "attn") and hasattr(block.attn, "prope_proj"):
-                nn.init.zeros_(block.attn.prope_proj.weight)
-                nn.init.zeros_(block.attn.prope_proj.bias)
-
-            if hasattr(block, "attn") and hasattr(block.attn, "out_proj_cam"):
-                nn.init.zeros_(block.attn.out_proj_cam.weight)
-                nn.init.zeros_(block.attn.out_proj_cam.bias)
-
-            if hasattr(block, "attn") and hasattr(block.attn, "_init_gdn_gates_for_linear_equiv"):
-                block.attn._init_gdn_gates_for_linear_equiv()
-
-        if hasattr(self, "raymap_embedder") and self.raymap_embedder is not None:
-            nn.init.constant_(self.raymap_embedder.proj.weight, 0)
-            if self.raymap_embedder.proj.bias is not None:
-                nn.init.constant_(self.raymap_embedder.proj.bias, 0)
-
-        if self.init_cam_from_base:
-            self.init_cam_branch_from_base()
-
-    def init_cam_branch_from_base(self):
-        for i, block in enumerate(self.blocks):
-            if hasattr(block.attn, "init_cam_branch_weights"):
-                block.attn.init_cam_branch_weights()
-
-    def initialize_weights(self):
-        # Initialize transformer layers:
-        def _basic_init(module):
-            if isinstance(module, nn.Linear):
-                torch.nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-
-        self.apply(_basic_init)
-
-        # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
-        w = self.x_embedder.proj.weight.data
-        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-
-        # Initialize timestep embedding MLP:
-        nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
-        nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
-        nn.init.normal_(self.t_block[1].weight, std=0.02)
-
-        # Initialize caption embedding MLP:
-        nn.init.normal_(self.y_embedder.y_proj.fc1.weight, std=0.02)
-        nn.init.normal_(self.y_embedder.y_proj.fc2.weight, std=0.02)
-
-        # Optionally seed the null (unconditional) caption embedding. The public
-        # checkpoint ships it inside the state dict, so `null_embed_path` is unset
-        # there and this is skipped.
-        if self.null_embed_path is not None:
-            try:
-                null_embed = torch.load(self.null_embed_path, map_location="cpu", weights_only=True)
-                self.y_embedder.y_embedding.data = null_embed["uncond_prompt_embeds"][0]
-                logger.info(f"Loaded null embedding from {self.null_embed_path}.")
-            except Exception as e:  # noqa: BLE001 — best-effort; weights are overwritten on load
-                logger.warning(
-                    f"Failed to load null embedding from {self.null_embed_path} ({e}); "
-                    f"ignore this if you are loading a pretrained checkpoint."
-                )
