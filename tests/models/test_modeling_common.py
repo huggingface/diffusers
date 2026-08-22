@@ -278,6 +278,47 @@ class TestModelUtils:
 
         SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
 
+    @require_torch_accelerator
+    @pytest.mark.parametrize("parallel_loading", [False, True])
+    def test_sharded_checkpoint_device_map_matches_cpu_load(self, parallel_loading, monkeypatch):
+        # Loading a sharded checkpoint directly onto an accelerator with a dtype conversion must
+        # produce exactly the same weights as loading on CPU. Regression test for silent weight
+        # corruption on MPS with torch < 2.13, where the loader's non-blocking copies could read
+        # already-released source memory (https://github.com/huggingface/diffusers/issues/13227,
+        # https://github.com/pytorch/pytorch/issues/189690). Runs against both the serial and the
+        # threadpool shard loaders, which share the same per-parameter device placement.
+        if parallel_loading:
+            import diffusers.models.modeling_utils as modeling_utils
+
+            monkeypatch.setattr(modeling_utils, "HF_ENABLE_PARALLEL_LOADING", True)
+        torch.manual_seed(0)
+        config = {
+            "block_out_channels": (32, 64),
+            "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
+            "up_block_types": ("UpBlock2D", "CrossAttnUpBlock2D"),
+            "cross_attention_dim": 32,
+            "attention_head_dim": 8,
+            "out_channels": 4,
+            "in_channels": 4,
+            "layers_per_block": 1,
+            "sample_size": 16,
+        }
+        model = UNet2DConditionModel(**config).to(torch.bfloat16)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # several shards so the loader frees per-shard state dicts while copies are queued
+            model.save_pretrained(tmpdir, max_shard_size="200KB")
+            del model
+
+            reference = UNet2DConditionModel.from_pretrained(tmpdir, torch_dtype=torch.float32)
+            reference_sd = reference.state_dict()
+
+            loaded = UNet2DConditionModel.from_pretrained(tmpdir, torch_dtype=torch.float32, device_map=torch_device)
+            for name, value in loaded.state_dict().items():
+                assert torch.equal(value.detach().cpu(), reference_sd[name]), (
+                    f"{name} differs between device_map={torch_device} load and CPU load"
+                )
+
 
 class UNetTesterMixin:
     @staticmethod

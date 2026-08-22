@@ -253,10 +253,6 @@ def load_model_dict_into_meta(
                 param = param.to(dtype)
                 set_module_kwargs["dtype"] = dtype
 
-        if is_accelerate_version(">", "1.8.1"):
-            set_module_kwargs["non_blocking"] = True
-            set_module_kwargs["clear_cache"] = False
-
         # For compatibility with PyTorch load_state_dict which converts state dict dtype to existing dtype in model, and which
         # uses `param.copy_(input_param)` that preserves the contiguity of the parameter in the model.
         # Reference: https://github.com/pytorch/pytorch/blob/db79ceb110f6646523019a59bbd7b838f43d4a86/torch/nn/modules/module.py#L2040C29-L2040C29
@@ -276,6 +272,15 @@ def load_model_dict_into_meta(
                 param = param.contiguous()
 
         param_device = _determine_param_device(param_name, device_map)
+
+        if is_accelerate_version(">", "1.8.1"):
+            # On MPS with torch < 2.13, a non-blocking CPU->MPS copy can read source storage that
+            # was already released before the stream synchronizes, silently corrupting the loaded
+            # weights (https://github.com/pytorch/pytorch/issues/189690,
+            # https://github.com/huggingface/diffusers/issues/13227). Use blocking copies there.
+            unsafe_mps_non_blocking = str(param_device).startswith("mps") and is_torch_version("<", "2.13")
+            set_module_kwargs["non_blocking"] = not unsafe_mps_non_blocking
+            set_module_kwargs["clear_cache"] = False
 
         # bnb params are flattened.
         # gguf quants have a different shape based on the type of quantization applied
