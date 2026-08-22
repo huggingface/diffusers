@@ -352,6 +352,10 @@ else:
         "JoyImageEditPlusPipeline",
         "JoyImageEditPlusPipelineOutput",
     ]
+    _import_structure["joyvideoedit"] = [
+        "JoyVideoEditPipeline",
+        "JoyVideoEditPipelineOutput",
+    ]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
@@ -746,6 +750,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             JoyImageEditPlusPipeline,
             JoyImageEditPlusPipelineOutput,
         )
+        from .joyvideoedit import JoyVideoEditPipeline, JoyVideoEditPipelineOutput
         from .kandinsky import (
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
