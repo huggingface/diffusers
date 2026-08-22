@@ -23,6 +23,7 @@ from ..testing_utils import (
     BitsAndBytesTesterMixin,
     LoraTesterMixin,
     ModelTesterMixin,
+    ResilPhaseCacheTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -137,6 +138,10 @@ class TestHunyuanVideoTransformerTraining(HunyuanVideoTransformerTesterConfig, T
 
 class TestHunyuanVideoTransformerCompile(HunyuanVideoTransformerTesterConfig, TorchCompileTesterMixin):
     pass
+
+
+class TestHunyuanVideoTransformerResilPhaseCache(HunyuanVideoTransformerTesterConfig, ResilPhaseCacheTesterMixin):
+    """ResilPhase cache tests for HunyuanVideo Transformer."""
 
 
 class TestHunyuanVideoTransformerBitsAndBytes(HunyuanVideoTransformerTesterConfig, BitsAndBytesTesterMixin):
