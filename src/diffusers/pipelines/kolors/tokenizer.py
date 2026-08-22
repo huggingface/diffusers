@@ -137,6 +137,9 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
             padding_side=padding_side,
             clean_up_tokenization_spaces=clean_up_tokenization_spaces,
             encode_special_tokens=encode_special_tokens,
+            pad_token=kwargs.pop("pad_token", "<unk>"),
+            unk_token=kwargs.pop("unk_token", "<unk>"),
+            eos_token=kwargs.pop("eos_token", "</s>"),
             **kwargs,
         )
 
@@ -148,19 +151,19 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
 
     @property
     def unk_token(self) -> str:
-        return "<unk>"
+        return self._special_tokens_map.get("unk_token", "<unk>")
 
     @unk_token.setter
     def unk_token(self, value: str):
-        self._unk_token = value
+        self._special_tokens_map["unk_token"] = value
 
     @property
     def pad_token(self) -> str:
-        return "<unk>"
+        return self._special_tokens_map.get("pad_token", "<unk>")
 
     @pad_token.setter
     def pad_token(self, value: str):
-        self._pad_token = value
+        self._special_tokens_map["pad_token"] = value
 
     @property
     def pad_token_id(self):
@@ -168,11 +171,11 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
 
     @property
     def eos_token(self) -> str:
-        return "</s>"
+        return self._special_tokens_map.get("eos_token", "</s>")
 
     @eos_token.setter
     def eos_token(self, value: str):
-        self._eos_token = value
+        self._special_tokens_map["eos_token"] = value
 
     @property
     def eos_token_id(self):
