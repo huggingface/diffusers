@@ -82,6 +82,26 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         return components
 
+    def get_tiny_components(self, sample_size=8, in_channels=3, out_channels=3, num_class_embeds=None):
+        torch.manual_seed(0)
+        unet = UNet2DModel(
+            sample_size=sample_size,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            layers_per_block=1,
+            block_out_channels=(8,),
+            down_block_types=("DownBlock2D",),
+            up_block_types=("UpBlock2D",),
+            norm_num_groups=4,
+            num_class_embeds=num_class_embeds,
+        )
+        scheduler = CMStochasticIterativeScheduler(
+            num_train_timesteps=40,
+            sigma_min=0.002,
+            sigma_max=80.0,
+        )
+        return {"unet": unet, "scheduler": scheduler}
+
     def get_dummy_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -167,6 +187,86 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_random_class_labels_use_generator(self):
+        device = "cpu"
+        components = self.get_tiny_components(num_class_embeds=10)
+        pipe = ConsistencyModelPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=device).manual_seed(123)
+        labels = pipe.prepare_class_labels(batch_size=4, device=torch.device(device), generator=generator)
+
+        expected_generator = torch.Generator(device=device).manual_seed(123)
+        expected_labels = torch.randint(0, pipe.unet.config.num_class_embeds, size=(4,), generator=expected_generator)
+        assert torch.equal(labels.cpu(), expected_labels)
+
+        list_labels = pipe.prepare_class_labels(batch_size=2, device=torch.device(device), class_labels=[1, 2])
+        int_labels = pipe.prepare_class_labels(batch_size=1, device=torch.device(device), class_labels=1)
+        assert list_labels.dtype == torch.int
+        assert int_labels.dtype == torch.int
+
+        latents = torch.zeros((1, 3, 8, 8))
+        generator = torch.Generator(device=device).manual_seed(123)
+        image = pipe(
+            batch_size=1,
+            class_labels=None,
+            num_inference_steps=1,
+            timesteps=None,
+            generator=generator,
+            latents=latents,
+            output_type="pt",
+        ).images
+
+        generator = torch.Generator(device=device).manual_seed(123)
+        image_2 = pipe(
+            batch_size=1,
+            class_labels=None,
+            num_inference_steps=1,
+            timesteps=None,
+            generator=generator,
+            latents=latents,
+            output_type="pt",
+        ).images
+
+        assert torch.equal(image, image_2)
+
+    def test_latents_use_unet_in_channels(self):
+        device = "cpu"
+        components = self.get_tiny_components(in_channels=1, out_channels=1)
+        pipe = ConsistencyModelPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        latents = torch.zeros((1, 1, 8, 8))
+        image = pipe(
+            batch_size=1,
+            num_inference_steps=1,
+            timesteps=None,
+            latents=latents,
+            output_type="pt",
+        ).images
+
+        assert image.shape == (1, 1, 8, 8)
+
+    def test_tuple_sample_size(self):
+        device = "cpu"
+        components = self.get_tiny_components(sample_size=(8, 10))
+        pipe = ConsistencyModelPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image = pipe(
+            batch_size=1,
+            num_inference_steps=1,
+            timesteps=None,
+            generator=generator,
+            output_type="pt",
+        ).images
+
+        assert image.shape == (1, 3, 8, 10)
 
 
 @nightly
