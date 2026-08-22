@@ -74,6 +74,15 @@ class HunyuanVideoFramepackPipelineFastTests(
     test_layerwise_casting = True
     test_group_offloading = True
 
+    # `image_encoder` is a `SiglipVisionModel`, whose attention pooling head
+    # (`SiglipMultiheadAttentionPoolingHead`) wraps a `torch.nn.MultiheadAttention`. That hands
+    # `self.out_proj.weight` to `torch.nn.functional.multi_head_attention_forward` instead of calling
+    # `self.out_proj`, so the leaf-level onload hook on `out_proj` never fires and its weights stay on the offload
+    # device. Same root cause as the sequential CPU offloading skips below. Block-level offloading is unaffected
+    # (the whole head is onloaded as one unmatched module), and every other component offloads fine at leaf level,
+    # so exclude just this one rather than skipping the test.
+    group_offloading_leaf_level_exclude_modules = ["image_encoder"]
+
     faster_cache_config = FasterCacheConfig(
         spatial_attention_block_skip_range=2,
         spatial_attention_timestep_skip_range=(-1, 901),
@@ -387,14 +396,6 @@ class HunyuanVideoFramepackPipelineFastTests(
         # `torch.nn.functional.multi_head_attention_forward` with the weights and bias. Since the hook is never
         # triggered with a forward pass call, the weights stay on the CPU. There are more examples where we skip
         # this test because of MHA (example: HunyuanDiT because of AttentionPooling layer).
-        pass
-
-    @unittest.skip("The image_encoder uses SiglipVisionModel, which does not support group offloading.")
-    def test_pipeline_level_group_offloading_inference(self):
-        # Same root cause as the sequential CPU offloading skips above: the attention layer is a
-        # torch.nn.MultiheadAttention, which passes `self.out_proj.weight` to
-        # `torch.nn.functional.multi_head_attention_forward` instead of calling `self.out_proj`. The leaf-level
-        # onload hook on `out_proj` is therefore never triggered and its weights stay on the CPU.
         pass
 
     # TODO(aryan): Create a dummy gemma model with smol vocab size
