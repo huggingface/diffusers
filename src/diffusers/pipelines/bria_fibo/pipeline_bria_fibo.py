@@ -432,16 +432,6 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         return latents, latent_image_ids
 
-    @staticmethod
-    def _prepare_attention_mask(attention_mask):
-        attention_matrix = torch.einsum("bi,bj->bij", attention_mask, attention_mask)
-
-        # convert to 0 - keep, -inf ignore
-        attention_matrix = torch.where(
-            attention_matrix == 1, 0.0, -torch.inf
-        )  # Apply -inf to ignored tokens for nulling softmax score
-        return attention_matrix
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -615,13 +605,18 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         if guidance_scale > 1:
             latent_attention_mask = latent_attention_mask.repeat(2, 1)
 
-        attention_mask = torch.cat([prompt_attention_mask, latent_attention_mask], dim=1)
-        attention_mask = self._prepare_attention_mask(attention_mask)  # batch, seq => batch, seq, seq
-        attention_mask = attention_mask.unsqueeze(dim=1).to(dtype=self.transformer.dtype)  # for head broadcasting
+        attention_mask = torch.cat([prompt_attention_mask, latent_attention_mask], dim=1).bool()
 
         if self._joint_attention_kwargs is None:
             self._joint_attention_kwargs = {}
-        self._joint_attention_kwargs["attention_mask"] = attention_mask
+        if attention_mask.all():
+            # Nothing is padded, so the mask is a no-op; skipping it keeps backends without
+            # mask support (e.g. flash-attn 2/3) usable.
+            self._joint_attention_kwargs.pop("attention_mask", None)
+        else:
+            # Bool key-padding mask (batch, 1, 1, seq): every real query attends to the same
+            # keys as with a full (seq, seq) matrix, and varlen backends require bool.
+            self._joint_attention_kwargs["attention_mask"] = attention_mask[:, None, None, :]
 
         # Adapt scheduler to dynamic shifting (resolution dependent)
 
@@ -630,7 +625,7 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         else:
             seq_len = (height // self.vae_scale_factor) * (width // self.vae_scale_factor)
 
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        sigmas = None if timesteps is not None else np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
         mu = calculate_shift(
             seq_len,
@@ -646,7 +641,7 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             self.scheduler,
             num_inference_steps=num_inference_steps,
             device=device,
-            timesteps=None,
+            timesteps=timesteps,
             sigmas=sigmas,
             mu=mu,
         )

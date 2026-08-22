@@ -114,10 +114,6 @@ class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pass
 
     @unittest.skip(reason="Batching is not supported yet")
-    def test_num_images_per_prompt(self):
-        pass
-
-    @unittest.skip(reason="Batching is not supported yet")
     def test_inference_batch_consistent(self):
         pass
 
@@ -152,6 +148,51 @@ class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
+
+    def test_bria_fibo_multi_reference_uses_distinct_rope_time_planes(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+
+        references = [
+            Image.new("RGB", (336, 192), (255, 255, 255)),
+            Image.new("RGB", (160, 96), (0, 0, 0)),
+        ]
+        num_channels_latents = pipe.transformer.config.in_channels
+        for reference_index, reference in enumerate(references, start=1):
+            packed, ids = pipe.prepare_reference_latents(
+                image=reference,
+                num_channels_latents=num_channels_latents,
+                dtype=torch.float32,
+                device=torch_device,
+                reference_index=reference_index,
+            )
+            expected_tokens = (reference.height // 16) * (reference.width // 16)
+            self.assertEqual(packed.shape[:2], (1, expected_tokens))
+            self.assertTrue((ids[:, 0] == reference_index).all())
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.update(image=references, num_inference_steps=1)
+        image = pipe(**inputs).images[0]
+        self.assertEqual(image.shape, (192, 336, 3))
+
+    def test_batched_prompts_with_multiple_references(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.update(
+            prompt=[inputs["prompt"], inputs["prompt"].replace("squirrel", "robot")],
+            image=[inputs["image"], Image.new("RGB", (160, 96), (0, 0, 0))],
+            num_inference_steps=2,
+        )
+        images = pipe(**inputs).images
+        self.assertEqual(images.shape, (2, 192, 336, 3))
+        self.assertGreater(np.abs(images[0] - images[1]).max(), 1e-4)
+
+    def test_multi_reference_mask_requires_single_reference(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["image"] = [inputs["image"], Image.new("RGB", (160, 96), (0, 0, 0))]
+        inputs["mask"] = Image.new("L", (336, 192), 255)
+        with self.assertRaisesRegex(ValueError, "exactly one reference"):
+            pipe(**inputs)
 
     def test_bria_fibo_edit_mask(self):
         pipe = self.pipeline_class(**self.get_dummy_components())

@@ -25,6 +25,30 @@ Use the command below to log in:
 hf auth login
 ```
 
+## Multiple reference images
+
+`image` accepts a `PIL.Image.Image` or a list of them. A list is interpreted as multiple references, not a batch: each reference is VAE-encoded at its own aspect ratio (capped at 1024x1024 square pixels) and conditions the edit on its own RoPE time plane, while the output resolution follows the first reference. Masks are supported only with a single reference.
+
+```python
+import json
+
+import torch
+from PIL import Image
+
+from diffusers import BriaFiboEditPipeline
+
+pipe = BriaFiboEditPipeline.from_pretrained("briaai/Fibo-Edit", torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+prompt = {"edit_instruction": "Place the product from the first image in the scene from the second image"}
+result = pipe(
+    prompt=json.dumps(prompt),
+    image=[Image.open("product.png"), Image.open("scene.png")],
+    num_inference_steps=50,
+    guidance_scale=3.5,
+)
+result.images[0].save("edit.png")
+```
 
 ## BriaFiboEditPipeline
 
