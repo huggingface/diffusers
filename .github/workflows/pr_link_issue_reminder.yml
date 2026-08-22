@@ -8,9 +8,9 @@ on:
 jobs:
   remind:
     # Reminds external contributors to link an issue, reports still-unlinked PRs to
-    # Slack (one message per PR) 7 days after the reminder, and auto-closes them 10 days
-    # after the reminder unless rescued (issue linked or `no-issue-needed` label
-    # added). PRs from maintainers, users with write/admin access, and collaborators
+    # Slack (one message per PR, sent once) 5 days after the reminder, and auto-closes
+    # them 10 days after the reminder unless rescued (issue linked or `no-issue-needed`
+    # label added). PRs from maintainers, users with write/admin access, and collaborators
     # are skipped by the script.
     name: Remind external contributors to link an issue
     if: github.repository == 'huggingface/diffusers'

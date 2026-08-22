@@ -26,6 +26,8 @@ Behavior:
 - Once the warning is `SLACK_RESCUE_DAYS` old and the PR is still not linked, it is
   reported to Slack (one message per PR, so each can be tracked individually) for
   maintainers to rescue it (by linking an issue or adding the `no-issue-needed` label).
+  Each PR is reported exactly once, so a PR the team decided not to rescue does not
+  come back on every run.
 - Once the warning is `AUTOCLOSE_DAYS` old and the PR is still not linked, the PR is
   closed with an explanatory comment.
 - PRs labeled `no-issue-needed` and bot-authored PRs are skipped.
@@ -49,11 +51,16 @@ REMINDER_MARKER = "<!-- pr-link-issue-reminder -->"
 # Present only in comments that warn about auto-closure; the escalation clock starts
 # from the bot comment carrying this marker.
 AUTOCLOSE_MARKER = "<!-- pr-link-issue-autoclose -->"
+# Appended to the warning comment once the PR has been reported to Slack, so it is
+# reported exactly once instead of on every run of the rescue window.
+SLACK_NOTIFIED_MARKER = "<!-- pr-link-issue-slack-notified -->"
 # Login the reminder comments are authored under (the workflow's GITHUB_TOKEN).
 BOT_LOGIN = "github-actions[bot]"
 BYPASS_LABELS = {"no-issue-needed"}
 # Days after the warning at which a still-unlinked PR is reported to Slack for rescue.
-SLACK_RESCUE_DAYS = 7
+# Kept well ahead of `AUTOCLOSE_DAYS` so the single Slack message leaves maintainers a
+# few working days to react (a message sent on a Friday still gets a mid-week reply).
+SLACK_RESCUE_DAYS = 5
 # Days after the warning at which a still-unlinked PR is automatically closed.
 AUTOCLOSE_DAYS = 10
 # Upper bound on how far back to paginate open PRs; older PRs are left alone.
@@ -168,9 +175,14 @@ def post_to_slack(webhook_url, text):
     response.raise_for_status()
 
 
+def mark_slack_notified(warning):
+    """Append the notified marker to the warning comment so the PR is not reported again."""
+    warning.edit(f"{warning.body or ''}\n{SLACK_NOTIFIED_MARKER}")
+
+
 def send_slack_rescue_messages(webhook_url, mention_ids, at_risk):
     """Post one header message plus one message per PR, so each PR can be tracked
-    individually (e.g. with a ✅ reaction once handled)."""
+    individually (e.g. with a ✅ reaction once handled). Each PR is reported once."""
     header = (
         f"⚠️ {len(at_risk)} open PR(s) without a linked issue will be auto-closed soon. "
         "Link an issue or add the `no-issue-needed` label to rescue them:"
@@ -178,10 +190,11 @@ def send_slack_rescue_messages(webhook_url, mention_ids, at_risk):
     if mention_ids:
         header = "cc " + " ".join(f"<@{mid}>" for mid in mention_ids) + "\n" + header
     post_to_slack(webhook_url, header)
-    for pr, days_left in at_risk:
+    for pr, warning, days_left in at_risk:
         post_to_slack(
             webhook_url, f"<{pr.html_url}|#{pr.number} {pr.title}> by `{pr.user.login}` — closes in {days_left} day(s)"
         )
+        mark_slack_notified(warning)
 
 
 def main():
@@ -194,7 +207,7 @@ def main():
     owner, name = REPO.split("/", 1)
     now = datetime.now(timezone.utc)
     scan_cutoff = now - timedelta(days=SCAN_LOOKBACK_DAYS)
-    # (pr, days_left) pairs reported to Slack for rescue.
+    # (pr, warning_comment, days_left) triples reported to Slack for rescue.
     at_risk = []
 
     try:
@@ -249,8 +262,8 @@ def main():
                 if days_since_warning >= AUTOCLOSE_DAYS:
                     pr.create_issue_comment(autoclose_body())
                     pr.edit(state="closed")
-                elif days_since_warning >= SLACK_RESCUE_DAYS:
-                    at_risk.append((pr, AUTOCLOSE_DAYS - days_since_warning))
+                elif days_since_warning >= SLACK_RESCUE_DAYS and SLACK_NOTIFIED_MARKER not in (warning.body or ""):
+                    at_risk.append((pr, warning, AUTOCLOSE_DAYS - days_since_warning))
             except Exception as e:
                 logger.warning("Skipping PR #%s: %s", getattr(pr, "number", "?"), e)
                 continue
