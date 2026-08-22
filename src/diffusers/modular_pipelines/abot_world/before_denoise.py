@@ -16,6 +16,8 @@ import numpy as np
 import torch
 
 from ...models import ABotWorldTransformer3DModel
+from ...models.autoencoders.autoencoder_kl_wan import WanDecodeCache
+from ...models.autoencoders.autoencoder_tiny_video import TinyVideoDecodeCache
 from ...models.transformers.transformer_abot_world import ABotWorldKVCache
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
@@ -33,8 +35,8 @@ class ABotWorldPrepareStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Prepare step for the causal rollout: sets the scheduler's full shifted flow-match grid and warps the "
-            "distilled `denoising_timesteps` through it, validates the per-block actions, and allocates the "
-            "transformer's rolling K/V cache with the reference tokens pinned at its head."
+            "distilled `denoising_timesteps` through it, and allocates the transformer's rolling K/V cache with "
+            "the reference tokens pinned at its head."
         )
 
     @property
@@ -47,15 +49,6 @@ class ABotWorldPrepareStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(
-                "actions",
-                type_hint=list[list[int]],
-                description=(
-                    "Per-block actions, one `[W, A, S, D, I, J, K, L]` 0/1 vector per generated block "
-                    "(W/A/S/D move, I/J/K/L turn the camera); the scripted rollout generates `len(actions)` "
-                    "blocks. Omit when driving the rollout interactively through `loop_step`."
-                ),
-            ),
             InputParam(
                 "denoising_timesteps",
                 type_hint=list[int],
@@ -75,26 +68,24 @@ class ABotWorldPrepareStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("actions", type_hint=torch.Tensor, description="The actions as a `[num_blocks, 8]` tensor"),
             OutputParam(
                 "denoise_timesteps",
                 type_hint=torch.Tensor,
                 description="The warped denoising timesteps the rollout loop iterates",
             ),
             OutputParam("kv_cache", type_hint=ABotWorldKVCache, description="The rollout's rolling K/V cache"),
+            OutputParam(
+                "decode_cache",
+                type_hint=WanDecodeCache | TinyVideoDecodeCache,
+                description="The decoder's cache carried across the rollout loop; starts as `None` and is created by "
+                "the decode step on the first block",
+            ),
         ]
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-
-        if block_state.actions is not None:
-            block_state.actions = torch.tensor(block_state.actions, dtype=torch.float32)
-            if block_state.actions.ndim != 2 or block_state.actions.shape[1] != 8:
-                raise ValueError(
-                    f"`actions` must be a list of 8-element vectors, got shape {block_state.actions.shape}"
-                )
 
         # the full 1000-point flow-match grid the reference warps its step list through: the scheduler
         # applies its configured shift to sigmas = linspace(1, 0, 1001)[:-1]
@@ -114,6 +105,7 @@ class ABotWorldPrepareStep(ModularPipelineBlocks):
             * (ref_h // config.patch_size[1])
             * (ref_w // config.patch_size[2])
         )
+        block_state.decode_cache = None
         block_state.kv_cache = ABotWorldKVCache(
             num_layers=config.num_layers,
             batch_size=block_state.reference_latents.shape[0],

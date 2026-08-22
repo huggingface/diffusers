@@ -42,10 +42,6 @@ class ABotWorldCoreDenoiseStep(SequentialPipelineBlocks):
           (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
 
       Inputs:
-          actions (`list`, *optional*):
-              Per-block actions, one `[W, A, S, D, I, J, K, L]` 0/1 vector per generated block (W/A/S/D move, I/J/K/L
-              turn the camera); the scripted rollout generates `len(actions)` blocks. Omit when driving the rollout
-              interactively through `loop_step`.
           denoising_timesteps (`list`, *optional*, defaults to [1000, 750, 500, 250]):
               The distilled student's denoising timesteps, before shift-warping
           height (`int`, *optional*, defaults to 704):
@@ -54,6 +50,10 @@ class ABotWorldCoreDenoiseStep(SequentialPipelineBlocks):
               Width of the generated video in pixels
           reference_latents (`Tensor`):
               Normalized VAE latents of the reference views `[B, K, C, 1, h, w]`
+          actions (`list | Callable`):
+              Per-block `[W, A, S, D, I, J, K, L]` 0/1 action vectors (W/A/S/D move, I/J/K/L turn the camera): a list
+              generates one block per vector; with `stream()`, a callable `(block_index) -> vector or None` is polled
+              once per block instead and the rollout runs until it returns `None`.
           num_frames_per_block (`int`, *optional*, defaults to 3):
               Latent frames generated per block (the model was trained with 3)
           generator (`Generator`, *optional*):
@@ -66,12 +66,13 @@ class ABotWorldCoreDenoiseStep(SequentialPipelineBlocks):
               Per-slot validity mask `[B, K]` for the reference views
 
       Outputs:
-          actions (`Tensor`):
-              The actions as a `[num_blocks, 8]` tensor
           denoise_timesteps (`Tensor`):
               The warped denoising timesteps the rollout loop iterates
           kv_cache (`ABotWorldKVCache`):
               The rollout's rolling K/V cache
+          decode_cache (`WanDecodeCache | TinyVideoDecodeCache`):
+              The decoder's cache carried across the rollout loop; starts as `None` and is created by the decode step
+              on the first block
           action_planes (`Tensor`):
               This block's broadcast action planes `[B, 32, F, height, width]`
           latents (`Tensor`):
@@ -80,8 +81,6 @@ class ABotWorldCoreDenoiseStep(SequentialPipelineBlocks):
               Token offset of this block in the rollout: `k * F * tokens_per_frame`
           frames (`ndarray`):
               This block's decoded frames `[T, H, W, 3]`
-          decode_cache (`WanDecodeCache`):
-              The VAE's causal-conv cache after this block, carried to the next block
           videos (`list`):
               The generated videos
     """
@@ -127,10 +126,6 @@ class ABotWorldStreamingCoreDenoiseStep(SequentialPipelineBlocks):
           (`AutoencoderTinyVideo`) video_processor (`VideoProcessor`)
 
       Inputs:
-          actions (`list`, *optional*):
-              Per-block actions, one `[W, A, S, D, I, J, K, L]` 0/1 vector per generated block (W/A/S/D move, I/J/K/L
-              turn the camera); the scripted rollout generates `len(actions)` blocks. Omit when driving the rollout
-              interactively through `loop_step`.
           denoising_timesteps (`list`, *optional*, defaults to [1000, 750, 500, 250]):
               The distilled student's denoising timesteps, before shift-warping
           height (`int`, *optional*, defaults to 704):
@@ -139,10 +134,10 @@ class ABotWorldStreamingCoreDenoiseStep(SequentialPipelineBlocks):
               Width of the generated video in pixels
           reference_latents (`Tensor`):
               Normalized VAE latents of the reference views `[B, K, C, 1, h, w]`
-          action_source (`Callable`, *optional*):
-              Interactive alternative to `actions`: a callable `(block_index) -> action vector or None` polled once per
-              block — return the current `[W, A, S, D, I, J, K, L]` input to keep rolling, or `None` to stop. The
-              rollout is unbounded while it returns actions.
+          actions (`list | Callable`):
+              Per-block `[W, A, S, D, I, J, K, L]` 0/1 action vectors (W/A/S/D move, I/J/K/L turn the camera): a list
+              generates one block per vector; with `stream()`, a callable `(block_index) -> vector or None` is polled
+              once per block instead and the rollout runs until it returns `None`.
           num_frames_per_block (`int`, *optional*, defaults to 3):
               Latent frames generated per block (the model was trained with 3)
           generator (`Generator`, *optional*):
@@ -155,12 +150,13 @@ class ABotWorldStreamingCoreDenoiseStep(SequentialPipelineBlocks):
               Per-slot validity mask `[B, K]` for the reference views
 
       Outputs:
-          actions (`Tensor`):
-              The actions as a `[num_blocks, 8]` tensor
           denoise_timesteps (`Tensor`):
               The warped denoising timesteps the rollout loop iterates
           kv_cache (`ABotWorldKVCache`):
               The rollout's rolling K/V cache
+          decode_cache (`WanDecodeCache | TinyVideoDecodeCache`):
+              The decoder's cache carried across the rollout loop; starts as `None` and is created by the decode step
+              on the first block
           action_planes (`Tensor`):
               This block's broadcast action planes `[B, 32, F, height, width]`
           latents (`Tensor`):
@@ -169,8 +165,6 @@ class ABotWorldStreamingCoreDenoiseStep(SequentialPipelineBlocks):
               Token offset of this block in the rollout: `k * F * tokens_per_frame`
           frames (`ndarray`):
               This block's decoded frames `[T, H, W, 3]`
-          decode_cache (`TinyVideoDecodeCache`):
-              The tiny VAE's memory after this block, carried to the next block
           videos (`list`):
               The generated videos
     """
@@ -224,16 +218,12 @@ class ABotWorldStreamingBlocks(SequentialPipelineBlocks):
               without a reference character.
           reference_resolution (`int`, *optional*, defaults to 512):
               Side length the reference views are resized to before encoding
-          actions (`list`, *optional*):
-              Per-block actions, one `[W, A, S, D, I, J, K, L]` 0/1 vector per generated block (W/A/S/D move, I/J/K/L
-              turn the camera); the scripted rollout generates `len(actions)` blocks. Omit when driving the rollout
-              interactively through `loop_step`.
           denoising_timesteps (`list`, *optional*, defaults to [1000, 750, 500, 250]):
               The distilled student's denoising timesteps, before shift-warping
-          action_source (`Callable`, *optional*):
-              Interactive alternative to `actions`: a callable `(block_index) -> action vector or None` polled once per
-              block — return the current `[W, A, S, D, I, J, K, L]` input to keep rolling, or `None` to stop. The
-              rollout is unbounded while it returns actions.
+          actions (`list | Callable`):
+              Per-block `[W, A, S, D, I, J, K, L]` 0/1 action vectors (W/A/S/D move, I/J/K/L turn the camera): a list
+              generates one block per vector; with `stream()`, a callable `(block_index) -> vector or None` is polled
+              once per block instead and the rollout runs until it returns `None`.
           num_frames_per_block (`int`, *optional*, defaults to 3):
               Latent frames generated per block (the model was trained with 3)
           generator (`Generator`, *optional*):
@@ -248,12 +238,13 @@ class ABotWorldStreamingBlocks(SequentialPipelineBlocks):
               Normalized VAE latents of the reference views `[B, K, C, 1, h, w]`
           reference_mask (`Tensor`):
               Per-slot validity mask `[B, K]`: ones for encoded views, zeros in the ref-less mode
-          actions (`Tensor`):
-              The actions as a `[num_blocks, 8]` tensor
           denoise_timesteps (`Tensor`):
               The warped denoising timesteps the rollout loop iterates
           kv_cache (`ABotWorldKVCache`):
               The rollout's rolling K/V cache
+          decode_cache (`WanDecodeCache | TinyVideoDecodeCache`):
+              The decoder's cache carried across the rollout loop; starts as `None` and is created by the decode step
+              on the first block
           action_planes (`Tensor`):
               This block's broadcast action planes `[B, 32, F, height, width]`
           latents (`Tensor`):
@@ -262,8 +253,6 @@ class ABotWorldStreamingBlocks(SequentialPipelineBlocks):
               Token offset of this block in the rollout: `k * F * tokens_per_frame`
           frames (`ndarray`):
               This block's decoded frames `[T, H, W, 3]`
-          decode_cache (`TinyVideoDecodeCache`):
-              The tiny VAE's memory after this block, carried to the next block
           videos (`list`):
               The generated videos
     """
@@ -310,12 +299,12 @@ class ABotWorldBlocks(SequentialPipelineBlocks):
               without a reference character.
           reference_resolution (`int`, *optional*, defaults to 512):
               Side length the reference views are resized to before encoding
-          actions (`list`, *optional*):
-              Per-block actions, one `[W, A, S, D, I, J, K, L]` 0/1 vector per generated block (W/A/S/D move, I/J/K/L
-              turn the camera); the scripted rollout generates `len(actions)` blocks. Omit when driving the rollout
-              interactively through `loop_step`.
           denoising_timesteps (`list`, *optional*, defaults to [1000, 750, 500, 250]):
               The distilled student's denoising timesteps, before shift-warping
+          actions (`list | Callable`):
+              Per-block `[W, A, S, D, I, J, K, L]` 0/1 action vectors (W/A/S/D move, I/J/K/L turn the camera): a list
+              generates one block per vector; with `stream()`, a callable `(block_index) -> vector or None` is polled
+              once per block instead and the rollout runs until it returns `None`.
           num_frames_per_block (`int`, *optional*, defaults to 3):
               Latent frames generated per block (the model was trained with 3)
           generator (`Generator`, *optional*):
@@ -330,12 +319,13 @@ class ABotWorldBlocks(SequentialPipelineBlocks):
               Normalized VAE latents of the reference views `[B, K, C, 1, h, w]`
           reference_mask (`Tensor`):
               Per-slot validity mask `[B, K]`: ones for encoded views, zeros in the ref-less mode
-          actions (`Tensor`):
-              The actions as a `[num_blocks, 8]` tensor
           denoise_timesteps (`Tensor`):
               The warped denoising timesteps the rollout loop iterates
           kv_cache (`ABotWorldKVCache`):
               The rollout's rolling K/V cache
+          decode_cache (`WanDecodeCache | TinyVideoDecodeCache`):
+              The decoder's cache carried across the rollout loop; starts as `None` and is created by the decode step
+              on the first block
           action_planes (`Tensor`):
               This block's broadcast action planes `[B, 32, F, height, width]`
           latents (`Tensor`):
@@ -344,8 +334,6 @@ class ABotWorldBlocks(SequentialPipelineBlocks):
               Token offset of this block in the rollout: `k * F * tokens_per_frame`
           frames (`ndarray`):
               This block's decoded frames `[T, H, W, 3]`
-          decode_cache (`WanDecodeCache`):
-              The VAE's causal-conv cache after this block, carried to the next block
           videos (`list`):
               The generated videos
     """
