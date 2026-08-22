@@ -88,6 +88,85 @@ image = pipe(
 image.save("zimage_inpaint.png")
 ```
 
+## Modular inpainting
+
+[`ModularPipeline`] automatically selects the Z-Image inpainting workflow when both `image` and `mask_image` are provided. White mask regions are regenerated and black regions are preserved.
+Use `padding_mask_crop` to generate only around the masked region; it requires the default PIL output so the result can be overlaid onto the original image.
+
+```python
+import torch
+from diffusers import ModularPipeline
+from diffusers.utils import load_image
+
+pipe = ModularPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = load_image("path/to/image.png").convert("RGB")
+mask_image = load_image("path/to/mask.png").convert("L")
+
+output = pipe(
+    prompt="A beautiful lake with mountains in the background",
+    image=image,
+    mask_image=mask_image,
+    height=image.height,
+    width=image.width,
+    strength=1.0,
+    num_inference_steps=8,
+    generator=torch.Generator(device="cuda").manual_seed(42),
+    output="images",
+)[0]
+output.save("zimage_modular_inpaint.png")
+```
+
+To add a ControlNet inpaint condition, load a compatible [`ZImageControlNetModel`] and update the modular pipeline. The control image is used together with the source image and mask. `control_guidance_start` and `control_guidance_end` specify the normalized denoising interval in which ControlNet is active.
+
+```python
+import torch
+from huggingface_hub import hf_hub_download
+from diffusers import ModularPipeline, ZImageControlNetModel
+from diffusers.utils import load_image
+
+controlnet = ZImageControlNetModel.from_single_file(
+    hf_hub_download(
+        "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
+        filename="Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors",
+    ),
+    torch_dtype=torch.bfloat16,
+)
+
+pipe = ModularPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.update_components(controlnet=controlnet)
+pipe.to("cuda")
+
+image = load_image(
+    "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0/resolve/main/asset/inpaint.jpg?download=true"
+).convert("RGB")
+mask_image = load_image(
+    "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0/resolve/main/asset/mask.jpg?download=true"
+).convert("L")
+control_image = load_image(
+    "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0/resolve/main/asset/pose.jpg?download=true"
+).convert("RGB")
+
+output = pipe(
+    prompt="A woman standing on a sunny coast, full-body portrait",
+    image=image,
+    mask_image=mask_image,
+    control_image=control_image,
+    controlnet_conditioning_scale=0.75,
+    control_guidance_start=0.0,
+    control_guidance_end=1.0,
+    height=image.height,
+    width=image.width,
+    num_inference_steps=25,
+    generator=torch.Generator(device="cuda").manual_seed(43),
+    output="images",
+)[0]
+output.save("zimage_modular_controlnet_inpaint.png")
+```
+
 ## ZImagePipeline
 
 [[autodoc]] ZImagePipeline
