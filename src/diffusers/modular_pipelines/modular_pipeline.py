@@ -1498,9 +1498,12 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
             return components, state
     ```
 
-    Sub-block outputs are written to the pipeline state as usual and persist after the loop. If the loop logic in
-    `__call__` itself consumes inputs (e.g. `timesteps`) or uses components (e.g. the scheduler) beyond what the
-    sub-blocks declare, override the aggregated `inputs` / `expected_components` / ... properties to add them.
+    Sub-block outputs are written to the pipeline state as usual and persist after the loop. The loop logic's own
+    inputs (e.g. `timesteps`) and outputs are declared in `loop_inputs` / `loop_intermediate_outputs`: they are
+    surfaced alongside the sub-blocks' in the aggregated `inputs` / `intermediate_outputs`, and they are what
+    `get_block_state` / `set_block_state` read and write for the loop block itself — sub-block values live in the
+    pipeline state, not in the loop's block state. A component used by the loop logic itself (e.g. the scheduler) is
+    added by overriding `expected_components`.
 
     Streaming is opt-in: to let `pipe.stream(...)` hand back the live [`PipelineState`] after every iteration, also
     implement `stream` — the same loop, written as a generator over `stream_step` (which runs one iteration like
@@ -1527,6 +1530,51 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
     def loop_variables(self) -> list[str]:
         """Names of the loop variables `loop_step` passes to leaf sub-blocks each iteration (e.g. `["i", "t"]`)."""
         return []
+
+    @property
+    def loop_inputs(self) -> list[InputParam]:
+        """Inputs read by the loop logic in `__call__` itself (e.g. `timesteps`), beyond what the sub-blocks declare."""
+        return []
+
+    @property
+    def loop_intermediate_outputs(self) -> list[OutputParam]:
+        """Outputs written to the pipeline state by the loop logic in `__call__` itself."""
+        return []
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        inputs = super().inputs
+        names = {param.name for param in inputs}
+        return [param for param in self.loop_inputs if param.name not in names] + inputs
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        outputs = super().intermediate_outputs
+        names = {output.name for output in outputs}
+        return outputs + [output for output in self.loop_intermediate_outputs if output.name not in names]
+
+    def get_block_state(self, state: PipelineState) -> BlockState:
+        """The loop logic's own inputs (`loop_inputs`); sub-block values are read from the pipeline state."""
+        data = {}
+        for input_param in self.loop_inputs:
+            value = state.get(input_param.name)
+            if value is None:
+                value = input_param.default
+            if input_param.required and value is None:
+                raise ValueError(f"Required input '{input_param.name}' is missing")
+            data[input_param.name] = value
+        return BlockState(**data)
+
+    def set_block_state(self, state: PipelineState, block_state: BlockState):
+        """Write the loop logic's own outputs (`loop_intermediate_outputs`) and modified inputs back to the state."""
+        for output_param in self.loop_intermediate_outputs:
+            if not hasattr(block_state, output_param.name):
+                raise ValueError(f"Intermediate output '{output_param.name}' is missing in block state")
+            state.set(output_param.name, getattr(block_state, output_param.name), output_param.kwargs_type)
+        for input_param in self.loop_inputs:
+            value = getattr(block_state, input_param.name)
+            if state.get(input_param.name) is not value:
+                state.set(input_param.name, value, input_param.kwargs_type)
 
     def __init__(self):
         super().__init__()

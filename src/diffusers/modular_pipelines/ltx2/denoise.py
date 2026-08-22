@@ -775,15 +775,11 @@ class LTX2DenoiseLoopWrapper(IterativePipelineBlocks):
         return expected_components
 
     @property
-    def inputs(self) -> list[InputParam]:
-        inputs = super().inputs
-        names = {param.name for param in inputs}
-        # inputs consumed by the loop logic itself, on top of what the sub-blocks declare
-        loop_inputs = [
+    def loop_inputs(self) -> list[InputParam]:
+        return [
             InputParam("timesteps", type_hint=torch.Tensor, required=True),
             InputParam.template("num_inference_steps", required=True),
         ]
-        return [param for param in loop_inputs if param.name not in names] + inputs
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
