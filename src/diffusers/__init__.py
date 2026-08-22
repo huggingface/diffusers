@@ -224,6 +224,7 @@ else:
     ]
     _import_structure["models"].extend(
         [
+            "ABotWorldTransformer3DModel",
             "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
             "AnimaTextConditioner",
@@ -258,6 +259,7 @@ else:
             "AutoencoderRAE",
             "AutoencoderSAME",
             "AutoencoderTiny",
+            "AutoencoderTinyVideo",
             "AutoencoderVidTok",
             "AutoModel",
             "BriaFiboTransformer2DModel",
@@ -513,6 +515,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "ABotWorldBlocks",
+            "ABotWorldModularPipeline",
             "AnimaAutoBlocks",
             "AnimaModularPipeline",
             "Cosmos3DistilledBlocks",
@@ -1098,6 +1102,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VaeImageProcessorLDM3D,
         )
         from .models import (
+            ABotWorldTransformer3DModel,
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
             AnimaTextConditioner,
@@ -1132,6 +1137,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderRAE,
             AutoencoderSAME,
             AutoencoderTiny,
+            AutoencoderTinyVideo,
             AutoencoderVidTok,
             AutoModel,
             BriaFiboTransformer2DModel,
@@ -1366,6 +1372,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            ABotWorldBlocks,
+            ABotWorldModularPipeline,
             AnimaAutoBlocks,
             AnimaModularPipeline,
             Cosmos3DistilledBlocks,

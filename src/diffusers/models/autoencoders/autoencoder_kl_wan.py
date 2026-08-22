@@ -31,6 +31,19 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 CACHE_T = 2
 
 
+class WanDecodeCache:
+    """
+    Causal-convolution feature cache for decoding a video chunk by chunk with [`AutoencoderKLWan.decode`].
+
+    Pass the same cache to consecutive `decode(z, cache=cache)` calls: each call decodes only the latent frames in `z`,
+    continuing from the frames decoded by the previous calls, and the concatenated result is identical to decoding all
+    frames in a single call. Create a new cache for every new video.
+    """
+
+    def __init__(self):
+        self.feat_map: list | None = None
+
+
 class AvgDown3D(nn.Module):
     def __init__(
         self,
@@ -1184,7 +1197,7 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True):
+    def _decode(self, z: torch.Tensor, return_dict: bool = True, cache: WanDecodeCache | None = None):
         _, _, num_frame, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
@@ -1192,16 +1205,26 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)
 
-        self.clear_cache()
+        if cache is None:
+            self.clear_cache()
+            feat_map = self._feat_map
+            first_chunk = True
+        else:
+            # a fresh cache starts a new video; a used one continues the previous call's video
+            if cache.feat_map is None:
+                cache.feat_map = [None] * self._cached_conv_counts["decoder"]
+            feat_map = cache.feat_map
+            first_chunk = feat_map[0] is None
+
         x = self.post_quant_conv(z)
         for i in range(num_frame):
-            self._conv_idx = [0]
+            conv_idx = [0]
             if i == 0:
                 out = self.decoder(
-                    x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx, first_chunk=True
+                    x[:, :, i : i + 1, :, :], feat_cache=feat_map, feat_idx=conv_idx, first_chunk=first_chunk
                 )
             else:
-                out_ = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx)
+                out_ = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=feat_map, feat_idx=conv_idx)
                 out = torch.cat([out, out_], 2)
 
         if self.config.patch_size is not None:
@@ -1216,7 +1239,9 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
         return DecoderOutput(sample=out)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
+    def decode(
+        self, z: torch.Tensor, return_dict: bool = True, cache: WanDecodeCache | None = None
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images.
 
@@ -1224,17 +1249,22 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
             z (`torch.Tensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
+            cache (`WanDecodeCache`, *optional*):
+                Decode a video chunk by chunk: pass the same cache to consecutive calls and each call decodes only the
+                frames in `z`, continuing from the previous calls. Not supported together with slicing or tiling.
 
         Returns:
             [`~models.vae.DecoderOutput`] or `tuple`:
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
                 returned.
         """
+        if cache is not None and (self.use_slicing or self.use_tiling):
+            raise ValueError("Decoding with a `cache` does not support slicing or tiling.")
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
         else:
-            decoded = self._decode(z).sample
+            decoded = self._decode(z, cache=cache).sample
 
         if not return_dict:
             return (decoded,)
