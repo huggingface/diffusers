@@ -475,6 +475,7 @@ else:
         "QwenImageControlNetPipeline",
         "QwenImageLayeredPipeline",
     ]
+    _import_structure["unipic3"] = ["UniPic3Pipeline"]
     _import_structure["chronoedit"] = ["ChronoEditPipeline"]
     _import_structure["glm_image"] = ["GlmImagePipeline"]
 
@@ -907,6 +908,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionAdapterPipeline,
             StableDiffusionXLAdapterPipeline,
         )
+        from .unipic3 import UniPic3Pipeline
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
         from .wan import (
             WanAnimatePipeline,
