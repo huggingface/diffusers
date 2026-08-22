@@ -28,9 +28,12 @@ else:
         "AutoPipelineBlocks",
         "SequentialPipelineBlocks",
         "ConditionalPipelineBlocks",
+        "IterativePipelineBlocks",
+        "ModularLoopPipelineBlocks",
         "LoopSequentialPipelineBlocks",
         "PipelineState",
         "BlockState",
+        "StreamEvent",
     ]
     _import_structure["modular_pipeline_utils"] = [
         "ComponentSpec",
@@ -202,11 +205,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineBlocks,
             BlockState,
             ConditionalPipelineBlocks,
+            IterativePipelineBlocks,
             LoopSequentialPipelineBlocks,
+            ModularLoopPipelineBlocks,
             ModularPipeline,
             ModularPipelineBlocks,
             PipelineState,
             SequentialPipelineBlocks,
+            StreamEvent,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
         from .qwenimage import (
