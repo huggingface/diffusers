@@ -135,7 +135,9 @@ def reminder_body(author):
         "If this PR intentionally does not fix a tracked issue, a maintainer can "
         "add the `no-issue-needed` label to silence this reminder.\n\n"
         f"**Please note that PRs without a linked issue are likely to be automatically "
-        f"closed {AUTOCLOSE_DAYS} days after this notice.**"
+        f"closed {AUTOCLOSE_DAYS} days after this notice.**\n\n"
+        "Once the PR links an issue (or gets the `no-issue-needed` label), you can ignore "
+        "this message \u2014 it stays here as a comment, but it no longer applies."
     )
 
 
