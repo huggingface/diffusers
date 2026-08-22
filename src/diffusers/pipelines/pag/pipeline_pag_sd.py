@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AutoPipelineForText2Image
 
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
-        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, enable_pag=True
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, enable_pag=True
         ... )
         >>> pipe = pipe.to("cuda")
 

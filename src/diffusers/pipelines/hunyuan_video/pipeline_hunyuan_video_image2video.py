@@ -57,10 +57,10 @@ EXAMPLE_DOC_STRING = """
         >>> # Available checkpoints: hunyuanvideo-community/HunyuanVideo-I2V, hunyuanvideo-community/HunyuanVideo-I2V-33ch
         >>> model_id = "hunyuanvideo-community/HunyuanVideo-I2V"
         >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
-        ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
+        ...     model_id, subfolder="transformer", dtype=torch.bfloat16
         ... )
         >>> pipe = HunyuanVideoImageToVideoPipeline.from_pretrained(
-        ...     model_id, transformer=transformer, torch_dtype=torch.float16
+        ...     model_id, transformer=transformer, dtype=torch.float16
         ... )
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")

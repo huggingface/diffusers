@@ -38,7 +38,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import ZImageImg2ImgPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = ZImageImg2ImgPipeline.from_pretrained("Z-a-o/Z-Image-Turbo", torch_dtype=torch.bfloat16)
+        >>> pipe = ZImageImg2ImgPipeline.from_pretrained("Z-a-o/Z-Image-Turbo", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"

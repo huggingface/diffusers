@@ -1032,7 +1032,7 @@ class StableDiffusionInpaintPipeline(
         >>> mask_image = download_image(mask_url).resize((512, 512))
 
         >>> pipe = StableDiffusionInpaintPipeline.from_pretrained(
-        ...     "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

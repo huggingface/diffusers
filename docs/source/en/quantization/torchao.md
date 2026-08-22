@@ -45,7 +45,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipeline.to("cuda")
 ```

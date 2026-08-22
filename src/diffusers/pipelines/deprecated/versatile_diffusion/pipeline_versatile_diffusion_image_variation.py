@@ -312,7 +312,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         >>> image = Image.open(BytesIO(response.content)).convert("RGB")
 
         >>> pipe = VersatileDiffusionImageVariationPipeline.from_pretrained(
-        ...     "shi-labs/versatile-diffusion", torch_dtype=torch.float16
+        ...     "shi-labs/versatile-diffusion", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

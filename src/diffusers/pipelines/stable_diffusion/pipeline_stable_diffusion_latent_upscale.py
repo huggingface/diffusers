@@ -470,12 +470,12 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMix
         >>> import torch
 
         >>> pipeline = StableDiffusionPipeline.from_pretrained(
-        ...     "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+        ...     "CompVis/stable-diffusion-v1-4", dtype=torch.float16
         ... )
         >>> pipeline.to("cuda")
 
         >>> model_id = "stabilityai/sd-x2-latent-upscaler"
-        >>> upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+        >>> upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(model_id, dtype=torch.float16)
         >>> upscaler.to("cuda")
 
         >>> prompt = "a photo of an astronaut high resolution, unreal engine, ultra realistic"

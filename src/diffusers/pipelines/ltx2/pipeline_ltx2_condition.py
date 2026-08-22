@@ -77,7 +77,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
         >>> from diffusers.utils import load_image
 
-        >>> pipe = LTX2ConditionPipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
+        >>> pipe = LTX2ConditionPipeline.from_pretrained("Lightricks/LTX-2", dtype=torch.bfloat16)
         >>> pipe.enable_model_cpu_offload()
 
         >>> first_image = load_image(

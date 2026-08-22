@@ -80,7 +80,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = IFImg2ImgPipeline.from_pretrained(
         ...     "DeepFloyd/IF-I-XL-v1.0",
         ...     variant="fp16",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ... )
         >>> pipe.enable_model_cpu_offload()
 
@@ -102,7 +102,7 @@ EXAMPLE_DOC_STRING = """
         ...     "DeepFloyd/IF-II-L-v1.0",
         ...     text_encoder=None,
         ...     variant="fp16",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ... )
         >>> super_res_1_pipe.enable_model_cpu_offload()
 
