@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import tempfile
 
 import pytest
 import torch
@@ -61,6 +62,22 @@ class _TinyTestEncoderModule(torch.nn.Module):
         return tokens.repeat(1, 1, self.hidden_size)
 
 
+class _NestedInitTestEncoderModule(torch.nn.Module):
+    """Encoder that relies on the return value of `nn.init.trunc_normal_` during construction."""
+
+    def __init__(self, hidden_size: int = 16, patch_size: int = 8, **kwargs):
+        super().__init__()
+        self.patch_size = patch_size
+        self.hidden_size = hidden_size
+        weight = torch.empty(hidden_size, dtype=torch.float32)
+        self.proj = torch.nn.Parameter(torch.nn.init.trunc_normal_(weight, std=0.02).to(torch.float32))
+
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
+        pooled = F.avg_pool2d(images.mean(dim=1, keepdim=True), kernel_size=self.patch_size, stride=self.patch_size)
+        tokens = pooled.flatten(2).transpose(1, 2).contiguous()
+        return tokens.repeat(1, 1, self.hidden_size) + self.proj.view(1, 1, -1)
+
+
 def _tiny_test_encoder_forward(model, images):
     return model(images)
 
@@ -69,14 +86,21 @@ def _build_tiny_test_encoder(encoder_type, hidden_size, patch_size, num_hidden_l
     return _TinyTestEncoderModule(hidden_size=hidden_size, patch_size=patch_size)
 
 
+def _build_nested_init_test_encoder(encoder_type, hidden_size, patch_size, num_hidden_layers):
+    return _NestedInitTestEncoderModule(hidden_size=hidden_size, patch_size=patch_size)
+
+
 # Monkey-patch the dispatch tables so "tiny_test" is recognised by AutoencoderRAE
 _ENCODER_FORWARD_FNS["tiny_test"] = _tiny_test_encoder_forward
+_ENCODER_FORWARD_FNS["nested_init_test"] = _tiny_test_encoder_forward
 _original_build_encoder = _build_encoder
 
 
 def _patched_build_encoder(encoder_type, hidden_size, patch_size, num_hidden_layers):
     if encoder_type == "tiny_test":
         return _build_tiny_test_encoder(encoder_type, hidden_size, patch_size, num_hidden_layers)
+    if encoder_type == "nested_init_test":
+        return _build_nested_init_test_encoder(encoder_type, hidden_size, patch_size, num_hidden_layers)
     return _original_build_encoder(encoder_type, hidden_size, patch_size, num_hidden_layers)
 
 
@@ -222,6 +246,30 @@ class TestAutoEncoderRAE(AutoencoderRAETesterConfig, ModelTesterMixin):
         assert z_train_1.shape == z_eval_1.shape
         assert not torch.allclose(z_train_1, z_train_2)
         assert torch.allclose(z_eval_1, z_eval_2, atol=1e-6, rtol=1e-5)
+
+    def test_from_pretrained_loads_nested_init_encoder_checkpoint(self):
+        model = self._make_model(encoder_type="nested_init_test").eval()
+        x = torch.rand(1, 3, 32, 32, device=torch_device)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir, safe_serialization=False)
+
+            for low_cpu_mem_usage in [False, True]:
+                loaded_model, loading_info = AutoencoderRAE.from_pretrained(
+                    tmpdir, low_cpu_mem_usage=low_cpu_mem_usage, output_loading_info=True
+                )
+
+                loaded_model = loaded_model.to(torch_device).eval()
+
+                with torch.no_grad():
+                    expected = model.encode(x).latent
+                    actual = loaded_model.encode(x).latent
+
+                assert loading_info["missing_keys"] == []
+                assert loading_info["unexpected_keys"] == []
+                assert loading_info["mismatched_keys"] == []
+                assert loading_info["error_msgs"] == []
+                assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-5)
 
 
 class TestAutoEncoderRAESlicingTiling(AutoencoderRAETesterConfig, AutoencoderTesterMixin):
