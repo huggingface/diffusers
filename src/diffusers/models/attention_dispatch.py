@@ -2540,6 +2540,10 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
             mask_list = [torch.empty_like(attn_mask) for _ in range(world_size)]
             dist.all_gather(mask_list, attn_mask, group=group)
             attn_mask = torch.cat(mask_list, dim=-1)
+        if attn_mask is not None and attn_mask.ndim == 4 and attn_mask.shape[1] == H:
+            # QKV carry H // world_size heads after the all-to-all; shard the mask's head axis to match.
+            local_rank = _parallel_config.context_parallel_config._ulysses_local_rank
+            attn_mask = attn_mask.chunk(world_size, dim=1)[local_rank]
 
         out = forward_op(
             ctx,
