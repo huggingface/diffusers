@@ -170,3 +170,22 @@ class KDPM2DiscreteSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+    def test_set_timesteps_sigmas_interpol_no_nan(self):
+        # Regression test for #14368: sigmas_interpol was computed as
+        # exp(lerp(log(sigmas), log(sigmas.roll(1)), 0.5)). The schedule always ends in a
+        # zero sigma, so log(0) = -inf entered the lerp, and torch resolves that -inf
+        # differently on CPU and MPS (pytorch#111374) — leaving a NaN on a dead entry on
+        # CPU but on live entries on MPS, where it propagated into every sample.
+        scheduler_class = self.scheduler_classes[0]
+        for num_inference_steps in (4, 10, 25):
+            scheduler = scheduler_class(**self.get_scheduler_config())
+            scheduler.set_timesteps(num_inference_steps, device=torch_device)
+
+            assert torch.isfinite(scheduler.sigmas_interpol).all(), (
+                f"set_timesteps({num_inference_steps}) produced non-finite sigmas_interpol "
+                f"on {torch_device}: {scheduler.sigmas_interpol}"
+            )
+            assert torch.isfinite(scheduler.sigmas).all(), (
+                f"set_timesteps({num_inference_steps}) produced non-finite sigmas on {torch_device}"
+            )
