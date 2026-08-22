@@ -26,7 +26,7 @@ from ..testing_utils import (
     TrainingTesterMixin,
     run_nondeterministic,
 )
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -110,7 +110,7 @@ class TestAutoencoderVidTokMemory(AutoencoderVidTokTesterConfig, MemoryTesterMix
         run_nondeterministic(super().test_layerwise_casting_training)
 
 
-class TestAutoencoderVidTokSlicingTiling(AutoencoderVidTokTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderVidTokSlicingTiling(AutoencoderVidTokTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderVidTok."""
 
     def test_forward_with_norm_groups(self):
