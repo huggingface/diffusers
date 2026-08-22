@@ -149,7 +149,7 @@ class HeliosTextEncoderStep(ModularPipelineBlocks):
             neg_list = [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
             if type(prompt_list) is not type(neg_list):
                 raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f"`negative_prompt` should be the same type as `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
                 )
             if len(prompt_list) != len(neg_list):
