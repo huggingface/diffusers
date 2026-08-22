@@ -18,27 +18,20 @@ Wraps diffusers' own ``LTX2VideoTransformer3DModel`` + ``LTX2TextConnectors`` pl
 transformer's public forward always runs the audio stream and does not expose the streaming sink/current self-attention
 mask this refiner was trained with, so we run a video-only forward in-place with a sink/current attention split.
 
-Two refinement modes are supported:
-
-* **AR / chunk-causal** (``block_size=3``, ``kv_max_frames=11`` — canonical): processes ``block_size`` latent frames at
-  a time over a sliding window of ``[source_sink + recent_history + active_block]`` K/V. The model was trained with
-  this contract; per-block compute is bounded by the window size so total refinement cost scales linearly with video
-  length.
-* **Single-shot** (``block_size=None``): denoises all current frames jointly in one O(T^2) attention pass.
-  Out-of-distribution for the model and only kept around as a debugging fallback.
+Refinement is chunk-causal / autoregressive (``block_size=3``, ``kv_max_frames=11``): ``block_size`` latent frames are
+processed at a time over a sliding window of ``[source_sink + recent_history + active_block]`` K/V. The model was
+trained with this contract; per-block compute is bounded by the window size, so total cost scales linearly with video
+length.
 """
 
 from __future__ import annotations
-
-import gc
-import os
-from pathlib import Path
 
 import torch
 from torch import nn
 from tqdm.auto import tqdm
 
 from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...utils.torch_utils import empty_device_cache, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
 
@@ -97,7 +90,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
     # forward
     # ------------------------------------------------------------------
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def __call__(
         self,
         sana_latent: torch.Tensor,
@@ -107,19 +100,16 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         sink_size: int = 1,
         seed: int = 42,
         progress: bool = True,
-        block_size: int | None = 3,
+        block_size: int = 3,
         kv_max_frames: int = 11,
         sigmas: tuple[float, ...] = STAGE_2_DISTILLED_SIGMA_VALUES,
-        checkpoint_dir: str | Path | None = None,
         device: str | torch.device | None = None,
     ) -> torch.Tensor:
         """Run the LTX-2 refiner and return refined VAE latents.
 
-        Defaults to the canonical chunk-causal AR recipe (``block_size=3``, ``kv_max_frames=11``): a sliding window of
-        ``[source_sink + recent_history + active_block]`` K/V is fed to the transformer one block at a time. The model
-        was trained on this contract and the per-block compute is bounded, so total refinement cost scales linearly
-        with video length. Pass ``block_size=None`` to fall back to the legacy single-shot path (``O(T^2)``, OOD for
-        the model — only kept for debugging).
+        Uses the chunk-causal AR recipe the model was trained on (``block_size=3``, ``kv_max_frames=11``): a sliding
+        window of ``[source_sink + recent_history + active_block]`` K/V is fed to the transformer one block at a time,
+        so per-block compute is bounded and total refinement cost scales linearly with video length.
 
         Args:
             sana_latent: ``(B, C, F, H, W)`` stage-1 latent.
@@ -129,17 +119,12 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
                 attention sink (canonical: 1).
             seed: noise seed for the FM endpoint.
             progress: show a tqdm bar.
-            block_size: latent frames per AR block (canonical: 3). Set to
-                ``None`` to disable AR mode.
+            block_size: latent frames per AR block (canonical: 3).
             kv_max_frames: maximum context+active frames retained in the
-                sliding window when AR mode is active (canonical: 11 = 1 sink + 10 recent).
+                sliding window (canonical: 11 = 1 sink + 10 recent).
             sigmas: descending Euler schedule terminating at 0.0 (canonical
                 3-step distilled: ``(0.909375, 0.725, 0.421875, 0.0)``). Fed to ``self.scheduler`` (minus the trailing
                 0.0, which the scheduler appends itself).
-            checkpoint_dir: if provided (and AR mode is on), the AR loop
-                writes a ``state.pt`` after every completed block (atomic replace) and resumes from there if it already
-                exists. Lets a refinement survive SLURM preemption — the run resumes from the last completed block
-                instead of recomputing from scratch.
             device: execution device for the refiner's sub-modules. If ``None``, falls back to where the transformer
                 currently lives. The refiner moves each sub-module on/off this device as it runs.
 
@@ -167,72 +152,27 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
 
         # Free transformer GPU memory while we run the text encoder.
         self.transformer.to("cpu")
-        _empty_cuda_cache()
+        empty_device_cache(device.type)
         prompt_embeds, prompt_attention_mask = self._encode_prompt(prompt, device=device, dtype=dtype)
 
         self.transformer.to(device)
         z = sana_latent.to(device=device, dtype=dtype)
 
-        if block_size is not None:
-            return self._refine_latents_ar(
-                z=z,
-                prompt_embeds=prompt_embeds,
-                prompt_attention_mask=prompt_attention_mask,
-                fps=fps,
-                sigmas=sigmas_t,
-                source_sink_frames=int(sink_size),
-                block_size=int(block_size),
-                kv_max_frames=int(kv_max_frames),
-                seed=int(seed),
-                progress=bool(progress),
-                dtype=dtype,
-                device=device,
-                checkpoint_dir=Path(checkpoint_dir) if checkpoint_dir is not None else None,
-            )
+        return self._refine_latents_ar(
+            z=z,
+            prompt_embeds=prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            fps=fps,
+            sigmas=sigmas_t,
+            source_sink_frames=int(sink_size),
+            block_size=int(block_size),
+            kv_max_frames=int(kv_max_frames),
+            seed=int(seed),
+            progress=bool(progress),
+            dtype=dtype,
+            device=device,
+        )
 
-        sink = z[:, :, :sink_size].contiguous()
-        current = z[:, :, sink_size:].contiguous()
-        generator = torch.Generator(device=device).manual_seed(int(seed))
-        eps = torch.randn(current.shape, generator=generator, device=device, dtype=dtype)
-        noisy = self.scheduler.scale_noise(current, self.scheduler.timesteps[:1], eps)
-
-        patch_size = self.transformer.config.patch_size
-        patch_size_t = self.transformer.config.patch_size_t
-
-        timesteps = self.scheduler.timesteps
-        iterator = enumerate(timesteps)
-        if progress:
-            iterator = tqdm(iterator, desc="refiner", unit="step", total=len(timesteps))
-
-        for step_index, t in iterator:
-            sigma = sigmas_t[step_index]
-            denoised = self._predict_current_x0(
-                sink=sink,
-                noisy_current=noisy,
-                prompt_embeds=prompt_embeds,
-                prompt_attention_mask=prompt_attention_mask,
-                sigma=sigma,
-                fps=fps,
-                dtype=dtype,
-                device=device,
-            )
-            noisy_tokens = _pack_latents(noisy, patch_size=patch_size, patch_size_t=patch_size_t)
-            # FM velocity from the predicted x0; the scheduler applies the Euler
-            # step ``x_{t+1} = x_t + (σ_next - σ)·v``.
-            velocity = (noisy_tokens.float() - denoised.float()) / sigma.float()
-            next_tokens = self.scheduler.step(velocity, t, noisy_tokens.float(), return_dict=False)[0]
-            noisy = _unpack_latents(
-                next_tokens.to(dtype),
-                num_frames=noisy.shape[2],
-                height=noisy.shape[3],
-                width=noisy.shape[4],
-                patch_size=patch_size,
-                patch_size_t=patch_size_t,
-            )
-
-        return torch.cat([sink, noisy], dim=2)
-
-    @torch.inference_mode()
     def _refine_latents_ar(
         self,
         *,
@@ -248,7 +188,6 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         progress: bool,
         dtype: torch.dtype,
         device: torch.device,
-        checkpoint_dir: Path | None = None,
     ) -> torch.Tensor:
         """Chunk-causal AR refinement — thin wrapper around ``_RefinerChunkRunner``.
 
@@ -290,45 +229,9 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         n_active = max(T_full - sink_size, 0)
         n_blocks = (n_active + block_size - 1) // block_size if n_active > 0 else 0
 
-        # Resume from a previous run if a checkpoint exists.
-        start_block_idx = 0
-        if checkpoint_dir is not None:
-            checkpoint_dir.mkdir(parents=True, exist_ok=True)
-            state_path = checkpoint_dir / "state.pt"
-            if state_path.is_file():
-                # The payload is plain tensors / ints / tuples / dicts (plus the
-                # generator's uint8 state), so it round-trips under the safe loader.
-                ckpt = torch.load(state_path, map_location=device, weights_only=True)
-                ckpt_blocks = int(ckpt.get("n_blocks", n_blocks))
-                ckpt_sink_size = int(ckpt.get("sink_size", sink_size))
-                ckpt_block_size = int(ckpt.get("block_size", block_size))
-                if (
-                    ckpt_blocks != n_blocks
-                    or ckpt_sink_size != sink_size
-                    or ckpt_block_size != block_size
-                    or ckpt["output_shape"] != tuple(output.shape)
-                ):
-                    raise RuntimeError(
-                        f"Checkpoint at {state_path} is incompatible with the current run; "
-                        f"delete it to start fresh. (saved n_blocks={ckpt_blocks} sink={ckpt_sink_size} "
-                        f"block_size={ckpt_block_size}; current n_blocks={n_blocks} sink={sink_size} "
-                        f"block_size={block_size})."
-                    )
-                output = ckpt["output"].to(device=device, dtype=output.dtype)
-                runner._restore_state(ckpt["runner_state"], device=device, dtype=dtype)
-                start_block_idx = int(ckpt["block_idx_done"]) + 1
-                if start_block_idx >= n_blocks:
-                    return output
-
-        iterator = range(start_block_idx, n_blocks)
+        iterator = range(n_blocks)
         if progress:
-            iterator = tqdm(
-                iterator,
-                desc="refiner-ar",
-                unit="block",
-                total=n_blocks,
-                initial=start_block_idx,
-            )
+            iterator = tqdm(iterator, desc="refiner-ar", unit="block", total=n_blocks)
 
         for block_idx in iterator:
             block_start = sink_size + block_idx * block_size
@@ -342,17 +245,6 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
                 sink_seed_frames=(z[:, :, :sink_size] if block_idx == 0 else None),
             )
             output[:, :, block_start:block_end] = refined
-
-            if checkpoint_dir is not None:
-                _atomic_save_state(
-                    state_path=checkpoint_dir / "state.pt",
-                    output=output,
-                    runner=runner,
-                    block_idx_done=block_idx,
-                    n_blocks=n_blocks,
-                    sink_size=sink_size,
-                    block_size=block_size,
-                )
 
         return output
 
@@ -418,7 +310,6 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             patch_size_t=self.transformer.config.patch_size_t,
         )
 
-    @torch.inference_mode()
     def _capture_block_kv(
         self,
         *,
@@ -475,7 +366,6 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
     # internals
     # ------------------------------------------------------------------
 
-    @torch.inference_mode()
     def _encode_prompt(
         self, prompt: str, *, device: torch.device, dtype: torch.dtype
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -511,56 +401,18 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         # stays resident on GPU through the entire (much longer) AR refinement.
         self.text_encoder.to("cpu")
         del outputs, hidden_states
-        _empty_cuda_cache()
+        empty_device_cache(device.type)
 
         self.connectors.to(device)
         connector_prompt_embeds, _, connector_attention_mask = self.connectors(prompt_embeds, attention_mask)
         self.connectors.to("cpu")
         del prompt_embeds, attention_mask
-        _empty_cuda_cache()
+        empty_device_cache(device.type)
 
         return (
             connector_prompt_embeds.to(device=device, dtype=dtype),
             connector_attention_mask.to(device=device),
         )
-
-    def _predict_current_x0(
-        self,
-        *,
-        sink: torch.Tensor,
-        noisy_current: torch.Tensor,
-        prompt_embeds: torch.Tensor,
-        prompt_attention_mask: torch.Tensor,
-        sigma: torch.Tensor,
-        fps: float,
-        dtype: torch.dtype,
-        device: torch.device,
-    ) -> torch.Tensor:
-        full_latent = torch.cat([sink, noisy_current], dim=2)
-        batch_size, _, num_frames, height, width = full_latent.shape
-        patch_size = self.transformer.config.patch_size
-        patch_size_t = self.transformer.config.patch_size_t
-
-        latent_tokens = _pack_latents(full_latent, patch_size=patch_size, patch_size_t=patch_size_t)
-        n_context_tokens = _pack_latents(sink, patch_size=patch_size, patch_size_t=patch_size_t).shape[1]
-
-        raw_timestep = torch.zeros(batch_size, latent_tokens.shape[1], 1, dtype=torch.float32, device=device)
-        raw_timestep[:, n_context_tokens:, 0] = sigma.float()
-        model_timestep = raw_timestep.squeeze(-1) * float(self.transformer.config.timestep_scale_multiplier)
-
-        velocity = self._forward_video_only(
-            hidden_states=latent_tokens,
-            encoder_hidden_states=prompt_embeds,
-            timestep=model_timestep,
-            encoder_attention_mask=prompt_attention_mask,
-            num_frames=num_frames,
-            height=height,
-            width=width,
-            fps=fps,
-            n_context_tokens=n_context_tokens,
-        )
-        denoised = latent_tokens.float() - velocity.float() * raw_timestep
-        return denoised[:, n_context_tokens:, :].to(dtype)
 
     def _forward_video_only_with_rope(
         self,
@@ -583,60 +435,6 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
             encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
-
-        hidden_states = transformer.proj_in(hidden_states)
-        temb, embedded_timestep = transformer.time_embed(
-            timestep.flatten(),
-            batch_size=batch_size,
-            hidden_dtype=hidden_states.dtype,
-        )
-        temb = temb.view(batch_size, -1, temb.size(-1))
-        embedded_timestep = embedded_timestep.view(batch_size, -1, embedded_timestep.size(-1))
-
-        encoder_hidden_states = transformer.caption_projection(encoder_hidden_states)
-        encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.size(-1))
-
-        for block in transformer.transformer_blocks:
-            hidden_states = _forward_video_block(
-                block=block,
-                hidden_states=hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                temb=temb,
-                video_rotary_emb=video_rotary_emb,
-                encoder_attention_mask=encoder_attention_mask,
-                n_context_tokens=n_context_tokens,
-            )
-
-        scale_shift_values = transformer.scale_shift_table[None, None] + embedded_timestep[:, :, None]
-        shift, scale = scale_shift_values[:, :, 0], scale_shift_values[:, :, 1]
-        hidden_states = transformer.norm_out(hidden_states)
-        hidden_states = hidden_states * (1 + scale) + shift
-        return transformer.proj_out(hidden_states)
-
-    def _forward_video_only(
-        self,
-        *,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        timestep: torch.Tensor,
-        encoder_attention_mask: torch.Tensor | None,
-        num_frames: int,
-        height: int,
-        width: int,
-        fps: float,
-        n_context_tokens: int,
-    ) -> torch.Tensor:
-        transformer = self.transformer
-        batch_size = hidden_states.size(0)
-
-        if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
-            encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
-            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
-
-        video_coords = transformer.rope.prepare_video_coords(
-            batch_size, num_frames, height, width, hidden_states.device, fps=fps
-        )
-        video_rotary_emb = transformer.rope(video_coords, device=hidden_states.device)
 
         hidden_states = transformer.proj_in(hidden_states)
         temb, embedded_timestep = transformer.time_embed(
@@ -705,7 +503,6 @@ class _RefinerChunkRunner:
         self._n_steps = int(sigmas.numel() - 1)
         self._source_sink_frames = int(source_sink_frames)
         self._block_size = int(block_size)
-        self._kv_max_frames = int(kv_max_frames)
         self._max_history_frames = int(kv_max_frames) - int(source_sink_frames)
         self._device = device
         self._dtype = dtype
@@ -728,38 +525,6 @@ class _RefinerChunkRunner:
         self._history_kv_post: list[tuple[torch.Tensor, torch.Tensor] | None] = [None] * self._n_layers
         self._history_frames: int = 0
 
-    def _capture_state(self) -> dict[str, object]:
-        """Snapshot the runner's KV state and RNG for checkpoint persistence."""
-        return {
-            "sink_kv_pre": (
-                None
-                if self._sink_kv_pre is None
-                else [(k.detach().cpu(), v.detach().cpu()) for k, v in self._sink_kv_pre]
-            ),
-            "history_kv_post": [
-                None if hk is None else (hk[0].detach().cpu(), hk[1].detach().cpu()) for hk in self._history_kv_post
-            ],
-            "history_frames": int(self._history_frames),
-            "generator_state": self._generator.get_state(),
-        }
-
-    def _restore_state(self, state: dict[str, object], *, device: torch.device, dtype: torch.dtype) -> None:
-        sink = state.get("sink_kv_pre")
-        if sink is None:
-            self._sink_kv_pre = None
-        else:
-            self._sink_kv_pre = [(k.to(device=device, dtype=dtype), v.to(device=device, dtype=dtype)) for k, v in sink]
-        history = state["history_kv_post"]
-        if len(history) != self._n_layers:
-            raise RuntimeError(f"Checkpoint history has {len(history)} layers but transformer has {self._n_layers}.")
-        self._history_kv_post = [
-            None if hk is None else (hk[0].to(device=device, dtype=dtype), hk[1].to(device=device, dtype=dtype))
-            for hk in history
-        ]
-        self._history_frames = int(state["history_frames"])
-        self._generator.set_state(state["generator_state"])
-
-    @torch.inference_mode()
     def refine_block(
         self,
         *,
@@ -839,7 +604,7 @@ class _RefinerChunkRunner:
             )
 
         # 3) FM endpoint at sigma=sigma0: single epsilon per block.
-        eps = torch.randn(clean_block.shape, generator=self._generator, device=device, dtype=self._dtype)
+        eps = randn_tensor(clean_block.shape, generator=self._generator, device=device, dtype=self._dtype)
         x_t = ((1.0 - self._sigma_max) * clean_block.float() + self._sigma_max * eps.float()).to(self._dtype)
 
         # Reset the shared scheduler to step 0 for this block's Euler run (blocks
@@ -1249,38 +1014,3 @@ def _unpack_latents(
     batch_size = latents.size(0)
     latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
     return latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
-
-
-def _atomic_save_state(
-    *,
-    state_path: Path,
-    output: torch.Tensor,
-    runner: _RefinerChunkRunner,
-    block_idx_done: int,
-    n_blocks: int,
-    sink_size: int,
-    block_size: int,
-) -> None:
-    """Persist refinement state atomically — write to a tmp sibling, then rename.
-
-    The state lets a preempted SLURM job resume from the last completed AR block instead of recomputing from scratch.
-    """
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "block_idx_done": int(block_idx_done),
-        "n_blocks": int(n_blocks),
-        "sink_size": int(sink_size),
-        "block_size": int(block_size),
-        "output_shape": tuple(output.shape),
-        "output": output.detach().cpu(),
-        "runner_state": runner._capture_state(),
-    }
-    tmp_path = state_path.with_suffix(state_path.suffix + ".tmp")
-    torch.save(payload, tmp_path)
-    os.replace(tmp_path, state_path)
-
-
-def _empty_cuda_cache() -> None:
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    gc.collect()

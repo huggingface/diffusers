@@ -26,7 +26,7 @@ from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFa
 from ...models import AutoencoderKLLTX2Video, SanaWMTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
-from ...utils.torch_utils import empty_device_cache
+from ...utils.torch_utils import empty_device_cache, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .cam_utils import (
@@ -127,8 +127,8 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Public SANA-WM chi-prompt — saved with the pipeline config so users get the
-# correct prefix automatically on ``from_pretrained``.
+# Default instruction prefix prepended to the user prompt before Gemma-2 encoding.
+# SANA-WM was trained with this prefix, so changing it degrades prompt adherence.
 DEFAULT_CHI_PROMPT: list[str] = [
     'Given a user prompt, generate an "Enhanced prompt" that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:',
     "- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.",
@@ -168,9 +168,7 @@ class SanaWMPipeline(DiffusionPipeline):
     # ``refiner`` is a nested pipeline (not an nn.Module) so it's excluded from
     # the offload sequence; it manages its own sub-module device placement.
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-    _callback_tensor_inputs = ["latents", "prompt_embeds"]
     _optional_components = ["refiner"]
-    _exclude_from_cpu_offload = ["refiner"]
 
     def __init__(
         self,
@@ -430,15 +428,11 @@ class SanaWMPipeline(DiffusionPipeline):
         latent_h = height // self.vae_spatial_compression_ratio
         latent_w = width // self.vae_spatial_compression_ratio
         latent_channels = first_latent.shape[1]
-        latents = torch.randn(
-            1,
-            latent_channels,
-            latent_T,
-            latent_h,
-            latent_w,
-            dtype=dtype,
-            device=device,
+        latents = randn_tensor(
+            (1, latent_channels, latent_T, latent_h, latent_w),
             generator=generator,
+            device=device,
+            dtype=dtype,
         )
         latents[:, :, :1] = first_latent
         condition_mask = torch.zeros_like(latents)
@@ -465,14 +459,12 @@ class SanaWMPipeline(DiffusionPipeline):
         fps: int = 16,
         num_inference_steps: int = 60,
         guidance_scale: float = 5.0,
-        flow_shift: float = 8.0,
         negative_prompt: str = "",
         generator: torch.Generator | list[torch.Generator] | None = None,
         seed: int | None = None,
         use_refiner: bool = True,
         sink_size: int = 1,
         refiner_seed: int = 42,
-        refiner_checkpoint_dir: str | Path | None = None,
         max_sequence_length: int = 300,
         chi_prompt: list[str] | None = None,
         output_type: Literal["np", "pil", "latent"] = "np",
@@ -505,8 +497,6 @@ class SanaWMPipeline(DiffusionPipeline):
                 Number of stage-1 DiT sampling steps.
             guidance_scale (`float`, defaults to 5.0):
                 Classifier-free guidance scale.
-            flow_shift (`float`, defaults to 8.0):
-                Scheduler flow shift (LTX flow-matching).
             negative_prompt (`str`, defaults to ""):
                 Optional negative prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
@@ -522,9 +512,6 @@ class SanaWMPipeline(DiffusionPipeline):
                 Refiner sink-anchor frame count.
             refiner_seed (`int`, defaults to 42):
                 Refiner sampling seed.
-            refiner_checkpoint_dir (`str` or `pathlib.Path`, *optional*):
-                If provided, the AR refiner writes a ``state.pt`` after every completed block and resumes from there on
-                the next call. Lets a refinement survive job preemption.
             max_sequence_length (`int`, defaults to 300):
                 Max prompt tokens.
             chi_prompt (`list[str]`, *optional*):
@@ -571,10 +558,6 @@ class SanaWMPipeline(DiffusionPipeline):
         latents, condition_mask = self.prepare_latents(
             first_latent, num_frames, height, width, dtype, device, generator
         )
-        # Override the scheduler shift with the caller's value for this run;
-        # ``FlowMatchEulerDiscreteScheduler`` reads ``config.shift`` inside
-        # ``set_timesteps`` so this takes effect immediately.
-        self.scheduler.config.shift = flow_shift
         timesteps, _ = retrieve_timesteps(self.scheduler, num_inference_steps, device, None)
 
         prompt_embeds = torch.cat([neg, cond], dim=0) if do_cfg else cond
@@ -618,8 +601,6 @@ class SanaWMPipeline(DiffusionPipeline):
             keep_clean = t / 1000.0 - 1e-6 < (1.0 - condition_mask)
             latents = torch.where(keep_clean, denoised, latents).to(dtype)
 
-        latents = latents.detach()
-
         if output_type == "latent":
             return SanaWMPipelineOutput(frames=latents, c2w=c2w, latent=latents) if return_dict else (latents,)
 
@@ -643,7 +624,6 @@ class SanaWMPipeline(DiffusionPipeline):
                 fps=float(fps),
                 sink_size=sink_size,
                 seed=refiner_seed,
-                checkpoint_dir=refiner_checkpoint_dir,
                 device=device,
             )
             # Bring the VAE back for decode (moved to CPU above to free the GPU

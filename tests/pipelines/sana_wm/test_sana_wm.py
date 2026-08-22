@@ -12,21 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""SANA-WM CPU unit tests + slow GPU integration stubs.
+"""SANA-WM CPU unit tests.
 
-The 1.6B ``SanaWMTransformer3DModel`` has hardcoded depth/hidden/num_heads
-inside its inner DiT (not exposed through ``register_to_config``), so we
-cannot construct a tiny dummy variant for the usual ``PipelineTesterMixin``
-fast-path tests. Coverage here is split:
-
-* CPU unit tests for the standalone helpers (action DSL, intrinsics math,
-  resize-and-crop, output dataclass, registration).
-* ``@slow @require_torch_accelerator`` integration stubs that load the public
-  checkpoint via ``SanaWMPipeline.from_pretrained`` and run a short I2V end
-  to end. These are skipped in regular CI and exercised in nightly GPU runs.
+Covers the standalone helpers (action DSL, intrinsics math, resize-and-crop),
+the public-surface registration, and the Triton -> pure-PyTorch attention
+fallback.
 """
 
-import gc
 import unittest
 
 import numpy as np
@@ -41,13 +33,6 @@ from diffusers.pipelines.sana_wm.cam_utils import (
     resize_and_center_crop,
     snap_num_frames,
     transform_intrinsics_for_crop,
-)
-
-from ...testing_utils import (
-    backend_empty_cache,
-    require_torch_accelerator,
-    slow,
-    torch_device,
 )
 
 
@@ -158,14 +143,13 @@ class SanaWMRegistrationTests(unittest.TestCase):
 
         from diffusers import DiffusionPipeline
 
-        # The refiner is a standalone DiffusionPipeline (dg845's review request).
+        # The refiner is a standalone DiffusionPipeline.
         self.assertTrue(issubclass(SanaWMLTX2Refiner, DiffusionPipeline))
 
         # Its denoising entry point is ``__call__`` with the canonical AR defaults.
         params = inspect.signature(SanaWMLTX2Refiner.__call__).parameters
         self.assertIn("block_size", params)
         self.assertIn("kv_max_frames", params)
-        self.assertIn("checkpoint_dir", params)
         # AR mode is on by default.
         self.assertEqual(params["block_size"].default, 3)
         self.assertEqual(params["kv_max_frames"].default, 11)
@@ -177,7 +161,6 @@ class SanaWMRegistrationTests(unittest.TestCase):
         self.assertIn("intrinsics", params)
         self.assertIn("c2w", params)
         self.assertIn("action", params)
-        self.assertIn("refiner_checkpoint_dir", params)
         self.assertIn("use_refiner", params)
 
 
@@ -268,52 +251,3 @@ class SanaWMTritonFallbackTests(unittest.TestCase):
             else:
                 sys.modules.pop("triton", None)
             importlib.import_module("diffusers.models.transformers.transformer_sana_wm_kernels")
-
-
-@slow
-@require_torch_accelerator
-class SanaWMPipelineIntegrationTests(unittest.TestCase):
-    """End-to-end integration against the public checkpoint. GPU-only nightly."""
-
-    repo_id = "Efficient-Large-Model/SANA-WM_bidirectional-diffusers"
-    prompt = "A car driving across a vast desert plain at golden hour."
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    @unittest.skip("Heavy I2V end-to-end; TODO wire up once a smaller demo checkpoint is hosted.")
-    def test_sana_wm_5s_i2v(self):
-        import torch
-
-        pipe = SanaWMPipeline.from_pretrained(self.repo_id, torch_dtype=torch.bfloat16)
-        pipe.vae.to(torch.float32)
-        pipe.enable_model_cpu_offload()
-
-        image = Image.new("RGB", (832, 480), color=(120, 100, 80))
-        out = pipe(
-            image=image,
-            prompt=self.prompt,
-            action="w-80",
-            intrinsics=[540.0, 540.0, 416.0, 240.0],
-            num_frames=81,
-            num_inference_steps=2,
-            use_refiner=False,
-            seed=42,
-            output_type="np",
-        )
-        # ``output_type='np'`` returns float [0, 1] frames per the diffusers convention.
-        frames = np.asarray(out.frames)
-        self.assertEqual(frames.dtype, np.float32)
-        self.assertEqual(frames.shape, (81, 704, 1280, 3))
-        self.assertTrue(0.0 <= float(frames.min()) and float(frames.max()) <= 1.0)
-
-
-if __name__ == "__main__":
-    unittest.main()
