@@ -166,7 +166,11 @@ def autoclose_body():
         f"the reminder above was not addressed within {AUTOCLOSE_DAYS} days. "
         "If this PR is still relevant, please link the issue it fixes "
         "(e.g. `Fixes #1234`) or ask a maintainer to add the `no-issue-needed` label, "
-        "and it can be reopened."
+        "and it can be reopened.\n\n"
+        "We are experimenting with this process to keep the review queue manageable, "
+        "and it will sometimes get it wrong. If you think this PR should stay open, "
+        "please just say so here and we will reopen it \u2014 no need to justify it at length.\n\n"
+        "Thanks again for contributing, and sorry for the noise if we closed this by mistake!"
     )
 
 
