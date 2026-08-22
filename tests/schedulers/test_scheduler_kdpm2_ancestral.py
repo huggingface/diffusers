@@ -162,3 +162,20 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+    def test_set_timesteps_squaredcos_cap_v2_no_nan(self):
+        # Regression test for #14213: with beta_schedule="squaredcos_cap_v2" the
+        # huge sigma dynamic range made sigmas_down round negative in float32,
+        # which drove log(0) NaN into sigmas_interpol during set_timesteps().
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(beta_schedule="squaredcos_cap_v2")
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(4)
+
+        assert torch.isfinite(scheduler.timesteps.float()).all(), (
+            "set_timesteps() produced non-finite timesteps with beta_schedule='squaredcos_cap_v2'"
+        )
+        assert torch.isfinite(scheduler.sigmas).all(), (
+            "set_timesteps() produced non-finite sigmas with beta_schedule='squaredcos_cap_v2'"
+        )
