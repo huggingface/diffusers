@@ -421,6 +421,10 @@ class DenoiseLoop(IterativePipelineBlocks):
     def loop_variables(self):
         return ["i", "t"]
 
+    @property
+    def loop_inputs(self):  # what the loop logic itself reads; `get_block_state` returns exactly these
+        return [InputParam("timesteps", required=True)]
+
     @torch.no_grad()
     def __call__(self, components, state):
         block_state = self.get_block_state(state)

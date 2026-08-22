@@ -467,11 +467,8 @@ class Flux2DenoiseLoopWrapper(IterativePipelineBlocks):
         )
 
     @property
-    def inputs(self) -> list[InputParam]:
-        inputs = super().inputs
-        names = {param.name for param in inputs}
-        # inputs consumed by the loop logic itself, on top of what the sub-blocks declare
-        loop_inputs = [
+    def loop_inputs(self) -> list[InputParam]:
+        return [
             InputParam(
                 "timesteps",
                 required=True,
@@ -485,7 +482,6 @@ class Flux2DenoiseLoopWrapper(IterativePipelineBlocks):
                 description="The number of inference steps to use for the denoising process.",
             ),
         ]
-        return [param for param in loop_inputs if param.name not in names] + inputs
 
     @torch.no_grad()
     def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:

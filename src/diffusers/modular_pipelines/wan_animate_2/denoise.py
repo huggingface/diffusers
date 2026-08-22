@@ -682,11 +682,8 @@ class WanAnimate2DenoiseLoopWrapper(IterativePipelineBlocks):
         )
 
     @property
-    def inputs(self) -> list[InputParam]:
-        inputs = super().inputs
-        names = {param.name for param in inputs}
-        # inputs consumed by the loop logic itself, on top of what the sub-blocks declare
-        loop_inputs = [
+    def loop_inputs(self) -> list[InputParam]:
+        return [
             InputParam(
                 "timesteps",
                 required=True,
@@ -700,7 +697,6 @@ class WanAnimate2DenoiseLoopWrapper(IterativePipelineBlocks):
                 description="Total number of segments in the driving video, from the video preprocess step",
             ),
         ]
-        return [param for param in loop_inputs if param.name not in names] + inputs
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState, k: int):
@@ -857,13 +853,8 @@ class WanAnimate2SegmentLoopWrapper(IterativePipelineBlocks):
         )
 
     @property
-    def inputs(self) -> list[InputParam]:
-        # `out_frames` is loop-carried — written by the decode step of each iteration and read by the prev-frames
-        # step of the next — never user-provided, so it is removed from the aggregated inputs.
-        inputs = [param for param in super().inputs if param.name != "out_frames"]
-        names = {param.name for param in inputs}
-        # inputs consumed by the loop logic itself, on top of what the sub-blocks declare
-        loop_inputs = [
+    def loop_inputs(self) -> list[InputParam]:
+        return [
             InputParam(
                 "num_segments",
                 required=True,
@@ -871,12 +862,11 @@ class WanAnimate2SegmentLoopWrapper(IterativePipelineBlocks):
                 description="Total number of segments in the driving video, from the video preprocess step",
             ),
         ]
-        return [param for param in loop_inputs if param.name not in names] + inputs
 
     @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        # produced by the loop logic itself, which collects each segment's decoded frames
-        return super().intermediate_outputs + [
+    def loop_intermediate_outputs(self) -> list[OutputParam]:
+        # the loop logic collects each segment's decoded frames
+        return [
             OutputParam(
                 "segment_frames",
                 type_hint=list[torch.Tensor],
@@ -890,11 +880,11 @@ class WanAnimate2SegmentLoopWrapper(IterativePipelineBlocks):
 
         # `segment_frames` collects each segment's decoded frames on CPU; `out_frames` (this segment's frames,
         # on device) stays in the state for the prev-frames step of the next iteration to condition on.
-        segment_frames = []
+        block_state.segment_frames = []
         for k in range(block_state.num_segments):
             components, state = self.loop_step(components, state, k=k)
-            segment_frames.append(state.get("out_frames").cpu())
-        state.set("segment_frames", segment_frames)
+            block_state.segment_frames.append(state.get("out_frames").cpu())
+        self.set_block_state(state, block_state)
 
         return components, state
 
@@ -902,11 +892,11 @@ class WanAnimate2SegmentLoopWrapper(IterativePipelineBlocks):
     def stream(self, components, state: PipelineState):
         block_state = self.get_block_state(state)
 
-        segment_frames = []
+        block_state.segment_frames = []
         for k in range(block_state.num_segments):
             components, state = yield from self.stream_step(components, state, k=k)
-            segment_frames.append(state.get("out_frames").cpu())
-        state.set("segment_frames", segment_frames)
+            block_state.segment_frames.append(state.get("out_frames").cpu())
+        self.set_block_state(state, block_state)
 
         return components, state
 
