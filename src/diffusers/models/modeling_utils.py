@@ -654,9 +654,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 continue
             processor._attention_backend = backend
 
-        # Important to set the active backend so that it propagates gracefully throughout.
-        _AttentionBackendRegistry.set_active_backend(backend)
-
     def reset_attention_backend(self) -> None:
         """
         Resets the attention backend for the model. Following calls to `forward` will use the environment default, if
