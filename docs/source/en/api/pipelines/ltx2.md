@@ -1085,7 +1085,3 @@ You can see the supported workflows in the docs for each blockset (e.g. [`LTX2Au
 ## LTX25AutoBlocks
 
 [[autodoc]] LTX25AutoBlocks
-
-## LTX2Guidance
-
-[[autodoc]] modular_pipelines.ltx2.guider.LTX2Guidance
