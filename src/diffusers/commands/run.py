@@ -90,6 +90,9 @@ _AUDIO_INPUT_KEYS = (
 # (`transformer`, `unet`) and their numbered variants (`transformer_2`, etc.).
 _DENOISER_COMPONENT_KEYS = ("transformer", "unet")
 
+# What a sandbox needs on top of a bare torch + CUDA image. `_DEFAULT_REMOTE_IMAGE` already
+# ships all of it, so this list is only installed when `--image` points somewhere else.
+# `docker/diffusers-cli-cuda/Dockerfile` mirrors it — keep the two in sync.
 _DEFAULT_REMOTE_DEPS = (
     "diffusers",
     "accelerate",
@@ -102,12 +105,14 @@ _DEFAULT_REMOTE_DEPS = (
     "imageio-ffmpeg",  # bundles a static ffmpeg; the cv2 fallback needs system libs the slim image lacks
 )
 
-# Base sandbox image — provides torch + CUDA so `uv pip install --system`
-# only has to add the small Python deps. cuda12.8 is the highest cuda12.x tag
-# below the HF Jobs host driver's CUDA 12.9 max.
-_DEFAULT_REMOTE_IMAGE = "pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime"
+# Base sandbox image — torch + CUDA with `_DEFAULT_REMOTE_DEPS` and `diffusers-cli` baked in, so a
+# cold sandbox boots straight into the run instead of resolving and installing them first. Built
+# nightly from `docker/diffusers-cli-cuda/`. Its cuda12.8 base is the highest cuda12.x tag below
+# the HF Jobs host driver's CUDA 12.9 max.
+_DEFAULT_REMOTE_IMAGE = "diffusers/diffusers-cli-cuda:latest"
 
-# Installed console-script name invoked inside the sandbox after the deps land.
+# Console-script name invoked inside the sandbox — baked into the default image, installed
+# with the `diffusers` dep on any other one.
 _CONTAINER_CLI_BINARY = "diffusers-cli"
 
 # Working directories inside the sandbox: local media from `--pipeline-kwargs` is uploaded
@@ -276,8 +281,9 @@ def _add_remote_arguments(parser: ArgumentParser) -> None:
         default=None,
         help=(
             "Sandbox image for --remote (defaults to "
-            f"{_DEFAULT_REMOTE_IMAGE!r}). Must provide torch + CUDA; the CLI installs the "
-            "small Python deps on top via `uv pip install --system`."
+            f"{_DEFAULT_REMOTE_IMAGE!r}, which ships the deps prebuilt). Any other image must "
+            "provide torch + CUDA; the CLI then installs the small Python deps on top via "
+            "`uv pip install --system` on every cold sandbox."
         ),
     )
     parser.add_argument(
@@ -1046,6 +1052,12 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     download_locally = (not user_bucket) or (args.output is not None)
     local_dir = Path(args.output) if args.output else Path(DEFAULT_OUTPUT_DIR) / run_id
 
+    # On a reconnect `--image` is meaningless (the image was fixed at creation time), and the
+    # deps landed during the run that created the sandbox — so the default's "already prebuilt"
+    # treatment is the right one either way.
+    image = args.image or _DEFAULT_REMOTE_IMAGE
+    prebuilt_image = image == _DEFAULT_REMOTE_IMAGE
+
     use_existing_sandbox = bool(args.sandbox_id)
     keep_alive = args.keep_alive or use_existing_sandbox
     if use_existing_sandbox and args.volume:
@@ -1058,7 +1070,7 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     else:
         logger.info(f"creating sandbox on flavor={args.flavor!r}...")
         create_kwargs: dict[str, Any] = {
-            "image": args.image or _DEFAULT_REMOTE_IMAGE,
+            "image": image,
             "flavor": args.flavor,
             "forward_hf_token": True,
             "token": hf_token,
@@ -1097,14 +1109,17 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     try:
         _upload_inputs_to_sandbox(args, sbx, run_id)
 
-        dependencies = list(_DEFAULT_REMOTE_DEPS)
-        if args.dependencies:
-            dependencies.extend(args.dependencies)
-        # --break-system-packages bypasses PEP 668; harmless in a throwaway sandbox. uv is a
-        # near no-op when the deps are already satisfied, so this stays cheap on a reused sandbox.
-        install_cmd = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
-        logger.info("installing dependencies in the sandbox...")
-        sbx.run(install_cmd, on_stdout=_stream, on_stderr=_stream)
+        # The prebuilt image already carries `_DEFAULT_REMOTE_DEPS`, so only `--dependencies`
+        # extras get installed there; any other image needs the full set on top.
+        dependencies = list(args.dependencies or ())
+        if not prebuilt_image:
+            dependencies = [*_DEFAULT_REMOTE_DEPS, *dependencies]
+        if dependencies:
+            # --break-system-packages bypasses PEP 668; harmless in a throwaway sandbox. uv is a
+            # near no-op when the deps are already satisfied, so this stays cheap on a reused sandbox.
+            install_cmd = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
+            logger.info("installing dependencies in the sandbox...")
+            sbx.run(install_cmd, on_stdout=_stream, on_stderr=_stream)
 
         # Per-run outputs subdirectory so a reused sandbox doesn't leak files from prior runs
         # into this run's download set.
