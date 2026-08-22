@@ -25,7 +25,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput
 from ...utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
-from ..attention import AttentionModuleMixin
+from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
@@ -228,6 +228,12 @@ class AudioDiTSelfAttnProcessor:
 
 
 class AudioDiTAttention(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = AudioDiTSelfAttnProcessor
+    _available_processors = [
+        AudioDiTSelfAttnProcessor,
+    ]
+    _supports_qkv_fusion = False
+
     def __init__(
         self,
         q_dim: int,
@@ -238,12 +244,13 @@ class AudioDiTAttention(nn.Module, AttentionModuleMixin):
         bias: bool = True,
         qk_norm: bool = False,
         eps: float = 1e-6,
-        processor: AttentionModuleMixin | None = None,
+        processor: "AudioDiTSelfAttnProcessor | AudioDiTCrossAttnProcessor | None" = None,
     ):
         super().__init__()
         kv_dim = q_dim if kv_dim is None else kv_dim
         self.heads = heads
         self.inner_dim = dim_head * heads
+        self.use_bias = bias
         self.to_q = nn.Linear(q_dim, self.inner_dim, bias=bias)
         self.to_k = nn.Linear(kv_dim, self.inner_dim, bias=bias)
         self.to_v = nn.Linear(kv_dim, self.inner_dim, bias=bias)
@@ -252,7 +259,9 @@ class AudioDiTAttention(nn.Module, AttentionModuleMixin):
             self.q_norm = RMSNorm(self.inner_dim, eps=eps)
             self.k_norm = RMSNorm(self.inner_dim, eps=eps)
         self.to_out = nn.ModuleList([nn.Linear(self.inner_dim, q_dim, bias=bias), nn.Dropout(dropout)])
-        self.set_processor(processor or AudioDiTSelfAttnProcessor())
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
 
     def forward(
         self,
@@ -329,6 +338,9 @@ class AudioDiTCrossAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
+
+
+AudioDiTAttention._available_processors = [AudioDiTSelfAttnProcessor, AudioDiTCrossAttnProcessor]
 
 
 class AudioDiTFeedForward(nn.Module):
@@ -452,7 +464,7 @@ class AudioDiTBlock(nn.Module):
         return hidden_states
 
 
-class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
+class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin, AttentionMixin):
     _supports_gradient_checkpointing = False
     _repeated_blocks = ["AudioDiTBlock"]
 
