@@ -53,44 +53,45 @@ PipelineMaskInput = Union[
 EXAMPLE_DOC_STRING = """
     Example:
     ```python
-    import json
-
     import torch
     from PIL import Image
 
     from diffusers import BriaFiboEditPipeline
     from diffusers.modular_pipelines import ModularPipelineBlocks
 
-    torch.set_grad_enabled(False)
-    vlm_pipe = ModularPipelineBlocks.from_pretrained("briaai/FIBO-VLM-prompt-to-JSON", trust_remote_code=True)
+    # Fibo Edit takes a full structured VGL JSON prompt; build it from the source image
+    # and an instruction with the edit prompt-to-JSON modular block.
+    vlm_pipe = ModularPipelineBlocks.from_pretrained("briaai/FIBO-edit-prompt-to-JSON", trust_remote_code=True)
     vlm_pipe = vlm_pipe.init_pipeline()
 
     pipe = BriaFiboEditPipeline.from_pretrained(
-        "briaai/fibo-edit",
+        "briaai/Fibo-Edit-1.5",
         torch_dtype=torch.bfloat16,
     )
     pipe.to("cuda")
 
-    output = vlm_pipe(
-        prompt="A hyper-detailed, ultra-fluffy owl sitting in the trees at night, looking directly at the camera with wide, adorable, expressive eyes. Its feathers are soft and voluminous, catching the cool moonlight with subtle silver highlights. The owl's gaze is curious and full of charm, giving it a whimsical, storybook-like personality."
-    )
-    json_prompt = json.loads(output.values["json_prompt"])
+    image = Image.open("owl.png")
+    json_prompt = vlm_pipe(image=image, prompt="Make the owl into a cat").values["json_prompt"]
 
-    image = Image.open("image_generate.png")
-
-    json_prompt["edit_instruction"] = "Make the owl to be a cat"
-
-    result = pipe(prompt=json_prompt, num_inference_steps=50, guidance_scale=3.5, image=image, output_type="np")
+    result = pipe(prompt=json_prompt, image=image, num_inference_steps=30, guidance_scale=5)
 
     # Multiple reference images: pass a list. Each reference conditions the edit at its
     # own aspect ratio; the output resolution follows the first reference.
-    json_prompt["edit_instruction"] = "Place the owl from the first image in the forest from the second image"
+    owl, forest = Image.open("owl.png"), Image.open("forest.png")
+    json_prompt = vlm_pipe(
+        image=[owl, forest], prompt="Place the owl from the first image in the forest from the second image"
+    ).values["json_prompt"]
     result = pipe(
         prompt=json_prompt,
-        image=[Image.open("owl.png"), Image.open("forest.png")],
-        num_inference_steps=50,
-        guidance_scale=3.5,
+        image=[owl, forest],
+        num_inference_steps=30,
+        guidance_scale=5,
     )
+
+    # The distilled Turbo checkpoint edits in 4 steps without classifier-free guidance.
+    pipe = BriaFiboEditPipeline.from_pretrained("briaai/Fibo-Edit-1.5-Turbo", torch_dtype=torch.bfloat16)
+    pipe.to("cuda")
+    result = pipe(prompt=json_prompt, image=[owl, forest], num_inference_steps=4, guidance_scale=1)
     ```
 """
 
@@ -658,7 +659,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             seed (`int`, *optional*):
