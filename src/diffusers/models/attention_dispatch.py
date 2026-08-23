@@ -598,13 +598,12 @@ def _prepare_for_flash_attn_or_sage_varlen_without_mask(
 ):
     seqlens_q = torch.full((batch_size,), seq_len_q, dtype=torch.int32, device=device)
     seqlens_k = torch.full((batch_size,), seq_len_kv, dtype=torch.int32, device=device)
-    cu_seqlens_q = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    cu_seqlens_q[1:] = torch.cumsum(seqlens_q, dim=0)
-    cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
-    max_seqlen_q = seqlens_q.max().item()
-    max_seqlen_k = seqlens_k.max().item()
-    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
+    # Built with arange instead of cumsum(full(...)): inductor rewrites that pattern into
+    # `arange * fill_value`, which raises under dynamic shapes because the fill value is a
+    # symbolic sequence length. The lengths are uniform here, so arange is also cheaper.
+    cu_seqlens_q = torch.arange(0, (batch_size + 1) * seq_len_q, seq_len_q, dtype=torch.int32, device=device)
+    cu_seqlens_k = torch.arange(0, (batch_size + 1) * seq_len_kv, seq_len_kv, dtype=torch.int32, device=device)
+    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (seq_len_q, seq_len_kv)
 
 
 def _prepare_for_flash_attn_or_sage_varlen_with_mask(
@@ -615,13 +614,13 @@ def _prepare_for_flash_attn_or_sage_varlen_with_mask(
 ):
     seqlens_q = torch.full((batch_size,), seq_len_q, dtype=torch.int32, device=device)
     seqlens_k = attn_mask.sum(dim=1, dtype=torch.int32)
-    cu_seqlens_q = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
+    # Queries are uniform, so arange (see the no-mask helper: cumsum(full(...)) breaks inductor
+    # under dynamic shapes). Keys are data-dependent and keep the cumsum.
+    cu_seqlens_q = torch.arange(0, (batch_size + 1) * seq_len_q, seq_len_q, dtype=torch.int32, device=device)
     cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    cu_seqlens_q[1:] = torch.cumsum(seqlens_q, dim=0)
     cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
-    max_seqlen_q = seqlens_q.max().item()
     max_seqlen_k = seqlens_k.max().item()
-    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
+    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (seq_len_q, max_seqlen_k)
 
 
 def _prepare_for_flash_attn_or_sage_varlen(
