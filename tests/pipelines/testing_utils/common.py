@@ -112,6 +112,16 @@ class BasePipelineTesterConfig:
             "callback function when dynamically adjusting `guidance_scale`."
         )
 
+    @property
+    def output_shape(self) -> tuple:
+        raise NotImplementedError(
+            "You need to set the attribute `output_shape` in the child test class. `output_shape` is the expected "
+            "per-sample shape of the pipeline output for the standard dummy inputs — the shape of a single element "
+            "of `pipeline(**get_dummy_inputs())[0]` (i.e. with the batch dimension dropped). For an image pipeline "
+            "requesting `output_type='pt'` it is `(channels, height, width)`; for a video pipeline it is "
+            "`(num_frames, channels, height, width)`. Analogous to the model-level `BaseModelTesterConfig.output_shape`."
+        )
+
     # ==================== Shared helpers ====================
 
     def get_generator(self, seed=0):
@@ -143,8 +153,8 @@ class BasePipelineTesterConfig:
 
 
 class BasePipelineOutputMixin:
-    """Provides the `get_pipeline` builder and the class-scoped `base_pipe_output` fixture shared across tester
-    mixins.
+    """Provides the `get_pipeline` builder, the `run_pipe` helper and the class-scoped `base_pipe_output` fixture
+    shared across tester mixins.
 
     Kept separate from `BasePipelineTesterConfig` — which only declares the testing contract and performs no
     computation — so any mixin that needs to build a pipeline or read the cached reference output
@@ -167,14 +177,21 @@ class BasePipelineOutputMixin:
 
         return pipe
 
+    def run_pipe(self, pipe, **extra_inputs):
+        """Run the pipeline on the standard dummy inputs (fresh seeded generator) and return the first output.
+
+        `base_pipe_output` is produced by this same helper, so outputs are directly comparable against it. Pass
+        `extra_inputs` to override individual dummy inputs.
+        """
+        inputs = self.get_dummy_inputs()
+        inputs.update(extra_inputs)
+        torch.manual_seed(0)
+        return pipe(**inputs)[0]
+
     @pytest.fixture(scope="class")
     def base_pipe_output(self):
         """Output of a freshly constructed pipeline on the standard dummy inputs, computed once per test class."""
-        pipe = self.get_pipeline().to(torch_device)
-
-        inputs = self.get_dummy_inputs()
-        torch.manual_seed(0)
-        return pipe(**inputs)[0]
+        return self.run_pipe(self.get_pipeline().to(torch_device))
 
 
 class PipelineTesterMixin(BasePipelineOutputMixin):
@@ -210,6 +227,13 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
 
         assert_tensors_close(
             output_loaded, base_pipe_output, atol=expected_max_difference, msg="Loaded pipeline output changed."
+        )
+
+    def test_output(self, base_pipe_output):
+        output = base_pipe_output
+        assert output is not None, "Pipeline output is None."
+        assert output[0].shape == self.output_shape, (
+            f"Output sample shape does not match expected. Expected {self.output_shape}, got {tuple(output[0].shape)}."
         )
 
     def test_pipeline_call_signature(self):

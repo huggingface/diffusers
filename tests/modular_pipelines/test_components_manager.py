@@ -16,7 +16,6 @@ import gc
 import time
 from unittest import mock
 
-import pytest
 import torch
 
 from diffusers import ComponentsManager
@@ -24,6 +23,7 @@ from diffusers.models import ModelMixin
 from diffusers.utils import is_accelerate_available
 
 from ..testing_utils import backend_empty_cache, require_accelerate, require_accelerator, torch_device
+from .testing_utils import patch_free_memory
 
 
 if is_accelerate_available():
@@ -72,20 +72,10 @@ def _patch_cuda_mem_get_info(free_bytes: int, total_bytes: int = 80 * UNIT):
     return mock.patch.object(torch.cuda, "mem_get_info", return_value=(free_bytes, total_bytes))
 
 
-def _patch_free_memory(free_bytes: int, total_bytes: int = 80 * UNIT):
-    # Integration tests run on the real `torch_device`; patch `mem_get_info` on
-    # whichever backend module (cuda/xpu/...) actually backs it. `mem_get_info` returns
-    # `(free, total)` and is the single point where the strategy learns how much memory
-    # is available, so patching it simulates arbitrary memory pressure.
-    device_type = torch.device(torch_device).type
-    device_module = getattr(torch, device_type, torch.cuda)
-    return mock.patch.object(device_module, "mem_get_info", return_value=(free_bytes, total_bytes))
-
-
 @require_accelerate
-class ComponentsManagerTesterMixin:
+class TestComponentsManager:
     """
-    Common tests for `ComponentsManager` and its auto-offload strategy.
+    Tests for `ComponentsManager` and its auto-offload strategy.
     """
 
     # A `cuda:0` device descriptor is enough to drive the strategy's device-type and
@@ -93,8 +83,8 @@ class ComponentsManagerTesterMixin:
     strategy_execution_device = torch.device("cuda:0")
 
     def setup_method(self):
-        # Mirror `ModularPipelineTesterMixin` cleanup so this mixin stays interchangeable
-        # in the MRO when stacked into a pipeline test class.
+        # Free VRAM before/after each test; the auto-offload integration tests below reason
+        # about device residency, so they must not inherit another test's allocations.
         torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
@@ -322,13 +312,13 @@ class ComponentsManagerTesterMixin:
 
             # Ample free memory: running m1 just moves it onto the device, evicting
             # nothing (m2 is not resident, so it is not even a candidate).
-            with _patch_free_memory(70 * UNIT):
+            with patch_free_memory(70 * UNIT):
                 m1(x)
             assert next(m1.parameters()).device.type == device_type
 
             # Memory pressure: usable = 4 - 1 = 3 but m2 needs 4, so the only resident
             # model (m1) must be evicted back to the CPU to make room for m2.
-            with _patch_free_memory(4 * UNIT):
+            with patch_free_memory(4 * UNIT):
                 m2(x)
             assert next(m2.parameters()).device.type == device_type
             assert next(m1.parameters()).device.type == "cpu"
@@ -346,150 +336,11 @@ class ComponentsManagerTesterMixin:
         cm.enable_auto_cpu_offload(device=torch_device, memory_reserve_margin=UNIT)
         try:
             x = torch.randn(2, 4, device=torch_device)
-            with _patch_free_memory(70 * UNIT):
+            with patch_free_memory(70 * UNIT):
                 m1(x)
                 m2(x)
             # Both fit comfortably, so neither gets evicted.
             assert next(m1.parameters()).device.type == device_type
             assert next(m2.parameters()).device.type == device_type
-        finally:
-            cm.disable_auto_cpu_offload()
-
-
-class TestComponentsManager(ComponentsManagerTesterMixin):
-    pass
-
-
-# More free memory than any tiny test checkpoint could ever need, so the strategy never
-# decides to offload. Used to assert the *negative*: no eviction without memory pressure.
-_AMPLE_FREE_BYTES = 1024**4
-
-
-class ModularPipelineOffloadTesterMixin:
-    """
-    Auto-CPU-offload tests for a modular pipeline's components.
-    """
-
-    @staticmethod
-    def _managed_models(cm):
-        """The registered components that the offloader actually manages (parameterized
-        `nn.Module`s)."""
-        models = []
-        for component in cm.components.values():
-            if isinstance(component, torch.nn.Module) and next(component.parameters(), None) is not None:
-                models.append(component)
-        return models
-
-    @staticmethod
-    def _is_resident(model):
-        return next(model.parameters()).device.type == torch.device(torch_device).type
-
-    def _run_offloaded(self, free_bytes):
-        """
-        Run the pipeline with auto offload on and `free_bytes` of *simulated* device
-        memory, recording every offload decision the strategy makes.
-
-        Each record is `{"incoming", "resident_before", "offloaded"}` (lists of model
-        ids), captured by spying on `AutoOffloadStrategy.__call__`, which the hooks call
-        each time a model is about to be moved onto the device.
-        """
-        cm = ComponentsManager()
-        pipe = self.get_pipeline(components_manager=cm)
-        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve_margin=0)
-
-        records = []
-        original_call = AutoOffloadStrategy.__call__
-
-        def spy_call(strategy, hooks, model_id, model, execution_device):
-            selected = original_call(
-                strategy, hooks=hooks, model_id=model_id, model=model, execution_device=execution_device
-            )
-            records.append(
-                {
-                    "incoming": model_id,
-                    "resident_before": [hook.model_id for hook in hooks],
-                    "offloaded": [hook.model_id for hook in selected],
-                }
-            )
-            return selected
-
-        with _patch_free_memory(free_bytes), mock.patch.object(AutoOffloadStrategy, "__call__", spy_call):
-            output = pipe(**self.get_dummy_inputs(), output=self.output_name)
-        return cm, records, output
-
-    @staticmethod
-    def _peak_co_residency(records):
-        """
-        Largest number of models simultaneously on the device, reconstructed from the
-        strategy's view of residency just before each load.
-        """
-        peak = 0
-        for record in records:
-            resident = (set(record["resident_before"]) - set(record["offloaded"])) | {record["incoming"]}
-            peak = max(peak, len(resident))
-        return peak
-
-    @require_accelerate
-    @require_accelerator
-    def test_auto_cpu_offload_serializes_models_under_memory_pressure(self):
-        # Zero simulated free memory: every model that runs must first evict whatever is
-        # currently resident (comfy-style serialized execution).
-        cm, records, _ = self._run_offloaded(free_bytes=0)
-        try:
-            distinct_models = {record["incoming"] for record in records}
-            if len(distinct_models) < 2:
-                pytest.skip("pipeline has fewer than two offloadable model components")
-
-            # Offloading actually fired (at least one eviction happened).
-            assert any(record["offloaded"] for record in records), "expected at least one eviction"
-
-            # Sequencing: models run one at a time, never two co-resident on the device.
-            peak = self._peak_co_residency(records)
-            assert peak == 1, f"expected serialized execution under pressure, saw {peak} models co-resident"
-
-            # Device placement after the run: at most the last-run model stays on the
-            # accelerator, and at least one managed model was pushed back to the CPU.
-            models = self._managed_models(cm)
-            resident = [m for m in models if self._is_resident(m)]
-            assert len(resident) <= 1
-            assert any(not self._is_resident(m) for m in models), "expected some model offloaded to CPU"
-        finally:
-            cm.disable_auto_cpu_offload()
-
-    @require_accelerate
-    @require_accelerator
-    def test_auto_cpu_offload_keeps_models_resident_without_memory_pressure(self):
-        # Negative case: with ample simulated memory the strategy is still consulted on
-        # every load, but it must never decide to evict anything.
-        cm, records, _ = self._run_offloaded(free_bytes=_AMPLE_FREE_BYTES)
-        try:
-            distinct_models = {record["incoming"] for record in records}
-            if len(distinct_models) < 2:
-                pytest.skip("pipeline has fewer than two offloadable model components")
-
-            # Nothing was ever offloaded...
-            assert all(record["offloaded"] == [] for record in records), "no model should be evicted"
-
-            # ...and models accumulate on the device instead of being serialized.
-            peak = self._peak_co_residency(records)
-            assert peak >= 2, f"expected models to co-reside without pressure, saw peak {peak}"
-
-            models = self._managed_models(cm)
-            assert sum(self._is_resident(m) for m in models) >= 2, "expected multiple models resident on device"
-        finally:
-            cm.disable_auto_cpu_offload()
-
-    @require_accelerate
-    @require_accelerator
-    def test_auto_cpu_offload_inference_consistent_under_memory_pressure(self, expected_max_diff=1e-3):
-        # Sensible results: forcing offload (zero simulated free memory) must not change
-        # the output relative to an ordinary, non-offloaded run.
-        base_pipe = self.get_pipeline().to(torch_device)
-        baseline = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
-
-        cm, _, offloaded = self._run_offloaded(free_bytes=0)
-        try:
-            max_diff = torch.abs(baseline - offloaded).max()
-            assert max_diff < expected_max_diff, f"offloaded output diverged from baseline (max diff {max_diff})"
         finally:
             cm.disable_auto_cpu_offload()

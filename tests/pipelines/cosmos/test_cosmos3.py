@@ -15,10 +15,13 @@
 import unittest
 from unittest import mock
 
+import numpy as np
 import torch
+from PIL import Image
 from transformers import AutoTokenizer
 
 from diffusers import AutoencoderKLWan, Cosmos3OmniPipeline, Cosmos3OmniTransformer, UniPCMultistepScheduler
+from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import _preprocess_conditioning_image
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -129,6 +132,39 @@ class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             pipeline.tokenize_prompt("A prompt", num_frames=1, add_resolution_template=False)
 
         assert all(call.args[0][0]["role"] == "user" for call in apply_chat_template.call_args_list)
+
+    def test_i2v_image_preprocessing_preserves_aspect_ratio(self):
+        image = np.zeros((2, 4, 3), dtype=np.uint8)
+        image[:, 0] = [255, 0, 0]
+        image[:, 1] = [0, 255, 0]
+        image[:, 2] = [0, 0, 255]
+        image[:, 3] = [255, 255, 255]
+
+        actual = _preprocess_conditioning_image(Image.fromarray(image), height=2, width=2)
+        expected_pixels = torch.tensor(
+            [[[[0, 0], [0, 0]], [[255, 0], [255, 0]], [[0, 255], [0, 255]]]], dtype=torch.float32
+        )
+        expected = expected_pixels / 127.5 - 1.0
+
+        torch.testing.assert_close(actual, expected)
+
+    def test_i2v_pipeline_uses_native_preprocessing(self):
+        pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
+
+        image = np.zeros((16, 32, 3), dtype=np.uint8)
+        image[:, :8] = [255, 0, 0]
+        image[:, 8:24] = [0, 255, 0]
+        image[:, 24:] = [0, 0, 255]
+        center_crop = Image.fromarray(image[:, 8:24])
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.update(image=Image.fromarray(image), num_frames=5, output_type="latent")
+
+        wide_output = pipeline(**inputs).video
+        inputs.update(image=center_crop, generator=torch.Generator(device="cpu").manual_seed(0))
+        crop_output = pipeline(**inputs).video
+
+        torch.testing.assert_close(wide_output, crop_output)
 
     @unittest.skip("Cosmos3 currently supports one prompt per pipeline call.")
     def test_inference_batch_consistent(self):
