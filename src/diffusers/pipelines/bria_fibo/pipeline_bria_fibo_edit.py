@@ -60,9 +60,7 @@ EXAMPLE_DOC_STRING = """
     from diffusers.modular_pipelines import ModularPipelineBlocks
 
     # This prompt-to-JSON block calls Gemini and needs GEMINI_API_KEY in the environment.
-    vlm_pipe = ModularPipelineBlocks.from_pretrained(
-        "briaai/FIBO-edit-gemini-prompt-to-JSON", trust_remote_code=True
-    )
+    vlm_pipe = ModularPipelineBlocks.from_pretrained("briaai/FIBO-edit-gemini-prompt-to-JSON", trust_remote_code=True)
     vlm_pipe = vlm_pipe.init_pipeline()
 
     pipe = BriaFiboEditPipeline.from_pretrained(
