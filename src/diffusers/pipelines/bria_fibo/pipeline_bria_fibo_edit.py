@@ -1003,7 +1003,9 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         """VAE-encode one PIL reference at its own size and pack it as an edit-context token stream."""
         vae_dtype = next(self.vae.parameters()).dtype
         reference_width, reference_height = _vae_safe_dims(*image.size)
-        encoded_input = self.image_processor.preprocess(image.convert("RGB"), height=reference_height, width=reference_width).to(device=device)
+        encoded_input = self.image_processor.preprocess(
+            image.convert("RGB"), height=reference_height, width=reference_width
+        ).to(device=device)
 
         latent = self.vae.encode(encoded_input.to(dtype=vae_dtype).unsqueeze(2)).latent_dist.mean[:, :, 0, :, :]
         latents_mean = torch.tensor(self.vae.config.latents_mean, device=device, dtype=latent.dtype).view(1, -1, 1, 1)
