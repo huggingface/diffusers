@@ -9,6 +9,9 @@ _BF16_REQUIRED_BACKENDS = {
     AttentionBackendName.FLASH_VARLEN_HUB,
     AttentionBackendName._FLASH_3_HUB,
     AttentionBackendName._FLASH_3_VARLEN_HUB,
+    # Sage attention quantizes QK to INT8 and PV to FP8/FP16, so it only accepts
+    # fp16/bf16 inputs and rejects the fp32 the test models default to.
+    AttentionBackendName.SAGE_HUB,
 }
 
 

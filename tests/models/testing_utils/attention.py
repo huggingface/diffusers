@@ -94,6 +94,18 @@ _PARAM_FLASH_3_VARLEN_HUB = pytest.param(
     ],
 )
 
+_PARAM_SAGE_HUB = pytest.param(
+    AttentionBackendName.SAGE_HUB,
+    id="sage_hub",
+    marks=[
+        pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is required for sage_hub backend."),
+        pytest.mark.skipif(
+            not is_kernels_available(),
+            reason="`kernels` package is required for sage_hub backend. Install with `pip install kernels`.",
+        ),
+    ],
+)
+
 # All backends under test.
 _ALL_BACKEND_PARAMS = [
     _PARAM_NATIVE_CUDNN,
@@ -101,11 +113,18 @@ _ALL_BACKEND_PARAMS = [
     _PARAM_FLASH_3_HUB,
     _PARAM_FLASH_VARLEN_HUB,
     _PARAM_FLASH_3_VARLEN_HUB,
+    _PARAM_SAGE_HUB,
 ]
 
 # Backends that perform non-deterministic operations and therefore cannot run when
 # torch.use_deterministic_algorithms(True) is active (e.g. after enable_full_determinism()).
 _NON_DETERMINISTIC_BACKENDS = {AttentionBackendName._NATIVE_CUDNN}
+
+# Backends whose kernel cannot be traced into a single graph. Sage dispatches on the compute
+# capability on every call (`torch.cuda.device_count()` returns a non-Tensor, which Dynamo
+# rejects) and its arch-specific paths reach a Triton quantizer and torch ops that have no
+# registered fake implementations.
+_NO_FULLGRAPH_COMPILE_BACKENDS = {AttentionBackendName.SAGE_HUB}
 
 
 def _skip_if_backend_requires_nondeterminism(backend):
@@ -418,6 +437,9 @@ class AttentionBackendTesterMixin:
             pytest.skip(f"{backend.value} is not supported for this model.")
         if getattr(self.model_class, "_repeated_blocks", None) is None:
             pytest.skip("Skipping tests as regional compilation is not supported.")
+
+        if backend in _NO_FULLGRAPH_COMPILE_BACKENDS:
+            pytest.skip(f"Backend '{backend.value}' does not support fullgraph compilation.")
 
         if backend == AttentionBackendName.NATIVE and not is_torch_version(">=", "2.9.0"):
             pytest.xfail(

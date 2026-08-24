@@ -351,7 +351,7 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
         repo_id="kernels-community/sage-attention",
         function_attr="sageattn",
-        version=1,
+        version=3,
     ),
     AttentionBackendName.FLASH_4_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn4",
