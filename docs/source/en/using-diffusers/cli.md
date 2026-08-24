@@ -306,6 +306,9 @@ config from the pipeline `state` at call time.
 
 ## `fp16_safetensors`
 
+> [!CAUTION]
+> This command is now deprecated and will be removed in a future version.
+
 Convert a checkpoint on the Hub to fp16 `.safetensors` and push the result. Useful for shrinking a repo's
 weight size for faster loading. See `diffusers-cli fp16_safetensors --help` for the exact args.
 
