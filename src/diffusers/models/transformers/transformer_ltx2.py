@@ -880,9 +880,9 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         fps: float = 24.0,
     ) -> torch.Tensor:
         """
-        Create per-dimension bounds [inclusive start, exclusive end) for each patch with respect to the original pixel
-        space video grid (num_frames, height, width). This will ultimately have shape (batch_size, 3, num_patches, 2)
-        where
+        Create per-dimension bounds [inclusive start, exclusive end) for each patch. `num_frames`, `height` and
+        `width` describe the *latent* grid; the returned bounds are scaled by `self.scale_factors` and are therefore
+        expressed in the original pixel space. This will ultimately have shape (batch_size, 3, num_patches, 2) where
             - axis 1 (size 3) enumerates (frame, height, width) dimensions (e.g. idx 0 corresponds to frames)
             - axis 3 (size 2) stores `[start, end)` indices within each dimension
 
