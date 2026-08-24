@@ -919,7 +919,7 @@ from diffusers.utils import encode_video, export_to_video, load_image, load_vide
 pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", dtype=torch.bfloat16)
 pipe.load_components(dtype=torch.bfloat16)
 pipe.enable_safety_checker()
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
 )
@@ -1082,7 +1082,7 @@ from diffusers.utils import export_to_video, load_video
 
 pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", dtype=torch.bfloat16)
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
 )
@@ -1133,7 +1133,7 @@ json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 repo = "nvidia/Cosmos3-Super-Text2Image-4Step"
 pipe = Cosmos3DistilledModularPipeline.from_pretrained(repo, dtype=torch.bfloat16)
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # text-to-image (distilled)
 videos = pipe(

@@ -194,7 +194,7 @@ from diffusers import FluxPipeline
 
 pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights("linoyts/yarn_art_Flux_LoRA")
 pipeline.save_lora_weights(
     text_encoder_lora_adapter_metadata={"r": 8, "lora_alpha": 8},

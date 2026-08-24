@@ -115,7 +115,7 @@ The checks are run now before every attention operation.
 ```py
 import torch
 
-query = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
+query = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")  # or "mps", "xpu", "cpu"
 key = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
 value = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
 

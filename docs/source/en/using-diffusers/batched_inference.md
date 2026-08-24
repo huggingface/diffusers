@@ -130,7 +130,7 @@ Enable reproducible batch generation by passing a list of [Generator’s](https:
 Use a list comprehension to iterate over the batch size specified in `range()` to create a unique `Generator` object for each image in the batch. Don't multiply the `Generator` by the batch size because that only creates one `Generator` object that is used sequentially for each image in the batch.
 
 ```py
-generator = [torch.Generator(device="cuda").manual_seed(0)] * 3
+generator = [torch.Generator(device="cuda").manual_seed(0)] * 3  # or "mps", "xpu", "cpu"
 ```
 
 Pass the `generator` to the pipeline.
@@ -145,7 +145,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     device_map="cuda"
 )
 
-generator = [torch.Generator(device="cuda").manual_seed(i) for i in range(3)]
+generator = [torch.Generator(device="cuda").manual_seed(i) for i in range(3)]  # or "mps", "xpu", "cpu"
 prompts = [
     "Cinematic shot of a cozy coffee shop interior, warm pastel light streaming through a window where a cat rests. Shallow depth of field, glowing cups in soft focus, dreamy lofi-inspired mood, nostalgic tones, framed like a quiet film scene.",
     "Polaroid-style photograph of a cozy coffee shop interior, bathed in warm pastel light. A cat sits on the windowsill near steaming mugs. Soft, slightly faded tones and dreamy blur evoke nostalgia, a lofi mood, and the intimate, imperfect charm of instant film.",
