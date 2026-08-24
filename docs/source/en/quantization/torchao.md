@@ -35,7 +35,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -68,7 +68,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 pipeline.transformer.compile(transformer, mode="max-autotune", fullgraph=True)

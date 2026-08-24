@@ -42,7 +42,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.transformer.set_attention_backend("_flash_3_hub")
 
@@ -68,7 +68,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 prompt = """
 cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California

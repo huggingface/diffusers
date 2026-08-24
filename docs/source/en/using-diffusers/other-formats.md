@@ -46,7 +46,7 @@ from diffusers import StableDiffusionXLPipeline
 pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
     dtype=torch.float16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -63,7 +63,7 @@ pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer,
     dtype=torch.bfloat16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -175,7 +175,7 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     torch.dtype=torch.float16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 pipeline = DiffusionPipeline.from_single_file(
