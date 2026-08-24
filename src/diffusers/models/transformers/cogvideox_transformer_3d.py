@@ -216,6 +216,7 @@ class CogVideoXTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftA
     _skip_layerwise_casting_patterns = ["patch_embed", "norm"]
     _supports_gradient_checkpointing = True
     _no_split_modules = ["CogVideoXBlock", "CogVideoXPatchEmbed"]
+    _repeated_blocks = ["CogVideoXBlock"]
 
     @register_to_config
     def __init__(
