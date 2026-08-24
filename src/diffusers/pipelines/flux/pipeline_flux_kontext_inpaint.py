@@ -923,8 +923,8 @@ class FluxKontextInpaintPipeline(
 
         Args:
             image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to be be inpainted (which parts of the image
-                to be masked out with `mask_image` and repainted according to `prompt` and `image_reference`). For both
+                `Image`, numpy array or tensor representing an image batch to be inpainted (which parts of the image to
+                be masked out with `mask_image` and repainted according to `prompt` and `image_reference`). For both
                 numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
                 or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
