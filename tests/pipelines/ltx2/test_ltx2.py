@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 from transformers import AutoTokenizer, Gemma3ForConditionalGeneration
 
@@ -27,34 +26,39 @@ from diffusers import (
 from diffusers.pipelines.ltx2 import LTX2DurationHead, LTX2TextConnectors
 from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 
-from ...testing_utils import enable_full_determinism, torch_device
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import assert_tensors_close, enable_full_determinism, require_torch_accelerator, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class LTX2PipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = LTX2Pipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "negative_prompt", "prompt_embeds", "negative_prompt_embeds"]
+    )
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (5, 3, 32, 32)
+    # LTX2 is a video pipeline (`num_videos_per_prompt`, not `num_images_per_prompt`) and takes a second latent
+    # input for the audio stream.
+    optional_input_params = frozenset(
         [
             "num_inference_steps",
+            "num_videos_per_prompt",
             "generator",
             "latents",
             "audio_latents",
             "output_type",
             "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
         ]
     )
-    test_attention_slicing = False
-    test_xformers_attention = False
 
     base_text_encoder_ckpt_id = "hf-internal-testing/tiny-gemma3"
 
@@ -161,7 +165,7 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         scheduler = FlowMatchEulerDiscreteScheduler()
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "audio_vae": audio_vae,
@@ -175,18 +179,11 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "duration_head": None,
         }
 
-        return components
-
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "a robot dancing",
             "negative_prompt": "",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
             # Pin legacy sampling knobs so deterministic slice tests stay stable when
@@ -205,27 +202,41 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_frames": 5,
             "frame_rate": 25.0,
             "max_sequence_length": 16,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
-        return inputs
+    def get_dummy_duration_head(self):
+        torch.manual_seed(0)
+        # The dummy connectors emit 4 heads * 8 head_dim = 32 wide output for both streams.
+        return LTX2DurationHead(
+            video_cross_attention_dim=32,
+            audio_cross_attention_dim=32,
+            pooler_hidden_dim=8,
+            num_queries=1,
+            num_pooler_heads=2,
+            mlp_hidden_dim=8,
+        )
 
-    def test_inference(self):
-        device = "cpu"
-
+    def get_pipeline_with_duration_head(self):
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        components["duration_head"] = self.get_dummy_duration_head()
+        return self.get_pipeline(**components).to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
+
+class TestLTX2Pipeline(LTX2PipelineTesterConfig, PipelineTesterMixin):
+    def test_inference(self):
+        # Run on CPU: the expected slices below are CPU-specific.
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
         output = pipe(**inputs)
         video = output.frames
         audio = output.audio
 
-        self.assertEqual(video.shape, (1, 5, 3, 32, 32))
-        self.assertEqual(audio.shape[0], 1)
-        self.assertEqual(audio.shape[1], components["vocoder"].config.out_channels)
+        assert video.shape == (1, *self.output_shape)
+        assert audio.shape[0] == 1
+        assert audio.shape[1] == pipe.vocoder.config.out_channels
 
         # fmt: off
         expected_video_slice = torch.tensor(
@@ -245,26 +256,22 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generated_video_slice = torch.cat([video[:8], video[-8:]])
         generated_audio_slice = torch.cat([audio[:8], audio[-8:]])
 
-        assert torch.allclose(expected_video_slice, generated_video_slice, atol=1e-4, rtol=1e-4)
-        assert torch.allclose(expected_audio_slice, generated_audio_slice, atol=1e-4, rtol=1e-4)
+        assert_tensors_close(generated_video_slice, expected_video_slice, atol=1e-4, rtol=1e-4)
+        assert_tensors_close(generated_audio_slice, expected_audio_slice, atol=1e-4, rtol=1e-4)
 
     def test_two_stages_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slices below are CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["output_type"] = "latent"
         first_stage_output = pipe(**inputs)
         video_latent = first_stage_output.frames
         audio_latent = first_stage_output.audio
 
-        self.assertEqual(video_latent.shape, (1, 4, 3, 16, 16))
-        self.assertEqual(audio_latent.shape, (1, 2, 5, 2))
-        self.assertEqual(audio_latent.shape[1], components["vocoder"].config.out_channels)
+        assert video_latent.shape == (1, 4, 3, 16, 16)
+        assert audio_latent.shape == (1, 2, 5, 2)
+        assert audio_latent.shape[1] == pipe.vocoder.config.out_channels
 
         inputs["latents"] = video_latent
         inputs["audio_latents"] = audio_latent
@@ -273,9 +280,9 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = second_stage_output.frames
         audio = second_stage_output.audio
 
-        self.assertEqual(video.shape, (1, 5, 3, 32, 32))
-        self.assertEqual(audio.shape[0], 1)
-        self.assertEqual(audio.shape[1], components["vocoder"].config.out_channels)
+        assert video.shape == (1, *self.output_shape)
+        assert audio.shape[0] == 1
+        assert audio.shape[1] == pipe.vocoder.config.out_channels
 
         # fmt: off
         expected_video_slice = torch.tensor(
@@ -295,31 +302,16 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generated_video_slice = torch.cat([video[:8], video[-8:]])
         generated_audio_slice = torch.cat([audio[:8], audio[-8:]])
 
-        assert torch.allclose(expected_video_slice, generated_video_slice, atol=1e-4, rtol=1e-4)
-        assert torch.allclose(expected_audio_slice, generated_audio_slice, atol=1e-4, rtol=1e-4)
+        assert_tensors_close(generated_video_slice, expected_video_slice, atol=1e-4, rtol=1e-4)
+        assert_tensors_close(generated_audio_slice, expected_audio_slice, atol=1e-4, rtol=1e-4)
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=2, expected_max_diff=2e-2)
-
-    def get_dummy_duration_head(self):
-        torch.manual_seed(0)
-        # The dummy connectors emit 4 heads * 8 head_dim = 32 wide output for both streams.
-        return LTX2DurationHead(
-            video_cross_attention_dim=32,
-            audio_cross_attention_dim=32,
-            pooler_hidden_dim=8,
-            num_queries=1,
-            num_pooler_heads=2,
-            mlp_hidden_dim=8,
-        )
+    def test_inference_batch_single_identical(self, batch_size=2, expected_max_diff=2e-2):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def test_auto_duration_produces_a_grid_valid_frame_count(self):
-        components = self.get_dummy_components()
-        components["duration_head"] = self.get_dummy_duration_head()
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline_with_duration_head()
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs.pop("num_frames")
         inputs["min_seconds"] = 0.5
         inputs["max_seconds"] = 2.0
@@ -330,19 +322,16 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert 0 < len(frames) <= round(2.0 * inputs["frame_rate"])
 
     def test_omitting_num_frames_auto_predicts_when_a_head_is_present(self):
-        components = self.get_dummy_components()
-        components["duration_head"] = self.get_dummy_duration_head()
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline_with_duration_head()
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs.pop("num_frames")
         inputs["min_seconds"] = 0.5
         inputs["max_seconds"] = 2.0
         bounded_frames = pipe(**inputs).frames[0]
 
         # Omitting `num_frames` entirely with default bounds must also take the auto path.
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs.pop("num_frames")
         default_frames = pipe(**inputs).frames[0]
 
@@ -355,10 +344,9 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Guards backwards compatibility: a pre-2.5 pipeline has no duration_head and must keep 121.
         components = self.get_dummy_components()
         assert components.get("duration_head") is None
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline(**components).to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs.pop("num_frames")
         # Decoding 121 frames is needlessly slow here; the latent frame count already pins num_frames down.
         inputs["output_type"] = "latent"
@@ -369,12 +357,9 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert latents.shape[2] == expected_latent_frames
 
     def test_explicit_num_frames_wins_over_a_present_head(self):
-        components = self.get_dummy_components()
-        components["duration_head"] = self.get_dummy_duration_head()
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline_with_duration_head()
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["num_frames"] = 9
         frames = pipe(**inputs).frames[0]
 
@@ -383,28 +368,21 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_auto_duration_with_multiple_prompts_raises(self):
         # The head predicts one duration, so it cannot serve prompts with different natural lengths.
         # Without this guard the pipeline silently applied the first prompt's length to all of them.
-        components = self.get_dummy_components()
-        components["duration_head"] = self.get_dummy_duration_head()
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline_with_duration_head()
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt"] = ["a robot dancing", "a much longer and quite different scene"]
         inputs["negative_prompt"] = ["", ""]
         inputs.pop("num_frames")
 
-        with self.assertRaises(ValueError) as ctx:
+        with pytest.raises(ValueError, match="2 prompts were supplied"):
             pipe(**inputs)
-        assert "2 prompts were supplied" in str(ctx.exception)
 
     def test_multiple_prompts_still_work_with_an_explicit_num_frames(self):
         # The guard must be scoped to the auto path -- batched prompts with an integer are unaffected.
-        components = self.get_dummy_components()
-        components["duration_head"] = self.get_dummy_duration_head()
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline_with_duration_head()
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt"] = ["a robot dancing", "a much longer and quite different scene"]
         inputs["negative_prompt"] = ["", ""]
         inputs["num_frames"] = 5
@@ -415,16 +393,40 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert latents.shape[0] == 2
 
     def test_invalid_duration_bounds_raise(self):
-        components = self.get_dummy_components()
-        components["duration_head"] = self.get_dummy_duration_head()
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline_with_duration_head()
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs.pop("num_frames")
         inputs["min_seconds"] = 5.0
         inputs["max_seconds"] = 2.0
 
-        with self.assertRaises(ValueError) as ctx:
+        with pytest.raises(ValueError, match="min_seconds"):
             pipe(**inputs)
-        assert "min_seconds" in str(ctx.exception)
+
+
+class TestLTX2PipelineMemory(LTX2PipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LTX2 pipeline."""
+
+    @require_torch_accelerator
+    def test_group_offloading_inference(self):
+        # The shared helper only offloads a fixed set of component names and leaves LTX2's extra module
+        # components (`connectors`, `audio_vae`, `vocoder`) on CPU, so the forward pass mixes devices.
+        # Pipeline-level offloading, which walks every component, is exercised by
+        # `test_pipeline_level_group_offloading_inference`.
+        pytest.skip("Using test_pipeline_level_group_offloading_inference instead")
+
+
+class TestLTX2PipelineLoRA(LTX2PipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the LTX2 pipeline."""
+
+    # `LTX2Pipeline` advertises `connectors` as LoRA-loadable and `load_lora_weights` does handle connector
+    # LoRAs, but `save_lora_weights` only accepts `transformer_lora_layers` — so connector adapters cannot
+    # round-trip through the public API these tests drive. Scope the tests to the transformer until that closes.
+    lora_loadable_components = ["transformer"]
+
+
+class TestLTX2PipelineLoRAMemory(LTX2PipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the LTX2 pipeline."""
+
+    # See `TestLTX2PipelineLoRA`.
+    lora_loadable_components = ["transformer"]
