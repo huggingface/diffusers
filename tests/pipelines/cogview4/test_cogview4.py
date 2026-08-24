@@ -18,7 +18,7 @@ from transformers import AutoTokenizer, GlmConfig, GlmForCausalLM
 
 from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
 
-from ...testing_utils import enable_full_determinism
+from ...testing_utils import enable_full_determinism, require_torch_accelerator
 from ..testing_utils import (
     BasePipelineTesterConfig,
     LoraMemoryTesterMixin,
@@ -121,6 +121,7 @@ class TestCogView4PipelineLoRAMemory(CogView4PipelineTesterConfig, LoraMemoryTes
     """LoRA x memory-optimization tests (group offload, CPU offload) for the CogView4 pipeline."""
 
     @pytest.mark.parametrize("offload_type,use_stream", [("block_level", True), ("leaf_level", False)])
+    @require_torch_accelerator
     def test_group_offloading_inference_denoiser(self, tmp_path, offload_type, use_stream):
         # TODO: We don't run the (leaf_level, True) case that is enabled for other models.
         # The reason for this can be found here: https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
