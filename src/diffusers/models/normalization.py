@@ -542,11 +542,13 @@ class RMSNorm(nn.Module):
         if is_torch_npu_available():
             import torch_npu
 
-            if self.weight is not None:
-                # convert into half-precision if necessary
-                if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                    hidden_states = hidden_states.to(self.weight.dtype)
-            hidden_states = torch_npu.npu_rms_norm(hidden_states, self.weight, epsilon=self.eps)[0]
+            # NPU 的 npu_rms_norm 不支持 gamma=None, 用全 1 tensor 代替
+            weight = self.weight
+            if weight is None:
+                weight = torch.ones(self.dim, device=hidden_states.device, dtype=hidden_states.dtype)
+            if weight.dtype in [torch.float16, torch.bfloat16]:
+                hidden_states = hidden_states.to(weight.dtype)
+            hidden_states = torch_npu.npu_rms_norm(hidden_states, weight, epsilon=self.eps)[0]
             if self.bias is not None:
                 hidden_states = hidden_states + self.bias
         else:
