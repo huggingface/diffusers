@@ -3,6 +3,11 @@ import inspect
 import torch
 
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
+from ...pipelines.cosmos.mixed_precision import (
+    Cosmos3MixedPrecisionConfig,
+    apply_cosmos3_mixed_precision_step,
+    reset_cosmos3_mixed_precision,
+)
 from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
 from ..modular_pipeline import (
     BlockState,
@@ -463,18 +468,63 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
             InputParam(
                 name="num_warmup_steps", type_hint=int, required=True, description="Number of scheduler warmup steps."
             ),
+            InputParam(
+                name="mixed_precision_format",
+                type_hint=str,
+                default="none",
+                description="Set to 'fp8' to enable mixed W8A8/W8A16 denoising.",
+            ),
+            InputParam(
+                name="mixed_precision_first_steps",
+                type_hint=int,
+                default=3,
+                description="Leading W8A16 step count when mixed precision is enabled.",
+            ),
+            InputParam(
+                name="mixed_precision_last_steps",
+                type_hint=int,
+                default=3,
+                description="Trailing W8A16 step count when mixed precision is enabled.",
+            ),
+            InputParam(
+                name="mixed_precision_reasoner_policy",
+                type_hint=str,
+                default="high_precision",
+                description="Use W8A16 or checkpoint-native W8A8 for the reasoner path.",
+            ),
         ]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
-            for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(components, block_state, i=i, t=t)
-                if i == len(block_state.timesteps) - 1 or (
-                    (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
-                ):
-                    progress_bar.update()
+        first_steps = getattr(block_state, "mixed_precision_first_steps", None)
+        last_steps = getattr(block_state, "mixed_precision_last_steps", None)
+        mixed_precision = Cosmos3MixedPrecisionConfig.from_kwargs(
+            mixed_precision_format=getattr(block_state, "mixed_precision_format", None) or "none",
+            mixed_precision_first_steps=3 if first_steps is None else first_steps,
+            mixed_precision_last_steps=3 if last_steps is None else last_steps,
+            mixed_precision_reasoner_policy=getattr(block_state, "mixed_precision_reasoner_policy", None)
+            or "high_precision",
+        )
+        trace = []
+        try:
+            with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
+                for i, t in enumerate(block_state.timesteps):
+                    apply_cosmos3_mixed_precision_step(
+                        components.transformer,
+                        mixed_precision,
+                        i,
+                        len(block_state.timesteps),
+                        trace=trace,
+                    )
+                    components, block_state = self.loop_step(components, block_state, i=i, t=t)
+                    if i == len(block_state.timesteps) - 1 or (
+                        (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
+                    ):
+                        progress_bar.update()
+        finally:
+            reset_cosmos3_mixed_precision(components.transformer, mixed_precision)
+        components._mixed_precision_trace = trace
         self.set_block_state(state, block_state)
         return components, state
 
