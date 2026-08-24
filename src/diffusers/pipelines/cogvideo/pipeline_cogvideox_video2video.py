@@ -794,6 +794,8 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
+            # read timesteps on the host; a device scalar would sync every step
+            timesteps_cpu = timesteps.tolist()
             # for DPM-solver++
             old_pred_original_sample = None
             for i, t in enumerate(timesteps):
@@ -821,8 +823,9 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
 
                 # perform guidance
                 if use_dynamic_cfg:
+                    t_cpu = timesteps_cpu[i]
                     self._guidance_scale = 1 + guidance_scale * (
-                        (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                        (1 - math.cos(math.pi * ((num_inference_steps - t_cpu) / num_inference_steps) ** 5.0)) / 2
                     )
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -830,13 +833,15 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 if not isinstance(self.scheduler, CogVideoXDPMScheduler):
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                    latents = self.scheduler.step(
+                        noise_pred, timesteps_cpu[i], latents, **extra_step_kwargs, return_dict=False
+                    )[0]
                 else:
                     latents, old_pred_original_sample = self.scheduler.step(
                         noise_pred,
                         old_pred_original_sample,
-                        t,
-                        timesteps[i - 1] if i > 0 else None,
+                        timesteps_cpu[i],
+                        timesteps_cpu[i - 1] if i > 0 else None,
                         latents,
                         **extra_step_kwargs,
                         return_dict=False,
