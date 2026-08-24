@@ -27,6 +27,7 @@ from huggingface_hub import ModelCard, delete_repo, snapshot_download, try_to_lo
 from huggingface_hub.utils import HfHubHTTPError, is_jinja_available
 
 from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel
+from diffusers.models.modeling_utils import get_parameter_dtype
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import (
@@ -277,6 +278,33 @@ class TestModelUtils:
             _ = model(**model_inputs)
 
         SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
+
+    @staticmethod
+    def _as_data_parallel_replica(module):
+        # `torch.nn.parallel.replicate` empties `_parameters` on every replica and re assigns the
+        # broadcast copies with `setattr`. Those copies are plain tensors rather than `nn.Parameter`,
+        # so they land in `replica.__dict__`, which is the state reproduced here.
+        replica = module._replicate_for_data_parallel()
+        for name, param in module._parameters.items():
+            setattr(replica, name, param.detach())
+        return replica
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+    def test_get_parameter_dtype_on_data_parallel_replica(self, dtype):
+        # A replica exposes no parameters and no buffers, so `get_parameter_dtype` falls through to
+        # the branch that scans `module.__dict__`. See https://github.com/huggingface/diffusers/issues/13789.
+        replica = self._as_data_parallel_replica(torch.nn.Linear(4, 4).to(dtype))
+
+        assert list(replica.named_parameters()) == []
+        assert list(replica.buffers()) == []
+        assert get_parameter_dtype(replica) == dtype
+
+    def test_get_parameter_dtype_falls_back_to_non_floating_point_tensor_attribute(self):
+        # Same branch, other exit: with no floating point tensor to report, the last one found wins.
+        module = torch.nn.Module()
+        module.token_ids = torch.zeros(4, dtype=torch.int64)
+
+        assert get_parameter_dtype(module) == torch.int64
 
 
 class UNetTesterMixin:

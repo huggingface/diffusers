@@ -208,10 +208,10 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
 
     gen = parameter._named_members(get_members_fn=find_tensor_attributes)
     last_tuple = None
-    for tuple in gen:
-        last_tuple = tuple
-        if tuple[1].is_floating_point():
-            return tuple[1].dtype
+    for t in gen:
+        last_tuple = t
+        if t[1].is_floating_point():
+            return t[1].dtype
 
     if last_tuple is not None:
         # fallback to the last dtype
