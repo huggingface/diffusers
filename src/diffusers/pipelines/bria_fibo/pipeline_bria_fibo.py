@@ -609,13 +609,10 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         if self._joint_attention_kwargs is None:
             self._joint_attention_kwargs = {}
-        if attention_mask.all():
-            # Nothing is padded, so the mask is a no-op; skipping it keeps backends without
-            # mask support (e.g. flash-attn 2/3) usable.
-            self._joint_attention_kwargs.pop("attention_mask", None)
-        else:
-            # Bool key-padding mask (batch, 1, 1, seq): every real query attends to the same
-            # keys as with a full (seq, seq) matrix, and varlen backends require bool.
+        if not attention_mask.all():
+            # Bool key-padding mask (batch, 1, 1, seq): every real query attends to the same keys as
+            # with a full (seq, seq) matrix, and varlen backends require bool. When nothing is padded
+            # the mask is a no-op, and omitting it keeps backends without mask support usable.
             self._joint_attention_kwargs["attention_mask"] = attention_mask[:, None, None, :]
 
         # Adapt scheduler to dynamic shifting (resolution dependent)

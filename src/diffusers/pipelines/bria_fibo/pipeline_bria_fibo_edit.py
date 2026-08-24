@@ -195,25 +195,6 @@ def _vae_safe_dims(width, height, base_resolution=1024, multiple=16):
     return tuple(max(multiple, int(round(side * scale / multiple)) * multiple) for side in (width, height))
 
 
-def _vae_safe_size(image, base_resolution=1024, multiple=16):
-    """Resize a PIL reference to VAE-safe dimensions."""
-    target = _vae_safe_dims(*image.size, base_resolution, multiple)
-    return image if target == image.size else image.resize(target, Image.LANCZOS)
-
-
-def _as_reference_images(image):
-    """Normalize the edit input to a non-empty list of PIL reference images.
-
-    A list is interpreted as multiple references, not as a batch; Fibo Edit has no batched-edit API.
-    """
-    if image is None:
-        return []
-    references = image if isinstance(image, list) else [image]
-    if not references or not all(isinstance(reference, Image.Image) for reference in references):
-        raise ValueError("`image` must be a `PIL.Image.Image` or a non-empty list of them.")
-    return references
-
-
 def paste_mask_on_image(mask: PipelineMaskInput, image: PipelineImageInput):
     """convert mask and image to PIL Images and paste the mask on the image"""
     if isinstance(mask, torch.Tensor):
@@ -718,7 +699,13 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             generated images.
         """
 
-        references = _as_reference_images(image)
+        # A list is interpreted as multiple references, not as a batch; Fibo Edit has no batched-edit API.
+        references = [] if image is None else image if isinstance(image, list) else [image]
+        if image is not None and (
+            not references or not all(isinstance(reference, Image.Image) for reference in references)
+        ):
+            raise ValueError("`image` must be a `PIL.Image.Image` or a non-empty list of them.")
+
         if height is None or width is None:
             if references:
                 # Output resolution follows the first reference image; the other
@@ -736,7 +723,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             seed=seed,
-            image=image,
+            references=references,
             mask=mask,
             prompt=prompt,
             height=height,
@@ -866,13 +853,10 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         if self._joint_attention_kwargs is None:
             self._joint_attention_kwargs = {}
         attention_mask = attention_mask.bool()
-        if attention_mask.all():
-            # Nothing is padded, so the mask is a no-op; skipping it keeps backends without
-            # mask support (e.g. flash-attn 2/3) usable.
-            self._joint_attention_kwargs.pop("attention_mask", None)
-        else:
-            # Bool key-padding mask (batch, 1, 1, seq): every real query attends to the same
-            # keys as with a full (seq, seq) matrix, and varlen backends require bool.
+        if not attention_mask.all():
+            # Bool key-padding mask (batch, 1, 1, seq): every real query attends to the same keys as
+            # with a full (seq, seq) matrix, and varlen backends require bool. When nothing is padded
+            # the mask is a no-op, and omitting it keeps backends without mask support usable.
             self._joint_attention_kwargs["attention_mask"] = attention_mask[:, None, None, :]
 
         # Adapt scheduler to dynamic shifting (resolution dependent)
@@ -1018,9 +1002,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     ):
         """VAE-encode one PIL reference at its own size and pack it as an edit-context token stream."""
         vae_dtype = next(self.vae.parameters()).dtype
-        image = _vae_safe_size(image.convert("RGB"))
-        pixels = torch.from_numpy(np.array(image)).permute(2, 0, 1).unsqueeze(0)
-        encoded_input = pixels.to(device=device, dtype=torch.float32) / 255.0 * 2.0 - 1.0
+        reference_width, reference_height = _vae_safe_dims(*image.size)
+        encoded_input = self.image_processor.preprocess(image.convert("RGB"), height=reference_height, width=reference_width).to(device=device)
 
         latent = self.vae.encode(encoded_input.to(dtype=vae_dtype).unsqueeze(2)).latent_dist.mean[:, :, 0, :, :]
         latents_mean = torch.tensor(self.vae.config.latents_mean, device=device, dtype=latent.dtype).view(1, -1, 1, 1)
@@ -1046,7 +1029,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         self,
         prompt,
         seed,
-        image,
+        references,
         mask,
         height,
         width,
@@ -1055,8 +1038,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     ):
         if seed is not None and not isinstance(seed, int):
             raise ValueError("Seed must be an integer")
-        references = _as_reference_images(image)
-        if image is None and mask is not None:
+        if not references and mask is not None:
             raise ValueError("If mask is provided, image must also be provided")
         if mask is not None and len(references) != 1:
             raise ValueError("Masks are supported only with exactly one reference image.")
