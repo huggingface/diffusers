@@ -59,13 +59,14 @@ EXAMPLE_DOC_STRING = """
     from diffusers import BriaFiboEditPipeline
     from diffusers.modular_pipelines import ModularPipelineBlocks
 
-    # Fibo Edit takes a full structured VGL JSON prompt; build it from the source image
-    # and an instruction with the edit prompt-to-JSON modular block.
-    vlm_pipe = ModularPipelineBlocks.from_pretrained("briaai/FIBO-edit-prompt-to-JSON", trust_remote_code=True)
+    # This prompt-to-JSON block calls Gemini and needs GEMINI_API_KEY in the environment.
+    vlm_pipe = ModularPipelineBlocks.from_pretrained(
+        "briaai/FIBO-edit-gemini-prompt-to-JSON", trust_remote_code=True
+    )
     vlm_pipe = vlm_pipe.init_pipeline()
 
     pipe = BriaFiboEditPipeline.from_pretrained(
-        "briaai/Fibo-Edit-1.5",
+        "briaai/Fibo-Edit-1.5-base",
         torch_dtype=torch.bfloat16,
     )
     pipe.to("cuda")
@@ -89,7 +90,7 @@ EXAMPLE_DOC_STRING = """
     )
 
     # The distilled Turbo checkpoint edits in 4 steps without classifier-free guidance.
-    pipe = BriaFiboEditPipeline.from_pretrained("briaai/Fibo-Edit-1.5-Turbo", torch_dtype=torch.bfloat16)
+    pipe = BriaFiboEditPipeline.from_pretrained("briaai/Fibo-Edit-1.5-turbo", torch_dtype=torch.bfloat16)
     pipe.to("cuda")
     result = pipe(prompt=json_prompt, image=[owl, forest], num_inference_steps=4, guidance_scale=1)
     ```
