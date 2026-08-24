@@ -28,7 +28,7 @@ from ..testing_utils import (
     TrainingTesterMixin,
     run_nondeterministic,
 )
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -183,5 +183,5 @@ class TestAutoencoderKLMiniMaxH3Attention(AutoencoderKLMiniMaxH3TesterConfig, At
     """Attention processor tests for the MiniMax-H3 video autoencoder."""
 
 
-class TestAutoencoderKLMiniMaxH3SlicingTiling(AutoencoderKLMiniMaxH3TesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLMiniMaxH3SlicingTiling(AutoencoderKLMiniMaxH3TesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for the MiniMax-H3 video autoencoder."""

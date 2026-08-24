@@ -398,6 +398,14 @@ class HunyuanVideoFramepackPipelineFastTests(
         # this test because of MHA (example: HunyuanDiT because of AttentionPooling layer).
         pass
 
+    @unittest.skip("The image_encoder uses SiglipVisionModel, which does not support group offloading.")
+    def test_pipeline_level_group_offloading_inference(self):
+        # Same root cause as the sequential CPU offloading skips above: the attention layer is a
+        # torch.nn.MultiheadAttention, which passes `self.out_proj.weight` to
+        # `torch.nn.functional.multi_head_attention_forward` instead of calling `self.out_proj`. The leaf-level
+        # onload hook on `out_proj` is therefore never triggered and its weights stay on the CPU.
+        pass
+
     # TODO(aryan): Create a dummy gemma model with smol vocab size
     @unittest.skip(
         "A very small vocab size is used for fast tests. So, Any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
