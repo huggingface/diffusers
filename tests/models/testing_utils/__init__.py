@@ -17,7 +17,11 @@ from .compile import TorchCompileTesterMixin
 from .ip_adapter import IPAdapterTesterMixin
 from .lora import LoraHotSwappingForModelTesterMixin, LoraTesterMixin
 from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCastingTesterMixin, MemoryTesterMixin
-from .parallelism import ContextParallelAttentionBackendsTesterMixin, ContextParallelTesterMixin
+from .parallelism import (
+    ContextParallelAttentionBackendsTesterMixin,
+    ContextParallelTesterMixin,
+    TensorParallelTesterMixin,
+)
 from .quantization import (
     AutoRoundCompileTesterMixin,
     AutoRoundConfigMixin,
@@ -39,12 +43,16 @@ from .quantization import (
     QuantoCompileTesterMixin,
     QuantoConfigMixin,
     QuantoTesterMixin,
+    SDNQCompileTesterMixin,
+    SDNQConfigMixin,
+    SDNQTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoConfigMixin,
     TorchAoTesterMixin,
 )
 from .single_file import SingleFileTesterMixin
 from .training import TrainingTesterMixin
+from .utils import run_nondeterministic
 
 
 __all__ = [
@@ -59,6 +67,7 @@ __all__ = [
     "CacheTesterMixin",
     "ContextParallelTesterMixin",
     "ContextParallelAttentionBackendsTesterMixin",
+    "TensorParallelTesterMixin",
     "CPUOffloadTesterMixin",
     "FasterCacheConfigMixin",
     "FasterCacheTesterMixin",
@@ -91,6 +100,10 @@ __all__ = [
     "QuantoCompileTesterMixin",
     "QuantoConfigMixin",
     "QuantoTesterMixin",
+    "run_nondeterministic",
+    "SDNQCompileTesterMixin",
+    "SDNQConfigMixin",
+    "SDNQTesterMixin",
     "SingleFileTesterMixin",
     "TorchAoCompileTesterMixin",
     "TorchAoConfigMixin",

@@ -12,9 +12,6 @@ specific language governing permissions and limitations under the License.
 
 # Overview
 
-> [!WARNING]
-> Modular Diffusers is under active development and it's API may change.
-
 Modular Diffusers is a unified pipeline system that simplifies your workflow with *pipeline blocks*.
 
 - Blocks are reusable and you only need to create new blocks that are unique to your pipeline.

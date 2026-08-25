@@ -116,6 +116,7 @@ from .qwenimage import (
 )
 from .sana import SanaPipeline
 from .stable_audio import StableAudioPipeline
+from .stable_audio_3 import StableAudio3Pipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
@@ -205,6 +206,7 @@ AUTO_TEXT2AUDIO_PIPELINES_MAPPING = OrderedDict(
     [
         ("audioldm2", AudioLDM2Pipeline),
         ("stable-audio", StableAudioPipeline),
+        ("stable-audio-3", StableAudio3Pipeline),
         ("longcat-audio-dit", LongCatAudioDiTPipeline),
     ]
 )

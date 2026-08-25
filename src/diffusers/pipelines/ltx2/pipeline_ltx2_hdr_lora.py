@@ -20,7 +20,12 @@ from typing import Any, Callable
 import numpy as np
 import PIL.Image
 import torch
-from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
+from transformers import (
+    Gemma3ForConditionalGeneration,
+    Gemma4UnifiedForConditionalGeneration,
+    GemmaTokenizer,
+    GemmaTokenizerFast,
+)
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
@@ -267,7 +272,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             Video VAE.
         audio_vae ([`AutoencoderKLLTX2Audio`]):
             Audio VAE. Required for transformer compatibility; its outputs are discarded.
-        text_encoder ([`transformers.Gemma3ForConditionalGeneration`]):
+        text_encoder ([`transformers.Gemma3ForConditionalGeneration`] or [`Gemma4UnifiedForConditionalGeneration`]):
             Text encoder.
         tokenizer (`GemmaTokenizer` or `GemmaTokenizerFast`):
             Tokenizer for the text encoder.
@@ -290,7 +295,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKLLTX2Video,
         audio_vae: AutoencoderKLLTX2Audio,
-        text_encoder: Gemma3ForConditionalGeneration,
+        text_encoder: Gemma3ForConditionalGeneration | Gemma4UnifiedForConditionalGeneration,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
@@ -1299,7 +1304,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         # 6. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         mu = calculate_shift(
-            self.scheduler.config.get("max_image_seq_len", 4096),
+            latents.shape[1],
             self.scheduler.config.get("base_image_seq_len", 1024),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.95),

@@ -64,7 +64,6 @@ def _get_qkv_projections(attn: "BriaFiboAttention", hidden_states, encoder_hidde
     return _get_projections(attn, hidden_states, encoder_hidden_states)
 
 
-# Copied from diffusers.models.transformers.transformer_flux.FluxAttnProcessor with FluxAttnProcessor->BriaFiboAttnProcessor, FluxAttention->BriaFiboAttention
 class BriaFiboAttnProcessor:
     _attention_backend = None
     _parallel_config = None
@@ -442,6 +441,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
     """
 
     _supports_gradient_checkpointing = True
+    _repeated_blocks = ["BriaFiboTransformerBlock", "BriaFiboSingleTransformerBlock"]
 
     @register_to_config
     def __init__(
