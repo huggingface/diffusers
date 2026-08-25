@@ -1057,6 +1057,10 @@ class PipelineTesterMixin:
     test_layerwise_casting = False
     test_group_offloading = False
 
+    # Components that cannot be offloaded at leaf level. See `BasePipelineTesterConfig` in
+    # `tests/pipelines/testing_utils/common.py`, which declares the same attribute, for the rationale.
+    group_offloading_leaf_level_exclude_modules = []
+
     def get_generator(self, seed):
         device = torch_device if torch_device != "mps" else "cpu"
         generator = torch.Generator(device).manual_seed(seed)
@@ -2470,6 +2474,7 @@ class PipelineTesterMixin:
             onload_device=torch_device,
             offload_device=offload_device,
             offload_type="leaf_level",
+            exclude_modules=self.group_offloading_leaf_level_exclude_modules,
         )
         pipe.set_progress_bar_config(disable=None)
         inputs["generator"] = torch.manual_seed(0)

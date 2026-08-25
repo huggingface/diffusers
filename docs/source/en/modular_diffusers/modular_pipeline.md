@@ -31,7 +31,7 @@ from diffusers import ModularPipeline
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipeline(prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
 image.save("modular_t2i_out.png")
@@ -47,7 +47,7 @@ from diffusers.utils import load_image
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 init_image = load_image(url)
@@ -66,7 +66,7 @@ from diffusers.utils import load_image
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 mask_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-inpaint-mask.png"
@@ -234,6 +234,12 @@ pipeline = ModularPipeline.from_pretrained(
 )
 ```
 
+When the pipeline blocks define workflows (check `pipeline.blocks.available_workflows`), pass `workflow=` to keep only that workflow's blocks — the same pruning as [`~ModularPipelineBlocks.get_workflow`]. The pipeline then only declares the components that workflow uses, and its docstring describes exactly that workflow's inputs.
+
+```py
+pipeline = ModularPipeline.from_pretrained("Qwen/Qwen-Image", workflow="inpainting")
+```
+
 ## Loading components
 
 A [`ModularPipeline`] doesn't automatically instantiate with components. It only loads the configuration and component specifications. You can load components with [`~ModularPipeline.load_components`].
@@ -250,6 +256,12 @@ You can also load specific components by name. The example below only loads the 
 
 ```py
 pipeline.load_components(names=["text_encoder"], dtype=torch.float16)
+```
+
+On a pipeline whose blocks define workflows, `workflow=` loads only the components that workflow uses. The pipeline keeps all its blocks, so this is the convenient way to run one pipeline across workflows: each call adds just what the new workflow still misses.
+
+```py
+pipeline.load_components(workflow="inpainting", dtype=torch.float16)
 ```
 
 After loading, printing the pipeline shows which components are loaded — the first two fields change from `null` to the component's library and class.
@@ -348,7 +360,7 @@ Since blocks are composable, you can take a pipeline apart and reconstruct it in
 from diffusers import ModularPipeline, ComponentsManager
 import torch
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 dtype = torch.bfloat16
 repo_id = "black-forest-labs/FLUX.2-klein-4B"
 

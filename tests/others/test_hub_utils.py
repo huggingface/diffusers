@@ -14,9 +14,8 @@
 # limitations under the License.
 import json
 import os
-import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
+
+import pytest
 
 from diffusers.utils.hub_utils import (
     _get_checkpoint_shard_files,
@@ -25,17 +24,16 @@ from diffusers.utils.hub_utils import (
 )
 
 
-class CreateModelCardTest(unittest.TestCase):
-    def test_generate_model_card_with_library_name(self):
-        with TemporaryDirectory() as tmpdir:
-            file_path = Path(tmpdir) / "README.md"
-            file_path.write_text("---\nlibrary_name: foo\n---\nContent\n")
-            model_card = load_or_create_model_card(file_path)
-            populate_model_card(model_card)
-            assert model_card.data.library_name == "foo"
+class TestCreateModelCard:
+    def test_generate_model_card_with_library_name(self, tmp_path):
+        file_path = tmp_path / "README.md"
+        file_path.write_text("---\nlibrary_name: foo\n---\nContent\n")
+        model_card = load_or_create_model_card(file_path)
+        populate_model_card(model_card)
+        assert model_card.data.library_name == "foo"
 
 
-class GetCheckpointShardFilesTest(unittest.TestCase):
+class TestGetCheckpointShardFiles:
     def _write_index(self, model_dir, shard_filename):
         index = {"metadata": {"total_size": 1}, "weight_map": {"w": shard_filename}}
         index_filename = os.path.join(model_dir, "diffusion_pytorch_model.safetensors.index.json")
@@ -43,26 +41,23 @@ class GetCheckpointShardFilesTest(unittest.TestCase):
             json.dump(index, f)
         return index_filename
 
-    def test_rejects_parent_directory_traversal(self):
-        with TemporaryDirectory() as tmpdir:
-            model_dir = os.path.join(tmpdir, "model")
-            os.makedirs(model_dir)
-            index_filename = self._write_index(model_dir, "../secret/SECRET.safetensors")
-            with self.assertRaises(ValueError):
-                _get_checkpoint_shard_files(model_dir, index_filename)
+    def test_rejects_parent_directory_traversal(self, tmp_path):
+        model_dir = os.path.join(tmp_path, "model")
+        os.makedirs(model_dir)
+        index_filename = self._write_index(model_dir, "../secret/SECRET.safetensors")
+        with pytest.raises(ValueError):
+            _get_checkpoint_shard_files(model_dir, index_filename)
 
-    def test_rejects_absolute_path(self):
-        with TemporaryDirectory() as tmpdir:
-            model_dir = os.path.join(tmpdir, "model")
-            os.makedirs(model_dir)
-            index_filename = self._write_index(model_dir, os.path.join(tmpdir, "secret", "SECRET.safetensors"))
-            with self.assertRaises(ValueError):
-                _get_checkpoint_shard_files(model_dir, index_filename)
+    def test_rejects_absolute_path(self, tmp_path):
+        model_dir = os.path.join(tmp_path, "model")
+        os.makedirs(model_dir)
+        index_filename = self._write_index(model_dir, os.path.join(tmp_path, "secret", "SECRET.safetensors"))
+        with pytest.raises(ValueError):
+            _get_checkpoint_shard_files(model_dir, index_filename)
 
-    def test_rejects_subdirectory_component(self):
-        with TemporaryDirectory() as tmpdir:
-            model_dir = os.path.join(tmpdir, "model")
-            os.makedirs(model_dir)
-            index_filename = self._write_index(model_dir, "sub/shard.safetensors")
-            with self.assertRaises(ValueError):
-                _get_checkpoint_shard_files(model_dir, index_filename)
+    def test_rejects_subdirectory_component(self, tmp_path):
+        model_dir = os.path.join(tmp_path, "model")
+        os.makedirs(model_dir)
+        index_filename = self._write_index(model_dir, "sub/shard.safetensors")
+        with pytest.raises(ValueError):
+            _get_checkpoint_shard_files(model_dir, index_filename)
