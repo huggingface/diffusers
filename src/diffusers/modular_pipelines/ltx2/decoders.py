@@ -125,6 +125,103 @@ class LTX2TrimConditionTokensStep(ModularPipelineBlocks):
         return components, state
 
 
+class LTX2DFRSplitKeyframesStep(ModularPipelineBlocks):
+    model_name = "ltx2.5-dfr"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Splits a denoised DFR sequence into the parts the caller needs: the generated keyframe slots come out "
+            "as `keyframes_latents`, the appended tokens are dropped, and the canvas is trimmed back to the frame "
+            "count originally requested. Feed both outputs into the next DFR pass -- upsampled -- to run the "
+            "detailing stage."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("latents", required=True),
+            InputParam(
+                "base_token_count",
+                type_hint=int,
+                required=True,
+                description="Number of generated-video tokens, i.e. the sequence length before appended tokens.",
+            ),
+            InputParam(
+                "slot_token_slice",
+                type_hint=slice,
+                required=True,
+                description="Slice of the packed sequence holding the generated keyframe slot tokens.",
+            ),
+            InputParam(
+                "requested_num_frames",
+                type_hint=int,
+                required=True,
+                description="The frame count the caller asked for, which the canvas is trimmed back to.",
+            ),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description=(
+                    "Denoised latents for the generated video, with appended tokens removed and the canvas padding "
+                    "trimmed off."
+                ),
+            ),
+            OutputParam(
+                "keyframes_latents",
+                type_hint=torch.Tensor,
+                description=(
+                    "Denormalized `[B, C, num_slots, H, W]` generated keyframe slots, one latent frame per slot "
+                    "position. Upsample these alongside the video latents to seed the next DFR pass."
+                ),
+            ),
+            OutputParam(
+                "num_frames",
+                type_hint=int,
+                description="The trimmed frame count, restored to what the caller asked for.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+        spatial_patch = components.transformer_spatial_patch_size
+        temporal_patch = components.transformer_temporal_patch_size
+
+        # A keyframe slot is one latent frame, so `LTX2DFRPlanStep` rejects a temporal patch size above 1 and the
+        # token counts here are per latent frame.
+        tokens_per_latent_frame = (latent_height // spatial_patch) * (latent_width // spatial_patch)
+
+        slot_tokens = block_state.latents[:, block_state.slot_token_slice]
+        num_slots = slot_tokens.shape[1] // tokens_per_latent_frame
+        keyframes_latents = _unpack_latents(
+            slot_tokens, num_slots, latent_height, latent_width, spatial_patch, temporal_patch
+        )
+        block_state.keyframes_latents = _denormalize_latents(
+            keyframes_latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
+        )
+
+        # Drop the appended keyframe, slot and reference tokens, as `LTX2TrimConditionTokensStep` does.
+        latents = block_state.latents[:, : block_state.base_token_count]
+        # Then trim the canvas padding. `_pack_latents` is frame-major, so that is a prefix slice on what is left.
+        trimmed_latent_frames = (block_state.requested_num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        block_state.latents = latents[:, : trimmed_latent_frames * tokens_per_latent_frame]
+        block_state.num_frames = block_state.requested_num_frames
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
     model_name = "ltx2"
 

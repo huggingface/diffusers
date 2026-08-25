@@ -1028,6 +1028,68 @@ encode_video(
 )
 ```
 
+#### Diffusion Fidelity Rendering (DFR)
+
+`LTX2DFRBlocks` trades wall-clock time for detail fidelity. It generates on a canvas padded to a whole number of keyframe segments and spends one extra latent frame of tokens per segment border on a **keyframe slot** — a single-pixel-frame latent the model fills in. Relaxing the effective temporal compression at those positions means the surrounding video is conditioned on genuinely new frames rather than interpolated ones. This needs a transformer whose config sets `use_keyframes_abs_pos_embedding`, which LTX-2.5 checkpoints ship.
+
+The recipe is two passes of the same blocks: a base pass at half resolution, then a detailing pass at full resolution seeded from it. Both the video latents and the keyframe slots are upsampled in between, and the spatial detailing IC-LoRA is loaded for the second pass only — so it goes on between the two calls, like the [stage 2 distilled LoRA](#stage-2-with-the-distilled-lora).
+
+```py
+import torch
+from diffusers import ComponentsManager
+from diffusers.modular_pipelines import LTX2DFRBlocks
+from diffusers.pipelines.ltx2 import LTX2LatentUpsamplePipeline
+from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
+
+device = "cuda"
+model_path = "Lightricks/LTX-2.5-Diffusers"
+prompt = "A cinematic shot of a red fox walking through a snowy forest at dawn."
+height, width, num_frames, frame_rate = 1024, 1536, 121, 24.0
+
+cm = ComponentsManager()
+pipe = LTX2DFRBlocks().init_pipeline(model_path, components_manager=cm)
+pipe.load_components(dtype=torch.bfloat16)
+cm.enable_auto_cpu_offload(device=device, memory_reserve_margin="20GB")
+
+common = dict(prompt=prompt, num_frames=num_frames, frame_rate=frame_rate, output_type="latent")
+
+# Pass 1: half resolution. Returns the video latents and one keyframe slot per segment border.
+first = pipe(height=height // 2, width=width // 2, **common)
+video_latents, keyframes_latents = first.get("videos"), first.get("keyframes_latents")
+
+# Upsample both. `latents_normalized=False`: `output_type="latent"` already applied the latent statistics.
+latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
+    model_path, subfolder="latent_upsampler", dtype=torch.bfloat16
+)
+upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=latent_upsampler)
+upsample_pipe.enable_model_cpu_offload(device=device)
+
+
+def upsample(latents):
+    return upsample_pipe(
+        latents=latents, latents_normalized=False, output_type="latent", return_dict=False
+    )[0]
+
+
+# Pass 2: full resolution, with the detailing IC-LoRA and the half-resolution result as its in-context
+# reference. The adapter is calibrated for strength 0.5.
+pipe.load_lora_weights("Lightricks/LTX-2.5-22b-IC-LoRA-Pixel-Spatial-Upscaler", adapter_name="detailing")
+pipe.set_adapters(["detailing"], weights=[0.5])
+
+output = pipe(
+    height=height,
+    width=width,
+    latents=upsample(video_latents),
+    keyframes_latents=upsample(keyframes_latents),
+    detailing_reference_latents=video_latents,
+    detailing_reference_downscale_factor=2,
+    **{**common, "output_type": "pt"},
+)
+video, audio = output.get("videos"), output.get("audio")
+```
+
+`height` and `width` are the output resolution and must be divisible by twice the VAE's spatial compression ratio (64 for LTX-2.5), since the base pass runs at half of each axis. Whatever `num_frames` asks for, the canvas is padded onto the segment grid internally and trimmed back before decoding, so the caller always gets the frame count it requested.
+
 You can see the supported workflows in the docs for each blockset (e.g. [`LTX2AutoBlocks`], [`LTX25AutoBlocks`]).
 
 ## LTX2Pipeline
@@ -1085,6 +1147,14 @@ You can see the supported workflows in the docs for each blockset (e.g. [`LTX2Au
 ## LTX25AutoBlocks
 
 [[autodoc]] LTX25AutoBlocks
+
+## LTX2DFRModularPipeline
+
+[[autodoc]] LTX2DFRModularPipeline
+
+## LTX2DFRBlocks
+
+[[autodoc]] LTX2DFRBlocks
 
 ## LTX2Guidance
 

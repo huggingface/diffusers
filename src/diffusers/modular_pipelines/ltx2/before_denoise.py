@@ -30,6 +30,7 @@ from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .utils import resolve_canvas
 
 
 logger = logging.get_logger(__name__)
@@ -1383,6 +1384,481 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
         block_state.appended_coords = torch.cat(appended_coords, dim=2)
         block_state.base_token_count = base_token_count
         block_state.num_ref_tokens = num_ref_tokens
+        block_state.noise_scale = noise_scale
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class LTX2DFRPlanStep(ModularPipelineBlocks):
+    model_name = "ltx2.5-dfr"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Resolves the DFR keyframe segment grid: pads `num_frames` up to a whole number of keyframe segments "
+            "and reports the pixel-frame positions the pipeline generates keyframe slots at. The padding is trimmed "
+            "back by `LTX2DFRSplitKeyframesStep` before decoding, so the caller always gets the frame count it asked "
+            "for."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", LTX2VideoTransformer3DModel),
+            ComponentSpec("vae", AutoencoderKLLTX2Video),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames the caller asked for, before the canvas is padded onto the segment grid. "
+                    "Omit to auto-predict via the `duration_head` (see `LTX2AutoDurationStep`)."
+                ),
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "num_frames",
+                type_hint=int,
+                description=(
+                    "The padded canvas frame count every later block generates on, a whole number of keyframe "
+                    "segments plus one."
+                ),
+            ),
+            OutputParam(
+                "requested_num_frames",
+                type_hint=int,
+                description="The frame count the caller asked for, restored before decoding.",
+            ),
+            OutputParam(
+                "slot_frame_indices",
+                type_hint=list,
+                description=(
+                    "Pixel-frame positions of the generated keyframe slots, `[S, 2S, ..., num_frames - 1]` for the "
+                    "chosen segment length `S`."
+                ),
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        if not components.transformer.config.use_keyframes_abs_pos_embedding:
+            raise ValueError(
+                "DFR generates keyframe slots, which requires a transformer whose config sets "
+                "`use_keyframes_abs_pos_embedding` (LTX-2.5 and later). Each slot costs a full latent frame of "
+                "tokens, so a checkpoint without the learned marker would spend that budget on tokens it cannot "
+                "interpret."
+            )
+        if components.transformer_temporal_patch_size != 1:
+            raise ValueError(
+                "DFR appends one latent frame of tokens per keyframe slot, which a temporal patch size above 1 "
+                f"cannot represent, but the transformer patchifies time by "
+                f"{components.transformer_temporal_patch_size}."
+            )
+        if block_state.num_frames is None:
+            raise ValueError(
+                "`num_frames` must be a concrete integer here. Pass `num_frames`, or use a blockset that runs "
+                "`LTX2AutoDurationStep` on a checkpoint shipping a `duration_head`."
+            )
+
+        block_state.requested_num_frames = block_state.num_frames
+        block_state.num_frames, _, block_state.slot_frame_indices = resolve_canvas(
+            block_state.num_frames, components.vae_temporal_compression_ratio
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class LTX2DFRPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "ltx2.5-dfr"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Prepares the packed video latents for one DFR pass. The sequence is laid out as "
+            "`[base | keyframes | slots | reference]`: base tokens cover the target latent grid (seeded from "
+            "`latents`), frame conditions are placed exactly as in `LTX2ConditionPrepareLatentsStep`, each entry of "
+            "`slot_frame_indices` appends one latent frame's worth of *generated* keyframe tokens spanning a single "
+            "pixel frame, and `detailing_reference_latents` appends a fully clean in-context reference for the "
+            "spatial detailing IC-LoRA. Slots are what buy DFR its extra frames: they carry conditioning mask 0 and "
+            "are marked in `video_keyframes_mask` so the transformer adds its learned single-frame embedding."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", LTX2VideoTransformer3DModel),
+            ComponentSpec("vae", AutoencoderKLLTX2Video),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "slot_frame_indices",
+                type_hint=list,
+                required=True,
+                description="Pixel-frame positions of the generated keyframe slots, from `LTX2DFRPlanStep`.",
+            ),
+            InputParam(
+                "keyframes_latents",
+                type_hint=torch.Tensor,
+                description=(
+                    "`[B, C, num_slots, H, W]` content seeding the keyframe slots: a previous DFR pass's "
+                    "`keyframes_latents` upsampled to this pass's resolution. Denormalized, like every latent "
+                    "crossing the pipeline boundary. Slots start from noise when omitted."
+                ),
+            ),
+            InputParam(
+                "detailing_reference_latents",
+                type_hint=torch.Tensor,
+                description=(
+                    "`[B, C, F, H, W]` latents appended as a fully clean in-context reference for the spatial "
+                    "detailing IC-LoRA: the previous pass's output at its own resolution, denormalized. Only "
+                    "meaningful with that adapter loaded."
+                ),
+            ),
+            InputParam(
+                "detailing_reference_downscale_factor",
+                type_hint=int,
+                default=2,
+                description=(
+                    "Ratio between this pass's resolution and the reference's, used to scale the reference tokens' "
+                    "spatial coordinates into the target coordinate space. Must match the factor the IC-LoRA was "
+                    "trained with."
+                ),
+            ),
+            InputParam(
+                "condition_latents",
+                type_hint=list,
+                description="Per-condition normalized VAE latents of shape [1, C, F, H, W].",
+            ),
+            InputParam(
+                "condition_strengths",
+                type_hint=list,
+                description="Per-condition conditioning strengths.",
+            ),
+            InputParam(
+                "condition_indices",
+                type_hint=list,
+                description="Per-condition latent frame index at which the condition is applied.",
+            ),
+            InputParam(
+                "condition_pixel_frames",
+                type_hint=list,
+                description="Per-condition trimmed pixel frame count, used to clamp single-frame keyframe coords.",
+            ),
+            InputParam.template("latents"),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
+            InputParam(
+                "num_frames",
+                type_hint=int,
+                required=True,
+                description="The padded canvas frame count, from `LTX2DFRPlanStep`.",
+            ),
+            InputParam(
+                "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
+            ),
+            InputParam(
+                "noise_scale",
+                type_hint=float,
+                default=None,
+                description=(
+                    "Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` "
+                    "when custom `sigmas` are supplied, else 1.0."
+                ),
+            ),
+            InputParam.template("sigmas"),
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
+            InputParam(
+                "batch_size",
+                type_hint=int,
+                required=True,
+                description="The number of prompts being denoised, used to expand conditioning per prompt.",
+            ),
+            InputParam.template("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="Packed noisy video latents, with keyframe, slot and reference tokens appended.",
+            ),
+            OutputParam(
+                "conditioning_mask",
+                type_hint=torch.Tensor,
+                description=(
+                    "Packed per-token conditioning strengths of shape [B, S, 1] in [0, 1]: 1 at fully-conditioned "
+                    "positions, 0 at free positions, including every keyframe slot."
+                ),
+            ),
+            OutputParam(
+                "clean_latents",
+                type_hint=torch.Tensor,
+                description="Clean condition latents at conditioned positions, zeros elsewhere; same shape as `latents`.",
+            ),
+            OutputParam(
+                "video_keyframes_mask",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description=(
+                    "Packed [B, S, 1] marker, 1 on tokens whose latent frame encodes a single pixel frame -- the "
+                    "causal first frame and every generated keyframe slot. Those tokens receive the transformer's "
+                    "`keyframes_abs_pos_embedding`."
+                ),
+            ),
+            OutputParam(
+                "appended_coords",
+                type_hint=torch.Tensor,
+                description=(
+                    "RoPE coordinates of shape [B, 3, num_appended_tokens, 2] for the appended keyframe, slot and "
+                    "reference tokens, in the order they were appended."
+                ),
+            ),
+            OutputParam(
+                "base_token_count",
+                type_hint=int,
+                description="Number of generated-video tokens, i.e. the sequence length before appended tokens.",
+            ),
+            OutputParam(
+                "slot_token_slice",
+                type_hint=slice,
+                description="Slice of the packed sequence holding the generated keyframe slot tokens.",
+            ),
+            OutputParam(
+                "noise_scale",
+                type_hint=float,
+                description="The resolved initial noise level, forwarded to the audio latents step.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        batch_size = block_state.batch_size * block_state.num_videos_per_prompt
+        spatial_patch = components.transformer_spatial_patch_size
+        temporal_patch = components.transformer_temporal_patch_size
+        frame_scale_factor = components.vae_temporal_compression_ratio
+
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+        latent_num_frames = (block_state.num_frames - 1) // frame_scale_factor + 1
+        tokens_per_latent_frame = (latent_height // spatial_patch) * (latent_width // spatial_patch)
+
+        noise_scale = block_state.noise_scale
+        if noise_scale is None:
+            noise_scale = block_state.sigmas[0] if block_state.sigmas is not None else 1.0
+
+        if isinstance(block_state.generator, list):
+            logger.warning(
+                f"{self.__class__.__name__} does not support using a list of generators. The first generator in the"
+                f" list will be used for all (pseudo-)random operations."
+            )
+
+        if block_state.latents is not None:
+            latents = _normalize_latents(
+                block_state.latents,
+                components.latents_mean,
+                components.latents_std,
+                components.vae_scaling_factor,
+            )
+        else:
+            shape = (
+                batch_size,
+                components.transformer.config.in_channels,
+                latent_num_frames,
+                latent_height,
+                latent_width,
+            )
+            latents = torch.zeros(shape, device=device, dtype=torch.float32)
+
+        conditioning_mask = latents.new_zeros((batch_size, 1, latent_num_frames, latent_height, latent_width))
+        latents = _pack_latents(latents, spatial_patch, temporal_patch)
+        conditioning_mask = _pack_latents(conditioning_mask, spatial_patch, temporal_patch)  # [B, S, 1]
+
+        if latents.ndim != 3 or latents.shape[:2] != conditioning_mask.shape[:2]:
+            raise ValueError(
+                f"Provided `latents` tensor packs to shape {latents.shape}, but the expected packed shape is "
+                f"{conditioning_mask.shape[:2] + (components.transformer.config.in_channels,)}."
+            )
+
+        base_token_count = latents.shape[1]
+        clean_latents = torch.zeros_like(latents)
+        # Causal encoding gives the first latent frame a temporal stride of one pixel frame, so it carries the same
+        # marker the generated slots do.
+        keyframes_mask = torch.zeros_like(conditioning_mask)
+        keyframes_mask[:, :tokens_per_latent_frame] = 1.0
+
+        condition_latents = block_state.condition_latents or []
+        condition_strengths = block_state.condition_strengths or []
+        condition_indices = block_state.condition_indices or []
+        condition_pixel_frames = block_state.condition_pixel_frames or []
+        condition_latents_packed = [_pack_latents(cond, spatial_patch, temporal_patch) for cond in condition_latents]
+
+        # First-frame conditions (latent index 0): overwrite the tokens at the first-frame positions. Condition
+        # tensors carry batch 1 and broadcast across the generation batch.
+        for cond, strength, latent_idx in zip(condition_latents_packed, condition_strengths, condition_indices):
+            if latent_idx != 0:
+                continue
+            num_cond_tokens = cond.size(1)
+            latents[:, :num_cond_tokens] = cond
+            conditioning_mask[:, :num_cond_tokens] = strength
+            clean_latents[:, :num_cond_tokens] = cond
+
+        scale_factors = (
+            frame_scale_factor,
+            components.vae_spatial_compression_ratio,
+            components.vae_spatial_compression_ratio,
+        )
+        appended_coords = []
+
+        # Non-first-frame ("keyframe") conditions (latent index > 0): appended as extra tokens carrying their content
+        # in both `latents` and `clean_latents`, so the noising below leaves them at (1 - strength) * noise_scale.
+        for cond_5d, cond_packed, strength, latent_idx, num_pixel_frames in zip(
+            condition_latents,
+            condition_latents_packed,
+            condition_strengths,
+            condition_indices,
+            condition_pixel_frames,
+        ):
+            if latent_idx == 0:
+                continue
+
+            _, _, kf_latent_frames, kf_latent_height, kf_latent_width = cond_5d.shape
+            coords = _prepare_keyframe_coords(
+                keyframe_latent_num_frames=kf_latent_frames,
+                keyframe_latent_height=kf_latent_height,
+                keyframe_latent_width=kf_latent_width,
+                pixel_frame_idx=(latent_idx - 1) * frame_scale_factor + 1,
+                num_pixel_frames=num_pixel_frames,
+                fps=block_state.frame_rate,
+                patch_size=spatial_patch,
+                patch_size_t=temporal_patch,
+                scale_factors=scale_factors,
+                device=device,
+            )
+            tokens = cond_packed.expand(batch_size, -1, -1)
+            latents = torch.cat([latents, tokens], dim=1)
+            clean_latents = torch.cat([clean_latents, tokens], dim=1)
+            conditioning_mask = torch.cat(
+                [conditioning_mask, conditioning_mask.new_full((batch_size, tokens.shape[1], 1), float(strength))],
+                dim=1,
+            )
+            keyframes_mask = torch.cat(
+                [keyframes_mask, keyframes_mask.new_zeros((batch_size, tokens.shape[1], 1))], dim=1
+            )
+            appended_coords.append(coords.expand(batch_size, -1, -1, -1))
+
+        # Generated keyframe slots: fully-denoised single-pixel-frame token blocks the model fills in. Their seed
+        # goes into `latents` only -- `clean_latents` stays zero, and mask 0 means the noising treats them like any
+        # other free token.
+        if block_state.keyframes_latents is not None:
+            keyframes_latents = _normalize_latents(
+                block_state.keyframes_latents,
+                components.latents_mean,
+                components.latents_std,
+                components.vae_scaling_factor,
+            ).to(device=device, dtype=latents.dtype)
+            slot_tokens = torch.cat(
+                [
+                    _pack_latents(keyframes_latents[:, :, index : index + 1], spatial_patch, temporal_patch)
+                    for index in range(keyframes_latents.shape[2])
+                ],
+                dim=1,
+            ).expand(batch_size, -1, -1)
+        else:
+            num_slot_tokens = tokens_per_latent_frame * len(block_state.slot_frame_indices)
+            slot_tokens = latents.new_zeros((batch_size, num_slot_tokens, latents.shape[2]))
+
+        slot_token_slice = slice(latents.shape[1], latents.shape[1] + slot_tokens.shape[1])
+        latents = torch.cat([latents, slot_tokens], dim=1)
+        clean_latents = torch.cat([clean_latents, torch.zeros_like(slot_tokens)], dim=1)
+        conditioning_mask = torch.cat(
+            [conditioning_mask, conditioning_mask.new_zeros((batch_size, slot_tokens.shape[1], 1))], dim=1
+        )
+        keyframes_mask = torch.cat(
+            [keyframes_mask, keyframes_mask.new_ones((batch_size, slot_tokens.shape[1], 1))], dim=1
+        )
+        appended_coords.extend(
+            _prepare_keyframe_coords(
+                keyframe_latent_num_frames=1,
+                keyframe_latent_height=latent_height,
+                keyframe_latent_width=latent_width,
+                pixel_frame_idx=position,
+                num_pixel_frames=1,
+                fps=block_state.frame_rate,
+                patch_size=spatial_patch,
+                patch_size_t=temporal_patch,
+                scale_factors=scale_factors,
+                device=device,
+            ).expand(batch_size, -1, -1, -1)
+            for position in block_state.slot_frame_indices
+        )
+
+        # Spatial detailing IC-LoRA reference, held fully clean at mask 1.
+        if block_state.detailing_reference_latents is not None:
+            reference_latents = _normalize_latents(
+                block_state.detailing_reference_latents,
+                components.latents_mean,
+                components.latents_std,
+                components.vae_scaling_factor,
+            ).to(device=device, dtype=latents.dtype)
+            reference_tokens = _pack_latents(reference_latents, spatial_patch, temporal_patch).expand(
+                batch_size, -1, -1
+            )
+            reference_coords = components.transformer.rope.prepare_video_coords(
+                batch_size=batch_size,
+                num_frames=reference_latents.shape[2],
+                height=reference_latents.shape[3],
+                width=reference_latents.shape[4],
+                device=device,
+                fps=block_state.frame_rate,
+            )
+            reference_coords[:, 1:, :, :] = (
+                reference_coords[:, 1:, :, :] * block_state.detailing_reference_downscale_factor
+            )
+
+            latents = torch.cat([latents, reference_tokens], dim=1)
+            clean_latents = torch.cat([clean_latents, reference_tokens], dim=1)
+            conditioning_mask = torch.cat(
+                [conditioning_mask, conditioning_mask.new_ones((batch_size, reference_tokens.shape[1], 1))], dim=1
+            )
+            keyframes_mask = torch.cat(
+                [keyframes_mask, keyframes_mask.new_zeros((batch_size, reference_tokens.shape[1], 1))], dim=1
+            )
+            appended_coords.append(reference_coords)
+
+        # Mask semantics: 0 -> fully noised, 1 -> kept clean, in between -> noise level (1 - mask) * noise_scale.
+        noise = randn_tensor(
+            latents.shape, generator=block_state.generator, device=latents.device, dtype=latents.dtype
+        )
+        scaled_mask = (1.0 - conditioning_mask) * noise_scale
+        block_state.latents = noise * scaled_mask + latents * (1 - scaled_mask)
+
+        block_state.conditioning_mask = conditioning_mask
+        block_state.clean_latents = clean_latents
+        block_state.video_keyframes_mask = keyframes_mask
+        block_state.appended_coords = torch.cat(appended_coords, dim=2)
+        block_state.base_token_count = base_token_count
+        block_state.slot_token_slice = slot_token_slice
         block_state.noise_scale = noise_scale
 
         self.set_block_state(state, block_state)

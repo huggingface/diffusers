@@ -96,3 +96,57 @@ LTX2_AUDIO_LATENTS_STD = [
     1.3125, 1.289062, 1.296875, 1.242188, 1.234375, 1.21875, 1.226562, 1.054688,
 ]
 # fmt: on
+
+
+# Candidate keyframe segment lengths, in *latent* frames -- 24 and 32 pixel frames on the LTX-2.5 VAE. The grid picks
+# whichever pads the request least. A segment must be a whole number of latent frames because every keyframe sits on a
+# latent border.
+DFR_SEGMENT_LATENT_CANDIDATES = (3, 4)
+
+
+def choose_segment_length(content_frames: int, temporal_compression_ratio: int = 8) -> int:
+    """
+    Pick the keyframe segment length, in pixel frames, that pads `content_frames` least.
+
+    Args:
+        content_frames (`int`):
+            `num_frames - 1`, the frame count the segment grid has to cover.
+        temporal_compression_ratio (`int`, defaults to `8`):
+            The VAE's temporal compression ratio. Candidates are `DFR_SEGMENT_LATENT_CANDIDATES` scaled by it, so the
+            shipped LTX-2.5 VAE offers 24 and 32 pixel frames.
+
+    Returns:
+        `int`: The chosen segment length in pixel frames. Ties keep the larger segment.
+    """
+    candidates = [candidate * temporal_compression_ratio for candidate in DFR_SEGMENT_LATENT_CANDIDATES]
+    return max(candidates, key=lambda candidate: (-((candidate - content_frames % candidate) % candidate), candidate))
+
+
+def resolve_canvas(num_frames: int, temporal_compression_ratio: int = 8) -> tuple[int, int, list[int]]:
+    """
+    Pad `num_frames - 1` up to a multiple of the keyframe segment length.
+
+    Args:
+        num_frames (`int`):
+            Requested pixel frame count. Must satisfy `(num_frames - 1) % temporal_compression_ratio == 0` and be at
+            least `temporal_compression_ratio + 1`.
+        temporal_compression_ratio (`int`, defaults to `8`):
+            The VAE's temporal compression ratio.
+
+    Returns:
+        `tuple[int, int, list[int]]`: The padded frame count, the chosen segment length, and the keyframe slot
+        positions `[S, 2S, ..., N' - 1]` in pixel frames. Frame 0 is excluded (under causal encoding its latent already
+        covers a single pixel frame) and the terminal frame is included.
+    """
+    if (num_frames - 1) % temporal_compression_ratio != 0:
+        raise ValueError(
+            f"`num_frames` must satisfy (num_frames - 1) % {temporal_compression_ratio} == 0, got {num_frames}"
+        )
+    content = num_frames - 1
+    if content < temporal_compression_ratio:
+        raise ValueError(f"The DFR canvas needs at least {temporal_compression_ratio + 1} pixel frames")
+
+    segment = choose_segment_length(content, temporal_compression_ratio)
+    content_padded = content + (segment - content % segment) % segment
+    positions = [segment * index for index in range(1, content_padded // segment + 1)]
+    return content_padded + 1, segment, positions
