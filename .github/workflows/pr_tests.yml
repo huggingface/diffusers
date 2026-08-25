@@ -234,16 +234,6 @@ jobs:
         fi
         exit $status
 
-    - name: Test summary
-      if: ${{ always() }}
-      run: |
-        {
-          echo "### ${{ matrix.name }}"
-          echo '```'
-          cat reports/${{ matrix.name }}_tests_cpu_stats.txt 2>/dev/null || echo "no tests collected for -m \"${{ matrix.markers }}\""
-          echo '```'
-        } >> $GITHUB_STEP_SUMMARY
-
     - name: Failure short reports
       if: ${{ failure() }}
       continue-on-error: true
@@ -257,3 +247,41 @@ jobs:
       with:
         name: ${{ matrix.name }}_cpu_test_reports
         path: reports
+
+  report:
+    name: Test report
+    needs: run_tests_cpu
+    if: ${{ always() && needs.run_tests_cpu.result != 'skipped' }}
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Download test reports
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+      with:
+        pattern: "*_cpu_test_reports"
+        path: reports
+
+    - name: Write summary
+      # One table of per-job results, then the short failure report of every job that had failures.
+      run: |
+        {
+          echo "## Test results"
+          echo
+          echo "| Job | Result |"
+          echo "|---|---|"
+          for dir in reports/*_cpu_test_reports; do
+            job=$(basename "$dir" _cpu_test_reports)
+            stats=$(sed 's/\x1b\[[0-9;]*m//g; s/=//g' "$dir/${job}_tests_cpu_stats.txt" 2>/dev/null | xargs)
+            echo "| \`$job\` | ${stats:-no report} |"
+          done
+          echo
+          for dir in reports/*_cpu_test_reports; do
+            job=$(basename "$dir" _cpu_test_reports)
+            f="$dir/${job}_tests_cpu_failures_short.txt"
+            if [ -s "$f" ]; then
+              echo "### Failures in \`$job\`"
+              echo '```'
+              cat "$f"
+              echo '```'
+            fi
+          done
+        } >> "$GITHUB_STEP_SUMMARY"
