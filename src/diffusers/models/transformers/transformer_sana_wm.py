@@ -29,7 +29,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_timm_available, logging
+from ...utils import logging
 from ..embeddings import get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -51,22 +51,35 @@ from .transformer_sana_wm_kernels import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-_CAN_USE_TIMM = is_timm_available()
+class Mlp(nn.Module):
+    """Two-layer feed-forward block (`fc1` -> activation -> `fc2`)."""
 
-if _CAN_USE_TIMM:
-    from timm.models.layers import DropPath
-    from timm.models.vision_transformer import Attention as Attention_
-    from timm.models.vision_transformer import Mlp
-else:
-    # Several layers below subclass these, so they must exist as classes at module
-    # import time — this module is imported eagerly by `diffusers.models`. The
-    # placeholder defers the error to construction time, keeping `import diffusers`
-    # working without `timm` installed.
-    class _TimmPlaceholder(nn.Module):
-        def __init__(self, *args, **kwargs):
-            raise ImportError("`timm` is required to run SANA-WM. Install it with `pip install timm`.")
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int | None = None,
+        out_features: int | None = None,
+        act_layer: type[nn.Module] = nn.GELU,
+        bias: bool = True,
+        drop: float = 0.0,
+    ) -> None:
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
 
-    DropPath = Attention_ = Mlp = _TimmPlaceholder
+        self.fc1 = nn.Linear(in_features, hidden_features, bias=bias)
+        self.act = act_layer()
+        self.drop1 = nn.Dropout(drop)
+        self.fc2 = nn.Linear(hidden_features, out_features, bias=bias)
+        self.drop2 = nn.Dropout(drop)
+
+    def forward(self, hidden_states: torch.Tensor, HW: tuple[int, int] | None = None) -> torch.Tensor:
+        hidden_states = self.fc1(hidden_states)
+        hidden_states = self.act(hidden_states)
+        hidden_states = self.drop1(hidden_states)
+        hidden_states = self.fc2(hidden_states)
+        hidden_states = self.drop2(hidden_states)
+        return hidden_states
 
 
 class ShortConvolution(nn.Module):
@@ -832,28 +845,6 @@ class DWMlp(Mlp):
         x = x.reshape(B, H, W, self.hidden_features).permute(0, 3, 1, 2)
         x = self.conv(x)
         x = x.reshape(B, self.hidden_features, N).permute(0, 2, 1)
-        x = self.fc2(x)
-        x = self.drop2(x)
-        return x
-
-
-class Mlp(Mlp):
-    """MLP as used in Vision Transformer, MLP-Mixer and related networks"""
-
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, bias=True, drop=0.0):
-        super().__init__(
-            in_features=in_features,
-            hidden_features=hidden_features,
-            out_features=out_features,
-            act_layer=act_layer,
-            bias=bias,
-            drop=drop,
-        )
-
-    def forward(self, x, HW=None):
-        x = self.fc1(x)
-        x = self.act(x)
-        x = self.drop1(x)
         x = self.fc2(x)
         x = self.drop2(x)
         return x
@@ -1644,7 +1635,7 @@ def _apply_output_gate(
 
 
 @_register_block()
-class GDN(Attention_):
+class GDN(nn.Module):
     """Frame-wise Gated Delta Net attention for Sana video.
 
     This block follows Sana's vanilla linear attention strategy but upgrades it with a Gated Delta Network mechanism:
@@ -1674,7 +1665,13 @@ class GDN(Attention_):
         **kwargs: object,
     ) -> None:
         heads = heads or int(out_dim // dim * heads_ratio)
-        super().__init__(in_dim, num_heads=heads, qkv_bias=use_bias)
+        super().__init__()
+
+        # Fused QKV projection and output projection (the `q_norm` / `k_norm`
+        # attributes are set further down, depending on `qk_norm`).
+        self.num_heads = heads
+        self.qkv = nn.Linear(in_dim, in_dim * 3, bias=use_bias)
+        self.proj = nn.Linear(in_dim, in_dim)
 
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -3875,7 +3872,6 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         hidden_size,
         num_heads,
         mlp_ratio=4.0,
-        drop_path=0.0,
         qk_norm=False,
         attn_type="flash",
         ffn_type="mlp",
@@ -3981,7 +3977,6 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         else:
             self.mlp = None
 
-        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.scale_shift_table = nn.Parameter(torch.randn(6, hidden_size) / hidden_size**0.5)
 
     @staticmethod
@@ -4066,7 +4061,7 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         attn_out = (gate_msa * attn_out).reshape(B, N, C)
         if frame_token_mask is not None:
             attn_out = attn_out * frame_token_mask
-        x = x + self.drop_path(attn_out)
+        x = x + attn_out
         if frame_token_mask is not None:
             x = x * frame_token_mask
 
@@ -4101,7 +4096,7 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         mlp_out = (gate_mlp * mlp_out).reshape(B, N, C)
         if frame_token_mask is not None:
             mlp_out = mlp_out * frame_token_mask
-        x = x + self.drop_path(mlp_out)
+        x = x + mlp_out
         if frame_token_mask is not None:
             x = x * frame_token_mask
 
@@ -4230,7 +4225,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
 
         # Remaining SanaMSVideoCamCtrl.__init__ defaults not exposed by the config signature.
         mlp_acts = list(mlp_acts)
-        drop_path = 0.0
         pe_interpolation = 1.0
         norm_eps = 1e-5
         patch_embed_kernel = None
@@ -4328,9 +4322,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             self.rope = WanRotaryPosEmbed(
                 attention_head_dim=attention_head_dim, patch_size=patch_size, max_seq_len=1024, fhw_dim=rope_fhw_dim
             )
-        # stochastic depth decay rule (build on CPU so meta-device construction works)
-        drop_path = [x.item() for x in torch.linspace(0, drop_path, depth, device="cpu")]
-
         self.softmax_every_n = softmax_every_n
         attn_type_list = [attn_type] * depth
         camctrl_type_list = [camctrl_type if i < self.camctrl_layers_num else None for i in range(depth)]
@@ -4356,7 +4347,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_size,
                     num_heads,
                     mlp_ratio=mlp_ratio,
-                    drop_path=drop_path[i],
                     qk_norm=qk_norm,
                     attn_type=attn_type_list[i],
                     ffn_type=ffn_type,
