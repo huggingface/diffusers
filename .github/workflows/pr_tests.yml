@@ -218,13 +218,31 @@ jobs:
 
     - name: Run selected tests on CPU
       # A feature-split job (e.g. `models-lora`) can legitimately match zero tests in the selected files;
-      # pytest reports that as exit code 5, which is not a failure here.
+      # pytest reports that as exit code 5. Surface it as a notice instead of a failure.
       run: |
+        set +e
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -k "not Onnx" \
           -m "${{ matrix.markers }}" \
           --make-reports=${{ matrix.name }}_tests_cpu \
-          ${{ matrix.paths }} || [ $? -eq 5 ]
+          ${{ matrix.paths }}
+        status=$?
+        set -e
+        if [ "$status" -eq 5 ]; then
+          echo "::notice title=${{ matrix.name }}::No tests matched -m \"${{ matrix.markers }}\" in the selected files. Nothing ran."
+          exit 0
+        fi
+        exit $status
+
+    - name: Test summary
+      if: ${{ always() }}
+      run: |
+        {
+          echo "### ${{ matrix.name }}"
+          echo '```'
+          cat reports/${{ matrix.name }}_tests_cpu_stats.txt 2>/dev/null || echo "no tests collected for -m \"${{ matrix.markers }}\""
+          echo '```'
+        } >> $GITHUB_STEP_SUMMARY
 
     - name: Failure short reports
       if: ${{ failure() }}
