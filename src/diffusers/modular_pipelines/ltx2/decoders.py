@@ -142,6 +142,12 @@ class LTX2DFRSplitKeyframesStep(ModularPipelineBlocks):
         return [
             InputParam.template("latents", required=True),
             InputParam(
+                "base_token_count",
+                type_hint=int,
+                required=True,
+                description="Number of generated-video tokens, i.e. the sequence length before appended tokens.",
+            ),
+            InputParam(
                 "slot_token_slice",
                 type_hint=slice,
                 required=True,
@@ -205,10 +211,11 @@ class LTX2DFRSplitKeyframesStep(ModularPipelineBlocks):
             keyframes_latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
         )
 
-        # `_pack_latents` is frame-major, so trimming the canvas padding is a prefix slice that also drops every
-        # appended token.
+        # Drop the appended keyframe, slot and reference tokens, as `LTX2TrimConditionTokensStep` does.
+        latents = block_state.latents[:, : block_state.base_token_count]
+        # Then trim the canvas padding. `_pack_latents` is frame-major, so that is a prefix slice on what is left.
         trimmed_latent_frames = (block_state.requested_num_frames - 1) // components.vae_temporal_compression_ratio + 1
-        block_state.latents = block_state.latents[:, : trimmed_latent_frames * tokens_per_latent_frame]
+        block_state.latents = latents[:, : trimmed_latent_frames * tokens_per_latent_frame]
         block_state.num_frames = block_state.requested_num_frames
 
         self.set_block_state(state, block_state)

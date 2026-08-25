@@ -208,6 +208,8 @@ class LTX2DFRDecoderStep(SequentialPipelineBlocks):
       Inputs:
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
+          base_token_count (`int`):
+              Number of generated-video tokens, i.e. the sequence length before appended tokens.
           slot_token_slice (`slice`):
               Slice of the packed sequence holding the generated keyframe slot tokens.
           requested_num_frames (`int`):
