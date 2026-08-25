@@ -21,7 +21,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -105,5 +105,5 @@ class TestAutoencoderKLLTX2VideoMemory(AutoencoderKLLTX2VideoTesterConfig, Memor
     """Memory optimization tests for AutoencoderKLLTX2Video."""
 
 
-class TestAutoencoderKLLTX2VideoSlicingTiling(AutoencoderKLLTX2VideoTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLLTX2VideoSlicingTiling(AutoencoderKLLTX2VideoTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLLTX2Video."""
