@@ -4,7 +4,6 @@ Shared reference for modular pipeline conventions, patterns, and gotchas.
 
 ## Common modular conventions
 
-# should we include minimax, maybe replace wan?
 When adding a new modular pipeline (or reviewing one), skim `src/diffusers/modular_pipelines/qwenimage/`, `src/diffusers/modular_pipelines/flux2/`, `src/diffusers/modular_pipelines/wan/`, and `src/diffusers/modular_pipelines/helios/` first to establish the pattern. Most conventions (file split between `encoders.py` / `before_denoise.py` / `denoise.py` / `decoders.py`, how `expected_components` / `inputs` / `intermediate_outputs` are declared, the denoise-loop wrapping with `IterativePipelineBlocks` (see `flux2/denoise.py`; `wan_animate_2/denoise.py` for a nested chunk loop), top-level assembly via `AutoPipelineBlocks` / `SequentialPipelineBlocks` in `modular_blocks_<model>.py`, the `ModularPipeline` subclass shape, the guider-abstracted denoise body, `kwargs_type="denoiser_input_fields"` plumbing) are easiest to internalize by comparison rather than from a fixed list.
 
 ## Running a modular pipeline
