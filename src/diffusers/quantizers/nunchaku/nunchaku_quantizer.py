@@ -88,6 +88,15 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
             check_strict_state_dict_match(model, state_dict)
         logger.info(f"Applied Nunchaku quantization config with {num_replaced} targets.")
 
+    def update_missing_keys(self, model, missing_keys: list[str], prefix: str) -> list[str]:
+        if self.pre_quantized:
+            return missing_keys
+        # In data-free mode the checkpoint holds `weight`/`bias` while the model
+        # expects the packed parameters; those are produced at load time.
+        from .data_free import DATA_FREE_PARAMETER_NAMES
+
+        return [key for key in missing_keys if key.rpartition(".")[2] not in DATA_FREE_PARAMETER_NAMES]
+
     def check_if_quantized_param(
         self,
         model: "ModelMixin",
@@ -125,6 +134,8 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
 
         module_name, _, tensor_name = param_name.rpartition(".")
         module = model.get_submodule(module_name)
+        if unexpected_keys is not None and param_name in unexpected_keys:
+            unexpected_keys.remove(param_name)
         if tensor_name == "bias":
             packed_bias = pack_data_free_bias(param_value.to(target_device), torch_dtype=self.compute_dtype)
             module._parameters["bias"] = torch.nn.Parameter(packed_bias, requires_grad=False)

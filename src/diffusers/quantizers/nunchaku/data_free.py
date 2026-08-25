@@ -163,6 +163,12 @@ class _NunchakuWeightPacker:
         return weight.view(c, r)
 
 
+# Parameter names of SVDQW4A4Linear that data-free quantization produces at
+# load time (and therefore never appear in an unquantized checkpoint).
+DATA_FREE_PARAMETER_NAMES = frozenset(
+    {"qweight", "wscales", "wcscales", "wtscale", "smooth_factor", "proj_down", "proj_up"}
+)
+
 # adaLN-style linears (feature-wise modulation) are precision-critical and are
 # consistently named after their norm across diffusers models.
 _DEFAULT_EXCLUDE_PATTERNS = ("norm", "modulation")

@@ -348,3 +348,22 @@ def test_config_targets_optional_only_for_data_free():
 
     with pytest.raises(ValueError, match="missing required field 'targets'"):
         NunchakuLiteQuantizationConfig(svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32})
+
+
+def test_quantizer_update_missing_keys_filters_data_free_params():
+    from diffusers.quantizers.nunchaku.nunchaku_quantizer import NunchakuLiteQuantizer
+
+    config = NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
+        pre_quantized=False,
+    )
+    quantizer = NunchakuLiteQuantizer(config, pre_quantized=False)
+    missing = ["blocks.0.proj.qweight", "blocks.0.proj.smooth_factor", "blocks.0.proj.wtscale", "other.weight"]
+    assert quantizer.update_missing_keys(None, missing, prefix="") == ["other.weight"]
+
+    pre_config = NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32, "targets": ["blocks.0.proj"]}
+    )
+    quantizer_pre = NunchakuLiteQuantizer(pre_config, pre_quantized=True)
+    assert quantizer_pre.pre_quantized is True
+    assert quantizer_pre.update_missing_keys(None, missing, prefix="") == missing
