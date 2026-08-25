@@ -74,14 +74,14 @@ The following is a summary of the recommended checkpoints, all of which produce 
 |-----------------------------------------------------------------------------------------------------|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | [prs-eth/marigold-depth-v1-1](https://huggingface.co/prs-eth/marigold-depth-v1-1)                   | Depth        | Affine-invariant depth prediction assigns each pixel a value between 0 (near plane) and 1 (far plane), with both planes determined by the model during inference.                    |
 | [prs-eth/marigold-normals-v0-1](https://huggingface.co/prs-eth/marigold-normals-v0-1)               | Normals      | The surface normals predictions are unit-length 3D vectors in the screen space camera, with values in the range from -1 to 1.                                                        |
-| [prs-eth/marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1) | Intrinsics   | InteriorVerse decomposition is comprised of Albedo and two BRDF material properties: Roughness and Metallicity.                                                                      | 
+| [prs-eth/marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1) | Intrinsics   | InteriorVerse decomposition is comprised of Albedo and two BRDF material properties: Roughness and Metallicity.                                                                      |
 | [prs-eth/marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)     | Intrinsics   | HyperSim decomposition of an image $I$ is comprised of Albedo $A$, Diffuse shading $S$, and Non-diffuse residual $R$: $I = A*S+R$. |
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff 
-> between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to 
-> efficiently load the same components into multiple pipelines. 
-> Also, to know more about reducing the memory usage of this pipeline, refer to the ["Reduce memory usage"] section 
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff
+> between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to
+> efficiently load the same components into multiple pipelines.
+> Also, to know more about reducing the memory usage of this pipeline, refer to the ["Reduce memory usage"] section
 > [here](./stable_diffusion/svd#reduce-memory-usage).
 
 > [!WARNING]
@@ -117,8 +117,8 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
-).to("cuda")
+    "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 
@@ -164,8 +164,8 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldNormalsPipeline.from_pretrained(
-    "prs-eth/marigold-normals-v1-1", variant="fp16", torch_dtype=torch.float16
-).to("cuda")
+    "prs-eth/marigold-normals-v1-1", variant="fp16", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 
@@ -214,8 +214,8 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldIntrinsicsPipeline.from_pretrained(
-    "prs-eth/marigold-iid-appearance-v1-1", variant="fp16", torch_dtype=torch.float16
-).to("cuda")
+    "prs-eth/marigold-iid-appearance-v1-1", variant="fp16", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 
@@ -234,8 +234,8 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldIntrinsicsPipeline.from_pretrained(
-    "prs-eth/marigold-iid-lighting-v1-1", variant="fp16", torch_dtype=torch.float16
-).to("cuda")
+    "prs-eth/marigold-iid-lighting-v1-1", variant="fp16", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 
@@ -283,8 +283,8 @@ steps to the minimum:
   import torch
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-      "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
-  ).to("cuda")
+      "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
+  ).to("cuda")  # or "mps", "xpu", "cpu"
 
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
   
@@ -306,11 +306,11 @@ Note that using a lightweight VAE may slightly reduce the visual quality of the 
   import torch
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-      "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
-  ).to("cuda")
+      "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
+  ).to("cuda")  # or "mps", "xpu", "cpu"
 
 + pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
-+     "madebyollin/taesd", torch_dtype=torch.float16
++     "madebyollin/taesd", dtype=torch.float16
 + ).cuda()
 
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -328,8 +328,8 @@ Speeding them up can be achieved by using a more efficient attention processor:
 + from diffusers.models.attention_processor import AttnProcessor2_0
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-      "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
-  ).to("cuda")
+      "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
+  ).to("cuda")  # or "mps", "xpu", "cpu"
 
 + pipe.vae.set_attn_processor(AttnProcessor2_0()) 
 + pipe.unet.set_attn_processor(AttnProcessor2_0())
@@ -350,8 +350,8 @@ the same pipeline instance is called repeatedly, such as within a loop.
   from diffusers.models.attention_processor import AttnProcessor2_0
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-      "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
-  ).to("cuda")
+      "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
+  ).to("cuda")  # or "mps", "xpu", "cpu"
 
   pipe.vae.set_attn_processor(AttnProcessor2_0()) 
   pipe.unet.set_attn_processor(AttnProcessor2_0())
@@ -376,7 +376,7 @@ The effect of ensembling is particularly well-seen with surface normals:
 ```diff
   import diffusers
 
-  pipe = diffusers.MarigoldNormalsPipeline.from_pretrained("prs-eth/marigold-normals-v1-1").to("cuda")
+  pipe = diffusers.MarigoldNormalsPipeline.from_pretrained("prs-eth/marigold-normals-v1-1").to("cuda")  # or "mps", "xpu", "cpu"
 
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 
@@ -437,15 +437,15 @@ from diffusers.models.attention_processor import AttnProcessor2_0
 from PIL import Image
 from tqdm import tqdm
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 path_in = "https://huggingface.co/spaces/prs-eth/marigold-lcm/resolve/c7adb5427947d2680944f898cd91d386bf0d4924/files/video/obama.mp4"
 path_out = "obama_depth.gif"
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
+    "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
 ).to(device)
 pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
-    "madebyollin/taesd", torch_dtype=torch.float16
+    "madebyollin/taesd", dtype=torch.float16
 ).to(device)
 pipe.unet.set_attn_processor(AttnProcessor2_0())
 pipe.vae = torch.compile(pipe.vae, mode="reduce-overhead", fullgraph=True)
@@ -506,14 +506,14 @@ The snippet below demonstrates how to load an image, compute depth, and pass it 
 import torch
 import diffusers
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 generator = torch.Generator(device=device).manual_seed(2024)
 image = diffusers.utils.load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_depth_source.png"
 )
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-v1-1", torch_dtype=torch.float16, variant="fp16"
+    "prs-eth/marigold-depth-v1-1", dtype=torch.float16, variant="fp16"
 ).to(device)
 
 depth_image = pipe(image, generator=generator).prediction
@@ -521,10 +521,10 @@ depth_image = pipe.image_processor.visualize_depth(depth_image, color_map="binar
 depth_image[0].save("motorcycle_controlnet_depth.png")
 
 controlnet = diffusers.ControlNetModel.from_pretrained(
-    "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
+    "diffusers/controlnet-depth-sdxl-1.0", dtype=torch.float16, variant="fp16"
 ).to(device)
 pipe = diffusers.StableDiffusionXLControlNetPipeline.from_pretrained(
-    "SG161222/RealVisXL_V4.0", torch_dtype=torch.float16, variant="fp16", controlnet=controlnet
+    "SG161222/RealVisXL_V4.0", dtype=torch.float16, variant="fp16", controlnet=controlnet
 ).to(device)
 pipe.scheduler = diffusers.DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 
@@ -574,7 +574,7 @@ Maximizing `batch_size` will deliver maximum device utilization.
 import diffusers
 import torch
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 seed = 2024
 
 generator = torch.Generator(device=device).manual_seed(seed)
@@ -606,8 +606,8 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
-).to("cuda")
+    "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
 

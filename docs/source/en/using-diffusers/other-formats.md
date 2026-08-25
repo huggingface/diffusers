@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 # Model formats
 
-Diffusion models are typically stored in the Diffusers format or single-file format. Model files can be stored in various file types such as safetensors, dduf, or ckpt.
+Diffusion models are typically stored in the Diffusers format or single-file format. Model files can be stored in various file types such as safetensors or ckpt.
 
 > [!TIP]
 > Format refers to whether the weights are stored in a directory structure and file refers to the file type.
@@ -45,8 +45,8 @@ from diffusers import StableDiffusionXLPipeline
 
 pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
-    torch_dtype=torch.float16,
-    device_map="cuda"
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -57,13 +57,13 @@ import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
 
 transformer = FluxTransformer2DModel.from_single_file(
-    "https://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors", torch_dtype=torch.bfloat16
+    "https://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors", dtype=torch.bfloat16
 )
 pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
-    device_map="cuda"
+    dtype=torch.bfloat16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -175,12 +175,12 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     torch.dtype=torch.float16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 pipeline = DiffusionPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 ```
 
@@ -193,8 +193,8 @@ import torch
 from diffusers import FluxPipeline
 
 pipeline = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
-).to("cuda")
+    "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights("linoyts/yarn_art_Flux_LoRA")
 pipeline.save_lora_weights(
     text_encoder_lora_adapter_metadata={"r": 8, "lora_alpha": 8},
@@ -216,44 +216,6 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_single_file(
     "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned.ckpt"
 )
-```
-
-### dduf
-
-> [!WARNING]
-> DDUF support is deprecated and will be removed in version 0.41.0. Save and load your pipelines using the standard Diffusers directory format instead.
-
-> [!TIP]
-> DDUF is an experimental file type and the API may change. Refer to the DDUF [docs](https://huggingface.co/docs/hub/dduf) to learn more.
-
-DDUF is a file type designed to unify different diffusion model distribution methods and weight-saving formats. It is a standardized and flexible method to package all components of a diffusion model into a single file, providing a balance between the Diffusers and single-file formats.
-
-Use the `dduf_file` argument in [`~DiffusionPipeline.from_pretrained`] to load a DDUF file. You can also load quantized dduf files as long as they are stored in the Diffusers format.
-
-```py
-import torch
-from diffusers import DiffusionPipeline
-
-pipeline = DiffusionPipeline.from_pretrained(
-    "DDUF/FLUX.1-dev-DDUF",
-    dduf_file="FLUX.1-dev.dduf",
-    torch_dtype=torch.bfloat16,
-    device_map="cuda"
-)
-```
-
-To save a pipeline as a dduf file, use the [`~huggingface_hub.export_folder_as_dduf`] utility.
-
-```py
-import torch
-from diffusers import DiffusionPipeline
-from huggingface_hub import export_folder_as_dduf
-
-pipeline = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
-
-save_folder = "flux-dev"
-pipeline.save_pretrained("flux-dev")
-export_folder_as_dduf("flux-dev.dduf", folder_path=save_folder)
 ```
 
 ## Converting formats and files
@@ -284,4 +246,3 @@ Finally, you can use a Space like [SD To Diffusers](https://hf.co/spaces/diffuse
 ## Resources
 
 - Learn more about the design decisions and why safetensor files are preferred for saving and loading model weights in the [Safetensors audited as really safe and becoming the default](https://blog.eleuther.ai/safetensors-security-audit/) blog post.
-

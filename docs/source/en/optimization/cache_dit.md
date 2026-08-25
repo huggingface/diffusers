@@ -177,8 +177,8 @@ from diffusers import FluxPipeline
 
 pipe_or_adapter = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
-).to("cuda")
+    dtype=torch.bfloat16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # Default options, F8B0, 8 warmup steps, and unlimited cached 
 # steps for good balance between performance and precision

@@ -91,12 +91,12 @@ from diffusers.utils import pt_to_pil, make_image_grid
 import torch
 
 # stage 1
-stage_1 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
 
 # stage 2
 stage_2 = DiffusionPipeline.from_pretrained(
-    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
+    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", dtype=torch.float16
 )
 stage_2.enable_model_cpu_offload()
 
@@ -107,7 +107,7 @@ safety_modules = {
     "watermarker": stage_1.watermarker,
 }
 stage_3 = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-x4-upscaler", **safety_modules, torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-x4-upscaler", **safety_modules, dtype=torch.float16
 )
 stage_3.enable_model_cpu_offload()
 
@@ -158,12 +158,12 @@ original_image = load_image(url)
 original_image = original_image.resize((768, 512))
 
 # stage 1
-stage_1 = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1 = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
 
 # stage 2
 stage_2 = IFImg2ImgSuperResolutionPipeline.from_pretrained(
-    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
+    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", dtype=torch.float16
 )
 stage_2.enable_model_cpu_offload()
 
@@ -174,7 +174,7 @@ safety_modules = {
     "watermarker": stage_1.watermarker,
 }
 stage_3 = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-x4-upscaler", **safety_modules, torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-x4-upscaler", **safety_modules, dtype=torch.float16
 )
 stage_3.enable_model_cpu_offload()
 
@@ -233,12 +233,12 @@ url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/if/gla
 mask_image = load_image(url)
 
 # stage 1
-stage_1 = IFInpaintingPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1 = IFInpaintingPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
 
 # stage 2
 stage_2 = IFInpaintingSuperResolutionPipeline.from_pretrained(
-    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
+    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", dtype=torch.float16
 )
 stage_2.enable_model_cpu_offload()
 
@@ -249,7 +249,7 @@ safety_modules = {
     "watermarker": stage_1.watermarker,
 }
 stage_3 = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-x4-upscaler", **safety_modules, torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-x4-upscaler", **safety_modules, dtype=torch.float16
 )
 stage_3.enable_model_cpu_offload()
 
@@ -316,8 +316,8 @@ pipe_2 = IFInpaintingSuperResolutionPipeline(**pipe_2.components)
 The simplest optimization to run IF faster is to move all model components to the GPU.
 
 ```py
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
-pipe.to("cuda")
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 You can also run the diffusion process for a shorter number of timesteps.
@@ -341,8 +341,8 @@ with the strength argument. The strength argument is the amount of noise to add 
 A smaller number will vary the image less but run faster.
 
 ```py
-pipe = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
-pipe.to("cuda")
+pipe = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(image=image, prompt="<prompt>", strength=0.3).images
 ```
@@ -354,8 +354,8 @@ with IF and it might not give expected results.
 from diffusers import DiffusionPipeline
 import torch
 
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
-pipe.to("cuda")
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 pipe.text_encoder = torch.compile(pipe.text_encoder, mode="reduce-overhead", fullgraph=True)
 pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
@@ -368,14 +368,14 @@ When optimizing for GPU memory, we can use the standard diffusers CPU offloading
 Either the model based CPU offloading,
 
 ```py
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 ```
 
 or the more aggressive layer based CPU offloading.
 
 ```py
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
 pipe.enable_sequential_cpu_offload()
 ```
 
@@ -432,7 +432,7 @@ gc.collect()
 torch.cuda.empty_cache()
 
 pipe = IFPipeline.from_pretrained(
-    "DeepFloyd/IF-I-XL-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16, device_map="auto"
+    "DeepFloyd/IF-I-XL-v1.0", text_encoder=None, variant="fp16", dtype=torch.float16, device_map="auto"
 )
 
 generator = torch.Generator().manual_seed(0)
@@ -453,7 +453,7 @@ torch.cuda.empty_cache()
 # First super resolution
 
 pipe = IFSuperResolutionPipeline.from_pretrained(
-    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16, device_map="auto"
+    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", dtype=torch.float16, device_map="auto"
 )
 
 generator = torch.Generator().manual_seed(0)
