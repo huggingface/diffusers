@@ -70,6 +70,17 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
     ):
         from .utils import check_strict_state_dict_match, replace_with_nunchaku_linear
 
+        svdq_config = self.quantization_config.svdq_w4a4
+        if not self.pre_quantized and svdq_config is not None and svdq_config.get("targets") is None:
+            from .data_free import infer_data_free_targets
+
+            svdq_config["targets"] = infer_data_free_targets(
+                model,
+                group_size=svdq_config["group_size"],
+                modules_to_not_convert=self.quantization_config.modules_to_not_convert or (),
+            )
+            logger.info(f"Inferred {len(svdq_config['targets'])} data-free quantization targets.")
+
         quantization_config = self.quantization_config.to_dict()
         num_replaced = replace_with_nunchaku_linear(model, quantization_config, self.compute_dtype)
 

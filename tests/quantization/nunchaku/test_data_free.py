@@ -269,3 +269,71 @@ def test_quantizer_create_quantized_param_fills_module():
         assert not parameters[name].requires_grad
     assert parameters["qweight"].shape == (OUT_FEATURES, IN_FEATURES // 2)
     assert parameters["bias"].shape == (OUT_FEATURES,)
+
+
+class _InferenceToyModel(torch.nn.Module):
+    _keep_in_fp32_modules = ["frozen"]
+
+    def __init__(self):
+        super().__init__()
+        self.blocks = torch.nn.ModuleList(
+            [torch.nn.Sequential(torch.nn.Linear(IN_FEATURES, OUT_FEATURES)) for _ in range(2)]
+        )
+        self.embedder = torch.nn.Linear(IN_FEATURES, OUT_FEATURES)
+        self.frozen = torch.nn.Linear(IN_FEATURES, OUT_FEATURES)
+        self.odd_shape = torch.nn.Linear(100, OUT_FEATURES)
+        self.norm = torch.nn.LayerNorm(OUT_FEATURES)
+
+
+def test_infer_data_free_targets():
+    from diffusers.quantizers.nunchaku.data_free import infer_data_free_targets
+
+    model = _InferenceToyModel()
+    targets = infer_data_free_targets(model, group_size=16)
+    # `frozen` is excluded via _keep_in_fp32_modules; `odd_shape` fails the 128-multiple constraint.
+    assert targets == ["blocks.0.0", "blocks.1.0", "embedder"]
+
+    targets = infer_data_free_targets(model, group_size=16, modules_to_not_convert=["embedder"])
+    assert targets == ["blocks.0.0", "blocks.1.0"]
+
+    with pytest.raises(ValueError, match="Could not infer"):
+        infer_data_free_targets(model, group_size=16, modules_to_not_convert=["blocks", "embedder"])
+
+
+def test_quantizer_infers_targets_when_omitted(monkeypatch):
+    import sys
+    import types
+
+    from diffusers.quantizers.nunchaku.nunchaku_quantizer import NunchakuLiteQuantizer
+
+    config = NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
+        pre_quantized=False,
+        modules_to_not_convert=["embedder"],
+    )
+    quantizer = NunchakuLiteQuantizer(config, pre_quantized=False)
+    model = _InferenceToyModel()
+
+    # Stub out `.utils` (its import fetches the CUDA kernels) so only the
+    # target-inference part of _process_model_before_weight_loading runs.
+    stub = types.ModuleType("diffusers.quantizers.nunchaku.utils")
+    stub.replace_with_nunchaku_linear = lambda target_model, quantization_config, compute_dtype: len(
+        quantization_config["svdq_w4a4"]["targets"]
+    )
+    stub.check_strict_state_dict_match = None
+    monkeypatch.setitem(sys.modules, "diffusers.quantizers.nunchaku.utils", stub)
+
+    quantizer._process_model_before_weight_loading(model)
+
+    assert config.svdq_w4a4["targets"] == ["blocks.0.0", "blocks.1.0"]
+
+
+def test_config_targets_optional_only_for_data_free():
+    config = NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
+        pre_quantized=False,
+    )
+    assert config.svdq_w4a4.get("targets") is None
+
+    with pytest.raises(ValueError, match="missing required field 'targets'"):
+        NunchakuLiteQuantizationConfig(svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32})

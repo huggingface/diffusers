@@ -163,6 +163,39 @@ class _NunchakuWeightPacker:
         return weight.view(c, r)
 
 
+def infer_data_free_targets(
+    model: "torch.nn.Module",
+    *,
+    group_size: int,
+    modules_to_not_convert: tuple[str, ...] | list[str] = (),
+) -> list[str]:
+    """Infer quantization targets for data-free mode from a model's structure.
+
+    Every ``nn.Linear`` whose dimensions fit the Nunchaku packing constraints
+    (``in_features``/``out_features`` multiples of 128 and ``in_features``
+    divisible by ``group_size``) is selected, unless its module path contains
+    one of the ``modules_to_not_convert`` substrings or the model lists it in
+    ``_keep_in_fp32_modules``.
+    """
+
+    exclude = list(modules_to_not_convert) + list(getattr(model, "_keep_in_fp32_modules", None) or [])
+    targets = []
+    for name, module in model.named_modules():
+        if not isinstance(module, torch.nn.Linear):
+            continue
+        if any(pattern in name for pattern in exclude):
+            continue
+        if module.out_features % 128 or module.in_features % 128 or module.in_features % group_size:
+            continue
+        targets.append(name)
+    if not targets:
+        raise ValueError(
+            "Could not infer any data-free quantization targets: no nn.Linear module satisfies the "
+            "Nunchaku packing constraints (in/out features multiples of 128) outside the excluded modules."
+        )
+    return targets
+
+
 def _check_packable(out_features: int, in_features: int, rank: int, group_size: int) -> None:
     if out_features % 128 != 0 or in_features % 128 != 0:
         raise ValueError(

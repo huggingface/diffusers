@@ -493,6 +493,7 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
             raise ValueError("Nunchaku compute_dtype must be a string or a torch.dtype.")
         self.compute_dtype = compute_dtype
         self.pre_quantized = kwargs.pop("pre_quantized", True)
+        self.modules_to_not_convert = kwargs.pop("modules_to_not_convert", None)
         self.svdq_w4a4 = svdq_w4a4
         self.awq_w4a16 = awq_w4a16
 
@@ -515,8 +516,13 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
             if not isinstance(raw, dict):
                 raise ValueError(f"Nunchaku compact config section {op!r} must be a JSON object.")
 
+            # In data-free mode (`pre_quantized=False`) `targets` may be omitted;
+            # the quantizer infers them from the model at load time.
+            targets_optional = op == "svdq_w4a4" and not self.pre_quantized
             for key, expected_type in (("precision", str), ("group_size", int), ("targets", list)):
                 if key not in raw:
+                    if key == "targets" and targets_optional:
+                        continue
                     raise ValueError(f"Nunchaku compact config section {op!r} is missing required field {key!r}.")
                 if not isinstance(raw[key], expected_type):
                     raise ValueError(
@@ -525,15 +531,16 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
 
             precision = raw["precision"]
             group_size = raw["group_size"]
-            targets = raw["targets"]
+            targets = raw.get("targets")
             if precision not in ("int4", "nvfp4"):
                 raise ValueError(f"Unsupported Nunchaku precision {precision!r} for {op!r}.")
             if group_size <= 0:
                 raise ValueError(f"Nunchaku compact config section {op!r} must have positive group_size.")
-            if not targets:
-                raise ValueError(f"Nunchaku compact config section {op!r} must contain at least one target.")
-            if not all(isinstance(target, str) for target in targets):
-                raise ValueError(f"Nunchaku compact config section {op!r} targets must be strings.")
+            if targets is not None or not targets_optional:
+                if not targets:
+                    raise ValueError(f"Nunchaku compact config section {op!r} must contain at least one target.")
+                if not all(isinstance(target, str) for target in targets):
+                    raise ValueError(f"Nunchaku compact config section {op!r} targets must be strings.")
 
             if op == "svdq_w4a4":
                 if "rank" not in raw:

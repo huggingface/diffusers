@@ -126,38 +126,26 @@ List each module you want to quantize under `svdq_w4a4` or `awq_w4a16`. A module
 
 Pass `pre_quantized=False` to quantize an *unquantized* checkpoint at load time with data-free SVDQuant — no calibration data is needed. Each targeted linear gets weight-span smoothing, a rank-`r` SVD low-rank branch, and int4 or nvfp4 group quantization of the residual, packed directly into the kernel layout. Only `svdq_w4a4` targets are supported in this mode, and each target's `in_features`/`out_features` must be multiples of 128 (with `rank` a multiple of 16, or 0 to disable the low-rank branch).
 
-Targets are explicit module paths, so build the list from the model's structure:
+When `targets` is omitted, eligible targets are inferred automatically from the model: every `nn.Linear` whose dimensions satisfy the packing constraints is quantized, except modules matched by `modules_to_not_convert` (substring match) or listed in the model's `_keep_in_fp32_modules`. Precision-critical modules such as embedders, final projections, and modulation layers are good candidates to exclude:
 
 ```python
 import torch
 from diffusers import Flux2Transformer2DModel, NunchakuLiteQuantizationConfig
 
-model_id = "black-forest-labs/FLUX.2-klein-9B"
-with torch.device("meta"):
-    reference = Flux2Transformer2DModel.from_config(
-        Flux2Transformer2DModel.load_config(model_id, subfolder="transformer")
-    )
-targets = [
-    name
-    for name, module in reference.named_modules()
-    if isinstance(module, torch.nn.Linear)
-    and name.startswith(("transformer_blocks.", "single_transformer_blocks."))
-    and "norm" not in name
-]
-
 transformer = Flux2Transformer2DModel.from_pretrained(
-    model_id,
+    "black-forest-labs/FLUX.2-klein-9B",
     subfolder="transformer",
     quantization_config=NunchakuLiteQuantizationConfig(
-        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32, "targets": targets},
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
         pre_quantized=False,
+        modules_to_not_convert=["context_embedder", "proj_out", "norm", "modulation"],
     ),
     torch_dtype=torch.bfloat16,
     device_map="cuda",
 )
 ```
 
-Quantization happens per weight as the checkpoint streams in, so peak memory stays near the quantized model size. The result is identical to loading a checkpoint produced offline by a data-free SVDQuant exporter.
+An explicit `targets` list is still accepted for full control. Quantization happens per weight as the checkpoint streams in, so peak memory stays near the quantized model size. The result is identical to loading a checkpoint produced offline by a data-free SVDQuant exporter.
 
 ## Fused kernels
 
