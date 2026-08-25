@@ -32,6 +32,7 @@ from diffusers.hooks.faster_cache import FasterCacheBlockHook, FasterCacheDenois
 from diffusers.hooks.first_block_cache import FirstBlockCacheConfig
 from diffusers.hooks.mag_cache import MagCacheConfig
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
+from diffusers.hooks.resilphase_cache import ResilPhaseCacheConfig
 from diffusers.hooks.taylorseer_cache import TaylorSeerCacheConfig
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
@@ -2828,6 +2829,46 @@ class FirstBlockCacheTesterMixin:
             "FirstBlockCache outputs should not differ much."
         )
         assert np.allclose(original_image_slice, image_slice_fbc_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
+
+
+class ResilPhaseCacheTesterMixin:
+    resilphase_cache_config = ResilPhaseCacheConfig(cache_interval=2, warmup_steps=3, max_order=1)
+
+    def test_resilphase_cache_inference(self, expected_atol: float = 0.1):
+        device = "cpu"
+
+        def create_pipe():
+            torch.manual_seed(0)
+            components = self.get_dummy_components(num_layers=2)
+            pipe = self.pipeline_class(**components).to(device)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(device)
+            inputs["num_inference_steps"] = 4
+            return pipe(**inputs)[0]
+
+        pipe = create_pipe()
+        output = run_forward(pipe).flatten()
+        original_output_slice = np.concatenate((output[:8], output[-8:]))
+
+        pipe = create_pipe()
+        pipe.transformer.enable_cache(self.resilphase_cache_config)
+        output = run_forward(pipe).flatten()
+        cached_output_slice = np.concatenate((output[:8], output[-8:]))
+
+        pipe.transformer.disable_cache()
+        output = run_forward(pipe).flatten()
+        disabled_output_slice = np.concatenate((output[:8], output[-8:]))
+
+        assert np.allclose(original_output_slice, cached_output_slice, atol=expected_atol), (
+            "ResilPhase cache outputs should not differ much."
+        )
+        assert np.allclose(original_output_slice, disabled_output_slice, atol=1e-4), (
             "Outputs from normal inference and after disabling cache should not differ."
         )
 
