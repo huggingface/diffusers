@@ -12,6 +12,10 @@ on:
       - ".github/workflows/pr_tests.yml"
   workflow_dispatch:
     inputs:
+      pr_number:
+        description: "PR number to run the fetcher against (e.g. 13664). Leave empty to run against the branch this workflow was dispatched from."
+        type: string
+        default: ""
       force_full_suite:
         description: "Run the full test suite instead of fetcher selection"
         type: boolean
@@ -41,6 +45,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -61,6 +67,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -95,15 +103,36 @@ jobs:
     outputs:
       matrix: ${{ steps.set_matrix.outputs.matrix }}
     steps:
+    - name: Show dispatch inputs
+      if: ${{ github.event_name == 'workflow_dispatch' }}
+      run: |
+        if [ -n "${{ inputs.pr_number }}" ]; then
+          echo "Running fetcher against PR #${{ inputs.pr_number }} (https://github.com/${{ github.repository }}/pull/${{ inputs.pr_number }})"
+        else
+          echo "Running fetcher against dispatch ref: ${{ github.ref }}"
+        fi
+        echo "force_full_suite=${{ inputs.force_full_suite }}"
     - name: Checkout diffusers
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
+        ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
         fetch-depth: 0
     - name: Fetch refs/remotes/origin/main
       # `actions/checkout` only fetches the ref it checks out. The fetcher diffs HEAD against
       # `origin/main`, so explicitly fetch main and download its objects regardless of dispatch ref.
       run: |
         git -c safe.directory="$GITHUB_WORKSPACE" fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+    - name: Overlay fetcher script from dispatch branch
+      # TODO(DN6): remove once this fetcher is on `main`. Dispatching with `pr_number` checks out the
+      # PR's merge ref, which carries the PR's (old) `utils/tests_fetcher.py`. Overlay the dispatch
+      # branch's copy so the run exercises the fetcher under validation, not the PR's stale one.
+      if: ${{ inputs.pr_number != '' }}
+      env:
+        DISPATCH_REF: ${{ github.ref }}
+      run: |
+        git -c safe.directory="$GITHUB_WORKSPACE" fetch --depth=1 origin "$DISPATCH_REF"
+        git -c safe.directory="$GITHUB_WORKSPACE" checkout FETCH_HEAD -- utils/tests_fetcher.py
+        git -c safe.directory="$GITHUB_WORKSPACE" diff --stat HEAD -- utils/tests_fetcher.py || true
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
@@ -170,6 +199,7 @@ jobs:
     - name: Checkout diffusers
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
+        ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
         fetch-depth: 2
 
     - name: Install Dependencies
