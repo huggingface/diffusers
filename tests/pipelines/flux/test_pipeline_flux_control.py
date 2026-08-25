@@ -146,7 +146,7 @@ class TestFluxControlPipeline(FluxControlPipelineTesterConfig, PipelineTesterMix
     def test_fused_qkv_projections(self):
         pipe = self.get_pipeline().to(torch_device)
 
-        image_slice = self.run_pipe(pipe)[0, -3:, -3:, -1]
+        image_slice = self.run_pipe(pipe)[0, -1, -3:, -3:]
 
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
@@ -155,10 +155,10 @@ class TestFluxControlPipeline(FluxControlPipelineTesterConfig, PipelineTesterMix
             "Something wrong with the fused attention layers. Expected all the attention projections to be fused."
         )
 
-        image_slice_fused = self.run_pipe(pipe)[0, -3:, -3:, -1]
+        image_slice_fused = self.run_pipe(pipe)[0, -1, -3:, -3:]
 
         pipe.transformer.unfuse_qkv_projections()
-        image_slice_disabled = self.run_pipe(pipe)[0, -3:, -3:, -1]
+        image_slice_disabled = self.run_pipe(pipe)[0, -1, -3:, -3:]
 
         assert_tensors_close(
             image_slice_fused,
