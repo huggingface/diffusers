@@ -189,6 +189,21 @@ class TestLTX2DFRText2VideoModularPipelineFast(
         assert second["keyframes_latents"].shape[2] == DUMMY_NUM_SLOTS
         assert torch.isnan(second["videos"]).sum() == 0
 
+    def test_auto_duration_lands_on_the_segment_grid(self):
+        # The plan step pads a duration-head prediction onto the segment grid, so the two have to agree: the
+        # predicted length must itself be a length `resolve_canvas` accepts.
+        pipe = self.get_pipeline().to("cpu")
+
+        inputs = self.get_dummy_inputs()
+        inputs.pop("num_frames")
+        inputs["min_seconds"] = 0.5
+        inputs["max_seconds"] = 2.0
+        videos = pipe(**inputs, output="videos")
+
+        num_frames = videos.shape[1]
+        assert (num_frames - 1) % pipe.vae_temporal_compression_ratio == 0
+        assert 0 < num_frames <= round(2.0 * inputs["frame_rate"])
+
     def test_rejects_a_frame_count_off_the_latent_grid(self):
         pipe = self.get_pipeline().to("cpu")
 

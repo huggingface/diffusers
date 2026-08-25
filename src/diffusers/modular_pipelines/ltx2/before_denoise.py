@@ -1415,7 +1415,7 @@ class LTX2DFRPlanStep(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                required=True,
+                default=None,
                 description=(
                     "The number of frames the caller asked for, before the canvas is padded onto the segment grid. "
                     "Omit to auto-predict via the `duration_head` (see `LTX2AutoDurationStep`)."
@@ -1459,6 +1459,17 @@ class LTX2DFRPlanStep(ModularPipelineBlocks):
                 "`use_keyframes_abs_pos_embedding` (LTX-2.5 and later). Each slot costs a full latent frame of "
                 "tokens, so a checkpoint without the learned marker would spend that budget on tokens it cannot "
                 "interpret."
+            )
+        if components.transformer_temporal_patch_size != 1:
+            raise ValueError(
+                "DFR appends one latent frame of tokens per keyframe slot, which a temporal patch size above 1 "
+                f"cannot represent, but the transformer patchifies time by "
+                f"{components.transformer_temporal_patch_size}."
+            )
+        if block_state.num_frames is None:
+            raise ValueError(
+                "`num_frames` must be a concrete integer here. Pass `num_frames`, or use a blockset that runs "
+                "`LTX2AutoDurationStep` on a checkpoint shipping a `duration_head`."
             )
 
         block_state.requested_num_frames = block_state.num_frames

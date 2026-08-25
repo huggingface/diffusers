@@ -208,12 +208,8 @@ class LTX2DFRDecoderStep(SequentialPipelineBlocks):
       Inputs:
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
-          base_token_count (`int`):
-              Number of generated-video tokens, i.e. the sequence length before appended tokens.
           slot_token_slice (`slice`):
               Slice of the packed sequence holding the generated keyframe slot tokens.
-          num_frames (`int`):
-              The padded canvas frame count the sequence was generated on.
           requested_num_frames (`int`):
               The frame count the caller asked for, which the canvas is trimmed back to.
           height (`int`, *optional*, defaults to 512):
@@ -325,7 +321,7 @@ class LTX2DFRBlocks(SequentialPipelineBlocks):
               Upper bound on the auto-predicted duration. Must be strictly greater than `min_seconds`.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
-          num_frames (`int`):
+          num_frames (`int`, *optional*):
               The number of frames the caller asked for, before the canvas is padded onto the segment grid. Omit to
               auto-predict via the `duration_head` (see `LTX2AutoDurationStep`).
           height (`int`, *optional*, defaults to 512):
