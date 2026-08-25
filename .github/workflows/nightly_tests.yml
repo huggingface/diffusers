@@ -19,6 +19,11 @@ env:
   PIPELINE_USAGE_CUTOFF: 0
   SLACK_API_TOKEN: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
   CONSOLIDATED_REPORT_PATH: consolidated_test_report.md
+  # Force version overrides across every `uv pip install` in this workflow via UV_OVERRIDE:
+  #   - torch/torchvision/torchaudio pinned to the image's baked-in set so `-U` installs
+  #     (e.g. accelerate@main) can't bump torch and break torchvision's C++ ABI
+  #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
+  UV_OVERRIDE: /tmp/uv-overrides.txt
 
 jobs:
   setup_torch_cuda_pipeline_matrix:
@@ -74,14 +79,14 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
+          printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           uv pip install pytest-reportlog
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Pipeline CUDA Test
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -89,7 +94,7 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-             -k "not Flax and not Onnx" \
+             -k "not Onnx" \
             --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
             --report-log=tests_pipeline_${{ matrix.module }}_cuda.log \
             tests/pipelines/${{ matrix.module }}
@@ -119,7 +124,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        module: [models, schedulers, lora, others, single_file, examples]
+        module: [models, schedulers, hooks, lora, others, single_file, examples]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -128,14 +133,14 @@ jobs:
 
     - name: Install dependencies
       run: |
+        printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
         uv pip install pytest-reportlog
     - name: Environment
-      run: python utils/print_env.py
+      run: diffusers-cli env
 
     - name: Run nightly PyTorch CUDA tests for non-pipeline modules
       if: ${{ matrix.module != 'examples'}}
@@ -145,7 +150,7 @@ jobs:
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -k "not Flax and not Onnx" \
+          -k "not Onnx" \
           --make-reports=tests_torch_${{ matrix.module }}_cuda \
           --report-log=tests_torch_${{ matrix.module }}_cuda.log \
           tests/${{ matrix.module }}
@@ -196,12 +201,12 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
+        printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality,training]"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
     - name: Run torch compile tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -238,15 +243,15 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
+          printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           uv pip install pytest-reportlog
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Selected Torch CUDA Test on big GPU
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -289,15 +294,15 @@ jobs:
 
       - name: Install dependencies
         run: |
+          printf 'torch==2.6.0\ntorchvision==0.21.0\ntorchaudio==2.6.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
 
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
 
       - name: Run PyTorch CUDA tests
         env:
@@ -306,7 +311,7 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-            -k "not Flax and not Onnx" \
+            -k "not Onnx" \
             --make-reports=tests_torch_minimum_version_cuda \
             tests/models/test_modeling_common.py \
             tests/pipelines/test_pipelines_common.py \
@@ -337,19 +342,19 @@ jobs:
       matrix:
         config:
           - backend: "bitsandbytes"
-            test_location: "bnb"
+            marker: "bitsandbytes"
             additional_deps: ["peft"]
           - backend: "gguf"
-            test_location: "gguf"
+            marker: "gguf"
             additional_deps: ["peft", "kernels"]
           - backend: "torchao"
-            test_location: "torchao"
-            additional_deps: []
+            marker: "torchao"
+            additional_deps: ["mslk"]
           - backend: "optimum_quanto"
-            test_location: "quanto"
+            marker: "quanto"
             additional_deps: []
           - backend: "nvidia_modelopt"
-            test_location: "modelopt"
+            marker: "modelopt"
             additional_deps: []
     runs-on:
       group: aws-g6e-xlarge-plus
@@ -365,6 +370,7 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
+          printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip install -U ${{ matrix.config.backend }}
           if [ "${{ join(matrix.config.additional_deps, ' ') }}" != "" ]; then
@@ -372,10 +378,9 @@ jobs:
           fi
           uv pip install pytest-reportlog
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: ${{ matrix.config.backend }} quantization tests on GPU
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -384,9 +389,12 @@ jobs:
           BIG_GPU_MEMORY: 40
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -m "${{ matrix.config.marker }}" \
             --make-reports=tests_${{ matrix.config.backend }}_torch_cuda \
             --report-log=tests_${{ matrix.config.backend }}_torch_cuda.log \
-            tests/quantization/${{ matrix.config.test_location }}
+            tests/models \
+            tests/quantization \
+            tests/pipelines/testing_utils/quantization.py
       - name: Failure short reports
         if: ${{ failure() }}
         run: |
@@ -418,14 +426,14 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
+          printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip install -U bitsandbytes optimum_quanto
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
           uv pip install pytest-reportlog
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Pipeline-level quantization tests on GPU
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -434,9 +442,10 @@ jobs:
           BIG_GPU_MEMORY: 40
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -k "TestPipelineQuantization" \
             --make-reports=tests_pipeline_level_quant_torch_cuda \
             --report-log=tests_pipeline_level_quant_torch_cuda.log \
-            tests/quantization/test_pipeline_level_quantization.py
+            tests/pipelines/testing_utils/quantization.py
       - name: Failure short reports
         if: ${{ failure() }}
         run: |
@@ -460,7 +469,6 @@ jobs:
       run_nightly_pipeline_level_quantization_tests,
       # run_nightly_onnx_tests,
       torch_minimum_version_cuda_tests,
-      # run_flax_tpu_tests
     ]
     if: always()
     runs-on:
@@ -541,7 +549,7 @@ jobs:
 #      - name: Environment
 #        shell: arch -arch arm64 bash {0}
 #        run: |
-#          ${CONDA_RUN} python utils/print_env.py
+#          ${CONDA_RUN} diffusers-cli env
 #      - name: Run nightly PyTorch tests on M1 (MPS)
 #        shell: arch -arch arm64 bash {0}
 #        env:
@@ -597,7 +605,7 @@ jobs:
 #      - name: Environment
 #        shell: arch -arch arm64 bash {0}
 #        run: |
-#          ${CONDA_RUN} python utils/print_env.py
+#          ${CONDA_RUN} diffusers-cli env
 #      - name: Run nightly PyTorch tests on M1 (MPS)
 #        shell: arch -arch arm64 bash {0}
 #        env:

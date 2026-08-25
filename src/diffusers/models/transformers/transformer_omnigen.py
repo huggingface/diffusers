@@ -415,6 +415,34 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
         position_ids: torch.Tensor,
         return_dict: bool = True,
     ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
+        """
+        The [`OmniGenTransformer2DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, in_channels, height, width)`):
+                Input `hidden_states`.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            input_ids (`torch.Tensor`):
+                Multimodal text token ids used as conditioning.
+            input_img_latents (`list` of `torch.Tensor`):
+                List of latents for input images used as conditioning.
+            input_image_sizes (`dict` of `int` to `list` of `int`):
+                Mapping from sample index to the positions where input image embeddings should be placed in the
+                conditioning sequence.
+            attention_mask (`torch.Tensor`):
+                Attention mask for the joint multimodal sequence.
+            position_ids (`torch.Tensor`):
+                Position ids used to compute the positional embeddings.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise
+                a plain `tuple` is returned.
+        """
         batch_size, num_channels, height, width = hidden_states.shape
         p = self.config.patch_size
         post_patch_height, post_patch_width = height // p, width // p

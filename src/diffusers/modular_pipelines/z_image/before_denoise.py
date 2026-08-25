@@ -80,9 +80,7 @@ def repeat_tensor_to_batch_size(
     elif input_tensor.shape[0] == batch_size:
         repeat_by = num_images_per_prompt
     else:
-        raise ValueError(
-            f"`{input_name}` must have have batch size 1 or {batch_size}, but got {input_tensor.shape[0]}"
-        )
+        raise ValueError(f"`{input_name}` must have batch size 1 or {batch_size}, but got {input_tensor.shape[0]}")
 
     # expand the tensor to match the batch_size * num_images_per_prompt
     input_tensor = input_tensor.repeat_interleave(repeat_by, dim=0)
@@ -183,6 +181,11 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
+
+
+# Copied from diffusers.pipelines.z_image.pipeline_z_image.get_default_z_image_sigmas
+def get_default_z_image_sigmas(num_inference_steps: int) -> list[float]:
+    return torch.linspace(1.0, 1 / num_inference_steps, num_inference_steps).tolist()
 
 
 class ZImageTextInputStep(ModularPipelineBlocks):
@@ -508,7 +511,7 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("latents", required=True),
-            InputParam("num_inference_steps", default=9),
+            InputParam("num_inference_steps", default=8),
             InputParam("sigmas"),
         ]
 
@@ -535,13 +538,15 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
             base_shift=components.scheduler.config.get("base_shift", 0.5),
             max_shift=components.scheduler.config.get("max_shift", 1.15),
         )
-        components.scheduler.sigma_min = 0.0
+        sigmas = block_state.sigmas
+        if sigmas is None:
+            sigmas = get_default_z_image_sigmas(block_state.num_inference_steps)
 
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
             components.scheduler,
             block_state.num_inference_steps,
             device,
-            sigmas=block_state.sigmas,
+            sigmas=sigmas,
             mu=mu,
         )
 

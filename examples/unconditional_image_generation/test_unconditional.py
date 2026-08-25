@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class Unconditional(ExamplesTestsAccelerate):
+class TestUnconditional(ExamplesTestsAccelerate):
     def test_train_unconditional(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -49,8 +49,8 @@ class Unconditional(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args, return_stdout=True)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+            assert os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors"))
+            assert os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json"))
 
     def test_unconditional_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -73,11 +73,7 @@ class Unconditional(ExamplesTestsAccelerate):
             run_command(self._launch_args + initial_run_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                # checkpoint-2 should have been deleted
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_unconditional_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -99,10 +95,11 @@ class Unconditional(ExamplesTestsAccelerate):
             run_command(self._launch_args + initial_run_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4", "checkpoint-6"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {
+                "checkpoint-2",
+                "checkpoint-4",
+                "checkpoint-6",
+            }
 
             resume_run_args = f"""
                 examples/unconditional_image_generation/train_unconditional.py
@@ -124,7 +121,4 @@ class Unconditional(ExamplesTestsAccelerate):
             run_command(self._launch_args + resume_run_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-10", "checkpoint-12"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-10", "checkpoint-12"}

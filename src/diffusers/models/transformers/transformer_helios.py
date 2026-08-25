@@ -337,7 +337,11 @@ class HeliosRotaryPosEmbed(nn.Module):
 
     @torch.no_grad()
     def get_frequency_batched(self, freqs_base, pos):
-        freqs = torch.einsum("d,bthw->dbthw", freqs_base, pos)
+        # Disable autocast so the position-grid einsum runs in float32: under an ambient autocast it would run
+        # in bfloat16, which cannot represent consecutive integers past 256, so positions beyond that point
+        # would collapse onto the same frequency and degrade the rotary embedding.
+        with torch.autocast(device_type=pos.device.type, enabled=False):
+            freqs = torch.einsum("d,bthw->dbthw", freqs_base, pos)
         freqs = freqs.repeat_interleave(2, dim=0)
         return freqs.cos(), freqs.sin()
 
@@ -671,6 +675,42 @@ class HeliosTransformer3DModel(
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
+        """
+        The [`HeliosTransformer3DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, num_channels, num_frames, height, width)`):
+                Input `hidden_states`.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            indices_hidden_states (`torch.Tensor`, *optional*):
+                Frame indices for `hidden_states` used to compute the rotary positional embeddings.
+            indices_latents_history_short (`torch.Tensor`, *optional*):
+                Frame indices for the short history latents.
+            indices_latents_history_mid (`torch.Tensor`, *optional*):
+                Frame indices for the mid history latents.
+            indices_latents_history_long (`torch.Tensor`, *optional*):
+                Frame indices for the long history latents.
+            latents_history_short (`torch.Tensor`, *optional*):
+                Short history latents conditioning.
+            latents_history_mid (`torch.Tensor`, *optional*):
+                Mid history latents conditioning.
+            latents_history_long (`torch.Tensor`, *optional*):
+                Long history latents conditioning.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         # 1. Input
         batch_size = hidden_states.shape[0]
         p_t, p_h, p_w = self.config.patch_size

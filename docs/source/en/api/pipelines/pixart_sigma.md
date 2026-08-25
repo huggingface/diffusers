@@ -32,7 +32,7 @@ Some notes about this pipeline:
 * It shows that text-to-image models can grow from a weak model to a stronger one through several improvements (VAEs, datasets, and so on.)
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 > [!TIP]
 > You can further improve generation quality by passing the generated image from [`PixArtSigmaPipeline`] to the [SDXL refiner](./stable_diffusion/stable_diffusion_xl#base-to-refiner-model) model.
@@ -96,7 +96,7 @@ Then compute the latents with the prompt embeddings as inputs:
 pipe = PixArtSigmaPipeline.from_pretrained(
     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
     text_encoder=None,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 
 latents = pipe(

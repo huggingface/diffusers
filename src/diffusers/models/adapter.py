@@ -84,6 +84,11 @@ class MultiAdapter(ModelMixin):
             adapter_weights (`list[float]`, *optional*, defaults to None):
                 A list of floats representing the weights which will be multiplied by each adapter's output before
                 summing them together. If `None`, equal weights will be used for all adapters.
+
+        Returns:
+            `list[torch.Tensor]`:
+                A list of feature tensors, one per scale, obtained by summing the per-scale features of each adapter
+                weighted by `adapter_weights`.
         """
         if adapter_weights is None:
             adapter_weights = torch.tensor([1 / self.num_adapter] * self.num_adapter)
@@ -161,7 +166,7 @@ class MultiAdapter(ModelMixin):
             pretrained_model_path (`os.PathLike`):
                 A path to a *directory* containing model weights saved using
                 [`~diffusers.models.adapter.MultiAdapter.save_pretrained`], e.g., `./my_model_directory/adapter`.
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model under this dtype.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
@@ -182,8 +187,7 @@ class MultiAdapter(ModelMixin):
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
             variant (`str`, *optional*):
-                If specified, load weights from a `variant` file (*e.g.* pytorch_model.<variant>.bin). `variant` will
-                be ignored when using `from_flax`.
+                If specified, load weights from a `variant` file (*e.g.* pytorch_model.<variant>.bin).
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If `None`, the `safetensors` weights will be downloaded if available **and** if`safetensors` library is
                 installed. If `True`, the model will be forcibly loaded from`safetensors` weights. If `False`,
@@ -269,6 +273,15 @@ class T2IAdapter(ModelMixin, ConfigMixin):
         each representing information extracted at a different scale from the input. The length of the list is
         determined by the number of downsample blocks in the Adapter, as specified by the `channels` and
         `num_res_blocks` parameters during initialization.
+
+        Args:
+            x (`torch.Tensor`):
+                The input tensor to process through the adapter model.
+
+        Returns:
+            `list[torch.Tensor]`:
+                A list of feature tensors, each representing information extracted at a different scale from the input.
+                The length of the list equals the number of downsample blocks in the adapter.
         """
         return self.adapter(x)
 

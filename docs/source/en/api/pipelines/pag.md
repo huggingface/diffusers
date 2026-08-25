@@ -53,7 +53,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     enable_pag=True,
     pag_applied_layers=["mid"],
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
 ```
@@ -61,10 +61,10 @@ pipeline.enable_model_cpu_offload()
 > [!TIP]
 > The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. Additionally, you can use `set_pag_applied_layers` method to update these layers after the pipeline has been created. Check out the [pag_applied_layers](#pag_applied_layers) section to learn more about applying PAG to other layers.
 
-If you already have a pipeline created and loaded, you can enable PAG on it using the `from_pipe` API with the `enable_pag` flag. Internally, a PAG pipeline is created based on the pipeline and task you specified. In the example below, since we used `AutoPipelineForText2Image` and passed a `StableDiffusionXLPipeline`, a `StableDiffusionXLPAGPipeline` is created accordingly. Note that this does not require additional memory, and you will have both `StableDiffusionXLPipeline` and  `StableDiffusionXLPAGPipeline` loaded and ready to use. You can read more about the `from_pipe` API and how to reuse pipelines in diffuser [here](https://huggingface.co/docs/diffusers/using-diffusers/loading#reuse-a-pipeline).
+If you already have a pipeline created and loaded, you can enable PAG on it using the `from_pipe` API with the `enable_pag` flag. Internally, a PAG pipeline is created based on the pipeline and task you specified. In the example below, since we used `AutoPipelineForText2Image` and passed a `StableDiffusionXLPipeline`, a `StableDiffusionXLPAGPipeline` is created accordingly. Note that this does not require additional memory, and you will have both `StableDiffusionXLPipeline` and  `StableDiffusionXLPAGPipeline` loaded and ready to use. You can read more about the `from_pipe` API and how to reuse pipelines in diffuser [here](https://huggingface.co/docs/diffusers/using-diffusers/loading#reusing-models-in-multiple-pipelines).
 
 ```py
-pipeline_sdxl = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipeline_sdxl = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16)
 pipeline = AutoPipelineForText2Image.from_pipe(pipeline_sdxl, enable_pag=True)
 ```
 
@@ -109,7 +109,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     enable_pag=True,
     pag_applied_layers=["mid"],
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
 ```
@@ -117,21 +117,21 @@ pipeline.enable_model_cpu_offload()
 If you already have a image-to-image pipeline and would like enable PAG on it, you can run this
 
 ```py
-pipeline_t2i = AutoPipelineForImage2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipeline_t2i = AutoPipelineForImage2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16)
 pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_t2i, enable_pag=True)
 ```
 
 It is also very easy to directly switch from a text-to-image pipeline to PAG enabled image-to-image pipeline
 
 ```py
-pipeline_pag = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipeline_pag = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16)
 pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_t2i, enable_pag=True)
 ```
 
 If you have a PAG enabled text-to-image pipeline, you can directly switch to a image-to-image pipeline with PAG still enabled
 
 ```py
-pipeline_pag = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", enable_pag=True, torch_dtype=torch.float16)
+pipeline_pag = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", enable_pag=True, dtype=torch.float16)
 pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_t2i)
 ```
 
@@ -166,7 +166,7 @@ import torch
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     enable_pag=True,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
 ```
@@ -174,14 +174,14 @@ pipeline.enable_model_cpu_offload()
 You can enable PAG on an existing inpainting pipeline like this
 
 ```py
-pipeline_inpaint = AutoPipelineForInpainting.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipeline_inpaint = AutoPipelineForInpainting.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16)
 pipeline = AutoPipelineForInpainting.from_pipe(pipeline_inpaint, enable_pag=True)
 ```
 
 This still works when your pipeline has a different task:
 
 ```py
-pipeline_t2i = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipeline_t2i = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16)
 pipeline = AutoPipelineForInpaiting.from_pipe(pipeline_t2i, enable_pag=True)
 ```
 
@@ -223,7 +223,7 @@ from diffusers import AutoPipelineForText2Image, ControlNetModel
 import torch
 
 controlnet = ControlNetModel.from_pretrained(
-    "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
+    "diffusers/controlnet-canny-sdxl-1.0", dtype=torch.float16
 )
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
@@ -231,7 +231,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     controlnet=controlnet,
     enable_pag=True,
     pag_applied_layers="mid",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
 ```
@@ -285,14 +285,14 @@ import torch
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "h94/IP-Adapter",
     subfolder="models/image_encoder",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     image_encoder=image_encoder,
     enable_pag=True,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter-plus_sdxl_vit-h.bin")

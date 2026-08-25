@@ -792,6 +792,21 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
         return_dict: bool = True,
         generator: torch.Generator | None = None,
     ) -> DecoderOutput | torch.Tensor:
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the posterior.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+
+        Returns:
+            [`DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`DecoderOutput`] is returned, otherwise a plain `tuple` is returned.
+        """
         posterior = self.encode(sample).latent_dist
         if sample_posterior:
             z = posterior.sample(generator=generator)

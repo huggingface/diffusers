@@ -28,9 +28,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
 RUN python3 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
     python3 -m uv pip install --no-cache-dir \
-        torch \
-        torchvision \
-        torchaudio\
+        torch==2.10.0 \
+        torchvision==0.25.0 \
+        torchaudio==2.10.0 \
         onnxruntime \
         --extra-index-url https://download.pytorch.org/whl/cpu && \
     python3 -m uv pip install --no-cache-dir \

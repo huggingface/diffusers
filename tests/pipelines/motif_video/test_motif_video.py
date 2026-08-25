@@ -51,7 +51,6 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
     test_xformers_attention = False
-    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -142,3 +141,7 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generated_video = video[0]
 
         self.assertEqual(generated_video.shape, (9, 16, 16, 3))
+
+    def test_save_load_float16(self):
+        # T5Gemma2Encoder rebuilds non-persistent RoPE buffers after save/load, which causes small fp16 drift.
+        super().test_save_load_float16(expected_max_diff=5e-2)

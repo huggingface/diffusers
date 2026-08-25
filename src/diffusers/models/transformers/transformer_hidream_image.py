@@ -9,7 +9,7 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.modeling_outputs import Transformer2DModelOutput
 from ...models.modeling_utils import ModelMixin
 from ...utils import apply_lora_scale, deprecate, logging
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
 from ..attention import Attention
 from ..embeddings import TimestepEmbedding, Timesteps
 
@@ -95,10 +95,7 @@ class HiDreamImagePatchEmbed(nn.Module):
 def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     assert dim % 2 == 0, "The dimension must be even."
 
-    is_mps = pos.device.type == "mps"
-    is_npu = pos.device.type == "npu"
-
-    dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+    dtype = maybe_adjust_dtype_for_device(torch.float64, pos.device)
 
     scale = torch.arange(0, dim, 2, dtype=dtype, device=pos.device) / dim
     omega = 1.0 / (theta**scale)
@@ -788,6 +785,38 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         return_dict: bool = True,
         **kwargs,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
+        """
+        The [`HiDreamImageTransformer2DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, in_channels, height, width)` or `(batch_size, patch_height * patch_width, patch_size * patch_size * channels)`):
+                Input `hidden_states`.
+            timesteps (`torch.LongTensor`):
+                Used to indicate denoising step.
+            encoder_hidden_states_t5 (`torch.Tensor`):
+                Conditional embeddings computed from the T5 text encoder.
+            encoder_hidden_states_llama3 (`torch.Tensor`):
+                Conditional embeddings computed from the Llama3 text encoder.
+            pooled_embeds (`torch.Tensor`):
+                Pooled text embeddings used for additional conditioning.
+            img_ids (`torch.Tensor`, *optional*):
+                Image position ids for the patched hidden states.
+            img_sizes (`list` of `tuple` of `int`, *optional*):
+                Per-sample patch grid sizes used to unpatchify the output.
+            hidden_states_masks (`torch.Tensor`, *optional*):
+                Mask over patched `hidden_states`.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
 
         if encoder_hidden_states is not None:

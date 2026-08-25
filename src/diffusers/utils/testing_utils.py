@@ -28,14 +28,13 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
-from .constants import DIFFUSERS_REQUEST_TIMEOUT
+from .constants import DIFFUSERS_REQUEST_TIMEOUT, USE_PEFT_BACKEND
 from .deprecation_utils import deprecate
 from .import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
     is_bitsandbytes_available,
     is_compel_available,
-    is_flax_available,
     is_gguf_available,
     is_kernels_available,
     is_note_seq_available,
@@ -44,8 +43,10 @@ from .import_utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_peft_available,
+    is_sdnq_available,
     is_timm_available,
     is_torch_available,
+    is_torch_neuronx_available,
     is_torch_version,
     is_torchao_available,
     is_torchsde_available,
@@ -74,14 +75,6 @@ deprecate(
     "diffusers.utils.testing_utils is deprecated and will be removed in a future version. "
     "Determinism and device backend utilities have been moved to `diffusers.utils.torch_utils`. ",
 )
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
-_required_transformers_version = is_transformers_available() and version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
@@ -113,6 +106,8 @@ if is_torch_available():
             torch_device = "cuda"
         elif torch.xpu.is_available():
             torch_device = "xpu"
+        elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+            torch_device = torch.neuron.current_device()
         else:
             torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(
@@ -467,13 +462,6 @@ def skip_mps(test_case):
     return unittest.skipUnless(torch_device != "mps", "test requires non 'mps' device")(test_case)
 
 
-def require_flax(test_case):
-    """
-    Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
-    """
-    return unittest.skipUnless(is_flax_available(), "test requires JAX & Flax")(test_case)
-
-
 def require_compel(test_case):
     """
     Decorator marking a test that requires compel: https://github.com/damian0815/compel. These tests are skipped when
@@ -538,6 +526,13 @@ def require_quanto(test_case):
     Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
     """
     return unittest.skipUnless(is_optimum_quanto_available(), "test requires quanto")(test_case)
+
+
+def require_sdnq(test_case):
+    """
+    Decorator marking a test that requires sdnq. These tests are skipped when sdnq isn't installed.
+    """
+    return unittest.skipUnless(is_sdnq_available(), "test requires sdnq")(test_case)
 
 
 def require_accelerate(test_case):
@@ -645,7 +640,7 @@ def require_torchao_version_greater_or_equal(torchao_version):
 def require_modelopt_version_greater_or_equal(modelopt_version):
     def decorator(test_case):
         correct_nvidia_modelopt_version = is_nvidia_modelopt_available() and version.parse(
-            version.parse(importlib.metadata.version("modelopt")).base_version
+            version.parse(importlib.metadata.version("nvidia-modelopt")).base_version
         ) >= version.parse(modelopt_version)
         return unittest.skipUnless(
             correct_nvidia_modelopt_version, f"Test requires modelopt with version greater than {modelopt_version}."

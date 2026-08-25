@@ -44,6 +44,39 @@ class MultiControlNetModel(ModelMixin):
         guess_mode: bool = False,
         return_dict: bool = True,
     ) -> ControlNetOutput | tuple:
+        r"""
+        Args:
+            sample (`torch.Tensor`):
+                The noisy input tensor.
+            timestep (`torch.Tensor`, `float`, or `int`):
+                The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
+                The encoder hidden states.
+            controlnet_cond (`list` of `torch.Tensor`):
+                A list of conditional input tensors, one per ControlNet.
+            conditioning_scale (`list` of `float`):
+                A list of scale factors applied to the ControlNet outputs.
+            class_labels (`torch.Tensor`, *optional*):
+                Optional class labels for conditioning.
+            timestep_cond (`torch.Tensor`, *optional*):
+                Additional conditional embeddings for timestep.
+            attention_mask (`torch.Tensor`, *optional*):
+                Attention mask applied to `encoder_hidden_states`.
+            added_cond_kwargs (`dict`, *optional*):
+                Additional conditions for the Stable Diffusion XL UNet.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
+            guess_mode (`bool`, *optional*, defaults to `False`):
+                In this mode, the ControlNet encoder tries its best to recognize the input content even if you remove
+                all prompts.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`ControlNetOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.controlnets.controlnet.ControlNetOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.controlnets.controlnet.ControlNetOutput`] is returned, otherwise
+                a plain `tuple` is returned.
+        """
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             down_samples, mid_sample = controlnet(
                 sample=sample,
@@ -130,7 +163,7 @@ class MultiControlNetModel(ModelMixin):
                 A path to a *directory* containing model weights saved using
                 [`~models.controlnets.multicontrolnet.MultiControlNetModel.save_pretrained`], e.g.,
                 `./my_model_directory/controlnet`.
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model under this dtype.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
@@ -151,8 +184,7 @@ class MultiControlNetModel(ModelMixin):
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
             variant (`str`, *optional*):
-                If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
-                ignored when using `from_flax`.
+                If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the `safetensors` weights will be downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model will be forcibly loaded from

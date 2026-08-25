@@ -28,14 +28,14 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
-from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT, USE_PEFT_BACKEND
 from diffusers.utils.import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
+    is_auto_round_available,
     is_bitsandbytes_available,
     is_compel_available,
     is_flashpack_available,
-    is_flax_available,
     is_gguf_available,
     is_kernels_available,
     is_note_seq_available,
@@ -44,8 +44,10 @@ from diffusers.utils.import_utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_peft_available,
+    is_sdnq_available,
     is_timm_available,
     is_torch_available,
+    is_torch_neuronx_available,
     is_torch_version,
     is_torchao_available,
     is_torchsde_available,
@@ -71,14 +73,6 @@ global_rng = random.Random()
 
 logger = get_logger(__name__)
 
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
-_required_transformers_version = is_transformers_available() and version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
@@ -110,6 +104,8 @@ if is_torch_available():
             torch_device = "cuda"
         elif torch.xpu.is_available():
             torch_device = "xpu"
+        elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+            torch_device = torch.neuron.current_device()
         else:
             torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(
@@ -142,8 +138,8 @@ def assert_tensors_close(
     """
     Assert that two tensors are close within tolerance.
 
-    Uses the same formula as torch.allclose: |actual - expected| <= atol + rtol * |expected|
-    Provides concise, actionable error messages without dumping full tensors.
+    Uses the same formula as torch.allclose: |actual - expected| <= atol + rtol * |expected| Provides concise,
+    actionable error messages without dumping full tensors.
 
     Args:
         actual: The actual tensor from the computation.
@@ -160,6 +156,17 @@ def assert_tensors_close(
     """
     if not is_torch_available():
         raise ValueError("PyTorch needs to be installed to use this function.")
+
+    # Some models (e.g. Z-Image, Cosmos ControlNet) return a list/tuple of tensors as their output. Compare these
+    # element-wise so the same helper works regardless of whether the output is a single tensor or a sequence.
+    if isinstance(actual, (list, tuple)) or isinstance(expected, (list, tuple)):
+        if not (isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple))):
+            raise AssertionError(f"{msg} Type mismatch: actual {type(actual)} vs expected {type(expected)}")
+        if len(actual) != len(expected):
+            raise AssertionError(f"{msg} Length mismatch: actual {len(actual)} vs expected {len(expected)}")
+        for i, (a, e) in enumerate(zip(actual, expected)):
+            assert_tensors_close(a, e, atol=atol, rtol=rtol, msg=f"{msg} [element {i}]")
+        return
 
     if actual.shape != expected.shape:
         raise AssertionError(f"{msg} Shape mismatch: actual {actual.shape} vs expected {expected.shape}")
@@ -337,8 +344,7 @@ def nightly(test_case):
 def is_torch_compile(test_case):
     """
     Decorator marking a test as a torch.compile test. These tests can be filtered using:
-        pytest -m "not compile" to skip
-        pytest -m compile to run only these tests
+        pytest -m "not compile" to skip pytest -m compile to run only these tests
     """
     return pytest.mark.compile(test_case)
 
@@ -346,8 +352,7 @@ def is_torch_compile(test_case):
 def is_single_file(test_case):
     """
     Decorator marking a test as a single file loading test. These tests can be filtered using:
-        pytest -m "not single_file" to skip
-        pytest -m single_file to run only these tests
+        pytest -m "not single_file" to skip pytest -m single_file to run only these tests
     """
     return pytest.mark.single_file(test_case)
 
@@ -355,8 +360,7 @@ def is_single_file(test_case):
 def is_lora(test_case):
     """
     Decorator marking a test as a LoRA test. These tests can be filtered using:
-        pytest -m "not lora" to skip
-        pytest -m lora to run only these tests
+        pytest -m "not lora" to skip pytest -m lora to run only these tests
     """
     return pytest.mark.lora(test_case)
 
@@ -364,8 +368,7 @@ def is_lora(test_case):
 def is_ip_adapter(test_case):
     """
     Decorator marking a test as an IP Adapter test. These tests can be filtered using:
-        pytest -m "not ip_adapter" to skip
-        pytest -m ip_adapter to run only these tests
+        pytest -m "not ip_adapter" to skip pytest -m ip_adapter to run only these tests
     """
     return pytest.mark.ip_adapter(test_case)
 
@@ -373,8 +376,7 @@ def is_ip_adapter(test_case):
 def is_training(test_case):
     """
     Decorator marking a test as a training test. These tests can be filtered using:
-        pytest -m "not training" to skip
-        pytest -m training to run only these tests
+        pytest -m "not training" to skip pytest -m training to run only these tests
     """
     return pytest.mark.training(test_case)
 
@@ -382,8 +384,7 @@ def is_training(test_case):
 def is_attention(test_case):
     """
     Decorator marking a test as an attention test. These tests can be filtered using:
-        pytest -m "not attention" to skip
-        pytest -m attention to run only these tests
+        pytest -m "not attention" to skip pytest -m attention to run only these tests
     """
     return pytest.mark.attention(test_case)
 
@@ -391,8 +392,7 @@ def is_attention(test_case):
 def is_memory(test_case):
     """
     Decorator marking a test as a memory optimization test. These tests can be filtered using:
-        pytest -m "not memory" to skip
-        pytest -m memory to run only these tests
+        pytest -m "not memory" to skip pytest -m memory to run only these tests
     """
     return pytest.mark.memory(test_case)
 
@@ -400,8 +400,7 @@ def is_memory(test_case):
 def is_cpu_offload(test_case):
     """
     Decorator marking a test as a CPU offload test. These tests can be filtered using:
-        pytest -m "not cpu_offload" to skip
-        pytest -m cpu_offload to run only these tests
+        pytest -m "not cpu_offload" to skip pytest -m cpu_offload to run only these tests
     """
     return pytest.mark.cpu_offload(test_case)
 
@@ -409,8 +408,7 @@ def is_cpu_offload(test_case):
 def is_group_offload(test_case):
     """
     Decorator marking a test as a group offload test. These tests can be filtered using:
-        pytest -m "not group_offload" to skip
-        pytest -m group_offload to run only these tests
+        pytest -m "not group_offload" to skip pytest -m group_offload to run only these tests
     """
     return pytest.mark.group_offload(test_case)
 
@@ -418,8 +416,7 @@ def is_group_offload(test_case):
 def is_quantization(test_case):
     """
     Decorator marking a test as a quantization test. These tests can be filtered using:
-        pytest -m "not quantization" to skip
-        pytest -m quantization to run only these tests
+        pytest -m "not quantization" to skip pytest -m quantization to run only these tests
     """
     return pytest.mark.quantization(test_case)
 
@@ -427,8 +424,7 @@ def is_quantization(test_case):
 def is_bitsandbytes(test_case):
     """
     Decorator marking a test as a BitsAndBytes quantization test. These tests can be filtered using:
-        pytest -m "not bitsandbytes" to skip
-        pytest -m bitsandbytes to run only these tests
+        pytest -m "not bitsandbytes" to skip pytest -m bitsandbytes to run only these tests
     """
     return pytest.mark.bitsandbytes(test_case)
 
@@ -436,8 +432,7 @@ def is_bitsandbytes(test_case):
 def is_quanto(test_case):
     """
     Decorator marking a test as a Quanto quantization test. These tests can be filtered using:
-        pytest -m "not quanto" to skip
-        pytest -m quanto to run only these tests
+        pytest -m "not quanto" to skip pytest -m quanto to run only these tests
     """
     return pytest.mark.quanto(test_case)
 
@@ -445,8 +440,7 @@ def is_quanto(test_case):
 def is_torchao(test_case):
     """
     Decorator marking a test as a TorchAO quantization test. These tests can be filtered using:
-        pytest -m "not torchao" to skip
-        pytest -m torchao to run only these tests
+        pytest -m "not torchao" to skip pytest -m torchao to run only these tests
     """
     return pytest.mark.torchao(test_case)
 
@@ -454,35 +448,56 @@ def is_torchao(test_case):
 def is_gguf(test_case):
     """
     Decorator marking a test as a GGUF quantization test. These tests can be filtered using:
-        pytest -m "not gguf" to skip
-        pytest -m gguf to run only these tests
+        pytest -m "not gguf" to skip pytest -m gguf to run only these tests
     """
     return pytest.mark.gguf(test_case)
+
+
+def is_autoround(test_case):
+    """
+    Decorator marking a test as an AutoRound quantization test. These tests can be filtered using:
+        pytest -m "not autoround" to skip
+        pytest -m autoround to run only these tests
+    """
+    return pytest.mark.autoround(test_case)
 
 
 def is_modelopt(test_case):
     """
     Decorator marking a test as a NVIDIA ModelOpt quantization test. These tests can be filtered using:
-        pytest -m "not modelopt" to skip
-        pytest -m modelopt to run only these tests
+        pytest -m "not modelopt" to skip pytest -m modelopt to run only these tests
     """
     return pytest.mark.modelopt(test_case)
+
+
+def is_sdnq(test_case):
+    """
+    Decorator marking a test as an SDNQ quantization test. These tests can be filtered using:
+        pytest -m "not sdnq" to skip pytest -m sdnq to run only these tests
+    """
+    return pytest.mark.sdnq(test_case)
 
 
 def is_context_parallel(test_case):
     """
     Decorator marking a test as a context parallel inference test. These tests can be filtered using:
-        pytest -m "not context_parallel" to skip
-        pytest -m context_parallel to run only these tests
+        pytest -m "not context_parallel" to skip pytest -m context_parallel to run only these tests
     """
     return pytest.mark.context_parallel(test_case)
+
+
+def is_tensor_parallel(test_case):
+    """
+    Decorator marking a test as a tensor parallel inference test. These tests can be filtered using:
+        pytest -m "not tensor_parallel" to skip pytest -m tensor_parallel to run only these tests
+    """
+    return pytest.mark.tensor_parallel(test_case)
 
 
 def is_cache(test_case):
     """
     Decorator marking a test as a cache test. These tests can be filtered using:
-        pytest -m "not cache" to skip
-        pytest -m cache to run only these tests
+        pytest -m "not cache" to skip pytest -m cache to run only these tests
     """
     return pytest.mark.cache(test_case)
 
@@ -550,6 +565,14 @@ def require_torch_cuda_compatibility(expected_compute_capability):
 def require_torch_accelerator(test_case):
     """Decorator marking a test that requires an accelerator backend and PyTorch."""
     return pytest.mark.skipif(torch_device == "cpu", reason="test requires accelerator+PyTorch")(test_case)
+
+
+def require_torch_neuron(test_case):
+    """Decorator marking a test that requires a Neuron device (Trainium/Inferentia)."""
+    return pytest.mark.skipif(
+        not (is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available()),
+        reason="test requires Neuron device",
+    )(test_case)
 
 
 def require_torch_multi_gpu(test_case):
@@ -645,6 +668,28 @@ def require_big_accelerator(test_case):
     )(test_case)
 
 
+def require_accelerator_memory(min_memory_gb: int):
+    """
+    Decorator marking a test that needs at least `min_memory_gb` GB of memory on the accelerator it runs on. Tests
+    running on CPU are not affected.
+    """
+
+    def decorator(test_case):
+        if torch_device == "cuda" and torch.cuda.is_available():
+            total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        elif torch_device == "xpu" and torch.xpu.is_available():
+            total_memory = torch.xpu.get_device_properties(0).total_memory / (1024**3)
+        else:
+            return test_case
+
+        return pytest.mark.skipif(
+            total_memory < min_memory_gb,
+            reason=f"test requires an accelerator with at least {min_memory_gb} GB memory",
+        )(test_case)
+
+    return decorator
+
+
 def require_torch_accelerator_with_training(test_case):
     """Decorator marking a test that requires an accelerator with support for training."""
     return pytest.mark.skipif(
@@ -656,13 +701,6 @@ def require_torch_accelerator_with_training(test_case):
 def skip_mps(test_case):
     """Decorator marking a test to skip if torch_device is 'mps'"""
     return pytest.mark.skipif(torch_device == "mps", reason="test requires non 'mps' device")(test_case)
-
-
-def require_flax(test_case):
-    """
-    Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
-    """
-    return pytest.mark.skipif(not is_flax_available(), reason="test requires JAX & Flax")(test_case)
 
 
 def require_compel(test_case):
@@ -729,6 +767,13 @@ def require_quanto(test_case):
     Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
     """
     return pytest.mark.skipif(not is_optimum_quanto_available(), reason="test requires quanto")(test_case)
+
+
+def require_sdnq(test_case):
+    """
+    Decorator marking a test that requires sdnq. These tests are skipped when sdnq isn't installed.
+    """
+    return pytest.mark.skipif(not is_sdnq_available(), reason="test requires sdnq")(test_case)
 
 
 def require_accelerate(test_case):
@@ -805,6 +850,16 @@ def require_bitsandbytes_version_greater(bnb_version):
     return decorator
 
 
+def require_hf_token(test_case):
+    """
+    Decorator marking a test that requires a Hugging Face auth token (e.g. to access gated repos). The test is
+    skipped when no token is available.
+    """
+    from huggingface_hub import get_token
+
+    return pytest.mark.skipif(get_token() is None, reason="test requires a Hugging Face auth token")(test_case)
+
+
 def require_hf_hub_version_greater(hf_hub_version):
     def decorator(test_case):
         correct_hf_hub_version = version.parse(
@@ -837,6 +892,19 @@ def require_torchao_version_greater_or_equal(torchao_version):
         ) >= version.parse(torchao_version)
         return pytest.mark.skipif(
             not correct_torchao_version, reason=f"Test requires torchao with version greater than {torchao_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_auto_round_version_greater_or_equal(auto_round_version):
+    def decorator(test_case):
+        correct_auto_round_version = is_auto_round_available() and version.parse(
+            version.parse(importlib.metadata.version("auto_round")).base_version
+        ) >= version.parse(auto_round_version)
+        return pytest.mark.skipif(
+            not correct_auto_round_version,
+            reason=f"Test requires auto-round with version greater than {auto_round_version}.",
         )(test_case)
 
     return decorator
@@ -1327,7 +1395,7 @@ class CaptureLogger:
     Example:
     ```python
     >>> from diffusers import logging
-    >>> from diffusers..testing_utils import CaptureLogger
+    >>> from diffusers.utils.testing_utils import CaptureLogger
 
     >>> msg = "Testing 1, 2, 3"
     >>> logging.set_verbosity_info()
@@ -1435,6 +1503,15 @@ if is_torch_available():
     # Behaviour flags
     BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
 
+    # Neuron device key: torch.neuron.current_device() returns an int (e.g. 0).
+    # We capture it once at import time if torch_neuronx is available so we can add it
+    # to all dispatch tables using the same key that torch_device is set to.
+    _neuron_device = (
+        torch.neuron.current_device()
+        if (is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available())
+        else None
+    )
+
     # Function definitions
     BACKEND_EMPTY_CACHE = {
         "cuda": torch.cuda.empty_cache,
@@ -1486,13 +1563,20 @@ if is_torch_available():
         "default": None,
     }
 
+    if _neuron_device is not None:
+        BACKEND_EMPTY_CACHE[_neuron_device] = None
+        BACKEND_DEVICE_COUNT[_neuron_device] = torch.neuron.device_count
+        BACKEND_MANUAL_SEED[_neuron_device] = torch.manual_seed
+        BACKEND_RESET_PEAK_MEMORY_STATS[_neuron_device] = None
+        BACKEND_RESET_MAX_MEMORY_ALLOCATED[_neuron_device] = None
+        BACKEND_MAX_MEMORY_ALLOCATED[_neuron_device] = 0
+        BACKEND_SYNCHRONIZE[_neuron_device] = torch.neuron.synchronize
+        BACKEND_SUPPORTS_TRAINING[_neuron_device] = False
+
 
 # This dispatches a defined function according to the accelerator from the function definitions.
 def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, Callable], *args, **kwargs):
-    if device not in dispatch_table:
-        return dispatch_table["default"](*args, **kwargs)
-
-    fn = dispatch_table[device]
+    fn = dispatch_table[device] if device in dispatch_table else dispatch_table["default"]
 
     # Some device agnostic functions return values. Need to guard against 'None' instead at
     # user level

@@ -205,15 +205,6 @@ class QwenImageControlNetModel(
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
-        # Construct joint attention mask once to avoid reconstructing in every block
-        block_attention_kwargs = joint_attention_kwargs.copy() if joint_attention_kwargs is not None else {}
-        if encoder_hidden_states_mask is not None:
-            # Build joint mask: [text_mask, all_ones_for_image]
-            batch_size, image_seq_len = hidden_states.shape[:2]
-            image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
-            joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
-            block_attention_kwargs["attention_mask"] = joint_attention_mask
-
         block_samples = ()
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -221,20 +212,20 @@ class QwenImageControlNetModel(
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    None,  # Don't pass encoder_hidden_states_mask (using attention_mask instead)
+                    encoder_hidden_states_mask,
                     temb,
                     image_rotary_emb,
-                    block_attention_kwargs,
+                    joint_attention_kwargs,
                 )
 
             else:
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    encoder_hidden_states_mask=None,  # Don't pass (using attention_mask instead)
+                    encoder_hidden_states_mask=encoder_hidden_states_mask,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=block_attention_kwargs,
+                    joint_attention_kwargs=joint_attention_kwargs,
                 )
             block_samples = block_samples + (hidden_states,)
 
@@ -286,6 +277,37 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> QwenImageControlNetOutput | tuple:
+        r"""
+        Args:
+            hidden_states (`torch.FloatTensor`):
+                Input `hidden_states`.
+            controlnet_cond (`list` of `torch.Tensor`):
+                A list of conditional input tensors, one per ControlNet.
+            conditioning_scale (`list` of `float`):
+                A list of scale factors applied to the ControlNet outputs.
+            encoder_hidden_states (`torch.Tensor`, *optional*):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts).
+            encoder_hidden_states_mask (`torch.Tensor`, *optional*):
+                Mask for the encoder hidden states.
+            timestep (`torch.LongTensor`, *optional*):
+                Used to indicate denoising step.
+            img_shapes (`list` of `tuple[int, int, int]`, *optional*):
+                Per-sample image shapes used to construct positional encodings.
+            txt_seq_lens (`list` of `int`, *optional*):
+                Deprecated. The text sequence length is now inferred from `encoder_hidden_states` and
+                `encoder_hidden_states_mask`.
+            joint_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`QwenImageControlNetOutput`] instead of a plain tuple.
+
+        Returns:
+            [`QwenImageControlNetOutput`] or `tuple`:
+                If `return_dict` is True, a [`QwenImageControlNetOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
         if txt_seq_lens is not None:
             deprecate(
                 "txt_seq_lens",

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pathlib
-import tempfile
-import unittest
+import pytest
 
 from diffusers.models.auto_model import AutoModel
 
@@ -26,50 +24,48 @@ if is_torch_available():
     import torch
 
 
-class FlashPackTests(unittest.TestCase):
+class TestFlashPack:
     model_id: str = "hf-internal-testing/tiny-flux-pipe"
 
-    @require_flashpack
-    def test_save_load_model(self):
-        model = AutoModel.from_pretrained(self.model_id, subfolder="transformer")
-        with tempfile.TemporaryDirectory() as temp_dir:
-            model.save_pretrained(temp_dir, use_flashpack=True)
-            self.assertTrue((pathlib.Path(temp_dir) / "model.flashpack").exists())
-            model = AutoModel.from_pretrained(temp_dir, use_flashpack=True)
+    # `AutoModel.from_pretrained` builds `_diffusers_load_id` by string-joining the path it is given,
+    # so the `tmp_path` fixture has to be passed to it as a `str`.
 
     @require_flashpack
-    def test_save_load_pipeline(self):
+    def test_save_load_model(self, tmp_path):
+        model = AutoModel.from_pretrained(self.model_id, subfolder="transformer")
+        model.save_pretrained(tmp_path, use_flashpack=True)
+        assert (tmp_path / "model.flashpack").exists()
+        model = AutoModel.from_pretrained(str(tmp_path), use_flashpack=True)
+
+    @require_flashpack
+    def test_save_load_pipeline(self, tmp_path):
         from diffusers import AutoPipelineForText2Image
 
         pipeline = AutoPipelineForText2Image.from_pretrained(self.model_id)
-        with tempfile.TemporaryDirectory() as temp_dir:
-            pipeline.save_pretrained(temp_dir, use_flashpack=True)
-            self.assertTrue((pathlib.Path(temp_dir) / "transformer" / "model.flashpack").exists())
-            self.assertTrue((pathlib.Path(temp_dir) / "vae" / "model.flashpack").exists())
-            pipeline = AutoPipelineForText2Image.from_pretrained(temp_dir, use_flashpack=True)
+        pipeline.save_pretrained(tmp_path, use_flashpack=True)
+        assert (tmp_path / "transformer" / "model.flashpack").exists()
+        assert (tmp_path / "vae" / "model.flashpack").exists()
+        pipeline = AutoPipelineForText2Image.from_pretrained(tmp_path, use_flashpack=True)
 
     @require_torch_gpu
     @require_flashpack
-    def test_load_model_device_str(self):
+    def test_load_model_device_str(self, tmp_path):
         model = AutoModel.from_pretrained(self.model_id, subfolder="transformer")
-        with tempfile.TemporaryDirectory() as temp_dir:
-            model.save_pretrained(temp_dir, use_flashpack=True)
-            model = AutoModel.from_pretrained(temp_dir, use_flashpack=True, device_map={"": "cuda"})
-            self.assertTrue(model.device.type == "cuda")
+        model.save_pretrained(tmp_path, use_flashpack=True)
+        model = AutoModel.from_pretrained(str(tmp_path), use_flashpack=True, device_map={"": "cuda"})
+        assert model.device.type == "cuda"
 
     @require_torch_gpu
     @require_flashpack
-    def test_load_model_device(self):
+    def test_load_model_device(self, tmp_path):
         model = AutoModel.from_pretrained(self.model_id, subfolder="transformer")
-        with tempfile.TemporaryDirectory() as temp_dir:
-            model.save_pretrained(temp_dir, use_flashpack=True)
-            model = AutoModel.from_pretrained(temp_dir, use_flashpack=True, device_map={"": torch.device("cuda")})
-            self.assertTrue(model.device.type == "cuda")
+        model.save_pretrained(tmp_path, use_flashpack=True)
+        model = AutoModel.from_pretrained(str(tmp_path), use_flashpack=True, device_map={"": torch.device("cuda")})
+        assert model.device.type == "cuda"
 
     @require_flashpack
-    def test_load_model_device_auto(self):
+    def test_load_model_device_auto(self, tmp_path):
         model = AutoModel.from_pretrained(self.model_id, subfolder="transformer")
-        with tempfile.TemporaryDirectory() as temp_dir:
-            model.save_pretrained(temp_dir, use_flashpack=True)
-            with self.assertRaises(ValueError):
-                model = AutoModel.from_pretrained(temp_dir, use_flashpack=True, device_map={"": "auto"})
+        model.save_pretrained(tmp_path, use_flashpack=True)
+        with pytest.raises(ValueError):
+            model = AutoModel.from_pretrained(str(tmp_path), use_flashpack=True, device_map={"": "auto"})

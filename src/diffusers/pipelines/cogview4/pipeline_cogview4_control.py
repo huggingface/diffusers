@@ -468,6 +468,11 @@ class CogView4ControlPipeline(DiffusionPipeline):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
+            control_image (`PipelineImageInput`):
+                The ControlNet input condition to provide guidance to the `transformer` for generation. If the type is
+                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
+                as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
+                width are passed, `image` is resized accordingly.
             height (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. If not provided, it is set to 1024.
             width (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):

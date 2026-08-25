@@ -176,7 +176,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         The [`LatteTransformer3DModel`] forward method.
 
         Args:
-            hidden_states shape `(batch size, channel, num_frame, height, width)`:
+            hidden_states (`torch.Tensor` of shape `(batch size, channel, num_frame, height, width)`):
                 Input `hidden_states`.
             timestep ( `torch.LongTensor`, *optional*):
                 Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.

@@ -495,11 +495,46 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            enable_cfg_renorm: Whether to enable cfg_renorm. Enabling cfg_renorm will improve image quality,
-                but it may lead to a decrease in the stability of some image outputs..
-            cfg_renorm_min: The minimum value of the cfg_renorm_scale range (0-1).
-                cfg_renorm_min = 1.0, renorm has no effect, while cfg_renorm_min=0.0, the renorm range is larger.
-            enable_prompt_rewrite: whether to enable prompt rewrite.
+            prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance.
+            height (`int`, *optional*):
+                The height in pixels of the generated image.
+            width (`int`, *optional*):
+                The width in pixels of the generated image.
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                The number of denoising steps.
+            sigmas (`list[float]`, *optional*):
+                Custom sigmas to use for the denoising process. If not defined, the scheduler's default schedule is
+                used.
+            guidance_scale (`float`, *optional*, defaults to 4.5):
+                Classifier-free guidance scale. Values greater than 1 enable CFG.
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
+                A `torch.Generator` to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents to be used as inputs for image generation.
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings. If not provided, embeddings are generated from `prompt`.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. Used when classifier-free guidance is enabled.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated image.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.LongCatImagePipelineOutput`] instead of a plain tuple.
+            joint_attention_kwargs (`dict`, *optional*):
+                Kwargs passed to the joint attention processor.
+            enable_cfg_renorm (`bool`, *optional*, defaults to `True`):
+                Whether to enable cfg_renorm. Enabling cfg_renorm will improve image quality, but it may lead to a
+                decrease in the stability of some image outputs.
+            cfg_renorm_min (`float`, *optional*, defaults to 0.0):
+                The minimum value of the cfg_renorm_scale range (0-1). `cfg_renorm_min = 1.0` disables renorm, while
+                `cfg_renorm_min = 0.0` widens the renorm range.
+            enable_prompt_rewrite (`bool`, *optional*, defaults to `True`):
+                Whether to enable prompt rewrite.
+
         Examples:
 
         Returns:

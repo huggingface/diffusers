@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
-import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer
 from transformers.models.smollm3.modeling_smollm3 import SmolLM3Config, SmolLM3ForCausalLM
@@ -25,25 +23,20 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.models.transformers.transformer_bria_fibo import BriaFiboTransformer2DModel
-from tests.pipelines.test_pipelines_common import PipelineTesterMixin
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
+from ...testing_utils import assert_tensors_close, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    PipelineOffloadTesterMixin,
+    PipelineTesterMixin,
 )
 
 
-enable_full_determinism()
-
-
-class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class BriaFiboPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = BriaFiboPipeline
-    params = frozenset(["prompt", "height", "width", "guidance_scale"])
-    batch_params = frozenset(["prompt"])
-    test_xformers_attention = False
-    test_layerwise_casting = False
-    test_group_offloading = False
-    supports_dduf = False
+    required_input_params_in_call_signature = frozenset(["prompt", "height", "width", "guidance_scale"])
+    batch_input_params = frozenset(["prompt"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -79,61 +72,74 @@ class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder = SmolLM3ForCausalLM(SmolLM3Config(hidden_size=32))
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
-        components = {
+        return {
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "transformer": transformer,
             "vae": vae,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "{'text': 'A painting of a squirrel eating a burger'}",
             "negative_prompt": "bad, ugly",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "height": 32,
             "width": 32,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
 
-    @unittest.skip(reason="will not be supported due to dim-fusion")
+
+class TestBriaFiboPipeline(BriaFiboPipelineTesterConfig, PipelineTesterMixin):
+    def test_inference(self):
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        image = pipe(**inputs).images
+        generated_image = image[0]
+        assert generated_image.shape == self.output_shape
+
+        # fmt: off
+        expected_slice = torch.tensor([0.4025, 0.4722, 0.4377, 0.6178, 0.3643, 0.4914, 0.3694, 0.5096, 0.5980, 0.5516, 0.5228, 0.4731, 0.6202, 0.2424, 0.6280, 0.3556])
+        # fmt: on
+
+        generated_slice = generated_image.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
+
+    @pytest.mark.skip("will not be supported due to dim-fusion")
     def test_encode_prompt_works_in_isolation(self):
         pass
 
     def test_bria_fibo_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components())
-        pipe = pipe.to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+
+        inputs = self.get_dummy_inputs()
         output_same_prompt = pipe(**inputs).images[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt"] = "a different prompt"
         output_different_prompts = pipe(**inputs).images[0]
 
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+        max_diff = (output_same_prompt - output_different_prompts).abs().max()
         assert max_diff > 1e-6
 
     def test_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components())
-        pipe = pipe.to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (64, 64), (32, 64)]
         for height, width in height_width_pairs:
-            expected_height = height
-            expected_width = width
-
             inputs.update({"height": height, "width": width})
             image = pipe(**inputs).images[0]
-            output_height, output_width, _ = image.shape
-            assert (output_height, output_width) == (expected_height, expected_width)
+            _, output_height, output_width = image.shape
+            assert (output_height, output_width) == (height, width)
+
+
+class TestBriaFiboPipelineMemory(BriaFiboPipelineTesterConfig, PipelineOffloadTesterMixin):
+    pass

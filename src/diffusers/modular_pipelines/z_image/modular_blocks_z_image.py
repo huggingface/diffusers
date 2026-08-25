@@ -66,7 +66,7 @@ class ZImageCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           generator (`None`, *optional*):
               TODO: Add description.
-          num_inference_steps (`None`, *optional*, defaults to 9):
+          num_inference_steps (`None`, *optional*, defaults to 8):
               TODO: Add description.
           sigmas (`None`, *optional*):
               TODO: Add description.
@@ -122,7 +122,7 @@ class ZImageImage2ImageCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           generator (`None`, *optional*):
               TODO: Add description.
-          num_inference_steps (`None`, *optional*, defaults to 9):
+          num_inference_steps (`None`, *optional*, defaults to 8):
               TODO: Add description.
           sigmas (`None`, *optional*):
               TODO: Add description.

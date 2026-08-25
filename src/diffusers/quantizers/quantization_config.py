@@ -45,9 +45,12 @@ logger = logging.get_logger(__name__)
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
     GGUF = "gguf"
+    NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
     QUANTO = "quanto"
     MODELOPT = "modelopt"
+    AUTOROUND = "auto-round"
+    SDNQ = "sdnq"
 
 
 @dataclass
@@ -429,6 +432,127 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
 
 @dataclass
+class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
+    """Configuration for loading Nunchaku Lite checkpoints.
+
+    Nunchaku Lite support in Diffusers loads prequantized checkpoints. To create a compatible checkpoint, use
+    [`diffuse-compressor`](https://github.com/rootonchair/diffuse-compressor) to choose or adapt a target configuration
+    for the model architecture, quantize and export the transformer, and package it as a Diffusers pipeline with the
+    compact `quantization_config` stored in `config.json`.
+
+    The exported state dict must match the target Diffusers model architecture exactly. Checkpoints quantized with
+    fused QKV projections won't load into a model config that expects separate Q, K, and V projection modules.
+
+    Example compact `config.json` config:
+
+    ```json
+    {
+      "_class_name": "ErnieImageTransformer2DModel",
+      "quantization_config": {
+        "quant_method": "nunchaku_lite",
+        "compute_dtype": "bfloat16",
+        "svdq_w4a4": {
+          "precision": "nvfp4",
+          "group_size": 16,
+          "rank": 32,
+          "targets": ["layers.0.self_attention.to_q"]
+        },
+        "awq_w4a16": {
+          "precision": "int4",
+          "group_size": 64,
+          "targets": ["final_linear"]
+        }
+      }
+    }
+    ```
+
+    Args:
+        compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
+            Runtime dtype used by the floating-point buffers in the quantized modules.
+        svdq_w4a4 (`dict`, *optional*):
+            Explicit SVDQ W4A4 target configuration with `precision`, `group_size`, `rank`, and `targets`.
+        awq_w4a16 (`dict`, *optional*):
+            Explicit AWQ W4A16 target configuration with `precision`, `group_size`, and `targets`.
+    """
+
+    def __init__(
+        self,
+        compute_dtype: "torch.dtype" | str | None = None,
+        svdq_w4a4: dict[str, Any] | None = None,
+        awq_w4a16: dict[str, Any] | None = None,
+        **kwargs,
+    ):
+        self.quant_method = QuantizationMethod.NUNCHAKU_LITE
+        if compute_dtype is None:
+            compute_dtype = torch.bfloat16
+        if isinstance(compute_dtype, str):
+            if not hasattr(torch, compute_dtype):
+                raise ValueError(f"Unsupported Nunchaku compute dtype: {compute_dtype!r}.")
+            compute_dtype = getattr(torch, compute_dtype)
+        if not isinstance(compute_dtype, torch.dtype):
+            raise ValueError("Nunchaku compute_dtype must be a string or a torch.dtype.")
+        self.compute_dtype = compute_dtype
+        self.pre_quantized = True
+        self.svdq_w4a4 = svdq_w4a4
+        self.awq_w4a16 = awq_w4a16
+
+        self.post_init()
+
+    def post_init(self):
+        if self.svdq_w4a4 is None and self.awq_w4a16 is None:
+            raise ValueError(
+                "Nunchaku compact quantization config must include `svdq_w4a4.targets` or `awq_w4a16.targets`."
+            )
+
+        for op, raw in (("svdq_w4a4", self.svdq_w4a4), ("awq_w4a16", self.awq_w4a16)):
+            if raw is None:
+                continue
+            if not isinstance(raw, dict):
+                raise ValueError(f"Nunchaku compact config section {op!r} must be a JSON object.")
+
+            for key, expected_type in (("precision", str), ("group_size", int), ("targets", list)):
+                if key not in raw:
+                    raise ValueError(f"Nunchaku compact config section {op!r} is missing required field {key!r}.")
+                if not isinstance(raw[key], expected_type):
+                    raise ValueError(
+                        f"Nunchaku compact config section {op!r} field {key!r} must be {expected_type.__name__}."
+                    )
+
+            precision = raw["precision"]
+            group_size = raw["group_size"]
+            targets = raw["targets"]
+            if precision not in ("int4", "nvfp4"):
+                raise ValueError(f"Unsupported Nunchaku precision {precision!r} for {op!r}.")
+            if group_size <= 0:
+                raise ValueError(f"Nunchaku compact config section {op!r} must have positive group_size.")
+            if not targets:
+                raise ValueError(f"Nunchaku compact config section {op!r} must contain at least one target.")
+            if not all(isinstance(target, str) for target in targets):
+                raise ValueError(f"Nunchaku compact config section {op!r} targets must be strings.")
+
+            if op == "svdq_w4a4":
+                if "rank" not in raw:
+                    raise ValueError(f"Nunchaku compact config section {op!r} is missing required field 'rank'.")
+                if not isinstance(raw["rank"], int):
+                    raise ValueError(f"Nunchaku compact config section {op!r} field 'rank' must be int.")
+                if raw["rank"] < 0:
+                    raise ValueError(f"Nunchaku compact config section {op!r} must have non-negative rank.")
+                expected_group_size = 16 if precision == "nvfp4" else 64
+                if group_size != expected_group_size:
+                    raise ValueError(
+                        f"Nunchaku SVDQ config with precision={precision!r} requires "
+                        f"group_size={expected_group_size}, got {group_size}."
+                    )
+            elif precision != "int4":
+                raise ValueError("Nunchaku AWQ target requires precision='int4'.")
+
+    def to_dict(self) -> dict[str, Any]:
+        output = super().to_dict()
+        output["compute_dtype"] = str(output["compute_dtype"]).split(".")[1]
+        return output
+
+
+@dataclass
 class TorchAoConfig(QuantizationConfigMixin):
     """This is a config class for torchao quantization/sparsity techniques.
 
@@ -749,3 +873,117 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                 )
 
         return BASE_CONFIG
+
+
+@dataclass
+class AutoRoundConfig(QuantizationConfigMixin):
+    """Configuration class for AutoRound quantization.
+
+    AutoRound is a weight-only quantization algorithm that uses sign gradient descent to jointly optimize weight
+    rounding and min-max values. This config targets the W4A16 (4-bit weights, 16-bit activations) setting.
+
+    Reference: https://github.com/intel/auto-round
+
+    Args:
+        bits (`int`, *optional*, defaults to `4`):
+            The number of bits to quantize weights to. For W4A16 this should be 4.
+        group_size (`int`, *optional*, defaults to `128`):
+            The group size for weight quantization. Weights in each group share the same scale and zero-point. Common
+            choices: 32, 64, 128, -1 (per-channel).
+        sym (`bool`, *optional*, defaults to `True`):
+            Whether to use symmetric quantization (zero-point fixed at 0) or asymmetric quantization (zero-point is
+            learned).
+        backend (`str`, *optional*, defaults to `"auto"`):
+            The backend kernel to use for quantized inference. Available backends:
+            - `"auto"`: Automatically select the best available backend for the current device.
+            - `"torch"`: Pure PyTorch kernel — works on CPU and CUDA.
+            - `"tritonv2"`: Triton-based kernel — requires CUDA.
+            - `"exllamav2"`: Exllamav2 kernel via GPTQModel — requires CUDA and `gptqmodel>=5.8.0`. Offers good CUDA
+              inference performance.
+            - `"marlin"`: Marlin kernel via GPTQModel — requires CUDA and `gptqmodel>=5.8.0`. Offers the best CUDA
+              inference performance.
+        kwargs (`dict[str, Any]`, *optional*):
+            Additional keyword arguments forwarded to AutoRound (e.g. `iters`, `seqlen`, `batch_size`, `lr`,
+            `minmax_lr` for calibration when quantizing from scratch).
+    """
+
+    VALID_BACKENDS = ["auto", "torch", "tritonv2", "exllamav2", "marlin"]
+
+    def __init__(
+        self,
+        bits: int = 4,
+        group_size: int = 128,
+        sym: bool = True,
+        backend: str = "auto",
+        **kwargs,
+    ) -> None:
+        self.quant_method = QuantizationMethod.AUTOROUND
+        self._validate_backend(backend)
+        self.bits = bits
+        self.group_size = group_size
+        self.sym = sym
+        self.backend = backend
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def _validate_backend(self, backend):
+        if backend not in self.VALID_BACKENDS:
+            raise ValueError(f"Invalid backend '{backend}'. Valid options are: {self.VALID_BACKENDS}")
+
+    def to_dict(self) -> dict:
+        """Serialize the config to a JSON-compatible dict.
+
+        Output: A dict containing all config fields. The `quant_method` is stored as its string value so it can be
+        round-tripped through JSON.
+        """
+        output = super().to_dict()
+        output["quant_method"] = output["quant_method"].value
+        return output
+
+    @classmethod
+    def from_dict(cls, config_dict: dict, return_unused_kwargs: bool = False, **kwargs):
+        """Instantiate an AutoRoundConfig from a dictionary.
+
+        Input: config_dict with keys like bits, group_size, sym, etc. Output: An AutoRoundConfig instance (and
+        optionally unused kwargs).
+        """
+        # Filter out keys that are not constructor parameters
+        # (e.g. quant_method is set automatically)
+        config_dict = {k: v for k, v in config_dict.items() if k != "quant_method"}
+        return super().from_dict(config_dict, return_unused_kwargs=return_unused_kwargs, **kwargs)
+
+
+class SDNQConfig(QuantizationConfigMixin):
+    """Configuration class for SDNQ (SD.Next Quantization).
+
+    The `sdnq` library ships its own diffusers-compatible config and quantizer; this class is a thin factory that
+    defers to them so that `quant_method="sdnq"` checkpoints load natively with diffusers. All arguments are forwarded
+    to `sdnq.SDNQConfig`. Requires the `sdnq` library: `pip install sdnq`.
+
+    Reference: https://github.com/Disty0/sdnq
+
+    Args:
+        weights_dtype (`str`, *optional*, defaults to `"int8"`):
+            The target dtype for the weights after quantization, e.g. `"int8"`, `"uint4"`, `"float8_e4m3fn"`. See
+            `sdnq.common.accepted_weight_dtypes` for all supported values.
+        group_size (`int`, *optional*, defaults to `0`):
+            How many elements of a tensor share the same quantization group. `0` auto-selects based on `weights_dtype`,
+            `-1` disables grouping and uses row-wise quantization.
+        use_svd (`bool`, *optional*, defaults to `False`):
+            Whether to apply the SVDQuant algorithm on top of SDNQ quantization.
+        use_quantized_matmul (`bool`, *optional*, defaults to `False`):
+            Whether to use quantized INT8 / FP8 / FP16 matmul on the forward pass instead of BF16 / FP16.
+        modules_to_not_convert (`list`, *optional*, defaults to `None`):
+            The list of modules to skip during quantization.
+        kwargs (`dict[str, Any]`, *optional*):
+            Additional keyword arguments forwarded to `sdnq.SDNQConfig` (e.g. `quantized_matmul_dtype`, `svd_rank`,
+            `use_hadamard`, `quant_conv`, `quant_embedding`, `modules_dtype_dict`).
+    """
+
+    def __new__(cls, *args, **kwargs):
+        from .sdnq.sdnq_quantizer import _check_sdnq_requirement
+
+        _check_sdnq_requirement()
+        from sdnq import SDNQConfig as SDNQLibConfig
+
+        return SDNQLibConfig(*args, **kwargs)

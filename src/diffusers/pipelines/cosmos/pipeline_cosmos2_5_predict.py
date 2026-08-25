@@ -586,6 +586,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 Optional input video for Video2World conditioning. Must be `None` when `image` is provided.
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide generation. Required unless `prompt_embeds` is supplied.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                not greater than `1`).
             height (`int`, defaults to `704`):
                 The height in pixels of the generated image.
             width (`int`, defaults to `1280`):
@@ -635,6 +639,8 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 Number of latent conditional frames to use for Video2World conditioning. The number of pixel frames
                 extracted from the input video is calculated as `4 * (num_latent_conditional_frames - 1) + 1`. Set to 1
                 for Image2World-like behavior (single frame conditioning).
+            conditional_frame_timestep (`float`, *optional*, defaults to 0.0001):
+                Timestep value used for the conditional frames during denoising.
 
         Examples:
 

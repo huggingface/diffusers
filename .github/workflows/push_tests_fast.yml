@@ -55,6 +55,9 @@ jobs:
       run:
         shell: bash
 
+    env:
+      HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v6
@@ -67,13 +70,13 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run fast PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -k "not Flax and not Onnx" \
+          -k "not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 

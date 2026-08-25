@@ -38,7 +38,7 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
     custom_pipeline="pipeline_stable_diffusion_3_instruct_pix2pix",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="cuda"
 )
 ```
@@ -53,7 +53,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
     custom_pipeline="pipeline_stable_diffusion_3_instruct_pix2pix",
     custom_revision="main"
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="cuda"
 )
 ```
@@ -72,18 +72,18 @@ There are a few ways to load a community pipeline.
   pipeline = DiffusionPipeline.from_pretrained(
       "stabilityai/stable-diffusion-3-medium-diffusers",
       custom_pipeline="path/to/pipeline_directory",
-      torch_dtype=torch.float16,
+      dtype=torch.float16,
       device_map="cuda"
   )
   ```
 
-- The `custom_pipeline` argument is also supported by [`~DiffusionPipeline.from_pipe`], which is useful for [reusing pipelines](./loading#reuse-a-pipeline) without using additional memory. It limits the memory usage to only the largest pipeline loaded.
+- The `custom_pipeline` argument is also supported by [`~DiffusionPipeline.from_pipe`], which is useful for [reusing pipelines](./loading#reusing-models-in-multiple-pipelines) without using additional memory. It limits the memory usage to only the largest pipeline loaded.
 
   ```py
   import torch
   from diffusers import DiffusionPipeline
 
-  pipeline_sd = DiffusionPipeline.from_pretrained("emilianJR/CyberRealistic_V3", torch_dtype=torch.float16, device_map="cuda")
+  pipeline_sd = DiffusionPipeline.from_pretrained("emilianJR/CyberRealistic_V3", dtype=torch.float16, device_map="cuda")
   pipeline_lpw = DiffusionPipeline.from_pipe(
       pipeline_sd, custom_pipeline="lpw_stable_diffusion", device_map="cuda"
   )
@@ -136,7 +136,7 @@ pipeline = TextToVideoIFPipeline(
     scheduler=scheduler,
     feature_extractor=feature_extractor,
     device_map="cuda",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 ```
 
@@ -159,7 +159,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "<change-username>/<change-id>", trust_remote_code=True, torch_dtype=torch.float16
+    "<change-username>/<change-id>", trust_remote_code=True, dtype=torch.float16
 )
 ```
 

@@ -1,4 +1,4 @@
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -146,17 +146,11 @@ class WanAnimateTransformer3DTesterConfig(BaseModelTesterConfig):
 class TestWanAnimateTransformer3D(WanAnimateTransformer3DTesterConfig, ModelTesterMixin):
     """Core model tests for Wan Animate Transformer 3D."""
 
-    def test_output(self):
+    def test_output(self, base_model_output):
         # Override test_output because the transformer output is expected to have less channels
         # than the main transformer input.
         expected_output_shape = (1, 4, 21, 16, 16)
-        super().test_output(expected_output_shape=expected_output_shape)
-
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
-        # Skip: fp16/bf16 require very high atol (~1e-2) to pass, providing little signal.
-        # Dtype preservation is already tested by test_from_save_pretrained_dtype and test_keep_in_fp32_modules.
-        pytest.skip("Tolerance requirements too high for meaningful test")
+        super().test_output(base_model_output, expected_output_shape=expected_output_shape)
 
 
 class TestWanAnimateTransformer3DMemory(WanAnimateTransformer3DTesterConfig, MemoryTesterMixin):
@@ -195,7 +189,7 @@ class TestWanAnimateTransformer3DBitsAndBytes(WanAnimateTransformer3DTesterConfi
         """Override to provide inputs matching the tiny Wan Animate model dimensions."""
         return {
             "hidden_states": randn_tensor(
-                (1, 36, 21, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+                (1, 36, 5, 16, 16), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
             "encoder_hidden_states": randn_tensor(
                 (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
@@ -204,10 +198,10 @@ class TestWanAnimateTransformer3DBitsAndBytes(WanAnimateTransformer3DTesterConfi
                 (1, 257, 1280), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
             "pose_hidden_states": randn_tensor(
-                (1, 16, 20, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+                (1, 16, 4, 16, 16), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
             "face_pixel_values": randn_tensor(
-                (1, 3, 77, 512, 512), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+                (1, 3, 13, 512, 512), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
             "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
         }

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,13 @@ from diffusers.modular_pipelines import (
 )
 
 from ...testing_utils import floats_tensor, torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 FLUX2_KLEIN_BASE_WORKFLOWS = {
@@ -42,11 +48,10 @@ FLUX2_KLEIN_BASE_WORKFLOWS = {
 }
 
 
-class TestFlux2KleinBaseModularPipelineFast(ModularPipelineTesterMixin):
+class Flux2KleinBaseModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Flux2KleinBaseModularPipeline
     pipeline_blocks_class = Flux2KleinBaseAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-base-modular"
-
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     expected_workflow_blocks = FLUX2_KLEIN_BASE_WORKFLOWS
@@ -66,8 +71,22 @@ class TestFlux2KleinBaseModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestFlux2KleinBaseModularPipelineFast(Flux2KleinBaseModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
+
+
+class TestFlux2KleinBaseModularPipelineLoading(Flux2KleinBaseModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestFlux2KleinBaseModularPipelineWorkflow(Flux2KleinBaseModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestFlux2KleinBaseModularPipelineMemory(Flux2KleinBaseModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
 
 
 FLUX2_KLEIN_BASE_IMAGE_CONDITIONED_WORKFLOWS = {
@@ -87,11 +106,10 @@ FLUX2_KLEIN_BASE_IMAGE_CONDITIONED_WORKFLOWS = {
 }
 
 
-class TestFlux2KleinBaseImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
+class Flux2KleinBaseImageConditionedModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Flux2KleinBaseModularPipeline
     pipeline_blocks_class = Flux2KleinBaseAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-base-modular"
-
     params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = FLUX2_KLEIN_BASE_IMAGE_CONDITIONED_WORKFLOWS
@@ -116,9 +134,31 @@ class TestFlux2KleinBaseImageConditionedModularPipelineFast(ModularPipelineTeste
 
         return inputs
 
+
+class TestFlux2KleinBaseImageConditionedModularPipelineFast(
+    Flux2KleinBaseImageConditionedModularPipelineTesterConfig, ModularPipelineTesterMixin
+):
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
 
     @pytest.mark.skip(reason="batched inference is currently not supported")
     def test_inference_batch_single_identical(self, batch_size=2, expected_max_diff=0.0001):
         return
+
+
+class TestFlux2KleinBaseImageConditionedModularPipelineLoading(
+    Flux2KleinBaseImageConditionedModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
+    pass
+
+
+class TestFlux2KleinBaseImageConditionedModularPipelineWorkflow(
+    Flux2KleinBaseImageConditionedModularPipelineTesterConfig, ModularWorkflowTesterMixin
+):
+    pass
+
+
+class TestFlux2KleinBaseImageConditionedModularPipelineMemory(
+    Flux2KleinBaseImageConditionedModularPipelineTesterConfig, ModularMemoryTesterMixin
+):
+    pass

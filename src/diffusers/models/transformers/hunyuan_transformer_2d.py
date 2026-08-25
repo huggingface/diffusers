@@ -392,6 +392,8 @@ class HunyuanDiT2DModel(ModelMixin, AttentionMixin, ConfigMixin):
             Conditional embedding indicate the style
         image_rotary_emb (`torch.Tensor`):
             The image rotary embeddings to apply on query and key tensors during attention calculation.
+        controlnet_block_samples (`list` of `torch.Tensor`, *optional*):
+            A list of tensors that if specified are added to the residuals of transformer blocks.
         return_dict: bool
             Whether to return a dictionary.
         """

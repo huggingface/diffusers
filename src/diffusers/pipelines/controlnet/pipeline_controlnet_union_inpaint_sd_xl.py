@@ -1323,6 +1323,9 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                 available control modes. If multiple ControlNets are specified in `init`, control_mode should be a list
                 where each ControlNet should have its corresponding control mode list. Should reflect the order of
                 conditions in control_image.
+            guidance_rescale (`float`, *optional*, defaults to 0.0):
+                Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://arxiv.org/pdf/2305.08891.pdf).
             original_size (`tuple[int]`, *optional*, defaults to (1024, 1024)):
                 If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
                 `original_size` defaults to `(width, height)` if not specified. Part of SDXL's micro-conditioning as

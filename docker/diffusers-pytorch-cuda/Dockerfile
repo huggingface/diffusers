@@ -10,8 +10,14 @@ RUN apt-get -y update \
     && add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update
 
+# The runtime base image only ships the CUDA libraries, but AOT-inductor compiles a C++
+# wrapper against the CUDA headers. cuda-cudart-dev provides cuda.h/cuda_runtime_api.h, and
+# cuda-nvcc pulls in the crt/ headers (crt/host_defines.h etc.) that cuda_runtime_api.h
+# includes in turn -- both are needed or the AOT tests fail with a CppCompileError.
 RUN apt install -y bash \
     build-essential \
+    cuda-cudart-dev-12-9 \
+    cuda-nvcc-12-9 \
     git \
     git-lfs \
     curl \
@@ -32,17 +38,13 @@ RUN uv venv --python ${PYTHON_VERSION} --seed ${VIRTUAL_ENV}
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-# Install torch, torchvision, and torchaudio together to ensure compatibility
+# Pin torch, torchvision, and torchaudio to a matching set so the torchvision C++
+# extension's ABI lines up with torch (otherwise torchvision::nms fails to register).
 RUN uv pip install --no-cache-dir \
-    torch \
-    torchvision \
-    torchaudio \
+    torch==2.10.0 \
+    torchvision==0.25.0 \
+    torchaudio==2.10.0 \
     --index-url https://download.pytorch.org/whl/cu129
-
-# Install compatible versions of numba/llvmlite for Python 3.10+
-RUN uv pip install --no-cache-dir \
-    "llvmlite>=0.40.0" \
-    "numba>=0.57.0"
 
 RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers[test]"
 

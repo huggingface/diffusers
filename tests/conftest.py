@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,7 +47,9 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "torchao: marks tests for TorchAO quantization functionality")
     config.addinivalue_line("markers", "gguf: marks tests for GGUF quantization functionality")
     config.addinivalue_line("markers", "modelopt: marks tests for NVIDIA ModelOpt quantization functionality")
+    config.addinivalue_line("markers", "sdnq: marks tests for SDNQ quantization functionality")
     config.addinivalue_line("markers", "context_parallel: marks tests for context parallel inference functionality")
+    config.addinivalue_line("markers", "tensor_parallel: marks tests for tensor parallel inference functionality")
     config.addinivalue_line("markers", "slow: mark test as slow")
     config.addinivalue_line("markers", "nightly: mark test as nightly")
 

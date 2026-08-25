@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,9 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import tempfile
-import unittest
-
 import torch
 
 from diffusers import UNet2DConditionModel
@@ -27,7 +24,7 @@ from ..testing_utils import enable_full_determinism, skip_mps, torch_device
 enable_full_determinism()
 
 
-class EMAModelTests(unittest.TestCase):
+class TestEMAModel:
     model_id = "hf-internal-testing/tiny-stable-diffusion-pipe"
     batch_size = 1
     prompt_length = 77
@@ -60,15 +57,14 @@ class EMAModelTests(unittest.TestCase):
         unet.load_state_dict(updated_state_dict)
         return unet
 
-    def test_from_pretrained(self):
+    def test_from_pretrained(self, tmp_path):
         # Save the model parameters to a temporary directory
         unet, ema_unet = self.get_models()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ema_unet.save_pretrained(tmpdir)
+        ema_unet.save_pretrained(tmp_path)
 
-            # Load the EMA model from the saved directory
-            loaded_ema_unet = EMAModel.from_pretrained(tmpdir, model_cls=UNet2DConditionModel, foreach=False)
-            loaded_ema_unet.to(torch_device)
+        # Load the EMA model from the saved directory
+        loaded_ema_unet = EMAModel.from_pretrained(tmp_path, model_cls=UNet2DConditionModel, foreach=False)
+        loaded_ema_unet.to(torch_device)
 
         # Check that the shadow parameters of the loaded model match the original EMA model
         for original_param, loaded_param in zip(ema_unet.shadow_params, loaded_ema_unet.shadow_params):
@@ -164,14 +160,13 @@ class EMAModelTests(unittest.TestCase):
             assert torch.allclose(step_one, step_two)
 
     @skip_mps
-    def test_serialization(self):
+    def test_serialization(self, tmp_path):
         unet, ema_unet = self.get_models()
         noisy_latents, timesteps, encoder_hidden_states = self.get_dummy_inputs()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ema_unet.save_pretrained(tmpdir)
-            loaded_unet = UNet2DConditionModel.from_pretrained(tmpdir, model_cls=UNet2DConditionModel)
-            loaded_unet = loaded_unet.to(unet.device)
+        ema_unet.save_pretrained(tmp_path)
+        loaded_unet = UNet2DConditionModel.from_pretrained(tmp_path, model_cls=UNet2DConditionModel)
+        loaded_unet = loaded_unet.to(unet.device)
 
         # Since no EMA step has been performed the outputs should match.
         output = unet(noisy_latents, timesteps, encoder_hidden_states).sample
@@ -180,7 +175,7 @@ class EMAModelTests(unittest.TestCase):
         assert torch.allclose(output, output_loaded, atol=1e-4)
 
 
-class EMAModelTestsForeach(unittest.TestCase):
+class TestEMAModelForeach:
     model_id = "hf-internal-testing/tiny-stable-diffusion-pipe"
     batch_size = 1
     prompt_length = 77
@@ -215,15 +210,14 @@ class EMAModelTestsForeach(unittest.TestCase):
         unet.load_state_dict(updated_state_dict)
         return unet
 
-    def test_from_pretrained(self):
+    def test_from_pretrained(self, tmp_path):
         # Save the model parameters to a temporary directory
         unet, ema_unet = self.get_models()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ema_unet.save_pretrained(tmpdir)
+        ema_unet.save_pretrained(tmp_path)
 
-            # Load the EMA model from the saved directory
-            loaded_ema_unet = EMAModel.from_pretrained(tmpdir, model_cls=UNet2DConditionModel, foreach=True)
-            loaded_ema_unet.to(torch_device)
+        # Load the EMA model from the saved directory
+        loaded_ema_unet = EMAModel.from_pretrained(tmp_path, model_cls=UNet2DConditionModel, foreach=True)
+        loaded_ema_unet.to(torch_device)
 
         # Check that the shadow parameters of the loaded model match the original EMA model
         for original_param, loaded_param in zip(ema_unet.shadow_params, loaded_ema_unet.shadow_params):
@@ -319,14 +313,13 @@ class EMAModelTestsForeach(unittest.TestCase):
             assert torch.allclose(step_one, step_two)
 
     @skip_mps
-    def test_serialization(self):
+    def test_serialization(self, tmp_path):
         unet, ema_unet = self.get_models()
         noisy_latents, timesteps, encoder_hidden_states = self.get_dummy_inputs()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ema_unet.save_pretrained(tmpdir)
-            loaded_unet = UNet2DConditionModel.from_pretrained(tmpdir, model_cls=UNet2DConditionModel)
-            loaded_unet = loaded_unet.to(unet.device)
+        ema_unet.save_pretrained(tmp_path)
+        loaded_unet = UNet2DConditionModel.from_pretrained(tmp_path, model_cls=UNet2DConditionModel)
+        loaded_unet = loaded_unet.to(unet.device)
 
         # Since no EMA step has been performed the outputs should match.
         output = unet(noisy_latents, timesteps, encoder_hidden_states).sample

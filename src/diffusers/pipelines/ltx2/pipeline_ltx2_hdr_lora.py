@@ -20,7 +20,12 @@ from typing import Any, Callable
 import numpy as np
 import PIL.Image
 import torch
-from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
+from transformers import (
+    Gemma3ForConditionalGeneration,
+    Gemma4UnifiedForConditionalGeneration,
+    GemmaTokenizer,
+    GemmaTokenizerFast,
+)
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
@@ -80,7 +85,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.pipelines.ltx2.export_utils import encode_hdr_tensor_to_mp4
         >>> from diffusers.utils import load_video
 
-        >>> pipe = LTX2HDRPipeline.from_pretrained("dg845/LTX-2.3-Distilled-Diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = LTX2HDRPipeline.from_pretrained("diffusers/LTX-2.3-Distilled-Diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.enable_sequential_cpu_offload(device="cuda")
         >>> pipe.load_lora_weights(
         ...     "Lightricks/LTX-2.3-22b-IC-LoRA-HDR",
@@ -267,7 +272,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             Video VAE.
         audio_vae ([`AutoencoderKLLTX2Audio`]):
             Audio VAE. Required for transformer compatibility; its outputs are discarded.
-        text_encoder ([`transformers.Gemma3ForConditionalGeneration`]):
+        text_encoder ([`transformers.Gemma3ForConditionalGeneration`] or [`Gemma4UnifiedForConditionalGeneration`]):
             Text encoder.
         tokenizer (`GemmaTokenizer` or `GemmaTokenizerFast`):
             Tokenizer for the text encoder.
@@ -290,7 +295,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKLLTX2Video,
         audio_vae: AutoencoderKLLTX2Audio,
-        text_encoder: Gemma3ForConditionalGeneration,
+        text_encoder: Gemma3ForConditionalGeneration | Gemma4UnifiedForConditionalGeneration,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
@@ -1135,8 +1140,10 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             connector_audio_embeds (`torch.Tensor`, *optional*):
                 Optional pre-computed connector outputs for the audio modality. Used by the HDR LoRA pipeline; if
                 supplied, will override any `prompt`/`prompt_embeds`.
-            decode_timestep, decode_noise_scale:
+            decode_timestep (`float` or `list[float]`, defaults to `0.0`):
                 VAE-decode timestep conditioning (only used by VAE configs with `timestep_conditioning=True`).
+            decode_noise_scale (`float` or `list[float]`, *optional*):
+                Interpolation factor between random noise and denoised latents at the decode timestep.
             use_cross_timestep (`bool`, *optional*, defaults to `False`):
                 Whether to use cross-modality sigma for cross-attention modulation.
             output_type (`str`, *optional*, defaults to `"pt"`):
@@ -1145,8 +1152,14 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 array; `"latent"` returns the raw denoised latents (skip the HDR decode).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return an [`LTX2PipelineOutput`] instead of a plain tuple.
-            attention_kwargs, callback_on_step_end, callback_on_step_end_tensor_inputs, max_sequence_length:
-                Standard hooks and arguments, same as [`LTX2InContextPipeline`].
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor`.
+            callback_on_step_end (`Callable`, *optional*):
+                A function called at the end of each denoising step, same as [`LTX2InContextPipeline`].
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
+                The list of tensor inputs passed to `callback_on_step_end`.
+            max_sequence_length (`int`, *optional*, defaults to `1024`):
+                Maximum sequence length to use with the `prompt`.
 
         Examples:
 
@@ -1291,7 +1304,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         # 6. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         mu = calculate_shift(
-            self.scheduler.config.get("max_image_seq_len", 4096),
+            latents.shape[1],
             self.scheduler.config.get("base_image_seq_len", 1024),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.95),

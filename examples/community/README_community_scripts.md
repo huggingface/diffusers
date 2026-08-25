@@ -123,12 +123,12 @@ def prepare_ip_adapter_image_embeds(
 
 vae = AutoencoderKL.from_pretrained(
     "madebyollin/sdxl-vae-fp16-fix",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "RunDiffusion/Juggernaut-XL-v9",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     vae=vae,
     variant="fp16",
 ).to("cuda")
@@ -210,7 +210,7 @@ def seamless_tiling(pipeline, x_axis, y_axis):
         layer._conv_forward = asymmetric_conv2d_convforward.__get__(layer, torch.nn.Conv2d)
     return pipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True)
 pipeline.enable_model_cpu_offload()
 prompt = ["texture of a red brick wall"]
 seed = 123456
@@ -284,7 +284,7 @@ class SDPromptSchedulingCallback(PipelineCallback):
 
 pipeline: StableDiffusionPipeline = StableDiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
     use_safetensors=True,
 ).to("cuda")
@@ -379,7 +379,7 @@ class SDXLPromptSchedulingCallback(PipelineCallback):
 
 pipeline: StableDiffusionXLPipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
     use_safetensors=True,
 ).to("cuda")

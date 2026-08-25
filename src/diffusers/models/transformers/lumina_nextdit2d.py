@@ -306,6 +306,20 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             timestep (torch.Tensor): Tensor of diffusion timesteps of shape (N,).
             encoder_hidden_states (torch.Tensor): Tensor of caption features of shape (N, D).
             encoder_mask (torch.Tensor): Tensor of caption masks of shape (N, L).
+            image_rotary_emb (`torch.Tensor`):
+                Pre-computed rotary positional embeddings.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise
+                a plain `tuple` is returned.
         """
         hidden_states, mask, img_size, image_rotary_emb = self.patch_embedder(hidden_states, image_rotary_emb)
         image_rotary_emb = image_rotary_emb.to(hidden_states.device)

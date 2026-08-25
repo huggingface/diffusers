@@ -731,14 +731,6 @@ class StableDiffusionXLInstructPix2PixPipeline(
                 For most cases, `target_size` should be set to the desired height and width of the generated image. If
                 not specified it will default to `(height, width)`. Part of SDXL's micro-conditioning as explained in
                 section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
-            aesthetic_score (`float`, *optional*, defaults to 6.0):
-                Used to simulate an aesthetic score of the generated image by influencing the positive text condition.
-                Part of SDXL's micro-conditioning as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
-            negative_aesthetic_score (`float`, *optional*, defaults to 2.5):
-                Part of SDXL's micro-conditioning as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). Can be used to
-                simulate an aesthetic score of the generated image by influencing the negative text condition.
 
         Examples:
 

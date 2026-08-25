@@ -62,7 +62,9 @@ if is_torch_available():
     if is_transformers_available():
         _import_structure["single_file"] = ["FromSingleFileMixin"]
         _import_structure["lora_pipeline"] = [
+            "AceStepLoraLoaderMixin",
             "AmusedLoraLoaderMixin",
+            "AnimaLoraLoaderMixin",
             "StableDiffusionLoraLoaderMixin",
             "SD3LoraLoaderMixin",
             "AuraFlowLoraLoaderMixin",
@@ -83,10 +85,13 @@ if is_torch_available():
             "HiDreamImageLoraLoaderMixin",
             "SkyReelsV2LoraLoaderMixin",
             "QwenImageLoraLoaderMixin",
+            "Krea2LoraLoaderMixin",
             "ZImageLoraLoaderMixin",
             "Flux2LoraLoaderMixin",
+            "Ideogram4LoraLoaderMixin",
             "ErnieImageLoraLoaderMixin",
             "CosmosLoraLoaderMixin",
+            "MiniMaxH3LoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
@@ -115,7 +120,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 SD3IPAdapterMixin,
             )
             from .lora_pipeline import (
+                AceStepLoraLoaderMixin,
                 AmusedLoraLoaderMixin,
+                AnimaLoraLoaderMixin,
                 AuraFlowLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
                 CogView4LoraLoaderMixin,
@@ -126,11 +133,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 HeliosLoraLoaderMixin,
                 HiDreamImageLoraLoaderMixin,
                 HunyuanVideoLoraLoaderMixin,
+                Ideogram4LoraLoaderMixin,
                 KandinskyLoraLoaderMixin,
+                Krea2LoraLoaderMixin,
                 LoraLoaderMixin,
                 LTX2LoraLoaderMixin,
                 LTXVideoLoraLoaderMixin,
                 Lumina2LoraLoaderMixin,
+                MiniMaxH3LoraLoaderMixin,
                 Mochi1LoraLoaderMixin,
                 QwenImageLoraLoaderMixin,
                 SanaLoraLoaderMixin,

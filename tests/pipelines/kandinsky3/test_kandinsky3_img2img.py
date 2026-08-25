@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -185,9 +185,6 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
-
-    def test_save_load_dduf(self):
-        super().test_save_load_dduf(atol=1e-3, rtol=1e-3)
 
     def test_pipeline_with_accelerator_device_map(self):
         super().test_pipeline_with_accelerator_device_map(expected_max_difference=5e-3)

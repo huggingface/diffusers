@@ -39,11 +39,11 @@ from transformers import CLIPTokenizer, CLIPTextModelWithProjection
 
 prior_model_id = "kakaobrain/karlo-v1-alpha"
 data_type = torch.float16
-prior = PriorTransformer.from_pretrained(prior_model_id, subfolder="prior", torch_dtype=data_type)
+prior = PriorTransformer.from_pretrained(prior_model_id, subfolder="prior", dtype=data_type)
 
 prior_text_model_id = "openai/clip-vit-large-patch14"
 prior_tokenizer = CLIPTokenizer.from_pretrained(prior_text_model_id)
-prior_text_model = CLIPTextModelWithProjection.from_pretrained(prior_text_model_id, torch_dtype=data_type)
+prior_text_model = CLIPTextModelWithProjection.from_pretrained(prior_text_model_id, dtype=data_type)
 prior_scheduler = UnCLIPScheduler.from_pretrained(prior_model_id, subfolder="prior_scheduler")
 prior_scheduler = DDPMScheduler.from_config(prior_scheduler.config)
 
@@ -51,7 +51,7 @@ stable_unclip_model_id = "stabilityai/stable-diffusion-2-1-unclip-small"
 
 pipe = StableUnCLIPPipeline.from_pretrained(
     stable_unclip_model_id,
-    torch_dtype=data_type,
+    dtype=data_type,
     variant="fp16",
     prior_tokenizer=prior_tokenizer,
     prior_text_encoder=prior_text_model,
@@ -76,7 +76,7 @@ from diffusers.utils import load_image
 import torch
 
 pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-1-unclip", torch_dtype=torch.float16, variation="fp16"
+    "stabilityai/stable-diffusion-2-1-unclip", dtype=torch.float16, variation="fp16"
 )
 pipe = pipe.to("cuda")
 
@@ -97,7 +97,7 @@ image
 ```
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 ## StableUnCLIPPipeline
 
@@ -106,8 +106,6 @@ image
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_vae_slicing
-	- disable_vae_slicing
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
 
@@ -118,8 +116,6 @@ image
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_vae_slicing
-	- disable_vae_slicing
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
 

@@ -661,6 +661,23 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         patch_size=2,
         f_patch_size=1,
     ):
+        r"""
+        Args:
+            x (`list` of `torch.Tensor`):
+                A list of input image latents, one tensor per sample in the batch.
+            t (`torch.Tensor`):
+                Timestep tensor used to indicate the denoising step.
+            cap_feats (`list` of `torch.Tensor`):
+                A list of caption (text) feature tensors, one per sample.
+            control_context (`list` of `torch.Tensor`):
+                A list of control conditioning feature tensors, one per sample.
+            conditioning_scale (`float`, *optional*, defaults to `1.0`):
+                The scale factor for ControlNet outputs.
+            patch_size (`int`, *optional*, defaults to `2`):
+                Spatial patch size used to tokenize the latent.
+            f_patch_size (`int`, *optional*, defaults to `1`):
+                Temporal (frame) patch size used to tokenize the latent.
+        """
         if (
             self.t_scale is None
             or self.t_embedder is None

@@ -498,8 +498,18 @@ class ChromaTransformer2DModel(
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
+            img_ids (`torch.Tensor`):
+                Image position ids used to compute the rotary positional embeddings.
+            txt_ids (`torch.Tensor`):
+                Text position ids used to compute the rotary positional embeddings.
+            attention_mask (`torch.Tensor`, *optional*):
+                Mask applied to `encoder_hidden_states` during attention.
+            controlnet_block_samples (`list` of `torch.Tensor`, *optional*):
                 A list of tensors that if specified are added to the residuals of transformer blocks.
+            controlnet_single_block_samples (`list` of `torch.Tensor`, *optional*):
+                A list of tensors that if specified are added to the residuals of single transformer blocks.
+            controlnet_blocks_repeat (`bool`, *optional*, defaults to `False`):
+                Whether to repeat the controlnet block samples across all transformer blocks.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in

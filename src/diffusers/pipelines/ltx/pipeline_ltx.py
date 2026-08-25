@@ -569,12 +569,17 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             height (`int`, defaults to `512`):
                 The height in pixels of the generated image. This is set to 480 by default for the best results.
             width (`int`, defaults to `704`):
                 The width in pixels of the generated image. This is set to 848 by default for the best results.
             num_frames (`int`, defaults to `161`):
                 The number of video frames to generate
+            frame_rate (`int`, defaults to `25`):
+                Target frame rate of the generated video.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.

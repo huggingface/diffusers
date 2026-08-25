@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ class MagnitudeAwareGuidance(BaseGuidance):
             prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
             deterioration of image quality.
         alpha (`float`, defaults to `8.0`):
-            The alpha parameter for the magnitude-aware guidance. Higher values cause more aggressive supression of
+            The alpha parameter for the magnitude-aware guidance. Higher values cause more aggressive suppression of
             guidance scale when the magnitude of the guidance update is large.
         guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix

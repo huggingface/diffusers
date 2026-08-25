@@ -411,8 +411,10 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, an empty string is used when
                 `true_cfg_scale > 1`.
-            true_cfg_scale (`float`, *optional*, defaults to 4.0):
+            guidance_scale (`float`, *optional*, defaults to 4.0):
                 Classifier-free guidance scale. Values greater than 1 enable CFG.
+            return_index (`int`, *optional*):
+                Layer index of the text encoder output to use for the prompt embeddings.
             height (`int`, *optional*, defaults to `self.default_sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.default_sample_size * self.vae_scale_factor`):

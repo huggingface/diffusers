@@ -30,6 +30,11 @@ env:
   HF_XET_HIGH_PERFORMANCE: 1
   PYTEST_TIMEOUT: 600
   PIPELINE_USAGE_CUTOFF: 1000000000 # set high cutoff so that only always-test pipelines run
+  # Force version overrides across every `uv pip install` in this workflow via UV_OVERRIDE:
+  #   - torch/torchvision/torchaudio pinned to the image's baked-in set so `-U` installs
+  #     (e.g. accelerate@main) can't bump torch and break torchvision's C++ ABI
+  #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
+  UV_OVERRIDE: /tmp/uv-overrides.txt
 
 jobs:
   check_code_quality:
@@ -69,6 +74,7 @@ jobs:
           python utils/check_copies.py
           python utils/check_dummies.py
           python utils/check_support_list.py
+          python utils/check_forward_call_docstrings.py
           make deps_table_check_updated
       - name: Check if failure
         if: ${{ failure() }}
@@ -91,10 +97,11 @@ jobs:
           fetch-depth: 2
       - name: Install dependencies
         run: |
+          printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
         run: |
@@ -132,14 +139,14 @@ jobs:
           nvidia-smi
       - name: Install dependencies
         run: |
+          printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
 
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Extract tests
         id: extract_tests
         run: |
@@ -155,13 +162,13 @@ jobs:
         run: |
           if [ "${{ matrix.module }}" = "ip_adapters" ]; then
               pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-              -k "not Flax and not Onnx" \
+              -k "not Onnx" \
               --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
               tests/pipelines/${{ matrix.module }}
           else
               pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
               pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-              -k "not Flax and not Onnx and $pattern" \
+              -k "not Onnx and $pattern" \
               --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
               tests/pipelines/${{ matrix.module }}
           fi
@@ -202,15 +209,15 @@ jobs:
 
     - name: Install dependencies
       run: |
+        printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Extract tests
       id: extract_tests
@@ -227,10 +234,10 @@ jobs:
       run: |
         pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
         if [ -z "$pattern" ]; then
-          pytest -n 1  --max-worker-restart=0 --dist=loadfile -k "not Flax and not Onnx" tests/${{ matrix.module }} \
+          pytest -n 1  --max-worker-restart=0 --dist=loadfile -k "not Onnx" tests/${{ matrix.module }} \
           --make-reports=tests_torch_cuda_${{ matrix.module }}
         else
-          pytest -n 1  --max-worker-restart=0 --dist=loadfile -k "not Flax and not Onnx and $pattern" tests/${{ matrix.module }} \
+          pytest -n 1  --max-worker-restart=0 --dist=loadfile -k "not Onnx and $pattern" tests/${{ matrix.module }} \
           --make-reports=tests_torch_cuda_${{ matrix.module }}
         fi
 
@@ -267,13 +274,13 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
+        printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
         uv pip install -e ".[quality,training]"
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run example tests on GPU
       env:

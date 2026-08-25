@@ -768,14 +768,44 @@ class GlmImagePipeline(DiffusionPipeline):
                 The width in pixels. If not provided, derived from prompt shape info.
             num_inference_steps (`int`, *optional*, defaults to `50`):
                 The number of denoising steps for DiT.
+            timesteps (`list[int]`, *optional*):
+                Custom timesteps to use for the denoising process. If not defined, the scheduler's default schedule for
+                `num_inference_steps` is used.
+            sigmas (`list[float]`, *optional*):
+                Custom sigmas to use for the denoising process. If not defined, the scheduler's default schedule is
+                used.
             guidance_scale (`float`, *optional*, defaults to `1.5`):
                 Guidance scale for classifier-free guidance.
             num_images_per_prompt (`int`, *optional*, defaults to `1`):
                 The number of images to generate per prompt.
             generator (`torch.Generator`, *optional*):
                 Random generator for reproducibility.
+            latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents to be used as inputs for image generation.
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. If not provided, embeddings are generated from `prompt`.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings. Used when classifier-free guidance is enabled.
+            prior_token_ids (`torch.Tensor`, *optional*):
+                Pre-generated prior token ids from `generate_prior_tokens`. If supplied, prior generation is skipped.
+            prior_token_image_ids (`list[torch.Tensor]`, *optional*):
+                Image token ids associated with `prior_token_ids`.
+            source_image_grid_thw (`list[torch.Tensor]`, *optional*):
+                Per-sample THW grid information for the source image tokens.
+            crops_coords_top_left (`tuple[int, int]`, *optional*, defaults to `(0, 0)`):
+                The top-left coordinates of the crop used for conditioning embeddings.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 Output format: "pil", "np", or "latent".
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`GlmImagePipelineOutput`] instead of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor`.
+            callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
+                A function called at the end of each denoising step.
+            callback_on_step_end_tensor_inputs (`list[str]`, *optional*):
+                Tensor inputs passed to `callback_on_step_end`.
+            max_sequence_length (`int`, *optional*, defaults to `2048`):
+                Maximum sequence length for the text encoder.
 
         Examples:
 

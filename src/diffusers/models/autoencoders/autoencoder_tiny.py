@@ -298,6 +298,10 @@ class AutoencoderTiny(ModelMixin, AutoencoderMixin, ConfigMixin):
             sample (`torch.Tensor`): Input sample.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+
+        Returns:
+            [`DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`DecoderOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         enc = self.encode(sample).latents
 
