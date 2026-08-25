@@ -35,7 +35,9 @@ Stage 1 — diff: list modified Python files (vs. merge-base with main, or the p
 Stage 2 — graph: parse every .py under `src/diffusers/` and `tests/` with `ast`, build the forward
     dependency map, transitively close it, then invert to the reverse map.
 Stage 3 — select: for each modified file, look up `reverse_map[file]` to get impacted tests.
-Stage 4 — bucket: group tests by top-level `tests/` folder for the CI matrix.
+Stage 4 — bucket: group tests by top-level `tests/` folder for the CI matrix. `tests/models` and
+    `tests/pipelines` are split further into one job per feature mixin (via the pytest markers the
+    mixins carry) so a large selection fans out instead of serialising in one job.
 
 Usage:
 
@@ -61,9 +63,21 @@ PATH_TO_REPO = Path(__file__).parent.parent.resolve()
 PATH_TO_DIFFUSERS = PATH_TO_REPO / "src/diffusers"
 PATH_TO_TESTS = PATH_TO_REPO / "tests"
 
-# Top-level test folders excluded from the matrix. `lora` runs as its own dedicated job in pr_tests.yml;
-# `fixtures` is data, not tests.
-MODULES_TO_IGNORE = {"fixtures", "lora"}
+# `tests/models` and `tests/pipelines` compose one test class per feature mixin, and each mixin carries a
+# pytest marker (see the `is_*` decorators in tests/testing_utils.py). Each group below becomes its own
+# matrix job, selected with `pytest -m <expr>`; `core` is everything no group claims.
+SPLIT_BY_FEATURE = {"models", "pipelines"}
+FEATURE_GROUPS = {
+    "lora": "lora",
+    "attention": "attention",
+    "memory": "memory or cpu_offload or group_offload",
+    "cache": "cache",
+    "ip_adapter": "ip_adapter",
+}
+# Gated on an accelerator, multi-GPU, or an HF token, so every test skips on the CPU runner. Excluded
+# from `core` and given no job rather than spinning up a runner to skip everything.
+CPU_SKIPPED_MARKERS = ["quantization", "compile", "single_file", "training", "context_parallel", "tensor_parallel"]
+CORE_MARKERS = "not (" + " or ".join(list(FEATURE_GROUPS.values()) + CPU_SKIPPED_MARKERS) + ")"
 
 # ============================================================
 # Generic helpers
@@ -332,8 +346,12 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
     direct_deps: Dict[str, List[str]] = {m: get_module_dependencies(m, cache) for m in all_modules}
 
     # Each pass propagates dependency info one level deeper. Loop until a full pass adds nothing.
-    while any([_merged_nested_deps(m, direct_deps) for m in all_modules]):
-        pass
+    changed = True
+    while changed:
+        changed = False
+        for m in all_modules:
+            if _merged_nested_deps(m, direct_deps):
+                changed = True
 
     reverse_map: Dict[str, List[str]] = collections.defaultdict(list)
     for m in all_modules:
@@ -364,12 +382,28 @@ def _bucket_for_matrix(test_paths: List[str]) -> Dict[str, List[str]]:
         parts = p.split("/")
         if len(parts) < 2 or parts[0] != "tests":
             continue
-        top = parts[1]
-        if top in MODULES_TO_IGNORE:
-            continue
-        bucket = "common" if len(parts) == 2 else top
+        bucket = "common" if len(parts) == 2 else parts[1]
         test_map[bucket].append(p)
     return {k: sorted(set(v)) for k, v in test_map.items()}
+
+
+def _matrix_entries(test_map: Dict[str, List[str]]) -> List[Dict[str, str]]:
+    """Expand buckets into CI matrix entries: `{"name", "paths", "markers"}`, one job each."""
+    entries = []
+    for bucket, paths in sorted(test_map.items()):
+        joined = " ".join(paths)
+        if bucket not in SPLIT_BY_FEATURE:
+            entries.append({"name": bucket, "paths": joined, "markers": ""})
+            continue
+        entries.append({"name": f"{bucket}-core", "paths": joined, "markers": CORE_MARKERS})
+        for group, expr in FEATURE_GROUPS.items():
+            entries.append({"name": f"{bucket}-{group}", "paths": joined, "markers": expr})
+    return entries
+
+
+def _write_matrix(json_output_file: str, test_files: List[str]):
+    with open(json_output_file, "w", encoding="UTF-8") as fp:
+        json.dump(_matrix_entries(_bucket_for_matrix(test_files)), fp, ensure_ascii=False)
 
 
 def _is_test_file(path: str) -> bool:
@@ -390,10 +424,7 @@ def fetch_tests_to_run(json_output_file: str, diff_with_last_commit: bool):
         selected.update(t for t in reverse_map.get(f, []) if _is_test_file(t))
 
     test_files_to_run = sorted(p for p in selected if (PATH_TO_REPO / p).exists())
-
-    test_map = _bucket_for_matrix(test_files_to_run)
-    with open(json_output_file, "w", encoding="UTF-8") as fp:
-        json.dump({k: " ".join(v) for k, v in test_map.items()}, fp, ensure_ascii=False)
+    _write_matrix(json_output_file, test_files_to_run)
 
 
 def _all_test_files() -> List[str]:
@@ -405,9 +436,7 @@ def _all_test_files() -> List[str]:
 
 def _write_full_suite(json_output_file: str):
     """Schedule the entire test suite. Used by `--force_full_suite` and as exception fallback."""
-    test_map = _bucket_for_matrix(_all_test_files())
-    with open(json_output_file, "w", encoding="UTF-8") as fp:
-        json.dump({k: " ".join(v) for k, v in test_map.items()}, fp, ensure_ascii=False)
+    _write_matrix(json_output_file, _all_test_files())
 
 
 # ============================================================
@@ -421,7 +450,7 @@ if __name__ == "__main__":
         "--json_output_file",
         type=str,
         default="test_map.json",
-        help="Where to store the category → test paths matrix consumed by CI.",
+        help="Where to store the list of matrix entries (name / paths / markers) consumed by CI.",
     )
     parser.add_argument(
         "--diff_with_last_commit",

@@ -93,8 +93,7 @@ jobs:
       run:
         shell: bash
     outputs:
-      cpu_matrix: ${{ steps.set_matrix.outputs.cpu_matrix }}
-      test_map: ${{ steps.set_matrix.outputs.test_map }}
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -140,26 +139,23 @@ jobs:
       name: Create Test Matrix
       run: |
         if [ -f test_map.json ]; then
-            cpu_matrix=$(python3 -c 'import json; m = json.load(open("test_map.json")); k = sorted(m.keys()); print(json.dumps(k if k else ["dummy"]))')
-            test_map=$(python3 -c 'import json; print(json.dumps(json.load(open("test_map.json"))))')
+            matrix=$(python3 -c 'import json; print(json.dumps(json.load(open("test_map.json"))))')
         else
-            cpu_matrix='["dummy"]'
-            test_map='{"dummy": ""}'
+            matrix='[]'
         fi
 
-        echo "cpu_matrix=$cpu_matrix" >> $GITHUB_OUTPUT
-        echo "test_map=$test_map" >> $GITHUB_OUTPUT
-        echo "CPU matrix: $cpu_matrix"
+        echo "matrix=$matrix" >> $GITHUB_OUTPUT
+        echo "Matrix: $matrix"
 
   run_tests_cpu:
     name: Run Tests (CPU)
     needs: setup_tests
-    if: contains(fromJson(needs.setup_tests.outputs.cpu_matrix), 'dummy') != true
+    if: needs.setup_tests.outputs.matrix != '[]'
     strategy:
       fail-fast: false
       max-parallel: 8
       matrix:
-        modules: ${{ fromJson(needs.setup_tests.outputs.cpu_matrix) }}
+        include: ${{ fromJson(needs.setup_tests.outputs.matrix) }}
     runs-on:
       group: aws-general-8-plus
     container:
@@ -182,28 +178,32 @@ jobs:
         uv pip install -e ".[quality]"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+        uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
 
     - name: Environment
       run: |
         diffusers-cli env
 
     - name: Run selected tests on CPU
+      # A feature-split job (e.g. `models-lora`) can legitimately match zero tests in the selected files;
+      # pytest reports that as exit code 5, which is not a failure here.
       run: |
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -k "not Onnx" \
-          --make-reports=${{ matrix.modules }}_tests_cpu \
-          ${{ fromJson(needs.setup_tests.outputs.test_map)[matrix.modules] }}
+          -m "${{ matrix.markers }}" \
+          --make-reports=${{ matrix.name }}_tests_cpu \
+          ${{ matrix.paths }} || [ $? -eq 5 ]
 
     - name: Failure short reports
       if: ${{ failure() }}
       continue-on-error: true
       run: |
-        cat reports/${{ matrix.modules }}_tests_cpu_stats.txt
-        cat reports/${{ matrix.modules }}_tests_cpu_failures_short.txt
+        cat reports/${{ matrix.name }}_tests_cpu_stats.txt
+        cat reports/${{ matrix.name }}_tests_cpu_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
       with:
-        name: ${{ matrix.modules }}_cpu_test_reports
+        name: ${{ matrix.name }}_cpu_test_reports
         path: reports
