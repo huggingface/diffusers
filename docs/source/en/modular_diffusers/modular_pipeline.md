@@ -413,7 +413,7 @@ for event in pipeline.stream(...):
 
 To stop early, stop iterating (or call `generator.close()`); nothing needs cleaning up. Blocks without loops run to completion and yield nothing.
 
-Streaming is opt-in per loop block. An [`IterativePipelineBlocks`] implements its loop in `__call__` as usual and, to support streaming, also implements `stream` — the same loop written as a generator over `stream_step`, which runs one iteration like `loop_step` and additionally yields the event for it:
+Streaming is opt-in per loop block. An [`IterativePipelineBlocks`] (see the [IterativePipelineBlocks](./iterative_pipeline_blocks) guide) implements its loop in `__call__` as usual and, to support streaming, also implements `stream` — the same loop written as a generator over `stream_step`, which runs one iteration like `loop_step` and additionally yields the event for it:
 
 ```py
 class DenoiseLoop(IterativePipelineBlocks):

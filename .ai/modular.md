@@ -4,7 +4,8 @@ Shared reference for modular pipeline conventions, patterns, and gotchas.
 
 ## Common modular conventions
 
-When adding a new modular pipeline (or reviewing one), skim `src/diffusers/modular_pipelines/qwenimage/`, `src/diffusers/modular_pipelines/flux2/`, `src/diffusers/modular_pipelines/wan/`, and `src/diffusers/modular_pipelines/helios/` first to establish the pattern. Most conventions (file split between `encoders.py` / `before_denoise.py` / `denoise.py` / `decoders.py`, how `expected_components` / `inputs` / `intermediate_outputs` are declared, the denoise-loop wrapping with `LoopSequentialPipelineBlocks`, top-level assembly via `AutoPipelineBlocks` / `SequentialPipelineBlocks` in `modular_blocks_<model>.py`, the `ModularPipeline` subclass shape, the guider-abstracted denoise body, `kwargs_type="denoiser_input_fields"` plumbing) are easiest to internalize by comparison rather than from a fixed list.
+# should we include minimax, maybe replace wan?
+When adding a new modular pipeline (or reviewing one), skim `src/diffusers/modular_pipelines/qwenimage/`, `src/diffusers/modular_pipelines/flux2/`, `src/diffusers/modular_pipelines/wan/`, and `src/diffusers/modular_pipelines/helios/` first to establish the pattern. Most conventions (file split between `encoders.py` / `before_denoise.py` / `denoise.py` / `decoders.py`, how `expected_components` / `inputs` / `intermediate_outputs` are declared, the denoise-loop wrapping with `IterativePipelineBlocks` (see `flux2/denoise.py`; `wan_animate_2/denoise.py` for a nested chunk loop), top-level assembly via `AutoPipelineBlocks` / `SequentialPipelineBlocks` in `modular_blocks_<model>.py`, the `ModularPipeline` subclass shape, the guider-abstracted denoise body, `kwargs_type="denoiser_input_fields"` plumbing) are easiest to internalize by comparison rather than from a fixed list.
 
 ## Running a modular pipeline
 
@@ -51,8 +52,12 @@ Is this a single operation?
 
 Does it run multiple blocks in sequence?
   YES -> SequentialPipelineBlocks
-    Does it iterate (e.g. chunk loop)?
-      YES -> LoopSequentialPipelineBlocks
+    Does it iterate (denoising loop)?
+      YES -> IterativePipelineBlocks (steps are ModularLoopPipelineBlocks)
+        Does each iteration run a loop of its own (autoregressive chunk loop: per chunk, a denoise loop)?
+          YES -> nest them: the inner IterativePipelineBlocks is a step of the outer one, and its
+                 __call__/stream and its steps also take the outer loop variable (see wan_animate_2/denoise.py)
+      LoopSequentialPipelineBlocks is the legacy loop type — don't use it for new pipelines
 
 Does it choose ONE block based on which input is present?
   Is the selection 1:1 with trigger inputs?
@@ -121,25 +126,48 @@ for i, t in enumerate(timesteps):
 
 ## Key pattern: Denoising loop
 
-All models use `LoopSequentialPipelineBlocks` for the denoising loop (iterating over timesteps):
+The denoising loop is an `IterativePipelineBlocks` whose steps are `ModularLoopPipelineBlocks` (canonical: `flux2/denoise.py`). The wrapper declares the loop variables it passes to its steps, the inputs its own loop logic reads, and the loop in `__call__`; `stream` is the same loop as a generator over `stream_step` and is what makes `pipe.stream(...)` work — implement both:
+
 ```python
-class MyModelDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
-    block_classes = [LoopBeforeDenoiser, LoopDenoiser, LoopAfterDenoiser]
+class MyModelDenoiseLoopWrapper(IterativePipelineBlocks):
+    @property
+    def loop_variables(self):
+        return ["i", "t"]
+
+    @property
+    def loop_inputs(self):  # what the loop logic itself reads; `get_block_state` returns exactly these
+        return [InputParam("timesteps", required=True), InputParam.template("num_inference_steps", required=True)]
+
+    @torch.no_grad()
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        for i, t in enumerate(block_state.timesteps):
+            components, state = self.loop_step(components, state, i=i, t=t)
+        return components, state
+
+    @torch.no_grad()
+    def stream(self, components, state):
+        block_state = self.get_block_state(state)
+        for i, t in enumerate(block_state.timesteps):
+            components, state = yield from self.stream_step(components, state, i=i, t=t)
+        return components, state
+
+
+class MyModelDenoiseStep(MyModelDenoiseLoopWrapper):
+    block_classes = [MyModelLoopDenoiser, MyModelLoopAfterDenoiser]
+    block_names = ["denoiser", "after_denoiser"]
 ```
 
-Autoregressive video models (e.g. Helios) also use it for an outer chunk loop:
-```python
-class HeliosChunkDenoiseStep(HeliosChunkLoopWrapper):
-    block_classes = [
-        HeliosChunkHistorySliceStep,
-        HeliosChunkNoiseGenStep,
-        HeliosChunkSchedulerResetStep,
-        HeliosChunkDenoiseInner,
-        HeliosChunkUpdateStep,
-    ]
-```
+Loop steps are regular blocks (own `inputs` / `intermediate_outputs`, `get_block_state` / `set_block_state` on the full `PipelineState`) whose `__call__` takes the loop variables as arguments — `def __call__(self, components, state, i, t)`. Every step of a loop must accept exactly that loop's variables (validated at construction), even if it ignores some of them.
 
-Note: sub-blocks inside `LoopSequentialPipelineBlocks` receive `(components, block_state, i, t)` for denoise loops or `(components, block_state, k)` for chunk loops.
+Autoregressive video models nest loops: an outer chunk loop (`loop_variables = ["k"]`) whose steps prepare the chunk, run the full inner denoising loop, and update the history (canonical: `wan_animate_2/denoise.py`). The inner loop is a step of the outer one, so its `__call__` / `stream` accept the outer variable — `def __call__(self, components, state, k)` — and pass its own `i`, `t` to its own steps.
+
+Conventions that fall out of this:
+- A value the loop logic itself produces (e.g. the collected per-chunk frames) goes in `loop_intermediate_outputs` and is written with `set_block_state`, like a leaf output. Step outputs are read from the state (`state.get("out_frames")`) — the loop's block state holds only its `loop_inputs` / `loop_intermediate_outputs`.
+- A loop-carried value (written by a step at the end of iteration `k`, read by a step at the start of `k + 1` — a decoder cache, the previous segment's frames) just flows through the state. Because the reader comes before the writer, it would surface as a pipeline input; if seeding it on the first iteration is not meaningful, have the prepare step before the loop declare it as an output and set its initial value (`None`). Don't filter it out of `inputs` in the wrapper.
+- Components the loop logic itself uses (e.g. `scheduler.order` for the progress bar) are added by overriding `expected_components`.
+
+Existing pipelines still use `LoopSequentialPipelineBlocks` (steps receive a shared flattened `block_state`, no nesting, no streaming). Leave them alone unless you are porting the pipeline; don't use it for new ones.
 
 ## Key pattern: `kwargs_type` inputs (`denoiser_input_fields`)
 
@@ -315,7 +343,11 @@ ComponentSpec(
 
 9. **Serving a checkpoint variant through a config flag in a shared block.** `ConfigSpec(name="is_distilled")` plus `if components.config.is_distilled:` bundles two checkpoints' behavior into one blockset — and it can't change the input surface at all (the distilled variant would still accept `negative_prompt`). Suggest a separate blockset for the variant instead (see Key pattern: Checkpoint variants).
 
-10. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
+10. **Writing loop-level values with `state.set()` inside a loop wrapper.** Same rule as leaf blocks: declare them in `loop_intermediate_outputs` and write through `set_block_state`. `state.get(...)` to *read* a step's output inside the loop logic is fine — those live in the `PipelineState`, not in the loop's block state.
+
+11. **Hiding a loop-carried input by overriding `inputs` on the loop wrapper.** Seed it from the block that runs before the loop instead (declare it as that block's output, set it to `None` / its initial value); the sequential aggregation then hides it on its own. See Key pattern: Denoising loop.
+
+12. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
 
 ## Conversion checklist
 

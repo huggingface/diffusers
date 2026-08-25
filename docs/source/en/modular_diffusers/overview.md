@@ -28,7 +28,8 @@ The Modular Diffusers docs are organized as shown below.
 - [States](./modular_diffusers_states) explains how data is shared and communicated between blocks and [`ModularPipeline`].
 - [ModularPipelineBlocks](./pipeline_block) is the most basic unit of a [`ModularPipeline`] and this guide shows you how to create one.
 - [SequentialPipelineBlocks](./sequential_pipeline_blocks) is a type of block that chains multiple blocks so they run one after another, passing data along the chain. This guide shows you how to create [`~modular_pipelines.SequentialPipelineBlocks`] and how they connect and work together.
-- [LoopSequentialPipelineBlocks](./loop_sequential_pipeline_blocks) is a type of block that runs a series of blocks in a loop. This guide shows you how to create [`~modular_pipelines.LoopSequentialPipelineBlocks`].
+- [IterativePipelineBlocks](./iterative_pipeline_blocks) is a type of block that runs a series of blocks in a loop — a denoising loop, or an autoregressive chunk loop with a denoising loop nested inside. This guide shows you how to create [`~modular_pipelines.IterativePipelineBlocks`].
+- [LoopSequentialPipelineBlocks](./loop_sequential_pipeline_blocks) is the earlier loop type, still used by existing pipelines.
 - [AutoPipelineBlocks](./auto_pipeline_blocks) is a type of block that automatically chooses which blocks to run based on the input. This guide shows you how to create [`~modular_pipelines.AutoPipelineBlocks`].
 - [Building Custom Blocks](./custom_blocks) shows you how to create your own custom blocks and share them on the Hub.
 
