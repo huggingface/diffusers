@@ -301,14 +301,14 @@ def test_infer_data_free_targets():
     assert targets == ["blocks.0.proj", "blocks.1.proj"]
 
     # An explicit list replaces the default name patterns.
-    targets = infer_data_free_targets(model, group_size=16, modules_to_not_convert=[])
+    targets = infer_data_free_targets(model, group_size=16, exclude_targets=[])
     assert sorted(targets) == ["blocks.0.norm_linear", "blocks.0.proj", "blocks.1.norm_linear", "blocks.1.proj"]
 
-    targets = infer_data_free_targets(model, group_size=16, modules_to_not_convert=["blocks.0", "norm"])
+    targets = infer_data_free_targets(model, group_size=16, exclude_targets=["blocks.0", "norm"])
     assert targets == ["blocks.1.proj"]
 
     with pytest.raises(ValueError, match="Could not infer"):
-        infer_data_free_targets(model, group_size=16, modules_to_not_convert=["proj", "norm"])
+        infer_data_free_targets(model, group_size=16, exclude_targets=["proj", "norm"])
 
 
 def test_quantizer_infers_targets_when_omitted(monkeypatch):
@@ -320,7 +320,7 @@ def test_quantizer_infers_targets_when_omitted(monkeypatch):
     config = NunchakuLiteQuantizationConfig(
         svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
         pre_quantized=False,
-        modules_to_not_convert=["norm_linear"],
+        exclude_targets=["norm_linear"],
     )
     quantizer = NunchakuLiteQuantizer(config, pre_quantized=False)
     model = _InferenceToyModel()

@@ -77,7 +77,7 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
             svdq_config["targets"] = infer_data_free_targets(
                 model,
                 group_size=svdq_config["group_size"],
-                modules_to_not_convert=self.quantization_config.modules_to_not_convert or (),
+                exclude_targets=self.quantization_config.exclude_targets or (),
             )
             logger.info(f"Inferred {len(svdq_config['targets'])} data-free quantization targets.")
 

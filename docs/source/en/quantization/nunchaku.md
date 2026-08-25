@@ -144,7 +144,7 @@ transformer = Flux2Transformer2DModel.from_pretrained(
 )
 ```
 
-Pass `modules_to_not_convert` (substring match; it replaces the default name patterns) to exclude further modules, or an explicit `targets` list for full control. Quantization happens per weight as the checkpoint streams in, so peak memory stays near the quantized model size. The result is identical to loading a checkpoint produced offline by a data-free SVDQuant exporter.
+Pass `exclude_targets` (substring match; it replaces the default name patterns) to exclude further modules, or an explicit `targets` list for full control. Quantization happens per weight as the checkpoint streams in, so peak memory stays near the quantized model size. The result is identical to loading a checkpoint produced offline by a data-free SVDQuant exporter.
 
 ## Fused kernels
 

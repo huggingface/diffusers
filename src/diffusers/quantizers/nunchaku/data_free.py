@@ -190,7 +190,7 @@ def infer_data_free_targets(
     model: "torch.nn.Module",
     *,
     group_size: int,
-    modules_to_not_convert: tuple[str, ...] | list[str] | None = None,
+    exclude_targets: tuple[str, ...] | list[str] | None = None,
 ) -> list[str]:
     """Infer quantization targets for data-free mode from a model's structure.
 
@@ -199,15 +199,15 @@ def infer_data_free_targets(
     divisible by ``group_size``) is selected, restricted to the repeated block
     stacks of the model (when it has any) so that peripheral modules such as
     embedders and final projections stay unquantized. Modules whose path
-    contains a ``modules_to_not_convert`` substring — defaulting to
+    contains a ``exclude_targets`` substring — defaulting to
     ``("norm", "modulation")`` to skip adaLN-style linears — or matches the
     model's ``_keep_in_fp32_modules`` are excluded. Pass an explicit (possibly
-    empty) ``modules_to_not_convert`` list to replace the default patterns.
+    empty) ``exclude_targets`` list to replace the default patterns.
     """
 
-    if modules_to_not_convert is None:
-        modules_to_not_convert = _DEFAULT_EXCLUDE_PATTERNS
-    exclude = list(modules_to_not_convert) + list(getattr(model, "_keep_in_fp32_modules", None) or [])
+    if exclude_targets is None:
+        exclude_targets = _DEFAULT_EXCLUDE_PATTERNS
+    exclude = list(exclude_targets) + list(getattr(model, "_keep_in_fp32_modules", None) or [])
     stack_prefixes = _repeated_block_prefixes(model)
     targets = []
     for name, module in model.named_modules():

@@ -493,7 +493,7 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
             raise ValueError("Nunchaku compute_dtype must be a string or a torch.dtype.")
         self.compute_dtype = compute_dtype
         self.pre_quantized = kwargs.pop("pre_quantized", True)
-        self.modules_to_not_convert = kwargs.pop("modules_to_not_convert", None)
+        self.exclude_targets = kwargs.pop("exclude_targets", None)
         self.svdq_w4a4 = svdq_w4a4
         self.awq_w4a16 = awq_w4a16
 
