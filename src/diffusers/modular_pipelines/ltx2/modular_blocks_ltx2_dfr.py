@@ -24,8 +24,8 @@ from .before_denoise import (
     LTX2DFRPrepareLatentsStep,
     LTX2TextInputStep,
 )
-from .decoders import LTX2AudioDecoderStep, LTX2DFRSplitKeyframesStep, LTX2DiffusionVaeDecoderStep
-from .denoise import LTX2ConditionDenoiseStep
+from .decoders import LTX2AudioDecoderStep, LTX2DFRSplitKeyframesStep, LTX2VaeDecoderStep
+from .denoise import LTX2DFRDenoiseStep
 from .modular_blocks_ltx2 import (
     LTX2AutoConditionEncoderStep,
     LTX2AutoDurationStep,
@@ -44,8 +44,7 @@ class LTX2DFRCoreDenoiseStep(SequentialPipelineBlocks):
 
       Components:
           transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`)
+          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -164,6 +163,10 @@ class LTX2DFRCoreDenoiseStep(SequentialPipelineBlocks):
               Video RoPE patch coordinates, with the keyframe-condition coordinates appended.
           audio_coords (`Tensor`):
               Audio RoPE patch coordinates.
+          noise_pred_video (`Tensor`):
+              Video x0 prediction for this step.
+          noise_pred_audio (`Tensor`):
+              Audio x0 prediction for this step.
     """
 
     model_name = "ltx2.5-dfr"
@@ -173,7 +176,7 @@ class LTX2DFRCoreDenoiseStep(SequentialPipelineBlocks):
         LTX2ConditionSetTimestepsStep,
         LTX2ConditionPrepareAudioLatentsStep,
         LTX2ConditionPrepareCoordsStep,
-        LTX2ConditionDenoiseStep,
+        LTX2DFRDenoiseStep,
     ]
     block_names = [
         "input",
@@ -198,12 +201,13 @@ class LTX2DFRCoreDenoiseStep(SequentialPipelineBlocks):
 class LTX2DFRDecoderStep(SequentialPipelineBlocks):
     """
     Decode stage for DFR: splits the generated keyframe slots out of the denoised sequence and trims the canvas
-    padding, then denoises the video latents with the diffusion decoder and vocodes the audio latents (or returns
-    latents).
+    padding, then decodes the video latents with the convolutional VAE and vocodes the audio latents (or returns
+    latents). The convolutional VAE is what the reference DFR implementation decodes with. For maximum detail fidelity,
+    run with `output_type="latent"` and hand the latents to [`LTX2VideoDiffusionDecodePipeline`] instead.
 
       Components:
-          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) audio_vae
-          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
+          vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -220,8 +224,15 @@ class LTX2DFRDecoderStep(SequentialPipelineBlocks):
               The width in pixels of the generated image.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
+          decode_timestep (`None`, *optional*, defaults to 0.0):
+              The timestep at which the VAE decodes the final latents.
+          decode_noise_scale (`None`, *optional*):
+              Noise interpolation factor applied to the latents at the decode timestep.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
           audio_latents (`Tensor`):
@@ -240,15 +251,17 @@ class LTX2DFRDecoderStep(SequentialPipelineBlocks):
     """
 
     model_name = "ltx2.5-dfr"
-    block_classes = [LTX2DFRSplitKeyframesStep, LTX2DiffusionVaeDecoderStep, LTX2AudioDecoderStep]
+    block_classes = [LTX2DFRSplitKeyframesStep, LTX2VaeDecoderStep, LTX2AudioDecoderStep]
     block_names = ["split_keyframes", "video_decode", "audio_decode"]
 
     @property
     def description(self):
         return (
             "Decode stage for DFR: splits the generated keyframe slots out of the denoised sequence and trims the "
-            "canvas padding, then denoises the video latents with the diffusion decoder and vocodes the audio "
-            "latents (or returns latents)."
+            "canvas padding, then decodes the video latents with the convolutional VAE and vocodes the audio "
+            "latents (or returns latents). The convolutional VAE is what the reference DFR implementation decodes "
+            'with. For maximum detail fidelity, run with `output_type="latent"` and hand the latents to '
+            "[`LTX2VideoDiffusionDecodePipeline`] instead."
         )
 
     @property
@@ -288,8 +301,7 @@ class LTX2DFRBlocks(SequentialPipelineBlocks):
           prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
           (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) transformer
           (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`) diffusion_decoder
-          (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
+          audio_vae (`AutoencoderKLLTX2Audio`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -372,6 +384,10 @@ class LTX2DFRBlocks(SequentialPipelineBlocks):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
+          decode_timestep (`None`, *optional*, defaults to 0.0):
+              The timestep at which the VAE decodes the final latents.
+          decode_noise_scale (`None`, *optional*):
+              Noise interpolation factor applied to the latents at the decode timestep.
 
       Outputs:
           videos (`list`):

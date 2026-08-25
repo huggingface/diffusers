@@ -27,7 +27,7 @@ from ..modular_pipeline import (
     ModularPipelineBlocks,
     PipelineState,
 )
-from ..modular_pipeline_utils import ComponentSpec, InputParam
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .guider import LTX2Guidance
 
 
@@ -641,6 +641,119 @@ class LTX2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
+
+class LTX2DFRLoopDenoiser(ModularPipelineBlocks):
+    model_name = "ltx2.5-dfr"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Joint video+audio denoiser for DFR. One transformer call per step and no guider: the DFR sigma "
+            "schedules are distilled and trained to run without guidance, so there is nothing to combine and no "
+            "negative conditioning to carry. Converts both streams' velocity to x0, which is the space "
+            "`LTX2ConditionLoopAfterDenoiser` expects."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", LTX2VideoTransformer3DModel),
+            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("connector_prompt_embeds", required=True, type_hint=torch.Tensor),
+            InputParam("connector_audio_prompt_embeds", required=True, type_hint=torch.Tensor),
+            InputParam("connector_attention_mask", required=True, type_hint=torch.Tensor),
+            InputParam.template("denoiser_input_fields"),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
+            InputParam("num_frames", type_hint=int, required=True),
+            InputParam(
+                "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
+            ),
+            InputParam(
+                "use_cross_timestep",
+                type_hint=bool,
+                default=True,
+                description="Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).",
+            ),
+            InputParam.template("attention_kwargs"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("noise_pred_video", type_hint=torch.Tensor, description="Video x0 prediction for this step."),
+            OutputParam("noise_pred_audio", type_hint=torch.Tensor, description="Audio x0 prediction for this step."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+
+        # Upstream-produced transformer arguments (`audio_num_frames`, `video_coords`, `audio_coords`, and DFR's
+        # `video_keyframes_mask`) arrive tagged `denoiser_input_fields`; filter them against the signature. The
+        # latent dims are computed here so their names don't clash with the pixel-space ones in state.
+        transformer_args = set(inspect.signature(components.transformer.forward).parameters)
+        transformer_kwargs = {k: v for k, v in block_state.denoiser_input_fields.items() if k in transformer_args}
+        transformer_kwargs.update(
+            num_frames=latent_num_frames,
+            height=latent_height,
+            width=latent_width,
+            fps=block_state.frame_rate,
+            use_cross_timestep=block_state.use_cross_timestep,
+            attention_kwargs=block_state.attention_kwargs,
+            perturbation_mask=None,
+            # No STG and no modality isolation: both are guidance perturbations, and this pass is the plain
+            # conditional forward.
+            spatio_temporal_guidance_blocks=None,
+            isolate_modalities=False,
+            encoder_hidden_states=block_state.connector_prompt_embeds,
+            audio_encoder_hidden_states=block_state.connector_audio_prompt_embeds,
+            encoder_attention_mask=block_state.connector_attention_mask,
+            audio_encoder_attention_mask=block_state.connector_attention_mask,
+        )
+
+        with components.transformer.cache_context("cond"):
+            noise_pred_video, noise_pred_audio = components.transformer(
+                hidden_states=block_state.latent_model_input,
+                audio_hidden_states=block_state.audio_latent_model_input,
+                timestep=block_state.video_timestep,
+                audio_timestep=block_state.audio_timestep,
+                sigma=block_state.audio_timestep,  # plain (unmasked) timestep, used by LTX-2.3
+                return_dict=False,
+                **transformer_kwargs,
+            )
+
+        # The after block converts back to velocity, so hand it x0 -- the same space the guided path combines in.
+        block_state.noise_pred_video = convert_velocity_to_x0(
+            block_state.latents, noise_pred_video.float(), i, components.scheduler
+        )
+        block_state.noise_pred_audio = convert_velocity_to_x0(
+            block_state.audio_latents, noise_pred_audio.float(), i, block_state.audio_scheduler
+        )
+        return components, block_state
+
+
+class LTX2DFRDenoiseStep(LTX2DenoiseLoopWrapper):
+    model_name = "ltx2.5-dfr"
+    block_classes = [LTX2ConditionLoopBeforeDenoiser, LTX2DFRLoopDenoiser, LTX2ConditionLoopAfterDenoiser]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "DFR denoise step. Identical to `LTX2ConditionDenoiseStep` except that the denoiser carries no guider, "
+            "since the distilled DFR schedules run without guidance. Iterates "
+            "`LTX2DenoiseLoopWrapper.__call__`, running per step:\n"
+            " - `LTX2ConditionLoopBeforeDenoiser`\n - `LTX2DFRLoopDenoiser`\n - `LTX2ConditionLoopAfterDenoiser`"
+        )
 
 
 class LTX2DenoiseStep(LTX2DenoiseLoopWrapper):

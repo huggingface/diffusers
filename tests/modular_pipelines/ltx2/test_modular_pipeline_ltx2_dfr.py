@@ -45,9 +45,9 @@ LTX2DFR_WORKFLOWS = {
         ("denoise.set_timesteps", "LTX2ConditionSetTimestepsStep"),
         ("denoise.prepare_audio_latents", "LTX2ConditionPrepareAudioLatentsStep"),
         ("denoise.prepare_coords", "LTX2ConditionPrepareCoordsStep"),
-        ("denoise.denoise", "LTX2ConditionDenoiseStep"),
+        ("denoise.denoise", "LTX2DFRDenoiseStep"),
         ("decode.split_keyframes", "LTX2DFRSplitKeyframesStep"),
-        ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
+        ("decode.video_decode", "LTX2VaeDecoderStep"),
         ("decode.audio_decode", "LTX2AudioDecoderStep"),
     ],
     "condition": [
@@ -61,9 +61,9 @@ LTX2DFR_WORKFLOWS = {
         ("denoise.set_timesteps", "LTX2ConditionSetTimestepsStep"),
         ("denoise.prepare_audio_latents", "LTX2ConditionPrepareAudioLatentsStep"),
         ("denoise.prepare_coords", "LTX2ConditionPrepareCoordsStep"),
-        ("denoise.denoise", "LTX2ConditionDenoiseStep"),
+        ("denoise.denoise", "LTX2DFRDenoiseStep"),
         ("decode.split_keyframes", "LTX2DFRSplitKeyframesStep"),
-        ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
+        ("decode.video_decode", "LTX2VaeDecoderStep"),
         ("decode.audio_decode", "LTX2AudioDecoderStep"),
     ],
 }
