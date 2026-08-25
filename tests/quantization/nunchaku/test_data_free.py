@@ -271,33 +271,44 @@ def test_quantizer_create_quantized_param_fills_module():
     assert parameters["bias"].shape == (OUT_FEATURES,)
 
 
+class _ToyBlock(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.proj = torch.nn.Linear(IN_FEATURES, OUT_FEATURES)
+        self.norm_linear = torch.nn.Linear(IN_FEATURES, OUT_FEATURES)  # adaLN-style
+        self.frozen = torch.nn.Linear(IN_FEATURES, OUT_FEATURES)
+        self.odd_shape = torch.nn.Linear(100, OUT_FEATURES)
+
+
 class _InferenceToyModel(torch.nn.Module):
     _keep_in_fp32_modules = ["frozen"]
 
     def __init__(self):
         super().__init__()
-        self.blocks = torch.nn.ModuleList(
-            [torch.nn.Sequential(torch.nn.Linear(IN_FEATURES, OUT_FEATURES)) for _ in range(2)]
-        )
+        self.blocks = torch.nn.ModuleList([_ToyBlock() for _ in range(2)])
         self.embedder = torch.nn.Linear(IN_FEATURES, OUT_FEATURES)
-        self.frozen = torch.nn.Linear(IN_FEATURES, OUT_FEATURES)
-        self.odd_shape = torch.nn.Linear(100, OUT_FEATURES)
-        self.norm = torch.nn.LayerNorm(OUT_FEATURES)
+        self.proj_out = torch.nn.Linear(OUT_FEATURES, IN_FEATURES)
 
 
 def test_infer_data_free_targets():
     from diffusers.quantizers.nunchaku.data_free import infer_data_free_targets
 
     model = _InferenceToyModel()
+    # Default: restricted to the repeated `blocks` stack (embedder/proj_out are
+    # outside), minus adaLN-style names ("norm"), _keep_in_fp32_modules, and
+    # dimension-ineligible layers.
     targets = infer_data_free_targets(model, group_size=16)
-    # `frozen` is excluded via _keep_in_fp32_modules; `odd_shape` fails the 128-multiple constraint.
-    assert targets == ["blocks.0.0", "blocks.1.0", "embedder"]
+    assert targets == ["blocks.0.proj", "blocks.1.proj"]
 
-    targets = infer_data_free_targets(model, group_size=16, modules_to_not_convert=["embedder"])
-    assert targets == ["blocks.0.0", "blocks.1.0"]
+    # An explicit list replaces the default name patterns.
+    targets = infer_data_free_targets(model, group_size=16, modules_to_not_convert=[])
+    assert sorted(targets) == ["blocks.0.norm_linear", "blocks.0.proj", "blocks.1.norm_linear", "blocks.1.proj"]
+
+    targets = infer_data_free_targets(model, group_size=16, modules_to_not_convert=["blocks.0", "norm"])
+    assert targets == ["blocks.1.proj"]
 
     with pytest.raises(ValueError, match="Could not infer"):
-        infer_data_free_targets(model, group_size=16, modules_to_not_convert=["blocks", "embedder"])
+        infer_data_free_targets(model, group_size=16, modules_to_not_convert=["proj", "norm"])
 
 
 def test_quantizer_infers_targets_when_omitted(monkeypatch):
@@ -309,7 +320,7 @@ def test_quantizer_infers_targets_when_omitted(monkeypatch):
     config = NunchakuLiteQuantizationConfig(
         svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
         pre_quantized=False,
-        modules_to_not_convert=["embedder"],
+        modules_to_not_convert=["norm_linear"],
     )
     quantizer = NunchakuLiteQuantizer(config, pre_quantized=False)
     model = _InferenceToyModel()
@@ -325,7 +336,7 @@ def test_quantizer_infers_targets_when_omitted(monkeypatch):
 
     quantizer._process_model_before_weight_loading(model)
 
-    assert config.svdq_w4a4["targets"] == ["blocks.0.0", "blocks.1.0"]
+    assert config.svdq_w4a4["targets"] == ["blocks.0.proj", "blocks.1.proj"]
 
 
 def test_config_targets_optional_only_for_data_free():

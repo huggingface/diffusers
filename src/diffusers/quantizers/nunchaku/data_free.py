@@ -163,25 +163,57 @@ class _NunchakuWeightPacker:
         return weight.view(c, r)
 
 
+# adaLN-style linears (feature-wise modulation) are precision-critical and are
+# consistently named after their norm across diffusers models.
+_DEFAULT_EXCLUDE_PATTERNS = ("norm", "modulation")
+
+
+def _repeated_block_prefixes(model: "torch.nn.Module") -> list[str]:
+    """Return prefixes of ``nn.ModuleList`` stacks of repeated block classes.
+
+    Diffusion transformers keep their compute-heavy linears inside stacks of
+    identical blocks; peripheral modules (embedders, final projections,
+    modulation heads) live outside them and should stay unquantized.
+    """
+
+    prefixes = []
+    for name, module in model.named_modules():
+        if not isinstance(module, torch.nn.ModuleList) or len(module) < 2:
+            continue
+        if len({type(child) for child in module}) != 1:
+            continue
+        prefixes.append(f"{name}.")
+    return prefixes
+
+
 def infer_data_free_targets(
     model: "torch.nn.Module",
     *,
     group_size: int,
-    modules_to_not_convert: tuple[str, ...] | list[str] = (),
+    modules_to_not_convert: tuple[str, ...] | list[str] | None = None,
 ) -> list[str]:
     """Infer quantization targets for data-free mode from a model's structure.
 
     Every ``nn.Linear`` whose dimensions fit the Nunchaku packing constraints
     (``in_features``/``out_features`` multiples of 128 and ``in_features``
-    divisible by ``group_size``) is selected, unless its module path contains
-    one of the ``modules_to_not_convert`` substrings or the model lists it in
-    ``_keep_in_fp32_modules``.
+    divisible by ``group_size``) is selected, restricted to the repeated block
+    stacks of the model (when it has any) so that peripheral modules such as
+    embedders and final projections stay unquantized. Modules whose path
+    contains a ``modules_to_not_convert`` substring — defaulting to
+    ``("norm", "modulation")`` to skip adaLN-style linears — or matches the
+    model's ``_keep_in_fp32_modules`` are excluded. Pass an explicit (possibly
+    empty) ``modules_to_not_convert`` list to replace the default patterns.
     """
 
+    if modules_to_not_convert is None:
+        modules_to_not_convert = _DEFAULT_EXCLUDE_PATTERNS
     exclude = list(modules_to_not_convert) + list(getattr(model, "_keep_in_fp32_modules", None) or [])
+    stack_prefixes = _repeated_block_prefixes(model)
     targets = []
     for name, module in model.named_modules():
         if not isinstance(module, torch.nn.Linear):
+            continue
+        if stack_prefixes and not any(name.startswith(prefix) for prefix in stack_prefixes):
             continue
         if any(pattern in name for pattern in exclude):
             continue
