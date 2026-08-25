@@ -320,10 +320,10 @@ class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         Args:
             prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
-            image (`nd.ndarray` or `PIL.Image.Image`):
+            image (`np.ndarray` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process. This is the image whose masked region will be inpainted.
-            mask_image (`nd.ndarray` or `PIL.Image.Image`):
+            mask_image (`np.ndarray` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
                 replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
                 PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
