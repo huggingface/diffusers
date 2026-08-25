@@ -214,9 +214,7 @@ class LTX2DFRSplitKeyframesStep(ModularPipelineBlocks):
         )
 
         # `_pack_latents` is frame-major, so trimming the canvas padding is a prefix slice on the base tokens.
-        trimmed_latent_frames = (
-            block_state.requested_num_frames - 1
-        ) // components.vae_temporal_compression_ratio + 1
+        trimmed_latent_frames = (block_state.requested_num_frames - 1) // components.vae_temporal_compression_ratio + 1
         tokens_per_latent_frame = (latent_height // spatial_patch) * (latent_width // spatial_patch) // temporal_patch
         block_state.latents = block_state.latents[:, : trimmed_latent_frames * tokens_per_latent_frame]
         block_state.num_frames = block_state.requested_num_frames

@@ -50,8 +50,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2ImageToVideoBlocks,
             LTX2InContextBlocks,
         )
-        from .modular_blocks_ltx25 import LTX25AutoBlocks
         from .modular_blocks_ltx2_dfr import LTX2DFRBlocks
+        from .modular_blocks_ltx25 import LTX25AutoBlocks
         from .modular_pipeline import LTX2DFRModularPipeline, LTX2ModularPipeline, LTX25ModularPipeline
 else:
     import sys
