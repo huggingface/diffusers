@@ -65,6 +65,14 @@ class BasePipelineTesterConfig:
         ]
     )
 
+    # Components that cannot be offloaded at leaf level, e.g. a `transformers` model whose attention is a
+    # `torch.nn.MultiheadAttention` (it reads its projection weights directly instead of calling the submodules, so
+    # the leaf-level onload hooks never fire and the weights stay on the offload device). Such a component is often
+    # fine at block level, hence the level in the name. Listed components are kept on the accelerator by
+    # `test_pipeline_level_group_offloading_inference` so the remaining ones are still covered, instead of skipping
+    # the test outright.
+    group_offloading_leaf_level_exclude_modules = []
+
     # ==================== Required interface ====================
 
     @property
