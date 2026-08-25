@@ -41,8 +41,12 @@ RUN python -c "import torch, torchvision, torchaudio"
 # is where torch already lives and where the CLI installs `--dependencies` extras at runtime.
 # --break-system-packages bypasses the PEP 668 marker that interpreter carries; harmless in a
 # single-purpose image, and it matches what the CLI does inside the sandbox.
+#
+# `diffusers` comes from PyPI so the image ships a released version. A run that needs `main` (or any
+# other build) can install over it with `--dependencies` or point `--image` at a custom image.
 RUN uv pip install --system --break-system-packages --no-cache-dir \
     "huggingface_hub[hf_xet]>=1.23" \
+    diffusers \
     accelerate \
     transformers \
     safetensors \
@@ -51,8 +55,6 @@ RUN uv pip install --system --break-system-packages --no-cache-dir \
     peft \
     imageio \
     imageio-ffmpeg
-
-RUN uv pip install --system --break-system-packages --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers"
 
 # Smoke-test the console script the sandbox invokes, so a broken install fails the build.
 RUN diffusers-cli env
