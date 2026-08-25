@@ -492,7 +492,7 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
         if not isinstance(compute_dtype, torch.dtype):
             raise ValueError("Nunchaku compute_dtype must be a string or a torch.dtype.")
         self.compute_dtype = compute_dtype
-        self.pre_quantized = True
+        self.pre_quantized = kwargs.pop("pre_quantized", True)
         self.svdq_w4a4 = svdq_w4a4
         self.awq_w4a16 = awq_w4a16
 
@@ -502,6 +502,11 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
         if self.svdq_w4a4 is None and self.awq_w4a16 is None:
             raise ValueError(
                 "Nunchaku compact quantization config must include `svdq_w4a4.targets` or `awq_w4a16.targets`."
+            )
+        if not self.pre_quantized and self.awq_w4a16 is not None:
+            raise NotImplementedError(
+                "Data-free quantization (`pre_quantized=False`) only supports `svdq_w4a4` targets; "
+                "remove the `awq_w4a16` section or load a pre-quantized checkpoint."
             )
 
         for op, raw in (("svdq_w4a4", self.svdq_w4a4), ("awq_w4a16", self.awq_w4a16)):

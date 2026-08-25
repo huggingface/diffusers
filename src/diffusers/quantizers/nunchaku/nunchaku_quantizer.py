@@ -6,6 +6,8 @@ from ..base import DiffusersQuantizer
 
 
 if TYPE_CHECKING:
+    import torch
+
     from ...models.modeling_utils import ModelMixin
 
 
@@ -19,7 +21,9 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
         self.compute_dtype = quantization_config.compute_dtype
-        self.pre_quantized = quantization_config.pre_quantized
+        # Quantize on load when either the loader inferred an unquantized
+        # checkpoint or the config explicitly requested `pre_quantized=False`.
+        self.pre_quantized = self.pre_quantized and quantization_config.pre_quantized
 
     def validate_environment(self, *args, **kwargs):
         if not is_kernels_available():
@@ -69,9 +73,60 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
         quantization_config = self.quantization_config.to_dict()
         num_replaced = replace_with_nunchaku_linear(model, quantization_config, self.compute_dtype)
 
-        if state_dict is not None:
+        if self.pre_quantized and state_dict is not None:
             check_strict_state_dict_match(model, state_dict)
         logger.info(f"Applied Nunchaku quantization config with {num_replaced} targets.")
+
+    def check_if_quantized_param(
+        self,
+        model: "ModelMixin",
+        param_value: "torch.Tensor",
+        param_name: str,
+        state_dict: dict[str, Any],
+        **kwargs,
+    ) -> bool:
+        if self.pre_quantized:
+            return False
+        from .utils import SVDQW4A4Linear
+
+        module_name, _, tensor_name = param_name.rpartition(".")
+        if tensor_name not in ("weight", "bias") or not module_name:
+            return False
+        try:
+            module = model.get_submodule(module_name)
+        except AttributeError:
+            return False
+        return isinstance(module, SVDQW4A4Linear)
+
+    def create_quantized_param(
+        self,
+        model: "ModelMixin",
+        param_value: "torch.Tensor",
+        param_name: str,
+        target_device: "torch.device",
+        state_dict: dict[str, Any] | None = None,
+        unexpected_keys: list[str] | None = None,
+        **kwargs,
+    ):
+        import torch
+
+        from .data_free import pack_data_free_bias, quantize_linear_data_free
+
+        module_name, _, tensor_name = param_name.rpartition(".")
+        module = model.get_submodule(module_name)
+        if tensor_name == "bias":
+            packed_bias = pack_data_free_bias(param_value.to(target_device), torch_dtype=self.compute_dtype)
+            module._parameters["bias"] = torch.nn.Parameter(packed_bias, requires_grad=False)
+            return
+        quantized = quantize_linear_data_free(
+            param_value.to(target_device),
+            precision=module.precision,
+            group_size=module.group_size,
+            rank=module.rank,
+            torch_dtype=self.compute_dtype,
+        )
+        for name, tensor in quantized.items():
+            module._parameters[name] = torch.nn.Parameter(tensor.to(target_device), requires_grad=False)
 
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
         return model

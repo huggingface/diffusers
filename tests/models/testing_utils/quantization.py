@@ -1762,6 +1762,27 @@ class NunchakuLiteTesterMixin(NunchakuLiteConfigMixin, QuantizationTesterMixin):
     def test_nunchaku_lite_quantized_layers(self):
         self._test_quantized_layers(self.config_dict)
 
+    def test_nunchaku_lite_data_free_quantization(self):
+        """Quantize an unquantized checkpoint on load (`pre_quantized=False`) and run a forward pass."""
+
+        unquantized_path = getattr(self, "unquantized_model_name_or_path", None)
+        data_free_config = getattr(self, "data_free_config_dict", None)
+        if unquantized_path is None or data_free_config is None:
+            pytest.skip("Data-free quantization attributes are not configured for this model.")
+
+        kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
+        kwargs["quantization_config"] = NunchakuLiteQuantizationConfig(**data_free_config, pre_quantized=False)
+        model = self.model_class.from_pretrained(unquantized_path, **kwargs)
+
+        num_quantized_layers = sum(1 for _, module in model.named_modules() if self._is_module_quantized(module))
+        expected = len(data_free_config["svdq_w4a4"]["targets"])
+        assert num_quantized_layers == expected, (
+            f"Data-free quantization replaced {num_quantized_layers} layers, expected {expected}."
+        )
+
+        with torch.no_grad():
+            model(**self.get_dummy_inputs())
+
 
 @pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available.")
 @require_accelerate
