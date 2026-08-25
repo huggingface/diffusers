@@ -179,7 +179,7 @@ jobs:
         echo "Matrix: $matrix"
 
   run_tests_cpu:
-    name: Run Tests (CPU)
+    name: ${{ matrix.name }}
     needs: setup_tests
     if: needs.setup_tests.outputs.matrix != '[]'
     strategy:
