@@ -135,8 +135,8 @@ def resolve_canvas(num_frames: int, temporal_compression_ratio: int = 8) -> tupl
 
     Returns:
         `tuple[int, int, list[int]]`: The padded frame count, the chosen segment length, and the keyframe slot
-        positions `[S, 2S, ..., N' - 1]` in pixel frames. Frame 0 is excluded (under causal encoding its latent
-        already covers a single pixel frame) and the terminal frame is included.
+        positions `[S, 2S, ..., N' - 1]` in pixel frames. Frame 0 is excluded (under causal encoding its latent already
+        covers a single pixel frame) and the terminal frame is included.
     """
     if (num_frames - 1) % temporal_compression_ratio != 0:
         raise ValueError(

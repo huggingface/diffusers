@@ -138,9 +138,9 @@ class LTX2DFRModularPipeline(LTX2ModularPipeline):
     """
     A ModularPipeline for one LTX-2.5 Diffusion Fidelity Rendering (DFR) pass (joint video + audio).
 
-    Generates on a canvas padded to a whole number of keyframe segments, spending one extra latent frame of tokens
-    per segment border on a generated single-pixel-frame keyframe slot. The full recipe runs these blocks twice --
-    see [`LTX2DFRBlocks`]. A checkpoint routes here through `modular_model_index.json`.
+    Generates on a canvas padded to a whole number of keyframe segments, spending one extra latent frame of tokens per
+    segment border on a generated single-pixel-frame keyframe slot. The full recipe runs these blocks twice -- see
+    [`LTX2DFRBlocks`]. A checkpoint routes here through `modular_model_index.json`.
 
     """
 
