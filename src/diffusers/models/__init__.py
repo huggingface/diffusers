@@ -24,7 +24,7 @@ from ..utils import (
 _import_structure = {}
 
 if is_torch_available():
-    _import_structure["_modeling_parallel"] = ["ContextParallelConfig", "ParallelConfig"]
+    _import_structure["_modeling_parallel"] = ["ContextParallelConfig", "ParallelConfig", "TensorParallelConfig"]
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["attention_dispatch"] = ["AttentionBackendName", "attention_backend"]
     _import_structure["auto_model"] = ["AutoModel"]
@@ -55,13 +55,16 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_longcat_audio_dit"] = ["LongCatAudioDiTVae"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_rae"] = ["AutoencoderRAE"]
+    _import_structure["autoencoders.autoencoder_same"] = ["AutoencoderSAME"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.autoencoder_vidtok"] = ["AutoencoderVidTok"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.ltx2_diffusion_decoder"] = ["LTX2VideoDiffusionDecoderModel"]
+    _import_structure["autoencoders.minimax_music3_vocoder"] = ["MiniMaxMusic3Vocoder"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
     _import_structure["condition_embedders.condition_embedder_anima"] = ["AnimaTextConditioner"]
+    _import_structure["condition_embedders.condition_embedder_minimax_music3"] = ["MiniMaxMusic3ConditionEncoder"]
     _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
     _import_structure["controlnets.controlnet_cosmos"] = ["CosmosControlNetModel"]
     _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
@@ -92,6 +95,7 @@ if is_torch_available():
     _import_structure["transformers.hunyuan_transformer_2d"] = ["HunyuanDiT2DModel"]
     _import_structure["transformers.latte_transformer_3d"] = ["LatteTransformer3DModel"]
     _import_structure["transformers.lumina_nextdit2d"] = ["LuminaNextDiT2DModel"]
+    _import_structure["transformers.minimax_music3_rvq_depth_decoder"] = ["MiniMaxMusic3RVQDepthDecoder"]
     _import_structure["transformers.pixart_transformer_2d"] = ["PixArtTransformer2DModel"]
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
     _import_structure["transformers.sana_transformer"] = ["SanaTransformer2DModel"]
@@ -132,6 +136,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_minimax_h3"] = ["MiniMaxH3Transformer3DModel"]
+    _import_structure["transformers.transformer_minimax_music3"] = ["MiniMaxMusic3Transformer1DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_motif_video"] = ["MotifVideoTransformer3DModel"]
     _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
@@ -142,6 +147,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
+    _import_structure["transformers.transformer_stable_audio3"] = ["StableAudio3DiTModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
     _import_structure["transformers.transformer_wan_animate"] = ["WanAnimateTransformer3DModel"]
@@ -163,7 +169,7 @@ if is_torch_available():
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
-        from ._modeling_parallel import ContextParallelConfig, ParallelConfig
+        from ._modeling_parallel import ContextParallelConfig, ParallelConfig, TensorParallelConfig
         from .adapter import MultiAdapter, T2IAdapter
         from .attention_dispatch import AttentionBackendName, attention_backend
         from .auto_model import AutoModel
@@ -193,16 +199,18 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderRAE,
+            AutoencoderSAME,
             AutoencoderTiny,
             AutoencoderVidTok,
             ConsistencyDecoderVAE,
             Cosmos3AVAEAudioTokenizer,
             LongCatAudioDiTVae,
             LTX2VideoDiffusionDecoderModel,
+            MiniMaxMusic3Vocoder,
             VQModel,
         )
         from .cache_utils import CacheMixin
-        from .condition_embedders import AnimaTextConditioner
+        from .condition_embedders import AnimaTextConditioner, MiniMaxMusic3ConditionEncoder
         from .controlnets import (
             ControlNetModel,
             ControlNetUnionModel,
@@ -269,6 +277,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MiniMaxH3Transformer3DModel,
+            MiniMaxMusic3RVQDepthDecoder,
+            MiniMaxMusic3Transformer1DModel,
             MochiTransformer3DModel,
             MotifVideoTransformer3DModel,
             NucleusMoEImageTransformer2DModel,
@@ -282,6 +292,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaVideoTransformer3DModel,
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
+            StableAudio3DiTModel,
             StableAudioDiTModel,
             T5FilmDecoder,
             Transformer2DModel,

@@ -486,6 +486,14 @@ def is_context_parallel(test_case):
     return pytest.mark.context_parallel(test_case)
 
 
+def is_tensor_parallel(test_case):
+    """
+    Decorator marking a test as a tensor parallel inference test. These tests can be filtered using:
+        pytest -m "not tensor_parallel" to skip pytest -m tensor_parallel to run only these tests
+    """
+    return pytest.mark.tensor_parallel(test_case)
+
+
 def is_cache(test_case):
     """
     Decorator marking a test as a cache test. These tests can be filtered using:
@@ -660,6 +668,28 @@ def require_big_accelerator(test_case):
     )(test_case)
 
 
+def require_accelerator_memory(min_memory_gb: int):
+    """
+    Decorator marking a test that needs at least `min_memory_gb` GB of memory on the accelerator it runs on. Tests
+    running on CPU are not affected.
+    """
+
+    def decorator(test_case):
+        if torch_device == "cuda" and torch.cuda.is_available():
+            total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        elif torch_device == "xpu" and torch.xpu.is_available():
+            total_memory = torch.xpu.get_device_properties(0).total_memory / (1024**3)
+        else:
+            return test_case
+
+        return pytest.mark.skipif(
+            total_memory < min_memory_gb,
+            reason=f"test requires an accelerator with at least {min_memory_gb} GB memory",
+        )(test_case)
+
+    return decorator
+
+
 def require_torch_accelerator_with_training(test_case):
     """Decorator marking a test that requires an accelerator with support for training."""
     return pytest.mark.skipif(
@@ -818,6 +848,16 @@ def require_bitsandbytes_version_greater(bnb_version):
         )(test_case)
 
     return decorator
+
+
+def require_hf_token(test_case):
+    """
+    Decorator marking a test that requires a Hugging Face auth token (e.g. to access gated repos). The test is
+    skipped when no token is available.
+    """
+    from huggingface_hub import get_token
+
+    return pytest.mark.skipif(get_token() is None, reason="test requires a Hugging Face auth token")(test_case)
 
 
 def require_hf_hub_version_greater(hf_hub_version):

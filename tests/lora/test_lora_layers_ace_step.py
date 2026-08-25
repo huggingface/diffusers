@@ -23,11 +23,7 @@ from diffusers.models.transformers.ace_step_transformer import AceStepTransforme
 from diffusers.pipelines.ace_step import AceStepConditionEncoder, AceStepPipeline
 from diffusers.utils.import_utils import is_peft_available
 
-from ..testing_utils import (
-    require_peft_backend,
-    skip_mps,
-    torch_device,
-)
+from ..testing_utils import require_peft_backend, skip_mps
 
 
 if is_peft_available():
@@ -179,38 +175,5 @@ class AceStepLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pass
 
     @unittest.skip("Not supported in AceStep.")
-    def test_modify_padding_mode(self):
-        pass
-
-    @unittest.skip("Not supported in AceStep.")
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
-
-    @unittest.skip("Tiny AceStep GQA model produces numerically close outputs for different LoRA ranks.")
-    def test_correct_lora_configs_with_different_ranks(self):
-        pass
-
-    @unittest.skip("AceStep attention layers have no bias; lora_bias is not applicable.")
-    def test_lora_B_bias(self):
-        pass
-
-    def test_lora_fuse_nan(self):
-        import numpy as np
-
-        components, _, denoiser_lora_config = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-
-        with torch.no_grad():
-            pipe.transformer.layers[0].self_attn.to_q.lora_A["adapter-1"].weight += float("inf")
-
-        with self.assertRaises(ValueError):
-            pipe.fuse_lora(safe_fusing=True)
-
-        pipe.fuse_lora(safe_fusing=False)
-        out = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        self.assertTrue(np.isnan(out).all())

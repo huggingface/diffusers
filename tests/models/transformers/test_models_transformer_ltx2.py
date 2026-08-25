@@ -22,6 +22,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -149,3 +150,7 @@ class TestLTX2TransformerCompile(LTX2TransformerTesterConfig, TorchCompileTester
 # TODO: Add pretrained_model_name_or_path once a tiny LTX2 model is available on the Hub
 # class TestLTX2TransformerTorchAo(LTX2TransformerTesterConfig, TorchAoTesterMixin):
 #     """TorchAo quantization tests for LTX2 Video Transformer."""
+
+
+class TestLTX2TransformerLoRA(LTX2TransformerTesterConfig, LoraTesterMixin):
+    pass

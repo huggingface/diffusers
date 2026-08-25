@@ -1,9 +1,15 @@
 import unittest
+from types import SimpleNamespace
 
 import torch
 
-from diffusers import BlockRefinementScheduler, DiffusionGemmaPipeline
+from diffusers import BlockRefinementScheduler, DiffusionGemmaPipeline, EntropyBoundScheduler
+from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import require_peft_backend, require_peft_version_greater
+
+
+if is_peft_available():
+    from peft import LoraConfig
 
 
 # --- Lightweight stand-in for input-validation tests that never reach the model ---
@@ -75,9 +81,22 @@ def _load_pipeline(test):
 
 
 class DiffusionGemmaPipelineTest(unittest.TestCase):
+    adaptive_stopping_vocab_size = 8
+
     def setUp(self):
         self.pipe, self.canvas_length = _load_pipeline(self)
         self.prompt = "Name a color."
+
+    def _run_adaptive_stopping(self, prompt):
+        self.pipe.model.config.get_text_config(decoder=True).vocab_size = self.adaptive_stopping_vocab_size
+        return self.pipe(
+            prompt=prompt,
+            gen_length=self.canvas_length,
+            num_inference_steps=5,
+            confidence_threshold=0.005,
+            eos_early_stop=False,
+            output_type="seq",
+        )
 
     def test_generate(self):
         out = self.pipe(
@@ -102,6 +121,51 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         )
         self.assertEqual(sequences.shape, (1, self.canvas_length))
         self.assertEqual(len(texts), 1)
+
+    def test_adaptive_stopping_freezes_finished_rows(self):
+        forward_calls = 0
+
+        def forward(decoder_input_ids, **kwargs):
+            nonlocal forward_calls
+            batch_size, canvas_length = decoder_input_ids.shape
+            token_ids = ([1, 3], [1, 4], [2, 5], [2, 5], [2, 6])[forward_calls]
+            tokens = torch.tensor(token_ids, device=decoder_input_ids.device)[:, None].expand_as(decoder_input_ids)
+            logits = torch.full(
+                (batch_size, canvas_length, self.adaptive_stopping_vocab_size),
+                -100.0,
+                device=decoder_input_ids.device,
+            )
+            logits.scatter_(-1, tokens[..., None], 100.0)
+            forward_calls += 1
+            return SimpleNamespace(logits=logits)
+
+        self.pipe.model.forward = forward
+        self.pipe.scheduler = BlockRefinementScheduler()
+        output = self._run_adaptive_stopping(["Short prompt.", "A somewhat longer prompt for the second batch row."])
+
+        self.assertEqual(forward_calls, 4)
+        self.assertTrue((output.sequences[0] == 1).all())
+        self.assertTrue((output.sequences[1] == 5).all())
+
+    def test_adaptive_stopping_uses_scheduler_logits(self):
+        forward_calls = 0
+
+        def forward(decoder_input_ids, **kwargs):
+            nonlocal forward_calls
+            forward_calls += 1
+            batch_size, canvas_length = decoder_input_ids.shape
+            logits = torch.zeros(
+                batch_size, canvas_length, self.adaptive_stopping_vocab_size, device=decoder_input_ids.device
+            )
+            logits[..., 0] = 2.0
+            return SimpleNamespace(logits=logits)
+
+        self.pipe.model.forward = forward
+        self.pipe.scheduler = EntropyBoundScheduler(t_max=0.1, t_min=0.1)
+        output = self._run_adaptive_stopping(self.prompt)
+
+        self.assertEqual(forward_calls, 2)
+        self.assertTrue((output.sequences == 0).all())
 
     def test_callback_receives_advertised_keys(self):
         observed: list[str] = []
@@ -171,8 +235,6 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
     @require_peft_backend
     @require_peft_version_greater("0.18.9")
     def test_peft_adapter_api(self):
-        from peft import LoraConfig
-
         # Adapters are managed on the model component directly (the adapter API is adapter-type-agnostic; LoRA stands
         # in for any PEFT adapter: DoRA, IA3, ...).
         self.pipe.model.add_adapter(

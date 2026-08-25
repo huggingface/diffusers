@@ -14,7 +14,6 @@
 # limitations under the License.
 import unittest
 
-import numpy as np
 import torch
 from transformers import Qwen2Tokenizer, Qwen3VLConfig, Qwen3VLModel
 
@@ -26,14 +25,14 @@ from diffusers import (
 )
 from diffusers.pipelines.ideogram4.pipeline_ideogram4 import QWEN3_VL_ACTIVATION_LAYERS
 
-from ..testing_utils import floats_tensor, is_peft_available, require_peft_backend, torch_device
+from ..testing_utils import floats_tensor, is_peft_available, require_peft_backend
 
 
 if is_peft_available():
     from peft import LoraConfig
 
 
-from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 # The text conditioning concatenates the hidden states of these Qwen3-VL decoder layers, so the dummy text
@@ -180,57 +179,6 @@ class Ideogram4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    # Overridden because the base test's rank-pattern module finder doesn't resolve a module on Ideogram4's
-    # attention naming; this mirrors the same override other DiT LoRA tests use (e.g. Z-Image).
-    def test_correct_lora_configs_with_different_ranks(self):
-        components, _, denoiser_lora_config = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-
-        lora_output_same_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        pipe.transformer.delete_adapters("adapter-1")
-
-        denoiser = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-        for name, _ in denoiser.named_modules():
-            if "to_k" in name and "attention" in name and "lora" not in name:
-                module_name_to_rank_update = name.replace(".base_layer.", ".")
-                break
-
-        # change the rank_pattern
-        updated_rank = denoiser_lora_config.r * 2
-        denoiser_lora_config.rank_pattern = {module_name_to_rank_update: updated_rank}
-
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-        updated_rank_pattern = pipe.transformer.peft_config["adapter-1"].rank_pattern
-
-        self.assertTrue(updated_rank_pattern == {module_name_to_rank_update: updated_rank})
-
-        lora_output_diff_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        self.assertTrue(not np.allclose(original_output, lora_output_same_rank, atol=1e-3, rtol=1e-3))
-        self.assertTrue(not np.allclose(lora_output_diff_rank, lora_output_same_rank, atol=1e-3, rtol=1e-3))
-
-        pipe.transformer.delete_adapters("adapter-1")
-
-        # similarly change the alpha_pattern
-        updated_alpha = denoiser_lora_config.lora_alpha * 2
-        denoiser_lora_config.alpha_pattern = {module_name_to_rank_update: updated_alpha}
-
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-        self.assertTrue(
-            pipe.transformer.peft_config["adapter-1"].alpha_pattern == {module_name_to_rank_update: updated_alpha}
-        )
-
-        lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
-        self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
-
     @unittest.skip("Not supported in Ideogram4.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
@@ -238,34 +186,3 @@ class Ideogram4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Not supported in Ideogram4.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
-
-    @unittest.skip("Not supported in Ideogram4.")
-    def test_modify_padding_mode(self):
-        pass
-
-    # Overridden because the base test probes for `transformer_blocks`/`blocks`/etc. to corrupt a weight,
-    # but Ideogram4's transformer tower is named `layers` (with `attention.to_q` projections).
-    def test_lora_fuse_nan(self):
-        components, _, denoiser_lora_config = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
-        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
-        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
-
-        # corrupt one LoRA weight with `inf` values
-        with torch.no_grad():
-            pipe.transformer.layers[0].attention.to_q.lora_A["adapter-1"].weight += float("inf")
-
-        # with `safe_fusing=True` we should see an Error
-        with self.assertRaises(ValueError):
-            pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=True)
-
-        # without we should not see an error, but every image will be black
-        pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
-        out = pipe(**inputs)[0]
-
-        self.assertTrue(np.isnan(out).all())
