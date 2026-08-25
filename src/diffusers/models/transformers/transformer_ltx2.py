@@ -1115,8 +1115,8 @@ class LTX2VideoTransformer3DModel(
             for a given prompt.
         use_keyframes_abs_pos_embedding (`bool`, defaults to `False`):
             Whether to store a learned `(1, inner_dim)` absolute-position embedding for generated-keyframe tokens
-            (LTX-2.5.1+). When `True`, the weight is kept on the module for load/save; the regular distilled forward
-            path does not consume it until a dedicated keyframes pipeline wires it in.
+            (LTX-2.5). When `True`, tokens selected by `video_keyframes_mask` receive this embedding. The argument is
+            optional; omitting it leaves the distilled forward path unchanged.
     """
 
     _supports_gradient_checkpointing = True
@@ -1388,6 +1388,7 @@ class LTX2VideoTransformer3DModel(
         use_cross_timestep: bool = False,
         attention_kwargs: dict[str, Any] | None = None,
         video_self_attention_mask: torch.Tensor | None = None,
+        video_keyframes_mask: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         """
@@ -1458,6 +1459,10 @@ class LTX2VideoTransformer3DModel(
                 applied to the video self-attention in each transformer block. Values in `[0, 1]` where `1` means full
                 attention and `0` means masked. Used e.g. by the IC-LoRA pipeline to control attention strength between
                 noisy tokens and appended reference tokens. Audio self-attention is not affected.
+            video_keyframes_mask (`torch.Tensor`, *optional*):
+                Optional per-token marker of shape `(batch_size, num_video_tokens, 1)`, non-zero on video tokens whose
+                latent frame encodes a single pixel frame. Those tokens receive `keyframes_abs_pos_embedding`. Ignored
+                when the model was built without `use_keyframes_abs_pos_embedding`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a dict-like structured output of type `AudioVisualModelOutput` or a tuple.
 
@@ -1508,6 +1513,11 @@ class LTX2VideoTransformer3DModel(
         # 2. Patchify input projections
         hidden_states = self.proj_in(hidden_states)
         audio_hidden_states = self.audio_proj_in(audio_hidden_states)
+
+        # 2.1. Mark tokens whose latent encodes a single pixel frame (causal first frame, generated keyframe slots).
+        if self.config.use_keyframes_abs_pos_embedding and video_keyframes_mask is not None:
+            marker = (video_keyframes_mask > 0).to(dtype=hidden_states.dtype)
+            hidden_states = hidden_states + marker * self.keyframes_abs_pos_embedding.to(dtype=hidden_states.dtype)
 
         # 3. Prepare timestep embeddings and modulation parameters
         timestep_cross_attn_gate_scale_factor = (

@@ -29,7 +29,12 @@ else:
         "LTX2InContextBlocks",
     ]
     _import_structure["modular_blocks_ltx25"] = ["LTX25AutoBlocks"]
-    _import_structure["modular_pipeline"] = ["LTX2ModularPipeline", "LTX25ModularPipeline"]
+    _import_structure["modular_blocks_ltx2_dfr"] = ["LTX2DFRBlocks"]
+    _import_structure["modular_pipeline"] = [
+        "LTX2DFRModularPipeline",
+        "LTX2ModularPipeline",
+        "LTX25ModularPipeline",
+    ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -46,7 +51,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2InContextBlocks,
         )
         from .modular_blocks_ltx25 import LTX25AutoBlocks
-        from .modular_pipeline import LTX2ModularPipeline, LTX25ModularPipeline
+        from .modular_blocks_ltx2_dfr import LTX2DFRBlocks
+        from .modular_pipeline import LTX2DFRModularPipeline, LTX2ModularPipeline, LTX25ModularPipeline
 else:
     import sys
 
