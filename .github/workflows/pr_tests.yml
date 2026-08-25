@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
+          ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -68,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
+          ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -115,7 +115,7 @@ jobs:
     - name: Checkout diffusers
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
-        ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
+        ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
         fetch-depth: 0
     - name: Fetch refs/remotes/origin/main
       # `actions/checkout` only fetches the ref it checks out. The fetcher diffs HEAD against
@@ -124,8 +124,9 @@ jobs:
         git -c safe.directory="$GITHUB_WORKSPACE" fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
     - name: Overlay fetcher script from dispatch branch
       # TODO(DN6): remove once this fetcher is on `main`. Dispatching with `pr_number` checks out the
-      # PR's merge ref, which carries the PR's (old) `utils/tests_fetcher.py`. Overlay the dispatch
-      # branch's copy so the run exercises the fetcher under validation, not the PR's stale one.
+      # PR's head ref (`refs/pull/N/merge` only exists while a PR is open), which carries the PR's (old)
+      # `utils/tests_fetcher.py`. Overlay the dispatch branch's copy so the run exercises the fetcher
+      # under validation, not the PR's stale one.
       if: ${{ inputs.pr_number != '' }}
       env:
         DISPATCH_REF: ${{ github.ref }}
@@ -199,7 +200,7 @@ jobs:
     - name: Checkout diffusers
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
-        ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
+        ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
         fetch-depth: 2
 
     - name: Install Dependencies
