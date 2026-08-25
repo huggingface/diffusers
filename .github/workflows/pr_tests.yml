@@ -271,6 +271,10 @@ jobs:
           for dir in reports/*_cpu_test_reports; do
             job=$(basename "$dir" _cpu_test_reports)
             stats=$(sed 's/\x1b\[[0-9;]*m//g; s/=//g' "$dir/${job}_tests_cpu_stats.txt" 2>/dev/null | xargs)
+            case "$stats" in
+              *passed*|*failed*|*error*|*skipped*) ;;
+              *) stats="no tests collected" ;;
+            esac
             echo "| \`$job\` | ${stats:-no report} |"
           done
           echo
