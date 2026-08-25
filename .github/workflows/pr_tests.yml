@@ -136,6 +136,7 @@ jobs:
         git -c safe.directory="$GITHUB_WORKSPACE" diff --stat HEAD -- utils/tests_fetcher.py || true
     - name: Install dependencies
       run: |
+        printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
     - name: Environment
       run: |
