@@ -72,7 +72,7 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
 
         svdq_config = self.quantization_config.svdq_w4a4
         if not self.pre_quantized and svdq_config is not None and svdq_config.get("targets") is None:
-            from .data_free import infer_data_free_targets
+            from .svdquant import infer_data_free_targets
 
             svdq_config["targets"] = infer_data_free_targets(
                 model,
@@ -93,7 +93,7 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
             return missing_keys
         # In data-free mode the checkpoint holds `weight`/`bias` while the model
         # expects the packed parameters; those are produced at load time.
-        from .data_free import DATA_FREE_PARAMETER_NAMES
+        from .svdquant import DATA_FREE_PARAMETER_NAMES
 
         return [key for key in missing_keys if key.rpartition(".")[2] not in DATA_FREE_PARAMETER_NAMES]
 
@@ -130,7 +130,7 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
     ):
         import torch
 
-        from .data_free import pack_data_free_bias, quantize_linear_data_free
+        from .svdquant import pack_data_free_bias, quantize_linear_data_free
 
         module_name, _, tensor_name = param_name.rpartition(".")
         module = model.get_submodule(module_name)

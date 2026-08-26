@@ -24,7 +24,7 @@ import pytest
 import torch
 
 from diffusers import NunchakuLiteQuantizationConfig
-from diffusers.quantizers.nunchaku.data_free import (
+from diffusers.quantizers.nunchaku.svdquant import (
     _NunchakuWeightPacker,
     pack_data_free_bias,
     quantize_linear_data_free,
@@ -291,7 +291,7 @@ class _InferenceToyModel(torch.nn.Module):
 
 
 def test_infer_data_free_targets():
-    from diffusers.quantizers.nunchaku.data_free import infer_data_free_targets
+    from diffusers.quantizers.nunchaku.svdquant import infer_data_free_targets
 
     model = _InferenceToyModel()
     # Default: restricted to the repeated `blocks` stack (embedder/proj_out are
