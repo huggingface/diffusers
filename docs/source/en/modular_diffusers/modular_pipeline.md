@@ -31,7 +31,7 @@ from diffusers import ModularPipeline
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipeline(prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
 image.save("modular_t2i_out.png")
@@ -47,7 +47,7 @@ from diffusers.utils import load_image
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 init_image = load_image(url)
@@ -66,7 +66,7 @@ from diffusers.utils import load_image
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 mask_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-inpaint-mask.png"
@@ -360,7 +360,7 @@ Since blocks are composable, you can take a pipeline apart and reconstruct it in
 from diffusers import ModularPipeline, ComponentsManager
 import torch
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 dtype = torch.bfloat16
 repo_id = "black-forest-labs/FLUX.2-klein-4B"
 
