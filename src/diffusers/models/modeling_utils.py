@@ -63,7 +63,12 @@ from ..utils import (
 from ..utils.distributed_utils import is_torch_dist_rank_zero
 from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache
-from ._modeling_parallel import ContextParallelConfig, ContextParallelModelPlan, ParallelConfig
+from ._modeling_parallel import (
+    ContextParallelConfig,
+    ContextParallelModelPlan,
+    ParallelConfig,
+    TensorParallelConfig,
+)
 from .model_loading_utils import (
     _caching_allocator_warmup,
     _determine_device_map,
@@ -97,6 +102,11 @@ class ContextManagers:
 logger = logging.get_logger(__name__)
 
 _REGEX_SHARD = re.compile(r"(.*?)-\d{5}-of-\d{5}")
+
+# The `user_agent` dict is flattened into a single `user-agent` HTTP header. Serializing an
+# unbounded `quantization_config` into it can exceed server header size limits, so we only
+# attach the serialized config for telemetry when it stays under this many characters.
+_MAX_QUANT_CONFIG_USER_AGENT_CHARS = 2048
 
 TORCH_INIT_FUNCTIONS = {
     "uniform_": nn.init.uniform_,
@@ -249,6 +259,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _repeated_blocks = []
     _parallel_config = None
     _cp_plan = None
+    _tp_plan = None
     _skip_keys = None
 
     def __init__(self):
@@ -1162,7 +1173,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             # In order to ensure popular quantization methods are supported. Can be disabled with `disable_telemetry`
             user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
-            user_agent["quant_config"] = json.dumps(hf_quantizer.quantization_config.to_dict(), sort_keys=True)
+            # Attach the full serialized config for telemetry, but skip it when it is large enough to
+            # risk exceeding HTTP header size limits (see `_MAX_QUANT_CONFIG_USER_AGENT_CHARS`).
+            serialized_quant_config = json.dumps(hf_quantizer.quantization_config.to_dict(), sort_keys=True)
+            if len(serialized_quant_config) <= _MAX_QUANT_CONFIG_USER_AGENT_CHARS:
+                user_agent["quant_config"] = serialized_quant_config
 
             # Force-set to `True` for more mem efficiency
             if low_cpu_mem_usage is None:
@@ -1592,7 +1607,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def enable_parallelism(
         self,
         *,
-        config: ParallelConfig | ContextParallelConfig,
+        config: ParallelConfig | ContextParallelConfig | TensorParallelConfig,
         cp_plan: dict[str, ContextParallelModelPlan] | None = None,
     ):
         logger.warning(
@@ -1611,6 +1626,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if isinstance(config, ContextParallelConfig):
             config = ParallelConfig(context_parallel_config=config)
+        elif isinstance(config, TensorParallelConfig):
+            config = ParallelConfig(tensor_parallel_config=config)
 
         rank = torch.distributed.get_rank()
         world_size = torch.distributed.get_world_size()
@@ -1656,25 +1673,51 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 mesh_shape=cp_config.mesh_shape,
                 mesh_dim_names=cp_config.mesh_dim_names,
             )
+        elif config.tensor_parallel_config is not None:
+            tp_config = config.tensor_parallel_config
+            mesh = tp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
+                device_type=device_type,
+                mesh_shape=(tp_config.tp_degree,),
+                mesh_dim_names=("tp",),
+            )
 
+        # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
         config.setup(rank, world_size, device, mesh=mesh)
         self._parallel_config = config
 
-        for module in self.modules():
-            if not isinstance(module, attention_classes):
-                continue
-            processor = module.processor
-            if processor is None or not hasattr(processor, "_parallel_config"):
-                continue
-            processor._parallel_config = config
-
+        # Only context parallelism needs the config inside attention: it replaces the attention computation itself
+        # (Ulysses all-to-all / ring). Tensor parallelism only shards `Linear` weights, so each rank runs the ordinary
+        # attention op over its own heads and the processors must stay unaware of it.
         if config.context_parallel_config is not None:
+            for module in self.modules():
+                if not isinstance(module, attention_classes):
+                    continue
+                processor = module.processor
+                if processor is None or not hasattr(processor, "_parallel_config"):
+                    continue
+                processor._parallel_config = config
+
             if cp_plan is None and self._cp_plan is None:
                 raise ValueError(
                     "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
                 )
             cp_plan = cp_plan if cp_plan is not None else self._cp_plan
             apply_context_parallel(self, config.context_parallel_config, cp_plan)
+
+        if config.tensor_parallel_config is not None:
+            if self._tp_plan is None:
+                raise ValueError(
+                    "`_tp_plan` must be set on the model class to use tensor parallelism. "
+                    f"'{self.__class__.__name__}' does not define one."
+                )
+            tp_degree = config.tensor_parallel_config._tp_degree
+            num_heads = getattr(self.config, "num_attention_heads", None)
+            if num_heads is not None and num_heads % tp_degree != 0:
+                raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
+
+            from ..hooks.tensor_parallel import apply_tensor_parallel
+
+            apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
 
     @classmethod
     def _load_pretrained_model(

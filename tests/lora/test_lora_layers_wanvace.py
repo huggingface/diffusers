@@ -135,13 +135,6 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in Wan VACE.")
-    def test_modify_padding_mode(self):
-        pass
-
-    def test_layerwise_casting_inference_denoiser(self):
-        super().test_layerwise_casting_inference_denoiser()
-
     @require_peft_version_greater("0.13.2")
     def test_lora_exclude_modules_wanvace(self):
         exclude_module_name = "vace_blocks.0.proj_out"

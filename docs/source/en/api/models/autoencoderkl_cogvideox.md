@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import AutoencoderKLCogVideoX
 
-vae = AutoencoderKLCogVideoX.from_pretrained("THUDM/CogVideoX-2b", subfolder="vae", torch_dtype=torch.float16).to("cuda")
+vae = AutoencoderKLCogVideoX.from_pretrained("THUDM/CogVideoX-2b", subfolder="vae", dtype=torch.float16).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ## AutoencoderKLCogVideoX

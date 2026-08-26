@@ -36,8 +36,8 @@ callback = SDXLCFGCutoffCallback(cutoff_step_ratio=0.4)
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
-    device_map="cuda"
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, use_karras_sigmas=True)
 
@@ -123,8 +123,8 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
-    device_map="cuda"
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 image = pipeline(

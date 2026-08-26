@@ -15,11 +15,10 @@
 
 
 import gc
-import tempfile
 import time
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import (
@@ -44,11 +43,11 @@ from diffusers import (
 
 from ...testing_utils import (
     CaptureLogger,
+    assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
-    enable_full_determinism,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
@@ -56,41 +55,25 @@ from ...testing_utils import (
     require_torch_accelerator,
     require_torch_multi_accelerator,
     skip_mps,
-    slow,
     torch_device,
 )
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
-    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
-    TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import (
-    IPAdapterTesterMixin,
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineLatentTesterMixin,
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
     PipelineTesterMixin,
 )
+from .ip_adapter_tester import IPAdapterTesterMixin
 
 
-enable_full_determinism()
-
-
-class StableDiffusionPipelineFastTests(
-    IPAdapterTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineTesterMixin,
-    unittest.TestCase,
-):
+class StableDiffusionPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionPipeline
-    params = TEXT_TO_IMAGE_PARAMS
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
-    test_layerwise_casting = True
-    test_group_offloading = True
+    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS
+    output_shape = (3, 64, 64)
+    batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         cross_attention_dim = 8
@@ -152,80 +135,61 @@ class StableDiffusionPipelineFastTests(
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+    def get_dummy_inputs(self):
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
         return inputs
 
+
+class TestStableDiffusionPipeline(StableDiffusionPipelineTesterConfig, PipelineTesterMixin):
     def test_stable_diffusion_ddim(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, 3, 64, 64)
 
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.1641, 0.4640, 0.4864, 0.2683, 0.3652, 0.4507, 0.5290, 0.3307, 0.3977])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        # fmt: off
+        expected_slice = torch.tensor([0.1641, 0.4640, 0.4864, 0.2683, 0.3652, 0.4507, 0.5290, 0.3307, 0.3977])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
     def test_stable_diffusion_lcm(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components(time_cond_proj_dim=256)
-        sd_pipe = StableDiffusionPipeline(**components)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline(**self.get_dummy_components(time_cond_proj_dim=256))
         sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, 3, 64, 64)
 
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.2368, 0.4900, 0.5019, 0.2723, 0.4473, 0.4578, 0.4551, 0.3532, 0.4133])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        # fmt: off
+        expected_slice = torch.tensor([0.2368, 0.4900, 0.5019, 0.2723, 0.4473, 0.4578, 0.4551, 0.3532, 0.4133])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
     def test_stable_diffusion_lcm_custom_timesteps(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components(time_cond_proj_dim=256)
-        sd_pipe = StableDiffusionPipeline(**components)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline(**self.get_dummy_components(time_cond_proj_dim=256))
         sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         del inputs["num_inference_steps"]
         inputs["timesteps"] = [999, 499]
-        output = sd_pipe(**inputs)
-        image = output.images
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 3, 64, 64)
 
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.2368, 0.4900, 0.5019, 0.2723, 0.4473, 0.4578, 0.4551, 0.3532, 0.4133])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        # Custom timesteps matching the default 2-step schedule reproduce `test_stable_diffusion_lcm`'s output.
+        # fmt: off
+        expected_slice = torch.tensor([0.2368, 0.4900, 0.5019, 0.2723, 0.4473, 0.4578, 0.4551, 0.3532, 0.4133])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
     def test_stable_diffusion_ays(self):
         from diffusers.schedulers import AysSchedules
@@ -233,53 +197,38 @@ class StableDiffusionPipelineFastTests(
         timestep_schedule = AysSchedules["StableDiffusionTimesteps"]
         sigma_schedule = AysSchedules["StableDiffusionSigmas"]
 
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components(time_cond_proj_dim=256)
-        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = self.get_pipeline(**self.get_dummy_components(time_cond_proj_dim=256)).to(torch_device)
         sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["num_inference_steps"] = 10
         output = sd_pipe(**inputs).images
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["num_inference_steps"] = None
         inputs["timesteps"] = timestep_schedule
         output_ts = sd_pipe(**inputs).images
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["num_inference_steps"] = None
         inputs["sigmas"] = sigma_schedule
         output_sigmas = sd_pipe(**inputs).images
 
-        assert np.abs(output_sigmas.flatten() - output_ts.flatten()).max() < 1e-3, (
+        assert (output_sigmas - output_ts).abs().max() < 1e-3, (
             "ays timesteps and ays sigmas should have the same outputs"
         )
-        assert np.abs(output.flatten() - output_ts.flatten()).max() > 1e-3, (
-            "use ays timesteps should have different outputs"
-        )
-        assert np.abs(output.flatten() - output_sigmas.flatten()).max() > 1e-3, (
-            "use ays sigmas should have different outputs"
-        )
+        assert (output - output_ts).abs().max() > 1e-3, "use ays timesteps should have different outputs"
+        assert (output - output_sigmas).abs().max() > 1e-3, "use ays sigmas should have different outputs"
 
     def test_stable_diffusion_prompt_embeds(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt"] = 3 * [inputs["prompt"]]
-
-        # forward
         output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
+        image_slice_1 = output.images[0, -1, -3:, -3:]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         prompt = 3 * [inputs.pop("prompt")]
 
         text_inputs = sd_pipe.tokenizer(
@@ -290,34 +239,26 @@ class StableDiffusionPipelineFastTests(
             return_tensors="pt",
         )
         text_inputs = text_inputs["input_ids"].to(torch_device)
+        inputs["prompt_embeds"] = sd_pipe.text_encoder(text_inputs)[0]
 
-        prompt_embeds = sd_pipe.text_encoder(text_inputs)[0]
-
-        inputs["prompt_embeds"] = prompt_embeds
-
-        # forward
         output = sd_pipe(**inputs)
-        image_slice_2 = output.images[0, -3:, -3:, -1]
+        image_slice_2 = output.images[0, -1, -3:, -3:]
 
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+        assert_tensors_close(
+            image_slice_2, image_slice_1, atol=1e-4, msg="Passing `prompt_embeds` changed the output."
+        )
 
     def test_stable_diffusion_negative_prompt_embeds(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         negative_prompt = 3 * ["this is a negative prompt"]
         inputs["negative_prompt"] = negative_prompt
         inputs["prompt"] = 3 * [inputs["prompt"]]
-
-        # forward
         output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
+        image_slice_1 = output.images[0, -1, -3:, -3:]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         prompt = 3 * [inputs.pop("prompt")]
 
         embeds = []
@@ -330,55 +271,96 @@ class StableDiffusionPipelineFastTests(
                 return_tensors="pt",
             )
             text_inputs = text_inputs["input_ids"].to(torch_device)
-
             embeds.append(sd_pipe.text_encoder(text_inputs)[0])
 
         inputs["prompt_embeds"], inputs["negative_prompt_embeds"] = embeds
 
-        # forward
         output = sd_pipe(**inputs)
-        image_slice_2 = output.images[0, -3:, -3:, -1]
+        image_slice_2 = output.images[0, -1, -3:, -3:]
 
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+        assert_tensors_close(
+            image_slice_2, image_slice_1, atol=1e-4, msg="Passing `negative_prompt_embeds` changed the output."
+        )
 
     def test_stable_diffusion_ddim_factor_8(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        image = sd_pipe(**self.get_dummy_inputs(), height=136, width=136).images
+        assert image.shape == (1, 3, 136, 136)
 
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs, height=136, width=136)
-        image = output.images
-
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 136, 136, 3)
-        expected_slice = np.array([0.4587, 0.5238, 0.5006, 0.3869, 0.4538, 0.4228, 0.5666, 0.5814, 0.5468])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        # fmt: off
+        expected_slice = torch.tensor([0.4587, 0.5238, 0.5006, 0.3869, 0.4538, 0.4228, 0.5666, 0.5814, 0.5468])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
     def test_stable_diffusion_pndm(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
         sd_pipe.scheduler = PNDMScheduler(skip_prk_steps=True)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, 3, 64, 64)
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.1791, 0.4611, 0.4741, 0.2336, 0.4175, 0.4484, 0.5582, 0.3556, 0.3951])
+        # fmt: off
+        expected_slice = torch.tensor([0.1791, 0.4611, 0.4741, 0.2336, 0.4175, 0.4484, 0.5582, 0.3556, 0.3951])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+    def test_stable_diffusion_k_lms(self):
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
+        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
 
-    def test_stable_diffusion_no_safety_checker(self):
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, 3, 64, 64)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.2185, 0.4538, 0.4660, 0.2454, 0.4408, 0.4377, 0.5629, 0.3754, 0.3927])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
+
+    def test_stable_diffusion_k_euler_ancestral(self):
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
+        sd_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, 3, 64, 64)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.2185, 0.4534, 0.4657, 0.2452, 0.4406, 0.4375, 0.5631, 0.3755, 0.3927])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
+
+    def test_stable_diffusion_k_euler(self):
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
+        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, 3, 64, 64)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.2185, 0.4538, 0.4660, 0.2454, 0.4408, 0.4377, 0.5629, 0.3754, 0.3927])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
+
+    def test_stable_diffusion_negative_prompt(self):
+        # Run on CPU: the expected slice below is CPU-specific.
+        components = self.get_dummy_components()
+        components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
+        sd_pipe = self.get_pipeline(**components)
+
+        image = sd_pipe(**self.get_dummy_inputs(), negative_prompt="french fries").images
+        assert image.shape == (1, 3, 64, 64)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.1772, 0.4578, 0.4700, 0.2363, 0.4173, 0.4462, 0.5595, 0.3588, 0.3959])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
+
+    def test_stable_diffusion_no_safety_checker(self, tmp_path):
         pipe = StableDiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
@@ -390,150 +372,53 @@ class StableDiffusionPipelineFastTests(
         assert image is not None
 
         # check that there's no error when saving a pipeline with one of the models being None
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            pipe.save_pretrained(tmpdirname)
-            pipe = StableDiffusionPipeline.from_pretrained(tmpdirname)
+        pipe.save_pretrained(tmp_path)
+        pipe = StableDiffusionPipeline.from_pretrained(tmp_path)
 
         # sanity check that the pipeline still works
         assert pipe.safety_checker is None
         image = pipe("example prompt", num_inference_steps=2).images[0]
         assert image is not None
 
-    def test_stable_diffusion_k_lms(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.2185, 0.4538, 0.4660, 0.2454, 0.4408, 0.4377, 0.5629, 0.3754, 0.3927])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_stable_diffusion_k_euler_ancestral(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.2185, 0.4534, 0.4657, 0.2452, 0.4406, 0.4375, 0.5631, 0.3755, 0.3927])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_stable_diffusion_k_euler(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.2185, 0.4538, 0.4660, 0.2454, 0.4408, 0.4377, 0.5629, 0.3754, 0.3927])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
     def test_stable_diffusion_vae_slicing(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        # Run on CPU: sliced VAE decoding is compared against a full-batch decode of the same run.
         components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe = self.get_pipeline(**components)
 
         image_count = 4
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt"] = [inputs["prompt"]] * image_count
         output_1 = sd_pipe(**inputs)
 
         # make sure sliced vae decode yields the same result
         sd_pipe.vae.enable_slicing()
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt"] = [inputs["prompt"]] * image_count
         output_2 = sd_pipe(**inputs)
 
         # there is a small discrepancy at image borders vs. full batch decode
-        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 3e-3
+        assert (output_2.images - output_1.images).abs().max() < 3e-3
 
-    def test_stable_diffusion_vae_tiling(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
+    def test_stable_diffusion_vae_tiling(self, base_pipe_output):
+        sd_pipe = self.get_pipeline().to(torch_device)
 
-        # make sure here that pndm scheduler skips prk
-        components["safety_checker"] = None
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        prompt = "A painting of a squirrel eating a burger"
-
-        # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
-        generator = torch.Generator(device=device).manual_seed(0)
-        output_1 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
-
-        # make sure tiled vae decode yields the same result
+        # Tiled decode should yield the same result as the non-tiled decode cached by `base_pipe_output`.
         sd_pipe.vae.enable_tiling()
-        generator = torch.Generator(device=device).manual_seed(0)
-        output_2 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+        torch.manual_seed(0)
+        output_tiled = sd_pipe(**self.get_dummy_inputs()).images
 
-        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 5e-1
+        assert (output_tiled - base_pipe_output).abs().max() < 5e-1
 
         # test that tiled decode works with various shapes
-        shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
-        for shape in shapes:
-            zeros = torch.zeros(shape).to(device)
-            sd_pipe.vae.decode(zeros)
-
-    def test_stable_diffusion_negative_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        negative_prompt = "french fries"
-        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
-
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.1772, 0.4578, 0.4700, 0.2363, 0.4173, 0.4462, 0.5595, 0.3588, 0.3959])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        for shape in [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]:
+            sd_pipe.vae.decode(torch.zeros(shape, device=torch_device))
 
     def test_stable_diffusion_long_prompt(self):
         components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe = self.get_pipeline(**components).to(torch_device)
 
         do_classifier_free_guidance = True
         negative_prompt = None
@@ -577,112 +462,82 @@ class StableDiffusionPipelineFastTests(
     def test_stable_diffusion_height_width_opt(self):
         components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe = self.get_pipeline(**components).to(torch_device)
 
         prompt = "hey"
 
-        output = sd_pipe(prompt, num_inference_steps=1, output_type="np")
-        image_shape = output.images[0].shape[:2]
-        assert image_shape == (64, 64)
+        output = sd_pipe(prompt, num_inference_steps=1, output_type="pt")
+        assert output.images[0].shape[-2:] == (64, 64)
 
-        output = sd_pipe(prompt, num_inference_steps=1, height=96, width=96, output_type="np")
-        image_shape = output.images[0].shape[:2]
-        assert image_shape == (96, 96)
+        output = sd_pipe(prompt, num_inference_steps=1, height=96, width=96, output_type="pt")
+        assert output.images[0].shape[-2:] == (96, 96)
 
         config = dict(sd_pipe.unet.config)
         config["sample_size"] = 96
         sd_pipe.unet = UNet2DConditionModel.from_config(config).to(torch_device)
-        output = sd_pipe(prompt, num_inference_steps=1, output_type="np")
-        image_shape = output.images[0].shape[:2]
-        assert image_shape == (192, 192)
-
-    def test_attention_slicing_forward_pass(self):
-        super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
+        output = sd_pipe(prompt, num_inference_steps=1, output_type="pt")
+        assert output.images[0].shape[-2:] == (192, 192)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
     # MPS currently doesn't support ComplexFloats, which are required for freeU - see https://github.com/huggingface/diffusers/issues/7569.
     @skip_mps
-    def test_freeu_enabled(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        prompt = "hey"
-        output = sd_pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+    def test_freeu_enabled(self, base_pipe_output):
+        sd_pipe = self.get_pipeline().to(torch_device)
 
         sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
-        output_freeu = sd_pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+        torch.manual_seed(0)
+        output_freeu = sd_pipe(**self.get_dummy_inputs()).images
 
-        assert not np.allclose(output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]), (
+        assert not torch.allclose(base_pipe_output[0, -1, -3:, -3:], output_freeu[0, -1, -3:, -3:]), (
             "Enabling of FreeU should lead to different results."
         )
 
-    def test_freeu_disabled(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        prompt = "hey"
-        output = sd_pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+    def test_freeu_disabled(self, base_pipe_output):
+        sd_pipe = self.get_pipeline().to(torch_device)
 
         sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         sd_pipe.disable_freeu()
 
-        freeu_keys = {"s1", "s2", "b1", "b2"}
         for upsample_block in sd_pipe.unet.up_blocks:
-            for key in freeu_keys:
+            for key in {"s1", "s2", "b1", "b2"}:
                 assert getattr(upsample_block, key) is None, f"Disabling of FreeU should have set {key} to None."
 
-        output_no_freeu = sd_pipe(
-            prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)
-        ).images
+        torch.manual_seed(0)
+        output_no_freeu = sd_pipe(**self.get_dummy_inputs()).images
 
-        assert np.allclose(output[0, -3:, -3:, -1], output_no_freeu[0, -3:, -3:, -1]), (
+        assert torch.allclose(base_pipe_output[0, -1, -3:, -3:], output_no_freeu[0, -1, -3:, -3:]), (
             "Disabling of FreeU should lead to results similar to the default pipeline results."
         )
 
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+    def test_fused_qkv_projections(self, base_pipe_output):
+        # The unfused reference is the class-cached `base_pipe_output`, so the runs below reseed the global RNG to
+        # reproduce it and the only remaining difference comes from the projection fusion itself.
+        sd_pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        original_image_slice = image[0, -3:, -3:, -1]
+        original_image_slice = base_pipe_output[0, -1, -3:, -3:]
 
         sd_pipe.fuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
+        torch.manual_seed(0)
+        image_slice_fused = sd_pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
 
         sd_pipe.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
+        torch.manual_seed(0)
+        image_slice_disabled = sd_pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
+        assert torch.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
             "Fusion of QKV projections shouldn't affect the outputs."
         )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+        assert torch.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
             "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
         )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+        assert torch.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
             "Original outputs should match when fused QKV projections are disabled."
         )
 
     def test_pipeline_interrupt(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe = self.get_pipeline().to(torch_device)
 
         prompt = "hey"
         num_inference_steps = 3
@@ -700,7 +555,7 @@ class StableDiffusionPipelineFastTests(
         sd_pipe(
             prompt,
             num_inference_steps=num_inference_steps,
-            output_type="np",
+            output_type="pt",
             generator=torch.Generator("cpu").manual_seed(0),
             callback_on_step_end=pipe_state.apply,
         ).images
@@ -741,15 +596,27 @@ class StableDiffusionPipelineFastTests(
     def test_encode_prompt_works_in_isolation(self):
         extra_required_param_value_dict = {
             "device": torch.device(torch_device).type,
-            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+            "do_classifier_free_guidance": self.get_dummy_inputs().get("guidance_scale", 1.0) > 1.0,
         }
         return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
 
 
-@slow
+class TestStableDiffusionPipelineMemory(StableDiffusionPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Stable Diffusion pipeline."""
+
+
+class TestStableDiffusionPipelineIPAdapter(StableDiffusionPipelineTesterConfig, IPAdapterTesterMixin):
+    """IP-Adapter tests for the Stable Diffusion pipeline."""
+
+
+@nightly
 @require_torch_accelerator
-class StableDiffusionPipelineSlowTests(unittest.TestCase):
-    def setUp(self):
+class TestStableDiffusionPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -1186,17 +1053,95 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 8e-1
 
+    def test_stable_diffusion_1_4_pndm_reference_image(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
 
-@slow
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_text2img/stable_diffusion_1_4_pndm.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_stable_diffusion_1_5_pndm(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5").to(
+            torch_device
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_text2img/stable_diffusion_1_5_pndm.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_stable_diffusion_ddim_reference_image(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_text2img/stable_diffusion_1_4_ddim.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 3e-3
+
+    def test_stable_diffusion_lms_reference_image(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_text2img/stable_diffusion_1_4_lms.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_stable_diffusion_euler(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 50
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_text2img/stable_diffusion_1_4_euler.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+
+@nightly
 @require_torch_accelerator
-class StableDiffusionPipelineCkptTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestStableDiffusionPipelineCkpt:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -1232,116 +1177,14 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         assert image_out.shape == (512, 512, 3)
 
 
-@nightly
-@require_torch_accelerator
-class StableDiffusionPipelineNightlyTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
-        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
-        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
-        inputs = {
-            "prompt": "a photograph of an astronaut riding a horse",
-            "latents": latents,
-            "generator": generator,
-            "num_inference_steps": 50,
-            "guidance_scale": 7.5,
-            "output_type": "np",
-        }
-        return inputs
-
-    def test_stable_diffusion_1_4_pndm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_pndm.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_1_5_pndm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5").to(
-            torch_device
-        )
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_5_pndm.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_ddim(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_ddim.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 3e-3
-
-    def test_stable_diffusion_lms(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_lms.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_euler(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_euler.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-
 # (sayakpaul): This test suite was run in the DGX with two GPUs (1, 2).
-@slow
+@nightly
 @require_torch_multi_accelerator
 @require_accelerate_version_greater("0.27.0")
-class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
+class TestStableDiffusionPipelineDeviceMap:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
