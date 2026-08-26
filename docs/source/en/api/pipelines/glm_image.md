@@ -52,7 +52,7 @@ image = pipe(
     width=36 * 32,
     num_inference_steps=30,
     guidance_scale=1.5,
-    generator=torch.Generator(device="cuda").manual_seed(42),
+    generator=torch.Generator(device="cuda").manual_seed(42),  # or "mps", "xpu", "cpu"
 ).images[0]
 
 image.save("output_t2i.png")
@@ -76,7 +76,7 @@ image = pipe(
     width=32 * 32,
     num_inference_steps=30,
     guidance_scale=1.5,
-    generator=torch.Generator(device="cuda").manual_seed(42),
+    generator=torch.Generator(device="cuda").manual_seed(42),  # or "mps", "xpu", "cpu"
 ).images[0]
 
 image.save("output_i2i.png")
