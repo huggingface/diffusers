@@ -44,7 +44,7 @@ from diffusers.pipelines.prx import PRXPipeline
 
 # Load pipeline - VAE and text encoder will be loaded from HuggingFace
 pipe = PRXPipeline.from_pretrained("Photoroom/prx-512-t2i-sft", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A front-facing portrait of a lion the golden savanna at sunset."
 image = pipe(prompt, num_inference_steps=28, guidance_scale=5.0).images[0]
@@ -101,7 +101,7 @@ pipe = PRXPipeline(
     tokenizer=tokenizer,
     vae=vae
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 
