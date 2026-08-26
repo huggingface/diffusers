@@ -350,9 +350,6 @@ jobs:
           - backend: "torchao"
             marker: "torchao"
             additional_deps: ["mslk"]
-          - backend: "optimum_quanto"
-            marker: "quanto"
-            additional_deps: []
           - backend: "nvidia_modelopt"
             marker: "modelopt"
             additional_deps: []
