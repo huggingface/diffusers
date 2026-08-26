@@ -74,10 +74,12 @@ FEATURE_GROUPS = {
     "memory": ["memory", "cpu_offload", "group_offload"],
     "cache": ["cache"],
     "ip_adapter": ["ip_adapter"],
+    # Needs only an HF token (gated checkpoints), which the CPU job provides; skips on fork PRs.
+    "single_file": ["single_file"],
 }
-# Gated on an accelerator, multi-GPU, or an HF token, so every test skips on the CPU runner. Excluded
-# from `core` and given no job rather than spinning up a runner to skip everything.
-CPU_SKIPPED_MARKERS = ["quantization", "compile", "single_file", "training", "context_parallel", "tensor_parallel"]
+# Gated on an accelerator or multi-GPU, so every test skips on the CPU runner. Excluded from `core` and
+# given no job rather than spinning up a runner to skip everything.
+CPU_SKIPPED_MARKERS = ["quantization", "compile", "training", "context_parallel", "tensor_parallel"]
 FEATURE_MARKERS = [m for markers in FEATURE_GROUPS.values() for m in markers]
 CORE_MARKERS = "not (" + " or ".join(FEATURE_MARKERS + CPU_SKIPPED_MARKERS) + ")"
 # ============================================================
