@@ -74,6 +74,15 @@ class HunyuanVideoFramepackPipelineFastTests(
     test_layerwise_casting = True
     test_group_offloading = True
 
+    # `image_encoder` is a `SiglipVisionModel`, whose attention pooling head
+    # (`SiglipMultiheadAttentionPoolingHead`) wraps a `torch.nn.MultiheadAttention`. That hands
+    # `self.out_proj.weight` to `torch.nn.functional.multi_head_attention_forward` instead of calling
+    # `self.out_proj`, so the leaf-level onload hook on `out_proj` never fires and its weights stay on the offload
+    # device. Same root cause as the sequential CPU offloading skips below. Block-level offloading is unaffected
+    # (the whole head is onloaded as one unmatched module), and every other component offloads fine at leaf level,
+    # so exclude just this one rather than skipping the test.
+    group_offloading_leaf_level_exclude_modules = ["image_encoder"]
+
     faster_cache_config = FasterCacheConfig(
         spatial_attention_block_skip_range=2,
         spatial_attention_timestep_skip_range=(-1, 901),
