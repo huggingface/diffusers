@@ -163,7 +163,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
-pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id, dtype=torch.float16).to("cuda")
 ```
 
 다음으로 `TextualInversionLoaderMixin.load_textual_inversion` 함수를 통해, textual-inversion 임베딩 벡터를 불러와야 합니다. 여기서 우리는 이전의 `<cat-toy>` 예제의 임베딩을 불러올 것입니다.

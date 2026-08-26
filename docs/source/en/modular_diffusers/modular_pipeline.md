@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [`ModularPipeline`] converts [`~modular_pipelines.ModularPipelineBlocks`] into an executable pipeline that loads models and performs the computation steps defined in the blocks. It is the main interface for running a pipeline and the API is very similar to [`DiffusionPipeline`] but with a few key differences.
 
-- **Loading is lazy.** With [`DiffusionPipeline`], [`~DiffusionPipeline.from_pretrained`] creates the pipeline and loads all models at the same time. With [`ModularPipeline`], creating and loading are two separate steps: [`~ModularPipeline.from_pretrained`] reads the configuration and knows where to load each component from, but doesn't actually load the model weights. You load the models later with [`~ModularPipeline.load_components`], which is where you pass loading arguments like `torch_dtype` and `quantization_config`.
+- **Loading is lazy.** With [`DiffusionPipeline`], [`~DiffusionPipeline.from_pretrained`] creates the pipeline and loads all models at the same time. With [`ModularPipeline`], creating and loading are two separate steps: [`~ModularPipeline.from_pretrained`] reads the configuration and knows where to load each component from, but doesn't actually load the model weights. You load the models later with [`~ModularPipeline.load_components`], which is where you pass loading arguments like `dtype` and `quantization_config`.
 
 - **Two ways to create a pipeline.** You can use [`~ModularPipeline.from_pretrained`] with an existing diffusers model repository — it automatically maps to the default pipeline blocks and then converts to a [`ModularPipeline`] with no extra setup. You can check the [modular_pipelines_directory](https://github.com/huggingface/diffusers/tree/main/src/diffusers/modular_pipelines) to see which models are currently supported. You can also assemble your own pipeline from [`ModularPipelineBlocks`] and convert it with the [`~ModularPipelineBlocks.init_pipeline`] method (see [Creating a pipeline](#creating-a-pipeline) for more details).
 
@@ -30,8 +30,8 @@ import torch
 from diffusers import ModularPipeline
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-pipeline.load_components(torch_dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.load_components(dtype=torch.float16)
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipeline(prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
 image.save("modular_t2i_out.png")
@@ -46,8 +46,8 @@ from diffusers import ModularPipeline
 from diffusers.utils import load_image
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-pipeline.load_components(torch_dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.load_components(dtype=torch.float16)
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 init_image = load_image(url)
@@ -65,8 +65,8 @@ from diffusers import ModularPipeline
 from diffusers.utils import load_image
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-pipeline.load_components(torch_dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.load_components(dtype=torch.float16)
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 mask_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-inpaint-mask.png"
@@ -234,6 +234,12 @@ pipeline = ModularPipeline.from_pretrained(
 )
 ```
 
+When the pipeline blocks define workflows (check `pipeline.blocks.available_workflows`), pass `workflow=` to keep only that workflow's blocks — the same pruning as [`~ModularPipelineBlocks.get_workflow`]. The pipeline then only declares the components that workflow uses, and its docstring describes exactly that workflow's inputs.
+
+```py
+pipeline = ModularPipeline.from_pretrained("Qwen/Qwen-Image", workflow="inpainting")
+```
+
 ## Loading components
 
 A [`ModularPipeline`] doesn't automatically instantiate with components. It only loads the configuration and component specifications. You can load components with [`~ModularPipeline.load_components`].
@@ -243,13 +249,19 @@ This will load all the components that have a valid loading spec.
 ```py
 import torch
 
-pipeline.load_components(torch_dtype=torch.float16)
+pipeline.load_components(dtype=torch.float16)
 ```
 
 You can also load specific components by name. The example below only loads the `text_encoder`.
 
 ```py
-pipeline.load_components(names=["text_encoder"], torch_dtype=torch.float16)
+pipeline.load_components(names=["text_encoder"], dtype=torch.float16)
+```
+
+On a pipeline whose blocks define workflows, `workflow=` loads only the components that workflow uses. The pipeline keeps all its blocks, so this is the convenient way to run one pipeline across workflows: each call adds just what the new workflow still misses.
+
+```py
+pipeline.load_components(workflow="inpainting", dtype=torch.float16)
 ```
 
 After loading, printing the pipeline shows which components are loaded — the first two fields change from `null` to the component's library and class.
@@ -274,14 +286,14 @@ pipeline
 ]
 ```
 
-Loading keyword arguments like `torch_dtype`, `variant`, `revision`, and `quantization_config` are passed through to `from_pretrained()` for each component. You can pass a single value to apply to all components, or a dict to set per-component values.
+Loading keyword arguments like `dtype`, `variant`, `revision`, and `quantization_config` are passed through to `from_pretrained()` for each component. You can pass a single value to apply to all components, or a dict to set per-component values.
 
 ```py
 # apply bfloat16 to all components
-pipeline.load_components(torch_dtype=torch.bfloat16)
+pipeline.load_components(dtype=torch.bfloat16)
 
 # different dtypes per component
-pipeline.load_components(torch_dtype={"transformer": torch.bfloat16, "default": torch.float32})
+pipeline.load_components(dtype={"transformer": torch.bfloat16, "default": torch.float32})
 ```
 
 [`~ModularPipeline.load_components`] only loads components that haven't been loaded yet and have a valid loading spec. This means if you've already set a component on the pipeline, calling [`~ModularPipeline.load_components`] again won't reload it.
@@ -298,7 +310,7 @@ You can pass a model object loaded with `AutoModel.from_pretrained()`. Models lo
 from diffusers import AutoModel
 
 unet = AutoModel.from_pretrained(
-    "RunDiffusion/Juggernaut-XL-v9", subfolder="unet", variant="fp16", torch_dtype=torch.float16
+    "RunDiffusion/Juggernaut-XL-v9", subfolder="unet", variant="fp16", dtype=torch.float16
 )
 pipeline.update_components(unet=unet)
 ```
@@ -314,7 +326,7 @@ unet_spec = pipeline.get_component_spec("unet")
 unet_spec.pretrained_model_name_or_path = "RunDiffusion/Juggernaut-XL-v9"
 
 # load and update
-unet = unet_spec.load(torch_dtype=torch.float16)
+unet = unet_spec.load(dtype=torch.float16)
 pipeline.update_components(unet=unet)
 ```
 
@@ -348,7 +360,7 @@ Since blocks are composable, you can take a pipeline apart and reconstruct it in
 from diffusers import ModularPipeline, ComponentsManager
 import torch
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 dtype = torch.bfloat16
 repo_id = "black-forest-labs/FLUX.2-klein-4B"
 
@@ -365,11 +377,11 @@ text_encoder_pipeline = text_block.init_pipeline(repo_id, components_manager=man
 pipeline = blocks.init_pipeline(repo_id, components_manager=manager)
 
 # encode text
-text_encoder_pipeline.load_components(torch_dtype=dtype)
+text_encoder_pipeline.load_components(dtype=dtype)
 text_embeddings = text_encoder_pipeline(prompt="a cat").get_by_kwargs("denoiser_input_fields")
 
 # denoise and decode
-pipeline.load_components(torch_dtype=dtype)
+pipeline.load_components(dtype=dtype)
 output = pipeline(
     **text_embeddings,
     num_inference_steps=4,

@@ -17,6 +17,7 @@ from .utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_scipy_available,
+    is_sdnq_available,
     is_sentencepiece_available,
     is_torch_available,
     is_torchao_available,
@@ -146,6 +147,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("AutoRoundConfig")
 
 try:
+    if not is_torch_available() and not is_accelerate_available() and not is_sdnq_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_sdnq_objects
+
+    _import_structure["utils.dummy_sdnq_objects"] = [
+        name for name in dir(dummy_sdnq_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("SDNQConfig")
+
+try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -176,6 +189,7 @@ else:
             "ClassifierFreeGuidance",
             "ClassifierFreeZeroStarGuidance",
             "FrequencyDecoupledGuidance",
+            "LTX2Guidance",
             "PerturbedAttentionGuidance",
             "SkipLayerGuidance",
             "SmoothedEnergyGuidance",
@@ -235,12 +249,15 @@ else:
             "AutoencoderKLLTX2Video",
             "AutoencoderKLLTXVideo",
             "AutoencoderKLMagvit",
+            "AutoencoderKLMiniMaxH3",
+            "AutoencoderKLMiniMaxH3Audio",
             "AutoencoderKLMochi",
             "AutoencoderKLQwenImage",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderKLWan",
             "AutoencoderOobleck",
             "AutoencoderRAE",
+            "AutoencoderSAME",
             "AutoencoderTiny",
             "AutoencoderVidTok",
             "AutoModel",
@@ -292,10 +309,16 @@ else:
             "LongCatAudioDiTTransformer",
             "LongCatAudioDiTVae",
             "LongCatImageTransformer2DModel",
+            "LTX2VideoDiffusionDecoderModel",
             "LTX2VideoTransformer3DModel",
             "LTXVideoTransformer3DModel",
             "Lumina2Transformer2DModel",
             "LuminaNextDiT2DModel",
+            "MiniMaxH3Transformer3DModel",
+            "MiniMaxMusic3ConditionEncoder",
+            "MiniMaxMusic3RVQDepthDecoder",
+            "MiniMaxMusic3Transformer1DModel",
+            "MiniMaxMusic3Vocoder",
             "MochiTransformer3DModel",
             "ModelMixin",
             "MotifVideoTransformer3DModel",
@@ -320,10 +343,12 @@ else:
             "SD3Transformer2DModel",
             "SkyReelsV2Transformer3DModel",
             "SparseControlNetModel",
+            "StableAudio3DiTModel",
             "StableAudioDiTModel",
             "StableCascadeUNet",
             "T2IAdapter",
             "T5FilmDecoder",
+            "TensorParallelConfig",
             "Transformer2DModel",
             "TransformerTemporalModel",
             "UNet1DModel",
@@ -335,6 +360,7 @@ else:
             "UNetSpatioTemporalConditionModel",
             "UVit2DModel",
             "VQModel",
+            "WanAnimate2Transformer3DModel",
             "WanAnimateTransformer3DModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
@@ -430,6 +456,7 @@ else:
             "KDPM2DiscreteScheduler",
             "LCMScheduler",
             "LTXEulerAncestralRFScheduler",
+            "MiniMaxH3Scheduler",
             "PNDMScheduler",
             "RePaintScheduler",
             "SASolverScheduler",
@@ -516,8 +543,16 @@ else:
             "Krea2ModularPipeline",
             "Krea2TurboAutoBlocks",
             "Krea2TurboModularPipeline",
+            "LTX25AutoBlocks",
+            "LTX25ModularPipeline",
+            "LTX2AutoBlocks",
+            "LTX2ModularPipeline",
             "LTXAutoBlocks",
             "LTXModularPipeline",
+            "MiniMaxH3Blocks",
+            "MiniMaxH3ModularPipeline",
+            "MiniMaxMusic3Blocks",
+            "MiniMaxMusic3ModularPipeline",
             "QwenImageAutoBlocks",
             "QwenImageEditAutoBlocks",
             "QwenImageEditModularPipeline",
@@ -534,6 +569,10 @@ else:
             "Wan22Image2VideoBlocks",
             "Wan22Image2VideoModularPipeline",
             "Wan22ModularPipeline",
+            "WanAnimate2Blocks",
+            "WanAnimate2DistilledBlocks",
+            "WanAnimate2DistilledModularPipeline",
+            "WanAnimate2ModularPipeline",
             "WanBlocks",
             "WanImage2VideoAutoBlocks",
             "WanImage2VideoModularPipeline",
@@ -691,6 +730,7 @@ else:
             "LTX2InContextPipeline",
             "LTX2LatentUpsamplePipeline",
             "LTX2Pipeline",
+            "LTX2VideoDiffusionDecodePipeline",
             "LTXConditionPipeline",
             "LTXI2VLongMultiPromptPipeline",
             "LTXImageToVideoPipeline",
@@ -745,6 +785,10 @@ else:
             "SkyReelsV2DiffusionForcingVideoToVideoPipeline",
             "SkyReelsV2ImageToVideoPipeline",
             "SkyReelsV2Pipeline",
+            "StableAudio3AudioToAudioPipeline",
+            "StableAudio3DurationEmbedder",
+            "StableAudio3InpaintPipeline",
+            "StableAudio3Pipeline",
             "StableAudioPipeline",
             "StableAudioProjectionModel",
             "StableCascadeCombinedPipeline",
@@ -992,6 +1036,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import AutoRoundConfig
 
     try:
+        if not is_sdnq_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_sdnq_objects import *
+    else:
+        from .quantizers.quantization_config import SDNQConfig
+
+    try:
         if not is_onnx_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1013,6 +1065,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ClassifierFreeGuidance,
             ClassifierFreeZeroStarGuidance,
             FrequencyDecoupledGuidance,
+            LTX2Guidance,
             PerturbedAttentionGuidance,
             SkipLayerGuidance,
             SmoothedEnergyGuidance,
@@ -1068,12 +1121,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLLTX2Video,
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
+            AutoencoderKLMiniMaxH3,
+            AutoencoderKLMiniMaxH3Audio,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderRAE,
+            AutoencoderSAME,
             AutoencoderTiny,
             AutoencoderVidTok,
             AutoModel,
@@ -1125,10 +1181,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LongCatAudioDiTTransformer,
             LongCatAudioDiTVae,
             LongCatImageTransformer2DModel,
+            LTX2VideoDiffusionDecoderModel,
             LTX2VideoTransformer3DModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            MiniMaxH3Transformer3DModel,
+            MiniMaxMusic3ConditionEncoder,
+            MiniMaxMusic3RVQDepthDecoder,
+            MiniMaxMusic3Transformer1DModel,
+            MiniMaxMusic3Vocoder,
             MochiTransformer3DModel,
             ModelMixin,
             MotifVideoTransformer3DModel,
@@ -1153,9 +1215,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
             SparseControlNetModel,
+            StableAudio3DiTModel,
             StableAudioDiTModel,
             T2IAdapter,
             T5FilmDecoder,
+            TensorParallelConfig,
             Transformer2DModel,
             TransformerTemporalModel,
             UNet1DModel,
@@ -1167,6 +1231,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
             VQModel,
+            WanAnimate2Transformer3DModel,
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
@@ -1259,6 +1324,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KDPM2DiscreteScheduler,
             LCMScheduler,
             LTXEulerAncestralRFScheduler,
+            MiniMaxH3Scheduler,
             PNDMScheduler,
             RePaintScheduler,
             SASolverScheduler,
@@ -1328,8 +1394,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Krea2ModularPipeline,
             Krea2TurboAutoBlocks,
             Krea2TurboModularPipeline,
+            LTX2AutoBlocks,
+            LTX2ModularPipeline,
+            LTX25AutoBlocks,
+            LTX25ModularPipeline,
             LTXAutoBlocks,
             LTXModularPipeline,
+            MiniMaxH3Blocks,
+            MiniMaxH3ModularPipeline,
+            MiniMaxMusic3Blocks,
+            MiniMaxMusic3ModularPipeline,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
             QwenImageEditModularPipeline,
@@ -1346,6 +1420,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Wan22Image2VideoBlocks,
             Wan22Image2VideoModularPipeline,
             Wan22ModularPipeline,
+            WanAnimate2Blocks,
+            WanAnimate2DistilledBlocks,
+            WanAnimate2DistilledModularPipeline,
+            WanAnimate2ModularPipeline,
             WanBlocks,
             WanImage2VideoAutoBlocks,
             WanImage2VideoModularPipeline,
@@ -1499,6 +1577,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2InContextPipeline,
             LTX2LatentUpsamplePipeline,
             LTX2Pipeline,
+            LTX2VideoDiffusionDecodePipeline,
             LTXConditionPipeline,
             LTXI2VLongMultiPromptPipeline,
             LTXImageToVideoPipeline,
@@ -1552,6 +1631,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SkyReelsV2DiffusionForcingVideoToVideoPipeline,
             SkyReelsV2ImageToVideoPipeline,
             SkyReelsV2Pipeline,
+            StableAudio3AudioToAudioPipeline,
+            StableAudio3DurationEmbedder,
+            StableAudio3InpaintPipeline,
+            StableAudio3Pipeline,
             StableAudioPipeline,
             StableAudioProjectionModel,
             StableCascadeCombinedPipeline,

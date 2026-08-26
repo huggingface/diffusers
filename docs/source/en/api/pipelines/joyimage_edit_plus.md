@@ -26,9 +26,9 @@ from PIL import Image
 from diffusers import JoyImageEditPlusPipeline
 
 pipeline = JoyImageEditPlusPipeline.from_pretrained(
-    "jdopensource/JoyAI-Image-Edit-Plus-Diffusers", torch_dtype=torch.bfloat16
+    "jdopensource/JoyAI-Image-Edit-Plus-Diffusers", dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 images = [
     Image.open("reference_0.png").convert("RGB"),
