@@ -32,7 +32,6 @@ from ...testing_utils import (
     backend_reset_peak_memory_stats,
     floats_tensor,
     load_numpy,
-    require_accelerator,
     require_torch_accelerator,
     skip_mps,
     slow,
@@ -144,12 +143,6 @@ class TestIFImg2ImgPipeline(IFImg2ImgPipelineTesterConfig, PipelineTesterMixin):
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
-
-    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
-    @require_accelerator
-    def test_save_load_float16(self, tmp_path):
-        # Due to non-determinism in save load of the hf-internal-testing/tiny-random-t5 text encoder
-        super().test_save_load_float16(tmp_path, expected_max_diff=1e-1)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
