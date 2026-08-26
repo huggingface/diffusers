@@ -88,7 +88,6 @@ class ShortConvolution(nn.Module):
         # Same parameter layout as the reference implementation: (C, 1, K).
         self.weight = nn.Parameter(torch.zeros(hidden_size, 1, kernel_size))
         self.bias = nn.Parameter(torch.zeros(hidden_size)) if bias else None
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, None]:
         """Apply the causal conv.
