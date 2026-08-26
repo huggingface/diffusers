@@ -2421,8 +2421,6 @@ class _GDNUCPEBase(GDN):
         self.q_norm_cam = deepcopy(self.q_norm)
         self.k_norm_cam = deepcopy(self.k_norm)
 
-        nn.init.constant_(self.out_proj_cam.weight, 0)
-        nn.init.constant_(self.out_proj_cam.bias, 0)
 
         # Short convolutions for camera branch (matching base GDN variant).
         if self.conv_kernel_size > 0:
