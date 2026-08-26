@@ -1,0 +1,625 @@
+name: Diffusers Bot
+
+# Maintainer commands, triggered by commenting on an open PR:
+#
+#   @diffusers-bot style           run `make style && make quality` and push the fixes to the PR branch
+#   @diffusers-bot review          request a Serge AI review (also works from an inline review comment)
+#   @diffusers-bot pytest <args>   run `pytest <args>` on a GPU runner, e.g.
+#                                  `@diffusers-bot pytest tests/models/test_modeling_common.py -k "some_test"`
+#
+# Each subcommand is its own job chain below. The `if` on the first job of a chain
+# selects the subcommand; the other chains are skipped.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+# Default to read-only; jobs that comment or push opt into write permissions explicitly.
+permissions:
+  contents: read
+
+jobs:
+  # ── @diffusers-bot style ─────────────────────────────────────────────────────
+  # Inlined from huggingface_hub's reusable `style-bot-action.yml` (pinned at
+  # e2867e92c07d15e1bf18994d0a945ef5ad6b8d65). The reusable workflow hard-codes its
+  # `@bot /style` trigger, so it can't be re-pointed at `@diffusers-bot style` from
+  # the caller side.
+  style_auth:
+    name: Authorize style
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@diffusers-bot style')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      is_authorized: ${{ steps.check_user_permission.outputs.has_permission }}
+    steps:
+      - name: Check user permission
+        id: check_user_permission
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
+        with:
+          script: |
+            comment_user = context.payload.comment.user.login;
+            const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: comment_user
+            });
+
+            const authorized = ['admin', 'maintain', 'push', 'write'].includes(permission.permission);
+            console.log(`User ${comment_user} has permission level: ${permission.permission}, authorized: ${authorized} (only users with at least write access are allowed to run this action)`);
+            core.setOutput('has_permission', authorized);
+
+  style:
+    name: Run style
+    needs: style_auth
+    if: needs.style_auth.outputs.is_authorized == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      headRepoFullName: ${{ steps.pr_info.outputs.headRepoFullName }}
+      headRef: ${{ steps.pr_info.outputs.headRef }}
+      headSha: ${{ steps.pr_info.outputs.headSha }}
+      prNumber: ${{ steps.pr_info.outputs.prNumber }}
+    steps:
+      - name: Extract PR details
+        id: pr_info
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
+        with:
+          script: |
+            const prNumber = context.payload.issue.number;
+            console.log(`PR number from env: "${prNumber}"`);
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            core.setOutput('headRepoFullName', pr.head.repo.full_name);
+            core.setOutput('headRef', pr.head.ref);
+            core.setOutput('headSha', pr.head.sha);
+            core.setOutput('baseRef', pr.base.ref);
+            core.setOutput('prNumber', prNumber);
+
+            console.log('PR Details:', {
+              number: prNumber,
+              headRepo: pr.head.repo.full_name,
+              headRef: pr.head.ref,
+              headSha: pr.head.sha,
+              baseRef: pr.base.ref
+            });
+
+      - name: Check out PR branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ steps.pr_info.outputs.headRepoFullName }}
+          ref: ${{ steps.pr_info.outputs.headSha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify checked-out SHA
+        env:
+          HEAD_SHA: ${{ steps.pr_info.outputs.headSha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            echo "❌ Checked-out SHA does not match expected HEAD SHA! Abort!";
+            exit 1;
+          fi
+
+      - name: Verify PR head SHA is unchanged before running untrusted code
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
+        env:
+          EXPECTED_HEAD_SHA: ${{ steps.pr_info.outputs.headSha }}
+        with:
+          script: |
+            const prNumber = context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            if (pr.head.sha !== process.env.EXPECTED_HEAD_SHA) {
+              core.setFailed(
+                `❌ PR head changed during the workflow bootstrap. Expected ${process.env.EXPECTED_HEAD_SHA}, got ${pr.head.sha}. Aborting.`
+              );
+            }
+
+      - name: Check commit was pushed before the triggering comment
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
+        env:
+          HEAD_SHA: ${{ steps.pr_info.outputs.headSha }}
+          HEAD_REPO_FULL_NAME: ${{ steps.pr_info.outputs.headRepoFullName }}
+          COMMENT_DATE: ${{ github.event.comment.created_at }}
+        with:
+          script: |
+            const headSha = process.env.HEAD_SHA;
+            const [headOwner, headRepo] = process.env.HEAD_REPO_FULL_NAME.split('/');
+            const commentTimestamp = new Date(process.env.COMMENT_DATE).getTime();
+
+            // pushedDate is set server-side by GitHub when the push is received —
+            // unlike committer.date which is part of the git object and forgeable via GIT_COMMITTER_DATE.
+            const query = `
+              query($owner: String!, $repo: String!, $sha: GitObjectID!) {
+                repository(owner: $owner, name: $repo) {
+                  object(oid: $sha) {
+                    ... on Commit {
+                      pushedDate
+                    }
+                  }
+                }
+              }
+            `;
+            const result = await github.graphql(query, { owner: headOwner, repo: headRepo, sha: headSha });
+
+            const pushedDate = result.repository.object?.pushedDate;
+            if (!pushedDate) {
+              // pushedDate is null for commits created via GitHub API or web UI (merge, squash, etc.)
+              // SHA pinning + re-validation already protect against mid-workflow injection, so we skip
+              // the timestamp check rather than blocking legitimate runs.
+              core.warning(`⚠️ pushedDate unavailable for commit ${headSha} (likely created via API/web UI). Skipping timestamp check.`);
+              return;
+            }
+
+            const pushTimestamp = new Date(pushedDate).getTime();
+            console.log(`Push timestamp (server-side): ${pushedDate}, Comment date: ${process.env.COMMENT_DATE}`);
+            if (pushTimestamp >= commentTimestamp) {
+              core.setFailed(`❌ Commit ${headSha} was pushed at or after the @diffusers-bot style comment. Aborting.`);
+            } else {
+              console.log('✅ Push timestamp check passed.');
+            }
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[quality]"
+
+      - name: Run style and quality checks
+        run: make style && make quality
+
+      - name: Export style fixes as patch artifact
+        env:
+          STYLE_BOT_OUTPUT_DIR: ${{ runner.temp }}/style-bot-output
+        run: |
+          mkdir -p "$STYLE_BOT_OUTPUT_DIR"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git diff --cached --binary > "$STYLE_BOT_OUTPUT_DIR/style-fixes.patch"
+            echo "changes_present=true" > "$STYLE_BOT_OUTPUT_DIR/metadata.env"
+          else
+            echo "changes_present=false" > "$STYLE_BOT_OUTPUT_DIR/metadata.env"
+          fi
+
+      - name: Upload style fixes artifact
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.0
+        with:
+          name: style-bot-output-${{ github.run_id }}
+          path: ${{ runner.temp }}/style-bot-output
+          if-no-files-found: error
+
+  style_push:
+    name: Push style fixes
+    needs: [style_auth, style]
+    if: needs.style_auth.outputs.is_authorized == 'true' && needs.style.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Generate bot token
+        id: generate_token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3  # v1
+        with:
+          app-id: ${{ secrets.HF_BOT_STYLE_APP_ID }}
+          private-key: ${{ secrets.HF_BOT_STYLE_SECRET_PEM }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Re-validate PR head SHA before trusted steps
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
+        env:
+          EXPECTED_HEAD_SHA: ${{ needs.style.outputs.headSha }}
+        with:
+          script: |
+            const prNumber = context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            if (pr.head.sha !== process.env.EXPECTED_HEAD_SHA) {
+              core.setFailed(
+                `❌ PR head changed after the untrusted style run. Expected ${process.env.EXPECTED_HEAD_SHA}, got ${pr.head.sha}. Aborting.`
+              );
+            }
+
+      - name: Check out reviewed PR SHA
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ needs.style.outputs.headRepoFullName }}
+          ref: ${{ needs.style.outputs.headSha }}
+          fetch-depth: 0
+          token: ${{ steps.generate_token.outputs.token }}
+          persist-credentials: false
+
+      - name: Verify checked-out SHA
+        env:
+          HEAD_SHA: ${{ needs.style.outputs.headSha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            echo "❌ Checked-out SHA does not match expected HEAD SHA! Abort!"
+            exit 1
+          fi
+
+      - name: Download style fixes artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16  # v4.1.8
+        with:
+          name: style-bot-output-${{ github.run_id }}
+          path: ${{ runner.temp }}/style-bot-output
+
+      - name: Comment on PR with workflow run link
+        id: init_comment
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
+        env:
+          prNumber: ${{ needs.style.outputs.prNumber }}
+        with:
+          script: |
+            const prNumber = parseInt(process.env.prNumber, 10);
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+
+            const { data: botComment } = await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `Style fix is beginning .... [View the workflow run here](${runUrl}).`
+            });
+            core.setOutput('comment_id', botComment.id);
+
+      - name: Apply style fixes patch
+        id: apply_patch
+        env:
+          STYLE_BOT_OUTPUT_DIR: ${{ runner.temp }}/style-bot-output
+        run: |
+          if grep -qx 'changes_present=true' "$STYLE_BOT_OUTPUT_DIR/metadata.env"; then
+            git apply --binary "$STYLE_BOT_OUTPUT_DIR/style-fixes.patch"
+            echo "changes_present=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes to apply."
+            echo "changes_present=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changes
+        id: commit_and_push
+        env:
+          HEADREPOFULLNAME: ${{ needs.style.outputs.headRepoFullName }}
+          HEADREF: ${{ needs.style.outputs.headRef }}
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+          CHANGES_PRESENT: ${{ steps.apply_patch.outputs.changes_present }}
+        run: |
+          echo "HEADREPOFULLNAME: $HEADREPOFULLNAME, HEADREF: $HEADREF"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 'origin' must point at the contributor's fork so the push lands on the PR branch.
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$HEADREPOFULLNAME.git"
+
+          if [ "$CHANGES_PRESENT" = "true" ] && [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Apply style fixes"
+            git -c lfs.locksverify=false push origin HEAD:$HEADREF
+            echo "changes_pushed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes to commit."
+            echo "changes_pushed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Prepare final comment message
+        id: prepare_final_comment
+        env:
+          CHANGES_PUSHED: ${{ steps.commit_and_push.outputs.changes_pushed }}
+        run: |
+          if [ "$CHANGES_PUSHED" = 'true' ]; then
+            echo "final_comment=Style bot fixed some files and pushed the changes." >> $GITHUB_OUTPUT
+          else
+            echo "final_comment=Style fix runs successfully without any file modified." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
+        env:
+          COMMENT_ID: ${{ steps.init_comment.outputs.comment_id }}
+          FINAL_COMMENT: ${{ steps.prepare_final_comment.outputs.final_comment }}
+        with:
+          script: |
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: parseInt(process.env.COMMENT_ID, 10),
+              body: process.env.FINAL_COMMENT
+            });
+
+  # ── @diffusers-bot review ────────────────────────────────────────────────────
+  # A thin, VPN-side relay to the Serge GitHub App hosted at
+  # https://serge.huggingface.tech/. The App's /webhook endpoint sits behind a VPN
+  # that GitHub's own webhook delivery cannot reach, so a runner inside the VPN
+  # re-delivers the triggering comment event to the App.
+  #
+  # The relay reproduces a genuine GitHub App webhook delivery:
+  #   - body: the original event payload with `installation.id` injected (the App
+  #     needs it to mint an installation token; Actions payloads omit it) and the
+  #     `@diffusers-bot review` mention rewritten to the `@askserge` mention the
+  #     App matches on
+  #   - X-Hub-Signature-256: HMAC-SHA256 of that exact body using the App's
+  #     webhook secret (verified at webapp.py:_verify_webhook_signature)
+  #   - X-GitHub-Event: the original event name (issue_comment / pull_request_review_comment)
+  #
+  # All reviewing, diff fetching and comment posting happens server-side under the
+  # App identity, so this job needs no checkout and no write permissions.
+  review:
+    name: Relay to Serge
+    if: |
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        github.event.issue.state == 'open' &&
+        contains(github.event.comment.body, '@diffusers-bot review') &&
+        (github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'COLLABORATOR')
+      ) || (
+        github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@diffusers-bot review') &&
+        (github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'COLLABORATOR')
+      )
+    concurrency:
+      group: diffusers-bot-review-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on:
+      group: aws-general-8-plus
+    steps:
+      - name: Relay event to the Serge GitHub App
+        env:
+          WEBHOOK_URL: https://serge.huggingface.tech/webhook
+          # App webhook secret — must match the App's GITHUB_WEBHOOK_SECRET.
+          WEBHOOK_SECRET: ${{ secrets.SERGE_WEBHOOK_SECRET }}
+          # Installation id of the Serge App on this repo. Not sensitive, but the
+          # App requires it in the payload to obtain an installation token.
+          INSTALLATION_ID: ${{ secrets.SERGE_INSTALLATION_ID }}
+          EVENT_NAME: ${{ github.event_name }}
+          DELIVERY_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${WEBHOOK_SECRET}" ]; then
+            echo "::error::SERGE_WEBHOOK_SECRET secret is not set" >&2
+            exit 1
+          fi
+          if [ -z "${INSTALLATION_ID}" ]; then
+            echo "::error::SERGE_INSTALLATION_ID secret is not set" >&2
+            exit 1
+          fi
+
+          # Inject installation.id and translate the mention, compact form.
+          # The signed bytes and the POSTed bytes must be byte-identical, so we
+          # write the body to a file and reuse it for both the HMAC and the POST.
+          jq -c --argjson iid "${INSTALLATION_ID}" \
+            '. + {installation: {id: $iid}} | .comment.body |= sub("@diffusers-bot review"; "@askserge")' \
+            "${GITHUB_EVENT_PATH}" > payload.json
+
+          SIG="sha256=$(openssl dgst -sha256 -hmac "${WEBHOOK_SECRET}" payload.json | awk '{print $NF}')"
+
+          HTTP_CODE=$(curl --silent --show-error --fail-with-body \
+            --output response.txt --write-out '%{http_code}' \
+            --connect-timeout 10 --max-time 60 \
+            --request POST "${WEBHOOK_URL}" \
+            --header "Content-Type: application/json" \
+            --header "X-GitHub-Event: ${EVENT_NAME}" \
+            --header "X-GitHub-Delivery: ${DELIVERY_ID}" \
+            --header "X-Hub-Signature-256: ${SIG}" \
+            --data-binary @payload.json) || {
+              echo "::error::Failed to deliver event to Serge App (HTTP ${HTTP_CODE:-000})" >&2
+              cat response.txt >&2 || true
+              exit 1
+            }
+
+          echo "Serge App responded with HTTP ${HTTP_CODE}"
+          cat response.txt
+
+  # ── @diffusers-bot pytest <args> ─────────────────────────────────────────────
+  pytest_gate:
+    name: Authorize & launch pytest
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      github.event.issue.state == 'open' &&
+      startsWith(github.event.comment.body, '@diffusers-bot pytest')
+    runs-on: ubuntu-22.04
+    permissions:
+      pull-requests: write
+    outputs:
+      pytest_args: ${{ steps.parse.outputs.pytest_args }}
+      comment_id: ${{ steps.comment.outputs.comment_id }}
+    steps:
+      - name: Check commenter permission
+        id: auth
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          PERM=$(gh api "repos/${REPO}/collaborators/${COMMENTER}/permission" --jq '.permission' 2>/dev/null || echo "none")
+          echo "Commenter @${COMMENTER} has permission: ${PERM}"
+          if [[ "$PERM" == "admin" || "$PERM" == "write" ]]; then
+            echo "authorized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "authorized=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reject unauthorized commenter
+        if: steps.auth.outputs.authorized != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          gh api -X POST "repos/${REPO}/issues/${PR}/comments" \
+            -f body="🚫 Sorry @${COMMENTER}, you're not authorized to run \`@diffusers-bot pytest\`. Only maintainers with write or admin access can trigger GPU tests." >/dev/null
+          echo "::error::Only maintainers with write/admin access can run @diffusers-bot pytest."
+          exit 1
+
+      - name: Acknowledge with 👀
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          gh api -X POST "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" -f content="eyes" >/dev/null
+
+      - name: Parse pytest args
+        id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          # Use only the first line of the comment, strip the command prefix.
+          FIRST_LINE=$(printf '%s' "$COMMENT_BODY" | head -n1)
+          ARGS="${FIRST_LINE#@diffusers-bot pytest}"
+          # Trim surrounding whitespace/CR.
+          ARGS="$(printf '%s' "$ARGS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          echo "pytest_args=${ARGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Post "running" comment
+        id: comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+          PYTEST_ARGS: ${{ steps.parse.outputs.pytest_args }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          BODY="⏳ Running \`pytest ${PYTEST_ARGS}\` on a GPU runner — [view logs](${RUN_URL}).
+
+          Triggered by @${COMMENTER}."
+          CID=$(gh api -X POST "repos/${REPO}/issues/${PR}/comments" -f body="$BODY" --jq '.id')
+          echo "comment_id=${CID}" >> "$GITHUB_OUTPUT"
+
+  pytest_gpu:
+    name: Run pytest on GPU
+    needs: pytest_gate
+    # A newer command on the same PR supersedes an in-flight one. Scoped to this job
+    # only so the superseded run's `pytest_report` still updates its comment.
+    concurrency:
+      group: diffusers-bot-pytest-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    runs-on:
+      group: aws-g4dn-2xlarge
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --gpus all --shm-size "16gb" --ipc host
+    # Least privilege: this job checks out and runs untrusted fork code, so it gets no
+    # write token. Comment writes happen only in `pytest_gate`/`pytest_report`.
+    permissions:
+      contents: read
+    env:
+      DIFFUSERS_IS_CI: yes
+      OMP_NUM_THREADS: 8
+      MKL_NUM_THREADS: 8
+      HF_XET_HIGH_PERFORMANCE: 1
+      PYTEST_TIMEOUT: 600
+      # Force version overrides across every `uv pip install`: pin the
+      # torch/torchvision/torchaudio set baked into the image so `-U` installs can't bump
+      # torch and break torchvision's C++ ABI. Re-written into the file in the install step.
+      UV_OVERRIDE: /tmp/uv-overrides.txt
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          # Works for forks too — no fork credentials needed.
+          ref: refs/pull/${{ github.event.issue.number }}/head
+          fetch-depth: 2
+
+      - name: NVIDIA-SMI
+        run: nvidia-smi
+
+      - name: Install dependencies
+        run: |
+          printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
+          uv pip install -e ".[quality,training,test]"
+          uv pip install peft@git+https://github.com/huggingface/peft.git
+          uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+
+      - name: Environment
+        run: diffusers-cli env
+
+      - name: Run pytest
+        env:
+          # No secrets here: this step runs untrusted fork code (pytest imports the PR's
+          # conftest.py/plugins), so exposing a token would let a malicious PR exfiltrate
+          # it. Public Hub models download without auth; gated-repo tests are unsupported.
+          # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
+          CUBLAS_WORKSPACE_CONFIG: :16:8
+          # Forwarded via env (not interpolated into the script) to avoid breakage on
+          # quotes/special characters in a legitimate command.
+          PYTEST_ARGS: ${{ needs.pytest_gate.outputs.pytest_args }}
+        run: |
+          eval "pytest --make-reports=tests_bot_gpu $PYTEST_ARGS"
+
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: |
+          cat reports/tests_bot_gpu_stats.txt || true
+          cat reports/tests_bot_gpu_failures_short.txt || true
+
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: bot_gpu_test_reports
+          path: reports
+
+  pytest_report:
+    name: Report pytest status
+    needs: [pytest_gate, pytest_gpu]
+    # Always run so the comment is updated on success, failure, or cancellation —
+    # but only if `pytest_gate` actually posted a comment to update.
+    if: ${{ always() && needs.pytest_gate.outputs.comment_id != '' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Update comment with final status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          CID: ${{ needs.pytest_gate.outputs.comment_id }}
+          RESULT: ${{ needs.pytest_gpu.result }}
+          PYTEST_ARGS: ${{ needs.pytest_gate.outputs.pytest_args }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          case "$RESULT" in
+            success)   EMOJI="✅"; MSG="passed";;
+            failure)   EMOJI="❌"; MSG="failed";;
+            cancelled) EMOJI="⚠️"; MSG="was cancelled";;
+            *)         EMOJI="⚠️"; MSG="did not run (${RESULT})";;
+          esac
+          BODY="${EMOJI} \`pytest ${PYTEST_ARGS}\` ${MSG} on GPU — [view logs](${RUN_URL})."
+          gh api -X PATCH "repos/${REPO}/issues/comments/${CID}" -f body="$BODY"
