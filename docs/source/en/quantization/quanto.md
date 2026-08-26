@@ -42,7 +42,7 @@ transformer = FluxTransformer2DModel.from_pretrained(
 )
 
 pipe = FluxPipeline.from_pretrained(model_id, transformer=transformer, dtype=dtype)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A cat holding a sign that says hello world"
 image = pipe(
@@ -131,7 +131,7 @@ transformer = torch.compile(transformer, mode="max-autotune", fullgraph=True)
 pipe = FluxPipeline.from_pretrained(
     model_id, transformer=transformer, dtype=dtype
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 images = pipe("A cat holding a sign that says hello").images[0]
 images.save("flux-quanto-compile.png")
 ```
