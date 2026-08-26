@@ -154,6 +154,16 @@ class PeftAdapterMixin:
 
         from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 
+        parallel_config = getattr(self, "_parallel_config", None)
+        if parallel_config is not None and parallel_config.tensor_parallel_config is not None:
+            # `_tp_plan` covers the base `Linear` layers only, so the injected adapter weights would stay unsharded
+            # and the sharded base layer would be added to a full-sized adapter output.
+            raise ValueError(
+                f"Cannot load a LoRA adapter into '{self.__class__.__name__}': it is sharded with tensor "
+                f"parallelism, and the adapter layers are not covered by the model's `_tp_plan`. Load the adapter "
+                f"before sharding the model."
+            )
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)

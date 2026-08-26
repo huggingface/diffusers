@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...hooks.tensor_parallel import PackedColwiseParallel, ReplicatedInputRowwiseParallel
 from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
@@ -179,9 +180,11 @@ class MiniMaxH3AttnProcessor:
             key = attn.to_k(hidden_states)
             value = attn.to_v(hidden_states)
 
-        query = query.unflatten(-1, (attn.heads, -1))
-        key = key.unflatten(-1, (attn.heads, -1))
-        value = value.unflatten(-1, (attn.heads, -1))
+        # Reshape by a fixed `head_dim` and let `-1` absorb the head count. Under tensor parallelism each rank
+        # holds a column-sharded slice (`attn.heads // tp_degree` heads); this keeps the processor TP-agnostic.
+        query = query.unflatten(-1, (-1, attn.head_dim))
+        key = key.unflatten(-1, (-1, attn.head_dim))
+        value = value.unflatten(-1, (-1, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
@@ -449,6 +452,45 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         "audio_proj_out",
         "rope",
     ]
+    # Tensor-parallel plan: how each block's Linears shard across the TP mesh. Q/K/V and the attention output
+    # are unfused, so they are plain "colwise"/"rowwise" (torch's ColwiseParallel / RowwiseParallel). The one
+    # packed projection is the SwiGLU input `ff.net.0.proj`, a single Linear producing `[value; gate]` in equal
+    # halves, hence PackedColwiseParallel([1, 1]) so each half is sharded independently.
+    #
+    # `adaln_proj.linear` is the one projection that has to keep its full output width: the six modulation
+    # parameters it produces scale and shift the full hidden dim of the packed sequence, which is already all-reduced
+    # by the time they are applied. Sharding it colwise would need an all-gather to rebuild that width, so it is
+    # sharded `ReplicatedInputRowwiseParallel` instead — over its `time_embed_dim` input, reading the replicated
+    # `temb` and all-reducing the result. It is worth the collective: at `6 * hidden_size * MINIMAX_H3_MODALITY_NUM`
+    # outputs per block it is ~40% of the denoiser's weights, and leaving it replicated puts the per-rank floor above
+    # a single device's memory at any TP degree. The all-reduce itself is over `num_timesteps * 6 * hidden_size *
+    # MINIMAX_H3_MODALITY_NUM` elements, i.e. hundreds of KB, once per block per step.
+    #
+    # Intentionally absent, i.e. replicated on every rank: the RMSNorms (`norm1`, `norm2`,
+    # `token_refiner.final_norm`, `norm_out.norm`); the QK-norms, which apply over `head_dim` after the heads are
+    # already split; `norm_out.linear`, which indexes the full hidden dim as `adaln_proj` does but is a single
+    # `2 * hidden_size` projection rather than one per block, so sharding it would buy nothing; and the patch/text
+    # embedders and the two output heads.
+    #
+    # `attn.to_qkv` is deliberately not listed: it only exists after `fuse_projections()`, and the plan is
+    # resolved by attribute lookup, so an unconditional entry would break the ordinary unfused model.
+    _tp_plan = {
+        # denoiser block stack
+        "transformer_blocks.*.attn.to_q": "colwise",
+        "transformer_blocks.*.attn.to_k": "colwise",
+        "transformer_blocks.*.attn.to_v": "colwise",
+        "transformer_blocks.*.attn.to_out.0": "rowwise",
+        "transformer_blocks.*.ff.net.0.proj": PackedColwiseParallel([1, 1]),
+        "transformer_blocks.*.ff.net.2": "rowwise",
+        "transformer_blocks.*.adaln_proj.linear": ReplicatedInputRowwiseParallel(),
+        # the token-refiner blocks are the same attention + SwiGLU FFN, minus AdaLN and rotary
+        "token_refiner.refiner_blocks.*.attn.to_q": "colwise",
+        "token_refiner.refiner_blocks.*.attn.to_k": "colwise",
+        "token_refiner.refiner_blocks.*.attn.to_v": "colwise",
+        "token_refiner.refiner_blocks.*.attn.to_out.0": "rowwise",
+        "token_refiner.refiner_blocks.*.ff.net.0.proj": PackedColwiseParallel([1, 1]),
+        "token_refiner.refiner_blocks.*.ff.net.2": "rowwise",
+    }
     # Context parallelism shards the packed sequence, so the split cannot happen on the inputs of `forward`: the rows
     # of the three modalities are scattered into the packed buffer with sequence-wide indices, which only address the
     # full sequence. The split therefore happens once the buffer is built, at the first block, and everything that is
