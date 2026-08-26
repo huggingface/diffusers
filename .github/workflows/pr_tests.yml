@@ -222,8 +222,10 @@ jobs:
       # A feature-split job (e.g. `models-lora`) can legitimately match zero tests in the selected files;
       # pytest reports that as exit code 5. Surface it as a notice instead of a failure.
       run: |
-        workers=$(( $(nproc) / OMP_NUM_THREADS ))
-        echo "Running with $workers workers ($(nproc) cores / OMP_NUM_THREADS=$OMP_NUM_THREADS)"
+        # `nproc` honours OMP_NUM_THREADS, which would collapse this to 1 worker; read the real core count.
+        cores=$(env -u OMP_NUM_THREADS nproc)
+        workers=$(( cores / OMP_NUM_THREADS ))
+        echo "Running with $workers workers ($cores cores / OMP_NUM_THREADS=$OMP_NUM_THREADS)"
         set +e
         pytest -n "$workers" --max-worker-restart=0 --dist=loadfile \
           -k "not Onnx" \
