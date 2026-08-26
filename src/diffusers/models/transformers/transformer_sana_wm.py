@@ -504,10 +504,6 @@ class GLUMBConvTemp(nn.Module):
         return hidden_states.permute(0, 2, 3, 1).reshape(batch_size, seq_len, channels)
 
 
-def t2i_modulate(x, shift, scale):
-    return x * (1 + scale) + shift
-
-
 class MultiHeadCrossAttention(nn.Module):
     def __init__(self, d_model, num_heads, attn_drop=0.0, proj_drop=0.0, qk_norm=False, **block_kwargs):
         super().__init__()
@@ -580,7 +576,7 @@ class T2IFinalLayer(nn.Module):
         shift, scale = (self.scale_shift_table[None, None, :, :] + t.transpose(1, 2)).chunk(
             2, dim=-2
         )  # each chunk: B,F,1,D
-        x = t2i_modulate(self.norm_final(x).reshape(B, num_frames, -1, C), shift, scale).reshape(B, N, C)
+        x = (self.norm_final(x).reshape(B, num_frames, -1, C) * (1 + scale) + shift).reshape(B, N, C)
         x = self.linear(x)
         return x
 
@@ -588,7 +584,7 @@ class T2IFinalLayer(nn.Module):
         if len(t.shape) > 2:
             return self.forward_frame_aware(x, t)
         shift, scale = (self.scale_shift_table[None] + t[:, None]).chunk(2, dim=1)
-        x = t2i_modulate(self.norm_final(x), shift, scale)
+        x = self.norm_final(x) * (1 + scale) + shift
         x = self.linear(x)
         return x
 
@@ -1308,23 +1304,6 @@ def flip_and_shift(x, dim=2, shift_val=0.0):
     return torch.cat([padding, x_shifted], dim=dim)
 
 
-class _IdentityForwardContiguousBackward(torch.autograd.Function):
-    """Identity in forward; force contiguous grad tensor in backward."""
-
-    @staticmethod
-    def forward(ctx, x: torch.Tensor) -> torch.Tensor:
-        return x
-
-    @staticmethod
-    def backward(ctx, grad_output: torch.Tensor) -> tuple[torch.Tensor]:
-        return (grad_output.contiguous(),)
-
-
-def _contiguous_backward(x: torch.Tensor) -> torch.Tensor:
-    """Ensure downstream backward receives a contiguous gradient buffer."""
-    return _IdentityForwardContiguousBackward.apply(x)
-
-
 def torch_chunk_sana_gdn(
     q,
     k,
@@ -1634,7 +1613,6 @@ class GDN(nn.Module):
     @staticmethod
     def _reshape_from_temporal(x: torch.Tensor, B: int, S: int, T: int) -> torch.Tensor:
         """Reshape (B*S, T, C) back to (B, T*S, C)."""
-        x = _contiguous_backward(x)
         C = x.shape[-1]
         return x.reshape(B, S, T, C).permute(0, 2, 1, 3).reshape(B, T * S, C)
 
@@ -3590,7 +3568,7 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
             self_attn_kwargs["chunk_size"] = chunk_size
 
         x_norm1 = self.norm1(x).reshape(B, num_frames, -1, C)
-        x_msa_in = t2i_modulate(x_norm1, shift_msa, scale_msa).reshape(B, N, C)
+        x_msa_in = (x_norm1 * (1 + scale_msa) + shift_msa).reshape(B, N, C)
         if frame_token_mask is not None:
             x_msa_in = x_msa_in * frame_token_mask
         attn_out = self.attn(x_msa_in, **self_attn_kwargs).reshape(B, num_frames, -1, C)
@@ -3625,7 +3603,7 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
             mlp_kwargs["chunk_size"] = chunk_size
 
         x_norm2 = self.norm2(x).reshape(B, num_frames, -1, C)
-        x_mlp_in = t2i_modulate(x_norm2, shift_mlp, scale_mlp).reshape(B, N, C)
+        x_mlp_in = (x_norm2 * (1 + scale_mlp) + shift_mlp).reshape(B, N, C)
         if frame_token_mask is not None:
             x_mlp_in = x_mlp_in * frame_token_mask
         mlp_out = self.mlp(x_mlp_in, **mlp_kwargs).reshape(B, num_frames, -1, C)
@@ -3711,7 +3689,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
     _repeated_blocks = ["SanaVideoMSCamCtrlBlock"]
     _skip_layerwise_casting_patterns = ["x_embedder", "plucker_embedder", "norm"]
     # NOTE: `_keep_in_fp32_modules` is intentionally unset. SANA-WM's blocks apply the
-    # timestep modulation inline (`t2i_modulate`), so holding `t_embedder` / `t_block` /
+    # timestep modulation inline, so holding `t_embedder` / `t_block` /
     # `scale_shift_table` in fp32 would upcast the hidden states and feed fp32 activations
     # to bf16 weights. Supporting it needs explicit casts in the block forward first.
 
