@@ -27,8 +27,10 @@ permissions:
 env:
   DIFFUSERS_IS_CI: yes
   HF_XET_HIGH_PERFORMANCE: 1
-  OMP_NUM_THREADS: 4
-  MKL_NUM_THREADS: 4
+  # Intra-op threads per pytest worker. The test runner sizes `pytest -n` as cores / OMP_NUM_THREADS, so on
+  # the 32-core runner this gives 16 workers x 2 threads with no oversubscription.
+  OMP_NUM_THREADS: 2
+  MKL_NUM_THREADS: 2
   PYTEST_TIMEOUT: 60
   # Force version overrides across every `uv pip install` in this workflow via UV_OVERRIDE:
   #   - torch/torchvision/torchaudio pinned to the image's baked-in set so `-U` installs
@@ -188,7 +190,7 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.setup_tests.outputs.matrix) }}
     runs-on:
-      group: aws-general-8-plus
+      group: aws-highmemory-32-plus
     container:
       image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
@@ -220,8 +222,10 @@ jobs:
       # A feature-split job (e.g. `models-lora`) can legitimately match zero tests in the selected files;
       # pytest reports that as exit code 5. Surface it as a notice instead of a failure.
       run: |
+        workers=$(( $(nproc) / OMP_NUM_THREADS ))
+        echo "Running with $workers workers ($(nproc) cores / OMP_NUM_THREADS=$OMP_NUM_THREADS)"
         set +e
-        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        pytest -n "$workers" --max-worker-restart=0 --dist=loadfile \
           -k "not Onnx" \
           -m "${{ matrix.markers }}" \
           --make-reports=${{ matrix.name }}_tests_cpu \
