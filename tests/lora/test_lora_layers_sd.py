@@ -24,8 +24,6 @@ from safetensors.torch import load_file
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
-    AutoPipelineForImage2Image,
-    AutoPipelineForText2Image,
     DDIMScheduler,
     DiffusionPipeline,
     LCMScheduler,
@@ -641,6 +639,8 @@ class LoraIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_not_empty_state_dict(self):
+        from diffusers import AutoPipelineForText2Image
+
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
         pipe = AutoPipelineForText2Image.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
@@ -655,6 +655,8 @@ class LoraIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_load_unload_load_state_dict(self):
+        from diffusers import AutoPipelineForText2Image
+
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
         pipe = AutoPipelineForText2Image.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
@@ -705,6 +707,8 @@ class LoraIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdv1_5_lcm_lora_img2img(self):
+        from diffusers import AutoPipelineForImage2Image
+
         pipe = AutoPipelineForImage2Image.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
         )

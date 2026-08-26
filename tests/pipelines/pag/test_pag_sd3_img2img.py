@@ -16,7 +16,6 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKL,
-    AutoPipelineForImage2Image,
     FlowMatchEulerDiscreteScheduler,
     SD3Transformer2DModel,
     StableDiffusion3Img2ImgPipeline,
@@ -240,6 +239,8 @@ class StableDiffusion3PAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
         return inputs
 
     def test_pag_cfg(self):
+        from diffusers import AutoPipelineForImage2Image
+
         pipeline = AutoPipelineForImage2Image.from_pretrained(
             self.repo_id, enable_pag=True, torch_dtype=torch.float16, pag_applied_layers=["blocks.17"]
         )
@@ -268,6 +269,8 @@ class StableDiffusion3PAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
 
     def test_pag_uncond(self):
+        from diffusers import AutoPipelineForImage2Image
+
         pipeline = AutoPipelineForImage2Image.from_pretrained(
             self.repo_id, enable_pag=True, torch_dtype=torch.float16, pag_applied_layers=["blocks.(4|17)"]
         )
