@@ -30,7 +30,7 @@ from diffusers import DiffusionPipeline
 pipe = DiffusionPipeline.from_pretrained(
     "Disty0/Z-Image-Turbo-SDNQ-uint4-svd-r32",
     dtype=torch.bfloat16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe("a cat holding a sign that says hello").images[0]
 image.save("output.png")
@@ -54,7 +54,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "Tongyi-MAI/Z-Image-Turbo",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Or quantize a single model component directly.
@@ -92,7 +92,7 @@ from sdnq.loader import apply_sdnq_options_to_model
 pipe = DiffusionPipeline.from_pretrained(
     "Disty0/Z-Image-Turbo-SDNQ-uint4-svd-r32",
     dtype=torch.bfloat16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available()):
     pipe.transformer = apply_sdnq_options_to_model(pipe.transformer, use_quantized_matmul=True)
