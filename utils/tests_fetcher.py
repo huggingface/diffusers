@@ -65,20 +65,21 @@ PATH_TO_TESTS = PATH_TO_REPO / "tests"
 
 # `tests/models` and `tests/pipelines` compose one test class per feature mixin, and each mixin carries a
 # pytest marker (see the `is_*` decorators in tests/testing_utils.py). Each group below becomes its own
-# matrix job, selected with `pytest -m <expr>`; `core` is everything no group claims.
+# matrix job, selected with `pytest -m <expr>`, but only when a selected file composes a mixin carrying
+# one of the group's markers; `core` is everything no group and no CPU-skipped marker claims.
 SPLIT_BY_FEATURE = {"models", "pipelines"}
 FEATURE_GROUPS = {
-    "lora": "lora",
-    "attention": "attention",
-    "memory": "memory or cpu_offload or group_offload",
-    "cache": "cache",
-    "ip_adapter": "ip_adapter",
+    "lora": ["lora"],
+    "attention": ["attention"],
+    "memory": ["memory", "cpu_offload", "group_offload"],
+    "cache": ["cache"],
+    "ip_adapter": ["ip_adapter"],
 }
 # Gated on an accelerator, multi-GPU, or an HF token, so every test skips on the CPU runner. Excluded
 # from `core` and given no job rather than spinning up a runner to skip everything.
 CPU_SKIPPED_MARKERS = ["quantization", "compile", "single_file", "training", "context_parallel", "tensor_parallel"]
-CORE_MARKERS = "not (" + " or ".join(list(FEATURE_GROUPS.values()) + CPU_SKIPPED_MARKERS) + ")"
-
+FEATURE_MARKERS = [m for markers in FEATURE_GROUPS.values() for m in markers]
+CORE_MARKERS = "not (" + " or ".join(FEATURE_MARKERS + CPU_SKIPPED_MARKERS) + ")"
 # ============================================================
 # Generic helpers
 # ============================================================
@@ -387,16 +388,92 @@ def _bucket_for_matrix(test_paths: List[str]) -> Dict[str, List[str]]:
     return {k: sorted(set(v)) for k, v in test_map.items()}
 
 
+def _base_names(node: ast.ClassDef) -> List[str]:
+    return [
+        b.id if isinstance(b, ast.Name) else b.attr for b in node.bases if isinstance(b, (ast.Name, ast.Attribute))
+    ]
+
+
+def _marker_decorators() -> Dict[str, str]:
+    """Map decorator function name → pytest marker, from `def is_x(test_case): return pytest.mark.<m>(test_case)`."""
+    tree = ast.parse((PATH_TO_TESTS / "testing_utils.py").read_text(encoding="utf-8"))
+    decorators = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("is_"):
+            continue
+        for ret in ast.walk(node):
+            if isinstance(ret, ast.Return) and isinstance(ret.value, ast.Call):
+                func = ret.value.func
+                if (
+                    isinstance(func, ast.Attribute)
+                    and isinstance(func.value, ast.Attribute)
+                    and func.value.attr == "mark"
+                ):
+                    decorators[node.name] = func.attr
+    return decorators
+
+
+def _mixin_markers(bucket: str, decorators: Dict[str, str]) -> Dict[str, List[str]]:
+    """Map mixin class name → markers it carries, from the `@is_*` decorators on classes in
+    `tests/<bucket>/testing_utils/`. Markers are inherited through pytest, so a mixin also carries those of
+    any base mixin. Scoped per bucket because class names repeat across packages (the pipelines' legacy,
+    unmarked `IPAdapterTesterMixin` vs. the models' marked one)."""
+    bases: Dict[str, List[str]] = {}
+    markers: Dict[str, set] = {}
+    for module in (PATH_TO_TESTS / bucket / "testing_utils").glob("*.py"):
+        for node in ast.walk(ast.parse(module.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            bases[node.name] = _base_names(node)
+            markers[node.name] = {
+                decorators[d.id] for d in node.decorator_list if isinstance(d, ast.Name) and d.id in decorators
+            }
+
+    changed = True
+    while changed:
+        changed = False
+        for cls, cls_bases in bases.items():
+            inherited = set().union(*(markers.get(b, set()) for b in cls_bases))
+            if not inherited <= markers[cls]:
+                markers[cls] |= inherited
+                changed = True
+    return {cls: sorted(m) for cls, m in markers.items() if m}
+
+
+def _class_markers(test_file: str, mixin_markers: Dict[str, List[str]]) -> List[set]:
+    """Markers of every test class in `test_file`, derived from the marked mixins it composes."""
+    tree = ast.parse((PATH_TO_REPO / test_file).read_text(encoding="utf-8"))
+    return [
+        {m for base in _base_names(node) for m in mixin_markers.get(base, [])}
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef)
+    ]
+
+
+def _feature_groups_for(paths: List[str], mixin_markers: Dict[str, List[str]]) -> List[str]:
+    """Names of the feature groups (including `core`) that at least one test class in `paths` would land in."""
+    class_markers = [m for p in paths for m in _class_markers(p, mixin_markers)]
+    non_core = set(FEATURE_MARKERS + CPU_SKIPPED_MARKERS)
+    groups = []
+    if any(not m & non_core for m in class_markers):
+        groups.append("core")
+    for group, markers in FEATURE_GROUPS.items():
+        if any(m & set(markers) for m in class_markers):
+            groups.append(group)
+    return groups
+
+
 def _matrix_entries(test_map: Dict[str, List[str]]) -> List[Dict[str, str]]:
     """Expand buckets into CI matrix entries: `{"name", "paths", "markers"}`, one job each."""
+    decorators = _marker_decorators()
     entries = []
     for bucket, paths in sorted(test_map.items()):
         joined = " ".join(paths)
         if bucket not in SPLIT_BY_FEATURE:
             entries.append({"name": bucket, "paths": joined, "markers": ""})
             continue
-        entries.append({"name": f"{bucket}-core", "paths": joined, "markers": CORE_MARKERS})
-        for group, expr in FEATURE_GROUPS.items():
+        for group in _feature_groups_for(paths, _mixin_markers(bucket, decorators)):
+            expr = CORE_MARKERS if group == "core" else " or ".join(FEATURE_GROUPS[group])
             entries.append({"name": f"{bucket}-{group}", "paths": joined, "markers": expr})
     return entries
 
