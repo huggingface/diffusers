@@ -30,6 +30,7 @@ import torch.nn.functional as F
 if torch.distributed.is_available():
     import torch.distributed._functional_collectives as funcol
 
+from .. import __version__
 from ..utils import (
     get_logger,
     is_flash_attn_3_available,
@@ -724,7 +725,12 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
     try:
         from kernels import get_kernel
 
-        kernel_module = get_kernel(config.repo_id, revision=config.revision, version=config.version)
+        kernel_module = get_kernel(
+            config.repo_id,
+            revision=config.revision,
+            version=config.version,
+            user_agent={"diffusers": __version__},
+        )
         if needs_kernel:
             config.kernel_fn = _resolve_kernel_attr(kernel_module, config.function_attr)
 
@@ -2200,7 +2206,7 @@ class SeqAllToAllDim(torch.autograd.Function):
         return (None, grad_input, None, None)
 
 
-# Below are helper functions to handle abritrary head num and abritrary sequence length for Ulysses Anything Attention.
+# Below are helper functions to handle arbitrary head num and arbitrary sequence length for Ulysses Anything Attention.
 def _maybe_pad_qkv_head(x: torch.Tensor, H: int, group: dist.ProcessGroup) -> tuple[torch.Tensor, int]:
     r"""Maybe pad the head dimension to be divisible by world_size.
     x: torch.Tensor, shape (B, S_LOCAL, H, D) H: int, original global head num return: tuple[torch.Tensor, int], padded
