@@ -1,52 +1,32 @@
-import unittest
-
-import numpy as np
 import PIL.Image
 import torch
 from transformers import AutoConfig, AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKL,
-    FasterCacheConfig,
     FlowMatchEulerDiscreteScheduler,
     FluxKontextPipeline,
     FluxTransformer2DModel,
 )
 
 from ...testing_utils import torch_device
-from ..test_pipelines_common import (
+from ..testing_utils import (
+    BasePipelineTesterConfig,
     FasterCacheTesterMixin,
-    FluxIPAdapterTesterMixin,
+    MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
 )
+from .ip_adapter_tester import FluxIPAdapterTesterMixin
 
 
-class FluxKontextPipelineFastTests(
-    unittest.TestCase,
-    PipelineTesterMixin,
-    FluxIPAdapterTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
-    FasterCacheTesterMixin,
-):
+class FluxKontextPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = FluxKontextPipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         ["image", "prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"]
     )
-    batch_params = frozenset(["image", "prompt"])
-
-    # there is no xformers processor for Flux
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
-
-    faster_cache_config = FasterCacheConfig(
-        spatial_attention_block_skip_range=2,
-        spatial_attention_timestep_skip_range=(-1, 901),
-        unconditional_batch_skip_range=2,
-        attention_weight_callback=lambda _: 0.5,
-        is_guidance_distilled=True,
-    )
+    batch_input_params = frozenset(["image", "prompt"])
+    output_shape = (3, 8, 8)
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -114,47 +94,45 @@ class FluxKontextPipelineFastTests(
             "feature_extractor": None,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
-        image = PIL.Image.new("RGB", (32, 32), 0)
+    def get_dummy_inputs(self):
         inputs = {
-            "image": image,
+            "image": PIL.Image.new("RGB", (32, 32), 0),
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "height": 8,
             "width": 8,
             "max_area": 8 * 8,
             "max_sequence_length": 48,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "_auto_resize": False,
         }
         return inputs
 
-    def test_flux_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+class TestFluxKontextPipeline(FluxKontextPipelineTesterConfig, PipelineTesterMixin):
+    def test_flux_different_prompts(self):
+        pipe = self.get_pipeline().to(torch_device)
+
+        inputs = self.get_dummy_inputs()
         output_same_prompt = pipe(**inputs).images[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt_2"] = "a different prompt"
         output_different_prompts = pipe(**inputs).images[0]
 
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+        max_diff = (output_same_prompt - output_different_prompts).abs().max()
 
         # Outputs should be different here
         # For some reasons, they don't show large differences
-        assert max_diff > 1e-6
+        assert max_diff > 1e-6, "Outputs should be different for different prompts."
 
     def test_flux_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (72, 57)]
         for height, width in height_width_pairs:
@@ -163,16 +141,47 @@ class FluxKontextPipelineFastTests(
 
             inputs.update({"height": height, "width": width, "max_area": height * width})
             image = pipe(**inputs).images[0]
-            output_height, output_width, _ = image.shape
-            assert (output_height, output_width) == (expected_height, expected_width)
+            _, output_height, output_width = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width), (
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}"
+            )
 
     def test_flux_true_cfg(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs.pop("generator")
 
         no_true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
         inputs["negative_prompt"] = "bad quality"
         inputs["true_cfg_scale"] = 2.0
         true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
-        assert not np.allclose(no_true_cfg_out, true_cfg_out)
+        assert not torch.allclose(no_true_cfg_out, true_cfg_out), (
+            "Outputs should be different when true_cfg_scale is set."
+        )
+
+
+class TestFluxKontextPipelineIPAdapter(FluxKontextPipelineTesterConfig, FluxIPAdapterTesterMixin):
+    """IP-Adapter tests for the Flux Kontext pipeline."""
+
+
+class TestFluxKontextPipelineMemory(FluxKontextPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux Kontext pipeline."""
+
+
+class TestFluxKontextPipelinePyramidAttentionBroadcast(
+    FluxKontextPipelineTesterConfig, PyramidAttentionBroadcastTesterMixin
+):
+    """Pyramid Attention Broadcast cache tests for the Flux Kontext pipeline."""
+
+
+class TestFluxKontextPipelineFasterCache(FluxKontextPipelineTesterConfig, FasterCacheTesterMixin):
+    """FasterCache tests for the Flux Kontext pipeline."""
+
+    # Flux is guidance-distilled, so the FasterCache tester must skip the low/high-frequency-delta state checks.
+    FASTER_CACHE_CONFIG = {
+        "spatial_attention_block_skip_range": 2,
+        "spatial_attention_timestep_skip_range": (-1, 901),
+        "unconditional_batch_skip_range": 2,
+        "attention_weight_callback": lambda _: 0.5,
+        "is_guidance_distilled": True,
+    }

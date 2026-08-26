@@ -1,7 +1,7 @@
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import FluxPipeline, FluxPriorReduxPipeline
@@ -19,19 +19,17 @@ from ...testing_utils import (
 
 @slow
 @require_big_accelerator
-class FluxReduxSlowTests(unittest.TestCase):
+class TestFluxReduxIntegration:
     pipeline_class = FluxPriorReduxPipeline
     repo_id = "black-forest-labs/FLUX.1-Redux-dev"
     base_pipeline_class = FluxPipeline
     base_repo_id = "black-forest-labs/FLUX.1-schnell"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -69,82 +67,15 @@ class FluxReduxSlowTests(unittest.TestCase):
         image = pipe_base(**base_pipeline_inputs, **redux_pipeline_output).images[0]
 
         image_slice = image[0, :10, :10]
+        # fmt: off
         expected_slices = Expectations(
             {
-                ("cuda", 7): np.array(
-                    [
-                        0.30078125,
-                        0.37890625,
-                        0.46875,
-                        0.28125,
-                        0.36914062,
-                        0.47851562,
-                        0.28515625,
-                        0.375,
-                        0.4765625,
-                        0.28125,
-                        0.375,
-                        0.48046875,
-                        0.27929688,
-                        0.37695312,
-                        0.47851562,
-                        0.27734375,
-                        0.38085938,
-                        0.4765625,
-                        0.2734375,
-                        0.38085938,
-                        0.47265625,
-                        0.27539062,
-                        0.37890625,
-                        0.47265625,
-                        0.27734375,
-                        0.37695312,
-                        0.47070312,
-                        0.27929688,
-                        0.37890625,
-                        0.47460938,
-                    ],
-                    dtype=np.float32,
-                ),
-                ("xpu", 3): np.array(
-                    [
-                        0.20507812,
-                        0.30859375,
-                        0.3984375,
-                        0.18554688,
-                        0.30078125,
-                        0.41015625,
-                        0.19921875,
-                        0.3125,
-                        0.40625,
-                        0.19726562,
-                        0.3125,
-                        0.41601562,
-                        0.19335938,
-                        0.31445312,
-                        0.4140625,
-                        0.1953125,
-                        0.3203125,
-                        0.41796875,
-                        0.19726562,
-                        0.32421875,
-                        0.41992188,
-                        0.19726562,
-                        0.32421875,
-                        0.41992188,
-                        0.20117188,
-                        0.32421875,
-                        0.41796875,
-                        0.203125,
-                        0.32617188,
-                        0.41796875,
-                    ],
-                    dtype=np.float32,
-                ),
+                ("cuda", 7): np.array([0.30078125, 0.37890625, 0.46875, 0.28125, 0.36914062, 0.47851562, 0.28515625, 0.375, 0.4765625, 0.28125, 0.375, 0.48046875, 0.27929688, 0.37695312, 0.47851562, 0.27734375, 0.38085938, 0.4765625, 0.2734375, 0.38085938, 0.47265625, 0.27539062, 0.37890625, 0.47265625, 0.27734375, 0.37695312, 0.47070312, 0.27929688, 0.37890625, 0.47460938], dtype=np.float32),
+                ("xpu", 3): np.array([0.20507812, 0.30859375, 0.3984375, 0.18554688, 0.30078125, 0.41015625, 0.19921875, 0.3125, 0.40625, 0.19726562, 0.3125, 0.41601562, 0.19335938, 0.31445312, 0.4140625, 0.1953125, 0.3203125, 0.41796875, 0.19726562, 0.32421875, 0.41992188, 0.19726562, 0.32421875, 0.41992188, 0.20117188, 0.32421875, 0.41796875, 0.203125, 0.32617188, 0.41796875], dtype=np.float32),
             }
         )
         expected_slice = expected_slices.get_expectation()
+        # fmt: on
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
-
-        assert max_diff < 1e-4
+        assert max_diff < 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
