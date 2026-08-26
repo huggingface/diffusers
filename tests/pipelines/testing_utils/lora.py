@@ -20,6 +20,7 @@ from itertools import product
 import pytest
 import torch
 
+from diffusers import ModularPipeline
 from diffusers.hooks.group_offloading import (
     _GROUP_OFFLOADING,
     _get_top_level_group_offload_hook,
@@ -66,6 +67,11 @@ TEXT_ENCODER_TARGET_MODULES = {
 
 
 def determine_attention_kwargs_name(pipeline_class):
+    # A modular pipeline takes its inputs from its blocks rather than from a `__call__` signature, and the denoiser
+    # block of every LoRA-capable one declares `InputParam.template("attention_kwargs")`.
+    if issubclass(pipeline_class, ModularPipeline):
+        return "attention_kwargs"
+
     call_signature_keys = inspect.signature(pipeline_class.__call__).parameters.keys()
 
     # TODO(diffusers): Discuss a common naming convention across library for 1.0.0 release
@@ -77,16 +83,21 @@ def determine_attention_kwargs_name(pipeline_class):
 
 @is_lora
 @require_peft_backend
-class BaseLoraTesterMixin(BasePipelineOutputMixin):
+class BaseLoraTesterMixin:
     """
-    Shared LoRA helpers for the pipeline-level LoRA tester mixins. Not collected on its own —
-    compose `LoraTesterMixin`, `LoraMemoryTesterMixin` or `UNetLoraTesterMixin` with a `BasePipelineTesterConfig`
-    subclass instead.
+    Shared LoRA helpers for the LoRA tester mixins. Not collected on its own — compose `LoraTesterMixin`,
+    `LoraMemoryTesterMixin` or `UNetLoraTesterMixin` with a `BasePipelineTesterConfig` subclass instead.
 
-    Expected from the config mixin:
+    Deliberately free of `BasePipelineOutputMixin`: the test bodies below only ever reach the pipeline through the
+    seam listed here, which the modular tester mixins implement too (see
+    `tests/modular_pipelines/testing_utils/lora.py`). Binding the builder happens on the concrete mixins, so the
+    modular ones can bind a different one and reuse every test body unchanged.
+
+    Expected from the config and output mixins:
         - pipeline_class
-        - get_dummy_components()
-        - get_dummy_inputs() (with `output_type="pt"`)
+        - get_pipeline()
+        - run_pipe(pipe, **extra_inputs)
+        - the `base_pipe_output` fixture
 
     Pytest mark: lora
         Use `pytest -m "not lora"` to skip these tests, `pytest -m lora` to run only them.
@@ -184,7 +195,7 @@ class BaseLoraTesterMixin(BasePipelineOutputMixin):
         }
 
 
-class LoraTesterMixin(BaseLoraTesterMixin):
+class LoraTesterMixin(BaseLoraTesterMixin, BasePipelineOutputMixin):
     """
     Core LoRA/PEFT tests for pipelines: adapter attach/detach, scale kwargs, fuse/unfuse, multi-adapter handling,
     save/load roundtrips and metadata. Runnable on CPU.
@@ -961,7 +972,7 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         )
 
 
-class LoraMemoryTesterMixin(BaseLoraTesterMixin):
+class LoraMemoryTesterMixin(BaseLoraTesterMixin, BasePipelineOutputMixin):
     """LoRA x offloading tests: group offloading and model CPU offload composed with `load_lora_weights`."""
 
     @pytest.mark.parametrize(
@@ -1078,7 +1089,7 @@ class LoraMemoryTesterMixin(BaseLoraTesterMixin):
                 denoiser._diffusers_hook.remove_hook(_GROUP_OFFLOADING, recurse=True)
 
 
-class UNetLoraTesterMixin(BaseLoraTesterMixin):
+class UNetLoraTesterMixin(BaseLoraTesterMixin, BasePipelineOutputMixin):
     """
     LoRA tests that only apply to UNet-based pipelines (block-scale weight dicts).
     Compose only into pipeline test classes whose denoiser is a UNet (e.g. SD, SDXL).

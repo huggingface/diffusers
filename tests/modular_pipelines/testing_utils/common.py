@@ -164,11 +164,22 @@ class BaseModularPipelineOutputMixin:
         pipeline.set_progress_bar_config(disable=None)
         return pipeline
 
+    def run_pipe(self, pipe, **extra_inputs):
+        """Run the pipeline on the standard dummy inputs (fresh seeded generator) and return its output.
+
+        `base_pipe_output` is produced by this same helper, so outputs are directly comparable against it. Pass
+        `extra_inputs` to override individual dummy inputs. Mirrors the non-modular `BasePipelineOutputMixin.run_pipe`,
+        which is what lets the pipeline-level tester mixins (the LoRA ones, in particular) run unchanged here.
+        """
+        inputs = self.get_dummy_inputs()
+        inputs.update(extra_inputs)
+        torch.manual_seed(0)
+        return pipe(**inputs, output=self.output_name)
+
     @pytest.fixture(scope="class")
     def base_pipe_output(self):
         """Output of a freshly built pipeline on the standard dummy inputs, computed once per test class."""
-        pipe = self.get_pipeline().to(torch_device)
-        return pipe(**self.get_dummy_inputs(), output=self.output_name)
+        return self.run_pipe(self.get_pipeline().to(torch_device))
 
 
 class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
