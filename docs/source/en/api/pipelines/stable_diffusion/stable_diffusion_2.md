@@ -48,7 +48,7 @@ repo_id = "stabilityai/stable-diffusion-2-base"
 pipe = DiffusionPipeline.from_pretrained(repo_id, dtype=torch.float16, variant="fp16")
 
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "High quality photo of an astronaut riding a horse in space"
 image = pipe(prompt, num_inference_steps=25).images[0]
@@ -72,7 +72,7 @@ repo_id = "stabilityai/stable-diffusion-2-inpainting"
 pipe = DiffusionPipeline.from_pretrained(repo_id, dtype=torch.float16, variant="fp16")
 
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, num_inference_steps=25).images[0]
@@ -89,7 +89,7 @@ import torch
 # load model and scheduler
 model_id = "stabilityai/stable-diffusion-x4-upscaler"
 pipeline = StableDiffusionUpscalePipeline.from_pretrained(model_id, dtype=torch.float16)
-pipeline = pipeline.to("cuda")
+pipeline = pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 # let's download an  image
 url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
@@ -110,7 +110,7 @@ from diffusers.utils import load_image, make_image_grid
 pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-depth",
     dtype=torch.float16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 
 url = "http://images.cocodataset.org/val2017/000000039769.jpg"

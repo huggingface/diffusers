@@ -42,7 +42,7 @@ from ..testing_utils import (
     SingleFileTesterMixin,
     TrainingTesterMixin,
 )
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -203,7 +203,7 @@ class TestAutoencoderKLMemory(AutoencoderKLTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKL."""
 
 
-class TestAutoencoderKLSlicingTiling(AutoencoderKLTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLSlicingTiling(AutoencoderKLTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKL."""
 
 
