@@ -45,6 +45,7 @@ logger = logging.get_logger(__name__)
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
     GGUF = "gguf"
+    GEMLITE = "gemlite"
     NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
     QUANTO = "quanto"
@@ -429,6 +430,76 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
+
+
+@dataclass
+class GemLiteConfig(QuantizationConfigMixin):
+    """Configuration class for GemLite quantization.
+
+    GemLite provides Triton kernels for fast low-bit matrix multiplication. In Diffusers, this config replaces
+    supported `torch.nn.Linear` modules with GemLite linear layers so quantized weights can be executed with
+    GemLite kernels directly, without first materializing the weights back to full precision.
+
+    GemLite can be used in two modes:
+
+    - **Pre-quantized loading**: loads a checkpoint whose linear layers were already serialized as
+      `GemLiteLinearTriton` modules (`W_q`, `scales`, `zeros`, `metadata`, ... tensors). This is the main path for
+      low-bit GemLite checkpoints and preserves the packed representation expected by the GemLite kernels.
+    - **On-the-fly quantization**: loads a regular fp16/bf16 checkpoint and quantizes its `nn.Linear` layers in-place
+      at load time using a GemLite helper. Supported schemes are `weight_quant_format="int8"` (the `A16W8_INT8`
+      helper) and `weight_quant_format="fp8"` (the `A16W8_FP8` helper), both channel-wise weight-only quantization.
+
+    Args:
+        compute_dtype (`torch.dtype`, *optional*, defaults to `torch.float16`):
+            The compute dtype used by non-quantized modules and as a fallback when GemLite metadata does not encode a
+            dtype. For on-the-fly quantization, this is the dtype used to pack and run the quantized weights.
+        modules_to_not_convert (`list[str]` or `str`, *optional*):
+            The list of modules to not replace with GemLite linear layers.
+        weight_quant_format (`str`, *optional*, defaults to `"int8"`):
+            On-the-fly quantization scheme. Supported values are `"int8"` (A16W8 INT8 weight-only) and `"fp8"`
+            (A16W8 FP8 weight-only). Ignored when loading a pre-quantized checkpoint.
+    """
+
+    _SUPPORTED_WEIGHT_QUANT_FORMATS = ("int8", "fp8")
+
+    def __init__(
+        self,
+        compute_dtype: "torch.dtype" | str | None = None,
+        modules_to_not_convert=None,
+        weight_quant_format: str = "int8",
+        **kwargs,
+    ):
+        self.quant_method = QuantizationMethod.GEMLITE
+        self.compute_dtype = compute_dtype
+        self.modules_to_not_convert = modules_to_not_convert
+        self.weight_quant_format = weight_quant_format
+
+        # Keep the default as `None` in the signature because `torch` is an optional dependency and may not be imported
+        # when this module is loaded. Resolve it here instead of using `compute_dtype=torch.float16`.
+        if self.compute_dtype is None:
+            self.compute_dtype = torch.float16
+        elif isinstance(self.compute_dtype, str):
+            self.compute_dtype = getattr(torch, self.compute_dtype)
+
+        if self.weight_quant_format not in self._SUPPORTED_WEIGHT_QUANT_FORMATS:
+            raise ValueError(
+                f"Unsupported `weight_quant_format={self.weight_quant_format!r}` for GemLite on-the-fly quantization. "
+                f"Supported values are: {list(self._SUPPORTED_WEIGHT_QUANT_FORMATS)}."
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        output = copy.deepcopy(self.__dict__)
+        output["compute_dtype"] = str(output["compute_dtype"]).split(".")[1]
+        return output
+
+    def to_diff_dict(self) -> dict[str, Any]:
+        config_dict = self.to_dict()
+        default_config_dict = GemLiteConfig().to_dict()
+        serializable_config_dict = {"quant_method": config_dict["quant_method"]}
+        for key, value in config_dict.items():
+            if value != default_config_dict[key]:
+                serializable_config_dict[key] = value
+        return serializable_config_dict
 
 
 @dataclass

@@ -9,6 +9,7 @@ from .utils import (
     is_accelerate_available,
     is_auto_round_available,
     is_bitsandbytes_available,
+    is_gemlite_available,
     is_gguf_available,
     is_librosa_available,
     is_note_seq_available,
@@ -47,6 +48,7 @@ _import_structure = {
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
+        "is_gemlite_available",
         "is_inflect_available",
         "is_invisible_watermark_available",
         "is_librosa_available",
@@ -85,6 +87,18 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["quantizers.quantization_config"].append("GGUFQuantizationConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_gemlite_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_gemlite_objects
+
+    _import_structure["utils.dummy_gemlite_objects"] = [
+        name for name in dir(dummy_gemlite_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("GemLiteConfig")
 
 try:
     if not is_torch_available() and not is_accelerate_available() and not is_torchao_available():
@@ -994,6 +1008,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_gguf_objects import *
     else:
         from .quantizers.quantization_config import GGUFQuantizationConfig
+
+    try:
+        if not is_gemlite_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_gemlite_objects import *
+    else:
+        from .quantizers.quantization_config import GemLiteConfig
 
     try:
         if not is_torchao_available():

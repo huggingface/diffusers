@@ -1,0 +1,17 @@
+.git
+.github
+.pytest_cache
+.ruff_cache
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.venv
+.venv_sys
+
+tmp/*
+!tmp/Dockerfile.runpod-bonsai
+!tmp/runpod_bonsai_smoketest.py
+!tmp/runpod_bonsai_smoketest.sh
