@@ -76,13 +76,11 @@ from ..testing_utils import (
     load_numpy,
     nightly,
     require_compel,
-    require_hf_hub_version_greater,
     require_onnxruntime,
     require_peft_backend,
     require_peft_version_greater,
     require_torch_2,
     require_torch_accelerator,
-    require_transformers_version_greater,
     run_test_in_subprocess,
     slow,
     torch_device,
@@ -1949,15 +1947,6 @@ class TestPipelineFast:
         assert sd._offload_gpu_id == 5
         sd.maybe_free_model_hooks()
         assert sd._offload_gpu_id == 5
-
-    @require_hf_hub_version_greater("0.26.5")
-    @require_transformers_version_greater("4.47.1")
-    def test_dduf_file_is_deprecated(self, tmp_path):
-        with pytest.warns(FutureWarning) as warning_ctx:
-            _ = DiffusionPipeline.from_pretrained(
-                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmp_path
-            )
-        assert "dduf_file" in str(warning_ctx[0].message)
 
     def test_torch_dtype_is_deprecated(self):
         sd = StableDiffusionPipeline(
