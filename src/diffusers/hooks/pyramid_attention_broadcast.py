@@ -159,7 +159,6 @@ class PyramidAttentionBroadcastHook(ModelHook):
         )
         should_compute_attention = (
             self.state.cache is None
-            or self.state.iteration == 0
             or not is_within_timestep_range
             or self.state.iteration % self.block_skip_range == 0
         )
@@ -169,7 +168,7 @@ class PyramidAttentionBroadcastHook(ModelHook):
         else:
             output = self.state.cache
 
-        self.state.cache = output
+        self.state.cache = output if is_within_timestep_range else None
         self.state.iteration += 1
         return output
 
