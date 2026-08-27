@@ -48,6 +48,8 @@ class Ideogram4PipelineTesterConfig(BasePipelineTesterConfig):
     required_input_params_in_call_signature = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_input_params = frozenset(["prompt"])
     output_shape = (3, 16, 16)
+    # `encode_prompt` drives the Qwen3-VL decoder layers directly instead of calling `text_encoder.forward`, so the
+    # offloading hooks would leave its inputs on the offload device. Keep the text encoder out of group offloading.
     group_offloading_leaf_level_exclude_modules = ["text_encoder"]
 
     def get_dummy_components(self, num_layers: int = 1):
@@ -328,13 +330,6 @@ class TestIdeogram4PipelineMemory(Ideogram4PipelineTesterConfig, MemoryTesterMix
         "meta tensors and the pre-forward hook fails with `Cannot copy out of meta tensor`."
     )
     def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
-        pass
-
-    @pytest.mark.skip(
-        reason=f"{_SUBMODULE_OFFLOAD_SKIP} Group offload reports `cpu`, so `encode_prompt` mixes the "
-        "CPU attention mask with the accelerator hidden states it just computed."
-    )
-    def test_pipeline_level_group_offloading_inference(self, base_pipe_output, expected_max_difference=1e-4):
         pass
 
     @pytest.mark.skip(
