@@ -32,7 +32,7 @@ from typing import Any, Callable, ContextManager, Type
 import safetensors
 import torch
 import torch.utils.checkpoint
-from huggingface_hub import DDUFEntry, create_repo, split_torch_state_dict_into_shards
+from huggingface_hub import create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 from typing_extensions import Self
@@ -63,7 +63,12 @@ from ..utils import (
 from ..utils.distributed_utils import is_torch_dist_rank_zero
 from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache
-from ._modeling_parallel import ContextParallelConfig, ContextParallelModelPlan, ParallelConfig
+from ._modeling_parallel import (
+    ContextParallelConfig,
+    ContextParallelModelPlan,
+    ParallelConfig,
+    TensorParallelConfig,
+)
 from .model_loading_utils import (
     _caching_allocator_warmup,
     _determine_device_map,
@@ -254,6 +259,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _repeated_blocks = []
     _parallel_config = None
     _cp_plan = None
+    _tp_plan = None
     _skip_keys = None
 
     def __init__(self):
@@ -1029,7 +1035,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
-        dduf_entries: dict[str, DDUFEntry] | None = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
         parallel_config: ParallelConfig | ContextParallelConfig | None = kwargs.pop("parallel_config", None)
         use_flashpack = kwargs.pop("use_flashpack", False)
@@ -1138,7 +1143,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             revision=revision,
             subfolder=subfolder,
             user_agent=user_agent,
-            dduf_entries=dduf_entries,
             **kwargs,
         )
         # no in-place modification of the original config.
@@ -1219,14 +1223,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "revision": revision,
             "user_agent": user_agent,
             "commit_hash": commit_hash,
-            "dduf_entries": dduf_entries,
         }
         index_file = _fetch_index_file(**index_file_kwargs)
         # In case the index file was not found we still have to consider the legacy format.
         # this becomes applicable when the variant is not None.
         if variant is not None and (index_file is None or not os.path.exists(index_file)):
             index_file = _fetch_index_file_legacy(**index_file_kwargs)
-        if index_file is not None and (dduf_entries or index_file.is_file()):
+        if index_file is not None and index_file.is_file():
             is_sharded = True
 
         # load model
@@ -1242,7 +1245,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 user_agent=user_agent,
                 revision=revision,
                 subfolder=subfolder or "",
-                dduf_entries=dduf_entries,
             )
         else:
             if use_flashpack:
@@ -1265,7 +1267,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         subfolder=subfolder,
                         user_agent=user_agent,
                         commit_hash=commit_hash,
-                        dduf_entries=dduf_entries,
                     )
 
                 except IOError as e:
@@ -1289,7 +1290,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 subfolder=subfolder,
                 user_agent=user_agent,
                 commit_hash=commit_hash,
-                dduf_entries=dduf_entries,
             )
 
         if not isinstance(resolved_model_file, list):
@@ -1358,7 +1358,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         state_dict = None
         if not is_sharded:
             # Time to load the checkpoint
-            state_dict = load_state_dict(resolved_model_file[0], disable_mmap=disable_mmap, dduf_entries=dduf_entries)
+            state_dict = load_state_dict(resolved_model_file[0], disable_mmap=disable_mmap)
             # We only fix it for non sharded checkpoints as we don't need it yet for sharded one.
             model._fix_state_dict_keys_on_load(state_dict)
 
@@ -1409,7 +1409,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             dtype=torch_dtype,
             hf_quantizer=hf_quantizer,
             keep_in_fp32_modules=keep_in_fp32_modules,
-            dduf_entries=dduf_entries,
             is_parallel_loading_enabled=is_parallel_loading_enabled,
             disable_mmap=disable_mmap,
         )
@@ -1601,7 +1600,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def enable_parallelism(
         self,
         *,
-        config: ParallelConfig | ContextParallelConfig,
+        config: ParallelConfig | ContextParallelConfig | TensorParallelConfig,
         cp_plan: dict[str, ContextParallelModelPlan] | None = None,
     ):
         logger.warning(
@@ -1620,6 +1619,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if isinstance(config, ContextParallelConfig):
             config = ParallelConfig(context_parallel_config=config)
+        elif isinstance(config, TensorParallelConfig):
+            config = ParallelConfig(tensor_parallel_config=config)
 
         rank = torch.distributed.get_rank()
         world_size = torch.distributed.get_world_size()
@@ -1665,25 +1666,51 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 mesh_shape=cp_config.mesh_shape,
                 mesh_dim_names=cp_config.mesh_dim_names,
             )
+        elif config.tensor_parallel_config is not None:
+            tp_config = config.tensor_parallel_config
+            mesh = tp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
+                device_type=device_type,
+                mesh_shape=(tp_config.tp_degree,),
+                mesh_dim_names=("tp",),
+            )
 
+        # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
         config.setup(rank, world_size, device, mesh=mesh)
         self._parallel_config = config
 
-        for module in self.modules():
-            if not isinstance(module, attention_classes):
-                continue
-            processor = module.processor
-            if processor is None or not hasattr(processor, "_parallel_config"):
-                continue
-            processor._parallel_config = config
-
+        # Only context parallelism needs the config inside attention: it replaces the attention computation itself
+        # (Ulysses all-to-all / ring). Tensor parallelism only shards `Linear` weights, so each rank runs the ordinary
+        # attention op over its own heads and the processors must stay unaware of it.
         if config.context_parallel_config is not None:
+            for module in self.modules():
+                if not isinstance(module, attention_classes):
+                    continue
+                processor = module.processor
+                if processor is None or not hasattr(processor, "_parallel_config"):
+                    continue
+                processor._parallel_config = config
+
             if cp_plan is None and self._cp_plan is None:
                 raise ValueError(
                     "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
                 )
             cp_plan = cp_plan if cp_plan is not None else self._cp_plan
             apply_context_parallel(self, config.context_parallel_config, cp_plan)
+
+        if config.tensor_parallel_config is not None:
+            if self._tp_plan is None:
+                raise ValueError(
+                    "`_tp_plan` must be set on the model class to use tensor parallelism. "
+                    f"'{self.__class__.__name__}' does not define one."
+                )
+            tp_degree = config.tensor_parallel_config._tp_degree
+            num_heads = getattr(self.config, "num_attention_heads", None)
+            if num_heads is not None and num_heads % tp_degree != 0:
+                raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
+
+            from ..hooks.tensor_parallel import apply_tensor_parallel
+
+            apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
 
     @classmethod
     def _load_pretrained_model(
@@ -1702,7 +1729,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         device_map: str | int | torch.device | dict[str, str | int | torch.device] = None,
         offload_state_dict: bool | None = None,
         offload_folder: str | os.PathLike | None = None,
-        dduf_entries: dict[str, DDUFEntry] | None = None,
         is_parallel_loading_enabled: bool | None = False,
         disable_mmap: bool = False,
     ):
@@ -1764,7 +1790,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             dtype=dtype,
             hf_quantizer=hf_quantizer,
             keep_in_fp32_modules=keep_in_fp32_modules,
-            dduf_entries=dduf_entries,
             loaded_keys=loaded_keys,
             unexpected_keys=unexpected_keys,
             offload_index=offload_index,

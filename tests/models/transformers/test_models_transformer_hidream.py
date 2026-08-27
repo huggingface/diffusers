@@ -22,6 +22,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -106,3 +107,17 @@ class TestHiDreamTransformerTraining(HiDreamTransformerTesterConfig, TrainingTes
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HiDreamImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestHiDreamImageTransformer2DSingleFile(HiDreamTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/blob/main/split_files/diffusion_models/hidream_i1_full_fp16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "HiDream-ai/HiDream-I1-Dev"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

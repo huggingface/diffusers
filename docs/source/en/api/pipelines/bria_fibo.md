@@ -16,7 +16,7 @@ Text-to-image models have mastered imagination - but not control. FIBO changes t
 
 FIBO is trained on structured JSON captions up to 1,000+ words and designed to understand and control different visual parameters such as lighting, composition, color, and camera settings, enabling precise and reproducible outputs.
 
-With only 8 billion parameters, FIBO provides a new level of image quality, prompt adherence and proffesional control.
+With only 8 billion parameters, FIBO provides a new level of image quality, prompt adherence and professional control.
 
 FIBO is trained exclusively on a structured prompt and will not work with freeform text prompts.
 you can use the [FIBO-VLM-prompt-to-JSON](https://huggingface.co/briaai/FIBO-VLM-prompt-to-JSON) model or the [FIBO-gemini-prompt-to-JSON](https://huggingface.co/briaai/FIBO-gemini-prompt-to-JSON)  to convert your freeform text prompt to a structured JSON prompt.
