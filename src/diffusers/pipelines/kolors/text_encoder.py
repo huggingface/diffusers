@@ -159,23 +159,35 @@ class CoreAttention(torch.nn.Module):
             # [sk, b, np, hn] -> [sk, b * np, hn]
             key_layer = key_layer.view(output_size[3], output_size[0] * output_size[1], -1)
 
-            # preallocting input tensor: [b * np, sq, sk]
-            matmul_input_buffer = torch.empty(
-                output_size[0] * output_size[1],
-                output_size[2],
-                output_size[3],
-                dtype=query_layer.dtype,
-                device=query_layer.device,
-            )
-
             # Raw attention scores. [b * np, sq, sk]
-            matmul_result = torch.baddbmm(
-                matmul_input_buffer,
-                query_layer.transpose(0, 1),  # [b * np, sq, hn]
-                key_layer.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
-                beta=0.0,
-                alpha=(1.0 / self.norm_factor),
-            )
+            if query_layer.device.type == "mps":
+                # `baddbmm(input=torch.empty(...), beta=0)` relies on beta=0 causing `input` to be
+                # ignored. MPS does not honour that contract — NaN/Inf in the uninitialised buffer
+                # propagate into the scores. Use a buffer-free scaled bmm instead, which also skips
+                # the scores-sized allocation. See
+                # https://github.com/huggingface/diffusers/pull/14459 and
+                # https://github.com/pytorch/pytorch/issues/187521.
+                matmul_result = torch.bmm(
+                    query_layer.transpose(0, 1) * (1.0 / self.norm_factor),  # [b * np, sq, hn]
+                    key_layer.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
+                )
+            else:
+                # preallocting input tensor: [b * np, sq, sk]
+                matmul_input_buffer = torch.empty(
+                    output_size[0] * output_size[1],
+                    output_size[2],
+                    output_size[3],
+                    dtype=query_layer.dtype,
+                    device=query_layer.device,
+                )
+
+                matmul_result = torch.baddbmm(
+                    matmul_input_buffer,
+                    query_layer.transpose(0, 1),  # [b * np, sq, hn]
+                    key_layer.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
+                    beta=0.0,
+                    alpha=(1.0 / self.norm_factor),
+                )
 
             # change view to [b, np, sq, sk]
             attention_scores = matmul_result.view(*output_size)
