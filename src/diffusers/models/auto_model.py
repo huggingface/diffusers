@@ -17,7 +17,7 @@ import os
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
-from ..utils import DIFFUSERS_LOAD_ID_FIELDS, logging
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_revision, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 
 
@@ -266,6 +266,17 @@ class AutoModel(ConfigMixin):
         ]
         hub_kwargs = {name: kwargs.pop(name, None) for name in hub_kwargs_names}
 
+        # Resolve the revision once, so that the config read below and the model loaded afterwards both come from the
+        # same commit.
+        revision = hub_kwargs["revision"]
+        hub_kwargs["revision"] = _resolve_revision(
+            pretrained_model_or_path,
+            revision=revision,
+            cache_dir=hub_kwargs["cache_dir"],
+            local_files_only=hub_kwargs["local_files_only"],
+            token=hub_kwargs["token"],
+        )
+
         # load_config_kwargs uses the same hub kwargs minus subfolder and resume_download
         load_config_kwargs = {k: v for k, v in hub_kwargs.items() if k not in ["subfolder"]}
 
@@ -337,7 +348,8 @@ class AutoModel(ConfigMixin):
         kwargs = {**load_config_kwargs, **kwargs}
         model = model_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
-        load_id_kwargs = {"pretrained_model_name_or_path": pretrained_model_or_path, **kwargs}
+        # the load id records the revision the user asked for, not the commit it was resolved to
+        load_id_kwargs = {"pretrained_model_name_or_path": pretrained_model_or_path, **kwargs, "revision": revision}
         parts = [load_id_kwargs.get(field, "null") for field in DIFFUSERS_LOAD_ID_FIELDS]
         load_id = "|".join("null" if p is None else p for p in parts)
         model._diffusers_load_id = load_id

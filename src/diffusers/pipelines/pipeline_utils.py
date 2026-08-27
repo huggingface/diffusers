@@ -75,7 +75,12 @@ from ..utils import (
     numpy_to_pil,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
-from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import (
+    _check_legacy_sharding_variant_format,
+    _resolve_revision,
+    load_or_create_model_card,
+    populate_model_card,
+)
 from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
 
 
@@ -1592,6 +1597,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if "dduf_file" in kwargs:
             raise ValueError(_DDUF_REMOVAL_MESSAGE)
+
+        # Resolve the revision once, so that the config file and the snapshot downloaded below are pinned to the
+        # same commit.
+        revision = _resolve_revision(
+            pretrained_model_name,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
 
         allow_pickle = True if (use_safetensors is None or use_safetensors is False) else False
         use_safetensors = use_safetensors if use_safetensors is not None else True

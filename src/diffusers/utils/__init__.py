@@ -49,6 +49,7 @@ from .hub_utils import (
     _add_variant,
     _get_checkpoint_shard_files,
     _get_model_file,
+    _resolve_revision,
     extract_commit_hash,
     http_user_agent,
 )
