@@ -1,7 +1,5 @@
 import random
-import unittest
 
-import numpy as np
 import torch
 from transformers import AutoConfig, AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
@@ -15,15 +13,15 @@ from diffusers import (
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class FluxControlNetInpaintPipelineTests(unittest.TestCase, PipelineTesterMixin):
+class FluxControlNetInpaintPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = FluxControlNetInpaintPipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
             "prompt",
             "height",
@@ -39,8 +37,8 @@ class FluxControlNetInpaintPipelineTests(unittest.TestCase, PipelineTesterMixin)
             "controlnet_conditioning_scale",
         ]
     )
-    batch_params = frozenset(["prompt", "image", "mask_image", "control_image"])
-    test_xformers_attention = False
+    batch_input_params = frozenset(["prompt", "image", "mask_image", "control_image"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -74,7 +72,9 @@ class FluxControlNetInpaintPipelineTests(unittest.TestCase, PipelineTesterMixin)
 
         torch.manual_seed(0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder_2 = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder_2 = T5EncoderModel(config).eval()
 
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
@@ -120,73 +120,59 @@ class FluxControlNetInpaintPipelineTests(unittest.TestCase, PipelineTesterMixin)
             "controlnet": controlnet,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+    def get_dummy_inputs(self):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device)
+        mask_image = torch.ones((1, 1, 32, 32)).to(torch_device)
+        control_image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device)
 
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        mask_image = torch.ones((1, 1, 32, 32)).to(device)
-        control_image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "image": image,
             "mask_image": mask_image,
             "control_image": control_image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "height": 32,
             "width": 32,
             "max_sequence_length": 48,
             "strength": 0.8,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestFluxControlNetInpaintPipeline(FluxControlNetInpaintPipelineTesterConfig, PipelineTesterMixin):
     def test_flux_controlnet_inpaint_with_num_images_per_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["num_images_per_prompt"] = 2
-        output = pipe(**inputs)
-        images = output.images
+        images = pipe(**inputs).images
 
-        assert images.shape == (2, 32, 32, 3)
+        assert images.shape == (2, *self.output_shape)
 
     def test_flux_controlnet_inpaint_with_controlnet_conditioning_scale(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
-        output_default = pipe(**inputs)
-        image_default = output_default.images
+        inputs = self.get_dummy_inputs()
+        image_default = pipe(**inputs).images
 
         inputs["controlnet_conditioning_scale"] = 0.5
-        output_scaled = pipe(**inputs)
-        image_scaled = output_scaled.images
+        image_scaled = pipe(**inputs).images
 
         # Ensure that changing the controlnet_conditioning_scale produces a different output
-        assert not np.allclose(image_default, image_scaled, atol=0.01)
+        assert not torch.allclose(image_default, image_scaled, atol=0.01), (
+            "Changing `controlnet_conditioning_scale` should change the output."
+        )
 
-    def test_attention_slicing_forward_pass(self):
-        super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
-
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=3e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def test_flux_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (72, 56)]
         for height, width in height_width_pairs:
@@ -211,5 +197,11 @@ class FluxControlNetInpaintPipelineTests(unittest.TestCase, PipelineTesterMixin)
                 }
             )
             image = pipe(**inputs).images[0]
-            output_height, output_width, _ = image.shape
-            assert (output_height, output_width) == (expected_height, expected_width)
+            _, output_height, output_width = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width), (
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}"
+            )
+
+
+class TestFluxControlNetInpaintPipelineMemory(FluxControlNetInpaintPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux ControlNet inpaint pipeline."""

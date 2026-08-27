@@ -14,9 +14,8 @@
 # limitations under the License.
 
 import random
-import unittest
 
-import numpy as np
+import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -27,44 +26,27 @@ from diffusers import (
     StableDiffusionXLControlNetImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.import_utils import is_xformers_available
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    require_torch_accelerator,
-    torch_device,
-)
+from ...testing_utils import assert_tensors_close, enable_full_determinism, floats_tensor, torch_device
 from ..pipeline_params import (
-    IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..test_pipelines_common import (
-    IPAdapterTesterMixin,
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineTesterMixin,
-)
+from ..stable_diffusion.ip_adapter_tester import IPAdapterTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class ControlNetPipelineSDXLImg2ImgFastTests(
-    IPAdapterTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineTesterMixin,
-    unittest.TestCase,
-):
+class StableDiffusionXLControlNetImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionXLControlNetImg2ImgPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-    required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+    batch_input_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    output_shape = (3, 64, 64)
+    # The img2img pipeline derives its starting latents from `image`, so it takes no `latents` argument.
+    optional_input_params = BasePipelineTesterConfig.optional_input_params - {"latents"}
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
         {"add_text_embeds", "add_time_ids", "add_neg_time_ids"}
     )
@@ -142,7 +124,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        components = {
+        return {
             "unet": unet,
             "controlnet": controlnet,
             "scheduler": scheduler,
@@ -154,176 +136,119 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
             "image_encoder": None,
             "feature_extractor": None,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self):
         controlnet_embedder_scale_factor = 2
         image = floats_tensor(
             (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
-            rng=random.Random(seed),
-        ).to(device)
+            rng=random.Random(0),
+        ).to(torch_device)
 
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "image": image,
             "control_image": image,
         }
 
-        return inputs
 
-    def test_ip_adapter(self):
-        expected_pipe_slice = None
-        if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.6710, 0.5497, 0.5469, 0.5758, 0.5990, 0.5996, 0.5583, 0.5506, 0.5368])
-        # TODO: update after slices.p
-        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
+class TestStableDiffusionXLControlNetImg2ImgPipeline(
+    StableDiffusionXLControlNetImg2ImgPipelineTesterConfig, PipelineTesterMixin
+):
+    # Guess mode is expected to land on the same slice at this tolerance, so both tests below share it.
+    # fmt: off
+    expected_slice = torch.tensor([0.55813384, 0.4668495, 0.46676695, 0.6121852, 0.55514586, 0.49157068, 0.5960574, 0.56897247, 0.43931544])
+    # fmt: on
 
     def test_stable_diffusion_xl_controlnet_img2img(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = self.pipeline_class(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice is CPU-specific.
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
-        assert image.shape == (1, 64, 64, 3)
+        image = pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, *self.output_shape)
 
-        expected_slice = np.array(
-            [0.55813384, 0.4668495, 0.46676695, 0.6121852, 0.55514586, 0.49157068, 0.5960574, 0.56897247, 0.43931544]
-        )
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        image_slice = image[0, -1, -3:, -3:]
+        assert_tensors_close(image_slice.flatten().cpu(), self.expected_slice, atol=1e-2)
 
     def test_stable_diffusion_xl_controlnet_img2img_guess(self):
-        device = "cpu"
+        # Run on CPU: the expected slice is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-
-        sd_pipe = self.pipeline_class(**components)
-        sd_pipe = sd_pipe.to(device)
-
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["guess_mode"] = True
 
-        output = sd_pipe(**inputs)
-        image_slice = output.images[0, -3:, -3:, -1]
-        assert output.images.shape == (1, 64, 64, 3)
+        image = pipe(**inputs).images
+        assert image.shape == (1, *self.output_shape)
 
-        expected_slice = np.array(
-            [0.55813384, 0.4668495, 0.46676695, 0.6121852, 0.55514586, 0.49157068, 0.5960574, 0.56897247, 0.43931544]
-        )
-
+        image_slice = image[0, -1, -3:, -3:]
         # make sure that it's equal
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert_tensors_close(image_slice.flatten().cpu(), self.expected_slice, atol=1e-2)
 
-    def test_attention_slicing_forward_pass(self):
-        return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=2e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=2e-3)
-
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=2e-3)
-
-    # TODO(Patrick, Sayak) - skip for now as this requires more refiner tests
+    @pytest.mark.skip("TODO(Patrick, Sayak) - skip for now as this requires more refiner tests")
     def test_save_load_optional_components(self):
         pass
 
-    @require_torch_accelerator
-    def test_stable_diffusion_xl_offloads(self):
-        pipes = []
-        components = self.get_dummy_components()
-        sd_pipe = self.pipeline_class(**components).to(torch_device)
-        pipes.append(sd_pipe)
-
-        components = self.get_dummy_components()
-        sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_model_cpu_offload(device=torch_device)
-        pipes.append(sd_pipe)
-
-        components = self.get_dummy_components()
-        sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
-        pipes.append(sd_pipe)
-
-        image_slices = []
-        for pipe in pipes:
-            pipe.unet.set_default_attn_processor()
-
-            inputs = self.get_dummy_inputs(torch_device)
-            image = pipe(**inputs).images
-
-            image_slices.append(image[0, -3:, -3:, -1].flatten())
-
-        assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
-        assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
-
     def test_stable_diffusion_xl_multi_prompts(self):
-        components = self.get_dummy_components()
-        sd_pipe = self.pipeline_class(**components).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
         # forward with single prompt
-        inputs = self.get_dummy_inputs(torch_device)
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
+        image_slice_1 = pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
 
         # forward with same prompt duplicated
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt_2"] = inputs["prompt"]
-        output = sd_pipe(**inputs)
-        image_slice_2 = output.images[0, -3:, -3:, -1]
+        image_slice_2 = pipe(**inputs).images[0, -1, -3:, -3:]
 
         # ensure the results are equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+        assert (image_slice_1 - image_slice_2).abs().max() < 1e-4
 
         # forward with different prompt
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt_2"] = "different prompt"
-        output = sd_pipe(**inputs)
-        image_slice_3 = output.images[0, -3:, -3:, -1]
+        image_slice_3 = pipe(**inputs).images[0, -1, -3:, -3:]
 
         # ensure the results are not equal
-        assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
+        assert (image_slice_1 - image_slice_3).abs().max() > 1e-4
 
         # manually set a negative_prompt
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["negative_prompt"] = "negative prompt"
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
+        image_slice_1 = pipe(**inputs).images[0, -1, -3:, -3:]
 
         # forward with same negative_prompt duplicated
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["negative_prompt"] = "negative prompt"
         inputs["negative_prompt_2"] = inputs["negative_prompt"]
-        output = sd_pipe(**inputs)
-        image_slice_2 = output.images[0, -3:, -3:, -1]
+        image_slice_2 = pipe(**inputs).images[0, -1, -3:, -3:]
 
         # ensure the results are equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+        assert (image_slice_1 - image_slice_2).abs().max() < 1e-4
 
         # forward with different negative_prompt
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["negative_prompt"] = "negative prompt"
         inputs["negative_prompt_2"] = "different negative prompt"
-        output = sd_pipe(**inputs)
-        image_slice_3 = output.images[0, -3:, -3:, -1]
+        image_slice_3 = pipe(**inputs).images[0, -1, -3:, -3:]
 
         # ensure the results are not equal
-        assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
+        assert (image_slice_1 - image_slice_3).abs().max() > 1e-4
+
+
+class TestStableDiffusionXLControlNetImg2ImgPipelineIPAdapter(
+    StableDiffusionXLControlNetImg2ImgPipelineTesterConfig, IPAdapterTesterMixin
+):
+    """IP-Adapter tests for the SDXL ControlNet img2img pipeline."""
+
+
+class TestStableDiffusionXLControlNetImg2ImgPipelineMemory(
+    StableDiffusionXLControlNetImg2ImgPipelineTesterConfig, MemoryTesterMixin
+):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SDXL ControlNet img2img pipeline."""

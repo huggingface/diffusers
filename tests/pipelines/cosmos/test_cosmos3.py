@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 from unittest import mock
 
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import AutoTokenizer
@@ -24,31 +24,22 @@ from diffusers import AutoencoderKLWan, Cosmos3OmniPipeline, Cosmos3OmniTransfor
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import _preprocess_conditioning_image
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class Cosmos3OmniPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = Cosmos3OmniPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "negative_prompt_embeds", "prompt_embeds"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "output_type",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "negative_prompt"]
     )
-    test_xformers_attention = False
-    test_layerwise_casting = False
-    test_group_offloading = True
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (3, 16, 16)
+    # Cosmos3 Omni generates one video per call, so it exposes neither `num_images_per_prompt` (the base default)
+    # nor the `num_videos_per_prompt` the other Cosmos pipelines take.
+    optional_input_params = frozenset(["num_inference_steps", "generator", "latents", "output_type", "return_dict"])
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -93,8 +84,7 @@ class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "enable_safety_checker": False,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        generator = torch.Generator(device="cpu").manual_seed(seed)
+    def get_dummy_inputs(self):
         return {
             "prompt": "a dog",
             "negative_prompt": "bad quality",
@@ -103,25 +93,27 @@ class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_frames": 1,
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
-            "generator": generator,
-            "output_type": "np",
+            "generator": self.get_generator(0),
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
             "use_system_prompt": False,
             "add_resolution_template": False,
             "add_duration_template": False,
         }
 
+
+class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        pipeline.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
-        video = pipeline(**self.get_dummy_inputs(torch_device)).video
+        video = pipe(**self.get_dummy_inputs()).video
 
-        self.assertEqual(video.shape, (1, 16, 16, 3))
+        assert video[0].shape == self.output_shape
 
     def test_cosmos3_tokenize_prompt_uses_checkpoint_system_prompt_default(self):
         components = self.get_dummy_components()
         components["default_use_system_prompt"] = False
-        pipeline = self.pipeline_class(**components)
+        pipeline = self.get_pipeline(**components)
 
         with mock.patch.object(
             pipeline.text_tokenizer,
@@ -148,27 +140,30 @@ class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.testing.assert_close(actual, expected)
 
     def test_i2v_pipeline_uses_native_preprocessing(self):
-        pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        pipeline.set_progress_bar_config(disable=None)
+        pipeline = self.get_pipeline().to(torch_device)
 
         image = np.zeros((16, 32, 3), dtype=np.uint8)
         image[:, :8] = [255, 0, 0]
         image[:, 8:24] = [0, 255, 0]
         image[:, 24:] = [0, 0, 255]
         center_crop = Image.fromarray(image[:, 8:24])
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs.update(image=Image.fromarray(image), num_frames=5, output_type="latent")
 
         wide_output = pipeline(**inputs).video
-        inputs.update(image=center_crop, generator=torch.Generator(device="cpu").manual_seed(0))
+        inputs.update(image=center_crop, generator=self.get_generator(0))
         crop_output = pipeline(**inputs).video
 
         torch.testing.assert_close(wide_output, crop_output)
 
-    @unittest.skip("Cosmos3 currently supports one prompt per pipeline call.")
+    @pytest.mark.skip("Cosmos3 currently supports one prompt per pipeline call.")
     def test_inference_batch_consistent(self):
         pass
 
-    @unittest.skip("Cosmos3 currently supports one prompt per pipeline call.")
+    @pytest.mark.skip("Cosmos3 currently supports one prompt per pipeline call.")
     def test_inference_batch_single_identical(self):
         pass
+
+
+class TestCosmos3OmniPipelineMemory(Cosmos3OmniPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Cosmos3 Omni pipeline."""

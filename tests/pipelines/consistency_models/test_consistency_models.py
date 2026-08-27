@@ -1,7 +1,7 @@
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from torch.backends.cuda import sdp_kernel
 
@@ -14,6 +14,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
     Expectations,
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     nightly,
@@ -22,19 +23,20 @@ from ...testing_utils import (
     torch_device,
 )
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class ConsistencyModelPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = ConsistencyModelPipeline
-    params = UNCONDITIONAL_IMAGE_GENERATION_PARAMS
-    batch_params = UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS
-
-    # Override required_optional_params to remove num_images_per_prompt
-    required_optional_params = frozenset(
+    required_input_params_in_call_signature = UNCONDITIONAL_IMAGE_GENERATION_PARAMS
+    batch_input_params = UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS
+    output_shape = (3, 32, 32)
+    # Unconditional generation: the pipeline takes a `batch_size` instead of `num_images_per_prompt`, and still
+    # exposes the legacy `callback` / `callback_steps` arguments.
+    optional_input_params = frozenset(
         [
             "num_inference_steps",
             "generator",
@@ -75,110 +77,102 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             sigma_max=80.0,
         )
 
-        components = {
+        return {
             "unet": unet,
             "scheduler": scheduler,
         }
 
-        return components
-
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "batch_size": 1,
             "num_inference_steps": None,
             "timesteps": [22, 0],
-            "generator": generator,
-            "output_type": "np",
+            "generator": self.get_generator(0),
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
 
-        return inputs
 
+class TestConsistencyModelPipeline(ConsistencyModelPipelineTesterConfig, PipelineTesterMixin):
     def test_consistency_model_pipeline_multistep(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = ConsistencyModelPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        assert image.shape == (1, 32, 32, 3)
+        image = pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, *self.output_shape)
 
-        image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.3572, 0.6273, 0.4031, 0.3961, 0.4321, 0.5730, 0.5266, 0.4780, 0.5004])
+        image_slice = image[0, -1, -3:, -3:]
+        # fmt: off
+        expected_slice = torch.tensor([0.3572, 0.6273, 0.4031, 0.3961, 0.4321, 0.5730, 0.5266, 0.4780, 0.5004])
+        # fmt: on
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_consistency_model_pipeline_multistep_class_cond(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components(class_cond=True)
-        pipe = ConsistencyModelPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline(**self.get_dummy_components(class_cond=True))
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["class_labels"] = 0
         image = pipe(**inputs).images
-        assert image.shape == (1, 32, 32, 3)
+        assert image.shape == (1, *self.output_shape)
 
-        image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.3572, 0.6273, 0.4031, 0.3961, 0.4321, 0.5730, 0.5266, 0.4780, 0.5004])
+        image_slice = image[0, -1, -3:, -3:]
+        # fmt: off
+        expected_slice = torch.tensor([0.3572, 0.6273, 0.4031, 0.3961, 0.4321, 0.5730, 0.5266, 0.4780, 0.5004])
+        # fmt: on
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_consistency_model_pipeline_onestep(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = ConsistencyModelPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["num_inference_steps"] = 1
         inputs["timesteps"] = None
         image = pipe(**inputs).images
-        assert image.shape == (1, 32, 32, 3)
+        assert image.shape == (1, *self.output_shape)
 
-        image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
+        image_slice = image[0, -1, -3:, -3:]
+        # fmt: off
+        expected_slice = torch.tensor([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
+        # fmt: on
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_consistency_model_pipeline_onestep_class_cond(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components(class_cond=True)
-        pipe = ConsistencyModelPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline(**self.get_dummy_components(class_cond=True))
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["num_inference_steps"] = 1
         inputs["timesteps"] = None
         inputs["class_labels"] = 0
         image = pipe(**inputs).images
-        assert image.shape == (1, 32, 32, 3)
+        assert image.shape == (1, *self.output_shape)
 
-        image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
+        image_slice = image[0, -1, -3:, -3:]
+        # fmt: off
+        expected_slice = torch.tensor([0.5004, 0.5004, 0.4994, 0.5008, 0.4976, 0.5018, 0.4990, 0.4982, 0.4987])
+        # fmt: on
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-3)
+
+
+class TestConsistencyModelPipelineMemory(ConsistencyModelPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the consistency model pipeline."""
 
 
 @nightly
 @require_torch_accelerator
-class ConsistencyModelPipelineSlowTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestConsistencyModelPipelineSlow:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

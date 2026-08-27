@@ -444,7 +444,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         output = pipe(**inputs)[0]
 
         pipe.save_pretrained(tmp_path)
-        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path, torch_dtype=torch.float16)
+        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path, dtype=torch.float16)
         pipe_loaded.to(torch_device)
         pipe_loaded.set_progress_bar_config(disable=None)
 

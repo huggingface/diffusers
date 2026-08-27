@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import AutoConfig, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
@@ -32,6 +32,7 @@ from diffusers.utils import load_image
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     nightly,
@@ -39,19 +40,20 @@ from ...testing_utils import (
     require_big_accelerator,
     torch_device,
 )
-from ..test_pipelines_common import FluxIPAdapterTesterMixin, PipelineTesterMixin
+from ..flux.testing_utils import FluxIPAdapterTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin):
+class FluxControlNetPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = FluxControlNetPipeline
-
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
-    batch_params = frozenset(["prompt"])
-    test_layerwise_casting = True
-    test_group_offloading = True
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"]
+    )
+    batch_input_params = frozenset(["prompt"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -98,7 +100,9 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
 
         torch.manual_seed(0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder_2 = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder_2 = T5EncoderModel(config).eval()
 
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         tokenizer_2 = T5TokenizerFast.from_pretrained("hf-internal-testing/tiny-random-t5")
@@ -133,60 +137,47 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
             "feature_extractor": None,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
+    def get_dummy_inputs(self):
+        # The control image is drawn from the same generator that is handed to the pipeline, so the pipeline sees an
+        # already-advanced generator state — keep the order to stay comparable with the expected slices below.
+        generator = self.get_generator(0)
         control_image = randn_tensor(
             (1, 3, 32, 32),
             generator=generator,
-            device=torch.device(device),
+            device=torch.device(torch_device),
             dtype=torch.float32,
         )
 
-        controlnet_conditioning_scale = 0.5
-
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 3.5,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "control_image": control_image,
-            "controlnet_conditioning_scale": controlnet_conditioning_scale,
+            "controlnet_conditioning_scale": 0.5,
         }
 
-        return inputs
 
+class TestFluxControlNetPipeline(FluxControlNetPipelineTesterConfig, PipelineTesterMixin):
     def test_controlnet_flux(self):
-        components = self.get_dummy_components()
-        flux_pipe = FluxControlNetPipeline(**components)
-        flux_pipe = flux_pipe.to(torch_device, dtype=torch.float32)
-        flux_pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device, dtype=torch.float32)
 
-        inputs = self.get_dummy_inputs(torch_device)
-        output = flux_pipe(**inputs)
-        image = output.images
+        image = pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, *self.output_shape)
 
-        image_slice = image[0, -3:, -3:, -1]
+        image_slice = image[0, -1, -3:, -3:]
+        # fmt: off
+        expected_slice = torch.tensor([0.6751, 0.6115, 0.5290, 0.6200, 0.5736, 0.6409, 0.5588, 0.6046, 0.5594])
+        # fmt: on
 
-        assert image.shape == (1, 32, 32, 3)
-
-        expected_slice = np.array([0.6751, 0.6115, 0.5290, 0.6200, 0.5736, 0.6409, 0.5588, 0.6046, 0.5594])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
-            f"Expected: {expected_slice}, got: {image_slice.flatten()}"
-        )
-
-    @unittest.skip("xFormersAttnProcessor does not work with SD3 Joint Attention")
-    def test_xformers_attention_forwardGenerator_pass(self):
-        pass
+        assert_tensors_close(image_slice.flatten().cpu(), expected_slice, atol=1e-2)
 
     def test_flux_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (72, 56)]
         for height, width in height_width_pairs:
@@ -203,22 +194,30 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
                 }
             )
             image = pipe(**inputs).images[0]
-            output_height, output_width, _ = image.shape
-            assert (output_height, output_width) == (expected_height, expected_width)
+            _, output_height, output_width = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width), (
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}"
+            )
+
+
+class TestFluxControlNetPipelineIPAdapter(FluxControlNetPipelineTesterConfig, FluxIPAdapterTesterMixin):
+    """IP-Adapter tests for the Flux ControlNet pipeline."""
+
+
+class TestFluxControlNetPipelineMemory(FluxControlNetPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux ControlNet pipeline."""
 
 
 @nightly
 @require_big_accelerator
-class FluxControlNetPipelineSlowTests(unittest.TestCase):
+class TestFluxControlNetPipelineSlow:
     pipeline_class = FluxControlNetPipeline
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
