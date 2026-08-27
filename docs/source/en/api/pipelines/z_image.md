@@ -36,7 +36,7 @@ from diffusers import ZImageImg2ImgPipeline
 from diffusers.utils import load_image
 
 pipe = ZImageImg2ImgPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 init_image = load_image(url).resize((1024, 1024))
@@ -65,7 +65,7 @@ from diffusers import ZImageInpaintPipeline
 from diffusers.utils import load_image
 
 pipe = ZImageInpaintPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 init_image = load_image(url).resize((1024, 1024))

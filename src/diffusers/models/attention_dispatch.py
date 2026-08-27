@@ -30,6 +30,7 @@ import torch.nn.functional as F
 if torch.distributed.is_available():
     import torch.distributed._functional_collectives as funcol
 
+from .. import __version__
 from ..utils import (
     get_logger,
     is_flash_attn_3_available,
@@ -723,7 +724,12 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
     try:
         from kernels import get_kernel
 
-        kernel_module = get_kernel(config.repo_id, revision=config.revision, version=config.version)
+        kernel_module = get_kernel(
+            config.repo_id,
+            revision=config.revision,
+            version=config.version,
+            user_agent={"diffusers": __version__},
+        )
         if needs_kernel:
             config.kernel_fn = _resolve_kernel_attr(kernel_module, config.function_attr)
 
