@@ -23,15 +23,17 @@ from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransf
 from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
+    nightly,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
@@ -236,9 +238,9 @@ class TestCogVideoXPipelineFirstBlockCache(CogVideoXPipelineTesterConfig, FirstB
     pass
 
 
-@slow
+@nightly
 @require_torch_accelerator
-class TestCogVideoXPipelineSlow:
+class TestCogVideoXPipelineIntegration:
     prompt = "A painting of a squirrel eating a burger."
 
     @pytest.fixture(autouse=True)
@@ -271,3 +273,11 @@ class TestCogVideoXPipelineSlow:
 
         max_diff = numpy_cosine_similarity_distance(video, expected_video)
         assert max_diff < 1e-3, f"Max diff is too high. got {video}"
+
+
+class TestCogVideoXPipelineLoRA(CogVideoXPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the CogVideoX pipeline."""
+
+
+class TestCogVideoXPipelineLoRAMemory(CogVideoXPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA offloading tests for the CogVideoX pipeline."""

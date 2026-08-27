@@ -24,7 +24,14 @@ from diffusers.modular_pipelines import (
     WanAnimate2ModularPipeline,
 )
 
-from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularGuiderTesterMixin,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 # Every component with its class, every input — optional ones with their defaults — and the config values worth
@@ -73,7 +80,7 @@ WAN_ANIMATE_2_DISTILLED_DEFAULTS = {
 }
 
 
-class TestWanAnimate2ModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
+class WanAnimate2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = WanAnimate2ModularPipeline
     pipeline_blocks_class = WanAnimate2Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-modular"
@@ -103,6 +110,10 @@ class TestWanAnimate2ModularPipelineFast(ModularPipelineTesterMixin, ModularGuid
         }
         return inputs
 
+
+class WanAnimate2ModularPipelineFastTesterMixin(ModularPipelineTesterMixin):
+    """`ModularPipelineTesterMixin` minus the tests that assume a batchable pipeline; shared by both presets."""
+
     @pytest.mark.skip(reason="Wan-Animate-2 is unbatched: one character image and driving video per call")
     def test_inference_batch_consistent(self):
         pass
@@ -115,6 +126,26 @@ class TestWanAnimate2ModularPipelineFast(ModularPipelineTesterMixin, ModularGuid
     def test_num_images_per_prompt(self):
         pass
 
+
+class TestWanAnimate2ModularPipelineFast(
+    WanAnimate2ModularPipelineTesterConfig, WanAnimate2ModularPipelineFastTesterMixin
+):
+    pass
+
+
+class TestWanAnimate2ModularPipelineLoading(WanAnimate2ModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestWanAnimate2ModularPipelineWorkflow(WanAnimate2ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestWanAnimate2ModularPipelineMemory(WanAnimate2ModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class TestWanAnimate2ModularPipelineGuider(WanAnimate2ModularPipelineTesterConfig, ModularGuiderTesterMixin):
     def test_guider_cfg(self):
         # The tiny random transformer responds only weakly to the text embeddings (cond vs uncond
         # predictions differ by ~1e-4), so the CFG effect on the decoded pixels is real but small.
@@ -122,12 +153,33 @@ class TestWanAnimate2ModularPipelineFast(ModularPipelineTesterMixin, ModularGuid
         super().test_guider_cfg(expected_max_diff=1e-6)
 
 
-class TestWanAnimate2DistilledModularPipelineFast(TestWanAnimate2ModularPipelineFast):
+class WanAnimate2DistilledModularPipelineTesterConfig(WanAnimate2ModularPipelineTesterConfig):
     pipeline_class = WanAnimate2DistilledModularPipeline
     pipeline_blocks_class = WanAnimate2DistilledBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-distilled-modular"
     expected_workflow_defaults = WAN_ANIMATE_2_DISTILLED_DEFAULTS
 
-    @pytest.mark.skip(reason="The distilled preset pins its guider to guidance_scale=1.0")
-    def test_guider_cfg(self):
-        pass
+
+# No guider test class for the distilled preset: it pins its guider to guidance_scale=1.0.
+class TestWanAnimate2DistilledModularPipelineFast(
+    WanAnimate2DistilledModularPipelineTesterConfig, WanAnimate2ModularPipelineFastTesterMixin
+):
+    pass
+
+
+class TestWanAnimate2DistilledModularPipelineLoading(
+    WanAnimate2DistilledModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
+    pass
+
+
+class TestWanAnimate2DistilledModularPipelineWorkflow(
+    WanAnimate2DistilledModularPipelineTesterConfig, ModularWorkflowTesterMixin
+):
+    pass
+
+
+class TestWanAnimate2DistilledModularPipelineMemory(
+    WanAnimate2DistilledModularPipelineTesterConfig, ModularMemoryTesterMixin
+):
+    pass

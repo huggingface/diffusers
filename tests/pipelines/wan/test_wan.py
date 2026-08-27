@@ -19,7 +19,13 @@ from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanPipeline, WanTransformer3DModel
 
 from ...testing_utils import assert_tensors_close, torch_device
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 class WanPipelineTesterConfig(BasePipelineTesterConfig):
@@ -48,7 +54,9 @@ class WanPipelineTesterConfig(BasePipelineTesterConfig):
         # TODO: impl FlowDPMSolverMultistepScheduler
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder = T5EncoderModel(config).eval()
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -140,3 +148,11 @@ class TestWanPipeline(WanPipelineTesterConfig, PipelineTesterMixin):
 
 class TestWanPipelineMemory(WanPipelineTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestWanPipelineLoRA(WanPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Wan pipeline."""
+
+
+class TestWanPipelineLoRAMemory(WanPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA offloading tests for the Wan pipeline."""

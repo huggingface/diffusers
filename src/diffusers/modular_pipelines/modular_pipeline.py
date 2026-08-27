@@ -155,6 +155,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("ltx2", _create_default_map_fn("LTX2ModularPipeline")),
         ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
         ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
+        ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
     ]
 )
@@ -329,7 +330,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     [`ModularPipelineBlocks`] provides method to load and save the definition of pipeline blocks.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     config_name = "modular_config.json"
@@ -610,8 +610,6 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
-
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: List of block classes to be used. Must have the same length as `block_names`.
@@ -971,8 +969,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
-
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: list of block classes to be used
@@ -1334,8 +1330,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
-
     Attributes:
         block_classes: list of block classes to be used
         block_names: list of prefixes for each block
@@ -1627,8 +1621,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 class ModularPipeline(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines.
-
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Args:
         blocks: ModularPipelineBlocks, the blocks to be used in the pipeline

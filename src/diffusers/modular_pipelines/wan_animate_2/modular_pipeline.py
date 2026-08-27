@@ -24,7 +24,6 @@ class WanAnimate2ModularPipeline(ModularPipeline, WanLoraLoaderMixin):
     """
     A ModularPipeline for Wan-Animate-2 character animation.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "WanAnimate2Blocks"
@@ -65,7 +64,6 @@ class WanAnimate2DistilledModularPipeline(WanAnimate2ModularPipeline):
     A ModularPipeline for the distilled Wan-Animate-2 model, which samples in few steps without classifier-free
     guidance.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "WanAnimate2DistilledBlocks"

@@ -17,7 +17,13 @@ import pytest
 
 from diffusers.modular_pipelines import ErnieImageAutoBlocks, ErnieImageModularPipeline
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 ERNIE_IMAGE_WORKFLOWS = {
@@ -32,11 +38,10 @@ ERNIE_IMAGE_WORKFLOWS = {
 }
 
 
-class TestErnieImageModularPipelineFast(ModularPipelineTesterMixin):
+class ErnieImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = ErnieImageModularPipeline
     pipeline_blocks_class = ErnieImageAutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-ernie-image-modular-pipe"
-
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_images_per_prompt", "latents"])
@@ -53,6 +58,20 @@ class TestErnieImageModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "pt",
         }
 
+
+class TestErnieImageModularPipelineFast(ErnieImageModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="PE generation is non-deterministic on CPU")
     def test_float16_inference(self):
         pass
+
+
+class TestErnieImageModularPipelineLoading(ErnieImageModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestErnieImageModularPipelineWorkflow(ErnieImageModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestErnieImageModularPipelineMemory(ErnieImageModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
