@@ -1,12 +1,12 @@
 # Reporting bugs and performance claims
 
-For issues and PR descriptions on this repo, from humans and agents alike.
+Use this guide when writing bug reports or performance claims in issues and pull requests.
 
 ## Bug reports
 
-A reproduction is **what you were doing when it broke, with everything unnecessary removed** — start from the real failing situation and delete, don't build a clean synthetic case from scratch. The test: can someone paste it into a terminal and see the same failure, without first accepting your theory of the cause? A script that demonstrates your theory is not a reproduction — it can pass while the real bug is still there.
+A reproduction is the smallest version of the real workflow that still fails. Start with what you were doing when the failure occurred, then remove anything unrelated. Someone should be able to run it and see the same failure without first accepting your theory about its cause. A script that tests your theory is not a reproduction. It may pass even when the real workflow still fails.
 
-- Keep the real model, settings, and dtype. A repro that downloads weights and takes two minutes is worth more than a fast synthetic one.
+- Keep the real model, settings, and dtype. A slower repro is better than a faster one that changes the behavior.
 - If you truly can't produce one (gated model, 8 GPUs), say so at the top and give the closest thing you have. Don't silently substitute something smaller.
 
 ✓ A reproduction — the failing call itself, trimmed (from [#14518](https://github.com/huggingface/diffusers/issues/14518): Krea-2 OOMs a 16GB GPU under 4-bit quantization):
@@ -34,15 +34,15 @@ F.scaled_dot_product_attention(q, k, v, attn_mask=mask, enable_gqa=True)
 print(torch.cuda.max_memory_allocated())
 ```
 
-The difference: a maintainer understands the first script at a glance — it's an ordinary pipeline call — while the second is not, and it only demonstrates the reporter's theory: it can go green while the real pipeline still dies on a 24GB card. 
+The first script exposes the real pipeline call. The second only tests the proposed mechanism, so it may pass even when the pipeline still fails. Keep the hypothesis separate from the reproduction.
 
 For structure, follow the [bug report template](../.github/ISSUE_TEMPLATE/bug-report.yml).
 
 ## Performance claims
 
-Report **the end-to-end number only**: wall clock for the full pipeline call, before vs. after, on the same hardware, dtype, and seed. That's the number we decide with — if we want op-level detail, we'll ask.
+Lead with the end-to-end result: measure the full pipeline call before and after the change on the same hardware, dtype, and seed. Only include lower-level measurements when requested.
 
-Attach the script you measured with, please keep it as simple as possible (see `benchmarks/benchmarking_utils.py`):
+Attach the measurement script and keep it as simple as possible. See `benchmarks/benchmarking_utils.py` for the repository's benchmarking helper.
 
 ```python
 import torch.utils.benchmark as benchmark
@@ -56,4 +56,4 @@ print(benchmark_fn(pipe, **call_kwargs))
 print(f"peak memory: {torch.cuda.max_memory_allocated() / 1024**3:.2f}GB")
 ```
 
-State the setup (GPU, dtype, torch/diffusers versions, attention backend) and the exact call (model id, resolution/duration, steps, batch size). One-shot timings are noise.
+State the setup (GPU, dtype, torch/diffusers versions, attention backend) and the exact call (model id, resolution/duration, steps, batch size). One-shot timings are noisy.
