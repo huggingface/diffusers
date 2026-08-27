@@ -27,7 +27,9 @@ from diffusers.models.transformers.transformer_bria_fibo import BriaFiboTransfor
 from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
-    PipelineOffloadTesterMixin,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
     PipelineTesterMixin,
 )
 
@@ -69,7 +71,17 @@ class BriaFiboPipelineTesterConfig(BasePipelineTesterConfig):
         scheduler = FlowMatchEulerDiscreteScheduler()
 
         torch.manual_seed(0)
-        text_encoder = SmolLM3ForCausalLM(SmolLM3Config(hidden_size=32))
+        text_encoder = SmolLM3ForCausalLM(
+            SmolLM3Config(
+                hidden_size=32,
+                intermediate_size=64,
+                num_hidden_layers=2,
+                num_attention_heads=2,
+                num_key_value_heads=1,
+                # `vocab_size` stays at the SmolLM3 default: the pipeline hardcodes the beginning-of-text id
+                # (128000) for empty prompts, so a smaller vocabulary would not be a valid text encoder here.
+            )
+        )
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         return {
@@ -105,7 +117,7 @@ class TestBriaFiboPipeline(BriaFiboPipelineTesterConfig, PipelineTesterMixin):
         assert generated_image.shape == self.output_shape
 
         # fmt: off
-        expected_slice = torch.tensor([0.4025, 0.4722, 0.4377, 0.6178, 0.3643, 0.4914, 0.3694, 0.5096, 0.5980, 0.5516, 0.5228, 0.4731, 0.6202, 0.2424, 0.6280, 0.3556])
+        expected_slice = torch.tensor([0.3804, 0.4799, 0.5112, 0.5784, 0.3970, 0.4709, 0.4027, 0.4882, 0.5627, 0.4635, 0.4718, 0.3876, 0.5741, 0.2936, 0.5912, 0.4014])
         # fmt: on
 
         generated_slice = generated_image.flatten()
@@ -141,5 +153,22 @@ class TestBriaFiboPipeline(BriaFiboPipelineTesterConfig, PipelineTesterMixin):
             assert (output_height, output_width) == (height, width)
 
 
-class TestBriaFiboPipelineMemory(BriaFiboPipelineTesterConfig, PipelineOffloadTesterMixin):
-    pass
+class TestBriaFiboPipelineMemory(BriaFiboPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Bria FIBO pipeline."""
+
+
+class TestBriaFiboPipelineLoRA(BriaFiboPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Bria FIBO pipeline."""
+
+    @pytest.mark.skip(
+        "`_load_lora_into_text_encoder` only infers per-module ranks for CLIP-style names "
+        "(`.q_proj`/`.k_proj`/`.v_proj`/`.out_proj`/`.fc1`/`.fc2`, see `src/diffusers/loaders/lora_base.py`), so the "
+        "LLaMA-style `.o_proj` on the SmolLM3 text encoder falls back to the default rank and the non-uniform "
+        "`rank_pattern` this test builds cannot round-trip."
+    )
+    def test_simple_inference_with_partial_text_lora(self):
+        pass
+
+
+class TestBriaFiboPipelineLoRAMemory(BriaFiboPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Bria FIBO pipeline."""
