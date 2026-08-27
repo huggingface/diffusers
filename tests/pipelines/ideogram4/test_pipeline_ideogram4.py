@@ -153,17 +153,13 @@ class Ideogram4PipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestIdeogram4Pipeline(Ideogram4PipelineTesterConfig, PipelineTesterMixin):
-    @pytest.mark.skip(
-        reason=(
-            "`Ideogram4MRoPE.inv_freq` is a non-persistent float32 buffer, so casting a built pipeline with "
-            "`.half()` rounds it to float16 while `from_pretrained(torch_dtype=torch.float16)` leaves it in "
-            "float32. `forward` upcasts it back, but the round-trip is lossy and Ideogram4's image positions "
-            "start at `IMAGE_POSITION_OFFSET` (65536), so the phase error is large enough to move the output "
-            "(~2e-2, against a 1e-2 tolerance) even though every weight is bit-identical across the save/load."
-        )
-    )
-    def test_save_load_float16(self, tmp_path, expected_max_diff=1e-2):
-        pass
+    # `Ideogram4MRoPE.inv_freq` is a non-persistent float32 buffer, so casting a built pipeline with `.half()`
+    # rounds it to float16 while `from_pretrained(torch_dtype=torch.float16)` leaves it in float32. `forward`
+    # upcasts it back, but the round-trip is lossy and Ideogram4's image positions start at
+    # `IMAGE_POSITION_OFFSET` (65536), so the phase error moves the output by ~2.3e-2 even though every weight is
+    # bit-identical across the save/load. The looser tolerance still catches a genuinely broken round-trip.
+    def test_save_load_float16(self, tmp_path, expected_max_diff=5e-2):
+        super().test_save_load_float16(tmp_path, expected_max_diff=expected_max_diff)
 
     @pytest.mark.skip(
         reason=(
