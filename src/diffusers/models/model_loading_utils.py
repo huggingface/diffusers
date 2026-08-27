@@ -26,7 +26,6 @@ from zipfile import is_zipfile
 
 import safetensors
 import torch
-from huggingface_hub import DDUFEntry
 from huggingface_hub.utils import EntryNotFoundError
 
 from ..quantizers import DiffusersQuantizer
@@ -154,7 +153,6 @@ def _determine_param_device(param_name: str, device_map: dict[str, int | str | t
 
 def load_state_dict(
     checkpoint_file: str | os.PathLike,
-    dduf_entries: dict[str, DDUFEntry] | None = None,
     disable_mmap: bool = False,
     map_location: str | torch.device = "cpu",
 ):
@@ -167,10 +165,6 @@ def load_state_dict(
     try:
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
-            if dduf_entries:
-                # tensors are loaded on cpu
-                with dduf_entries[checkpoint_file].as_mmap() as mm:
-                    return safetensors.torch.load(mm)
             if disable_mmap:
                 return safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:
@@ -350,7 +344,6 @@ def _load_shard_file(
     dtype=None,
     hf_quantizer=None,
     keep_in_fp32_modules=None,
-    dduf_entries=None,
     loaded_keys=None,
     unexpected_keys=None,
     offload_index=None,
@@ -361,7 +354,7 @@ def _load_shard_file(
     low_cpu_mem_usage=False,
     disable_mmap=False,
 ):
-    state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries, disable_mmap=disable_mmap)
+    state_dict = load_state_dict(shard_file, disable_mmap=disable_mmap)
     if hf_quantizer is not None:
         state_dict = hf_quantizer.maybe_update_state_dict(state_dict)
 
@@ -401,7 +394,6 @@ def _load_shard_files_with_threadpool(
     dtype=None,
     hf_quantizer=None,
     keep_in_fp32_modules=None,
-    dduf_entries=None,
     loaded_keys=None,
     unexpected_keys=None,
     offload_index=None,
@@ -428,7 +420,6 @@ def _load_shard_files_with_threadpool(
         dtype=dtype,
         hf_quantizer=hf_quantizer,
         keep_in_fp32_modules=keep_in_fp32_modules,
-        dduf_entries=dduf_entries,
         loaded_keys=loaded_keys,
         unexpected_keys=unexpected_keys,
         offload_index=offload_index,
@@ -520,7 +511,6 @@ def _fetch_index_file(
     revision,
     user_agent,
     commit_hash,
-    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     if is_local:
         index_file = Path(
@@ -546,10 +536,8 @@ def _fetch_index_file(
                 subfolder=None,
                 user_agent=user_agent,
                 commit_hash=commit_hash,
-                dduf_entries=dduf_entries,
             )
-            if not dduf_entries:
-                index_file = Path(index_file)
+            index_file = Path(index_file)
         except (EntryNotFoundError, EnvironmentError):
             index_file = None
 
@@ -570,7 +558,6 @@ def _fetch_index_file_legacy(
     revision,
     user_agent,
     commit_hash,
-    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     if is_local:
         index_file = Path(
@@ -611,7 +598,6 @@ def _fetch_index_file_legacy(
                     subfolder=None,
                     user_agent=user_agent,
                     commit_hash=commit_hash,
-                    dduf_entries=dduf_entries,
                 )
                 index_file = Path(index_file)
                 deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
