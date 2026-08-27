@@ -446,3 +446,56 @@ class TestModelPushToHub:
 
         # Reset repo
         delete_repo(repo_id, token=TOKEN)
+
+
+class TestLoadModelDictIntoMetaNonBlocking:
+    # Companion to test_sharded_checkpoint_device_map_matches_cpu_load, which needs a
+    # real accelerator and is therefore skipped on CPU CI. This pins the same decision
+    # without touching a device: accelerate's setter is stubbed out, so the only thing
+    # under test is which copies load_model_dict_into_meta asks for.
+
+    @pytest.mark.parametrize(
+        ("device", "torch_below_213", "expected_non_blocking"),
+        [
+            ("mps", True, False),  # the unsafe combination -- must fall back to blocking copies
+            ("mps", False, True),  # fixed upstream in torch 2.13, so non-blocking is safe again
+            ("mps:0", True, False),  # indexed form of the same device must not slip through
+            ("cpu", True, True),  # unrelated devices keep the fast path
+            ("cuda", True, True),
+        ],
+    )
+    def test_non_blocking_disabled_only_for_unsafe_mps(
+        self, device, torch_below_213, expected_non_blocking, monkeypatch
+    ):
+        from diffusers.models import model_loading_utils
+
+        if not model_loading_utils.is_accelerate_version(">", "1.8.1"):
+            pytest.skip("non_blocking is only passed on accelerate > 1.8.1")
+
+        real_is_torch_version = model_loading_utils.is_torch_version
+
+        def fake_is_torch_version(operation, version):
+            if (operation, version) == ("<", "2.13"):
+                return torch_below_213
+            return real_is_torch_version(operation, version)
+
+        recorded = {}
+
+        def fake_set_module_tensor_to_device(model, param_name, param_device, value=None, **kwargs):
+            recorded[param_name] = (param_device, kwargs)
+
+        monkeypatch.setattr(model_loading_utils, "is_torch_version", fake_is_torch_version)
+        monkeypatch.setattr(model_loading_utils, "set_module_tensor_to_device", fake_set_module_tensor_to_device)
+
+        model = torch.nn.Linear(4, 4)
+        state_dict = {"weight": torch.randn(4, 4), "bias": torch.randn(4)}
+
+        model_loading_utils.load_model_dict_into_meta(model, state_dict, device_map={"": device})
+
+        assert set(recorded) == {"weight", "bias"}
+        for param_name, (param_device, kwargs) in recorded.items():
+            assert param_device == device, param_name
+            assert kwargs["non_blocking"] is expected_non_blocking, (
+                f"{param_name} on {device} (torch<2.13={torch_below_213}) asked for "
+                f"non_blocking={kwargs['non_blocking']}, expected {expected_non_blocking}"
+            )
