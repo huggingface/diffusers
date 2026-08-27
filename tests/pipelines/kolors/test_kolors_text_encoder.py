@@ -23,10 +23,11 @@ from ...testing_utils import torch_device
 
 class TestKolorsCoreAttention:
     """
-    `CoreAttention` computes raw attention scores. On MPS it must not route them through
-    `baddbmm(input=torch.empty(...), beta=0)`, because MPS does not honour the documented
-    "input is ignored when beta=0" contract and NaN from the uninitialised buffer can reach
-    the scores. See https://github.com/huggingface/diffusers/pull/14459.
+    `CoreAttention` computes attention through `scaled_dot_product_attention`; the module
+    used to carry a second, manual attention path gated on torch < 2 that was unreachable
+    on any supported torch (https://github.com/huggingface/diffusers/issues/14624). These
+    tests pin the behaviour of the remaining path on every backend so its removal, and any
+    future rework, stay observable.
     """
 
     def get_attention(self):
@@ -39,36 +40,35 @@ class TestKolorsCoreAttention:
         )
         return CoreAttention(config, layer_number=1)
 
-    def get_inputs(self, device, dtype=torch.float32, seq_len=256, batch=2, heads=8, head_dim=32):
+    def get_inputs(self, device, dtype=torch.float32, seq_len=64, batch=2, heads=8, head_dim=32):
         torch.manual_seed(0)
         shape = (seq_len, batch, heads, head_dim)
         return tuple(torch.randn(shape, dtype=dtype).to(device) for _ in range(3))
 
-    def test_scores_match_cpu_reference(self):
-        # The device-specific score path must stay numerically equivalent to the CPU path.
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_output_matches_cpu_reference(self, masked):
+        # The device path must stay numerically equivalent to the CPU path, for both the
+        # causal (mask=None) branch and the explicit-mask branch of forward.
         attention = self.get_attention()
         query, key, value = self.get_inputs("cpu")
+        seq_len, batch = query.shape[0], query.shape[1]
+
+        if masked:
+            torch.manual_seed(1)
+            # ChatGLM convention: True marks positions that must NOT be attended to.
+            attention_mask = torch.rand(batch, 1, seq_len, seq_len) < 0.25
+            attention_mask[..., 0] = False  # keep at least one visible key per query row
+        else:
+            attention_mask = None
 
         with torch.no_grad():
-            expected = attention(query, key, value, None)
-            actual = attention(query.to(torch_device), key.to(torch_device), value.to(torch_device), None)
+            expected = attention(query, key, value, attention_mask)
+            actual = attention(
+                query.to(torch_device),
+                key.to(torch_device),
+                value.to(torch_device),
+                attention_mask.to(torch_device) if attention_mask is not None else None,
+            )
 
+        assert torch.isfinite(expected).all()
         torch.testing.assert_close(actual.cpu(), expected, atol=1e-4, rtol=1e-4)
-
-    @pytest.mark.skipif(torch_device != "mps", reason="guards an MPS-specific baddbmm contract violation")
-    def test_scores_finite_with_dirty_allocator(self):
-        # Free NaN-filled blocks of exactly the scores shape so the allocator can hand those
-        # pages to the score computation, then assert the output stays finite.
-        attention = self.get_attention()
-        seq_len, batch, heads = 256, 2, 8
-        query, key, value = self.get_inputs(torch_device, dtype=torch.float16, seq_len=seq_len)
-
-        scores_shape = (batch * heads, seq_len, seq_len)
-        for _ in range(4):
-            junk = torch.full(scores_shape, float("nan"), device=torch_device, dtype=torch.float16)
-            del junk
-
-        with torch.no_grad():
-            output = attention(query, key, value, None)
-
-        assert torch.isfinite(output).all(), "NaN reached the Kolors attention output on MPS"
