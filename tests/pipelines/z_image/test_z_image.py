@@ -179,10 +179,6 @@ class TestZImagePipeline(ZImagePipelineTesterConfig, PipelineTesterMixin):
 class TestZImagePipelineMemory(ZImagePipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Z-Image pipeline."""
 
-    def test_group_offloading_inference(self):
-        # Block-level offloading conflicts with RoPE cache. Pipeline-level offloading (tested separately) works fine.
-        pytest.skip("Using test_pipeline_level_group_offloading_inference instead")
-
     def test_pipeline_with_accelerator_device_map(self, tmp_path, base_pipe_output, expected_max_difference=5e-4):
         # Z-Image RoPE embeddings (complex64) have slightly higher numerical tolerance
         super().test_pipeline_with_accelerator_device_map(
