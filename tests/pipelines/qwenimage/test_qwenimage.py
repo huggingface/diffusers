@@ -25,6 +25,8 @@ from diffusers import (
 from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -188,3 +190,11 @@ class TestQwenImagePipeline(QwenImagePipelineTesterConfig, PipelineTesterMixin):
 
 class TestQwenImagePipelineMemory(QwenImagePipelineTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestQwenImagePipelineLoRA(QwenImagePipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the QwenImage pipeline."""
+
+
+class TestQwenImagePipelineLoRAMemory(QwenImagePipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests for the QwenImage pipeline."""

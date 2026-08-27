@@ -347,9 +347,6 @@ jobs:
           - backend: "torchao"
             marker: "torchao"
             additional_deps: ["mslk"]
-          - backend: "optimum_quanto"
-            marker: "quanto"
-            additional_deps: []
           - backend: "nvidia_modelopt"
             marker: "modelopt"
             additional_deps: []
@@ -425,7 +422,7 @@ jobs:
         run: |
           printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
-          uv pip install -U bitsandbytes optimum_quanto
+          uv pip install -U bitsandbytes
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
           uv pip install pytest-reportlog
       - name: Environment
