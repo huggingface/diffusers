@@ -263,23 +263,29 @@ class TestWanVACEPipelineLoRA(WanVACEPipelineTesterConfig, LoraTesterMixin):
 
     @require_peft_version_greater("0.13.2")
     def test_lora_exclude_modules(self, tmp_path, base_pipe_output):
+        """`exclude_modules` must keep the excluded module out of the adapter and out of every state dict."""
         exclude_module_name = "vace_blocks.0.proj_out"
-        pipe = self.get_pipeline().to(torch_device)
 
-        self.add_adapters_to_pipeline(
-            pipe, components=["transformer"], target_modules=["proj_out"], exclude_modules=[exclude_module_name]
+        pipe = self.get_pipeline().to(torch_device)
+        adapted = self.add_adapters_to_pipeline(
+            pipe,
+            components=self.denoiser_components,
+            target_modules=["proj_out"],
+            exclude_modules=[exclude_module_name],
         )
-        # The state dict should not contain the modules excluded from LoRA.
+
+        # The state dict shouldn't contain the modules to be excluded from LoRA.
         state_dict_from_model = get_peft_model_state_dict(pipe.transformer, adapter_name="default")
         assert not any(exclude_module_name in k for k in state_dict_from_model)
         assert any("proj_out" in k for k in state_dict_from_model)
+
         output_lora_exclude_modules = self.run_pipe(pipe)
 
-        denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
-        self.pipeline_class.save_lora_weights(tmp_path, transformer_lora_layers=denoiser_state_dict)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
+        self.pipeline_class.save_lora_weights(save_directory=tmp_path, **lora_state_dicts)
         pipe.unload_lora_weights()
 
-        # Check in the saved state dict.
+        # Check in the loaded state dict.
         loaded_state_dict = safetensors.torch.load_file(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
         assert not any(exclude_module_name in k for k in loaded_state_dict)
         assert any("proj_out" in k for k in loaded_state_dict)
@@ -294,10 +300,10 @@ class TestWanVACEPipelineLoRA(WanVACEPipelineTesterConfig, LoraTesterMixin):
         assert not torch.allclose(base_pipe_output, output_lora_exclude_modules, atol=1e-3, rtol=1e-3), (
             "LoRA should change outputs."
         )
-        assert torch.allclose(output_lora_exclude_modules, output_lora_pretrained, atol=1e-3, rtol=1e-3), (
-            "Lora outputs should match."
+        assert_tensors_close(
+            output_lora_pretrained, output_lora_exclude_modules, atol=1e-3, rtol=1e-3, msg="Lora outputs should match."
         )
 
 
 class TestWanVACEPipelineLoRAMemory(WanVACEPipelineTesterConfig, LoraMemoryTesterMixin):
-    """LoRA offloading tests for the Wan VACE pipeline."""
+    """LoRA x memory-optimization tests for the Wan VACE pipeline."""

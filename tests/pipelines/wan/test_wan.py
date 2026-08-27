@@ -155,4 +155,4 @@ class TestWanPipelineLoRA(WanPipelineTesterConfig, LoraTesterMixin):
 
 
 class TestWanPipelineLoRAMemory(WanPipelineTesterConfig, LoraMemoryTesterMixin):
-    """LoRA offloading tests for the Wan pipeline."""
+    """LoRA x memory-optimization tests for the Wan pipeline."""
