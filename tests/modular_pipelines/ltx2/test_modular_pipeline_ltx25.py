@@ -18,7 +18,7 @@ import PIL.Image
 import pytest
 import torch
 
-from diffusers.modular_pipelines import LTX2AutoBlocks, LTX25AutoBlocks, LTX25ModularPipeline
+from diffusers.modular_pipelines import LTX25AutoBlocks, LTX25ModularPipeline
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
 
@@ -38,12 +38,13 @@ LTX25_WORKFLOWS = {
         ("text_encoder.text_encoder", "LTX2TextEncoderStep"),
         ("text_encoder.connectors", "LTX2TextConnectorStep"),
         ("duration", "LTX2DurationStep"),
-        ("denoise.input", "LTX2TextInputStep"),
+        ("input", "LTX2TextInputStep"),
         ("denoise.set_timesteps", "LTX2SetTimestepsStep"),
         ("denoise.prepare_latents", "LTX2PrepareLatentsStep"),
         ("denoise.prepare_audio_latents", "LTX2PrepareAudioLatentsStep"),
         ("denoise.prepare_coords", "LTX2PrepareCoordsStep"),
         ("denoise.denoise", "LTX2DenoiseStep"),
+        ("denoise.unpack", "LTX2UnpackLatentsStep"),
         ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
         ("decode.audio_decode", "LTX2AudioDecoderStep"),
     ],
@@ -52,13 +53,14 @@ LTX25_WORKFLOWS = {
         ("text_encoder.connectors", "LTX2TextConnectorStep"),
         ("duration", "LTX2DurationStep"),
         ("vae_encoder", "LTX2VaeEncoderStep"),
-        ("denoise.input", "LTX2TextInputStep"),
+        ("input", "LTX2TextInputStep"),
         ("denoise.set_timesteps", "LTX2SetTimestepsStep"),
         ("denoise.prepare_latents", "LTX2PrepareLatentsStep"),
         ("denoise.prepare_i2v_latents", "LTX2Image2VideoPrepareLatentsStep"),
         ("denoise.prepare_audio_latents", "LTX2PrepareAudioLatentsStep"),
         ("denoise.prepare_coords", "LTX2PrepareCoordsStep"),
         ("denoise.denoise", "LTX2Image2VideoDenoiseStep"),
+        ("denoise.unpack", "LTX2UnpackLatentsStep"),
         ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
         ("decode.audio_decode", "LTX2AudioDecoderStep"),
     ],
@@ -67,13 +69,14 @@ LTX25_WORKFLOWS = {
         ("text_encoder.connectors", "LTX2TextConnectorStep"),
         ("duration", "LTX2DurationStep"),
         ("condition_encoder", "LTX2ConditionEncoderStep"),
-        ("denoise.input", "LTX2TextInputStep"),
+        ("input", "LTX2TextInputStep"),
         ("denoise.prepare_latents", "LTX2ConditionPrepareLatentsStep"),
         ("denoise.set_timesteps", "LTX2ConditionSetTimestepsStep"),
         ("denoise.prepare_audio_latents", "LTX2ConditionPrepareAudioLatentsStep"),
         ("denoise.prepare_coords", "LTX2ConditionPrepareCoordsStep"),
         ("denoise.denoise", "LTX2ConditionDenoiseStep"),
-        ("decode.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
+        ("denoise.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
+        ("denoise.unpack", "LTX2UnpackLatentsStep"),
         ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
         ("decode.audio_decode", "LTX2AudioDecoderStep"),
     ],
@@ -82,13 +85,14 @@ LTX25_WORKFLOWS = {
         ("text_encoder.connectors", "LTX2TextConnectorStep"),
         ("condition_encoder", "LTX2ConditionEncoderStep"),
         ("reference_encoder", "LTX2ReferenceEncoderStep"),
-        ("denoise.input", "LTX2TextInputStep"),
+        ("input", "LTX2TextInputStep"),
         ("denoise.prepare_latents", "LTX2InContextPrepareLatentsStep"),
         ("denoise.set_timesteps", "LTX2ConditionSetTimestepsStep"),
         ("denoise.prepare_audio_latents", "LTX2ConditionPrepareAudioLatentsStep"),
         ("denoise.prepare_coords", "LTX2ConditionPrepareCoordsStep"),
         ("denoise.denoise", "LTX2ConditionDenoiseStep"),
-        ("decode.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
+        ("denoise.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
+        ("denoise.unpack", "LTX2UnpackLatentsStep"),
         ("decode.video_decode", "LTX2DiffusionVaeDecoderStep"),
         ("decode.audio_decode", "LTX2AudioDecoderStep"),
     ],
@@ -102,7 +106,7 @@ class LTX25ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = LTX25AutoBlocks
     pretrained_model_name_or_path = LTX25_REPO_ID
     batch_params = frozenset(["prompt"])
-    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    optional_params = frozenset(["num_videos_per_prompt"])
     expected_workflow_blocks = LTX25_WORKFLOWS
     output_name = "videos"
 
@@ -111,7 +115,7 @@ class LTX25ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
             "prompt": "a robot dancing",
             "negative_prompt": "",
             "generator": self.get_generator(seed),
-            "num_inference_steps": 2,
+            "sigmas": [1.0, 0.5],
             "height": 32,
             "width": 32,
             "num_frames": 5,
@@ -150,24 +154,6 @@ class TestLTX25Text2VideoModularPipelineFast(
         assert audio.shape[0] == 1
         assert audio.shape[1] == pipe.vocoder.config.out_channels
         assert torch.isnan(audio).sum() == 0
-
-    def test_graph_matches_ltx2_except_video_decode(self):
-        # `LTX25AutoBlocks` restates the `LTX2AutoBlocks` graph rather than subclassing it, so nothing but this
-        # test keeps the two in step: a stage added to one and not the other passes both blocksets' own
-        # `expected_workflow_blocks`.
-        ltx2_blocks, ltx25_blocks = LTX2AutoBlocks(), LTX25AutoBlocks()
-        assert ltx2_blocks.available_workflows == ltx25_blocks.available_workflows
-
-        for workflow_name in ltx25_blocks.available_workflows:
-            expected = [
-                (name, "LTX2DiffusionVaeDecoderStep" if name == "decode.video_decode" else type(block).__name__)
-                for name, block in ltx2_blocks.get_workflow(workflow_name).sub_blocks.items()
-            ]
-            actual = [
-                (name, type(block).__name__)
-                for name, block in ltx25_blocks.get_workflow(workflow_name).sub_blocks.items()
-            ]
-            assert actual == expected, f"Workflow '{workflow_name}' diverges from `LTX2AutoBlocks`"
 
     def test_auto_duration_predicts_a_grid_valid_frame_count(self):
         pipe = self.get_pipeline().to("cpu")

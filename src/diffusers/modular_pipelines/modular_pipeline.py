@@ -154,6 +154,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("ltx", _create_default_map_fn("LTXModularPipeline")),
         ("ltx2", _create_default_map_fn("LTX2ModularPipeline")),
         ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
+        ("ltx2.5-two-stage", _create_default_map_fn("LTX25TwoStageModularPipeline")),
         ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
         ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),

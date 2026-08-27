@@ -923,13 +923,12 @@ LTX-2.5 is also available as a modular pipeline. The default blockset uses the d
 import torch
 from diffusers import ModularPipeline, ComponentsManager
 from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
-from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
-from diffusers.utils import encode_video
+from diffusers.utils import encode_video, load_image
 
 device = "cuda"  # or "mps", "xpu", "cpu"
-frame_rate = 24.0
 random_seed = 42
 generator = torch.Generator(device).manual_seed(random_seed)
+frame_rate = 24.0
 
 model_path = "Lightricks/LTX-2.5-Diffusers"
 
@@ -949,13 +948,6 @@ prompt = (
 
 output_state = pipe(
     prompt=prompt,
-    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
-    width=768,
-    height=512,
-    num_frames=None,  # Set to an int (e.g. 121) to specify a fixed video length
-    frame_rate=frame_rate,
-    num_inference_steps=30,
-    use_cross_timestep=True,
     enable_prompt_enhancement=True,
     generator=generator,
     output_type="np",
@@ -975,43 +967,12 @@ encode_video(
 The modular pipeline will automatically switch workflows based on the supplied inputs. For example, if `image` is supplied, an I2V workflow will be used:
 
 ```py
-import torch
-from diffusers import ModularPipeline, ComponentsManager
-from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
-from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
-from diffusers.utils import encode_video, load_image
-
-device = "cuda"  # or "mps", "xpu", "cpu"
-frame_rate = 24.0
-random_seed = 42
-generator = torch.Generator(device).manual_seed(random_seed)
-
-model_path = "Lightricks/LTX-2.5-Diffusers"
-
-cm = ComponentsManager()
-pipe = ModularPipeline.from_pretrained(model_path, components_manager=cm)
-pipe.load_components(dtype=torch.bfloat16)
-cm.enable_auto_cpu_offload(device=device, memory_reserve_margin="20GB")
-pipe.diffusion_decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
-pipe.diffusion_decoder.enable_tiling()
-
-prompt = (
-    "An astronaut hatches from a fragile egg on the surface of the Moon, the shell cracking and peeling apart in "
-    "gentle low-gravity motion."
-)
 image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
 image = load_image(image_path)
 
 output_state = pipe(
     image=image,
     prompt=prompt,
-    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
-    width=768,
-    height=512,
-    num_frames=None,  # Set to an int (e.g. 121) to specify a fixed video length
-    frame_rate=frame_rate,
-    num_inference_steps=30,
-    use_cross_timestep=True,
     enable_prompt_enhancement=True,
     generator=generator,
     output_type="np",
@@ -1026,6 +987,73 @@ encode_video(
     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
     output_path="ltx2_5_modular_i2v.mp4",
 )
+```
+
+#### Two-stage generation (modular)
+
+`LTX25TwoStageBlocks` runs the [distilled two-stage recipe](#two-stage-generation-for-ltx-25) in one call, for every workflow `LTX25AutoBlocks` supports (image and frame conditions are re-encoded at the upsampled resolution for the second pass): a first pass at the requested `height` / `width`, a 2x latent upsample, and a second pass that refines at the upsampled resolution. As with the standard pipelines, the resolution you pass is the first pass's, and the output is twice that size. `stage_1` is the same auto denoise step as `LTX25AutoBlocks`; `stage_2` selects the workflow's second-pass group, which re-noises the upsampled latents on `stage_2_sigmas` (the distilled stage-2 schedule by default) instead of sampling fresh noise, and the upsample step doubles `height` / `width` in between.
+
+The `latent_upsampler` is a component of the blockset like any other. Load it explicitly if the repository's `modular_model_index.json` does not list it:
+
+```py
+import torch
+from diffusers import ComponentsManager
+from diffusers.modular_pipelines import LTX25TwoStageBlocks
+from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
+from diffusers.utils import encode_video
+
+device = "cuda"
+model_path = "Lightricks/LTX-2.5-Diffusers"
+prompt = "A cinematic shot of a red fox walking through a snowy forest at dawn, golden light filtering through pine trees."
+frame_rate = 24.0
+
+cm = ComponentsManager()
+pipe = LTX25TwoStageBlocks().init_pipeline(model_path, components_manager=cm)
+pipe.load_components(dtype=torch.bfloat16)
+pipe.update_components(
+    latent_upsampler=LTX2LatentUpsamplerModel.from_pretrained(
+        model_path, subfolder="latent_upsampler", dtype=torch.bfloat16
+    )
+)
+cm.enable_auto_cpu_offload(device=device, memory_reserve_margin="20GB")
+
+# First pass at the default 704x512, output at 1408x1024; `num_frames` is predicted by the duration head.
+output = pipe(
+    prompt=prompt,
+    generator=torch.Generator(device).manual_seed(42),
+    output_type="np",
+)
+video, audio = output.get("videos"), output.get("audio")
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_5_modular_two_stage.mp4",
+)
+```
+
+The stages are ordinary blocks, so the same blockset splits into separate pipelines -- to preview the first pass, swap in a different upsampler, or load a LoRA for the second pass only. Every core denoise group leaves `[B, C, F, H, W]` video and `[B, C, L, M]` audio latents in state -- normalized, in the same form the VAE encoder blocks emit -- so `stage_1` followed by `decode` is a first-pass preview, and `upsample` and `stage_2` take exactly what `stage_1` leaves. Chained by hand with one generator threaded through, the result matches the single call:
+
+```py
+blocks = LTX25TwoStageBlocks()
+stage_2 = blocks.sub_blocks.pop("stage_2")
+upsample = blocks.sub_blocks.pop("upsample")
+decode = blocks.sub_blocks.pop("decode")
+
+# `blocks` now ends with `stage_1`; the four pipelines share components through the manager.
+stage_1_pipe = blocks.init_pipeline(model_path, components_manager=cm)
+upsample_pipe = upsample.init_pipeline(model_path, components_manager=cm)
+stage_2_pipe = stage_2.init_pipeline(model_path, components_manager=cm)
+decode_pipe = decode.init_pipeline(model_path, components_manager=cm)
+
+# Each pipeline reads what it needs from the state the previous one leaves.
+generator = torch.Generator(device).manual_seed(42)
+state = stage_1_pipe(prompt=prompt, generator=generator)
+state = upsample_pipe(state=state)
+state = stage_2_pipe(state=state)
+video = decode_pipe(state=state, output_type="np", output="videos")
 ```
 
 You can see the supported workflows in the docs for each blockset (e.g. [`LTX2AutoBlocks`], [`LTX25AutoBlocks`]).
@@ -1085,3 +1113,11 @@ You can see the supported workflows in the docs for each blockset (e.g. [`LTX2Au
 ## LTX25AutoBlocks
 
 [[autodoc]] LTX25AutoBlocks
+
+## LTX25TwoStageModularPipeline
+
+[[autodoc]] LTX25TwoStageModularPipeline
+
+## LTX25TwoStageBlocks
+
+[[autodoc]] LTX25TwoStageBlocks

@@ -21,7 +21,7 @@ import torch
 from transformers import PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixin
 
 from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKLLTX2Video, LTX2VideoTransformer3DModel
+from ...models import AutoencoderKLLTX2Video
 
 # NOTE (modular.md gotcha #1): `LTX2TextConnectors`, `LTX2DurationHead`, `LTX2VideoCondition`,
 # `LTX2ReferenceCondition`, the prompt-enhancement config/helpers, and the system prompts live under
@@ -44,7 +44,6 @@ from ...pipelines.ltx2.utils import (
     LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT,
     LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT,
     apply_image_conditioning_crf,
-    resolve_default_image_crf,
 )
 from ...utils import logging
 from ...video_processor import VideoProcessor
@@ -177,14 +176,6 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
         return [
             InputParam.template("prompt", required=True),
             InputParam(
-                "enable_prompt_enhancement",
-                type_hint=bool,
-                default=False,
-                description=(
-                    "Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines."
-                ),
-            ),
-            InputParam(
                 "system_prompt",
                 type_hint=str,
                 default=None,
@@ -224,9 +215,6 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        if not block_state.enable_prompt_enhancement:
-            self.set_block_state(state, block_state)  # leave prompt unchanged
-            return components, state
         if getattr(components, "prompt_enhancer", None) is None:
             raise ValueError(
                 "`enable_prompt_enhancement=True` but no `prompt_enhancer` component is loaded. Load a "
@@ -274,14 +262,6 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
             InputParam.template("prompt", required=True),
             InputParam.template("image", required=True),
             InputParam(
-                "enable_prompt_enhancement",
-                type_hint=bool,
-                default=False,
-                description=(
-                    "Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines."
-                ),
-            ),
-            InputParam(
                 "system_prompt",
                 type_hint=str,
                 default=None,
@@ -321,9 +301,6 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        if not block_state.enable_prompt_enhancement:
-            self.set_block_state(state, block_state)  # leave prompt unchanged
-            return components, state
         if getattr(components, "prompt_enhancer", None) is None:
             raise ValueError(
                 "`enable_prompt_enhancement=True` but no `prompt_enhancer` component is loaded. Load a "
@@ -380,14 +357,6 @@ class LTX2ConditionPromptEnhancerStep(ModularPipelineBlocks):
                 ),
             ),
             InputParam(
-                "enable_prompt_enhancement",
-                type_hint=bool,
-                default=False,
-                description=(
-                    "Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines."
-                ),
-            ),
-            InputParam(
                 "system_prompt",
                 type_hint=str,
                 default=None,
@@ -430,9 +399,6 @@ class LTX2ConditionPromptEnhancerStep(ModularPipelineBlocks):
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        if not block_state.enable_prompt_enhancement:
-            self.set_block_state(state, block_state)  # leave prompt unchanged
-            return components, state
         if getattr(components, "prompt_enhancer", None) is None:
             raise ValueError(
                 "`enable_prompt_enhancement=True` but no `prompt_enhancer` component is loaded. Load a "
@@ -484,15 +450,16 @@ class LTX2TextEncoderStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Text encoder step. Encodes `prompt` and `negative_prompt` into packed per-layer Gemma hidden states "
-            "that the connectors adapt for the video and audio branches, and reports the prompt count (`batch_size`) "
-            "and embedding `dtype`."
+            "Text encoder step. Encodes `prompt` -- and, when needed, `negative_prompt` -- into packed per-layer "
+            "Gemma hidden states that the connectors adapt for the video and audio branches. Whether the negative "
+            "prompt is encoded follows the guiders: with a guider registered and running classifier-free guidance "
+            "it is always encoded (defaulting to the empty prompt); with a guider registered but not running CFG "
+            "it is skipped, with a warning if one was passed; with no guider registered (the block on its own) it is "
+            "encoded only when a `negative_prompt` is passed."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        # No `guider`: LTX-2 applies CFG (+ STG + modality-isolation) manually in the denoise loop, so the encoder
-        # always produces both conditional and unconditional embeddings and the denoiser decides what to use.
         return [
             ComponentSpec("text_encoder", PreTrainedModel),
             ComponentSpec("tokenizer", PreTrainedTokenizerBase),
@@ -522,19 +489,13 @@ class LTX2TextEncoderStep(ModularPipelineBlocks):
             OutputParam(
                 "negative_prompt_embeds",
                 type_hint=torch.Tensor,
-                description="Packed per-layer Gemma hidden states for the negative prompt.",
+                description="Packed per-layer Gemma hidden states for the negative prompt, `None` when not encoded.",
             ),
             OutputParam(
                 "negative_prompt_attention_mask",
                 type_hint=torch.Tensor,
-                description="Binary attention mask for `negative_prompt_embeds`.",
+                description="Binary attention mask for `negative_prompt_embeds`, `None` when not encoded.",
             ),
-            OutputParam(
-                "batch_size",
-                type_hint=int,
-                description="The number of prompts being denoised (before per-prompt expansion).",
-            ),
-            OutputParam("dtype", type_hint=torch.dtype, description="The dtype of the prompt embeddings."),
         ]
 
     @staticmethod
@@ -556,14 +517,27 @@ class LTX2TextEncoderStep(ModularPipelineBlocks):
             components, prompt, max_sequence_length, device, dtype
         )
 
-        negative_prompt = block_state.negative_prompt or ""
-        negative_prompt = len(prompt) * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
-        block_state.negative_prompt_embeds, block_state.negative_prompt_attention_mask = _get_gemma_prompt_embeds(
-            components, negative_prompt, max_sequence_length, device, dtype
+        negative_prompt = block_state.negative_prompt
+        has_guider = (
+            getattr(components, "guider", None) is not None or getattr(components, "audio_guider", None) is not None
         )
-
-        block_state.batch_size = block_state.prompt_embeds.shape[0]
-        block_state.dtype = block_state.prompt_embeds.dtype
+        block_state.negative_prompt_embeds = block_state.negative_prompt_attention_mask = None
+        if has_guider and not components.requires_unconditional_embeds:
+            # If guider is registered and not running CFG, nothing would consume
+            # unconditional embeddings.
+            if negative_prompt is not None:
+                logger.warning(
+                    "`negative_prompt` was passed but the guider is not running classifier-free guidance, so it is "
+                    "ignored."
+                )
+        elif has_guider or negative_prompt is not None:
+            # Classifier-free guidance (the negative prompt defaults to the empty prompt), or the block on its own
+            # (without the guider) and with an explicit negative prompt.
+            negative_prompt = negative_prompt or ""
+            negative_prompt = len(prompt) * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+            block_state.negative_prompt_embeds, block_state.negative_prompt_attention_mask = _get_gemma_prompt_embeds(
+                components, negative_prompt, max_sequence_length, device, dtype
+            )
 
         self.set_block_state(state, block_state)
         return components, state
@@ -576,24 +550,20 @@ class LTX2TextConnectorStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Connector step. Adapts the Gemma hidden states into the separate video- and audio-branch text "
-            "conditioning consumed by the transformer, for both the conditional and unconditional prompts."
+            "conditioning consumed by the transformer."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("connectors", LTX2TextConnectors),
-            # Declared only to read `padding_side` (used by the LTX-2.0 connector branch); LTX-2.5 defaults to "left".
-            ComponentSpec("tokenizer", PreTrainedTokenizerBase),
-        ]
+        return [ComponentSpec("connectors", LTX2TextConnectors)]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("prompt_embeds", type_hint=torch.Tensor, required=True),
             InputParam("prompt_attention_mask", type_hint=torch.Tensor, required=True),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("negative_prompt_attention_mask", type_hint=torch.Tensor, required=True),
+            InputParam("negative_prompt_embeds", type_hint=torch.Tensor),
+            InputParam("negative_prompt_attention_mask", type_hint=torch.Tensor),
         ]
 
     @property
@@ -616,46 +586,45 @@ class LTX2TextConnectorStep(ModularPipelineBlocks):
             OutputParam(
                 "negative_connector_prompt_embeds",
                 type_hint=torch.Tensor,
-                description="Video-branch text conditioning (uncond).",
+                description="Video-branch text conditioning (uncond), `None` when no negative prompt was encoded.",
             ),
             OutputParam(
                 "negative_connector_audio_prompt_embeds",
                 type_hint=torch.Tensor,
-                description="Audio-branch text conditioning (uncond).",
+                description="Audio-branch text conditioning (uncond), `None` when no negative prompt was encoded.",
             ),
             OutputParam(
                 "negative_connector_attention_mask",
                 type_hint=torch.Tensor,
-                description="Binary text attention mask (uncond).",
+                description="Binary text attention mask (uncond), `None` when no negative prompt was encoded.",
             ),
         ]
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        padding_side = components.tokenizer.padding_side
+        padding_side = "left"
 
-        # Run the connector once on the CFG-concatenated `[uncond, cond]` batch, matching the standard pipeline
-        # (`LTX2Pipeline` concatenates before the single `self.connectors(...)` call). The connector is applied per
-        # batch element, so cond/uncond are mathematically independent either way, but a single batched call keeps the
-        # results bitwise-identical to the standard pipeline: the connector's GEMM/attention kernels round the same for
-        # a given row only at batch >= 2, so running the branches separately would diverge by ~1e-6 at batch size 1.
-        num_negative = block_state.negative_prompt_embeds.shape[0]
-        prompt_embeds = torch.cat([block_state.negative_prompt_embeds, block_state.prompt_embeds], dim=0)
-        prompt_attention_mask = torch.cat(
-            [block_state.negative_prompt_attention_mask, block_state.prompt_attention_mask], dim=0
+        (
+            block_state.connector_prompt_embeds,
+            block_state.connector_audio_prompt_embeds,
+            block_state.connector_attention_mask,
+        ) = components.connectors(
+            block_state.prompt_embeds, block_state.prompt_attention_mask, padding_side=padding_side
         )
-        connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = components.connectors(
-            prompt_embeds, prompt_attention_mask, padding_side=padding_side
-        )
-
-        # Split back into uncond (first `num_negative`) and cond (rest).
-        block_state.negative_connector_prompt_embeds = connector_prompt_embeds[:num_negative]
-        block_state.negative_connector_audio_prompt_embeds = connector_audio_prompt_embeds[:num_negative]
-        block_state.negative_connector_attention_mask = connector_attention_mask[:num_negative]
-        block_state.connector_prompt_embeds = connector_prompt_embeds[num_negative:]
-        block_state.connector_audio_prompt_embeds = connector_audio_prompt_embeds[num_negative:]
-        block_state.connector_attention_mask = connector_attention_mask[num_negative:]
+        block_state.negative_connector_prompt_embeds = None
+        block_state.negative_connector_audio_prompt_embeds = None
+        block_state.negative_connector_attention_mask = None
+        if block_state.negative_prompt_embeds is not None:
+            (
+                block_state.negative_connector_prompt_embeds,
+                block_state.negative_connector_audio_prompt_embeds,
+                block_state.negative_connector_attention_mask,
+            ) = components.connectors(
+                block_state.negative_prompt_embeds,
+                block_state.negative_prompt_attention_mask,
+                padding_side=padding_side,
+            )
 
         self.set_block_state(state, block_state)
         return components, state
@@ -679,6 +648,15 @@ class LTX2DurationStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
+            InputParam(
+                "num_frames",
+                type_hint=int,
+                default=None,
+                description=(
+                    "The number of frames in the generated video. Omit to have this step predict it with the "
+                    "`duration_head`; the denoise blocks then take the predicted count."
+                ),
+            ),
             InputParam(
                 "min_seconds",
                 type_hint=float,
@@ -706,12 +684,6 @@ class LTX2DurationStep(ModularPipelineBlocks):
                 required=True,
                 description="Audio-branch text conditioning from the connector (positive prompt).",
             ),
-            InputParam(
-                "batch_size",
-                type_hint=int,
-                required=True,
-                description="The number of prompts being denoised, used to expand conditioning per prompt.",
-            ),
         ]
 
     @property
@@ -732,9 +704,10 @@ class LTX2DurationStep(ModularPipelineBlocks):
             )
 
         # The head predicts one duration; prompts with different natural lengths cannot share a single frame count.
-        if block_state.batch_size > 1:
+        batch_size = block_state.connector_prompt_embeds.shape[0]
+        if batch_size > 1:
             raise ValueError(
-                f"`num_frames` was omitted so the duration head would auto-predict, but {block_state.batch_size} "
+                f"`num_frames` was omitted so the duration head would auto-predict, but {batch_size} "
                 "prompts were supplied. The duration head predicts one duration -- run one prompt at a time, or pass "
                 "`num_frames` as an integer."
             )
@@ -779,60 +752,10 @@ def retrieve_latents(
 def _normalize_latents(
     latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
 ) -> torch.Tensor:
-    # Normalize video latents across the channel dimension [B, C, F, H, W].
     latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
     latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
     latents = (latents - latents_mean) * scaling_factor / latents_std
     return latents
-
-
-def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1) -> torch.Tensor:
-    batch_size, num_channels, num_frames, height, width = latents.shape
-    latents = latents.reshape(
-        batch_size,
-        -1,
-        num_frames // patch_size_t,
-        patch_size_t,
-        height // patch_size,
-        patch_size,
-        width // patch_size,
-        patch_size,
-    )
-    latents = latents.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
-    return latents
-
-
-def _downsample_mask_to_latent(
-    mask: torch.Tensor, latent_num_frames: int, latent_height: int, latent_width: int
-) -> torch.Tensor:
-    """
-    Downsample a pixel-space attention mask of shape `(B, 1, F, H, W)` (values in `[0, 1]`) to a flattened per-token
-    latent-space mask of shape `(B, latent_num_frames * latent_height * latent_width)`. Spatial downsampling is area
-    interpolation per frame; temporal downsampling is causal (the first frame is kept as-is).
-    """
-    if mask.ndim != 5 or mask.shape[1] != 1:
-        raise ValueError(f"Expected `conditioning_attention_mask` of shape (B, 1, F, H, W), got {tuple(mask.shape)}.")
-    b, _, f_pix, _, _ = mask.shape
-
-    mask_2d = mask.reshape(b * f_pix, 1, mask.shape[-2], mask.shape[-1])
-    spatial_down = torch.nn.functional.interpolate(mask_2d, size=(latent_height, latent_width), mode="area")
-    spatial_down = spatial_down.reshape(b, 1, f_pix, latent_height, latent_width)
-
-    first_frame = spatial_down[:, :, :1, :, :]
-    if f_pix > 1 and latent_num_frames > 1:
-        t = (f_pix - 1) // (latent_num_frames - 1)
-        if (f_pix - 1) % (latent_num_frames - 1) != 0:
-            raise ValueError(
-                f"Pixel frames ({f_pix}) not compatible with latent frames ({latent_num_frames}): "
-                f"(f_pix - 1) must be divisible by (latent_num_frames - 1)."
-            )
-        rest = spatial_down[:, :, 1:, :, :]
-        rest = rest.reshape(b, 1, latent_num_frames - 1, t, latent_height, latent_width).mean(dim=3)
-        latent_mask = torch.cat([first_frame, rest], dim=2)
-    else:
-        latent_mask = first_frame
-
-    return latent_mask.reshape(b, latent_num_frames * latent_height * latent_width)
 
 
 class LTX2VaeEncoderStep(ModularPipelineBlocks):
@@ -846,8 +769,6 @@ class LTX2VaeEncoderStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLLTX2Video),
-            # Only used to resolve the default `image_crf` from the text-encoder generation.
-            ComponentSpec("text_encoder", PreTrainedModel),
             ComponentSpec(
                 "video_processor",
                 VideoProcessor,
@@ -868,8 +789,8 @@ class LTX2VaeEncoderStep(ModularPipelineBlocks):
                 default=None,
                 description=(
                     "H.264 CRF used to re-compress the conditioning `image` before VAE encode, matching the "
-                    "compression the model was trained against. `None` (default) resolves from the text-encoder "
-                    "generation (33 through LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a "
+                    "compression the model was trained against. `None` (default) uses the pipeline's "
+                    "`default_image_crf` (33 through LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a "
                     "`PIL.Image.Image` when re-compression runs."
                 ),
             ),
@@ -882,7 +803,10 @@ class LTX2VaeEncoderStep(ModularPipelineBlocks):
             OutputParam(
                 "image_latents",
                 type_hint=torch.Tensor,
-                description="Normalized image latents (a single latent frame) for image-to-video conditioning.",
+                description=(
+                    "Image latents for image-to-video conditioning: a single latent frame of shape [B, C, 1, H, W] "
+                    "(normalized, not packed)."
+                ),
             ),
         ]
 
@@ -894,11 +818,7 @@ class LTX2VaeEncoderStep(ModularPipelineBlocks):
         image = block_state.image
         if not isinstance(image, torch.Tensor):
             # H.264 re-compress before resize/normalize (ltx-pipelines `load_image_and_preprocess`).
-            crf = (
-                block_state.image_crf
-                if block_state.image_crf is not None
-                else resolve_default_image_crf(components.text_encoder)
-            )
+            crf = block_state.image_crf if block_state.image_crf is not None else components.default_image_crf
             if crf != 0:
                 if not isinstance(image, PIL.Image.Image):
                     raise ValueError(
@@ -951,8 +871,6 @@ class LTX2ConditionEncoderStep(ModularPipelineBlocks):
         # anti-alias prefilters on downscale. The reference uses a plain `F.interpolate`, reproduced in `__call__`.
         return [
             ComponentSpec("vae", AutoencoderKLLTX2Video),
-            # Only used to resolve a condition's default `crf` from the text-encoder generation.
-            ComponentSpec("text_encoder", PreTrainedModel),
         ]
 
     @property
@@ -972,11 +890,8 @@ class LTX2ConditionEncoderStep(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
             InputParam.template("generator"),
         ]
@@ -987,7 +902,7 @@ class LTX2ConditionEncoderStep(ModularPipelineBlocks):
             OutputParam(
                 "condition_latents",
                 type_hint=list,
-                description="Per-condition normalized VAE latents of shape [1, C, F, H, W].",
+                description="Per-condition VAE latents of shape [1, C, F, H, W] (normalized, not packed).",
             ),
             OutputParam("condition_strengths", type_hint=list, description="Per-condition conditioning strengths."),
             OutputParam(
@@ -1049,9 +964,7 @@ class LTX2ConditionEncoderStep(ModularPipelineBlocks):
             # Single-frame image keyframes are H.264 re-compressed at the model CRF (ltx-pipelines
             # `ImageConditioner.resolve_crf` + `media_io.preprocess`). Multi-frame video conditions are not.
             if arr.shape[0] == 1:
-                crf = (
-                    condition.crf if condition.crf is not None else resolve_default_image_crf(components.text_encoder)
-                )
+                crf = condition.crf if condition.crf is not None else components.default_image_crf
                 if crf != 0 and arr.dtype != np.uint8:
                     raise ValueError(
                         f"Image conditioning CRF expects a uint8 RGB frame, got dtype={arr.dtype}. "
@@ -1122,17 +1035,14 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Reference encoder step for in-context (IC-LoRA) generation. Preprocesses each reference video to the "
-            "(optionally downscaled) target resolution, VAE-encodes and packs it into tokens, and computes the "
-            "positional coordinates that map those tokens into the target coordinate space. When "
-            "`conditioning_attention_strength < 1.0` or a pixel-space `conditioning_attention_mask` is supplied it "
-            "also produces the per-token cross-attention strengths driving the video self-attention mask."
+            "(optionally downscaled) target resolution and VAE-encodes it into normalized latents, one entry per "
+            "reference."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLLTX2Video),
-            ComponentSpec("transformer", LTX2VideoTransformer3DModel),
             ComponentSpec(
                 "video_processor",
                 VideoProcessor,
@@ -1159,27 +1069,7 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
                 default=1,
                 description=(
                     "Ratio between the target and reference resolutions; 2 means the reference is preprocessed at "
-                    "half the target resolution. Spatial coordinates are scaled by this factor so the reference "
-                    "tokens land in the target coordinate space. Must match the factor the IC-LoRA was trained with."
-                ),
-            ),
-            InputParam(
-                "conditioning_attention_strength",
-                type_hint=float,
-                default=1.0,
-                description=(
-                    "Scalar in [0, 1] controlling how strongly the noisy tokens and reference tokens attend to each "
-                    "other. 1.0 (default) leaves attention unmasked."
-                ),
-            ),
-            InputParam(
-                "conditioning_attention_mask",
-                type_hint=torch.Tensor,
-                default=None,
-                description=(
-                    "Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially "
-                    "varying attention strength. Downsampled to the reference's latent grid and multiplied by "
-                    "`conditioning_attention_strength`."
+                    "half the target resolution. Must match the factor the IC-LoRA was trained with."
                 ),
             ),
             InputParam.template("height", default=512),
@@ -1187,14 +1077,8 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
-            ),
-            InputParam(
-                "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
+                required=True,
+                description="The number of frames in the generated video.",
             ),
             InputParam.template("generator"),
         ]
@@ -1204,25 +1088,10 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 "reference_latents",
-                type_hint=torch.Tensor,
-                description="Packed reference tokens of shape [1, total_reference_tokens, C].",
-            ),
-            OutputParam(
-                "reference_coords",
-                type_hint=torch.Tensor,
-                description="RoPE coordinates for the reference tokens, of shape [1, 3, total_reference_tokens, 2].",
-            ),
-            OutputParam(
-                "reference_token_counts",
                 type_hint=list,
-                description="Per-reference token counts, in `reference_conditions` order.",
-            ),
-            OutputParam(
-                "reference_cross_mask",
-                type_hint=torch.Tensor,
                 description=(
-                    "Per-reference-token noisy<->reference attention strengths of shape [1, "
-                    "total_reference_tokens], or `None` when attention is left unmasked."
+                    "Per-reference VAE latents of shape [1, C, F, H, W] (normalized, not packed), in "
+                    "`reference_conditions` order."
                 ),
             ),
         ]
@@ -1241,16 +1110,11 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
                 "take no reference video -- `LTX2AutoReferenceEncoderStep` then skips this step."
             )
 
-        downscale_factor = block_state.reference_downscale_factor
-        ref_height = block_state.height // downscale_factor
-        ref_width = block_state.width // downscale_factor
-        strength = block_state.conditioning_attention_strength
-        attention_mask = block_state.conditioning_attention_mask
-        # An all-ones mask at full strength is the same as no mask, so only materialize one when it can bite.
-        mask_needed = strength < 1.0 or attention_mask is not None
+        ref_height = block_state.height // block_state.reference_downscale_factor
+        ref_width = block_state.width // block_state.reference_downscale_factor
         generator = block_state.generator[0] if isinstance(block_state.generator, list) else block_state.generator
 
-        all_latents, all_coords, all_cross_masks, token_counts = [], [], [], []
+        reference_latents = []
         for ref_cond in reference_conditions:
             if isinstance(ref_cond.frames, PIL.Image.Image):
                 video_like = [ref_cond.frames]
@@ -1268,45 +1132,13 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
             ref_pixels = ref_pixels.to(dtype=components.vae.dtype, device=device)
 
             ref_latent = retrieve_latents(components.vae.encode(ref_pixels), generator=generator, sample_mode="argmax")
-            ref_latent = _normalize_latents(ref_latent, components.latents_mean, components.latents_std).to(
-                device=device, dtype=torch.float32
-            )
-            _, _, ref_latent_frames, ref_latent_height, ref_latent_width = ref_latent.shape
-            ref_latent_packed = _pack_latents(
-                ref_latent, components.transformer_spatial_patch_size, components.transformer_temporal_patch_size
+            reference_latents.append(
+                _normalize_latents(ref_latent, components.latents_mean, components.latents_std).to(
+                    device=device, dtype=torch.float32
+                )
             )
 
-            # Coordinates are computed on the reference's own latent grid, then scaled spatially so the tokens map
-            # into the target's coordinate space (preserving the positional relationship the IC-LoRA was trained on).
-            ref_coords = components.transformer.rope.prepare_video_coords(
-                batch_size=1,
-                num_frames=ref_latent_frames,
-                height=ref_latent_height,
-                width=ref_latent_width,
-                device=device,
-                fps=block_state.frame_rate,
-            )
-            if downscale_factor != 1:
-                ref_coords[:, 1, :, :] = ref_coords[:, 1, :, :] * downscale_factor
-                ref_coords[:, 2, :, :] = ref_coords[:, 2, :, :] * downscale_factor
-
-            if mask_needed:
-                if attention_mask is not None:
-                    ref_cross = _downsample_mask_to_latent(
-                        attention_mask, ref_latent_frames, ref_latent_height, ref_latent_width
-                    ).to(device=device, dtype=torch.float32)
-                else:
-                    ref_cross = torch.ones((1, ref_latent_packed.shape[1]), device=device, dtype=torch.float32)
-                all_cross_masks.append(ref_cross * strength)
-
-            all_latents.append(ref_latent_packed)
-            all_coords.append(ref_coords)
-            token_counts.append(ref_latent_packed.shape[1])
-
-        block_state.reference_latents = torch.cat(all_latents, dim=1)
-        block_state.reference_coords = torch.cat(all_coords, dim=2)
-        block_state.reference_token_counts = token_counts
-        block_state.reference_cross_mask = torch.cat(all_cross_masks, dim=1) if mask_needed else None
+        block_state.reference_latents = reference_latents
 
         self.set_block_state(state, block_state)
         return components, state
