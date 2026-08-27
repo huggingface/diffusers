@@ -21,6 +21,7 @@ from .lokr import LoKrTesterMixin
 from .lora import LoraHotSwappingForModelTesterMixin, LoraTesterMixin
 from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCastingTesterMixin, MemoryTesterMixin
 from .parallelism import (
+    ContextAndTensorParallelTesterMixin,
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     TensorParallelTesterMixin,
@@ -66,6 +67,7 @@ __all__ = [
     "BitsAndBytesConfigMixin",
     "BitsAndBytesTesterMixin",
     "CacheTesterMixin",
+    "ContextAndTensorParallelTesterMixin",
     "ContextParallelTesterMixin",
     "ContextParallelAttentionBackendsTesterMixin",
     "TensorParallelTesterMixin",
