@@ -70,7 +70,7 @@ class StableDiffusionXLPAGPipelineFastTests(
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"add_text_embeds", "add_time_ids"})
 
     def get_dummy_components(self, time_cond_proj_dim=None):
-        # Copied from tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl.StableDiffusionXLPipelineFastTests.get_dummy_components
+        # Copied from tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl.StableDiffusionXLPipelineTesterConfig.get_dummy_components
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(2, 4),
