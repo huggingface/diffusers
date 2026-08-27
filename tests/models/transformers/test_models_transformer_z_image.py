@@ -28,6 +28,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -180,10 +181,6 @@ class TestZImageTransformerTraining(ZImageTransformerTesterConfig, TrainingTeste
 
 class TestZImageTransformerLoRA(ZImageTransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for Z-Image Transformer."""
-
-    @pytest.mark.skip("Model output `sample` is a list of tensors, not a single tensor.")
-    def test_save_load_lora_adapter(self, tmp_path, rank=4, lora_alpha=4, use_dora=False, atol=1e-4, rtol=1e-4):
-        pass
 
 
 # TODO: Add pretrained_model_name_or_path once a tiny Z-Image model is available on the Hub
@@ -358,3 +355,17 @@ class TestZImageTransformerAutoRoundCompile(ZImageTransformerAutoRoundTesterConf
         output = output[0] if isinstance(output, (list, tuple)) else output
         assert output is not None, "Model output is None"
         assert not torch.isnan(output).any(), "Model output contains NaN"
+
+
+class TestZImageTransformer2DSingleFile(ZImageTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Tongyi-MAI/Z-Image-Turbo"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

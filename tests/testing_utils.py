@@ -486,6 +486,14 @@ def is_context_parallel(test_case):
     return pytest.mark.context_parallel(test_case)
 
 
+def is_tensor_parallel(test_case):
+    """
+    Decorator marking a test as a tensor parallel inference test. These tests can be filtered using:
+        pytest -m "not tensor_parallel" to skip pytest -m tensor_parallel to run only these tests
+    """
+    return pytest.mark.tensor_parallel(test_case)
+
+
 def is_cache(test_case):
     """
     Decorator marking a test as a cache test. These tests can be filtered using:
@@ -840,6 +848,16 @@ def require_bitsandbytes_version_greater(bnb_version):
         )(test_case)
 
     return decorator
+
+
+def require_hf_token(test_case):
+    """
+    Decorator marking a test that requires a Hugging Face auth token (e.g. to access gated repos). The test is
+    skipped when no token is available.
+    """
+    from huggingface_hub import get_token
+
+    return pytest.mark.skipif(get_token() is None, reason="test requires a Hugging Face auth token")(test_case)
 
 
 def require_hf_hub_version_greater(hf_hub_version):
@@ -1324,13 +1342,11 @@ def is_flaky(max_attempts: int = 5, wait_before_retry: float | None = None, desc
 
 
 # Taken from: https://github.com/huggingface/transformers/blob/3658488ff77ff8d45101293e749263acf437f4d5/src/transformers..testing_utils.py#L1787
-def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
+def run_test_in_subprocess(target_func, inputs=None, timeout=None):
     """
     To run a test in a subprocess. In particular, this can avoid (GPU) memory issue.
 
     Args:
-        test_case:
-            The test case object that will run `target_func`.
         target_func (`Callable`):
             The function implementing the actual testing logic.
         inputs (`dict`, *optional*, defaults to `None`):
@@ -1360,11 +1376,11 @@ def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
         output_queue.task_done()
     except Exception as e:
         process.terminate()
-        test_case.fail(e)
+        pytest.fail(str(e))
     process.join(timeout=timeout)
 
     if results["error"] is not None:
-        test_case.fail(f"{results['error']}")
+        pytest.fail(f"{results['error']}")
 
 
 class CaptureLogger:

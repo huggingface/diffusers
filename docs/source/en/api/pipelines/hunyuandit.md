@@ -29,7 +29,7 @@ HunyuanDiT has the following components:
 * It combines two text encoders, a bilingual CLIP and a multilingual T5 encoder
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 > [!TIP]
 > You can further improve generation quality by passing the generated image from [`HungyuanDiTPipeline`] to the [SDXL refiner](./stable_diffusion/stable_diffusion_xl#base-to-refiner-model) model.
@@ -50,7 +50,7 @@ import torch
 
 pipeline = HunyuanDiTPipeline.from_pretrained(
 	"Tencent-Hunyuan/HunyuanDiT-Diffusers", dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Then change the memory layout of the pipelines `transformer` and `vae` components to `torch.channels-last`:

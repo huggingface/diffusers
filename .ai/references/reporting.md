@@ -36,7 +36,7 @@ print(torch.cuda.max_memory_allocated())
 
 The first script exposes the real pipeline call. The second only tests the proposed mechanism, so it may pass even when the pipeline still fails. Keep the hypothesis separate from the reproduction.
 
-For structure, follow the [bug report template](../.github/ISSUE_TEMPLATE/bug-report.yml).
+For structure, follow the [bug report template](https://github.com/huggingface/diffusers/blob/main/.github/ISSUE_TEMPLATE/bug-report.yml).
 
 ## Performance claims
 

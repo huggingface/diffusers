@@ -129,7 +129,7 @@ from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -209,7 +209,7 @@ from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTI
 from diffusers.utils import encode_video
 from diffusers.utils import load_image
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -299,7 +299,7 @@ from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image, load_video
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -374,7 +374,7 @@ from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -446,7 +446,7 @@ from diffusers import LTX2Pipeline
 from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT, T2V_DEFAULT_SYSTEM_PROMPT
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -520,7 +520,7 @@ from diffusers import LTX2Pipeline
 from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -573,7 +573,7 @@ from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 1536
 height = 1024
 num_frames = 121
@@ -693,7 +693,7 @@ from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNei
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(42)
 model_path = "Lightricks/LTX-2.5-Diffusers"
@@ -766,7 +766,7 @@ import torch
 from diffusers import FlowMatchEulerDiscreteScheduler, LTX2Pipeline, LTX2VideoTransformer3DModel
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 model_path = "Lightricks/LTX-2.5-Diffusers"
 
 # Passing `transformer=` keeps `from_pretrained` from fetching the distilled folder as well.
@@ -819,7 +819,7 @@ from diffusers import LTX2Pipeline
 from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -915,6 +915,121 @@ print(f"predicted {seconds:.2f}s -> {num_frames} frames")
 
 Converting a 2.5 checkpoint picks the head up automatically with `--full_pipeline`, or on its own with `--duration_head`. Checkpoints predating 2.5 have no such weights, and conversion skips the component rather than failing.
 
+### LTX-2.5 Modular
+
+LTX-2.5 is also available as a modular pipeline. The default blockset uses the diffusion decoder and predicts the video duration when `num_frames` is omitted. It applies guidance separately to video and audio through the `guider` and `audio_guider` components. See [`LTX2Guidance`] for the available guidance parameters. By default, the modular pipeline will download the prompt enhancer and processor from the [google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) repo. Below is a T2V modular example:
+
+```py
+import torch
+from diffusers import ModularPipeline, ComponentsManager
+from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
+from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
+from diffusers.utils import encode_video
+
+device = "cuda"  # or "mps", "xpu", "cpu"
+frame_rate = 24.0
+random_seed = 42
+generator = torch.Generator(device).manual_seed(random_seed)
+
+model_path = "Lightricks/LTX-2.5-Diffusers"
+
+cm = ComponentsManager()
+pipe = ModularPipeline.from_pretrained(model_path, components_manager=cm)
+pipe.load_components(dtype=torch.bfloat16)
+# Set memory_reserve_margin higher to more aggressively offload component models
+cm.enable_auto_cpu_offload(device=device, memory_reserve_margin="20GB")
+# The NATTEN processor works if `kernels` is available (`pip install kernels`)
+# Otherwise omit the below line to use the Flex Attention processor
+pipe.diffusion_decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
+pipe.diffusion_decoder.enable_tiling()
+
+prompt = (
+    "A cinematic shot of a red fox walking through a snowy forest at dawn, golden light filtering through pine trees."
+)
+
+output_state = pipe(
+    prompt=prompt,
+    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    width=768,
+    height=512,
+    num_frames=None,  # Set to an int (e.g. 121) to specify a fixed video length
+    frame_rate=frame_rate,
+    num_inference_steps=30,
+    use_cross_timestep=True,
+    enable_prompt_enhancement=True,
+    generator=generator,
+    output_type="np",
+)
+video = output_state.get("videos")
+audio = output_state.get("audio")
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_5_modular_t2v.mp4",
+)
+```
+
+The modular pipeline will automatically switch workflows based on the supplied inputs. For example, if `image` is supplied, an I2V workflow will be used:
+
+```py
+import torch
+from diffusers import ModularPipeline, ComponentsManager
+from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
+from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
+from diffusers.utils import encode_video, load_image
+
+device = "cuda"  # or "mps", "xpu", "cpu"
+frame_rate = 24.0
+random_seed = 42
+generator = torch.Generator(device).manual_seed(random_seed)
+
+model_path = "Lightricks/LTX-2.5-Diffusers"
+
+cm = ComponentsManager()
+pipe = ModularPipeline.from_pretrained(model_path, components_manager=cm)
+pipe.load_components(dtype=torch.bfloat16)
+cm.enable_auto_cpu_offload(device=device, memory_reserve_margin="20GB")
+pipe.diffusion_decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
+pipe.diffusion_decoder.enable_tiling()
+
+prompt = (
+    "An astronaut hatches from a fragile egg on the surface of the Moon, the shell cracking and peeling apart in "
+    "gentle low-gravity motion."
+)
+image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+image = load_image(image_path)
+
+output_state = pipe(
+    image=image,
+    prompt=prompt,
+    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    width=768,
+    height=512,
+    num_frames=None,  # Set to an int (e.g. 121) to specify a fixed video length
+    frame_rate=frame_rate,
+    num_inference_steps=30,
+    use_cross_timestep=True,
+    enable_prompt_enhancement=True,
+    generator=generator,
+    output_type="np",
+)
+video = output_state.get("videos")
+audio = output_state.get("audio")
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_5_modular_i2v.mp4",
+)
+```
+
+You can see the supported workflows in the docs for each blockset (e.g. [`LTX2AutoBlocks`], [`LTX25AutoBlocks`]).
+
 ## LTX2Pipeline
 
 [[autodoc]] LTX2Pipeline
@@ -954,3 +1069,19 @@ Converting a 2.5 checkpoint picks the head up automatically with `--full_pipelin
 ## LTX2PipelineOutput
 
 [[autodoc]] pipelines.ltx2.pipeline_output.LTX2PipelineOutput
+
+## LTX2ModularPipeline
+
+[[autodoc]] LTX2ModularPipeline
+
+## LTX2AutoBlocks
+
+[[autodoc]] LTX2AutoBlocks
+
+## LTX25ModularPipeline
+
+[[autodoc]] LTX25ModularPipeline
+
+## LTX25AutoBlocks
+
+[[autodoc]] LTX25AutoBlocks

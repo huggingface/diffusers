@@ -13,6 +13,10 @@
 # limitations under the License.
 
 
+import os
+import subprocess
+import sys
+
 import pytest
 import torch
 
@@ -20,7 +24,7 @@ from diffusers import QwenImageTransformer2DModel
 from diffusers.models.transformers.transformer_qwenimage import compute_text_seq_len_from_mask
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
 from ..testing_utils import (
     AttentionBackendTesterMixin,
     AttentionTesterMixin,
@@ -32,6 +36,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TensorParallelTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -79,20 +84,20 @@ class QwenImageTransformerTesterConfig(BaseModelTesterConfig):
             "axes_dims_rope": (8, 4, 4),
         }
 
-    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+    def get_dummy_inputs(self, batch_size: int = 1, device=torch_device) -> dict[str, torch.Tensor]:
         num_latent_channels = embedding_dim = 16
         height = width = 4
         sequence_length = 8
         vae_scale_factor = 4
 
         hidden_states = randn_tensor(
-            (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
+            (batch_size, height * width, num_latent_channels), generator=self.generator, device=device
         )
         encoder_hidden_states = randn_tensor(
-            (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+            (batch_size, sequence_length, embedding_dim), generator=self.generator, device=device
         )
-        encoder_hidden_states_mask = torch.ones((batch_size, sequence_length)).to(torch_device, torch.long)
-        timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
+        encoder_hidden_states_mask = torch.ones((batch_size, sequence_length)).to(device, torch.long)
+        timestep = torch.tensor([1.0]).to(device).expand(batch_size)
         orig_height = height * 2 * vae_scale_factor
         orig_width = width * 2 * vae_scale_factor
         img_shapes = [(1, orig_height // vae_scale_factor // 2, orig_width // vae_scale_factor // 2)] * batch_size
@@ -296,6 +301,43 @@ class TestQwenImageTransformerContextParallelAttnBackends(
         encoder_hidden_states_mask[:, 5:] = 0
         inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
         return inputs
+
+
+class TestQwenImageTransformerTensorParallel(QwenImageTransformerTesterConfig, TensorParallelTesterMixin):
+    """Tensor Parallel inference tests for QwenImage Transformer (CUDA/XPU multi-accelerator)."""
+
+
+def make_neuron_tp_spec():
+    """Model spec consumed by the generic Neuron TP worker (``_neuron_tp_worker.py``).
+
+    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all QwenImage-specific test data lives in this
+    file while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest
+    of the QwenImage tests.
+    """
+    config = QwenImageTransformerTesterConfig()
+    return QwenImageTransformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+@is_tensor_parallel
+@require_torch_neuron
+class TestQwenImageTransformerTensorParallelNeuron:
+    """Tensor Parallel inference test for QwenImage Transformer on AWS Neuron.
+
+    Neuron TP runs through ``torchrun`` with the ``"neuron"`` distributed backend, so it cannot use the
+    ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker
+    with the QwenImage model spec (``make_neuron_tp_spec``); the worker asserts the sharded output matches a
+    single-device reference, and the test checks its exit code.
+    """
+
+    def test_tensor_parallel_neuron_inference(self):
+        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
+        spec = "tests.models.transformers.test_models_transformer_qwenimage:make_neuron_tp_spec"
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )
 
 
 class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterMixin):
