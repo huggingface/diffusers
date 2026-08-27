@@ -42,7 +42,6 @@ from diffusers.utils.import_utils import (
     is_nvidia_modelopt_version,
     is_onnx_available,
     is_opencv_available,
-    is_optimum_quanto_available,
     is_peft_available,
     is_sdnq_available,
     is_timm_available,
@@ -429,14 +428,6 @@ def is_bitsandbytes(test_case):
     return pytest.mark.bitsandbytes(test_case)
 
 
-def is_quanto(test_case):
-    """
-    Decorator marking a test as a Quanto quantization test. These tests can be filtered using:
-        pytest -m "not quanto" to skip pytest -m quanto to run only these tests
-    """
-    return pytest.mark.quanto(test_case)
-
-
 def is_torchao(test_case):
     """
     Decorator marking a test as a TorchAO quantization test. These tests can be filtered using:
@@ -760,13 +751,6 @@ def require_bitsandbytes(test_case):
     Decorator marking a test that requires bitsandbytes. These tests are skipped when bitsandbytes isn't installed.
     """
     return pytest.mark.skipif(not is_bitsandbytes_available(), reason="test requires bitsandbytes")(test_case)
-
-
-def require_quanto(test_case):
-    """
-    Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
-    """
-    return pytest.mark.skipif(not is_optimum_quanto_available(), reason="test requires quanto")(test_case)
 
 
 def require_sdnq(test_case):
@@ -1342,13 +1326,11 @@ def is_flaky(max_attempts: int = 5, wait_before_retry: float | None = None, desc
 
 
 # Taken from: https://github.com/huggingface/transformers/blob/3658488ff77ff8d45101293e749263acf437f4d5/src/transformers..testing_utils.py#L1787
-def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
+def run_test_in_subprocess(target_func, inputs=None, timeout=None):
     """
     To run a test in a subprocess. In particular, this can avoid (GPU) memory issue.
 
     Args:
-        test_case:
-            The test case object that will run `target_func`.
         target_func (`Callable`):
             The function implementing the actual testing logic.
         inputs (`dict`, *optional*, defaults to `None`):
@@ -1378,11 +1360,11 @@ def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
         output_queue.task_done()
     except Exception as e:
         process.terminate()
-        test_case.fail(e)
+        pytest.fail(str(e))
     process.join(timeout=timeout)
 
     if results["error"] is not None:
-        test_case.fail(f"{results['error']}")
+        pytest.fail(f"{results['error']}")
 
 
 class CaptureLogger:

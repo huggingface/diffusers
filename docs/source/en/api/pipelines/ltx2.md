@@ -129,7 +129,7 @@ from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -209,7 +209,7 @@ from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTI
 from diffusers.utils import encode_video
 from diffusers.utils import load_image
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -299,7 +299,7 @@ from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image, load_video
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -374,7 +374,7 @@ from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -446,7 +446,7 @@ from diffusers import LTX2Pipeline
 from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT, T2V_DEFAULT_SYSTEM_PROMPT
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -520,7 +520,7 @@ from diffusers import LTX2Pipeline
 from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -573,7 +573,7 @@ from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 1536
 height = 1024
 num_frames = 121
@@ -693,7 +693,7 @@ from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNei
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(42)
 model_path = "Lightricks/LTX-2.5-Diffusers"
@@ -766,7 +766,7 @@ import torch
 from diffusers import FlowMatchEulerDiscreteScheduler, LTX2Pipeline, LTX2VideoTransformer3DModel
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 model_path = "Lightricks/LTX-2.5-Diffusers"
 
 # Passing `transformer=` keeps `from_pretrained` from fetching the distilled folder as well.
@@ -819,7 +819,7 @@ from diffusers import LTX2Pipeline
 from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 width = 768
 height = 512
 random_seed = 42
@@ -926,7 +926,7 @@ from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNei
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import encode_video
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 frame_rate = 24.0
 random_seed = 42
 generator = torch.Generator(device).manual_seed(random_seed)
@@ -981,7 +981,7 @@ from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNei
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import encode_video, load_image
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 frame_rate = 24.0
 random_seed = 42
 generator = torch.Generator(device).manual_seed(random_seed)
@@ -1085,7 +1085,3 @@ You can see the supported workflows in the docs for each blockset (e.g. [`LTX2Au
 ## LTX25AutoBlocks
 
 [[autodoc]] LTX25AutoBlocks
-
-## LTX2Guidance
-
-[[autodoc]] modular_pipelines.ltx2.guider.LTX2Guidance

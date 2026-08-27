@@ -293,7 +293,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     image_encoder=image_encoder,
     enable_pag=True,
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter-plus_sdxl_vit-h.bin")
 
