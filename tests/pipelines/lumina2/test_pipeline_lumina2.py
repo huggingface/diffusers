@@ -1,5 +1,3 @@
-import unittest
-
 import torch
 from transformers import AutoTokenizer, Gemma2Config, Gemma2Model
 
@@ -10,12 +8,17 @@ from diffusers import (
     Lumina2Transformer2DModel,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import assert_tensors_close
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
-class Lumina2PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class Lumina2PipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = Lumina2Pipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
             "prompt",
             "height",
@@ -26,20 +29,9 @@ class Lumina2PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "negative_prompt_embeds",
         ]
     )
-    batch_params = frozenset(["prompt", "negative_prompt"])
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
-    )
-
-    test_xformers_attention = False
-    test_layerwise_casting = True
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    # The dummy one-block VAE decodes the 4x4 latents at scale 1, so requested 32x32 comes out 4x4
+    output_shape = (3, 4, 4)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -89,28 +81,45 @@ class Lumina2PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         )
         text_encoder = Gemma2Model(config)
 
-        components = {
+        return {
             "transformer": transformer,
-            "vae": vae.eval(),
+            "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "height": 32,
             "width": 32,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
+
+
+class TestLumina2Pipeline(Lumina2PipelineTesterConfig, PipelineTesterMixin):
+    def test_inference(self):
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        image = pipe(**inputs).images
+        generated_image = image[0]
+        assert generated_image.shape == self.output_shape
+
+        # fmt: off
+        expected_slice = torch.tensor([0.4409, 0.6402, 0.1740, 0.4674, 0.4631, 0.3840, 0.5556, 0.4289, 0.4979, 0.4755, 0.5825, 0.6095, 0.7116, 0.5101, 0.6170, 0.6536])
+        # fmt: on
+
+        generated_slice = generated_image.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
+
+
+class TestLumina2PipelineMemory(Lumina2PipelineTesterConfig, MemoryTesterMixin):
+    pass
