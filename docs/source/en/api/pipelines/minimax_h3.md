@@ -11,11 +11,11 @@ specific language governing permissions and limitations under the License. -->
 
 # MiniMax-H3
 
-<!-- Remove this note once MiniMax-H3 is part of a diffusers release. -->
-> [!TIP]
-> MiniMax-H3 is not part of a diffusers release yet. Install diffusers from source to use it:
-> `pip install git+https://github.com/huggingface/diffusers.git`
-
+<div class="flex flex-wrap space-x-1">
+  <a href="https://huggingface.co/docs/diffusers/main/en/tutorials/using_peft_for_inference" target="_blank" rel="noopener">
+    <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+  </a>
+</div>
 
 MiniMax-H3 generates video and its soundtrack together. A single transformer denoises one packed sequence containing the text conditioning, conditioning media, and target video and audio latents. There is no separate vocoder and no audio post-hoc pass: video and audio come out of the same denoising loop.
 
@@ -89,7 +89,7 @@ from diffusers import ComponentsManager, ModularPipeline
 manager = ComponentsManager()
 pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", components_manager=manager)
 pipe.load_components(workflow="t2va", dtype=torch.bfloat16)
-manager.enable_auto_cpu_offload(device="cuda", memory_reserve_margin="12GB")
+manager.enable_auto_cpu_offload(device="cuda", memory_reserve_margin="12GB")  # or "mps", "xpu", "cpu"
 pipe.transformer.set_attention_backend("_flash_3_hub")  # Hopper, roughly 3x faster; kernels fetched from the Hub
 ```
 
@@ -134,7 +134,7 @@ pipe.text_encoder.requires_grad_(False)
 offload = dict(onload_device=torch.device("cuda"), offload_device=torch.device("cpu"), use_stream=True)
 pipe.transformer.enable_group_offload(offload_type="block_level", num_blocks_per_group=1, **offload)
 apply_group_offloading(pipe.text_encoder.model, offload_type="leaf_level", **offload)
-pipe.vae.to("cuda")
+pipe.vae.to("cuda")  # or "mps", "xpu", "cpu"
 pipe.audio_vae.to("cuda")
 ```
 
@@ -185,7 +185,7 @@ from diffusers.utils.export_utils import encode_video
 # 61.7GB of transformer and 62.1GB of conditioner do not sit on one accelerator, so the components are
 # registered in a manager that moves each one on and off as the blocks reach it. See [Memory](#memory).
 manager = ComponentsManager()
-manager.enable_auto_cpu_offload(device="cuda")
+manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 
 pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", components_manager=manager)
 pipe.load_components(workflow="fl2va", dtype=torch.bfloat16)
@@ -248,7 +248,7 @@ from diffusers.utils.export_utils import encode_video
 # `ref2va` is a workflow of the one MiniMax-H3 pipeline; selecting it loads only the `transformer_ref/`
 # checkpoint partition, and the manager moves each component on and off the accelerator in turn.
 manager = ComponentsManager()
-manager.enable_auto_cpu_offload(device="cuda")
+manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 
 pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="ref2va", components_manager=manager)
 pipe.load_components(dtype=torch.bfloat16)
@@ -301,7 +301,7 @@ from diffusers import ComponentsManager, ModularPipeline
 from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3VideoReference
 
 manager = ComponentsManager()
-manager.enable_auto_cpu_offload(device="cuda")
+manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 
 # The full pipeline holds every workflow and picks one per call from the inputs. Loading without a
 # `workflow=` brings both transformer partitions in one call, so the `ref2va` request that follows the

@@ -25,15 +25,13 @@ from diffusers.modular_pipelines import (
 )
 
 from ...testing_utils import floats_tensor, torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
-
-
-# TODO: `hf-internal-testing/tiny-flux2-klein-modular` contradicts itself — `_class_name` is
-# `Flux2KleinModularPipeline` and `is_distilled` is `true`, but `_blocks_class_name` is
-# `Flux2KleinBaseAutoBlocks`. `from_pretrained` honours the latter and builds the base blocks, which declare a
-# `guider` the distilled ones do not, so the pipeline it returns has one component more than these blocks expect.
-# Fix `_blocks_class_name` on the Hub and drop the overrides below.
-_FIXTURE_NAMES_BASE_BLOCKS = "TODO: the tiny repository records `Flux2KleinBaseAutoBlocks` for a distilled checkpoint."
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 FLUX2_KLEIN_WORKFLOWS = {
@@ -50,19 +48,14 @@ FLUX2_KLEIN_WORKFLOWS = {
 }
 
 
-class TestFlux2KleinModularPipelineFast(ModularPipelineTesterMixin):
+class Flux2KleinModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Flux2KleinModularPipeline
     pipeline_blocks_class = Flux2KleinAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-modular"
-
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     not_params = frozenset(["negative_prompt"])
     expected_workflow_blocks = FLUX2_KLEIN_WORKFLOWS
-
-    @pytest.mark.skip(reason=_FIXTURE_NAMES_BASE_BLOCKS)
-    def test_from_pretrained_workflow(self):
-        pass
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
@@ -79,8 +72,22 @@ class TestFlux2KleinModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestFlux2KleinModularPipelineFast(Flux2KleinModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
+
+
+class TestFlux2KleinModularPipelineLoading(Flux2KleinModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestFlux2KleinModularPipelineWorkflow(Flux2KleinModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestFlux2KleinModularPipelineMemory(Flux2KleinModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
 
 
 FLUX2_KLEIN_IMAGE_CONDITIONED_WORKFLOWS = {
@@ -100,19 +107,14 @@ FLUX2_KLEIN_IMAGE_CONDITIONED_WORKFLOWS = {
 }
 
 
-class TestFlux2KleinImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
+class Flux2KleinImageConditionedModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Flux2KleinModularPipeline
     pipeline_blocks_class = Flux2KleinAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-modular"
-
     params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])
     not_params = frozenset(["negative_prompt"])
     expected_workflow_blocks = FLUX2_KLEIN_IMAGE_CONDITIONED_WORKFLOWS
-
-    @pytest.mark.skip(reason=_FIXTURE_NAMES_BASE_BLOCKS)
-    def test_from_pretrained_workflow(self):
-        pass
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
@@ -134,9 +136,31 @@ class TestFlux2KleinImageConditionedModularPipelineFast(ModularPipelineTesterMix
 
         return inputs
 
+
+class TestFlux2KleinImageConditionedModularPipelineFast(
+    Flux2KleinImageConditionedModularPipelineTesterConfig, ModularPipelineTesterMixin
+):
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
 
     @pytest.mark.skip(reason="batched inference is currently not supported")
     def test_inference_batch_single_identical(self, batch_size=2, expected_max_diff=0.0001):
         return
+
+
+class TestFlux2KleinImageConditionedModularPipelineLoading(
+    Flux2KleinImageConditionedModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
+    pass
+
+
+class TestFlux2KleinImageConditionedModularPipelineWorkflow(
+    Flux2KleinImageConditionedModularPipelineTesterConfig, ModularWorkflowTesterMixin
+):
+    pass
+
+
+class TestFlux2KleinImageConditionedModularPipelineMemory(
+    Flux2KleinImageConditionedModularPipelineTesterConfig, ModularMemoryTesterMixin
+):
+    pass

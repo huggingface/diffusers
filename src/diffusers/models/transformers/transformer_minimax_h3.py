@@ -21,6 +21,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -45,12 +46,14 @@ class MiniMaxH3TransformerOutput(BaseOutput):
         sample (`torch.Tensor` of shape `(batch_size, num_video_tokens, in_channels * prod(patch_size))`):
             The video velocity prediction for the rows addressed by `video_indices`, in the same order. Conditioning
             rows are returned unmasked — masking them out before the scheduler step is the caller's job.
-        audio_sample (`torch.Tensor` of shape `(batch_size, num_audio_tokens, audio_in_channels)`):
-            The audio velocity prediction for the rows addressed by `audio_indices`, in the same order.
+        audio_sample (`torch.Tensor` of shape `(batch_size, num_audio_tokens, audio_in_channels)`, defaults to `None`):
+            The audio velocity prediction for the rows addressed by `audio_indices`, in the same order. `forward`
+            always populates it; it only defaults to `None` so that the output can be rebuilt from a plain dict of its
+            fields, which is how the accelerate offload hooks move a `BaseOutput` back to the input device.
     """
 
     sample: torch.Tensor
-    audio_sample: torch.Tensor
+    audio_sample: torch.Tensor | None = None
 
 
 def _apply_rotary_emb(hidden_states: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
@@ -446,6 +449,36 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         "audio_proj_out",
         "rope",
     ]
+    # Context parallelism shards the packed sequence, so the split cannot happen on the inputs of `forward`: the rows
+    # of the three modalities are scattered into the packed buffer with sequence-wide indices, which only address the
+    # full sequence. The split therefore happens once the buffer is built, at the first block, and everything that is
+    # indexed per row of the packed sequence is split alongside it: `adaln_indices` for the block stack,
+    # `timestep_indices` for `norm_out`, and the two `rope` outputs, which carry one row of angles each. The two output
+    # heads gather the sequence back, because `forward` then selects the video and audio rows with sequence-wide
+    # indices as well.
+    #
+    # The packed sequence carries no padding, so its length is whatever the caller packed. Splitting it across the
+    # context parallel region requires that length to be divisible by the region size — use `ulysses_anything` or
+    # `ring_anything` for a layout that is not.
+    _cp_plan = {
+        "rope": {
+            0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+            1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+        },
+        "transformer_blocks.0": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+        },
+        # `hidden_states` is split once and then flows from block to block already sharded, but every block reads
+        # `adaln_indices` from `forward`'s unsharded tensor, so each of them splits its own copy.
+        "transformer_blocks.*": {
+            "adaln_indices": ContextParallelInput(split_dim=0, expected_dims=1, split_output=False),
+        },
+        "norm_out": {
+            "timestep_indices": ContextParallelInput(split_dim=0, expected_dims=1, split_output=False),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+        "audio_proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
 
     @register_to_config
     def __init__(

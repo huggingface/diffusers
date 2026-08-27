@@ -23,7 +23,7 @@ from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...image_processor import PipelineImageInput
-from ...models import AutoencoderKLWan, WanVACETransformer3DModel
+from ...models import AutoencoderKLWan
 from ...utils import is_ftfy_available, is_torchvision_available, logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -576,7 +576,6 @@ class WanVaceEncoderStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("transformer", WanVACETransformer3DModel),
             ComponentSpec("vae", AutoencoderKLWan),
             ComponentSpec(
                 "video_processor",
