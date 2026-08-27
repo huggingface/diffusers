@@ -161,6 +161,22 @@ class TestStableDiffusionPipeline(StableDiffusionPipelineTesterConfig, PipelineT
         # fmt: on
         assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
+    def test_stable_diffusion_clip_skip(self):
+        # `clip_skip` re-applies the text encoder's final_layer_norm by hand, so it must run on
+        # transformers>=5.6 where `CLIPTextModel` no longer exposes a `.text_model` wrapper.
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        output_default = sd_pipe(**self.get_dummy_inputs(device)).images
+        output_clip_skip = sd_pipe(**self.get_dummy_inputs(device), clip_skip=1).images
+
+        assert output_clip_skip.shape == (1, 64, 64, 3)
+        assert not np.allclose(output_default, output_clip_skip, atol=1e-3), "clip_skip should change the output"
+
     def test_stable_diffusion_lcm(self):
         # Run on CPU: the expected slice below is CPU-specific.
         sd_pipe = self.get_pipeline(**self.get_dummy_components(time_cond_proj_dim=256))
