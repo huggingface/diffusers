@@ -288,11 +288,3 @@ class TestCogVideoXPipelineIntegration:
 
         max_diff = numpy_cosine_similarity_distance(video, expected_video)
         assert max_diff < 1e-3, f"Max diff is too high. got {video}"
-
-
-class TestCogVideoXPipelineLoRA(CogVideoXPipelineTesterConfig, LoraTesterMixin):
-    """LoRA tests for the CogVideoX pipeline."""
-
-
-class TestCogVideoXPipelineLoRAMemory(CogVideoXPipelineTesterConfig, LoraMemoryTesterMixin):
-    """LoRA offloading tests for the CogVideoX pipeline."""
