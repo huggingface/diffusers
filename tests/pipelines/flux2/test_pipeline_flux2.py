@@ -11,6 +11,8 @@ from diffusers import (
 from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
     check_qkv_fused_layers_exist,
@@ -187,3 +189,18 @@ class TestFlux2Pipeline(Flux2PipelineTesterConfig, PipelineTesterMixin):
 
 class TestFlux2PipelineMemory(Flux2PipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux2 pipeline."""
+
+
+class TestFlux2PipelineLoRA(Flux2PipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Flux2 pipeline."""
+
+    # The single-stream blocks fuse their QKV and MLP input projections into `to_qkv_mlp_proj`, so the default
+    # attention targets only reach the dual-stream blocks. `to_k` covers those, `to_qkv_mlp_proj` the rest.
+    denoiser_target_modules = {"transformer": ["to_qkv_mlp_proj", "to_k"]}
+
+
+class TestFlux2PipelineLoRAMemory(Flux2PipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Flux2 pipeline."""
+
+    # See `TestFlux2PipelineLoRA`.
+    denoiser_target_modules = {"transformer": ["to_qkv_mlp_proj", "to_k"]}
