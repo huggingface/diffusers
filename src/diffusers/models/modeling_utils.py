@@ -1992,15 +1992,30 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         device = torch.device(device_type, rank % device_module.device_count())
 
         mesh = None
-        if config.context_parallel_config is not None:
-            cp_config = config.context_parallel_config
+        cp_config = config.context_parallel_config
+        tp_config = config.tensor_parallel_config
+        if cp_config is not None and tp_config is not None:
+            # One mesh, one dimension per parallelism, so `ParallelConfig.setup` can hand each config its own
+            # submesh. "tp" goes last, which makes TP ranks adjacent: its all-reduce fires twice per block, more
+            # often than the CP collectives, so it is the one that wants the closest devices. The CP dimensions are
+            # then strided, which is fine for them — on Neuron only `all_to_all` (Ulysses) constrains its replica
+            # groups to be block-aligned; `all_gather` (ring) and `all_reduce` (TP) accept any grouping.
+            mesh = (
+                cp_config.mesh
+                or tp_config.mesh
+                or torch.distributed.device_mesh.init_device_mesh(
+                    device_type=device_type,
+                    mesh_shape=(cp_config.ring_degree, cp_config.ulysses_degree, tp_config.tp_degree),
+                    mesh_dim_names=("ring", "ulysses", "tp"),
+                )
+            )
+        elif cp_config is not None:
             mesh = cp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
                 device_type=device_type,
                 mesh_shape=cp_config.mesh_shape,
                 mesh_dim_names=cp_config.mesh_dim_names,
             )
-        elif config.tensor_parallel_config is not None:
-            tp_config = config.tensor_parallel_config
+        elif tp_config is not None:
             mesh = tp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
                 device_type=device_type,
                 mesh_shape=(tp_config.tp_degree,),
@@ -2009,6 +2024,32 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
         config.setup(rank, world_size, device, mesh=mesh)
+
+        # Validate the combination up front — after `setup`, which resolves `_tp_degree` from the mesh, but before
+        # anything is recorded on the model or applied to it. CP hooks are applied before TP, so a check left to the
+        # TP branch would raise on a model already carrying CP hooks: half-parallelised, and not usable.
+        if cp_config is not None and tp_config is not None:
+            tp_degree = tp_config._tp_degree
+            requested = cp_config.ring_degree * cp_config.ulysses_degree * tp_degree
+            if requested > world_size:
+                raise ValueError(
+                    f"Combining context and tensor parallelism needs `ring_degree` ({cp_config.ring_degree}) * "
+                    f"`ulysses_degree` ({cp_config.ulysses_degree}) * `tp_degree` ({tp_degree}) = {requested} "
+                    f"devices, which exceeds the world size ({world_size})."
+                )
+            num_heads = getattr(self.config, "num_attention_heads", None)
+            divisor = tp_degree * cp_config.ulysses_degree
+            if num_heads is not None and not cp_config.ulysses_anything and num_heads % divisor != 0:
+                # Ulysses trades sequence for heads inside attention (`SeqAllToAllDim` scatters over dim 2), and it
+                # only ever sees the heads TP left on this rank, so the count has to survive both splits.
+                raise ValueError(
+                    f"Combining tensor parallelism (`tp_degree`={tp_degree}) with Ulysses context parallelism "
+                    f"(`ulysses_degree`={cp_config.ulysses_degree}) requires the number of attention heads "
+                    f"({num_heads}) to be divisible by their product ({divisor}): TP shards the heads first, and "
+                    f"Ulysses splits what is left on each rank. Pass `ulysses_anything=True` to pad the head "
+                    f"dimension instead, or pick degrees whose product divides {num_heads}."
+                )
+
         self._parallel_config = config
         return config
 
