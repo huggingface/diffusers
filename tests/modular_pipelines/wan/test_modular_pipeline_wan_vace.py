@@ -20,10 +20,16 @@ from PIL import Image
 
 from diffusers.modular_pipelines import Wan22VaceBlocks, Wan22VaceModularPipeline
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
-class TestWan22VaceModularPipelineFast(ModularPipelineTesterMixin):
+class Wan22VaceModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Wan22VaceModularPipeline
     pipeline_blocks_class = Wan22VaceBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-wan22-vace-modular-pipe"
@@ -52,6 +58,8 @@ class TestWan22VaceModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestWan22VaceModularPipelineFast(Wan22VaceModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_inference_with_reference_image(self):
         pipe = self.get_pipeline().to("cpu")
 
@@ -72,3 +80,15 @@ class TestWan22VaceModularPipelineFast(ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
+
+
+class TestWan22VaceModularPipelineLoading(Wan22VaceModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestWan22VaceModularPipelineWorkflow(Wan22VaceModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestWan22VaceModularPipelineMemory(Wan22VaceModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
