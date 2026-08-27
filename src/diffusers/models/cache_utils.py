@@ -71,12 +71,14 @@ class CacheMixin:
             FirstBlockCacheConfig,
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
+            RollingKVCacheConfig,
             TaylorSeerCacheConfig,
             TextKVCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_mag_cache,
             apply_pyramid_attention_broadcast,
+            apply_rolling_kv_cache,
             apply_taylorseer_cache,
             apply_text_kv_cache,
         )
@@ -96,6 +98,8 @@ class CacheMixin:
             apply_text_kv_cache(self, config)
         elif isinstance(config, PyramidAttentionBroadcastConfig):
             apply_pyramid_attention_broadcast(self, config)
+        elif isinstance(config, RollingKVCacheConfig):
+            apply_rolling_kv_cache(self, config)
         elif isinstance(config, TaylorSeerCacheConfig):
             apply_taylorseer_cache(self, config)
         else:
@@ -110,6 +114,7 @@ class CacheMixin:
             HookRegistry,
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
+            RollingKVCacheConfig,
             TaylorSeerCacheConfig,
             TextKVCacheConfig,
         )
@@ -117,6 +122,7 @@ class CacheMixin:
         from ..hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
         from ..hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
+        from ..hooks.rolling_kv_cache import _ROLLING_KV_CACHE_HOOK
         from ..hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
         from ..hooks.text_kv_cache import _TEXT_KV_CACHE_BLOCK_HOOK, _TEXT_KV_CACHE_TRANSFORMER_HOOK
 
@@ -136,6 +142,8 @@ class CacheMixin:
             registry.remove_hook(_MAG_CACHE_BLOCK_HOOK, recurse=True)
         elif isinstance(self._cache_config, PyramidAttentionBroadcastConfig):
             registry.remove_hook(_PYRAMID_ATTENTION_BROADCAST_HOOK, recurse=True)
+        elif isinstance(self._cache_config, RollingKVCacheConfig):
+            registry.remove_hook(_ROLLING_KV_CACHE_HOOK, recurse=True)
         elif isinstance(self._cache_config, TextKVCacheConfig):
             registry.remove_hook(_TEXT_KV_CACHE_TRANSFORMER_HOOK, recurse=True)
             registry.remove_hook(_TEXT_KV_CACHE_BLOCK_HOOK, recurse=True)
