@@ -92,7 +92,7 @@ class MiniMaxH3RotaryPosEmbed(nn.Module):
 
     def forward(self, position_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # position_ids: (seq_len, 3) -> cos/sin: (seq_len, 2 * 3 * rope_freq_dim)
-        position_ids = position_ids.to(torch.float32)
+        position_ids = position_ids.to(self.inv_freq.device).to(torch.float32)
         freqs = position_ids.unsqueeze(-1) * self.inv_freq.view(1, 1, -1)  # (seq_len, 3, rope_freq_dim)
         freqs_t, freqs_h, freqs_w = freqs.unbind(dim=1)
         freqs = torch.cat((freqs_t, freqs_h, freqs_w), dim=-1)
@@ -618,6 +618,9 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
                 "`token_tags` and `timestep_indices` must both be `(seq_len,)` tensors matching `position_ids`, got "
                 f"{list(token_tags.shape)} and {list(timestep_indices.shape)} for seq_len={sequence_length}."
             )
+
+        if encoder_hidden_states is not None and encoder_hidden_states.device != self.device:
+            encoder_hidden_states = encoder_hidden_states.to(device=self.device)
 
         rotary_emb = self.rope(position_ids)
 
