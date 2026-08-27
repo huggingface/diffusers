@@ -79,7 +79,7 @@ from diffusers import DiffusionPipeline
 from sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "Lykon/dreamshaper-xl-1-0", dtype=torch.bfloat16, device_map="cuda"
+    "Lykon/dreamshaper-xl-1-0", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 prompt = """
