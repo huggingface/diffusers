@@ -194,11 +194,13 @@ class TestFlux2PipelineMemory(Flux2PipelineTesterConfig, MemoryTesterMixin):
 class TestFlux2PipelineLoRA(Flux2PipelineTesterConfig, LoraTesterMixin):
     """LoRA tests for the Flux2 pipeline."""
 
-    # Flux2 fuses the QKV and MLP input projections into a single `to_qkv_mlp_proj` linear.
+    # The single-stream blocks fuse their QKV and MLP input projections into `to_qkv_mlp_proj`, so the default
+    # attention targets only reach the dual-stream blocks. `to_k` covers those, `to_qkv_mlp_proj` the rest.
     denoiser_target_modules = {"transformer": ["to_qkv_mlp_proj", "to_k"]}
 
 
 class TestFlux2PipelineLoRAMemory(Flux2PipelineTesterConfig, LoraMemoryTesterMixin):
-    """LoRA x memory-optimization tests for the Flux2 pipeline."""
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Flux2 pipeline."""
 
+    # See `TestFlux2PipelineLoRA`.
     denoiser_target_modules = {"transformer": ["to_qkv_mlp_proj", "to_k"]}

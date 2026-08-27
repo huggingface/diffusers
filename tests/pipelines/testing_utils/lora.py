@@ -762,7 +762,9 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         assert pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
 
     @pytest.mark.parametrize("lora_scale", [1.0, 0.8])
-    def test_lora_scale_kwargs_match_fusion(self, base_pipe_output, lora_scale):
+    def test_lora_scale_kwargs_match_fusion(
+        self, base_pipe_output, lora_scale, expected_atol=1e-3, expected_rtol=1e-3
+    ):
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
 
         pipe = self.get_pipeline().to(torch_device)
@@ -782,8 +784,8 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         assert_tensors_close(
             outputs_lora_1_fused,
             outputs_lora_1,
-            atol=1e-3,
-            rtol=1e-3,
+            atol=expected_atol,
+            rtol=expected_rtol,
             msg="Fused lora should not change the output",
         )
         assert not torch.allclose(base_pipe_output, outputs_lora_1, atol=1e-3, rtol=1e-3), (

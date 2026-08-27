@@ -24,7 +24,6 @@ from pathlib import Path
 from uuid import uuid4
 
 from huggingface_hub import (
-    DDUFEntry,
     ModelCard,
     ModelCardData,
     create_repo,
@@ -232,26 +231,10 @@ def _get_model_file(
     user_agent: dict | str | None = None,
     revision: str | None = None,
     commit_hash: str | None = None,
-    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
-    if dduf_entries:
-        if subfolder is not None:
-            raise ValueError(
-                "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
-                "Please check the DDUF structure"
-            )
-        model_file = (
-            weights_name
-            if pretrained_model_name_or_path == ""
-            else "/".join([pretrained_model_name_or_path, weights_name])
-        )
-        if model_file in dduf_entries:
-            return model_file
-        else:
-            raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_entries.keys()}.")
-    elif os.path.isfile(pretrained_model_name_or_path):
+    if os.path.isfile(pretrained_model_name_or_path):
         return pretrained_model_name_or_path
     elif os.path.isdir(pretrained_model_name_or_path):
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
@@ -360,7 +343,6 @@ def _get_checkpoint_shard_files(
     user_agent=None,
     revision=None,
     subfolder="",
-    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     """
     For a given model:
@@ -372,18 +354,11 @@ def _get_checkpoint_shard_files(
     For the description of each arg, see [`PreTrainedModel.from_pretrained`]. `index_filename` is the full path to the
     index (downloaded and cached if `pretrained_model_name_or_path` is a model ID on the Hub).
     """
-    if dduf_entries:
-        if index_filename not in dduf_entries:
-            raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
-    else:
-        if not os.path.isfile(index_filename):
-            raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
+    if not os.path.isfile(index_filename):
+        raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
 
-    if dduf_entries:
-        index = json.loads(dduf_entries[index_filename].read_text())
-    else:
-        with open(index_filename, "r") as f:
-            index = json.loads(f.read())
+    with open(index_filename, "r") as f:
+        index = json.loads(f.read())
 
     original_shard_filenames = sorted(set(index["weight_map"].values()))
     for shard_filename in original_shard_filenames:
@@ -399,21 +374,14 @@ def _get_checkpoint_shard_files(
     shards_path = os.path.join(pretrained_model_name_or_path, subfolder)
 
     # First, let's deal with local folder.
-    if os.path.isdir(pretrained_model_name_or_path) or dduf_entries:
+    if os.path.isdir(pretrained_model_name_or_path):
         shard_filenames = [os.path.join(shards_path, f) for f in original_shard_filenames]
         for shard_file in shard_filenames:
-            if dduf_entries:
-                if shard_file not in dduf_entries:
-                    raise FileNotFoundError(
-                        f"{shards_path} does not appear to have a file named {shard_file} which is "
-                        "required according to the checkpoint index."
-                    )
-            else:
-                if not os.path.exists(shard_file):
-                    raise FileNotFoundError(
-                        f"{shards_path} does not appear to have a file named {shard_file} which is "
-                        "required according to the checkpoint index."
-                    )
+            if not os.path.exists(shard_file):
+                raise FileNotFoundError(
+                    f"{shards_path} does not appear to have a file named {shard_file} which is "
+                    "required according to the checkpoint index."
+                )
         return shard_filenames, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
