@@ -25,7 +25,6 @@ from diffusers import (
     GGUFQuantizationConfig,
     NunchakuLiteQuantizationConfig,
     NVIDIAModelOptConfig,
-    QuantoConfig,
     SDNQConfig,
     TorchAoConfig,
 )
@@ -34,7 +33,6 @@ from diffusers.utils.import_utils import (
     is_gguf_available,
     is_kernels_available,
     is_nvidia_modelopt_available,
-    is_optimum_quanto_available,
     is_peft_available,
     is_torchao_available,
 )
@@ -42,14 +40,11 @@ from diffusers.utils.import_utils import (
 from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
-    backend_max_memory_allocated,
-    backend_reset_peak_memory_stats,
     is_autoround,
     is_bitsandbytes,
     is_gguf,
     is_modelopt,
     is_quantization,
-    is_quanto,
     is_sdnq,
     is_torch_compile,
     is_torchao,
@@ -59,7 +54,6 @@ from ...testing_utils import (
     require_bitsandbytes_version_greater,
     require_gguf_version_greater_or_equal,
     require_modelopt_version_greater_or_equal,
-    require_quanto,
     require_sdnq,
     require_torchao_version_greater_or_equal,
     torch_device,
@@ -76,9 +70,6 @@ if is_nvidia_modelopt_available():
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
-
-if is_optimum_quanto_available():
-    from optimum.quanto import QLinear
 
 if is_gguf_available():
     pass
@@ -119,7 +110,7 @@ class QuantizationTesterMixin:
     Backend-specific mixins should:
     1. Implement _create_quantized_model(config_kwargs)
     2. Implement _verify_if_layer_quantized(name, module, config_kwargs)
-    3. Define their config dict (e.g., BNB_CONFIGS, QUANTO_WEIGHT_TYPES, etc.)
+    3. Define their config dict (e.g., BNB_CONFIGS, TORCHAO_CONFIGS, etc.)
     4. Use @pytest.mark.parametrize to create tests that call the common test methods below
 
     Expected class attributes:
@@ -775,153 +766,6 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
     def test_bnb_cpu_device_map(self, config_name):
         """Test that device_map='cpu' works correctly with quantization."""
         self._test_quantization_cpu_device_map(BitsAndBytesConfigMixin.BNB_CONFIGS[config_name])
-
-
-@is_quantization
-@is_quanto
-@require_quanto
-@require_accelerate
-@require_accelerator
-class QuantoConfigMixin:
-    """
-    Base mixin providing Quanto quantization config and model creation.
-
-    Expected class attributes:
-        - model_class: The model class to test
-        - pretrained_model_name_or_path: Hub repository ID for the pretrained model
-        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained
-    """
-
-    QUANTO_WEIGHT_TYPES = {
-        "float8": {"weights_dtype": "float8"},
-        "int8": {"weights_dtype": "int8"},
-        "int4": {"weights_dtype": "int4"},
-        "int2": {"weights_dtype": "int2"},
-    }
-
-    QUANTO_EXPECTED_MEMORY_REDUCTIONS = {
-        "float8": 1.5,
-        "int8": 1.5,
-        "int4": 3.0,
-        "int2": 7.0,
-    }
-
-    def _create_quantized_model(self, config_kwargs, **extra_kwargs):
-        config = QuantoConfig(**config_kwargs)
-        kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
-        kwargs["quantization_config"] = config
-        kwargs.update(extra_kwargs)
-        return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
-
-    def _verify_if_layer_quantized(self, name, module, config_kwargs):
-        assert isinstance(module, QLinear), f"Layer {name} is not QLinear, got {type(module)}"
-
-    def _test_quantization_memory_footprint(self, config_kwargs, expected_memory_reduction=1.2):
-        """Override to use max_memory_allocated for Quanto (get_memory_footprint doesn't reflect quantized _data)."""
-        # Measure unquantized model memory
-        backend_reset_peak_memory_stats(torch_device)
-        backend_empty_cache(torch_device)
-
-        model = self._load_unquantized_model()
-        model.to(torch_device)
-        mem = backend_max_memory_allocated(torch_device)
-
-        del model
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-        # Measure quantized model memory
-        backend_reset_peak_memory_stats(torch_device)
-
-        model_quantized = self._create_quantized_model(config_kwargs)
-        model_quantized.to(torch_device)
-        mem_quantized = backend_max_memory_allocated(torch_device)
-
-        ratio = mem / mem_quantized
-        assert ratio >= expected_memory_reduction, (
-            f"Memory ratio {ratio:.2f} is less than expected ({expected_memory_reduction}x). unquantized={mem}, quantized={mem_quantized}"
-        )
-
-
-@is_quanto
-@require_quanto
-@require_accelerate
-@require_accelerator
-class QuantoTesterMixin(QuantoConfigMixin, QuantizationTesterMixin):
-    """
-    Mixin class for testing Quanto quantization on models.
-
-    Expected class attributes:
-        - model_class: The model class to test
-        - pretrained_model_name_or_path: Hub repository ID for the pretrained model
-        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained (e.g., {"subfolder": "transformer"})
-
-    Expected methods to be implemented by subclasses:
-        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
-
-    Optional class attributes:
-        - QUANTO_WEIGHT_TYPES: Dict of weight_type_name -> qtype
-
-    Pytest mark: quanto
-        Use `pytest -m "not quanto"` to skip these tests
-    """
-
-    @pytest.mark.parametrize(
-        "weight_type_name",
-        list(QuantoConfigMixin.QUANTO_WEIGHT_TYPES.keys()),
-        ids=list(QuantoConfigMixin.QUANTO_WEIGHT_TYPES.keys()),
-    )
-    def test_quanto_quantization_num_parameters(self, weight_type_name):
-        self._test_quantization_num_parameters(QuantoConfigMixin.QUANTO_WEIGHT_TYPES[weight_type_name])
-
-    @pytest.mark.parametrize(
-        "weight_type_name",
-        list(QuantoConfigMixin.QUANTO_WEIGHT_TYPES.keys()),
-        ids=list(QuantoConfigMixin.QUANTO_WEIGHT_TYPES.keys()),
-    )
-    def test_quanto_quantization_memory_footprint(self, weight_type_name):
-        expected = QuantoConfigMixin.QUANTO_EXPECTED_MEMORY_REDUCTIONS.get(weight_type_name, 1.2)
-        self._test_quantization_memory_footprint(
-            QuantoConfigMixin.QUANTO_WEIGHT_TYPES[weight_type_name], expected_memory_reduction=expected
-        )
-
-    @pytest.mark.parametrize(
-        "weight_type_name",
-        list(QuantoConfigMixin.QUANTO_WEIGHT_TYPES.keys()),
-        ids=list(QuantoConfigMixin.QUANTO_WEIGHT_TYPES.keys()),
-    )
-    def test_quanto_quantization_inference(self, weight_type_name):
-        self._test_quantization_inference(QuantoConfigMixin.QUANTO_WEIGHT_TYPES[weight_type_name])
-
-    @pytest.mark.parametrize("weight_type_name", ["int8"], ids=["int8"])
-    def test_quanto_quantized_layers(self, weight_type_name):
-        self._test_quantized_layers(QuantoConfigMixin.QUANTO_WEIGHT_TYPES[weight_type_name])
-
-    @pytest.mark.parametrize("weight_type_name", ["int8"], ids=["int8"])
-    def test_quanto_quantization_lora_inference(self, weight_type_name):
-        self._test_quantization_lora_inference(QuantoConfigMixin.QUANTO_WEIGHT_TYPES[weight_type_name])
-
-    @pytest.mark.parametrize("weight_type_name", ["int8"], ids=["int8"])
-    def test_quanto_quantization_serialization(self, weight_type_name, tmp_path):
-        self._test_quantization_serialization(QuantoConfigMixin.QUANTO_WEIGHT_TYPES[weight_type_name], tmp_path)
-
-    def test_quanto_modules_to_not_convert(self):
-        """Test that modules_to_not_convert parameter works correctly."""
-        modules_to_exclude = getattr(self, "modules_to_not_convert_for_test", None)
-        if modules_to_exclude is None:
-            pytest.skip("modules_to_not_convert_for_test not defined for this model")
-
-        self._test_quantization_modules_to_not_convert(
-            QuantoConfigMixin.QUANTO_WEIGHT_TYPES["int8"], modules_to_exclude
-        )
-
-    def test_quanto_device_map(self):
-        """Test that device_map='auto' works correctly with quantization."""
-        self._test_quantization_device_map(QuantoConfigMixin.QUANTO_WEIGHT_TYPES["int8"])
-
-    def test_quanto_dequantize(self):
-        """Test that dequantize() works correctly."""
-        self._test_dequantize(QuantoConfigMixin.QUANTO_WEIGHT_TYPES["int8"])
 
 
 @is_quantization
@@ -1597,35 +1441,6 @@ class BitsAndBytesCompileTesterMixin(BitsAndBytesConfigMixin, QuantizationCompil
     @pytest.mark.parametrize("config_name", ["4bit_nf4"], ids=["4bit_nf4"])
     def test_bnb_torch_compile_with_group_offload(self, config_name):
         self._test_torch_compile_with_group_offload(BitsAndBytesConfigMixin.BNB_CONFIGS[config_name])
-
-
-@is_quanto
-@require_quanto
-@require_accelerate
-@require_accelerator
-class QuantoCompileTesterMixin(QuantoConfigMixin, QuantizationCompileTesterMixin):
-    """
-    Mixin class for testing torch.compile with Quanto quantized models.
-
-    Expected class attributes:
-        - model_class: The model class to test
-        - pretrained_model_name_or_path: Hub repository ID for the pretrained model
-        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained
-
-    Expected methods to be implemented by subclasses:
-        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
-
-    Pytest mark: quanto
-        Use `pytest -m "not quanto"` to skip these tests
-    """
-
-    @pytest.mark.parametrize("weight_type_name", ["int8"], ids=["int8"])
-    def test_quanto_torch_compile(self, weight_type_name):
-        self._test_torch_compile(QuantoConfigMixin.QUANTO_WEIGHT_TYPES[weight_type_name])
-
-    @pytest.mark.parametrize("weight_type_name", ["int8"], ids=["int8"])
-    def test_quanto_torch_compile_with_group_offload(self, weight_type_name):
-        self._test_torch_compile_with_group_offload(QuantoConfigMixin.QUANTO_WEIGHT_TYPES[weight_type_name])
 
 
 @is_torchao
