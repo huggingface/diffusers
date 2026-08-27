@@ -5,37 +5,13 @@
     title: Installation
   - local: quicktour
     title: Quickstart
+  - local: using-diffusers/cli
+    title: Command line interface
   title: Get started
-- isExpanded: false
+- isExpanded: true
   sections:
-  - local: modular_diffusers/overview
-    title: Overview
-  - local: modular_diffusers/quickstart
-    title: Quickstart
-  - local: modular_diffusers/modular_diffusers_states
-    title: States
-  - local: modular_diffusers/pipeline_block
-    title: ModularPipelineBlocks
-  - local: modular_diffusers/sequential_pipeline_blocks
-    title: SequentialPipelineBlocks
-  - local: modular_diffusers/loop_sequential_pipeline_blocks
-    title: LoopSequentialPipelineBlocks
-  - local: modular_diffusers/auto_pipeline_blocks
-    title: AutoPipelineBlocks
-  - local: modular_diffusers/modular_pipeline
-    title: ModularPipeline
-  - local: modular_diffusers/components_manager
-    title: ComponentsManager
-  - local: modular_diffusers/auto_docstring
-    title: Auto docstring and parameter templates
-  - local: modular_diffusers/custom_blocks
-    title: Building Custom Blocks
-  - local: modular_diffusers/mellon
-    title: Using Custom Blocks with Mellon
-  title: Modular Diffusers
-- isExpanded: false
-  sections:
-  - sections:
+  - isExpanded: false
+    sections:
     - local: using-diffusers/loading
       title: DiffusionPipeline
     - local: tutorials/autopipeline
@@ -57,7 +33,8 @@
     - local: using-diffusers/push_to_hub
       title: Sharing pipelines and models
     title: Use diffusion pipelines
-  - sections:
+  - isExpanded: false
+    sections:
     - local: tutorials/using_peft_for_inference
       title: LoRA
     - local: using-diffusers/ip_adapter
@@ -74,11 +51,12 @@
   - local: using-diffusers/weighted_prompts
     title: Prompting
   title: Inference
-- isExpanded: false
+- isExpanded: true
   sections:
   - local: stable_diffusion
     title: Basic performance
-  - sections:
+  - isExpanded: false
+    sections:
     - local: optimization/fp16
       title: Accelerate inference
     - local: optimization/cache
@@ -111,7 +89,8 @@
     - local: using-diffusers/image_quality
       title: FreeU
     title: Community optimizations
-  - sections:
+  - isExpanded: false
+    sections:
     - local: quantization/overview
       title: Getting started
     - local: quantization/bitsandbytes
@@ -131,7 +110,8 @@
     - local: quantization/sdnq
       title: SDNQ
     title: Quantization
-  - sections:
+  - isExpanded: false
+    sections:
     - local: optimization/onnx
       title: ONNX
     - local: optimization/open_vino
@@ -145,7 +125,8 @@
     - local: optimization/neuron
       title: AWS Neuron
     title: Hardware-specific acceleration
-  - sections:
+  - isExpanded: false
+    sections:
     - local: using-diffusers/batched_inference
       title: Batch inference
     - local: training/distributed_inference
@@ -158,6 +139,33 @@
   title: Optimize and scale
 - isExpanded: false
   sections:
+  - local: modular_diffusers/overview
+    title: Overview
+  - local: modular_diffusers/quickstart
+    title: Quickstart
+  - local: modular_diffusers/modular_diffusers_states
+    title: States
+  - local: modular_diffusers/pipeline_block
+    title: ModularPipelineBlocks
+  - local: modular_diffusers/sequential_pipeline_blocks
+    title: SequentialPipelineBlocks
+  - local: modular_diffusers/loop_sequential_pipeline_blocks
+    title: LoopSequentialPipelineBlocks
+  - local: modular_diffusers/auto_pipeline_blocks
+    title: AutoPipelineBlocks
+  - local: modular_diffusers/modular_pipeline
+    title: ModularPipeline
+  - local: modular_diffusers/components_manager
+    title: ComponentsManager
+  - local: modular_diffusers/auto_docstring
+    title: Auto docstring and parameter templates
+  - local: modular_diffusers/custom_blocks
+    title: Building Custom Blocks
+  - local: modular_diffusers/mellon
+    title: Using Custom Blocks with Mellon
+  title: Modular Diffusers
+- isExpanded: true
+  sections:
   - local: training/overview
     title: Overview
   - local: training/create_dataset
@@ -166,7 +174,8 @@
     title: Adapt a model to a new task
   - local: tutorials/basic_training
     title: Train a diffusion model
-  - sections:
+  - isExpanded: false
+    sections:
     - local: training/unconditional_training
       title: Unconditional image generation
     - local: training/text2image
@@ -186,7 +195,8 @@
     - local: training/cogvideox
       title: CogVideoX
     title: Model recipes
-  - sections:
+  - isExpanded: false
+    sections:
     - local: training/text_inversion
       title: Textual Inversion
     - local: training/dreambooth
@@ -203,9 +213,10 @@
   - local: training/nemo_automodel
     title: NeMo Automodel
   title: Train and fine-tune
-- isExpanded: false
+- isExpanded: true
   sections:
-  - sections:
+  - isExpanded: false
+    sections:
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
@@ -221,14 +232,13 @@
     - local: using-diffusers/depth2img
       title: Depth-to-image
     title: Recipes
-  - sections:
+  - isExpanded: false
+    sections:
     - local: using-diffusers/write_own_pipeline
       title: Understanding pipelines, models and schedulers
     - local: using-diffusers/controlling_generation
       title: Controlled generation
     title: Concepts and background
-  - local: using-diffusers/cli
-    title: Command line interface
   - local: community_projects
     title: Projects built with Diffusers
   title: Resources
