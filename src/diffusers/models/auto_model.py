@@ -266,8 +266,7 @@ class AutoModel(ConfigMixin):
         ]
         hub_kwargs = {name: kwargs.pop(name, None) for name in hub_kwargs_names}
 
-        # Resolve the revision once, so that the config read below and the model loaded afterwards both come from the
-        # same commit.
+        # Resolve the revision only once
         revision = hub_kwargs["revision"]
         hub_kwargs["revision"] = _resolve_revision(
             pretrained_model_or_path,

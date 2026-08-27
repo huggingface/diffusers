@@ -1598,8 +1598,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if "dduf_file" in kwargs:
             raise ValueError(_DDUF_REMOVAL_MESSAGE)
 
-        # Resolve the revision once, so that the config file and the snapshot downloaded below are pinned to the
-        # same commit.
+        # Resolve the revision only once
         revision = _resolve_revision(
             pretrained_model_name,
             revision=revision,

@@ -439,8 +439,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
 
-        # Resolve the revision once, so that the config and the custom code module downloaded below both come from
-        # the same commit.
+        # Resolve the revision only once
         hub_kwargs["revision"] = _resolve_revision(
             pretrained_model_name_or_path,
             revision=hub_kwargs.get("revision"),
@@ -1882,8 +1881,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         """
         from ..pipelines.pipeline_loading_utils import _get_pipeline_class
 
-        # Resolve the revision once, so that the blocks and the pipeline config read below both come from the same
-        # commit.
+        # Resolve the revision only once
         kwargs["revision"] = _resolve_revision(
             pretrained_model_name_or_path,
             revision=kwargs.get("revision"),

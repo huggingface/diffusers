@@ -1128,8 +1128,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         }
         unused_kwargs = {}
 
-        # Resolve the revision once, so that the config, the weight index and every checkpoint shard downloaded below
-        # all come from the same commit.
+        # Resolve the revision only once
         revision = _resolve_revision(
             pretrained_model_name_or_path,
             revision=revision,

@@ -511,8 +511,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
 
-        # Resolve the revision once, so that the config read below and the pipeline loaded afterwards both come
-        # from the same commit.
+        # Resolve the revision only once
         revision = _resolve_revision(
             pretrained_model_or_path,
             revision=revision,
@@ -811,8 +810,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
 
-        # Resolve the revision once, so that the config read below and the pipeline loaded afterwards both come
-        # from the same commit.
+        # Resolve the revision only once
         revision = _resolve_revision(
             pretrained_model_or_path,
             revision=revision,
@@ -1125,8 +1123,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
 
-        # Resolve the revision once, so that the config read below and the pipeline loaded afterwards both come
-        # from the same commit.
+        # Resolve the revision only once
         revision = _resolve_revision(
             pretrained_model_or_path,
             revision=revision,
@@ -1436,8 +1433,7 @@ class AutoPipelineForText2Audio(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
 
-        # Resolve the revision once, so that the config read below and the pipeline loaded afterwards both come
-        # from the same commit.
+        # Resolve the revision only once
         revision = _resolve_revision(
             pretrained_model_or_path,
             revision=revision,
