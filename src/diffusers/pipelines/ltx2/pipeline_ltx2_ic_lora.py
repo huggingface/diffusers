@@ -96,7 +96,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import LTX2InContextPipeline
         >>> from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
-        >>> from diffusers.pipelines.ltx2.export_utils import encode_video
+        >>> from diffusers.utils import encode_video
         >>> from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
         >>> from diffusers.utils import load_video
 
