@@ -15,7 +15,6 @@
 
 
 import gc
-import unittest
 
 import numpy as np
 import pytest
@@ -46,6 +45,7 @@ from diffusers import (
 from diffusers.utils import is_transformers_version
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     is_torch_version,
@@ -53,28 +53,22 @@ from ...testing_utils import (
     torch_device,
 )
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class AudioLDM2PipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = AudioLDM2Pipeline
-    params = TEXT_TO_AUDIO_PARAMS
-    batch_params = TEXT_TO_AUDIO_BATCH_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "num_waveforms_per_prompt",
-            "generator",
-            "latents",
-            "output_type",
-            "return_dict",
-            "callback",
-            "callback_steps",
-        ]
+    required_input_params_in_call_signature = TEXT_TO_AUDIO_PARAMS
+    batch_input_params = TEXT_TO_AUDIO_BATCH_PARAMS
+    # AudioLDM2 generates audio, so it exposes `num_waveforms_per_prompt` instead of `num_images_per_prompt`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_waveforms_per_prompt", "generator", "latents", "output_type", "return_dict"]
     )
+    # Waveform length for the default `audio_length_in_s`, with the tiny vocoder configured below.
+    output_shape = (256,)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -187,7 +181,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         vocoder = SpeechT5HifiGan(vocoder_config)
 
-        components = {
+        return {
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
@@ -200,91 +194,66 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "projection_model": projection_model,
             "vocoder": vocoder,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A hammer hitting a wooden surface",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestAudioLDM2Pipeline(AudioLDM2PipelineTesterConfig, PipelineTesterMixin):
     @pytest.mark.xfail(
         condition=is_transformers_version(">=", "4.54.1"),
         reason="Test currently fails on Transformers version 4.54.1.",
         strict=False,
     )
     def test_audioldm2_ddim(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDM2Pipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        output = audioldm_pipe(**inputs)
-        audio = output.audios[0]
+        audio = self.run_pipe(pipe)[0]
 
         assert audio.ndim == 1
-        assert len(audio) == 256
+        assert audio.shape == self.output_shape
 
-        audio_slice = audio[:10]
-        expected_slice = np.array(
-            [
-                2.602e-03,
-                1.729e-03,
-                1.863e-03,
-                -2.219e-03,
-                -2.656e-03,
-                -2.017e-03,
-                -2.648e-03,
-                -2.115e-03,
-                -2.502e-03,
-                -2.081e-03,
-            ]
-        )
+        # fmt: off
+        expected_slice = torch.tensor([2.602e-03, 1.729e-03, 1.863e-03, -2.219e-03, -2.656e-03, -2.017e-03, -2.648e-03, -2.115e-03, -2.502e-03, -2.081e-03])
+        # fmt: on
 
-        assert np.abs(audio_slice - expected_slice).max() < 1e-4
+        assert_tensors_close(audio[:10], expected_slice, atol=1e-4)
 
     def test_audioldm2_prompt_embeds(self):
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDM2Pipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt"] = 3 * [inputs["prompt"]]
 
         # forward
-        output = audioldm_pipe(**inputs)
-        audio_1 = output.audios[0]
+        audio_1 = pipe(**inputs).audios[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         prompt = 3 * [inputs.pop("prompt")]
 
-        text_inputs = audioldm_pipe.tokenizer(
+        text_inputs = pipe.tokenizer(
             prompt,
             padding="max_length",
-            max_length=audioldm_pipe.tokenizer.model_max_length,
+            max_length=pipe.tokenizer.model_max_length,
             truncation=True,
             return_tensors="pt",
         )
         text_inputs = text_inputs["input_ids"].to(torch_device)
 
-        clap_prompt_embeds = audioldm_pipe.text_encoder.get_text_features(text_inputs)
+        clap_prompt_embeds = pipe.text_encoder.get_text_features(text_inputs)
         if hasattr(clap_prompt_embeds, "pooler_output"):
             clap_prompt_embeds = clap_prompt_embeds.pooler_output
         clap_prompt_embeds = clap_prompt_embeds[:, None, :]
 
-        text_inputs = audioldm_pipe.tokenizer_2(
+        text_inputs = pipe.tokenizer_2(
             prompt,
             padding="max_length",
             max_length=True,
@@ -293,59 +262,51 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         text_inputs = text_inputs["input_ids"].to(torch_device)
 
-        t5_prompt_embeds = audioldm_pipe.text_encoder_2(
-            text_inputs,
-        )
-        t5_prompt_embeds = t5_prompt_embeds[0]
+        t5_prompt_embeds = pipe.text_encoder_2(text_inputs)[0]
 
-        projection_embeds = audioldm_pipe.projection_model(clap_prompt_embeds, t5_prompt_embeds)[0]
-        generated_prompt_embeds = audioldm_pipe.generate_language_model(projection_embeds, max_new_tokens=8)
+        projection_embeds = pipe.projection_model(clap_prompt_embeds, t5_prompt_embeds)[0]
+        generated_prompt_embeds = pipe.generate_language_model(projection_embeds, max_new_tokens=8)
 
         inputs["prompt_embeds"] = t5_prompt_embeds
         inputs["generated_prompt_embeds"] = generated_prompt_embeds
 
         # forward
-        output = audioldm_pipe(**inputs)
-        audio_2 = output.audios[0]
+        audio_2 = pipe(**inputs).audios[0]
 
-        assert np.abs(audio_1 - audio_2).max() < 1e-2
+        assert_tensors_close(audio_1, audio_2, atol=1e-2, msg="Passing prompt embeds changed the output.")
 
     def test_audioldm2_negative_prompt_embeds(self):
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDM2Pipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         negative_prompt = 3 * ["this is a negative prompt"]
         inputs["negative_prompt"] = negative_prompt
         inputs["prompt"] = 3 * [inputs["prompt"]]
 
         # forward
-        output = audioldm_pipe(**inputs)
-        audio_1 = output.audios[0]
+        audio_1 = pipe(**inputs).audios[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         prompt = 3 * [inputs.pop("prompt")]
 
         embeds = []
         generated_embeds = []
         for p in [prompt, negative_prompt]:
-            text_inputs = audioldm_pipe.tokenizer(
+            text_inputs = pipe.tokenizer(
                 p,
                 padding="max_length",
-                max_length=audioldm_pipe.tokenizer.model_max_length,
+                max_length=pipe.tokenizer.model_max_length,
                 truncation=True,
                 return_tensors="pt",
             )
             text_inputs = text_inputs["input_ids"].to(torch_device)
 
-            clap_prompt_embeds = audioldm_pipe.text_encoder.get_text_features(text_inputs)
+            clap_prompt_embeds = pipe.text_encoder.get_text_features(text_inputs)
             if hasattr(clap_prompt_embeds, "pooler_output"):
                 clap_prompt_embeds = clap_prompt_embeds.pooler_output
             clap_prompt_embeds = clap_prompt_embeds[:, None, :]
 
-            text_inputs = audioldm_pipe.tokenizer_2(
+            text_inputs = pipe.tokenizer_2(
                 prompt,
                 padding="max_length",
                 max_length=True if len(embeds) == 0 else embeds[0].shape[1],
@@ -354,13 +315,10 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             )
             text_inputs = text_inputs["input_ids"].to(torch_device)
 
-            t5_prompt_embeds = audioldm_pipe.text_encoder_2(
-                text_inputs,
-            )
-            t5_prompt_embeds = t5_prompt_embeds[0]
+            t5_prompt_embeds = pipe.text_encoder_2(text_inputs)[0]
 
-            projection_embeds = audioldm_pipe.projection_model(clap_prompt_embeds, t5_prompt_embeds)[0]
-            generated_prompt_embeds = audioldm_pipe.generate_language_model(projection_embeds, max_new_tokens=8)
+            projection_embeds = pipe.projection_model(clap_prompt_embeds, t5_prompt_embeds)[0]
+            generated_prompt_embeds = pipe.generate_language_model(projection_embeds, max_new_tokens=8)
 
             embeds.append(t5_prompt_embeds)
             generated_embeds.append(generated_prompt_embeds)
@@ -369,10 +327,9 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["generated_prompt_embeds"], inputs["negative_generated_prompt_embeds"] = generated_embeds
 
         # forward
-        output = audioldm_pipe(**inputs)
-        audio_2 = output.audios[0]
+        audio_2 = pipe(**inputs).audios[0]
 
-        assert np.abs(audio_1 - audio_2).max() < 1e-2
+        assert_tensors_close(audio_1, audio_2, atol=1e-2, msg="Passing negative prompt embeds changed the output.")
 
     @pytest.mark.xfail(
         condition=is_transformers_version(">=", "4.54.1"),
@@ -380,136 +337,108 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         strict=False,
     )
     def test_audioldm2_negative_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        # Run on CPU: the expected slice below is CPU-specific.
         components = self.get_dummy_components()
         components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
-        audioldm_pipe = AudioLDM2Pipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline(**components)
 
-        inputs = self.get_dummy_inputs(device)
-        negative_prompt = "egg cracking"
-        output = audioldm_pipe(**inputs, negative_prompt=negative_prompt)
-        audio = output.audios[0]
+        audio = self.run_pipe(pipe, negative_prompt="egg cracking")[0]
 
         assert audio.ndim == 1
-        assert len(audio) == 256
+        assert audio.shape == self.output_shape
 
-        audio_slice = audio[:10]
-        expected_slice = np.array(
-            [0.0026, 0.0017, 0.0018, -0.0022, -0.0026, -0.002, -0.0026, -0.0021, -0.0025, -0.0021]
-        )
+        # fmt: off
+        expected_slice = torch.tensor([0.0026, 0.0017, 0.0018, -0.0022, -0.0026, -0.002, -0.0026, -0.0021, -0.0025, -0.0021])
+        # fmt: on
 
-        assert np.abs(audio_slice - expected_slice).max() < 1e-4
+        assert_tensors_close(audio[:10], expected_slice, atol=1e-4)
 
     def test_audioldm2_num_waveforms_per_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
-        audioldm_pipe = AudioLDM2Pipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline(**components)
 
         prompt = "A hammer hitting a wooden surface"
 
         # test num_waveforms_per_prompt=1 (default)
-        audios = audioldm_pipe(prompt, num_inference_steps=2).audios
-
-        assert audios.shape == (1, 256)
+        audios = pipe(prompt, num_inference_steps=2, output_type="pt").audios
+        assert audios.shape == (1, *self.output_shape)
 
         # test num_waveforms_per_prompt=1 (default) for batch of prompts
         batch_size = 2
-        audios = audioldm_pipe([prompt] * batch_size, num_inference_steps=2).audios
-
-        assert audios.shape == (batch_size, 256)
+        audios = pipe([prompt] * batch_size, num_inference_steps=2, output_type="pt").audios
+        assert audios.shape == (batch_size, *self.output_shape)
 
         # test num_waveforms_per_prompt for single prompt
         num_waveforms_per_prompt = 1
-        audios = audioldm_pipe(prompt, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt).audios
-
-        assert audios.shape == (num_waveforms_per_prompt, 256)
+        audios = pipe(
+            prompt, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt, output_type="pt"
+        ).audios
+        assert audios.shape == (num_waveforms_per_prompt, *self.output_shape)
 
         # test num_waveforms_per_prompt for batch of prompts
         batch_size = 2
-        audios = audioldm_pipe(
-            [prompt] * batch_size, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt
+        audios = pipe(
+            [prompt] * batch_size,
+            num_inference_steps=2,
+            num_waveforms_per_prompt=num_waveforms_per_prompt,
+            output_type="pt",
         ).audios
-
-        assert audios.shape == (batch_size * num_waveforms_per_prompt, 256)
+        assert audios.shape == (batch_size * num_waveforms_per_prompt, *self.output_shape)
 
     def test_audioldm2_audio_length_in_s(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDM2Pipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-        vocoder_sampling_rate = audioldm_pipe.vocoder.config.sampling_rate
+        pipe = self.get_pipeline().to(torch_device)
+        vocoder_sampling_rate = pipe.vocoder.config.sampling_rate
 
-        inputs = self.get_dummy_inputs(device)
-        output = audioldm_pipe(audio_length_in_s=0.016, **inputs)
-        audio = output.audios[0]
-
+        audio = self.run_pipe(pipe, audio_length_in_s=0.016)[0]
         assert audio.ndim == 1
         assert len(audio) / vocoder_sampling_rate == 0.016
 
-        output = audioldm_pipe(audio_length_in_s=0.032, **inputs)
-        audio = output.audios[0]
-
+        audio = self.run_pipe(pipe, audio_length_in_s=0.032)[0]
         assert audio.ndim == 1
         assert len(audio) / vocoder_sampling_rate == 0.032
 
     def test_audioldm2_vocoder_model_in_dim(self):
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDM2Pipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         prompt = ["hey"]
 
-        output = audioldm_pipe(prompt, num_inference_steps=1)
-        audio_shape = output.audios.shape
-        assert audio_shape == (1, 256)
+        audios = pipe(prompt, num_inference_steps=1, output_type="pt").audios
+        assert audios.shape == (1, *self.output_shape)
 
-        config = audioldm_pipe.vocoder.config
+        config = pipe.vocoder.config
         config.model_in_dim *= 2
-        audioldm_pipe.vocoder = SpeechT5HifiGan(config).to(torch_device)
-        output = audioldm_pipe(prompt, num_inference_steps=1)
-        audio_shape = output.audios.shape
+        pipe.vocoder = SpeechT5HifiGan(config).to(torch_device)
+        audios = pipe(prompt, num_inference_steps=1, output_type="pt").audios
         # waveform shape is unchanged, we just have 2x the number of mel channels in the spectrogram
-        assert audio_shape == (1, 256)
+        assert audios.shape == (1, *self.output_shape)
 
-    def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
-
-    @unittest.skip("Raises a not implemented error in AudioLDM2")
-    def test_xformers_attention_forwardGenerator_pass(self):
-        pass
-
-    def test_dict_tuple_outputs_equivalent(self):
+    def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=3e-4):
         # increase tolerance from 1e-4 -> 3e-4 to account for large composite model
-        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-4)
+        super().test_dict_tuple_outputs_equivalent(
+            expected_slice=expected_slice, expected_max_difference=expected_max_difference
+        )
 
     @pytest.mark.xfail(
         condition=is_torch_version(">=", "2.7"),
         reason="Test currently fails on PyTorch 2.7.",
         strict=False,
     )
-    def test_inference_batch_single_identical(self):
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=2e-4):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        self._test_inference_batch_single_identical(expected_max_diff=2e-4)
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    def test_save_load_local(self):
+    def test_save_load_local(self, tmp_path, base_pipe_output, expected_max_difference=2e-4):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        super().test_save_load_local(expected_max_difference=2e-4)
+        super().test_save_load_local(tmp_path, base_pipe_output, expected_max_difference=expected_max_difference)
 
-    def test_save_load_optional_components(self):
+    def test_save_load_optional_components(self, tmp_path, expected_max_difference=2e-4):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        super().test_save_load_optional_components(expected_max_difference=2e-4)
+        super().test_save_load_optional_components(tmp_path, expected_max_difference=expected_max_difference)
 
     def test_to_dtype(self):
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline(**components)
 
         # The method component.dtype returns the dtype of the first parameter registered in the model, not the
         # dtype of the entire model. In the case of CLAP, the first parameter is a float64 constant (logit scale)
@@ -517,47 +446,56 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # Without the logit scale parameters, everything is float32
         model_dtypes.pop("text_encoder")
-        self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes.values()))
+        assert all(dtype == torch.float32 for dtype in model_dtypes.values())
 
         # the CLAP sub-models are float32
         model_dtypes["clap_text_branch"] = components["text_encoder"].text_model.dtype
-        self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes.values()))
+        assert all(dtype == torch.float32 for dtype in model_dtypes.values())
 
         # Once we send to fp16, all params are in half-precision, including the logit scale
         pipe.to(dtype=torch.float16)
         model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
-        self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
+        assert all(dtype == torch.float16 for dtype in model_dtypes.values())
 
-    @unittest.skip("Test not supported.")
-    def test_sequential_cpu_offload_forward_pass(self):
-        pass
-
-    @unittest.skip("Test not supported for now because of the use of `projection_model` in `encode_prompt()`.")
+    @pytest.mark.skip("Test not supported for now because of the use of `projection_model` in `encode_prompt()`.")
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    @unittest.skip("Not supported yet due to CLAPModel.")
+
+class TestAudioLDM2PipelineMemory(AudioLDM2PipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the AudioLDM2 pipeline."""
+
+    @pytest.mark.skip("Test not supported.")
+    def test_sequential_cpu_offload_forward_pass(self):
+        pass
+
+    @pytest.mark.skip(
+        "The pipeline encodes prompts through `text_encoder.get_text_features()` rather than the CLAP model's "
+        "`forward()`, so the top-level group-offloading hook never fires and the embedding weights stay offloaded."
+    )
+    def test_group_offloading_inference(self):
+        pass
+
+    @pytest.mark.skip("Not supported yet due to CLAPModel.")
     def test_sequential_offload_forward_pass_twice(self):
         pass
 
-    @unittest.skip("Not supported yet, the second forward has mixed devices and `vocoder` is not offloaded.")
+    @pytest.mark.skip("Not supported yet, the second forward has mixed devices and `vocoder` is not offloaded.")
     def test_cpu_offload_forward_pass_twice(self):
         pass
 
-    @unittest.skip("Not supported yet. `vocoder` is not offloaded.")
+    @pytest.mark.skip("Not supported yet. `vocoder` is not offloaded.")
     def test_model_cpu_offload_forward_pass(self):
         pass
 
 
 @nightly
-class AudioLDM2PipelineSlowTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestAudioLDM2PipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -575,17 +513,9 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         return inputs
 
     def get_inputs_tts(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
-        latents = np.random.RandomState(seed).standard_normal((1, 8, 128, 16))
-        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
-        inputs = {
-            "prompt": "A men saying",
-            "transcription": "hello my name is John",
-            "latents": latents,
-            "generator": generator,
-            "num_inference_steps": 3,
-            "guidance_scale": 2.5,
-        }
+        inputs = self.get_inputs(device, generator_device=generator_device, dtype=dtype, seed=seed)
+        inputs["prompt"] = "A men saying"
+        inputs["transcription"] = "hello my name is John"
         return inputs
 
     def test_audioldm2(self):

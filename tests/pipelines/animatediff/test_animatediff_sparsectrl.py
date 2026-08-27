@@ -1,59 +1,42 @@
-import unittest
-
-import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-import diffusers
 from diffusers import (
     AnimateDiffSparseControlNetPipeline,
     AutoencoderKL,
     DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    LCMScheduler,
     MotionAdapter,
     SparseControlNetModel,
     StableDiffusionPipeline,
     UNet2DConditionModel,
-    UNetMotionModel,
 )
-from diffusers.utils import logging
-from diffusers.utils.import_utils import is_xformers_available
 
-from ...testing_utils import require_accelerator, torch_device
+from ...testing_utils import assert_tensors_close, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import (
+from ..test_pipelines_common import PipelineFromPipeTesterMixin
+from ..testing_utils import (
     IPAdapterTesterMixin,
-    PipelineFromPipeTesterMixin,
-    PipelineTesterMixin,
-    SDFunctionTesterMixin,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    UNetLoraTesterMixin,
+)
+from .testing_utils import (
+    FROM_PIPE_SKIP_REASON,
+    FreeInitTesterMixin,
+    MotionPipelineTesterConfig,
+    MotionPipelineTesterMixin,
 )
 
 
-def to_np(tensor):
-    if isinstance(tensor, torch.Tensor):
-        tensor = tensor.detach().cpu().numpy()
-
-    return tensor
-
-
-class AnimateDiffSparseControlNetPipelineFastTests(
-    IPAdapterTesterMixin, SDFunctionTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase
-):
+class AnimateDiffSparseControlNetPipelineTesterConfig(MotionPipelineTesterConfig):
     pipeline_class = AnimateDiffSparseControlNetPipeline
-    params = TEXT_TO_IMAGE_PARAMS
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
-    )
+    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS
+    batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    # `get_dummy_inputs` asks for 2 frames; height/width default to `unet.sample_size * vae_scale_factor` (8 * 2).
+    output_shape = (2, 3, 16, 16)
 
     def get_dummy_components(self):
         cross_attention_dim = 8
@@ -120,7 +103,7 @@ class AnimateDiffSparseControlNetPipelineFastTests(
             motion_num_attention_heads=4,
         )
 
-        components = {
+        return {
             "unet": unet,
             "controlnet": controlnet,
             "scheduler": scheduler,
@@ -131,163 +114,67 @@ class AnimateDiffSparseControlNetPipelineFastTests(
             "feature_extractor": None,
             "image_encoder": None,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed: int = 0, num_frames: int = 2):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
+    def get_dummy_inputs(self, num_frames: int = 2):
         video_height = 32
         video_width = 32
         conditioning_frames = [Image.new("RGB", (video_width, video_height))] * num_frames
 
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "conditioning_frames": conditioning_frames,
             "controlnet_frame_indices": list(range(num_frames)),
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "num_frames": num_frames,
             "guidance_scale": 7.5,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
-        return inputs
 
+
+class TestAnimateDiffSparseControlNetPipeline(
+    AnimateDiffSparseControlNetPipelineTesterConfig,
+    MotionPipelineTesterMixin,
+    FreeInitTesterMixin,
+):
     def test_from_pipe_consistent_config(self):
-        assert self.original_pipeline_class == StableDiffusionPipeline
         original_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"
-        original_kwargs = {"requires_safety_checker": False}
 
-        # create original_pipeline_class(sd)
-        pipe_original = self.original_pipeline_class.from_pretrained(original_repo, **original_kwargs)
+        # create StableDiffusionPipeline
+        pipe_original = StableDiffusionPipeline.from_pretrained(original_repo, requires_safety_checker=False)
 
-        # original_pipeline_class(sd) -> pipeline_class
+        # StableDiffusionPipeline -> AnimateDiffSparseControlNetPipeline
         pipe_components = self.get_dummy_components()
-        pipe_additional_components = {}
-        for name, component in pipe_components.items():
-            if name not in pipe_original.components:
-                pipe_additional_components[name] = component
-
+        pipe_additional_components = {
+            name: component for name, component in pipe_components.items() if name not in pipe_original.components
+        }
         pipe = self.pipeline_class.from_pipe(pipe_original, **pipe_additional_components)
 
-        # pipeline_class -> original_pipeline_class(sd)
+        # AnimateDiffSparseControlNetPipeline -> StableDiffusionPipeline
         original_pipe_additional_components = {}
         for name, component in pipe_original.components.items():
             if name not in pipe.components or not isinstance(component, pipe.components[name].__class__):
                 original_pipe_additional_components[name] = component
 
-        pipe_original_2 = self.original_pipeline_class.from_pipe(pipe, **original_pipe_additional_components)
+        pipe_original_2 = StableDiffusionPipeline.from_pipe(pipe, **original_pipe_additional_components)
 
         # compare the config
         original_config = {k: v for k, v in pipe_original.config.items() if not k.startswith("_")}
         original_config_2 = {k: v for k, v in pipe_original_2.config.items() if not k.startswith("_")}
         assert original_config_2 == original_config
 
-    def test_motion_unet_loading(self):
-        components = self.get_dummy_components()
-        pipe = AnimateDiffSparseControlNetPipeline(**components)
-
-        assert isinstance(pipe.unet, UNetMotionModel)
-
-    @unittest.skip("Attention slicing is not enabled in this pipeline")
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    def test_ip_adapter(self):
-        expected_pipe_slice = None
-        if torch_device == "cpu":
-            expected_pipe_slice = np.array(
-                [
-                    0.6680,
-                    0.5061,
-                    0.5069,
-                    0.5930,
-                    0.5747,
-                    0.4737,
-                    0.5885,
-                    0.5630,
-                    0.5083,
-                    0.4910,
-                    0.4132,
-                    0.5721,
-                    0.5793,
-                    0.4540,
-                    0.5094,
-                    0.5943,
-                    0.4598,
-                    0.5104,
-                ]
-            )
-        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
-
-    def test_dict_tuple_outputs_equivalent(self):
-        expected_slice = None
-        if torch_device == "cpu":
-            expected_slice = np.array([0.5885, 0.5630, 0.5083, 0.5943, 0.4598, 0.5104])
-        return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
-
-    def test_inference_batch_single_identical(
-        self,
-        batch_size=2,
-        expected_max_diff=1e-4,
-        additional_params_copy_to_batched_inputs=["num_inference_steps"],
-    ):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for components in pipe.components.values():
-            if hasattr(components, "set_default_attn_processor"):
-                components.set_default_attn_processor()
-
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        inputs = self.get_dummy_inputs(torch_device)
-        # Reset generator in case it is has been used in self.get_dummy_inputs
-        inputs["generator"] = self.get_generator(0)
-
-        logger = logging.get_logger(pipe.__module__)
-        logger.setLevel(level=diffusers.logging.FATAL)
-
-        # batchify inputs
-        batched_inputs = {}
-        batched_inputs.update(inputs)
-
-        for name in self.batch_params:
-            if name not in inputs:
-                continue
-
-            value = inputs[name]
-            if name == "prompt":
-                len_prompt = len(value)
-                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
-                batched_inputs[name][-1] = 100 * "very long"
-
-            else:
-                batched_inputs[name] = batch_size * [value]
-
-        if "generator" in inputs:
-            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
-
-        if "batch_size" in inputs:
-            batched_inputs["batch_size"] = batch_size
-
-        for arg in additional_params_copy_to_batched_inputs:
-            batched_inputs[arg] = inputs[arg]
-
-        output = pipe(**inputs)
-        output_batch = pipe(**batched_inputs)
-
-        assert output_batch[0].shape[0] == batch_size
-
-        max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
-        assert max_diff < expected_max_diff
+    def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=1e-4):
+        if torch_device == "cpu" and expected_slice is None:
+            # fmt: off
+            expected_slice = torch.tensor([0.6604, 0.4099, 0.4928, 0.5706, 0.5096, 0.5012, 0.6051, 0.5169, 0.5021])
+            # fmt: on
+        super().test_dict_tuple_outputs_equivalent(
+            expected_slice=expected_slice, expected_max_difference=expected_max_difference
+        )
 
     def test_inference_batch_single_identical_use_simplified_condition_embedding_true(
-        self,
-        batch_size=2,
-        expected_max_diff=1e-4,
-        additional_params_copy_to_batched_inputs=["num_inference_steps"],
+        self, batch_size=2, expected_max_diff=1e-4
     ):
         components = self.get_dummy_components()
 
@@ -296,199 +183,58 @@ class AnimateDiffSparseControlNetPipelineFastTests(
         components["controlnet"] = SparseControlNetModel.from_config(
             old_controlnet.config, conditioning_channels=4, use_simplified_condition_embedding=True
         )
+        pipe = self.get_pipeline(**components).to(torch_device)
 
-        pipe = self.pipeline_class(**components)
-        for components in pipe.components.values():
-            if hasattr(components, "set_default_attn_processor"):
-                components.set_default_attn_processor()
+        inputs = self.get_dummy_inputs()
+        batched_inputs = {**inputs, "prompt": batch_size * [inputs["prompt"]]}
+        batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
 
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        inputs = self.get_dummy_inputs(torch_device)
-        # Reset generator in case it is has been used in self.get_dummy_inputs
-        inputs["generator"] = self.get_generator(0)
+        output = pipe(**inputs)[0]
+        output_batch = pipe(**batched_inputs)[0]
 
-        logger = logging.get_logger(pipe.__module__)
-        logger.setLevel(level=diffusers.logging.FATAL)
-
-        # batchify inputs
-        batched_inputs = {}
-        batched_inputs.update(inputs)
-
-        for name in self.batch_params:
-            if name not in inputs:
-                continue
-
-            value = inputs[name]
-            if name == "prompt":
-                len_prompt = len(value)
-                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
-                batched_inputs[name][-1] = 100 * "very long"
-
-            else:
-                batched_inputs[name] = batch_size * [value]
-
-        if "generator" in inputs:
-            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
-
-        if "batch_size" in inputs:
-            batched_inputs["batch_size"] = batch_size
-
-        for arg in additional_params_copy_to_batched_inputs:
-            batched_inputs[arg] = inputs[arg]
-
-        output = pipe(**inputs)
-        output_batch = pipe(**batched_inputs)
-
-        assert output_batch[0].shape[0] == batch_size
-
-        max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
-        assert max_diff < expected_max_diff
-
-    @require_accelerator
-    def test_to_device(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
-
-        pipe.to("cpu")
-        # pipeline creates a new motion UNet under the hood. So we need to check the device from pipe.components
-        model_devices = [
-            component.device.type for component in pipe.components.values() if hasattr(component, "device")
-        ]
-        self.assertTrue(all(device == "cpu" for device in model_devices))
-
-        output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
-        self.assertTrue(np.isnan(output_cpu).sum() == 0)
-
-        pipe.to(torch_device)
-        model_devices = [
-            component.device.type for component in pipe.components.values() if hasattr(component, "device")
-        ]
-        self.assertTrue(all(device == torch_device for device in model_devices))
-
-        output_cuda = pipe(**self.get_dummy_inputs(torch_device))[0]
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
-
-    def test_to_dtype(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
-
-        # pipeline creates a new motion UNet under the hood. So we need to check the dtype from pipe.components
-        model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
-        self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
-
-        pipe.to(dtype=torch.float16)
-        model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
-        self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
-
-    def test_prompt_embeds(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.to(torch_device)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs.pop("prompt")
-        inputs["prompt_embeds"] = torch.randn((1, 4, pipe.text_encoder.config.hidden_size), device=torch_device)
-        pipe(**inputs)
-
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        super()._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
-
-    def test_free_init(self):
-        components = self.get_dummy_components()
-        pipe: AnimateDiffSparseControlNetPipeline = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.to(torch_device)
-
-        inputs_normal = self.get_dummy_inputs(torch_device)
-        frames_normal = pipe(**inputs_normal).frames[0]
-
-        pipe.enable_free_init(
-            num_iters=2,
-            use_fast_sampling=True,
-            method="butterworth",
-            order=4,
-            spatial_stop_frequency=0.25,
-            temporal_stop_frequency=0.25,
-        )
-        inputs_enable_free_init = self.get_dummy_inputs(torch_device)
-        frames_enable_free_init = pipe(**inputs_enable_free_init).frames[0]
-
-        pipe.disable_free_init()
-        inputs_disable_free_init = self.get_dummy_inputs(torch_device)
-        frames_disable_free_init = pipe(**inputs_disable_free_init).frames[0]
-
-        sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_init)).sum()
-        max_diff_disabled = np.abs(to_np(frames_normal) - to_np(frames_disable_free_init)).max()
-        self.assertGreater(
-            sum_enabled, 1e1, "Enabling of FreeInit should lead to results different from the default pipeline results"
-        )
-        self.assertLess(
-            max_diff_disabled,
-            1e-4,
-            "Disabling of FreeInit should lead to results similar to the default pipeline results",
+        assert output_batch.shape[0] == batch_size
+        assert_tensors_close(
+            output_batch[0],
+            output[0],
+            atol=expected_max_diff,
+            msg="Batched output differs from single with the simplified condition embedding.",
         )
 
-    def test_free_init_with_schedulers(self):
-        components = self.get_dummy_components()
-        pipe: AnimateDiffSparseControlNetPipeline = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.to(torch_device)
 
-        inputs_normal = self.get_dummy_inputs(torch_device)
-        frames_normal = pipe(**inputs_normal).frames[0]
+class TestAnimateDiffSparseControlNetPipelineMemory(
+    AnimateDiffSparseControlNetPipelineTesterConfig, MemoryTesterMixin
+):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the pipeline."""
 
-        schedulers_to_test = [
-            DPMSolverMultistepScheduler.from_config(
-                components["scheduler"].config,
-                timestep_spacing="linspace",
-                beta_schedule="linear",
-                algorithm_type="dpmsolver++",
-                steps_offset=1,
-                clip_sample=False,
-            ),
-            LCMScheduler.from_config(
-                components["scheduler"].config,
-                timestep_spacing="linspace",
-                beta_schedule="linear",
-                steps_offset=1,
-                clip_sample=False,
-            ),
-        ]
-        components.pop("scheduler")
 
-        for scheduler in schedulers_to_test:
-            components["scheduler"] = scheduler
-            pipe: AnimateDiffSparseControlNetPipeline = self.pipeline_class(**components)
-            pipe.set_progress_bar_config(disable=None)
-            pipe.to(torch_device)
+class TestAnimateDiffSparseControlNetPipelineIPAdapter(
+    AnimateDiffSparseControlNetPipelineTesterConfig, IPAdapterTesterMixin
+):
+    """IP-Adapter tests for the AnimateDiff SparseControlNet pipeline."""
 
-            pipe.enable_free_init(num_iters=2, use_fast_sampling=False)
 
-            inputs = self.get_dummy_inputs(torch_device)
-            frames_enable_free_init = pipe(**inputs).frames[0]
-            sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_init)).sum()
+class TestAnimateDiffSparseControlNetPipelineLoRA(AnimateDiffSparseControlNetPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the AnimateDiff SparseControlNet pipeline."""
 
-            self.assertGreater(
-                sum_enabled,
-                1e1,
-                "Enabling of FreeInit should lead to results different from the default pipeline results",
-            )
 
-    def test_vae_slicing(self):
-        return super().test_vae_slicing(image_count=2)
+class TestAnimateDiffSparseControlNetPipelineUNetLoRA(
+    AnimateDiffSparseControlNetPipelineTesterConfig, UNetLoraTesterMixin
+):
+    """Per-UNet-block LoRA scale tests for the AnimateDiff SparseControlNet pipeline."""
 
-    def test_encode_prompt_works_in_isolation(self):
-        extra_required_param_value_dict = {
-            "device": torch.device(torch_device).type,
-            "num_images_per_prompt": 1,
-            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
-        }
-        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+
+class TestAnimateDiffSparseControlNetPipelineLoRAMemory(
+    AnimateDiffSparseControlNetPipelineTesterConfig, LoraMemoryTesterMixin
+):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the pipeline."""
+
+
+@pytest.mark.skip(FROM_PIPE_SKIP_REASON)
+class TestAnimateDiffSparseControlNetPipelineFromPipe(
+    AnimateDiffSparseControlNetPipelineTesterConfig, PipelineFromPipeTesterMixin
+):
+    """`from_pipe` forward-pass parity and offload round trip for the AnimateDiff SparseControlNet pipeline.
+
+    Parked, not deleted: `test_from_pipe_consistent_config` runs for real as a method on the main test class above,
+    but the forward-pass checks in `PipelineFromPipeTesterMixin` have no pytest-style equivalent yet.
+    """
