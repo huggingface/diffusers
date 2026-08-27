@@ -40,7 +40,7 @@ class Krea2PipelineTesterConfig(BasePipelineTesterConfig):
     required_input_params_in_call_signature = frozenset(
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
-    batch_input_params = frozenset(["prompt"])
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
     output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
