@@ -26,7 +26,7 @@ from ..testing_utils.common import BasePipelineOutputMixin
 
 @is_ip_adapter
 class IPAdapterTesterMixin(BasePipelineOutputMixin):
-    """IP-Adapter tests shared by the Stable Diffusion pipelines in this directory.
+    """IP-Adapter tests shared by the Stable Diffusion and Stable Diffusion XL pipelines.
 
     Compose it with a `BasePipelineTesterConfig` subclass in its own test class, separate from the
     `PipelineTesterMixin` one. Pipelines whose IP-Adapter API differs (Flux, for example) keep their tests in
