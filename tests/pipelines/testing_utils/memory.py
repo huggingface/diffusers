@@ -291,6 +291,7 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
                 "transformer_2",
                 "unet",
                 "controlnet",
+                "adapter",
             ]:
                 if not hasattr(pipe, component_name):
                     continue
