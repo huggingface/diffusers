@@ -483,7 +483,7 @@ torchrun --nproc-per-node 4 tensor_parallel_flux.py
 
 `tp_degree` is taken from `world_size` above, so `--nproc-per-node 4` shards the transformer across 4 devices.
 
-A tensor-parallel `parallel_config` cannot be combined with `device_map`, `quantization_config`, `low_cpu_mem_usage=False`, `use_flashpack=True`, DDUF checkpoints, or non-safetensors weights; each raises rather than quietly falling back to loading the full checkpoint. Tensor parallelism also cannot be combined with quantization, offloading, or LoRA adapters at all — the parameters it shards have to be plain parameters owned by the model — so those raise however the model is sharded. To shard a model that is already in memory, call [`~ModelMixin.enable_parallelism`] with the same config instead — that loads everything first and reshards it, so it costs full checkpoint memory on every rank.
+A tensor-parallel `parallel_config` cannot be combined with `device_map`, `quantization_config`, `low_cpu_mem_usage=False`, `use_flashpack=True`, or non-safetensors weights; each raises rather than quietly falling back to loading the full checkpoint. Tensor parallelism also cannot be combined with quantization, offloading, or LoRA adapters at all — the parameters it shards have to be plain parameters owned by the model — so those raise however the model is sharded. To shard a model that is already in memory, call [`~ModelMixin.enable_parallelism`] with the same config instead — that loads everything first and reshards it, so it costs full checkpoint memory on every rank.
 
 ### Saving a tensor-parallel model
 

@@ -32,7 +32,7 @@ from typing import Any, Callable, ContextManager, Type
 import safetensors
 import torch
 import torch.utils.checkpoint
-from huggingface_hub import DDUFEntry, create_repo, split_torch_state_dict_into_shards
+from huggingface_hub import create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 from typing_extensions import Self
@@ -1137,7 +1137,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
-        dduf_entries: dict[str, DDUFEntry] | None = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
         parallel_config: ParallelConfig | ContextParallelConfig | TensorParallelConfig | None = kwargs.pop(
             "parallel_config", None
@@ -1248,7 +1247,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             revision=revision,
             subfolder=subfolder,
             user_agent=user_agent,
-            dduf_entries=dduf_entries,
             **kwargs,
         )
         # no in-place modification of the original config.
@@ -1272,7 +1270,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         ("a quantized checkpoint", config.get("quantization_config") is not None),
                         ("use_flashpack", use_flashpack),
                         ("variant", variant),
-                        ("dduf_entries", dduf_entries),
                         ("low_cpu_mem_usage=False", not low_cpu_mem_usage),
                     )
                     if value
@@ -1364,7 +1361,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 use_flashpack=use_flashpack,
                 hf_quantizer=hf_quantizer,
-                dduf_entries=dduf_entries,
             )
 
         is_sharded = False
@@ -1388,14 +1384,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "revision": revision,
             "user_agent": user_agent,
             "commit_hash": commit_hash,
-            "dduf_entries": dduf_entries,
         }
         index_file = _fetch_index_file(**index_file_kwargs)
         # In case the index file was not found we still have to consider the legacy format.
         # this becomes applicable when the variant is not None.
         if variant is not None and (index_file is None or not os.path.exists(index_file)):
             index_file = _fetch_index_file_legacy(**index_file_kwargs)
-        if index_file is not None and (dduf_entries or index_file.is_file()):
+        if index_file is not None and index_file.is_file():
             is_sharded = True
 
         # load model
@@ -1411,7 +1406,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 user_agent=user_agent,
                 revision=revision,
                 subfolder=subfolder or "",
-                dduf_entries=dduf_entries,
             )
         else:
             if use_flashpack:
@@ -1434,7 +1428,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         subfolder=subfolder,
                         user_agent=user_agent,
                         commit_hash=commit_hash,
-                        dduf_entries=dduf_entries,
                     )
 
                 except IOError as e:
@@ -1458,7 +1451,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 subfolder=subfolder,
                 user_agent=user_agent,
                 commit_hash=commit_hash,
-                dduf_entries=dduf_entries,
             )
 
         if not isinstance(resolved_model_file, list):
@@ -1548,7 +1540,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         state_dict = None
         if not is_sharded and tp_shard_specs is None:
             # Time to load the checkpoint
-            state_dict = load_state_dict(resolved_model_file[0], disable_mmap=disable_mmap, dduf_entries=dduf_entries)
+            state_dict = load_state_dict(resolved_model_file[0], disable_mmap=disable_mmap)
             # We only fix it for non sharded checkpoints as we don't need it yet for sharded one.
             model._fix_state_dict_keys_on_load(state_dict)
 
@@ -1606,7 +1598,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             dtype=torch_dtype,
             hf_quantizer=hf_quantizer,
             keep_in_fp32_modules=keep_in_fp32_modules,
-            dduf_entries=dduf_entries,
             is_parallel_loading_enabled=is_parallel_loading_enabled,
             disable_mmap=disable_mmap,
             tp_shard_specs=tp_shard_specs,
@@ -1922,7 +1913,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         low_cpu_mem_usage: bool,
         use_flashpack: bool,
         hf_quantizer,
-        dduf_entries,
     ) -> None:
         """Reject the `from_pretrained` options that cannot be combined with a tensor-parallel load.
 
@@ -1959,11 +1949,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             raise ValueError(
                 "`use_flashpack=True` cannot be combined with a tensor-parallel `parallel_config`; FlashPack "
                 "checkpoints cannot be sliced per rank."
-            )
-        if dduf_entries:
-            raise ValueError(
-                "DDUF checkpoints cannot be combined with a tensor-parallel `parallel_config`; their tensors "
-                "cannot be sliced per rank."
             )
 
     def _resolve_parallel_config(
@@ -2107,7 +2092,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         device_map: str | int | torch.device | dict[str, str | int | torch.device] = None,
         offload_state_dict: bool | None = None,
         offload_folder: str | os.PathLike | None = None,
-        dduf_entries: dict[str, DDUFEntry] | None = None,
         is_parallel_loading_enabled: bool | None = False,
         disable_mmap: bool = False,
         tp_shard_specs: dict | None = None,
@@ -2195,7 +2179,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 dtype=dtype,
                 hf_quantizer=hf_quantizer,
                 keep_in_fp32_modules=keep_in_fp32_modules,
-                dduf_entries=dduf_entries,
                 loaded_keys=loaded_keys,
                 unexpected_keys=unexpected_keys,
                 offload_index=offload_index,
