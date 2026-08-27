@@ -48,7 +48,6 @@ class Ideogram4PipelineTesterConfig(BasePipelineTesterConfig):
     required_input_params_in_call_signature = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_input_params = frozenset(["prompt"])
     output_shape = (3, 16, 16)
-
     group_offloading_leaf_level_exclude_modules = ["text_encoder"]
 
     def get_dummy_components(self, num_layers: int = 1):
