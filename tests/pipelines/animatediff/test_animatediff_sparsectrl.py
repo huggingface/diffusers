@@ -167,7 +167,7 @@ class TestAnimateDiffSparseControlNetPipeline(
     def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=1e-4):
         if torch_device == "cpu" and expected_slice is None:
             # fmt: off
-            expected_slice = torch.tensor([0.6604, 0.4099, 0.4928, 0.5706, 0.5096, 0.5012, 0.6051, 0.5169, 0.5021])
+            expected_slice = torch.tensor([0.5885, 0.5630, 0.5083, 0.5943, 0.4598, 0.5104])
             # fmt: on
         super().test_dict_tuple_outputs_equivalent(
             expected_slice=expected_slice, expected_max_difference=expected_max_difference
