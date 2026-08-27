@@ -28,7 +28,6 @@ jobs:
         shell: bash
     outputs:
       matrix: ${{ steps.set_matrix.outputs.matrix }}
-      test_map: ${{ steps.set_matrix.outputs.test_map }}
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v6
@@ -51,31 +50,26 @@ jobs:
         path: test_preparation.txt
     - id: set_matrix
       name: Create Test Matrix
-      # The `keys` is used as GitHub actions matrix for jobs, i.e. `models`, `pipelines`, etc.
-      # The `test_map` is used to get the actual identified test files under each key.
-      # If no test to run (so no `test_map.json` file), create a dummy map (empty matrix will fail)
+      # `test_map.json` is a list of matrix entries `{"name", "paths", "markers"}`, one job each.
+      # If no test to run (so no `test_map.json` file), emit an empty list and skip the test job.
       run: |
         if [ -f test_map.json ]; then
-            keys=$(python3 -c 'import json; fp = open("test_map.json"); test_map = json.load(fp); fp.close(); d = list(test_map.keys()); print(json.dumps(d))')
-            test_map=$(python3 -c 'import json; fp = open("test_map.json"); test_map = json.load(fp); fp.close(); print(json.dumps(test_map))')
+            matrix=$(python3 -c 'import json; print(json.dumps(json.load(open("test_map.json"))))')
         else
-            keys=$(python3 -c 'keys = ["dummy"]; print(keys)')
-            test_map=$(python3 -c 'test_map = {"dummy": []}; print(test_map)')
+            matrix='[]'
         fi
-        echo $keys
-        echo $test_map
-        echo "matrix=$keys" >> $GITHUB_OUTPUT
-        echo "test_map=$test_map" >> $GITHUB_OUTPUT
+        echo "matrix=$matrix" >> $GITHUB_OUTPUT
+        echo "Matrix: $matrix"
 
   run_pr_tests:
-    name: Run PR Tests
+    name: ${{ matrix.name }}
     needs: setup_pr_tests
-    if: contains(fromJson(needs.setup_pr_tests.outputs.matrix), 'dummy') != true
+    if: needs.setup_pr_tests.outputs.matrix != '[]'
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        modules: ${{ fromJson(needs.setup_pr_tests.outputs.matrix) }}
+        include: ${{ fromJson(needs.setup_pr_tests.outputs.matrix) }}
     runs-on:
       group: aws-general-8-plus
     container:
@@ -101,20 +95,20 @@ jobs:
 
     - name: Run all selected tests on CPU
       run: |
-        pytest -n 2 --dist=loadfile -v --make-reports=${{ matrix.modules }}_tests_cpu ${{ fromJson(needs.setup_pr_tests.outputs.test_map)[matrix.modules] }}
+        pytest -n 2 --dist=loadfile -v -m "${{ matrix.markers }}" --make-reports=${{ matrix.name }}_tests_cpu ${{ matrix.paths }}
 
     - name: Failure short reports
       if: ${{ failure() }}
       continue-on-error: true
       run: |
-        cat reports/${{ matrix.modules }}_tests_cpu_stats.txt
-        cat reports/${{ matrix.modules }}_tests_cpu_failures_short.txt
+        cat reports/${{ matrix.name }}_tests_cpu_stats.txt
+        cat reports/${{ matrix.name }}_tests_cpu_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v6
       with:
-          name: ${{ matrix.modules }}_test_reports
+          name: ${{ matrix.name }}_test_reports
           path: reports
 
   run_staging_tests:
