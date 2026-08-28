@@ -165,7 +165,7 @@ ModularPipeline {
 }
 ```
 
-If you pass a repository to [`~ModularPipelineBlocks.init_pipeline`], it overrides the loading path by matching your block's components against the pipeline config in that repository (`model_index.json` or `modular_model_index.json`).
+If you pass a repository to [`~ModularPipelineBlocks.init_pipeline`], it overrides the loading path by matching your block's components against the pipeline config in that repository (`model_index.json` or `modular_model_index.json`). If that path is a local directory, components whose spec subfolder exists on disk are loaded from that directory even when `modular_model_index.json` still names a Hub id. Components missing from the directory keep the Hub id, so pointer repositories and pruned snapshots can still fetch remotely.
 
 In the example below, the `pretrained_model_name_or_path` will be updated to `"stabilityai/stable-diffusion-xl-base-1.0"`.
 

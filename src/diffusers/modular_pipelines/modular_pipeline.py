@@ -1702,6 +1702,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
               config values, which will be saved as `modular_model_index.json` during `save_pretrained`
             - The pipeline's config dict is also used to store the pipeline blocks's class name, which will be saved as
               `_blocks_class_name` in the config dict
+            - If `pretrained_model_name_or_path` is a local directory, Hub ids in `modular_model_index.json` are
+              rewritten to that directory for components whose spec subfolder exists locally. Missing subfolders keep
+              the Hub id so pointer repositories and pruned snapshots can still load remotely.
         """
 
         if modular_config_dict is None and config_dict is None and pretrained_model_name_or_path is not None:
@@ -1783,6 +1786,22 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     self._component_specs[name] = component_spec
                 elif name in self._config_specs:
                     self._config_specs[name].default = value
+
+        # `modular_model_index.json` stores Hub ids even in a fully downloaded snapshot. When the caller passed a
+        # local directory, bind each from_pretrained spec to that directory if its subfolder is present. Specs whose
+        # files are missing keep their Hub id so pointer repositories and pruned snapshots still fetch remotely.
+        if pretrained_model_name_or_path is not None and os.path.isdir(pretrained_model_name_or_path):
+            for component_spec in self._component_specs.values():
+                if component_spec.default_creation_method != "from_pretrained":
+                    continue
+                spec_path = component_spec.pretrained_model_name_or_path
+                if not isinstance(spec_path, str) or os.path.isdir(spec_path):
+                    continue
+                subfolder = component_spec.subfolder
+                if not subfolder:
+                    continue
+                if os.path.isdir(os.path.join(pretrained_model_name_or_path, subfolder)):
+                    component_spec.pretrained_model_name_or_path = pretrained_model_name_or_path
 
         if len(kwargs) > 0:
             logger.warning(f"Unexpected input '{kwargs.keys()}' provided. This input will be ignored.")

@@ -18,8 +18,8 @@ import os
 
 import torch
 
-from diffusers import AutoModel, ControlNetModel, ModularPipeline, UNet2DConditionModel
-from diffusers.modular_pipelines.modular_pipeline_utils import ComponentSpec
+from diffusers import AutoModel, ControlNetModel, DDIMScheduler, ModularPipeline, UNet2DConditionModel
+from diffusers.modular_pipelines import ComponentSpec, ModularPipelineBlocks
 
 
 class TestAutoModelLoadIdTagging:
@@ -239,3 +239,114 @@ class TestModularPipelineInitFallback:
         assert loaded_pipe.__class__.__name__ == pipe.__class__.__name__
         assert loaded_pipe._blocks.__class__.__name__ == pipe._blocks.__class__.__name__
         assert len(loaded_pipe._blocks.sub_blocks) == len(pipe._blocks.sub_blocks)
+
+
+_MISSING_HUB_ID = "org/this-repo-does-not-exist-14640"
+
+
+class _LocalSnapshotBlocks(ModularPipelineBlocks):
+    def __init__(self, component_names=("scheduler",)):
+        self._component_names = component_names
+        super().__init__()
+
+    @property
+    def expected_components(self):
+        type_hints = {"scheduler": DDIMScheduler, "unet": UNet2DConditionModel}
+        return [ComponentSpec(name, type_hints[name]) for name in self._component_names]
+
+
+def _write_modular_index(snapshot_dir, components, repo_ids=None):
+    index = {
+        "_class_name": "ModularPipeline",
+        "_diffusers_version": "0.40.0.dev0",
+        "_blocks_class_name": "ModularPipelineBlocks",
+    }
+    for name, class_name in components.items():
+        repo_id = (repo_ids or {}).get(name, _MISSING_HUB_ID)
+        index[name] = [
+            "diffusers",
+            class_name,
+            {
+                "type_hint": ["diffusers", class_name],
+                "pretrained_model_name_or_path": repo_id,
+                "subfolder": name,
+                "variant": None,
+                "revision": None,
+            },
+        ]
+    with open(os.path.join(snapshot_dir, "modular_model_index.json"), "w") as f:
+        json.dump(index, f)
+
+
+class TestLocalModularSnapshotLoading:
+    def test_init_pipeline_rewrites_hub_ids_when_subfolder_exists(self, tmp_path):
+        snapshot_dir = str(tmp_path / "snapshot")
+        os.makedirs(snapshot_dir)
+        DDIMScheduler().save_pretrained(os.path.join(snapshot_dir, "scheduler"))
+        _write_modular_index(snapshot_dir, {"scheduler": "DDIMScheduler"})
+
+        pipe = _LocalSnapshotBlocks().init_pipeline(snapshot_dir)
+
+        assert pipe._component_specs["scheduler"].pretrained_model_name_or_path == snapshot_dir
+
+        pipe.load_components(names="scheduler", local_files_only=True)
+        assert pipe.scheduler is not None
+        assert isinstance(pipe.scheduler, DDIMScheduler)
+
+    def test_constructor_rewrites_hub_ids_when_subfolder_exists(self, tmp_path):
+        snapshot_dir = str(tmp_path / "snapshot")
+        os.makedirs(snapshot_dir)
+        DDIMScheduler().save_pretrained(os.path.join(snapshot_dir, "scheduler"))
+        _write_modular_index(snapshot_dir, {"scheduler": "DDIMScheduler"})
+
+        pipe = ModularPipeline(
+            blocks=_LocalSnapshotBlocks(),
+            pretrained_model_name_or_path=snapshot_dir,
+            local_files_only=True,
+        )
+
+        assert pipe._component_specs["scheduler"].pretrained_model_name_or_path == snapshot_dir
+        pipe.load_components(names="scheduler", local_files_only=True)
+        assert pipe.scheduler is not None
+
+    def test_missing_local_subfolder_keeps_hub_id(self, tmp_path):
+        snapshot_dir = str(tmp_path / "snapshot")
+        os.makedirs(snapshot_dir)
+        _write_modular_index(snapshot_dir, {"scheduler": "DDIMScheduler"})
+
+        pipe = _LocalSnapshotBlocks().init_pipeline(snapshot_dir)
+
+        assert pipe._component_specs["scheduler"].pretrained_model_name_or_path == _MISSING_HUB_ID
+
+    def test_mixed_snapshot_rewrites_only_present_components(self, tmp_path):
+        snapshot_dir = str(tmp_path / "snapshot")
+        os.makedirs(snapshot_dir)
+        DDIMScheduler().save_pretrained(os.path.join(snapshot_dir, "scheduler"))
+        _write_modular_index(snapshot_dir, {"scheduler": "DDIMScheduler", "unet": "UNet2DConditionModel"})
+
+        pipe = _LocalSnapshotBlocks(component_names=("scheduler", "unet")).init_pipeline(snapshot_dir)
+
+        assert pipe._component_specs["scheduler"].pretrained_model_name_or_path == snapshot_dir
+        assert pipe._component_specs["unet"].pretrained_model_name_or_path == _MISSING_HUB_ID
+
+        pipe.load_components(names="scheduler", local_files_only=True)
+        assert pipe.scheduler is not None
+        assert pipe.unet is None
+
+    def test_existing_local_spec_path_is_not_overwritten(self, tmp_path):
+        other_dir = str(tmp_path / "other")
+        snapshot_dir = str(tmp_path / "snapshot")
+        os.makedirs(snapshot_dir)
+        DDIMScheduler(num_train_timesteps=50).save_pretrained(os.path.join(other_dir, "scheduler"))
+        DDIMScheduler(num_train_timesteps=1000).save_pretrained(os.path.join(snapshot_dir, "scheduler"))
+        _write_modular_index(
+            snapshot_dir,
+            {"scheduler": "DDIMScheduler"},
+            repo_ids={"scheduler": other_dir},
+        )
+
+        pipe = _LocalSnapshotBlocks().init_pipeline(snapshot_dir)
+
+        assert pipe._component_specs["scheduler"].pretrained_model_name_or_path == other_dir
+        pipe.load_components(names="scheduler", local_files_only=True)
+        assert pipe.scheduler.config.num_train_timesteps == 50
