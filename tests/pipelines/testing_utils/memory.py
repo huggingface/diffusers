@@ -31,6 +31,7 @@ from ...testing_utils import (
     torch_device,
 )
 from .common import BasePipelineOutputMixin
+from .utils import cast_pipeline_to_dtype
 
 
 if is_accelerate_available():
@@ -250,7 +251,11 @@ class LayerwiseCastingTesterMixin(BasePipelineOutputMixin):
         if denoiser is None or not hasattr(denoiser, "enable_layerwise_casting"):
             pytest.skip(f"{self.pipeline_class.__name__} has no denoiser that supports layerwise casting.")
 
-        pipe.to(torch_device, dtype=torch.bfloat16)
+        # Cast per component rather than with `.to(dtype=...)`: `enable_layerwise_casting` keeps
+        # `_keep_in_fp32_modules` submodules in float32 (it folds the declaration into its skip patterns), so
+        # casting them here would fail the forward pass before layerwise casting is exercised at all.
+        pipe.to(torch_device)
+        cast_pipeline_to_dtype(pipe, torch.bfloat16)
         pipe.set_progress_bar_config(disable=None)
 
         denoiser.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)

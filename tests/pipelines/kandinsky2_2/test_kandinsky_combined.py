@@ -264,8 +264,8 @@ class TestKandinskyV22InpaintCombinedPipeline(KandinskyV22InpaintCombinedPipelin
 
     @pytest.mark.xfail(
         reason=(
-            "Batched inference is not equivalent to single inference for this pipeline: ~14% of the pixels of the first "
-            "batch element drift by more than 1e-2 (max ~0.5), independent of batch size, because the masked-latent "
+            "Batched inference is not equivalent to single inference for this pipeline: ~18% of the pixels of the first "
+            "batch element drift by more than 1e-2 (max ~0.36), independent of batch size, because the masked-latent "
             "blending re-amplifies the batched forward's numerical differences at every step. This predates the move to "
             "the pipeline-level mixins — the unittest-era test failed the same way."
         ),

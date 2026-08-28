@@ -31,7 +31,6 @@ from diffusers import (
     VQModel,
 )
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
-from diffusers.utils import is_transformers_version
 
 from ...testing_utils import (
     assert_tensors_close,
@@ -190,8 +189,10 @@ class KandinskyImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
         return components
 
     def get_dummy_inputs(self):
-        image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(0)).to(torch_device)
-        negative_image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(1)).to(torch_device)
+        image_embeds = torch.randn((1, self.cross_attention_dim), generator=self.get_generator(0)).to(torch_device)
+        negative_image_embeds = torch.randn((1, self.cross_attention_dim), generator=self.get_generator(1)).to(
+            torch_device
+        )
         # create init_image
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0))
         image = image.cpu().permute(0, 2, 3, 1)[0]
@@ -215,17 +216,12 @@ class KandinskyImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestKandinskyImg2ImgPipeline(KandinskyImg2ImgPipelineTesterConfig, PipelineTesterMixin):
-    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-2):
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=2e-2):
         # Batched inference is only approximately equal to single inference here: the batch pads to the longest
         # prompt and the tiny 2-step denoising loop amplifies the resulting attention differences. Tolerance set
         # from the measured drift.
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    @pytest.mark.xfail(
-        condition=is_transformers_version(">=", "4.56.2"),
-        reason="Latest transformers changes the slices",
-        strict=False,
-    )
     def test_kandinsky_img2img(self):
         # Run on CPU: the expected slice below is CPU-specific.
         pipe = self.get_pipeline()
@@ -236,7 +232,7 @@ class TestKandinskyImg2ImgPipeline(KandinskyImg2ImgPipelineTesterConfig, Pipelin
         assert image.shape == (1, *self.output_shape)
 
         # fmt: off
-        expected_slice = torch.tensor([0.5816, 0.5872, 0.4634, 0.5982, 0.4767, 0.4710, 0.4669, 0.4717, 0.4966])
+        expected_slice = torch.tensor([0.5512, 0.6008, 0.4344, 0.6109, 0.5087, 0.4653, 0.4420, 0.4688, 0.4868])
         # fmt: on
         assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
         assert_tensors_close(image_from_tuple[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)

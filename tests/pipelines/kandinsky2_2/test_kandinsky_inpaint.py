@@ -168,8 +168,10 @@ class KandinskyV22InpaintPipelineTesterConfig(BasePipelineTesterConfig):
         return components
 
     def get_dummy_inputs(self):
-        image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(0)).to(torch_device)
-        negative_image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(1)).to(
+        image_embeds = torch.randn((1, self.text_embedder_hidden_size), generator=self.get_generator(0)).to(
+            torch_device
+        )
+        negative_image_embeds = torch.randn((1, self.text_embedder_hidden_size), generator=self.get_generator(1)).to(
             torch_device
         )
         # create init_image
@@ -212,15 +214,15 @@ class TestKandinskyV22InpaintPipeline(KandinskyV22InpaintPipelineTesterConfig, P
         image_from_tuple = (image_from_tuple * 0.5 + 0.5).clamp(0, 1)
 
         # fmt: off
-        expected_slice = torch.tensor([0.5078, 0.4953, 0.4882, 0.5019, 0.4864, 0.4937, 0.4781, 0.4723, 0.4833])
+        expected_slice = torch.tensor([0.4951, 0.4870, 0.4798, 0.4882, 0.4771, 0.4835, 0.4708, 0.4685, 0.4760])
         # fmt: on
         assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
         assert_tensors_close(image_from_tuple[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
     @pytest.mark.xfail(
         reason=(
-            "Batched inference is not equivalent to single inference for this pipeline: ~14% of the pixels of the first "
-            "batch element drift by more than 1e-2 (max ~0.5), independent of batch size, because the masked-latent "
+            "Batched inference is not equivalent to single inference for this pipeline: ~18% of the pixels of the first "
+            "batch element drift by more than 1e-2 (max ~0.36), independent of batch size, because the masked-latent "
             "blending re-amplifies the batched forward's numerical differences at every step. This predates the move to "
             "the pipeline-level mixins — the unittest-era test failed the same way."
         ),

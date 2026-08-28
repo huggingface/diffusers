@@ -35,6 +35,7 @@ from ...testing_utils import (
     require_accelerator,
     torch_device,
 )
+from .utils import cast_module_to_dtype, cast_pipeline_to_dtype
 
 
 class BasePipelineTesterConfig:
@@ -398,7 +399,10 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
     def test_half_precision_inference_no_nan(self, dtype):
         # Models are usually run in half precision (fp16/bf16), so rather than comparing against an fp32 reference
         # (which carries little signal) we just run half-precision inference and check the output has no NaNs.
-        pipe = self.get_pipeline().to(torch_device, dtype)
+        # Move with the pipeline (so its device-placement guards still run) but cast per component: a plain
+        # `.to(dtype)` would cast `_keep_in_fp32_modules` submodules too, and the forward pass would then fail on a
+        # dtype mismatch before it could tell us anything about NaNs.
+        pipe = cast_pipeline_to_dtype(self.get_pipeline().to(torch_device), dtype)
 
         inputs = self.get_dummy_inputs()
         if "generator" in inputs:
@@ -413,30 +417,11 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
     @require_accelerator
     def test_save_load_float16(self, tmp_path, expected_max_diff=1e-2):
         components = self.get_dummy_components()
-        for name, module in components.items():
-            # Account for components with _keep_in_fp32_modules
-            if hasattr(module, "_keep_in_fp32_modules") and module._keep_in_fp32_modules is not None:
-                for name, param in module.named_parameters():
-                    if any(
-                        module_to_keep_in_fp32 in name.split(".")
-                        for module_to_keep_in_fp32 in module._keep_in_fp32_modules
-                    ):
-                        param.data = param.data.to(torch_device).to(torch.float32)
-                    else:
-                        param.data = param.data.to(torch_device).to(torch.float16)
-                for name, buf in module.named_buffers():
-                    if not buf.is_floating_point():
-                        buf.data = buf.data.to(torch_device)
-                    elif any(
-                        module_to_keep_in_fp32 in name.split(".")
-                        for module_to_keep_in_fp32 in module._keep_in_fp32_modules
-                    ):
-                        buf.data = buf.data.to(torch_device).to(torch.float32)
-                    else:
-                        buf.data = buf.data.to(torch_device).to(torch.float16)
-
-            elif hasattr(module, "half"):
-                components[name] = module.to(torch_device).half()
+        for module in components.values():
+            if isinstance(module, nn.Module):
+                # Keeps `_keep_in_fp32_modules` submodules in float32, matching what the reloaded pipeline below
+                # gets from `from_pretrained(torch_dtype=torch.float16)`.
+                cast_module_to_dtype(module.to(torch_device), torch.float16)
 
         pipe = self.get_pipeline(**components).to(torch_device)
 

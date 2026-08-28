@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import random
 
 import pytest
 import torch
@@ -25,7 +24,6 @@ from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
-    floats_tensor,
     load_numpy,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
@@ -154,8 +152,10 @@ class KandinskyV22PipelineTesterConfig(BasePipelineTesterConfig):
         return components
 
     def get_dummy_inputs(self):
-        image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(0)).to(torch_device)
-        negative_image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(1)).to(
+        image_embeds = torch.randn((1, self.text_embedder_hidden_size), generator=self.get_generator(0)).to(
+            torch_device
+        )
+        negative_image_embeds = torch.randn((1, self.text_embedder_hidden_size), generator=self.get_generator(1)).to(
             torch_device
         )
         return {
@@ -193,7 +193,7 @@ class TestKandinskyV22Pipeline(KandinskyV22PipelineTesterConfig, PipelineTesterM
         image_from_tuple = (image_from_tuple * 0.5 + 0.5).clamp(0, 1)
 
         # fmt: off
-        expected_slice = torch.tensor([0.3420, 0.9505, 0.3919, 1.0000, 0.5188, 0.3109, 0.6139, 0.5624, 0.6811])
+        expected_slice = torch.tensor([0.2739, 0.9891, 0.4079, 0.8852, 0.5372, 0.4214, 0.8383, 0.3295, 0.5888])
         # fmt: on
         assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
         assert_tensors_close(image_from_tuple[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)

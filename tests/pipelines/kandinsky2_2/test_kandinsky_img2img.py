@@ -170,8 +170,10 @@ class KandinskyV22Img2ImgPipelineTesterConfig(BasePipelineTesterConfig):
         return components
 
     def get_dummy_inputs(self):
-        image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(0)).to(torch_device)
-        negative_image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(1)).to(
+        image_embeds = torch.randn((1, self.text_embedder_hidden_size), generator=self.get_generator(0)).to(
+            torch_device
+        )
+        negative_image_embeds = torch.randn((1, self.text_embedder_hidden_size), generator=self.get_generator(1)).to(
             torch_device
         )
         # create init_image
@@ -211,7 +213,7 @@ class TestKandinskyV22Img2ImgPipeline(KandinskyV22Img2ImgPipelineTesterConfig, P
         assert image.shape == (1, *self.output_shape)
 
         # fmt: off
-        expected_slice = torch.tensor([0.5712, 0.5443, 0.4725, 0.6195, 0.5184, 0.4651, 0.4473, 0.4590, 0.5016])
+        expected_slice = torch.tensor([0.5147, 0.5058, 0.4698, 0.5575, 0.4895, 0.4542, 0.4275, 0.4307, 0.4888])
         # fmt: on
         assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
         assert_tensors_close(image_from_tuple[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)

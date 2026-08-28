@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
+
 from diffusers.models.attention import AttentionModuleMixin
 
 
@@ -52,3 +54,45 @@ def check_qkv_fused_layers_exist(model, layer_names):
         is_fused = is_fused_attribute_set and is_fused_layer
         is_fused_submodules.append(is_fused)
     return all(is_fused_submodules)
+
+
+def cast_module_to_dtype(module, dtype):
+    """Cast `module` to `dtype` in place, keeping its `_keep_in_fp32_modules` submodules in float32.
+
+    `Module.to(dtype)` ignores the declaration: it casts every floating point tensor and only logs a warning, so a
+    component that declares `_keep_in_fp32_modules` ends up feeding half-precision weights to a forward pass that
+    expects float32 ones and dies on a dtype mismatch. `from_pretrained(torch_dtype=...)` is the path that honours
+    the declaration, and `enable_layerwise_casting` folds it into its skip patterns.
+
+    Each tensor is cast at most once, straight from its current dtype to its target. Casting the whole module and
+    restoring the kept submodules afterwards would round-trip them through the low-precision dtype and lose the
+    precision the declaration exists to preserve.
+
+    Modules that declare nothing take the plain `.to()` path.
+    """
+    keep_in_fp32_modules = getattr(module, "_keep_in_fp32_modules", None)
+    if not keep_in_fp32_modules:
+        return module.to(dtype=dtype)
+    if isinstance(keep_in_fp32_modules, str):
+        # `from_pretrained` accepts a bare string as well as a list.
+        keep_in_fp32_modules = [keep_in_fp32_modules]
+
+    def target_dtype(name):
+        return torch.float32 if any(part in name.split(".") for part in keep_in_fp32_modules) else dtype
+
+    for name, param in module.named_parameters():
+        if param.is_floating_point():
+            param.data = param.data.to(dtype=target_dtype(name))
+    for name, buffer in module.named_buffers():
+        if buffer.is_floating_point():
+            buffer.data = buffer.data.to(dtype=target_dtype(name))
+
+    return module
+
+
+def cast_pipeline_to_dtype(pipe, dtype):
+    """`cast_module_to_dtype` for every `torch.nn.Module` component of `pipe`, leaving the rest untouched."""
+    for component in pipe.components.values():
+        if isinstance(component, torch.nn.Module):
+            cast_module_to_dtype(component, dtype)
+    return pipe

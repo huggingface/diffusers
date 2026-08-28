@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import random
 
 import pytest
 import torch
@@ -22,13 +21,11 @@ from transformers import XLMRobertaTokenizerFast
 
 from diffusers import DDIMScheduler, KandinskyPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
-from diffusers.utils import is_transformers_version
 
 from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
-    floats_tensor,
     load_numpy,
     require_torch_accelerator,
     slow,
@@ -172,8 +169,10 @@ class KandinskyPipelineTesterConfig(BasePipelineTesterConfig):
         return components
 
     def get_dummy_inputs(self):
-        image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(0)).to(torch_device)
-        negative_image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(1)).to(torch_device)
+        image_embeds = torch.randn((1, self.cross_attention_dim), generator=self.get_generator(0)).to(torch_device)
+        negative_image_embeds = torch.randn((1, self.cross_attention_dim), generator=self.get_generator(1)).to(
+            torch_device
+        )
         return {
             "prompt": "horse",
             "image_embeds": image_embeds,
@@ -196,11 +195,6 @@ class TestKandinskyPipeline(KandinskyPipelineTesterConfig, PipelineTesterMixin):
         # from the measured drift.
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    @pytest.mark.xfail(
-        condition=is_transformers_version(">=", "4.56.2"),
-        reason="Latest transformers changes the slices",
-        strict=False,
-    )
     def test_kandinsky(self):
         # Run on CPU: the expected slice below is CPU-specific.
         pipe = self.get_pipeline()
@@ -216,7 +210,7 @@ class TestKandinskyPipeline(KandinskyPipelineTesterConfig, PipelineTesterMixin):
         image_from_tuple = (image_from_tuple * 0.5 + 0.5).clamp(0, 1)
 
         # fmt: off
-        expected_slice = torch.tensor([1.0000, 1.0000, 0.2766, 1.0000, 0.5447, 0.1737, 1.0000, 0.4316, 0.9024])
+        expected_slice = torch.tensor([0.4428, 0.7424, 0.3413, 1.0000, 0.7061, 0.3452, 0.5017, 0.3987, 0.5046])
         # fmt: on
         assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
         assert_tensors_close(image_from_tuple[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)

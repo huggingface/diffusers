@@ -41,12 +41,6 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-# `Kandinsky5Transformer3DModel` declares `_keep_in_fp32_modules`, so casting the pipeline with `.to(dtype)` leaves
-# those submodules in fp32 while the rest of the model moves to the half dtype, and the forward pass then fails on a
-# dtype mismatch. Half-precision inference needs `from_pretrained(torch_dtype=...)`, which these tests do not use.
-KEEP_IN_FP32_SKIP_REASON = "Casting with `.to(dtype)` conflicts with the transformer's `_keep_in_fp32_modules`."
-
-
 class Kandinsky5T2IPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = Kandinsky5T2IPipeline
     required_input_params_in_call_signature = frozenset(
@@ -188,14 +182,6 @@ class TestKandinsky5T2IPipeline(Kandinsky5T2IPipelineTesterConfig, PipelineTeste
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    @pytest.mark.skip(KEEP_IN_FP32_SKIP_REASON)
-    def test_half_precision_inference_no_nan(self):
-        pass
-
 
 class TestKandinsky5T2IPipelineMemory(Kandinsky5T2IPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky 5 T2I pipeline."""
-
-    @pytest.mark.skip(KEEP_IN_FP32_SKIP_REASON)
-    def test_layerwise_casting_inference(self):
-        pass

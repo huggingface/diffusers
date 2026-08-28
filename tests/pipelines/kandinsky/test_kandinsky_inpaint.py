@@ -24,7 +24,6 @@ from transformers import XLMRobertaTokenizerFast
 
 from diffusers import DDIMScheduler, KandinskyInpaintPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
-from diffusers.utils import is_transformers_version
 
 from ...testing_utils import (
     assert_tensors_close,
@@ -180,8 +179,10 @@ class KandinskyInpaintPipelineTesterConfig(BasePipelineTesterConfig):
         return components
 
     def get_dummy_inputs(self):
-        image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(0)).to(torch_device)
-        negative_image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(1)).to(torch_device)
+        image_embeds = torch.randn((1, self.cross_attention_dim), generator=self.get_generator(0)).to(torch_device)
+        negative_image_embeds = torch.randn((1, self.cross_attention_dim), generator=self.get_generator(1)).to(
+            torch_device
+        )
         # create init_image
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0))
         image = image.cpu().permute(0, 2, 3, 1)[0]
@@ -208,11 +209,6 @@ class KandinskyInpaintPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestKandinskyInpaintPipeline(KandinskyInpaintPipelineTesterConfig, PipelineTesterMixin):
-    @pytest.mark.xfail(
-        condition=is_transformers_version(">=", "4.56.2"),
-        reason="Latest transformers changes the slices",
-        strict=False,
-    )
     def test_kandinsky_inpaint(self):
         # Run on CPU: the expected slice below is CPU-specific.
         pipe = self.get_pipeline()
@@ -228,7 +224,7 @@ class TestKandinskyInpaintPipeline(KandinskyInpaintPipelineTesterConfig, Pipelin
         image_from_tuple = (image_from_tuple * 0.5 + 0.5).clamp(0, 1)
 
         # fmt: off
-        expected_slice = torch.tensor([0.8222, 0.8896, 0.4373, 0.8088, 0.4905, 0.2609, 0.6816, 0.4291, 0.5129])
+        expected_slice = torch.tensor([0.8950, 1.0000, 0.6604, 0.9877, 0.7340, 0.5594, 0.4615, 0.6035, 0.7489])
         # fmt: on
         assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
         assert_tensors_close(image_from_tuple[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
