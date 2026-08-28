@@ -51,9 +51,9 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
 )
-from ..stable_diffusion.ip_adapter_tester import IPAdapterTesterMixin
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    IPAdapterTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
