@@ -29,6 +29,8 @@ from diffusers.pipelines.ideogram4.pipeline_ideogram4 import QWEN3_VL_ACTIVATION
 from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -315,3 +317,11 @@ class TestIdeogram4PipelineMemory(Ideogram4PipelineTesterConfig, MemoryTesterMix
     )
     def test_group_offloading_inference(self):
         pass
+
+
+class TestIdeogram4PipelineLoRA(Ideogram4PipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Ideogram4 pipeline."""
+
+
+class TestIdeogram4PipelineLoRAMemory(Ideogram4PipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA offloading tests for the Ideogram4 pipeline."""
