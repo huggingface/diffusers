@@ -555,6 +555,17 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
                         f"Nunchaku SVDQ config with precision={precision!r} requires "
                         f"group_size={expected_group_size}, got {group_size}."
                     )
+                if "smooth_exponent" in raw:
+                    smooth_exponent = raw["smooth_exponent"]
+                    if self.pre_quantized:
+                        raise ValueError(
+                            "'smooth_exponent' only applies to data-free quantization (`pre_quantized=False`); "
+                            "a pre-quantized checkpoint already has its smoothing baked in."
+                        )
+                    if not isinstance(smooth_exponent, (int, float)) or isinstance(smooth_exponent, bool):
+                        raise ValueError(f"Nunchaku compact config section {op!r} field 'smooth_exponent' must be a number.")
+                    if not 0.0 <= smooth_exponent <= 1.0:
+                        raise ValueError(f"'smooth_exponent' must be in [0, 1], got {smooth_exponent}.")
             elif precision != "int4":
                 raise ValueError("Nunchaku AWQ target requires precision='int4'.")
 

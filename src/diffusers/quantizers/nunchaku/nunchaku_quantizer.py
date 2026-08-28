@@ -146,6 +146,7 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
             group_size=module.group_size,
             rank=module.rank,
             torch_dtype=self.compute_dtype,
+            smooth_exponent=self.quantization_config.svdq_w4a4.get("smooth_exponent", 0.5),
         )
         for name, tensor in quantized.items():
             module._parameters[name] = torch.nn.Parameter(tensor.to(target_device), requires_grad=False)

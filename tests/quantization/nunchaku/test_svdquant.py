@@ -339,6 +339,35 @@ def test_quantizer_infers_targets_when_omitted(monkeypatch):
     assert config.svdq_w4a4["targets"] == ["blocks.0.proj", "blocks.1.proj"]
 
 
+def test_smooth_exponent_flows_through():
+    torch.manual_seed(0)
+    weight = torch.randn(128, 128)
+    kwargs = dict(precision="int4", group_size=64, rank=0)
+    default = quantize_linear_data_free(weight, **kwargs)
+    strong = quantize_linear_data_free(weight, smooth_exponent=1.0, **kwargs)
+    disabled = quantize_linear_data_free(weight, smooth_exponent=0.0, **kwargs)
+    # Exponent 0 disables smoothing entirely; other exponents change the factor.
+    assert torch.equal(disabled["smooth_factor"], torch.ones_like(disabled["smooth_factor"]))
+    assert not torch.equal(strong["smooth_factor"], default["smooth_factor"])
+
+
+def test_config_validates_smooth_exponent():
+    section = {"precision": "nvfp4", "group_size": 16, "rank": 32, "smooth_exponent": 0.25}
+    config = NunchakuLiteQuantizationConfig(svdq_w4a4=dict(section), pre_quantized=False)
+    assert config.svdq_w4a4["smooth_exponent"] == 0.25
+
+    with pytest.raises(ValueError, match="must be in \\[0, 1\\]"):
+        NunchakuLiteQuantizationConfig(
+            svdq_w4a4={**section, "smooth_exponent": 1.5}, pre_quantized=False
+        )
+    with pytest.raises(ValueError, match="must be a number"):
+        NunchakuLiteQuantizationConfig(
+            svdq_w4a4={**section, "smooth_exponent": "0.5"}, pre_quantized=False
+        )
+    with pytest.raises(ValueError, match="only applies to data-free"):
+        NunchakuLiteQuantizationConfig(svdq_w4a4={**section, "targets": ["proj"]})
+
+
 def test_config_targets_optional_only_for_data_free():
     config = NunchakuLiteQuantizationConfig(
         svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
