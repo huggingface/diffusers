@@ -38,7 +38,6 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..testing_utils import (
     BasePipelineTesterConfig,
     IPAdapterTesterMixin,
@@ -55,14 +54,17 @@ enable_full_determinism()
 
 class LatentConsistencyModelImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = LatentConsistencyModelImg2ImgPipeline
-    # LCM is guidance-distilled and does not take a negative prompt; img2img derives the size from `image`.
-    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
-        "height",
-        "width",
-        "negative_prompt",
-        "negative_prompt_embeds",
-    }
-    batch_input_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    # The canonical text-guided image-variation sets minus `height` / `width`, which this pipeline derives from
+    # `image`, and minus `negative_prompt` / `negative_prompt_embeds`, which guidance-distilled LCM does not take.
+    required_input_params_in_call_signature = frozenset(
+        [
+            "prompt",
+            "image",
+            "guidance_scale",
+            "prompt_embeds",
+        ]
+    )
+    batch_input_params = frozenset(["prompt", "image"])
     output_shape = (3, 32, 32)
     # `__call__` starts from the supplied image, so it takes no `latents`.
     optional_input_params = frozenset(

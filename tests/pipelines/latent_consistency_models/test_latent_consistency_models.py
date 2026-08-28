@@ -35,7 +35,6 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..testing_utils import (
     BasePipelineTesterConfig,
     IPAdapterTesterMixin,
@@ -52,9 +51,19 @@ enable_full_determinism()
 
 class LatentConsistencyModelPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = LatentConsistencyModelPipeline
-    # LCM is guidance-distilled and does not take a negative prompt.
-    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS - {"negative_prompt", "negative_prompt_embeds"}
-    batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS - {"negative_prompt"}
+    # The canonical text-to-image sets minus `negative_prompt` / `negative_prompt_embeds`: LCM is
+    # guidance-distilled and `__call__` takes no negative prompt.
+    required_input_params_in_call_signature = frozenset(
+        [
+            "prompt",
+            "height",
+            "width",
+            "guidance_scale",
+            "prompt_embeds",
+            "cross_attention_kwargs",
+        ]
+    )
+    batch_input_params = frozenset(["prompt"])
     output_shape = (3, 64, 64)
 
     def get_dummy_components(self):
