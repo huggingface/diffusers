@@ -25,6 +25,7 @@ from ..testing_utils import (
     BitsAndBytesTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
@@ -252,6 +253,10 @@ class TestWanVACETransformer3DGGUFCompile(WanVACETransformer3DTesterConfig, GGUF
             ),
             "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
         }
+
+
+class TestWanVACETransformer3DLoRA(WanVACETransformer3DTesterConfig, LoraTesterMixin):
+    pass
 
 
 class TestWanVACETransformer3DSingleFile(WanVACETransformer3DTesterConfig, SingleFileTesterMixin):

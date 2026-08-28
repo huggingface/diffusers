@@ -1,7 +1,6 @@
 # Model conventions and rules
 
 Shared reference for model-related conventions, patterns, and gotchas.
-Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.md`.
 
 ## Coding style
 
@@ -88,13 +87,18 @@ if num_key_value_groups > 1:
 
 `dim=2` because tensors are `(batch_size, seq_len, num_heads, head_dim)` here. Must be `repeat_interleave`, not `repeat` — the groups are contiguous, and `repeat` gives a silently wrong pairing no shape check catches.
 
-Both compute the same thing, so weigh the two on compatibility and performance and recommend whichever fits the model better.
+Both compute the same thing. What differs is which kernel runs. Under the default backend (`native`, a plain `F.scaled_dot_product_attention`), torch has four kernels:
 
-- **Compatibility.** Most backends do not implement `enable_gqa` yet — flash, FA3, sage, cuDNN and the hub kernels raise on it, as does the context-parallel path. Grep `enable_gqa` in `attention_dispatch.py` for the current list rather than trusting this one; it changes as support lands. The flag limits the model to whichever backends still accept it, while repeating works on all of them.
+| kernel | mask | mismatched q/kv heads (`enable_gqa`) |
+|---|---|---|
+| flash | ✗ | ✓ |
+| efficient | ✓ | ✗ |
+| math | ✓ | ✓ — materializes the full `[batch_size, num_heads, seq_len_q, seq_len_kv]` score matrix |
+| cuDNN | ✓ | ✓ |
 
-- **Performance.** Depends on whether the model passes a mask. With a mask, no fused kernel takes a mask *and* mismatched head counts, so SDPA falls back to math and materializes the full `[batch_size, num_heads, seq_len_q, seq_len_kv]` score matrix — no error, no warning, only memory. Without a mask, flash broadcasts inside the kernel and the flag saves the key/value copy. Both effects scale with sequence length and head count, so measure at the model's real shape; `torch.backends.cuda.can_use_flash_attention(params, debug=True)` and `can_use_efficient_attention` print why a kernel was rejected, which is the fastest way to see which one you actually got.
+It tries them in a priority order and takes the first that accepts the call; the order changes across torch versions and GPUs.
 
-- **Recommendation.** Repeat by default — it is portable and never pathological. Reach for `enable_gqa=True` only when the model never passes a mask *and* the measured saving justifies the narrower backend support. For scale: on Krea 2 at 1024×1024, masked, the flag cost 9.02 GiB and 26.7 ms per call against 0.16 GiB and 4.1 ms repeated; unmasked at the same shape it saved 0.11 GiB and 0.1 ms. `transformer_cosmos3.py` is the in-repo case where it is defensible — causal, never masked.
+If the model passes a mask, repeat the key/value heads: (1) `enable_gqa` is rejected by the context-parallel path, and (2) with a mask it can only land on math or cuDNN — if math comes first, it silently materializes the full score matrix.
 
 ## Model class attributes
 

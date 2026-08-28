@@ -215,7 +215,7 @@ import torch
 from diffusers import AutoencoderKL
 from diffusers.image_processor import VaeImageProcessor
 
-vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", dtype=torch.bfloat16).to("cuda")
+vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
 image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
 
@@ -551,7 +551,7 @@ The strategies above solve different problems, and the useful question is not wh
 | Strategy | Splits | Reduces | Latency for one prompt | Best when |
 |---|---|---|---|---|
 | [Accelerate](#accelerate) / [DDP](#pytorch-distributed) | prompts across replicas | nothing — each device holds a full copy | unchanged | the model already fits and you have many prompts |
-| [`device_map`](#device_map) | components across devices | weight memory | slightly worse | the model doesn't fit and the interconnect is slow |
+| [`device_map`](#devicemap) | components across devices | weight memory | slightly worse | the model doesn't fit and the interconnect is slow |
 | [Context parallelism](#context-parallelism) | the input sequence | activation memory | lower | sequences are long — high resolution or video |
 | [Tensor parallelism](#tensor-parallelism) | weight matrices | weight memory | lower | one component's weights don't fit and the interconnect is fast |
 

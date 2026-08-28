@@ -27,7 +27,7 @@ from ..testing_utils import (
     SingleFileTesterMixin,
     TrainingTesterMixin,
 )
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -106,7 +106,7 @@ class TestAutoencoderDCMemory(AutoencoderDCTesterConfig, MemoryTesterMixin):
         super().test_layerwise_casting_memory()
 
 
-class TestAutoencoderDCSlicingTiling(AutoencoderDCTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderDCSlicingTiling(AutoencoderDCTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderDC."""
 
 
