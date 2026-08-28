@@ -48,8 +48,10 @@ class Ideogram4PipelineTesterConfig(BasePipelineTesterConfig):
     required_input_params_in_call_signature = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_input_params = frozenset(["prompt"])
     output_shape = (3, 16, 16)
-    # `encode_prompt` drives the Qwen3-VL decoder layers directly instead of calling `text_encoder.forward`, so the
-    # offloading hooks would leave its inputs on the offload device. Keep the text encoder out of group offloading.
+    # `encode_prompt` drives the Qwen3-VL decoder layers directly instead of calling `text_encoder.forward`, and
+    # pins its inputs to `self.text_encoder.device`. Leaf-level hooks onload each leaf on its own forward while the
+    # module keeps reporting the offload device, so the inputs are left behind; block-level onloads the whole group
+    # up front and is unaffected, which is where the text encoder does get covered.
     group_offloading_leaf_level_exclude_modules = ["text_encoder"]
 
     def get_dummy_components(self, num_layers: int = 1):
@@ -283,7 +285,8 @@ class TestIdeogram4PipelineMemory(Ideogram4PipelineTesterConfig, MemoryTesterMix
     pins its inputs to `self.text_encoder.device` so they follow the weights under `enable_model_cpu_offload`
     (whose `CpuOffload` hook wraps the bypassed `forward` and so never fires). That pinning is wrong for every
     mechanism that hooks the submodules instead: they onload to the accelerator while the module still reports the
-    offload device, so the inputs are left behind. Hence the skips below.
+    offload device, so the inputs are left behind. Hence the skips below, and the text encoder's leaf-level group
+    offload exclusion on the config class.
     """
 
     _SUBMODULE_OFFLOAD_SKIP = (
@@ -303,15 +306,4 @@ class TestIdeogram4PipelineMemory(Ideogram4PipelineTesterConfig, MemoryTesterMix
         "meta tensors and the pre-forward hook fails with `Cannot copy out of meta tensor`."
     )
     def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
-        pass
-
-    @pytest.mark.skip(
-        reason=(
-            "Block-level group offloading cannot cover `text_encoder`: it leaves ungrouped leaves such as "
-            "`embed_tokens` to the root module's forward pre-hook, which never fires because `encode_prompt` "
-            "drives the decoder layers directly. Leaf-level offloading hooks those leaves individually and is "
-            "bit-exact here; only the block-level half of this test fails."
-        )
-    )
-    def test_group_offloading_inference(self):
         pass

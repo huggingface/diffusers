@@ -267,96 +267,100 @@ class LayerwiseCastingTesterMixin(BasePipelineOutputMixin):
 class GroupOffloadTesterMixin(BasePipelineOutputMixin):
     """Block/leaf-level group offload, both component-scoped and pipeline-level orchestration."""
 
-    @require_torch_accelerator
-    def test_group_offloading_inference(self):
-        pipe = self.get_pipeline()
-        for name, component in pipe.components.items():
+    def _skip_if_group_offloading_unsupported(self, pipe):
+        for component in pipe.components.values():
             if hasattr(component, "_supports_group_offloading") and not component._supports_group_offloading:
                 pytest.skip(f"{self.pipeline_class.__name__} has a component that does not support group offloading.")
 
-        def create_pipe():
-            torch.manual_seed(0)
-            return self.get_pipeline()
+    def _group_offload_exclude_modules(self, pipe, offload_type):
+        """Config-declared components to keep out of group offloading at `offload_type`.
 
-        def enable_group_offload_on_component(pipe, group_offloading_kwargs):
-            # We intentionally don't test VAE's here. This is because some tests enable tiling on the VAE. If
-            # tiling is enabled and a forward pass is run, when accelerator streams are used, the execution order
-            # of the layers is not traced correctly. This causes errors. For apply group offloading to VAE, a
-            # warmup forward pass (even with dummy small inputs) is recommended.
-            for component_name in [
-                "text_encoder",
-                "text_encoder_2",
-                "text_encoder_3",
-                "transformer",
-                "transformer_2",
-                "unet",
-                "controlnet",
-                "adapter",
-            ]:
-                if not hasattr(pipe, component_name):
-                    continue
-                component = getattr(pipe, component_name)
-                if component is None:
-                    continue
-                if not getattr(component, "_supports_group_offloading", True):
-                    continue
-                if hasattr(component, "enable_group_offload"):
-                    # For diffusers ModelMixin implementations
-                    component.enable_group_offload(torch.device(torch_device), **group_offloading_kwargs)
-                else:
-                    # For other models not part of diffusers
-                    apply_group_offloading(
-                        component, onload_device=torch.device(torch_device), **group_offloading_kwargs
-                    )
-                assert all(
-                    module._diffusers_hook.get_hook("group_offloading") is not None
-                    for module in component.modules()
-                    if hasattr(module, "_diffusers_hook")
-                )
-            for component_name in ["vae", "vqvae", "image_encoder"]:
-                component = getattr(pipe, component_name, None)
-                if isinstance(component, torch.nn.Module):
-                    component.to(torch_device)
+        Every group offload test routes its exclusions through here, so a name that matches no component on the
+        pipeline is reported as the typo it is rather than silently costing coverage and surfacing later as a
+        device mismatch. The onload names are not checked: they are a shared default covering several pipelines,
+        most of which have only some of them.
+        """
+        exclude = set(self.group_offloading_exclude_modules)
+        if offload_type == "leaf_level":
+            exclude |= set(self.group_offloading_leaf_level_exclude_modules)
 
-        def run_forward(pipe):
-            torch.manual_seed(0)
-            inputs = self.get_dummy_inputs()
-            return pipe(**inputs)[0]
-
-        pipe = create_pipe().to(torch_device)
-        output_without_group_offloading = run_forward(pipe)
-
-        pipe = create_pipe()
-        enable_group_offload_on_component(pipe, {"offload_type": "block_level", "num_blocks_per_group": 1})
-        output_with_group_offloading1 = run_forward(pipe)
-
-        pipe = create_pipe()
-        enable_group_offload_on_component(pipe, {"offload_type": "leaf_level"})
-        output_with_group_offloading2 = run_forward(pipe)
-
-        assert_tensors_close(
-            output_with_group_offloading1,
-            output_without_group_offloading,
-            atol=1e-4,
-            rtol=1e-5,
-            msg="block-level group offloading should not affect the inference results",
+        # Checked against every registered component rather than the module-valued ones, so that excluding an
+        # optional component a config leaves unset reads as the no-op it is instead of a typo.
+        unknown = sorted(exclude - set(pipe.components))
+        assert not unknown, (
+            f"{type(self).__name__} excludes {unknown} from group offloading, but "
+            f"{self.pipeline_class.__name__} has no such component. Its components are "
+            f"{sorted(pipe.components)}."
         )
-        assert_tensors_close(
-            output_with_group_offloading2,
-            output_without_group_offloading,
-            atol=1e-4,
-            rtol=1e-5,
+        return exclude
+
+    def _split_group_offload_components(self, pipe, offload_type):
+        """Split the pipeline's module components into the ones to offload and the ones to keep on the accelerator.
+
+        Everything is offloaded unless the config lists it, so a component a pipeline adds under a name this file
+        has never heard of is covered by default rather than silently left on CPU. See the three list attributes on
+        `BasePipelineTesterConfig`.
+        """
+        module_names = [name for name, component in pipe.components.items() if isinstance(component, torch.nn.Module)]
+        onload_names = self._group_offload_exclude_modules(pipe, offload_type) | set(
+            self.group_offloading_onload_component_names
+        )
+        offload = [name for name in module_names if name not in onload_names]
+        onload = [name for name in module_names if name in onload_names]
+        return offload, onload
+
+    def _enable_group_offload_on_components(self, pipe, **group_offloading_kwargs):
+        offload_names, onload_names = self._split_group_offload_components(
+            pipe, group_offloading_kwargs["offload_type"]
+        )
+        for component_name in offload_names:
+            component = getattr(pipe, component_name)
+            if hasattr(component, "enable_group_offload"):
+                # For diffusers ModelMixin implementations
+                component.enable_group_offload(torch.device(torch_device), **group_offloading_kwargs)
+            else:
+                # For other models not part of diffusers
+                apply_group_offloading(component, onload_device=torch.device(torch_device), **group_offloading_kwargs)
+            assert all(
+                module._diffusers_hook.get_hook("group_offloading") is not None
+                for module in component.modules()
+                if hasattr(module, "_diffusers_hook")
+            )
+        for component_name in onload_names:
+            getattr(pipe, component_name).to(torch_device)
+
+    def _run_group_offload_inference(self, base_pipe_output, expected_max_difference, msg, **group_offloading_kwargs):
+        # Build the offload pipeline the same way as `base_pipe_output` so that group offloading is the only
+        # difference under test. It stays on CPU here — the components are placed as they are hooked.
+        pipe = self.get_pipeline()
+        self._skip_if_group_offloading_unsupported(pipe)
+        self._enable_group_offload_on_components(pipe, **group_offloading_kwargs)
+
+        assert_tensors_close(self.run_pipe(pipe), base_pipe_output, atol=expected_max_difference, rtol=1e-5, msg=msg)
+
+    @require_torch_accelerator
+    def test_group_offloading_inference_block_level(self, base_pipe_output, expected_max_difference=1e-4):
+        self._run_group_offload_inference(
+            base_pipe_output,
+            expected_max_difference,
+            msg="block-level group offloading should not affect the inference results",
+            offload_type="block_level",
+            num_blocks_per_group=1,
+        )
+
+    @require_torch_accelerator
+    def test_group_offloading_inference_leaf_level(self, base_pipe_output, expected_max_difference=1e-4):
+        self._run_group_offload_inference(
+            base_pipe_output,
+            expected_max_difference,
             msg="leaf-level group offloading should not affect the inference results",
+            offload_type="leaf_level",
         )
 
     @require_torch_accelerator
     def test_pipeline_level_group_offloading_sanity_checks(self):
         pipe: DiffusionPipeline = self.get_pipeline()
-
-        for name, component in pipe.components.items():
-            if hasattr(component, "_supports_group_offloading"):
-                if not component._supports_group_offloading:
-                    pytest.skip(f"{self.pipeline_class.__name__} is not suitable for this test.")
+        self._skip_if_group_offloading_unsupported(pipe)
 
         module_names = sorted(
             [name for name, component in pipe.components.items() if isinstance(component, torch.nn.Module)]
@@ -387,18 +391,15 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
         # Build the offload pipeline the same way as `base_pipe_output` so that group offloading is the only
         # difference under test. It stays on CPU here — `enable_group_offload` places the components.
         pipe: DiffusionPipeline = self.get_pipeline()
-
-        for name, component in pipe.components.items():
-            if hasattr(component, "_supports_group_offloading"):
-                if not component._supports_group_offloading:
-                    pytest.skip(f"{self.pipeline_class.__name__} is not suitable for this test.")
+        self._skip_if_group_offloading_unsupported(pipe)
 
         offload_device = "cpu"
+        offload_type = "leaf_level"
         pipe.enable_group_offload(
             onload_device=torch_device,
             offload_device=offload_device,
-            offload_type="leaf_level",
-            exclude_modules=self.group_offloading_leaf_level_exclude_modules,
+            offload_type=offload_type,
+            exclude_modules=sorted(self._group_offload_exclude_modules(pipe, offload_type)),
         )
         pipe.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs()

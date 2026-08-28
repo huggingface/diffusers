@@ -26,7 +26,7 @@ from diffusers import (
 from diffusers.pipelines.ltx2 import LTX2DurationHead, LTX2TextConnectors
 from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 
-from ...testing_utils import assert_tensors_close, enable_full_determinism, require_torch_accelerator, torch_device
+from ...testing_utils import assert_tensors_close, enable_full_determinism, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
     LoraMemoryTesterMixin,
@@ -46,6 +46,12 @@ class LTX2PipelineTesterConfig(BasePipelineTesterConfig):
     )
     batch_input_params = frozenset(["prompt", "negative_prompt"])
     output_shape = (5, 3, 32, 32)
+    # `audio_vae` belongs with the other VAEs the group offload tests keep on the accelerator: its decode-time
+    # convolutions read weights the offload hooks have not onloaded yet.
+    group_offloading_onload_component_names = [
+        *BasePipelineTesterConfig.group_offloading_onload_component_names,
+        "audio_vae",
+    ]
     # LTX2 is a video pipeline (`num_videos_per_prompt`, not `num_images_per_prompt`) and takes a second latent
     # input for the audio stream.
     optional_input_params = frozenset(
@@ -406,14 +412,6 @@ class TestLTX2Pipeline(LTX2PipelineTesterConfig, PipelineTesterMixin):
 
 class TestLTX2PipelineMemory(LTX2PipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LTX2 pipeline."""
-
-    @require_torch_accelerator
-    def test_group_offloading_inference(self):
-        # The shared helper only offloads a fixed set of component names and leaves LTX2's extra module
-        # components (`connectors`, `audio_vae`, `vocoder`) on CPU, so the forward pass mixes devices.
-        # Pipeline-level offloading, which walks every component, is exercised by
-        # `test_pipeline_level_group_offloading_inference`.
-        pytest.skip("Using test_pipeline_level_group_offloading_inference instead")
 
 
 class TestLTX2PipelineLoRA(LTX2PipelineTesterConfig, LoraTesterMixin):

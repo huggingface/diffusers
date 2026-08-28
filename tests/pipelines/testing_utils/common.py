@@ -65,13 +65,29 @@ class BasePipelineTesterConfig:
         ]
     )
 
+    # The group offload tests derive what they offload: every `torch.nn.Module` component of the pipeline is
+    # offloaded unless it is named in one of the three lists below, which are kept on the accelerator instead. A
+    # component that is covered by default is the point — a pipeline that adds a second denoiser or an extra
+    # encoder gets it exercised without touching this file, and dropping something from the tests takes naming it
+    # next to a reason.
+
     # Components that cannot be offloaded at leaf level, e.g. a `transformers` model whose attention is a
     # `torch.nn.MultiheadAttention` (it reads its projection weights directly instead of calling the submodules, so
     # the leaf-level onload hooks never fire and the weights stay on the offload device). Such a component is often
-    # fine at block level, hence the level in the name. Listed components are kept on the accelerator by
-    # `test_pipeline_level_group_offloading_inference` so the remaining ones are still covered, instead of skipping
-    # the test outright.
+    # fine at block level, hence the level in the name, and it is still covered by the block-level test.
     group_offloading_leaf_level_exclude_modules = []
+
+    # Components that cannot be group offloaded at either level. Prefer the leaf-level list above — this one drops
+    # the component from every group offload test, so state why in a comment next to the name.
+    group_offloading_exclude_modules = []
+
+    # Components the component-scoped tests keep on the accelerator rather than offloading. Unlike the two
+    # exclusion lists above, this one does not reach `test_pipeline_level_group_offloading_inference`, which walks
+    # the whole pipeline — a component listed here is still leaf offloaded there. The VAE is the reason the list
+    # exists: some tests enable tiling, and when accelerator streams are used the execution order of a tiled
+    # forward pass is not traced correctly, which errors out. Group offloading a VAE wants a warmup forward pass
+    # first (even on dummy inputs).
+    group_offloading_onload_component_names = ["vae", "vqvae", "image_encoder"]
 
     # ==================== Required interface ====================
 
