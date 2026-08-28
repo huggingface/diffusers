@@ -50,7 +50,7 @@ class JoyImageEditPlusPipelineTesterConfig(BasePipelineTesterConfig):
     )
     # Each sample is bound to its own set of reference images, so the pipeline generates exactly one image per
     # prompt and does not expose `num_images_per_prompt`.
-    optional_input_params = BasePipelineTesterConfig.optional_input_params - {"num_images_per_prompt"}
+    optional_input_params = frozenset(["num_inference_steps", "generator", "latents", "output_type", "return_dict"])
     batch_input_params = frozenset(["prompt", "images"])
     output_shape = (3, 32, 32)
 
