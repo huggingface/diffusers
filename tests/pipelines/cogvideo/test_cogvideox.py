@@ -238,6 +238,21 @@ class TestCogVideoXPipelineFirstBlockCache(CogVideoXPipelineTesterConfig, FirstB
     pass
 
 
+class TestCogVideoXPipelineLoRA(CogVideoXPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the CogVideoX pipeline."""
+
+
+class TestCogVideoXPipelineLoRAMemory(CogVideoXPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests for the CogVideoX pipeline."""
+
+    # `(leaf_level, True)` is left out on purpose, see
+    # https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
+    @pytest.mark.parametrize("offload_type,use_stream", [("block_level", True), ("leaf_level", False)])
+    @require_torch_accelerator
+    def test_group_offloading_inference_denoiser(self, tmp_path, offload_type, use_stream):
+        super().test_group_offloading_inference_denoiser(tmp_path, offload_type, use_stream)
+
+
 @nightly
 @require_torch_accelerator
 class TestCogVideoXPipelineIntegration:
@@ -273,11 +288,3 @@ class TestCogVideoXPipelineIntegration:
 
         max_diff = numpy_cosine_similarity_distance(video, expected_video)
         assert max_diff < 1e-3, f"Max diff is too high. got {video}"
-
-
-class TestCogVideoXPipelineLoRA(CogVideoXPipelineTesterConfig, LoraTesterMixin):
-    """LoRA tests for the CogVideoX pipeline."""
-
-
-class TestCogVideoXPipelineLoRAMemory(CogVideoXPipelineTesterConfig, LoraMemoryTesterMixin):
-    """LoRA offloading tests for the CogVideoX pipeline."""
