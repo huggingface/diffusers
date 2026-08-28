@@ -300,7 +300,7 @@ class LEditsPPPipelineStableDiffusion(
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _exclude_from_cpu_offload = ["safety_checker"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "negative_prompt_embeds"]
     _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
 
     def __init__(
@@ -1186,7 +1186,6 @@ class LEditsPPPipelineStableDiffusion(
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
-                    # prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 # call the callback, if provided
