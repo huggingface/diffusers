@@ -74,13 +74,13 @@ from ..pipeline_params import (
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    IPAdapterTesterMixin,
     LoraMemoryTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
     UNetLoraTesterMixin,
 )
-from .ip_adapter_tester import IPAdapterTesterMixin
 
 
 if is_accelerate_available():

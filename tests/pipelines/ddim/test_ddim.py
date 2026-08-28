@@ -13,31 +13,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import numpy as np
 import torch
 
 from diffusers import DDIMPipeline, DDIMScheduler, UNet2DModel
 
-from ...testing_utils import enable_full_determinism, require_torch_accelerator, slow, torch_device
+from ...testing_utils import (
+    assert_tensors_close,
+    enable_full_determinism,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class DDIMPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = DDIMPipeline
-    params = UNCONDITIONAL_IMAGE_GENERATION_PARAMS
-    required_optional_params = PipelineTesterMixin.required_optional_params - {
-        "num_images_per_prompt",
-        "latents",
-        "callback",
-        "callback_steps",
-    }
-    batch_params = UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS
+    required_input_params_in_call_signature = UNCONDITIONAL_IMAGE_GENERATION_PARAMS
+    batch_input_params = UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS
+    # DDIM is unconditional and samples its own noise: there is no prompt to repeat
+    # (`num_images_per_prompt`) and no user-suppliable `latents`.
+    optional_input_params = BasePipelineTesterConfig.optional_input_params - {"num_images_per_prompt", "latents"}
+    output_shape = (3, 8, 8)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -52,55 +54,53 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("AttnUpBlock2D", "UpBlock2D"),
         )
         scheduler = DDIMScheduler()
-        components = {"unet": unet, "scheduler": scheduler}
-        return components
+        return {"unet": unet, "scheduler": scheduler}
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "batch_size": 1,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestDDIMPipeline(DDIMPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        image = pipe(**self.get_dummy_inputs()).images
+        generated_image = image[0]
+        assert generated_image.shape == self.output_shape
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
+        # fmt: off
+        expected_slice = torch.tensor([0.0, 9.979e-01, 0.0, 9.999e-01, 9.986e-01, 9.991e-01, 7.106e-04, 0.0, 0.0])
+        # fmt: on
 
-        self.assertEqual(image.shape, (1, 8, 8, 3))
-        expected_slice = np.array([0.0, 9.979e-01, 0.0, 9.999e-01, 9.986e-01, 9.991e-01, 7.106e-04, 0.0, 0.0])
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        # `"pt"` images are `(channels, height, width)`, so the trailing-channel corner slice of the old
+        # `"np"` layout is the last channel's bottom-right 3x3 block here.
+        generated_slice = generated_image[-1, -3:, -3:].flatten()
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
 
-    def test_save_load_local(self):
-        super().test_save_load_local(expected_max_difference=3e-3)
-
-    def test_save_load_optional_components(self):
-        super().test_save_load_optional_components(expected_max_difference=3e-3)
+    def test_save_load_local(self, tmp_path, base_pipe_output):
+        super().test_save_load_local(tmp_path, base_pipe_output, expected_max_difference=3e-3)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
+class TestDDIMPipelineMemory(DDIMPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the DDIM pipeline."""
+
+
 @slow
 @require_torch_accelerator
-class DDIMPipelineIntegrationTests(unittest.TestCase):
+class TestDDIMPipelineIntegration:
     def test_inference_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
 

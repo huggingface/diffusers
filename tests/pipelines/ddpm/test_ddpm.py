@@ -13,24 +13,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import numpy as np
 import torch
 
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 
-from ...testing_utils import enable_full_determinism, require_torch_accelerator, slow, torch_device
+from ...testing_utils import (
+    assert_tensors_close,
+    enable_full_determinism,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
+from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class DDPMPipelineFastTests(unittest.TestCase):
-    @property
-    def dummy_uncond_unet(self):
+class DDPMPipelineTesterConfig(BasePipelineTesterConfig):
+    pipeline_class = DDPMPipeline
+    required_input_params_in_call_signature = UNCONDITIONAL_IMAGE_GENERATION_PARAMS
+    batch_input_params = UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS
+    # DDPM is unconditional and samples its own noise: there is no prompt to repeat
+    # (`num_images_per_prompt`) and no user-suppliable `latents`.
+    optional_input_params = BasePipelineTesterConfig.optional_input_params - {"num_images_per_prompt", "latents"}
+    output_shape = (3, 8, 8)
+
+    def get_dummy_components(self):
         torch.manual_seed(0)
-        model = UNet2DModel(
+        unet = UNet2DModel(
             block_out_channels=(4, 8),
             layers_per_block=1,
             norm_num_groups=4,
@@ -40,57 +53,61 @@ class DDPMPipelineFastTests(unittest.TestCase):
             down_block_types=("DownBlock2D", "AttnDownBlock2D"),
             up_block_types=("AttnUpBlock2D", "UpBlock2D"),
         )
-        return model
-
-    def test_fast_inference(self):
-        device = "cpu"
-        unet = self.dummy_uncond_unet
         scheduler = DDPMScheduler()
+        return {"unet": unet, "scheduler": scheduler}
 
-        ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
-        ddpm.to(device)
-        ddpm.set_progress_bar_config(disable=None)
+    def get_dummy_inputs(self):
+        return {
+            "batch_size": 1,
+            "generator": self.get_generator(0),
+            "num_inference_steps": 2,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
+        }
 
-        generator = torch.Generator(device=device).manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=2, output_type="np").images
 
-        generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = ddpm(generator=generator, num_inference_steps=2, output_type="np", return_dict=False)[0]
+class TestDDPMPipeline(DDPMPipelineTesterConfig, PipelineTesterMixin):
+    def test_inference(self):
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        image_slice = image[0, -3:, -3:, -1]
-        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+        image = pipe(**self.get_dummy_inputs()).images
+        generated_image = image[0]
+        assert generated_image.shape == self.output_shape
 
-        assert image.shape == (1, 8, 8, 3)
-        expected_slice = np.array([0.0, 0.9996672, 0.00329116, 1.0, 0.9995991, 1.0, 0.0060907, 0.00115037, 0.0])
+        # fmt: off
+        expected_slice = torch.tensor([0.0, 0.9996672, 0.00329116, 1.0, 0.9995991, 1.0, 0.0060907, 0.00115037, 0.0])
+        # fmt: on
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        # `"pt"` images are `(channels, height, width)`, so the trailing-channel corner slice of the old
+        # `"np"` layout is the last channel's bottom-right 3x3 block here.
+        generated_slice = generated_image[-1, -3:, -3:].flatten()
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-2)
 
     def test_inference_predict_sample(self):
-        unet = self.dummy_uncond_unet
-        scheduler = DDPMScheduler(prediction_type="sample")
+        # `prediction_type="sample"` makes the UNet output the denoised sample rather than the noise, so the
+        # scheduler consumes it differently and the pipeline must produce a different image than the default
+        # `epsilon` parameterization.
+        pipe = self.get_pipeline().to(torch_device)
+        output_epsilon = self.run_pipe(pipe)
 
-        ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
-        ddpm.to(torch_device)
-        ddpm.set_progress_bar_config(disable=None)
+        components = self.get_dummy_components()
+        components["scheduler"] = DDPMScheduler(prediction_type="sample")
+        pipe_sample = self.get_pipeline(**components).to(torch_device)
+        output_sample = self.run_pipe(pipe_sample)
 
-        generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=2, output_type="np").images
+        assert output_sample.shape == output_epsilon.shape
+        assert not torch.isnan(output_sample).any()
+        assert not torch.allclose(output_sample, output_epsilon, atol=1e-3)
 
-        generator = torch.manual_seed(0)
-        image_eps = ddpm(generator=generator, num_inference_steps=2, output_type="np")[0]
 
-        image_slice = image[0, -3:, -3:, -1]
-        image_eps_slice = image_eps[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 8, 8, 3)
-        tolerance = 1e-2 if torch_device != "mps" else 3e-2
-        assert np.abs(image_slice.flatten() - image_eps_slice.flatten()).max() < tolerance
+class TestDDPMPipelineMemory(DDPMPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the DDPM pipeline."""
 
 
 @slow
 @require_torch_accelerator
-class DDPMPipelineIntegrationTests(unittest.TestCase):
+class TestDDPMPipelineIntegration:
     def test_inference_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
 
