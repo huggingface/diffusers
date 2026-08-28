@@ -170,29 +170,6 @@ class TestIdeogram4Pipeline(Ideogram4PipelineTesterConfig, PipelineTesterMixin):
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         pass
 
-    # `callback_on_step_end` is unusable on the Python versions this repo supports (`python_requires>=3.10.0`):
-    # the denoising loop builds `callback_kwargs` with `{k: locals()[k] for k in callback_on_step_end_tensor_inputs}`,
-    # and before Python 3.12 a comprehension runs in its own frame, so `locals()` never contains `latents` and the
-    # call raises `KeyError: 'latents'`. PEP 709 inlined comprehensions in 3.12, which is the only reason this passes
-    # locally on 3.12 while CI (3.10) fails. Every other pipeline in the repo builds the dict with a plain `for` loop,
-    # which works on all versions.
-    _CALLBACK_SKIP = (
-        "`Ideogram4Pipeline` builds `callback_kwargs` in a dict comprehension, so `locals()` cannot see `latents` "
-        "before Python 3.12 and any `callback_on_step_end` raises `KeyError: 'latents'` on Python 3.10/3.11."
-    )
-
-    @pytest.mark.skip(reason=_CALLBACK_SKIP)
-    def test_callback_inputs(self):
-        pass
-
-    @pytest.mark.skip(
-        reason=(
-            f"{_CALLBACK_SKIP} The body below is the Ideogram4-specific replacement for the shared assertion (which "
-            "would not apply here either, since the pipeline republishes the step's schedule weight on "
-            "`_guidance_scale` so a callback's mutation cannot accumulate); drop this marker once the pipeline "
-            "builds `callback_kwargs` with a plain `for` loop."
-        )
-    )
     def test_callback_cfg(self):
         # Ideogram4 drives guidance from a per-step schedule and republishes the current step's weight on
         # `_guidance_scale` before invoking the callback, so a callback's mutation cannot accumulate across steps
