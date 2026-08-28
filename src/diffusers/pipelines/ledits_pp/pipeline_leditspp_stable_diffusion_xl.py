@@ -340,7 +340,6 @@ class LEditsPPPipelineStableDiffusionXL(
         "add_text_embeds",
         "add_time_ids",
         "negative_pooled_prompt_embeds",
-        "negative_add_time_ids",
     ]
 
     def __init__(
@@ -1337,7 +1336,6 @@ class LEditsPPPipelineStableDiffusionXL(
                         "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
                     )
                     add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
-                    # negative_add_time_ids = callback_outputs.pop("negative_add_time_ids", negative_add_time_ids)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > 0 and (i + 1) % self.scheduler.order == 0):
