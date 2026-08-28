@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AnyFlowTransformer3DModel
 
-The bidirectional 3D Transformer used by [`AnyFlowPipeline`](../pipelines/anyflow#anyflowpipeline). It is the
+The bidirectional 3D Transformer used by [`AnyFlowPipeline`](../pipelines/anyflow#diffusers.AnyFlowPipeline). It is the
 v0.35.1 Wan2.1 backbone with one structural change: the timestep embedder is replaced by
 ``AnyFlowDualTimestepTextImageEmbedding``, so every forward call conditions on both the source timestep
 ``t`` and the target timestep ``r``. This is the embedding required to learn the flow map
