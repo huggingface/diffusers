@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 from unittest.mock import patch
 
-import numpy as np
 import pytest
 import torch
 from PIL import Image
@@ -27,45 +25,45 @@ from diffusers import (
     JoyImageEditPlusPipeline,
     JoyImageEditPlusTransformer3DModel,
 )
-from diffusers.hooks import apply_group_offloading
 
-from ...testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
-from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import enable_full_determinism
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class JoyImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class JoyImageEditPlusPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = JoyImageEditPlusPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = frozenset(["prompt", "images"])
-    required_optional_params = frozenset(
+    # `images` (a list of references per sample) takes the place of the usual single `image` input.
+    required_input_params_in_call_signature = frozenset(
         [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
+            "prompt",
+            "images",
+            "height",
+            "width",
+            "guidance_scale",
+            "negative_prompt",
+            "prompt_embeds",
+            "negative_prompt_embeds",
         ]
     )
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
+    # Each sample is bound to its own set of reference images, so the pipeline generates exactly one image per
+    # prompt and does not expose `num_images_per_prompt`.
+    optional_input_params = BasePipelineTesterConfig.optional_input_params - {"num_images_per_prompt"}
+    batch_input_params = frozenset(["prompt", "images"])
+    output_shape = (3, 32, 32)
 
-    def setUp(self):
-        super().setUp()
-        self._bucket_patcher = patch(
-            "diffusers.pipelines.joyimage.image_processor.find_best_bucket",
-            return_value=(32, 32),
-        )
-        self._bucket_patcher.start()
+    @pytest.fixture(autouse=True, scope="class")
+    @classmethod
+    def tiny_resolution_bucket(cls):
+        """Pin the resolution bucket to the dummy 32x32 resolution.
 
-    def tearDown(self):
-        self._bucket_patcher.stop()
-        super().tearDown()
+        `JoyImageEditImageProcessor` resolves its working resolution through `find_best_bucket`, which only knows
+        the 1024 bucket list, so an unpatched pipeline would upscale the dummy inputs to ~1024x1024.
+        """
+        with patch("diffusers.pipelines.joyimage.image_processor.find_best_bucket", return_value=(32, 32)):
+            yield
 
     def get_dummy_components(self):
         tiny_ckpt_id = "huangfeice/tiny-random-Qwen3VLForConditionalGeneration"
@@ -100,7 +98,7 @@ class JoyImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(tiny_ckpt_id)
         text_encoder.resize_token_embeddings(len(processor.tokenizer))
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
@@ -108,117 +106,26 @@ class JoyImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": processor.tokenizer,
             "processor": processor,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "combine the two images",
             "images": [Image.new("RGB", (32, 32)), Image.new("RGB", (32, 32))],
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
             "height": 32,
             "width": 32,
             "max_sequence_length": 16,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
             "output_type": "pt",
         }
-        return inputs
 
-    def test_inference(self):
-        device = "cpu"
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+class TestJoyImageEditPlusPipeline(JoyImageEditPlusPipelineTesterConfig, PipelineTesterMixin):
+    pass
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        generated_image = image[0]
 
-        self.assertEqual(generated_image.shape, (3, 32, 32))
-
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)
-
-    @unittest.skip("num_images_per_prompt not applicable: each prompt is bound to reference images")
-    def test_num_images_per_prompt(self):
-        pass
-
-    @unittest.skip("Test not supported")
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    @pytest.mark.xfail(condition=True, reason="Preconfigured embeddings need to be revisited.", strict=False)
-    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
-        super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol, rtol)
-
-    @require_torch_accelerator
-    def test_group_offloading_inference(self):
-        if not self.test_group_offloading:
-            return
-
-        def create_pipe():
-            torch.manual_seed(0)
-            components = self.get_dummy_components()
-            pipe = self.pipeline_class(**components)
-            pipe.set_progress_bar_config(disable=None)
-            return pipe
-
-        def run_forward(pipe):
-            torch.manual_seed(0)
-            inputs = self.get_dummy_inputs(torch_device)
-            return pipe(**inputs)[0]
-
-        pipe = create_pipe().to(torch_device)
-        output_without_group_offloading = run_forward(pipe)
-
-        pipe = create_pipe()
-        for component_name in ["transformer", "text_encoder"]:
-            component = getattr(pipe, component_name, None)
-            if component is None:
-                continue
-            if hasattr(component, "enable_group_offload"):
-                component.enable_group_offload(
-                    torch.device(torch_device), offload_type="block_level", num_blocks_per_group=1
-                )
-            else:
-                apply_group_offloading(
-                    component,
-                    onload_device=torch.device(torch_device),
-                    offload_type="block_level",
-                    num_blocks_per_group=1,
-                )
-        pipe.vae.to(torch_device)
-        output_with_block_level = run_forward(pipe)
-
-        pipe = create_pipe()
-        pipe.transformer.enable_group_offload(torch.device(torch_device), offload_type="leaf_level")
-        pipe.text_encoder.to(torch_device)
-        pipe.vae.to(torch_device)
-        output_with_leaf_level = run_forward(pipe)
-
-        if torch.is_tensor(output_without_group_offloading):
-            output_without_group_offloading = output_without_group_offloading.detach().cpu().numpy()
-            output_with_block_level = output_with_block_level.detach().cpu().numpy()
-            output_with_leaf_level = output_with_leaf_level.detach().cpu().numpy()
-
-        self.assertTrue(np.allclose(output_without_group_offloading, output_with_block_level, atol=1e-4))
-        self.assertTrue(np.allclose(output_without_group_offloading, output_with_leaf_level, atol=1e-4))
-
-    @unittest.skip("Qwen3VLForConditionalGeneration does not support leaf-level group offloading")
-    def test_pipeline_level_group_offloading_inference(self):
-        pass
-
-    @unittest.skip("Qwen3VLForConditionalGeneration does not support sequential CPU offloading")
-    def test_sequential_cpu_offload_forward_pass(self):
-        pass
-
-    @unittest.skip("Qwen3VLForConditionalGeneration does not support sequential CPU offloading")
-    def test_sequential_offload_forward_pass_twice(self):
-        pass
+class TestJoyImageEditPlusPipelineMemory(JoyImageEditPlusPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the JoyImage Edit Plus pipeline."""
