@@ -951,6 +951,7 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
                     encoder_hidden_states_t5=prompt_embeds_t5,
                     encoder_hidden_states_llama3=prompt_embeds_llama3,
                     pooled_embeds=pooled_prompt_embeds,
+                    attention_kwargs=self.attention_kwargs,
                     return_dict=False,
                 )[0]
                 noise_pred = -noise_pred
