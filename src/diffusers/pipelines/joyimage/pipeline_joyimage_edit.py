@@ -872,6 +872,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return image
+            return (image,)
 
         return JoyImageEditPipelineOutput(images=image)
