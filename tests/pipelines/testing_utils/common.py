@@ -65,6 +65,12 @@ class BasePipelineTesterConfig:
         ]
     )
 
+    # Component names that make up the text stack, i.e. the ones `test_encode_prompt_works_in_isolation` keeps when
+    # it builds a text-encoder-only pipeline (matched as substrings of the component name). Extend this on the config
+    # class when `encode_prompt` reads a component whose name says neither "text" nor "tokenizer" — a `processor`
+    # used for chat templating, for example.
+    text_stack_component_names = ("text", "tokenizer")
+
     # Components that cannot be offloaded at leaf level, e.g. a `transformers` model whose attention is a
     # `torch.nn.MultiheadAttention` (it reads its projection weights directly instead of calling the submodules, so
     # the leaf-level onload hooks never fire and the weights stay on the offload device). Such a component is often
@@ -131,6 +137,9 @@ class BasePipelineTesterConfig:
         )
 
     # ==================== Shared helpers ====================
+
+    def is_text_stack_component(self, name: str) -> bool:
+        return any(key in name for key in self.text_stack_component_names)
 
     def get_generator(self, seed=0):
         # Always build the generator on CPU: a CPU generator works with a pipeline placed on any device (the tensor
@@ -754,7 +763,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         # We initialize the pipeline with only text encoders and tokenizers, mimicking a real-world scenario.
         components_with_text_encoders = {}
         for k in components:
-            if "text" in k or "tokenizer" in k:
+            if self.is_text_stack_component(k):
                 components_with_text_encoders[k] = components[k]
             else:
                 components_with_text_encoders[k] = None
@@ -817,7 +826,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         # and other relevant inputs.
         components_with_text_encoders = {}
         for k in components:
-            if "text" in k or "tokenizer" in k:
+            if self.is_text_stack_component(k):
                 components_with_text_encoders[k] = None
             else:
                 components_with_text_encoders[k] = components[k]

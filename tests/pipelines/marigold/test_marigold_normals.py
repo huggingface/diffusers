@@ -18,9 +18,9 @@
 # --------------------------------------------------------------------------
 import gc
 import random
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -33,6 +33,7 @@ from diffusers import (
 )
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -41,27 +42,20 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class MarigoldNormalsPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = MarigoldNormalsPipeline
-    params = frozenset(["image"])
-    batch_params = frozenset(["image"])
-    image_params = frozenset(["image"])
-    image_latents_params = frozenset(["latents"])
-    callback_cfg_params = frozenset([])
-    test_xformers_attention = False
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "output_type",
-        ]
-    )
+    required_input_params_in_call_signature = frozenset(["image"])
+    batch_input_params = frozenset(["image"])
+    # Marigold predicts a normals map and takes no prompt: it exposes neither `num_images_per_prompt` nor
+    # `num_videos_per_prompt`.
+    optional_input_params = frozenset(["num_inference_steps", "generator", "latents", "output_type", "return_dict"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -111,7 +105,7 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        components = {
+        return {
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
@@ -120,63 +114,54 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prediction_type": "normals",
             "use_full_z_range": True,
         }
-        return components
 
     def get_dummy_tiny_autoencoder(self):
         return AutoencoderTiny(in_channels=3, out_channels=3, latent_channels=4)
 
-    def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+    def get_dummy_inputs(self, seed: int = 0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed))
         image = image / 2 + 0.5
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+        return {
             "image": image,
             "num_inference_steps": 1,
             "processing_resolution": 0,
-            "generator": generator,
-            "output_type": "np",
+            "generator": self.get_generator(seed),
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestMarigoldNormalsPipeline(MarigoldNormalsPipelineTesterConfig, PipelineTesterMixin):
     def _test_marigold_normals(
         self,
         generator_seed: int = 0,
-        expected_slice: np.ndarray = None,
+        expected_slice: torch.Tensor = None,
         atol: float = 1e-4,
         **pipe_kwargs,
     ):
-        device = "cpu"
-        components = self.get_dummy_components()
+        # Run on CPU: the expected slices below are CPU-specific.
+        pipe = self.get_pipeline()
 
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        pipe_inputs = self.get_dummy_inputs(device, seed=generator_seed)
+        pipe_inputs = self.get_dummy_inputs(seed=generator_seed)
         pipe_inputs.update(**pipe_kwargs)
 
-        prediction = pipe(**pipe_inputs).prediction
+        prediction = pipe(**pipe_inputs).prediction  # [N,3,H,W] for `output_type="pt"`
 
-        prediction_slice = prediction[0, -3:, -3:, -1].flatten()
+        prediction_slice = prediction[0, -1, -3:, -3:].flatten()
 
         if pipe_inputs.get("match_input_resolution", True):
-            self.assertEqual(prediction.shape, (1, 32, 32, 3), "Unexpected output resolution")
+            assert prediction.shape == (1, *self.output_shape), "Unexpected output resolution"
         else:
-            self.assertTrue(prediction.shape[0] == 1 and prediction.shape[3] == 3, "Unexpected output dimensions")
-            self.assertEqual(
-                max(prediction.shape[1:3]),
-                pipe_inputs.get("processing_resolution", 768),
-                "Unexpected output resolution",
+            assert prediction.shape[0] == 1 and prediction.shape[1] == 3, "Unexpected output dimensions"
+            assert max(prediction.shape[2:4]) == pipe_inputs.get("processing_resolution", 768), (
+                "Unexpected output resolution"
             )
 
-        self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol))
+        assert_tensors_close(prediction_slice, expected_slice, atol=atol)
 
     def test_marigold_depth_dummy_defaults(self):
         self._test_marigold_normals(
-            expected_slice=np.array(
+            expected_slice=torch.tensor(
                 [0.01655, 0.54110, 0.01681, -0.27346, -0.16697, -0.55219, 0.63358, 0.57275, -0.26173]
             ),
         )
@@ -184,7 +169,7 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P32_E1_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array(
+            expected_slice=torch.tensor(
                 [0.01655, 0.54110, 0.01681, -0.27346, -0.16697, -0.55219, 0.63358, 0.57275, -0.26173]
             ),
             num_inference_steps=1,
@@ -197,7 +182,7 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array(
+            expected_slice=torch.tensor(
                 [-0.46928, -0.23894, -0.10984, -0.27850, -0.53089, -0.58686, -0.09792, -0.36364, -0.46909]
             ),
             num_inference_steps=1,
@@ -210,7 +195,7 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G2024_S1_P32_E1_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=2024,
-            expected_slice=np.array(
+            expected_slice=torch.tensor(
                 [0.75023, -0.90784, -0.08686, 0.07177, -0.59057, -0.73950, 0.52375, -0.26714, -0.43062]
             ),
             num_inference_steps=1,
@@ -223,7 +208,7 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S2_P32_E1_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array(
+            expected_slice=torch.tensor(
                 [0.04868, -0.58444, -0.26729, 0.13351, 0.36448, 0.86063, 0.74093, 0.58727, 0.91568]
             ),
             num_inference_steps=2,
@@ -236,7 +221,7 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P64_E1_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array(
+            expected_slice=torch.tensor(
                 [-0.31085, 0.85586, 0.43578, 0.23959, 0.64753, -0.33613, -0.02879, -0.78712, -0.56993]
             ),
             num_inference_steps=1,
@@ -249,7 +234,7 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P32_E3_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array(
+            expected_slice=torch.tensor(
                 [0.28313, -0.91824, -0.38751, 0.35233, 0.13069, -0.58350, 0.82024, 0.04305, -0.27604]
             ),
             num_inference_steps=1,
@@ -263,7 +248,7 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P32_E4_B2_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array(
+            expected_slice=torch.tensor(
                 [0.09912, -0.29170, -0.23348, 0.14560, 0.27345, -0.40117, 0.98967, 0.38735, -0.21680]
             ),
             num_inference_steps=1,
@@ -277,7 +262,7 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M0(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array(
+            expected_slice=torch.tensor(
                 [0.87316, 0.43462, -0.15760, 0.20502, -0.42155, 0.07312, 0.36621, 0.03301, -0.46909]
             ),
             num_inference_steps=1,
@@ -288,32 +273,26 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
     def test_marigold_depth_dummy_no_num_inference_steps(self):
-        with self.assertRaises(ValueError) as e:
-            self._test_marigold_normals(
-                num_inference_steps=None,
-                expected_slice=np.array([0.0]),
-            )
-            self.assertIn("num_inference_steps", str(e))
+        with pytest.raises(ValueError, match="num_inference_steps"):
+            self._test_marigold_normals(num_inference_steps=None, expected_slice=torch.tensor([0.0]))
 
     def test_marigold_depth_dummy_no_processing_resolution(self):
-        with self.assertRaises(ValueError) as e:
-            self._test_marigold_normals(
-                processing_resolution=None,
-                expected_slice=np.array([0.0]),
-            )
-            self.assertIn("processing_resolution", str(e))
+        with pytest.raises(ValueError, match="processing_resolution"):
+            self._test_marigold_normals(processing_resolution=None, expected_slice=torch.tensor([0.0]))
+
+
+class TestMarigoldNormalsPipelineMemory(MarigoldNormalsPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Marigold normals pipeline."""
 
 
 @slow
 @require_torch_accelerator
-class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestMarigoldNormalsPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -347,16 +326,14 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
         prediction_slice = prediction[0, -3:, -3:, -1].flatten()
 
         if pipe_kwargs.get("match_input_resolution", True):
-            self.assertEqual(prediction.shape, (1, height, width, 3), "Unexpected output resolution")
+            assert prediction.shape == (1, height, width, 3), "Unexpected output resolution"
         else:
-            self.assertTrue(prediction.shape[0] == 1 and prediction.shape[3] == 3, "Unexpected output dimensions")
-            self.assertEqual(
-                max(prediction.shape[1:3]),
-                pipe_kwargs.get("processing_resolution", 768),
-                "Unexpected output resolution",
+            assert prediction.shape[0] == 1 and prediction.shape[3] == 3, "Unexpected output dimensions"
+            assert max(prediction.shape[1:3]) == pipe_kwargs.get("processing_resolution", 768), (
+                "Unexpected output resolution"
             )
 
-        self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol))
+        assert np.allclose(prediction_slice, expected_slice, atol=atol)
 
     def test_marigold_normals_einstein_f32_cpu_G0_S1_P32_E1_B1_M1(self):
         self._test_marigold_normals(

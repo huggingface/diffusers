@@ -18,13 +18,12 @@
 # --------------------------------------------------------------------------
 import gc
 import random
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-import diffusers
 from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
@@ -35,6 +34,7 @@ from diffusers import (
 
 from ...testing_utils import (
     Expectations,
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -43,133 +43,21 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class MarigoldIntrinsicsPipelineTesterMixin(PipelineTesterMixin):
-    def _test_inference_batch_single_identical(
-        self,
-        batch_size=2,
-        expected_max_diff=1e-4,
-        additional_params_copy_to_batched_inputs=["num_inference_steps"],
-    ):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for components in pipe.components.values():
-            if hasattr(components, "set_default_attn_processor"):
-                components.set_default_attn_processor()
-
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        inputs = self.get_dummy_inputs(torch_device)
-        # Reset generator in case it is has been used in self.get_dummy_inputs
-        inputs["generator"] = self.get_generator(0)
-
-        logger = diffusers.logging.get_logger(pipe.__module__)
-        logger.setLevel(level=diffusers.logging.FATAL)
-
-        # batchify inputs
-        batched_inputs = {}
-        batched_inputs.update(inputs)
-
-        for name in self.batch_params:
-            if name not in inputs:
-                continue
-
-            value = inputs[name]
-            if name == "prompt":
-                len_prompt = len(value)
-                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
-                batched_inputs[name][-1] = 100 * "very long"
-
-            else:
-                batched_inputs[name] = batch_size * [value]
-
-        if "generator" in inputs:
-            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
-
-        if "batch_size" in inputs:
-            batched_inputs["batch_size"] = batch_size
-
-        for arg in additional_params_copy_to_batched_inputs:
-            batched_inputs[arg] = inputs[arg]
-
-        output = pipe(**inputs)
-        output_batch = pipe(**batched_inputs)
-
-        assert output_batch[0].shape[0] == batch_size * output[0].shape[0]  # only changed here
-
-        max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
-        assert max_diff < expected_max_diff
-
-    def _test_inference_batch_consistent(
-        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"], batch_generator=True
-    ):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["generator"] = self.get_generator(0)
-
-        logger = diffusers.logging.get_logger(pipe.__module__)
-        logger.setLevel(level=diffusers.logging.FATAL)
-
-        # prepare batched inputs
-        batched_inputs = []
-        for batch_size in batch_sizes:
-            batched_input = {}
-            batched_input.update(inputs)
-
-            for name in self.batch_params:
-                if name not in inputs:
-                    continue
-
-                value = inputs[name]
-                if name == "prompt":
-                    len_prompt = len(value)
-                    # make unequal batch sizes
-                    batched_input[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
-
-                    # make last batch super long
-                    batched_input[name][-1] = 100 * "very long"
-
-                else:
-                    batched_input[name] = batch_size * [value]
-
-            if batch_generator and "generator" in inputs:
-                batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
-
-            if "batch_size" in inputs:
-                batched_input["batch_size"] = batch_size
-
-            batched_inputs.append(batched_input)
-
-        logger.setLevel(level=diffusers.logging.WARNING)
-        for batch_size, batched_input in zip(batch_sizes, batched_inputs):
-            output = pipe(**batched_input)
-            assert len(output[0]) == batch_size * pipe.n_targets  # only changed here
-
-
-class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin, unittest.TestCase):
+class MarigoldIntrinsicsPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = MarigoldIntrinsicsPipeline
-    params = frozenset(["image"])
-    batch_params = frozenset(["image"])
-    image_params = frozenset(["image"])
-    image_latents_params = frozenset(["latents"])
-    callback_cfg_params = frozenset([])
-    test_xformers_attention = False
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "output_type",
-        ]
-    )
+    required_input_params_in_call_signature = frozenset(["image"])
+    batch_input_params = frozenset(["image"])
+    # Marigold predicts intrinsic image maps and takes no prompt: it exposes neither `num_images_per_prompt` nor
+    # `num_videos_per_prompt`.
+    optional_input_params = frozenset(["num_inference_steps", "generator", "latents", "output_type", "return_dict"])
+    # The pipeline returns one map per target, all stacked along the batch axis.
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -219,7 +107,7 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        components = {
+        return {
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
@@ -227,72 +115,99 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
             "tokenizer": tokenizer,
             "prediction_type": "intrinsics",
         }
-        return components
 
     def get_dummy_tiny_autoencoder(self):
         return AutoencoderTiny(in_channels=3, out_channels=3, latent_channels=4)
 
-    def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+    def get_dummy_inputs(self, seed: int = 0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed))
         image = image / 2 + 0.5
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+        return {
             "image": image,
             "num_inference_steps": 1,
             "processing_resolution": 0,
-            "generator": generator,
-            "output_type": "np",
+            "generator": self.get_generator(seed),
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
+
+
+class TestMarigoldIntrinsicsPipeline(MarigoldIntrinsicsPipelineTesterConfig, PipelineTesterMixin):
+    """The pipeline returns `n_targets` predictions per input image, all stacked along the batch axis, which is why
+    the two batch tests below assert against `batch_size * n_targets` instead of `batch_size`."""
+
+    def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
+        pipe = self.get_pipeline().to(torch_device)
+
+        for batch_size in batch_sizes:
+            inputs = self.get_dummy_inputs()
+            for name in self.batch_input_params:
+                if name in inputs:
+                    inputs[name] = batch_size * [inputs[name]]
+            if batch_generator and "generator" in inputs:
+                inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
+
+            output = pipe(**inputs)
+            assert len(output[0]) == batch_size * pipe.n_targets
+
+    def test_inference_batch_single_identical(self, batch_size=2, expected_max_diff=1e-4):
+        pipe = self.get_pipeline().to(torch_device)
+
+        inputs = self.get_dummy_inputs()
+        batched_inputs = dict(inputs)
+        for name in self.batch_input_params:
+            if name in inputs:
+                batched_inputs[name] = batch_size * [inputs[name]]
+        batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
+
+        output = pipe(**inputs)
+        output_batch = pipe(**batched_inputs)
+
+        assert output_batch[0].shape[0] == batch_size * output[0].shape[0]
+        assert_tensors_close(
+            output_batch[0][0], output[0][0], atol=expected_max_diff, msg="Batched output differs from single."
+        )
 
     def _test_marigold_intrinsics(
         self,
         generator_seed: int = 0,
-        expected_slice: np.ndarray = None,
+        expected_slice: torch.Tensor = None,
         atol: float = 1e-4,
         **pipe_kwargs,
     ):
-        device = "cpu"
-        components = self.get_dummy_components()
+        # Run on CPU: the expected slices below are CPU-specific.
+        pipe = self.get_pipeline()
 
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        pipe_inputs = self.get_dummy_inputs(device, seed=generator_seed)
+        pipe_inputs = self.get_dummy_inputs(seed=generator_seed)
         pipe_inputs.update(**pipe_kwargs)
 
-        prediction = pipe(**pipe_inputs).prediction
+        prediction = pipe(**pipe_inputs).prediction  # [n_targets,3,H,W] for `output_type="pt"`
 
-        prediction_slice = prediction[0, -3:, -3:, -1].flatten()
+        prediction_slice = prediction[0, -1, -3:, -3:].flatten()
 
         if pipe_inputs.get("match_input_resolution", True):
-            self.assertEqual(prediction.shape, (2, 32, 32, 3), "Unexpected output resolution")
+            assert prediction.shape == (pipe.n_targets, *self.output_shape), "Unexpected output resolution"
         else:
-            self.assertTrue(prediction.shape[0] == 2 and prediction.shape[3] == 3, "Unexpected output dimensions")
-            self.assertEqual(
-                max(prediction.shape[1:3]),
-                pipe_inputs.get("processing_resolution", 768),
-                "Unexpected output resolution",
+            assert prediction.shape[0] == pipe.n_targets and prediction.shape[1] == 3, "Unexpected output dimensions"
+            assert max(prediction.shape[2:4]) == pipe_inputs.get("processing_resolution", 768), (
+                "Unexpected output resolution"
             )
 
-        np.set_printoptions(precision=5, suppress=True)
-        msg = f"{prediction_slice}"
-        self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol), msg)
-        # self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol))
+        assert_tensors_close(prediction_slice, expected_slice, atol=atol)
 
     def test_marigold_depth_dummy_defaults(self):
         self._test_marigold_intrinsics(
-            expected_slice=np.array([0.6423, 0.40664, 0.41185, 0.65832, 0.63935, 0.43971, 0.51786, 0.55216, 0.47683]),
+            expected_slice=torch.tensor(
+                [0.6423, 0.40664, 0.41185, 0.65832, 0.63935, 0.43971, 0.51786, 0.55216, 0.47683]
+            ),
         )
 
     def test_marigold_depth_dummy_G0_S1_P32_E1_B1_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.6423, 0.40664, 0.41185, 0.65832, 0.63935, 0.43971, 0.51786, 0.55216, 0.47683]),
+            expected_slice=torch.tensor(
+                [0.6423, 0.40664, 0.41185, 0.65832, 0.63935, 0.43971, 0.51786, 0.55216, 0.47683]
+            ),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=1,
@@ -303,7 +218,9 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.53132, 0.44487, 0.40164, 0.5326, 0.49073, 0.46979, 0.53324, 0.51366, 0.50387]),
+            expected_slice=torch.tensor(
+                [0.53132, 0.44487, 0.40164, 0.5326, 0.49073, 0.46979, 0.53324, 0.51366, 0.50387]
+            ),
             num_inference_steps=1,
             processing_resolution=16,
             ensemble_size=1,
@@ -314,7 +231,9 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G2024_S1_P32_E1_B1_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=2024,
-            expected_slice=np.array([0.40250, 0.39464, 0.51378, 0.41603, 0.40150, 0.58531, 0.43581, 0.47833, 0.48946]),
+            expected_slice=torch.tensor(
+                [0.40250, 0.39464, 0.51378, 0.41603, 0.40150, 0.58531, 0.43581, 0.47833, 0.48946]
+            ),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=1,
@@ -325,7 +244,9 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S2_P32_E1_B1_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.52018, 0.45545, 0.42104, 0.58673, 0.63164, 0.38469, 0.52228, 0.54939, 0.48622]),
+            expected_slice=torch.tensor(
+                [0.52018, 0.45545, 0.42104, 0.58673, 0.63164, 0.38469, 0.52228, 0.54939, 0.48622]
+            ),
             num_inference_steps=2,
             processing_resolution=32,
             ensemble_size=1,
@@ -336,7 +257,9 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S1_P64_E1_B1_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.55574, 0.43518, 0.48871, 0.56418, 0.63882, 0.56345, 0.47897, 0.52932, 0.49240]),
+            expected_slice=torch.tensor(
+                [0.55574, 0.43518, 0.48871, 0.56418, 0.63882, 0.56345, 0.47897, 0.52932, 0.49240]
+            ),
             num_inference_steps=1,
             processing_resolution=64,
             ensemble_size=1,
@@ -347,7 +270,9 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S1_P32_E3_B1_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.57244, 0.49813, 0.54442, 0.57727, 0.52388, 0.52545, 0.56492, 0.56334, 0.48579]),
+            expected_slice=torch.tensor(
+                [0.57244, 0.49813, 0.54442, 0.57727, 0.52388, 0.52545, 0.56492, 0.56334, 0.48579]
+            ),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=3,
@@ -359,7 +284,9 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S1_P32_E4_B2_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.62939, 0.55744, 0.53417, 0.61068, 0.57141, 0.53967, 0.52955, 0.55467, 0.48751]),
+            expected_slice=torch.tensor(
+                [0.62939, 0.55744, 0.53417, 0.61068, 0.57141, 0.53967, 0.52955, 0.55467, 0.48751]
+            ),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=4,
@@ -371,7 +298,9 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M0(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.63543, 0.68147, 0.48780, 0.46715, 0.58511, 0.36761, 0.58482, 0.54309, 0.50388]),
+            expected_slice=torch.tensor(
+                [0.63543, 0.68147, 0.48780, 0.46715, 0.58511, 0.36761, 0.58482, 0.54309, 0.50388]
+            ),
             num_inference_steps=1,
             processing_resolution=16,
             ensemble_size=1,
@@ -380,32 +309,26 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
         )
 
     def test_marigold_depth_dummy_no_num_inference_steps(self):
-        with self.assertRaises(ValueError) as e:
-            self._test_marigold_intrinsics(
-                num_inference_steps=None,
-                expected_slice=np.array([0.0]),
-            )
-            self.assertIn("num_inference_steps", str(e))
+        with pytest.raises(ValueError, match="num_inference_steps"):
+            self._test_marigold_intrinsics(num_inference_steps=None, expected_slice=torch.tensor([0.0]))
 
     def test_marigold_depth_dummy_no_processing_resolution(self):
-        with self.assertRaises(ValueError) as e:
-            self._test_marigold_intrinsics(
-                processing_resolution=None,
-                expected_slice=np.array([0.0]),
-            )
-            self.assertIn("processing_resolution", str(e))
+        with pytest.raises(ValueError, match="processing_resolution"):
+            self._test_marigold_intrinsics(processing_resolution=None, expected_slice=torch.tensor([0.0]))
+
+
+class TestMarigoldIntrinsicsPipelineMemory(MarigoldIntrinsicsPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for Marigold intrinsics."""
 
 
 @slow
 @require_torch_accelerator
-class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestMarigoldIntrinsicsPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -440,18 +363,14 @@ class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
         prediction_slice = prediction[0, -3:, -3:, -1].flatten()
 
         if pipe_kwargs.get("match_input_resolution", True):
-            self.assertEqual(prediction.shape, (2, height, width, 3), "Unexpected output resolution")
+            assert prediction.shape == (2, height, width, 3), "Unexpected output resolution"
         else:
-            self.assertTrue(prediction.shape[0] == 2 and prediction.shape[3] == 3, "Unexpected output dimensions")
-            self.assertEqual(
-                max(prediction.shape[1:3]),
-                pipe_kwargs.get("processing_resolution", 768),
-                "Unexpected output resolution",
+            assert prediction.shape[0] == 2 and prediction.shape[3] == 3, "Unexpected output dimensions"
+            assert max(prediction.shape[1:3]) == pipe_kwargs.get("processing_resolution", 768), (
+                "Unexpected output resolution"
             )
 
-        msg = f"{prediction_slice}"
-        self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol), msg)
-        # self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol))
+        assert np.allclose(prediction_slice, expected_slice, atol=atol), f"{prediction_slice}"
 
     def test_marigold_intrinsics_einstein_f32_cpu_G0_S1_P32_E1_B1_M1(self):
         self._test_marigold_intrinsics(
