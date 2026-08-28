@@ -129,7 +129,7 @@ class TestBriaFiboPipeline(BriaFiboPipelineTesterConfig, PipelineTesterMixin):
         pass
 
     def test_bria_fibo_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
         inputs = self.get_dummy_inputs()
         output_same_prompt = pipe(**inputs).images[0]
@@ -142,7 +142,7 @@ class TestBriaFiboPipeline(BriaFiboPipelineTesterConfig, PipelineTesterMixin):
         assert max_diff > 1e-6
 
     def test_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (64, 64), (32, 64)]

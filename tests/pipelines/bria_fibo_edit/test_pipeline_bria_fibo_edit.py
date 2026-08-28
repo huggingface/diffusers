@@ -143,7 +143,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         pass
 
     def test_bria_fibo_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
         inputs = self.get_dummy_inputs()
         output_same_prompt = pipe(**inputs).images[0]
@@ -156,7 +156,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         assert max_diff > 1e-6
 
     def test_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (64, 64), (32, 64)]
@@ -167,7 +167,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
             assert (output_height, output_width) == (height, width)
 
     def test_bria_fibo_multi_reference_uses_distinct_rope_time_planes(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
         references = [
             Image.new("RGB", (336, 192), (255, 255, 255)),
@@ -192,7 +192,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         assert image.shape == self.output_shape
 
     def test_batched_prompts_with_multiple_references(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
         inputs.update(
             prompt=[inputs["prompt"], inputs["prompt"].replace("squirrel", "robot")],
@@ -204,7 +204,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         assert (images[0] - images[1]).abs().max() > 1e-4
 
     def test_multi_reference_mask_requires_single_reference(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
         inputs["image"] = [inputs["image"], Image.new("RGB", (160, 96), (0, 0, 0))]
         inputs["mask"] = Image.new("L", (336, 192), 255)
@@ -212,7 +212,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
             pipe(**inputs)
 
     def test_bria_fibo_edit_mask(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
 
         mask = Image.fromarray((np.ones((192, 336)) * 255).astype(np.uint8), mode="L")
@@ -223,7 +223,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         assert output.shape == (3, 192, 336)
 
     def test_bria_fibo_edit_mask_image_size_mismatch(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
 
         mask = Image.fromarray((np.ones((64, 64)) * 255).astype(np.uint8), mode="L")
@@ -233,7 +233,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
             pipe(**inputs)
 
     def test_bria_fibo_edit_mask_no_image(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
 
         mask = Image.fromarray((np.ones((32, 32)) * 255).astype(np.uint8), mode="L")
