@@ -35,7 +35,7 @@ Follow the style introduced in [#14113](https://github.com/huggingface/diffusers
   - `torch.nn.MultiheadAttention` is the common instance: it passes `self.out_proj.weight` straight to `torch.nn.functional.multi_head_attention_forward` instead of calling `self.out_proj`, so the hook on `out_proj` never fires. `SiglipVisionModel`'s attention pooling head wraps one — see `tests/pipelines/hunyuan_video/test_hunyuan_video_framepack.py`, whose `image_encoder` is excluded for this reason.
   - `HunyuanDiTAttentionPool` (`src/diffusers/models/embeddings.py`) shows the same failure without an MHA module: a plain `nn.Module` that hands its `q_proj` / `k_proj` / `v_proj` / `c_proj` weights to `torch.nn.functional.multi_head_attention_forward`, so all four projections stay offloaded rather than just one. `HunyuanDiT2DModel` opts out of group offloading entirely with `_supports_group_offloading = False`.
   - Before adding a skip or an exclusion, confirm the failure still reproduces — several existing skips are stale, having outlived the upstream cause.
-- **IP-Adapter tests** live in their own class decorated with `@is_ip_adapter`, subclassing only the config (not `PipelineTesterMixin`).
+- **IP-Adapter tests** live in their own class decorated with `@is_ip_adapter`, subclassing only the config (not `PipelineTesterMixin`). UNet pipelines that load adapters through the standard `IPAdapterMixin` API compose the shared `IPAdapterTesterMixin` (`tests/pipelines/testing_utils/ip_adapter.py`, exported from `..testing_utils`); pipelines whose IP-Adapter API differs (Flux, for example) keep a bespoke mixin next to their own tests.
 
 #### LoRA tests
 
