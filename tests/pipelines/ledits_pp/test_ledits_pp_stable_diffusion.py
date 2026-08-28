@@ -15,9 +15,9 @@
 
 import gc
 import random
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -31,6 +31,7 @@ from diffusers import (
 
 from ...testing_utils import (
     Expectations,
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -45,8 +46,10 @@ from ...testing_utils import (
 enable_full_determinism()
 
 
+# LEdits++ does not compose the shared `PipelineTesterMixin`: `__call__` takes neither a prompt nor an image and
+# only works once `invert()` has populated the pipeline's state, so the shared dummy-input contract does not apply.
 @skip_mps
-class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
+class TestLEditsPPPipelineStableDiffusion:
     pipeline_class = LEditsPPPipelineStableDiffusion
 
     def get_dummy_components(self):
@@ -97,48 +100,42 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
-            "generator": generator,
+    def get_generator(self, seed=0):
+        return torch.Generator("cpu").manual_seed(seed)
+
+    def get_pipeline(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        return pipe
+
+    def get_dummy_inputs(self):
+        return {
+            "generator": self.get_generator(0),
             "editing_prompt": ["wearing glasses", "sunshine"],
             "reverse_editing_direction": [False, True],
             "edit_guidance_scale": [10.0, 5.0],
         }
-        return inputs
 
-    def get_dummy_inversion_inputs(self, device, seed=0):
+    def get_dummy_inversion_inputs(self):
         images = floats_tensor((2, 3, 32, 32), rng=random.Random(0)).cpu().permute(0, 2, 3, 1)
         images = 255 * images
         image_1 = Image.fromarray(np.uint8(images[0])).convert("RGB")
         image_2 = Image.fromarray(np.uint8(images[1])).convert("RGB")
 
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        inputs = {
+        return {
             "image": [image_1, image_2],
             "source_prompt": "",
             "source_guidance_scale": 3.5,
             "num_inversion_steps": 20,
             "skip": 0.15,
-            "generator": generator,
+            "generator": self.get_generator(0),
         }
-        return inputs
 
     def test_ledits_pp_inversion(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = LEditsPPPipelineStableDiffusion(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # The expected slices below are CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inversion_inputs(device)
+        inputs = self.get_dummy_inversion_inputs()
         inputs["image"] = inputs["image"][0]
         sd_pipe.invert(**inputs)
         assert sd_pipe.init_latents.shape == (
@@ -148,20 +145,18 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
             int(32 / sd_pipe.vae_scale_factor),
         )
 
-        latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:].to(device)
+        latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:].cpu()
 
-        expected_slice = np.array([-0.9084, -0.0367, 0.2940, 0.0839, 0.6890, 0.2651, -0.7104, 2.1090, -0.7822])
-        assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
+        # fmt: off
+        expected_slice = torch.tensor([-0.9084, -0.0367, 0.2940, 0.0839, 0.6890, 0.2651, -0.7104, 2.1090, -0.7822])
+        # fmt: on
+        assert_tensors_close(latent_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_ledits_pp_inversion_batch(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = LEditsPPPipelineStableDiffusion(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # The expected slices below are CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inversion_inputs(device)
-        sd_pipe.invert(**inputs)
+        sd_pipe.invert(**self.get_dummy_inversion_inputs())
         assert sd_pipe.init_latents.shape == (
             2,
             4,
@@ -169,27 +164,23 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
             int(32 / sd_pipe.vae_scale_factor),
         )
 
-        latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:].to(device)
-
-        expected_slice = np.array([0.2528, 0.1458, -0.2166, 0.4565, -0.5657, -1.0286, -0.9961, 0.5933, 1.1173])
-        assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
-
-        latent_slice = sd_pipe.init_latents[1, -1, -3:, -3:].to(device)
-
-        expected_slice = np.array([-0.0796, 2.0583, 0.5501, 0.5358, 0.0282, -0.2803, -1.0470, 0.7023, -0.0072])
-        assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
+        # fmt: off
+        expected_slices = torch.tensor(
+            [
+                [0.2528, 0.1458, -0.2166, 0.4565, -0.5657, -1.0286, -0.9961, 0.5933, 1.1173],
+                [-0.0796, 2.0583, 0.5501, 0.5358, 0.0282, -0.2803, -1.0470, 0.7023, -0.0072],
+            ]
+        )
+        # fmt: on
+        for i, expected_slice in enumerate(expected_slices):
+            latent_slice = sd_pipe.init_latents[i, -1, -3:, -3:].cpu()
+            assert_tensors_close(latent_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_ledits_pp_warmup_steps(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = LEditsPPPipelineStableDiffusion(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
+        pipe.invert(**self.get_dummy_inversion_inputs())
 
-        inversion_inputs = self.get_dummy_inversion_inputs(device)
-        pipe.invert(**inversion_inputs)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
 
         inputs["edit_warmup_steps"] = [0, 5]
         pipe(**inputs).images
@@ -204,13 +195,9 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
         pipe(**inputs).images
 
     def test_callback_inputs(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = LEditsPPPipelineStableDiffusion(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
-        inversion_inputs = self.get_dummy_inversion_inputs(device)
+        inversion_inputs = self.get_dummy_inversion_inputs()
         inversion_inputs["image"] = inversion_inputs["image"][0]
         pipe.invert(**inversion_inputs)
 
@@ -220,7 +207,7 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
 
             return callback_kwargs
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["callback_on_step_end"] = callback_inputs_all
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
         pipe(**inputs)
@@ -228,26 +215,23 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
 
 @slow
 @require_torch_accelerator
-class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestLEditsPPPipelineStableDiffusionIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    @classmethod
-    def setUpClass(cls):
-        raw_image = load_image(
+    @pytest.fixture(scope="class")
+    def raw_image(self):
+        image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png"
         )
-        raw_image = raw_image.convert("RGB").resize((512, 512))
-        cls.raw_image = raw_image
+        return image.convert("RGB").resize((512, 512))
 
-    def test_ledits_pp_editing(self):
+    def test_ledits_pp_editing(self, raw_image):
         pipe = LEditsPPPipelineStableDiffusion.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, torch_dtype=torch.float16
         )
@@ -255,7 +239,7 @@ class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        _ = pipe.invert(image=self.raw_image, generator=generator)
+        _ = pipe.invert(image=raw_image, generator=generator)
         generator = torch.manual_seed(0)
         inputs = {
             "generator": generator,

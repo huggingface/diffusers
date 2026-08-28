@@ -1,9 +1,23 @@
+# coding=utf-8
+# Copyright 2026 HuggingFace Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import gc
-import inspect
 import random
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -15,6 +29,7 @@ from diffusers import (
 )
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -23,26 +38,36 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..pipeline_params import (
-    IMAGE_TO_IMAGE_IMAGE_PARAMS,
-    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
-    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    IPAdapterTesterMixin,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+    UNetLoraTesterMixin,
 )
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class LatentConsistencyModelImg2ImgPipelineFastTests(
-    IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
-):
+class LatentConsistencyModelImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = LatentConsistencyModelImg2ImgPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "negative_prompt", "negative_prompt_embeds"}
-    required_optional_params = PipelineTesterMixin.required_optional_params - {"latents", "negative_prompt"}
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    # LCM is guidance-distilled and does not take a negative prompt; img2img derives the size from `image`.
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
+        "height",
+        "width",
+        "negative_prompt",
+        "negative_prompt_embeds",
+    }
+    batch_input_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    output_shape = (3, 32, 32)
+    # `__call__` starts from the supplied image, so it takes no `latents`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_images_per_prompt", "generator", "output_type", "return_dict"]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -90,7 +115,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        components = {
+        return {
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
@@ -101,119 +126,87 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
             "image_encoder": None,
             "requires_safety_checker": False,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+    def get_dummy_inputs(self):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0))
         image = image / 2 + 0.5
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "image": image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
-        return inputs
 
-    def test_ip_adapter(self):
-        expected_pipe_slice = None
-        if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.3952, 0.3674, 0.2839, 0.5461, 0.5532, 0.3737, 0.4652, 0.4986, 0.4422])
-        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
+class TestLatentConsistencyModelImg2ImgPipeline(
+    LatentConsistencyModelImg2ImgPipelineTesterConfig, PipelineTesterMixin
+):
     def test_lcm_onestep(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["num_inference_steps"] = 1
-        output = pipe(**inputs)
-        image = output.images
-        assert image.shape == (1, 32, 32, 3)
+        image = pipe(**inputs).images
+        assert image.shape == (1, *self.output_shape)
 
-        image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.4317, 0.3653, 0.2190, 0.7136, 0.6321, 0.3634, 0.5846, 0.6095, 0.4969])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        # fmt: off
+        expected_slice = torch.tensor([0.4317, 0.3653, 0.2190, 0.7136, 0.6321, 0.3634, 0.5846, 0.6095, 0.4969])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
 
     def test_lcm_multistep(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        image = pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, *self.output_shape)
 
-        inputs = self.get_dummy_inputs(device)
-        output = pipe(**inputs)
-        image = output.images
-        assert image.shape == (1, 32, 32, 3)
-
-        image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.4083, 0.3668, 0.2467, 0.6268, 0.5976, 0.3750, 0.5071, 0.5439, 0.4677])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        # fmt: off
+        expected_slice = torch.tensor([0.4083, 0.3668, 0.2467, 0.6268, 0.5976, 0.3750, 0.5071, 0.5439, 0.4677])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
 
     def test_lcm_custom_timesteps(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         del inputs["num_inference_steps"]
         inputs["timesteps"] = [999, 499]
-        output = pipe(**inputs)
-        image = output.images
-        assert image.shape == (1, 32, 32, 3)
+        image = pipe(**inputs).images
+        assert image.shape == (1, *self.output_shape)
 
-        image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.3985, 0.3444, 0.2534, 0.6969, 0.6167, 0.3622, 0.5754, 0.5850, 0.4959])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        # fmt: off
+        expected_slice = torch.tensor([0.3985, 0.3444, 0.2534, 0.6969, 0.6167, 0.3622, 0.5754, 0.5850, 0.4959])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
 
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=5e-4)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=5e-4):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    # override default test because the final latent variable is "denoised" instead of "latents"
     def test_callback_inputs(self):
-        sig = inspect.signature(self.pipeline_class.__call__)
+        # Overridden because the final latent variable is `denoised` rather than `latents`.
+        pipe = self.get_pipeline().to(torch_device)
 
-        if not ("callback_on_step_end_tensor_inputs" in sig.parameters and "callback_on_step_end" in sig.parameters):
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        self.assertTrue(
-            hasattr(pipe, "_callback_tensor_inputs"),
-            f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
+        assert hasattr(pipe, "_callback_tensor_inputs"), (
+            f"{self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables "
+            "its callback function can use as inputs"
         )
 
         def callback_inputs_test(pipe, i, t, callback_kwargs):
-            missing_callback_inputs = set()
-            for v in pipe._callback_tensor_inputs:
-                if v not in callback_kwargs:
-                    missing_callback_inputs.add(v)
-            self.assertTrue(
-                len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
-            )
-            last_i = pipe.num_timesteps - 1
-            if i == last_i:
+            missing_callback_inputs = {v for v in pipe._callback_tensor_inputs if v not in callback_kwargs}
+            assert len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
+            if i == pipe.num_timesteps - 1:
                 callback_kwargs["denoised"] = torch.zeros_like(callback_kwargs["denoised"])
             return callback_kwargs
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["callback_on_step_end"] = callback_inputs_test
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
         inputs["output_type"] = "latent"
@@ -221,18 +214,48 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         output = pipe(**inputs)[0]
         assert output.abs().sum() == 0
 
-    def test_encode_prompt_works_in_isolation(self):
+    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
+        # `encode_prompt` requires `device` and `do_classifier_free_guidance`, neither of which `__call__`
+        # exposes with a default for the shared test to pick up.
         extra_required_param_value_dict = {
             "device": torch.device(torch_device).type,
-            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+            "do_classifier_free_guidance": self.get_dummy_inputs().get("guidance_scale", 1.0) > 1.0,
         }
-        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+        super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol=atol, rtol=rtol)
+
+
+class TestLatentConsistencyModelImg2ImgPipelineMemory(
+    LatentConsistencyModelImg2ImgPipelineTesterConfig, MemoryTesterMixin
+):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LCM img2img pipeline."""
+
+
+class TestLatentConsistencyModelImg2ImgPipelineIPAdapter(
+    LatentConsistencyModelImg2ImgPipelineTesterConfig, IPAdapterTesterMixin
+):
+    """IP-Adapter tests for the LCM img2img pipeline."""
+
+
+class TestLatentConsistencyModelImg2ImgPipelineLoRA(
+    LatentConsistencyModelImg2ImgPipelineTesterConfig, LoraTesterMixin, UNetLoraTesterMixin
+):
+    """LoRA tests for the LCM img2img pipeline."""
+
+
+class TestLatentConsistencyModelImg2ImgPipelineLoRAMemory(
+    LatentConsistencyModelImg2ImgPipelineTesterConfig, LoraMemoryTesterMixin
+):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the LCM img2img pipeline."""
 
 
 @slow
 @require_torch_accelerator
-class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
-    def setUp(self):
+class TestLatentConsistencyModelImg2ImgPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -246,7 +269,7 @@ class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
         )
         init_image = init_image.resize((512, 512))
 
-        inputs = {
+        return {
             "prompt": "a photograph of an astronaut riding a horse",
             "latents": latents,
             "generator": generator,
@@ -255,7 +278,6 @@ class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
             "output_type": "np",
             "image": init_image,
         }
-        return inputs
 
     def test_lcm_onestep(self):
         pipe = LatentConsistencyModelImg2ImgPipeline.from_pretrained(
@@ -282,8 +304,7 @@ class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_inputs(torch_device)
-        image = pipe(**inputs).images
+        image = pipe(**self.get_inputs(torch_device)).images
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1].flatten()

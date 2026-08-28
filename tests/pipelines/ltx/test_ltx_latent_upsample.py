@@ -12,27 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
-import numpy as np
+import pytest
 import torch
 
 from diffusers import AutoencoderKLLTXVideo, LTXLatentUpsamplePipeline
 from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
 
-from ...testing_utils import enable_full_determinism
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class LTXLatentUpsamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class LTXLatentUpsamplePipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = LTXLatentUpsamplePipeline
-    params = {"video", "generator"}
-    batch_params = {"video", "generator"}
-    required_optional_params = frozenset(["generator", "latents", "return_dict"])
-    test_xformers_attention = False
+    required_input_params_in_call_signature = frozenset(["video", "height", "width", "latents"])
+    batch_input_params = frozenset(["video"])
+    output_shape = (5, 3, 32, 32)
+    # This pipeline takes a video rather than a prompt, so it has neither `num_images_per_prompt` nor
+    # `num_inference_steps` — upsampling is a single forward pass through the latent upsampler.
+    optional_input_params = frozenset(["generator", "latents", "output_type", "return_dict"])
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -68,57 +68,31 @@ class LTXLatentUpsamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             temporal_upsample=False,
         )
 
-        components = {
+        return {
             "vae": vae,
             "latent_upsampler": latent_upsampler,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+    def get_dummy_inputs(self):
+        generator = self.get_generator(0)
+        video = torch.randn((5, 3, 32, 32), generator=generator)
 
-        video = torch.randn((5, 3, 32, 32), generator=generator, device=device)
-
-        inputs = {
+        return {
             "video": video,
             "generator": generator,
             "height": 16,
             "width": 16,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
-        return inputs
 
-    def test_inference(self):
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        video = pipe(**inputs).frames
-        generated_video = video[0]
-
-        self.assertEqual(generated_video.shape, (5, 3, 32, 32))
-        expected_video = torch.randn(5, 3, 32, 32)
-        max_diff = np.abs(generated_video - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
-
+class TestLTXLatentUpsamplePipeline(LTXLatentUpsamplePipelineTesterConfig, PipelineTesterMixin):
     def test_vae_tiling(self, expected_diff_max: float = 0.25):
-        generator_device = "cpu"
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe.to("cpu")
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         # Without tiling
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs()
         inputs["height"] = inputs["width"] = 128
         output_without_tiling = pipe(**inputs)[0]
 
@@ -129,30 +103,24 @@ class LTXLatentUpsamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             tile_sample_stride_height=64,
             tile_sample_stride_width=64,
         )
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs()
         inputs["height"] = inputs["width"] = 128
         output_with_tiling = pipe(**inputs)[0]
 
-        self.assertLess(
-            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
-            expected_diff_max,
-            "VAE tiling should not affect the inference results",
+        assert (output_without_tiling - output_with_tiling).abs().max() < expected_diff_max, (
+            "VAE tiling should not affect the inference results."
         )
 
-    @unittest.skip("Test is not applicable.")
-    def test_callback_inputs(self):
-        pass
-
-    @unittest.skip("Test is not applicable.")
-    def test_attention_slicing_forward_pass(
-        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
-    ):
-        pass
-
-    @unittest.skip("Test is not applicable.")
+    # `__call__` documents batched video input as unsupported (`batch_size` is pinned to 1), so the batching
+    # tests below have nothing to assert against.
+    @pytest.mark.skip("Batched video input is not supported by this pipeline.")
     def test_inference_batch_consistent(self):
         pass
 
-    @unittest.skip("Test is not applicable.")
+    @pytest.mark.skip("Batched video input is not supported by this pipeline.")
     def test_inference_batch_single_identical(self):
         pass
+
+
+class TestLTXLatentUpsamplePipelineMemory(LTXLatentUpsamplePipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LTX upsampler pipeline."""
