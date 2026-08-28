@@ -138,8 +138,6 @@
       title: Stable Diffusion XL
     - local: training/kandinsky
       title: Kandinsky 2.2
-    - local: training/wuerstchen
-      title: Wuerstchen
     - local: training/controlnet
       title: ControlNet
     - local: training/t2i_adapters
@@ -377,6 +375,8 @@
         title: LuminaNextDiT2DModel
       - local: api/models/minimax_h3_transformer3d
         title: MiniMaxH3Transformer3DModel
+      - local: api/models/minimax_music3_transformer
+        title: MiniMaxMusic3Transformer1DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
       - local: api/models/motif_video_transformer_3d
@@ -399,12 +399,16 @@
         title: SD3Transformer2DModel
       - local: api/models/skyreels_v2_transformer_3d
         title: SkyReelsV2Transformer3DModel
+      - local: api/models/stable_audio_3_transformer
+        title: StableAudio3DiTModel
       - local: api/models/stable_audio_transformer
         title: StableAudioDiTModel
       - local: api/models/transformer2d
         title: Transformer2DModel
       - local: api/models/transformer_temporal
         title: TransformerTemporalModel
+      - local: api/models/wan_animate_2_transformer_3d
+        title: WanAnimate2Transformer3DModel
       - local: api/models/wan_animate_transformer_3d
         title: WanAnimateTransformer3DModel
       - local: api/models/wan_transformer_3d
@@ -473,8 +477,12 @@
         title: AutoencoderKLWan
       - local: api/models/autoencoder_rae
         title: AutoencoderRAE
+      - local: api/models/autoencoder_same
+        title: AutoencoderSAME
       - local: api/models/consistency_decoder_vae
         title: ConsistencyDecoderVAE
+      - local: api/models/ltx2_diffusion_decoder
+        title: LTX2VideoDiffusionDecoderModel
       - local: api/models/autoencoder_oobleck
         title: Oobleck AutoEncoder
       - local: api/models/autoencoder_tiny
@@ -497,6 +505,8 @@
         title: LongCat-AudioDiT
       - local: api/pipelines/stable_audio
         title: Stable Audio
+      - local: api/pipelines/stable_audio_3
+        title: Stable Audio 3
       title: Audio
     - sections:
       - local: api/pipelines/anima
@@ -697,6 +707,8 @@
         title: LTX-2
       - local: api/pipelines/ltx_video
         title: LTXVideo
+      - local: api/pipelines/minimax_music3
+        title: MiniMax Music 3
       - local: api/pipelines/minimax_h3
         title: MiniMax-H3
       - local: api/pipelines/mochi
@@ -709,6 +721,8 @@
         title: Stable Video Diffusion
       - local: api/pipelines/wan
         title: Wan
+      - local: api/pipelines/wan_animate_2
+        title: Wan-Animate-2
       title: Video
     title: Pipelines
   - sections:
@@ -768,8 +782,6 @@
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
       title: IPNDMScheduler
-    - local: api/schedulers/stochastic_karras_ve
-      title: KarrasVeScheduler
     - local: api/schedulers/dpm_discrete_ancestral
       title: KDPM2AncestralDiscreteScheduler
     - local: api/schedulers/dpm_discrete
@@ -786,8 +798,6 @@
       title: RePaintScheduler
     - local: api/schedulers/score_sde_ve
       title: ScoreSdeVeScheduler
-    - local: api/schedulers/score_sde_vp
-      title: ScoreSdeVpScheduler
     - local: api/schedulers/tcd
       title: TCDScheduler
     - local: api/schedulers/unipc

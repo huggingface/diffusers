@@ -28,7 +28,7 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
-from .constants import DIFFUSERS_REQUEST_TIMEOUT
+from .constants import DIFFUSERS_REQUEST_TIMEOUT, USE_PEFT_BACKEND
 from .deprecation_utils import deprecate
 from .import_utils import (
     BACKENDS_MAPPING,
@@ -75,14 +75,6 @@ deprecate(
     "diffusers.utils.testing_utils is deprecated and will be removed in a future version. "
     "Determinism and device backend utilities have been moved to `diffusers.utils.torch_utils`. ",
 )
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
-_required_transformers_version = is_transformers_available() and version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():

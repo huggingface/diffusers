@@ -291,6 +291,7 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
                 "transformer_2",
                 "unet",
                 "controlnet",
+                "adapter",
             ]:
                 if not hasattr(pipe, component_name):
                     continue
@@ -397,6 +398,7 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
             onload_device=torch_device,
             offload_device=offload_device,
             offload_type="leaf_level",
+            exclude_modules=self.group_offloading_leaf_level_exclude_modules,
         )
         pipe.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs()

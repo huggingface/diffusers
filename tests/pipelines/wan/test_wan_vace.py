@@ -13,7 +13,10 @@
 # limitations under the License.
 
 
+import os
+
 import pytest
+import safetensors.torch
 import torch
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
@@ -25,9 +28,20 @@ from diffusers import (
     WanVACEPipeline,
     WanVACETransformer3DModel,
 )
+from diffusers.utils.import_utils import is_peft_available
 
-from ...testing_utils import assert_tensors_close, torch_device
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+from ...testing_utils import assert_tensors_close, require_peft_version_greater, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
+
+
+if is_peft_available():
+    from peft.utils import get_peft_model_state_dict
 
 
 class WanVACEPipelineTesterConfig(BasePipelineTesterConfig):
@@ -55,7 +69,9 @@ class WanVACEPipelineTesterConfig(BasePipelineTesterConfig):
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder = T5EncoderModel(config).eval()
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -240,3 +256,54 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
 class TestWanVACEPipelineMemory(WanVACEPipelineTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestWanVACEPipelineLoRA(WanVACEPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Wan VACE pipeline."""
+
+    @require_peft_version_greater("0.13.2")
+    def test_lora_exclude_modules(self, tmp_path, base_pipe_output):
+        """`exclude_modules` must keep the excluded module out of the adapter and out of every state dict."""
+        exclude_module_name = "vace_blocks.0.proj_out"
+
+        pipe = self.get_pipeline().to(torch_device)
+        adapted = self.add_adapters_to_pipeline(
+            pipe,
+            components=self.denoiser_components,
+            target_modules=["proj_out"],
+            exclude_modules=[exclude_module_name],
+        )
+
+        # The state dict shouldn't contain the modules to be excluded from LoRA.
+        state_dict_from_model = get_peft_model_state_dict(pipe.transformer, adapter_name="default")
+        assert not any(exclude_module_name in k for k in state_dict_from_model)
+        assert any("proj_out" in k for k in state_dict_from_model)
+
+        output_lora_exclude_modules = self.run_pipe(pipe)
+
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
+        self.pipeline_class.save_lora_weights(save_directory=tmp_path, **lora_state_dicts)
+        pipe.unload_lora_weights()
+
+        # Check in the loaded state dict.
+        loaded_state_dict = safetensors.torch.load_file(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
+        assert not any(exclude_module_name in k for k in loaded_state_dict)
+        assert any("proj_out" in k for k in loaded_state_dict)
+
+        # Check in the state dict obtained after loading LoRA.
+        pipe.load_lora_weights(tmp_path)
+        state_dict_from_model = get_peft_model_state_dict(pipe.transformer, adapter_name="default_0")
+        assert not any(exclude_module_name in k for k in state_dict_from_model)
+        assert any("proj_out" in k for k in state_dict_from_model)
+
+        output_lora_pretrained = self.run_pipe(pipe)
+        assert not torch.allclose(base_pipe_output, output_lora_exclude_modules, atol=1e-3, rtol=1e-3), (
+            "LoRA should change outputs."
+        )
+        assert_tensors_close(
+            output_lora_pretrained, output_lora_exclude_modules, atol=1e-3, rtol=1e-3, msg="Lora outputs should match."
+        )
+
+
+class TestWanVACEPipelineLoRAMemory(WanVACEPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests for the Wan VACE pipeline."""

@@ -11,6 +11,7 @@ if is_torch_available():
     from .hunyuan_transformer_2d import HunyuanDiT2DModel
     from .latte_transformer_3d import LatteTransformer3DModel
     from .lumina_nextdit2d import LuminaNextDiT2DModel
+    from .minimax_music3_rvq_depth_decoder import MiniMaxMusic3RVQDepthDecoder
     from .pixart_transformer_2d import PixArtTransformer2DModel
     from .prior_transformer import PriorTransformer
     from .sana_transformer import SanaTransformer2DModel
@@ -51,6 +52,7 @@ if is_torch_available():
     from .transformer_ltx2 import LTX2VideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
     from .transformer_minimax_h3 import MiniMaxH3Transformer3DModel
+    from .transformer_minimax_music3 import MiniMaxMusic3Transformer1DModel
     from .transformer_mochi import MochiTransformer3DModel
     from .transformer_motif_video import MotifVideoTransformer3DModel
     from .transformer_nucleusmoe_image import NucleusMoEImageTransformer2DModel
@@ -61,8 +63,10 @@ if is_torch_available():
     from .transformer_sana_video import SanaVideoTransformer3DModel
     from .transformer_sd3 import SD3Transformer2DModel
     from .transformer_skyreels_v2 import SkyReelsV2Transformer3DModel
+    from .transformer_stable_audio3 import StableAudio3DiTModel
     from .transformer_temporal import TransformerTemporalModel
     from .transformer_wan import WanTransformer3DModel
     from .transformer_wan_animate import WanAnimateTransformer3DModel
+    from .transformer_wan_animate_2 import WanAnimate2Transformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel
     from .transformer_z_image import ZImageTransformer2DModel
