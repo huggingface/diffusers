@@ -14,9 +14,8 @@
 # limitations under the License.
 
 import inspect
-import unittest
 
-import numpy as np
+import pytest
 import torch
 from torch import nn
 from transformers import (
@@ -30,14 +29,43 @@ from transformers import (
 
 from diffusers import KandinskyV22PriorPipeline, PriorTransformer, UnCLIPScheduler
 
-from ...testing_utils import enable_full_determinism, skip_mps, torch_device
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import assert_tensors_close, enable_full_determinism, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class Dummies:
+# `PriorTransformer` keeps `positional_embedding`, `prd_embedding`, `clip_mean` and `clip_std` as parameters of the
+# model itself rather than of a submodule, so group offloading never onloads them: the forward pass then mixes
+# onloaded activations with still-offloaded weights. Reproduces at both block and leaf level.
+PIPELINE_GROUP_OFFLOAD_XFAIL_REASON = (
+    "`PriorTransformer` holds parameters directly on the model (`positional_embedding`, `prd_embedding`, "
+    "`clip_mean`, `clip_std`), which group offloading never onloads."
+)
+
+# A second, independent gap: the component-scoped test only offloads the denoiser under the names
+# `transformer`/`unet`/`controlnet`/`adapter`, and only puts `vae`/`vqvae`/`image_encoder` back on the accelerator.
+# A prior pipeline's denoiser is called `prior`, so it matches neither list and is left on CPU while the text
+# encoder is onloaded. Fixing this means widening the mixin's component lists, not changing the pipeline.
+COMPONENT_GROUP_OFFLOAD_XFAIL_REASON = (
+    "`GroupOffloadTesterMixin.test_group_offloading_inference` neither offloads nor places a component named "
+    "`prior`, so it stays on CPU while the onloaded text encoder runs on the accelerator."
+)
+
+
+class KandinskyV22PriorPipelineTesterConfig(BasePipelineTesterConfig):
+    pipeline_class = KandinskyV22PriorPipeline
+    required_input_params_in_call_signature = frozenset(["prompt"])
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    callback_cfg_params = frozenset(["prompt_embeds", "text_encoder_hidden_states", "text_mask"])
+    # The prior outputs image embeddings, not images.
+    output_shape = (32,)
+
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -154,122 +182,60 @@ class Dummies:
 
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+    def get_dummy_inputs(self):
         inputs = {
             "prompt": "horse",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "guidance_scale": 4.0,
             "num_inference_steps": 2,
-            "output_type": "np",
+            # The prior returns embeddings, so `output_type` only selects the type of the returned tensors; request
+            # torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
         return inputs
 
 
-class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyV22PriorPipeline
-    params = ["prompt"]
-    batch_params = ["prompt", "negative_prompt"]
-    required_optional_params = [
-        "num_images_per_prompt",
-        "generator",
-        "num_inference_steps",
-        "latents",
-        "negative_prompt",
-        "guidance_scale",
-        "output_type",
-        "return_dict",
-    ]
-    callback_cfg_params = ["prompt_embeds", "text_encoder_hidden_states", "text_mask"]
-    test_xformers_attention = False
-
-    def get_dummy_components(self):
-        dummies = Dummies()
-        return dummies.get_dummy_components()
-
-    def get_dummy_inputs(self, device, seed=0):
-        dummies = Dummies()
-        return dummies.get_dummy_inputs(device=device, seed=seed)
-
+class TestKandinskyV22PriorPipeline(KandinskyV22PriorPipelineTesterConfig, PipelineTesterMixin):
     def test_kandinsky_prior(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
+        image = pipe(**self.get_dummy_inputs()).image_embeds
+        image_from_tuple = pipe(**self.get_dummy_inputs(), return_dict=False)[0]
 
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
+        assert image.shape == (1, *self.output_shape)
 
-        pipe.set_progress_bar_config(disable=None)
+        # fmt: off
+        expected_slice = torch.tensor([-0.0171, 0.8655, -0.6831, 0.6393, -0.8142, -0.1628, -1.4405, -0.7309, 0.3505, -0.2847])
+        # fmt: on
+        assert_tensors_close(image[0, -10:], expected_slice, atol=1e-2)
+        assert_tensors_close(image_from_tuple[0, -10:], expected_slice, atol=1e-2)
 
-        output = pipe(**self.get_dummy_inputs(device))
-        image = output.image_embeds
-
-        image_from_tuple = pipe(
-            **self.get_dummy_inputs(device),
-            return_dict=False,
-        )[0]
-
-        image_slice = image[0, -10:]
-
-        image_from_tuple_slice = image_from_tuple[0, -10:]
-
-        assert image.shape == (1, 32)
-
-        expected_slice = np.array(
-            [-0.0171, 0.8655, -0.6831, 0.6393, -0.8142, -0.1628, -1.4405, -0.7309, 0.3505, -0.2847]
-        )
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
-
-    @skip_mps
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
-
-    @skip_mps
-    def test_attention_slicing_forward_pass(self):
-        test_max_difference = torch_device == "cpu"
-        test_mean_pixel_difference = False
-
-        self._test_attention_slicing_forward_pass(
-            test_max_difference=test_max_difference,
-            test_mean_pixel_difference=test_mean_pixel_difference,
-        )
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     # override default test because no output_type "latent", use "pt" instead
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)
-
         if not ("callback_on_step_end_tensor_inputs" in sig.parameters and "callback_on_step_end" in sig.parameters):
-            return
+            pytest.skip(f"{self.pipeline_class} does not accept `callback_on_step_end`.")
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
-        self.assertTrue(
-            hasattr(pipe, "_callback_tensor_inputs"),
-            f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
+        assert hasattr(pipe, "_callback_tensor_inputs"), (
+            f"{self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables "
+            "its callback function can use as inputs"
         )
 
         def callback_inputs_test(pipe, i, t, callback_kwargs):
-            missing_callback_inputs = set()
-            for v in pipe._callback_tensor_inputs:
-                if v not in callback_kwargs:
-                    missing_callback_inputs.add(v)
-            self.assertTrue(
-                len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
-            )
+            missing_callback_inputs = {v for v in pipe._callback_tensor_inputs if v not in callback_kwargs}
+            assert len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
             last_i = pipe.num_timesteps - 1
             if i == last_i:
                 callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
             return callback_kwargs
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["callback_on_step_end"] = callback_inputs_test
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
         inputs["num_inference_steps"] = 2
@@ -277,3 +243,18 @@ class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         output = pipe(**inputs)[0]
         assert output.abs().sum() == 0
+
+
+class TestKandinskyV22PriorPipelineMemory(KandinskyV22PriorPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky 2.2 prior
+    pipeline."""
+
+    @pytest.mark.xfail(condition=True, reason=COMPONENT_GROUP_OFFLOAD_XFAIL_REASON, strict=True)
+    def test_group_offloading_inference(self):
+        super().test_group_offloading_inference()
+
+    @pytest.mark.xfail(condition=True, reason=PIPELINE_GROUP_OFFLOAD_XFAIL_REASON, strict=True)
+    def test_pipeline_level_group_offloading_inference(self, base_pipe_output, expected_max_difference=1e-4):
+        super().test_pipeline_level_group_offloading_inference(
+            base_pipe_output, expected_max_difference=expected_max_difference
+        )

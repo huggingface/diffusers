@@ -15,7 +15,6 @@
 
 import gc
 import random
-import unittest
 
 import numpy as np
 import pytest
@@ -35,6 +34,7 @@ from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, Multilingual
 from diffusers.utils import is_transformers_version
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -45,13 +45,27 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import assert_mean_pixel_difference
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class Dummies:
+class KandinskyImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
+    pipeline_class = KandinskyImg2ImgPipeline
+    required_input_params_in_call_signature = frozenset(["prompt", "image_embeds", "negative_image_embeds", "image"])
+    batch_input_params = frozenset(["prompt", "negative_prompt", "image_embeds", "negative_image_embeds", "image"])
+    # The pipeline starts denoising from the encoded `image`, so it takes no `latents` argument.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_images_per_prompt", "generator", "output_type", "return_dict"]
+    )
+    output_shape = (3, 64, 64)
+
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -175,67 +189,37 @@ class Dummies:
 
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed)).to(device)
-        negative_image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(seed + 1)).to(device)
+    def get_dummy_inputs(self):
+        image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(0)).to(torch_device)
+        negative_image_embeds = floats_tensor((1, self.cross_attention_dim), rng=random.Random(1)).to(torch_device)
         # create init_image
-        image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
+        image = floats_tensor((1, 3, 64, 64), rng=random.Random(0))
         image = image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((256, 256))
 
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+        return {
             "prompt": "horse",
             "image": init_image,
             "image_embeds": image_embeds,
             "negative_image_embeds": negative_image_embeds,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "height": 64,
             "width": 64,
             "num_inference_steps": 10,
             "guidance_scale": 7.0,
             "strength": 0.2,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
-        return inputs
 
 
-class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyImg2ImgPipeline
-    params = ["prompt", "image_embeds", "negative_image_embeds", "image"]
-    batch_params = [
-        "prompt",
-        "negative_prompt",
-        "image_embeds",
-        "negative_image_embeds",
-        "image",
-    ]
-    required_optional_params = [
-        "generator",
-        "height",
-        "width",
-        "strength",
-        "guidance_scale",
-        "negative_prompt",
-        "num_inference_steps",
-        "return_dict",
-        "guidance_scale",
-        "num_images_per_prompt",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
-
-    def get_dummy_components(self):
-        dummies = Dummies()
-        return dummies.get_dummy_components()
-
-    def get_dummy_inputs(self, device, seed=0):
-        dummies = Dummies()
-        return dummies.get_dummy_inputs(device=device, seed=seed)
+class TestKandinskyImg2ImgPipeline(KandinskyImg2ImgPipelineTesterConfig, PipelineTesterMixin):
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-2):
+        # Batched inference is only approximately equal to single inference here: the batch pads to the longest
+        # prompt and the tiny 2-step denoising loop amplifies the resulting attention differences. Tolerance set
+        # from the measured drift.
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     @pytest.mark.xfail(
         condition=is_transformers_version(">=", "4.56.2"),
@@ -243,79 +227,40 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         strict=False,
     )
     def test_kandinsky_img2img(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
+        image = pipe(**self.get_dummy_inputs()).images
+        image_from_tuple = pipe(**self.get_dummy_inputs(), return_dict=False)[0]
 
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
+        assert image.shape == (1, *self.output_shape)
 
-        pipe.set_progress_bar_config(disable=None)
+        # fmt: off
+        expected_slice = torch.tensor([0.5816, 0.5872, 0.4634, 0.5982, 0.4767, 0.4710, 0.4669, 0.4717, 0.4966])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
+        assert_tensors_close(image_from_tuple[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
-        output = pipe(**self.get_dummy_inputs(device))
-        image = output.images
-
-        image_from_tuple = pipe(
-            **self.get_dummy_inputs(device),
-            return_dict=False,
-        )[0]
-
-        image_slice = image[0, -3:, -3:, -1]
-        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-
-        expected_slice = np.array([0.5816, 0.5872, 0.4634, 0.5982, 0.4767, 0.4710, 0.4669, 0.4717, 0.4966])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
-            f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
-        )
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2, (
-            f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
+    def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=5e-4):
+        super().test_dict_tuple_outputs_equivalent(
+            expected_slice=expected_slice, expected_max_difference=expected_max_difference
         )
 
-    @require_torch_accelerator
-    def test_offloads(self):
-        pipes = []
-        components = self.get_dummy_components()
-        sd_pipe = self.pipeline_class(**components).to(torch_device)
-        pipes.append(sd_pipe)
 
-        components = self.get_dummy_components()
-        sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_model_cpu_offload()
-        pipes.append(sd_pipe)
-
-        components = self.get_dummy_components()
-        sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_sequential_cpu_offload()
-        pipes.append(sd_pipe)
-
-        image_slices = []
-        for pipe in pipes:
-            inputs = self.get_dummy_inputs(torch_device)
-            image = pipe(**inputs).images
-
-            image_slices.append(image[0, -3:, -3:, -1].flatten())
-
-        assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
-        assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
-
-    def test_dict_tuple_outputs_equivalent(self):
-        super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
+class TestKandinskyImg2ImgPipelineMemory(KandinskyImg2ImgPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky img2img
+    pipeline."""
 
 
 @slow
 @require_torch_accelerator
-class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
+class TestKandinskyImg2ImgPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        # clean up the VRAM before and after each test
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -372,16 +317,13 @@ class KandinskyImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
 @nightly
 @require_torch_accelerator
-class KandinskyImg2ImgPipelineNightlyTests(unittest.TestCase):
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
+class TestKandinskyImg2ImgPipelineNightly:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        # clean up the VRAM before and after each test
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

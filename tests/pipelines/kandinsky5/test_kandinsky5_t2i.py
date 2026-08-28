@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 from transformers import (
     AutoProcessor,
@@ -32,30 +31,32 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import enable_full_determinism
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class Kandinsky5T2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+# `Kandinsky5Transformer3DModel` declares `_keep_in_fp32_modules`, so casting the pipeline with `.to(dtype)` leaves
+# those submodules in fp32 while the rest of the model moves to the half dtype, and the forward pass then fails on a
+# dtype mismatch. Half-precision inference needs `from_pretrained(torch_dtype=...)`, which these tests do not use.
+KEEP_IN_FP32_SKIP_REASON = "Casting with `.to(dtype)` conflicts with the transformer's `_keep_in_fp32_modules`."
+
+
+class Kandinsky5T2IPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = Kandinsky5T2IPipeline
-
-    batch_params = ["prompt", "negative_prompt"]
-    params = frozenset(["prompt", "height", "width", "num_inference_steps", "guidance_scale"])
-
-    required_optional_params = {
-        "num_inference_steps",
-        "generator",
-        "latents",
-        "return_dict",
-        "callback_on_step_end",
-        "callback_on_step_end_tensor_inputs",
-        "max_sequence_length",
-    }
-    test_xformers_attention = False
-    supports_optional_components = True
-    test_attention_slicing = False
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "num_inference_steps", "guidance_scale"]
+    )
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    # The pipeline snaps `height`/`width` to the closest-aspect-ratio entry of `self.resolutions`, which `__init__`
+    # seeds with the real checkpoint's resolutions. The dummy 64x64 request therefore lands on 1024x1024 latents,
+    # which the dummy VAE (`vae_scale_factor_spatial` 8, upsampling by 2) decodes to 256x256.
+    output_shape = (3, 256, 256)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -156,51 +157,45 @@ class Kandinsky5T2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "scheduler": scheduler,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+    def get_dummy_inputs(self):
         return {
             "prompt": "a red square",
             "height": 64,
             "width": 64,
             "num_inference_steps": 2,
             "guidance_scale": 4.0,
-            "generator": generator,
+            "generator": self.get_generator(0),
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
             "max_sequence_length": 8,
         }
 
+
+class TestKandinsky5T2IPipeline(Kandinsky5T2IPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+        pipe = self.get_pipeline()
+        # Narrow the resolutions the pipeline snaps to, so the dummy 64x64 request is honored as-is.
         pipe.resolutions = [(64, 64)]
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
-        output = pipe(**inputs)
-        image = output.image
+        image = pipe(**self.get_dummy_inputs()).image
 
-        self.assertEqual(image.shape, (1, 3, 16, 16))
+        assert image.shape == (1, 3, 16, 16)
 
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=5e-3)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=5e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    @unittest.skip("Test not supported")
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    @unittest.skip("Only SDPA or NABLA (flex)")
-    def test_xformers_memory_efficient_attention(self):
-        pass
-
-    @unittest.skip("All encoders are needed")
+    @pytest.mark.skip("All encoders are needed")
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    @unittest.skip("Meant for eiter FP32 or BF16 inference")
-    def test_float16_inference(self):
+    @pytest.mark.skip(KEEP_IN_FP32_SKIP_REASON)
+    def test_half_precision_inference_no_nan(self):
+        pass
+
+
+class TestKandinsky5T2IPipelineMemory(Kandinsky5T2IPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky 5 T2I pipeline."""
+
+    @pytest.mark.skip(KEEP_IN_FP32_SKIP_REASON)
+    def test_layerwise_casting_inference(self):
         pass
