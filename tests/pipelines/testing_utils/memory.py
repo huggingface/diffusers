@@ -267,6 +267,10 @@ class LayerwiseCastingTesterMixin(BasePipelineOutputMixin):
 class GroupOffloadTesterMixin(BasePipelineOutputMixin):
     """Block/leaf-level group offload, both component-scoped and pipeline-level orchestration."""
 
+    def create_pipe(self):
+            torch.manual_seed(0)
+            return self.get_pipeline()
+
     def _skip_if_group_offloading_unsupported(self, pipe):
         for component in pipe.components.values():
             if hasattr(component, "_supports_group_offloading") and not component._supports_group_offloading:
@@ -332,7 +336,7 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
     def _run_group_offload_inference(self, base_pipe_output, expected_max_difference, msg, **group_offloading_kwargs):
         # Build the offload pipeline the same way as `base_pipe_output` so that group offloading is the only
         # difference under test. It stays on CPU here — the components are placed as they are hooked.
-        pipe = self.get_pipeline()
+        pipe = self.create_pipe()
         self._skip_if_group_offloading_unsupported(pipe)
         self._enable_group_offload_on_components(pipe, **group_offloading_kwargs)
 
