@@ -11,6 +11,8 @@ from diffusers import (
 from ...testing_utils import assert_tensors_close
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -123,3 +125,11 @@ class TestLumina2Pipeline(Lumina2PipelineTesterConfig, PipelineTesterMixin):
 
 class TestLumina2PipelineMemory(Lumina2PipelineTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestLumina2PipelineLoRA(Lumina2PipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Lumina2 pipeline."""
+
+
+class TestLumina2PipelineLoRAMemory(Lumina2PipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA offloading tests for the Lumina2 pipeline."""
