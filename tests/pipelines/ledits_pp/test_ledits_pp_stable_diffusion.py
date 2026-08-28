@@ -203,6 +203,28 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
         inputs["edit_warmup_steps"] = [10, 5]
         pipe(**inputs).images
 
+    def test_callback_inputs(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = LEditsPPPipelineStableDiffusion(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inversion_inputs = self.get_dummy_inversion_inputs(device)
+        inversion_inputs["image"] = inversion_inputs["image"][0]
+        pipe.invert(**inversion_inputs)
+
+        def callback_inputs_all(pipe, i, t, callback_kwargs):
+            for tensor_name in pipe._callback_tensor_inputs:
+                assert tensor_name in callback_kwargs
+
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["callback_on_step_end"] = callback_inputs_all
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        pipe(**inputs)
+
 
 @slow
 @require_torch_accelerator

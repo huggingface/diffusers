@@ -436,4 +436,4 @@ The `config.json` file contains an `auto_map` key that tells [`ModularPipeline`]
 }
 ```
 
-Load custom code repositories with `trust_remote_code=True` as shown in [from_pretrained](#from_pretrained). See [Custom blocks](./custom_blocks) for how to create and share your own.
+Load custom code repositories with `trust_remote_code=True` as shown in [from_pretrained](#frompretrained). See [Custom blocks](./custom_blocks) for how to create and share your own.
