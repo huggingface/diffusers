@@ -13,7 +13,10 @@
 # limitations under the License.
 
 
+import os
+
 import pytest
+import safetensors.torch
 import torch
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
@@ -25,9 +28,20 @@ from diffusers import (
     WanVACEPipeline,
     WanVACETransformer3DModel,
 )
+from diffusers.utils.import_utils import is_peft_available
 
-from ...testing_utils import assert_tensors_close, torch_device
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+from ...testing_utils import assert_tensors_close, require_peft_version_greater, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
+
+
+if is_peft_available():
+    from peft.utils import get_peft_model_state_dict
 
 
 class WanVACEPipelineTesterConfig(BasePipelineTesterConfig):
@@ -36,6 +50,7 @@ class WanVACEPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt"])
+    output_shape = (17, 3, 16, 16)
     # WanVACE is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
@@ -54,7 +69,9 @@ class WanVACEPipelineTesterConfig(BasePipelineTesterConfig):
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder = T5EncoderModel(config).eval()
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -125,7 +142,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (17, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4523, 0.45198, 0.44872, 0.45326, 0.45211, 0.45258, 0.45344, 0.453, 0.52431, 0.52572, 0.50701, 0.5118, 0.53717, 0.53093, 0.50557, 0.51402])
@@ -133,7 +150,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_with_single_reference_image(self):
         # Run on CPU: the expected slice below is CPU-specific.
@@ -143,7 +160,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
         inputs["reference_images"] = Image.new("RGB", (16, 16))
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (17, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.45247, 0.45214, 0.44874, 0.45314, 0.45171, 0.45299, 0.45428, 0.45317, 0.51378, 0.52658, 0.53361, 0.52303, 0.46204, 0.50435, 0.52555, 0.51342])
@@ -151,7 +168,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_with_multiple_reference_image(self):
         # Run on CPU: the expected slice below is CPU-specific.
@@ -161,7 +178,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
         inputs["reference_images"] = [[Image.new("RGB", (16, 16))] * 2]
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (17, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.45321, 0.45221, 0.44818, 0.45375, 0.45268, 0.4519, 0.45271, 0.45253, 0.51244, 0.52223, 0.51253, 0.51321, 0.50743, 0.51177, 0.51626, 0.50983])
@@ -169,7 +186,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_with_only_transformer(self):
         components = self.get_dummy_components()
@@ -179,7 +196,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames[0]
-        assert video.shape == (17, 3, 16, 16)
+        assert video.shape == self.output_shape
 
     def test_inference_with_only_transformer_2(self):
         components = self.get_dummy_components()
@@ -197,7 +214,7 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames[0]
-        assert video.shape == (17, 3, 16, 16)
+        assert video.shape == self.output_shape
 
     def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
         # `_optional_components` lists both `transformer` and `transformer_2`. Here we drop the (optional)
@@ -239,3 +256,54 @@ class TestWanVACEPipeline(WanVACEPipelineTesterConfig, PipelineTesterMixin):
 
 class TestWanVACEPipelineMemory(WanVACEPipelineTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestWanVACEPipelineLoRA(WanVACEPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Wan VACE pipeline."""
+
+    @require_peft_version_greater("0.13.2")
+    def test_lora_exclude_modules(self, tmp_path, base_pipe_output):
+        """`exclude_modules` must keep the excluded module out of the adapter and out of every state dict."""
+        exclude_module_name = "vace_blocks.0.proj_out"
+
+        pipe = self.get_pipeline().to(torch_device)
+        adapted = self.add_adapters_to_pipeline(
+            pipe,
+            components=self.denoiser_components,
+            target_modules=["proj_out"],
+            exclude_modules=[exclude_module_name],
+        )
+
+        # The state dict shouldn't contain the modules to be excluded from LoRA.
+        state_dict_from_model = get_peft_model_state_dict(pipe.transformer, adapter_name="default")
+        assert not any(exclude_module_name in k for k in state_dict_from_model)
+        assert any("proj_out" in k for k in state_dict_from_model)
+
+        output_lora_exclude_modules = self.run_pipe(pipe)
+
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
+        self.pipeline_class.save_lora_weights(save_directory=tmp_path, **lora_state_dicts)
+        pipe.unload_lora_weights()
+
+        # Check in the loaded state dict.
+        loaded_state_dict = safetensors.torch.load_file(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
+        assert not any(exclude_module_name in k for k in loaded_state_dict)
+        assert any("proj_out" in k for k in loaded_state_dict)
+
+        # Check in the state dict obtained after loading LoRA.
+        pipe.load_lora_weights(tmp_path)
+        state_dict_from_model = get_peft_model_state_dict(pipe.transformer, adapter_name="default_0")
+        assert not any(exclude_module_name in k for k in state_dict_from_model)
+        assert any("proj_out" in k for k in state_dict_from_model)
+
+        output_lora_pretrained = self.run_pipe(pipe)
+        assert not torch.allclose(base_pipe_output, output_lora_exclude_modules, atol=1e-3, rtol=1e-3), (
+            "LoRA should change outputs."
+        )
+        assert_tensors_close(
+            output_lora_pretrained, output_lora_exclude_modules, atol=1e-3, rtol=1e-3, msg="Lora outputs should match."
+        )
+
+
+class TestWanVACEPipelineLoRAMemory(WanVACEPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests for the Wan VACE pipeline."""

@@ -13,10 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import re
 
 import numpy as np
 import PIL.Image
+import pytest
 import torch
 
 from diffusers.image_processor import VaeImageProcessor
@@ -58,14 +59,17 @@ class RemoteAutoencoderKLMixin:
     height: int = None
 
     def get_dummy_inputs(self):
+        # The tensor is serialized and decoded remotely, so the local device has no bearing on the result.
+        # Seed it on CPU and move it afterwards, otherwise `torch.randn` yields different latents on a CUDA
+        # runner than on a CPU one and the reference slices below only match on whichever recorded them.
         inputs = {
             "endpoint": self.endpoint,
             "tensor": torch.randn(
                 self.shape,
-                device=torch_device,
+                device="cpu",
                 dtype=self.dtype,
-                generator=torch.Generator(torch_device).manual_seed(13),
-            ),
+                generator=torch.Generator("cpu").manual_seed(13),
+            ).to(torch_device),
             "scaling_factor": self.scaling_factor,
             "shift_factor": self.shift_factor,
             "height": self.height,
@@ -89,124 +93,89 @@ class RemoteAutoencoderKLMixin:
             processor=processor,
             **inputs,
         )
-        assert isinstance(output, PIL.Image.Image)
-        self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
-        self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
-        self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
+        assert isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}"
+        assert output.height == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}"
+        assert output.width == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}"
         output_slice = torch.from_numpy(np.array(output)[0, -3:, -3:].flatten())
         # Increased tolerance for Flux Packed diff [1, 0, 1, 0, 0, 0, 0, 0, 0]
-        self.assertTrue(
-            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1),
-            f"{output_slice}",
-        )
+        assert torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1)
 
     def test_output_type_pt(self):
         inputs = self.get_dummy_inputs()
         processor = self.processor_cls()
         output = remote_decode(output_type="pt", processor=processor, **inputs)
-        assert isinstance(output, PIL.Image.Image)
-        self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
-        self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
-        self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
+        assert isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}"
+        assert output.height == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}"
+        assert output.width == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}"
         output_slice = torch.from_numpy(np.array(output)[0, -3:, -3:].flatten())
-        self.assertTrue(
-            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1e-2), f"{output_slice}"
-        )
+        assert torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1e-2)
 
     # output is visually the same, slice is flaky?
     def test_output_type_pil(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pil", **inputs)
-        self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
-        self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
-        self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
+        assert isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}"
+        assert output.height == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}"
+        assert output.width == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}"
 
     def test_output_type_pil_image_format(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pil", image_format="png", **inputs)
-        self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
-        self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
-        self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
-        self.assertEqual(output.format, "png", f"Expected image format `png`, got {output.format}")
+        assert isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}"
+        assert output.height == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}"
+        assert output.width == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}"
+        assert output.format == "png", f"Expected image format `png`, got {output.format}"
         output_slice = torch.from_numpy(np.array(output)[0, -3:, -3:].flatten())
-        self.assertTrue(
-            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1e-2), f"{output_slice}"
-        )
+        assert torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1e-2)
 
     def test_output_type_pt_partial_postprocess(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pt", partial_postprocess=True, **inputs)
-        self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
-        self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
-        self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
+        assert isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}"
+        assert output.height == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}"
+        assert output.width == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}"
         output_slice = torch.from_numpy(np.array(output)[0, -3:, -3:].flatten())
-        self.assertTrue(
-            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1e-2), f"{output_slice}"
-        )
+        assert torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1e-2)
 
     def test_output_type_pt_return_type_pt(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pt", return_type="pt", **inputs)
-        self.assertTrue(isinstance(output, torch.Tensor), f"Expected `torch.Tensor` output, got {type(output)}")
-        self.assertEqual(
-            output.shape[2], self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.shape[2]}"
-        )
-        self.assertEqual(
-            output.shape[3], self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.shape[3]}"
-        )
+        assert isinstance(output, torch.Tensor), f"Expected `torch.Tensor` output, got {type(output)}"
+        assert output.shape[2] == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.shape[2]}"
+        assert output.shape[3] == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.shape[3]}"
         output_slice = output[0, 0, -3:, -3:].flatten()
-        self.assertTrue(
-            torch_all_close(output_slice, self.return_pt_slice.to(output_slice.dtype), rtol=1e-3, atol=1e-3),
-            f"{output_slice}",
-        )
+        assert torch_all_close(output_slice, self.return_pt_slice.to(output_slice.dtype), rtol=1e-3, atol=1e-3)
 
     def test_output_type_pt_partial_postprocess_return_type_pt(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pt", partial_postprocess=True, return_type="pt", **inputs)
-        self.assertTrue(isinstance(output, torch.Tensor), f"Expected `torch.Tensor` output, got {type(output)}")
-        self.assertEqual(
-            output.shape[1], self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.shape[1]}"
-        )
-        self.assertEqual(
-            output.shape[2], self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.shape[2]}"
-        )
+        assert isinstance(output, torch.Tensor), f"Expected `torch.Tensor` output, got {type(output)}"
+        assert output.shape[1] == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.shape[1]}"
+        assert output.shape[2] == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.shape[2]}"
         output_slice = output[0, -3:, -3:, 0].flatten().cpu()
-        self.assertTrue(
-            torch_all_close(output_slice, self.partial_postprocess_return_pt_slice.to(output_slice.dtype), rtol=1e-2),
-            f"{output_slice}",
+        assert torch_all_close(
+            output_slice, self.partial_postprocess_return_pt_slice.to(output_slice.dtype), rtol=1e-2
         )
 
     def test_do_scaling_deprecation(self):
         inputs = self.get_dummy_inputs()
         inputs.pop("scaling_factor", None)
         inputs.pop("shift_factor", None)
-        with self.assertWarns(FutureWarning) as warning:
+        expected = "`do_scaling` is deprecated, pass `scaling_factor` and `shift_factor` if required."
+        with pytest.warns(FutureWarning, match=re.escape(expected)):
             _ = remote_decode(output_type="pt", partial_postprocess=True, **inputs)
-            self.assertEqual(
-                str(warning.warnings[0].message),
-                "`do_scaling` is deprecated, pass `scaling_factor` and `shift_factor` if required.",
-                str(warning.warnings[0].message),
-            )
 
     def test_input_tensor_type_base64_deprecation(self):
         inputs = self.get_dummy_inputs()
-        with self.assertWarns(FutureWarning) as warning:
+        expected = "input_tensor_type='base64' is deprecated. Using `binary`."
+        with pytest.warns(FutureWarning, match=re.escape(expected)):
             _ = remote_decode(output_type="pt", input_tensor_type="base64", partial_postprocess=True, **inputs)
-            self.assertEqual(
-                str(warning.warnings[0].message),
-                "input_tensor_type='base64' is deprecated. Using `binary`.",
-                str(warning.warnings[0].message),
-            )
 
     def test_output_tensor_type_base64_deprecation(self):
         inputs = self.get_dummy_inputs()
-        with self.assertWarns(FutureWarning) as warning:
+        expected = "output_tensor_type='base64' is deprecated. Using `binary`."
+        with pytest.warns(FutureWarning, match=re.escape(expected)):
             _ = remote_decode(output_type="pt", output_tensor_type="base64", partial_postprocess=True, **inputs)
-            self.assertEqual(
-                str(warning.warnings[0].message),
-                "output_tensor_type='base64' is deprecated. Using `binary`.",
-                str(warning.warnings[0].message),
-            )
 
 
 class RemoteAutoencoderKLHunyuanVideoMixin(RemoteAutoencoderKLMixin):
@@ -226,123 +195,80 @@ class RemoteAutoencoderKLHunyuanVideoMixin(RemoteAutoencoderKLMixin):
             processor=processor,
             **inputs,
         )
-        self.assertTrue(
-            isinstance(output, list) and isinstance(output[0], PIL.Image.Image),
-            f"Expected `List[PIL.Image.Image]` output, got {type(output)}",
+        assert isinstance(output, list) and isinstance(output[0], PIL.Image.Image), (
+            f"Expected `List[PIL.Image.Image]` output, got {type(output)}"
         )
-        self.assertEqual(
-            output[0].height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output[0].height}"
-        )
-        self.assertEqual(
-            output[0].width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output[0].width}"
-        )
+        assert output[0].height == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output[0].height}"
+        assert output[0].width == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output[0].width}"
         output_slice = torch.from_numpy(np.array(output[0])[0, -3:, -3:].flatten())
-        self.assertTrue(
-            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1),
-            f"{output_slice}",
-        )
+        assert torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1)
 
     def test_output_type_pt(self):
         inputs = self.get_dummy_inputs()
         processor = self.processor_cls()
         output = remote_decode(output_type="pt", processor=processor, **inputs)
-        self.assertTrue(
-            isinstance(output, list) and isinstance(output[0], PIL.Image.Image),
-            f"Expected `List[PIL.Image.Image]` output, got {type(output)}",
+        assert isinstance(output, list) and isinstance(output[0], PIL.Image.Image), (
+            f"Expected `List[PIL.Image.Image]` output, got {type(output)}"
         )
-        self.assertEqual(
-            output[0].height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output[0].height}"
-        )
-        self.assertEqual(
-            output[0].width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output[0].width}"
-        )
+        assert output[0].height == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output[0].height}"
+        assert output[0].width == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output[0].width}"
         output_slice = torch.from_numpy(np.array(output[0])[0, -3:, -3:].flatten())
-        self.assertTrue(
-            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1),
-            f"{output_slice}",
-        )
+        assert torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1)
 
     # output is visually the same, slice is flaky?
     def test_output_type_pil(self):
         inputs = self.get_dummy_inputs()
         processor = self.processor_cls()
         output = remote_decode(output_type="pil", processor=processor, **inputs)
-        self.assertTrue(
-            isinstance(output, list) and isinstance(output[0], PIL.Image.Image),
-            f"Expected `List[PIL.Image.Image]` output, got {type(output)}",
+        assert isinstance(output, list) and isinstance(output[0], PIL.Image.Image), (
+            f"Expected `List[PIL.Image.Image]` output, got {type(output)}"
         )
-        self.assertEqual(
-            output[0].height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output[0].height}"
-        )
-        self.assertEqual(
-            output[0].width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output[0].width}"
-        )
+        assert output[0].height == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output[0].height}"
+        assert output[0].width == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output[0].width}"
 
     def test_output_type_pil_image_format(self):
         inputs = self.get_dummy_inputs()
         processor = self.processor_cls()
         output = remote_decode(output_type="pil", processor=processor, image_format="png", **inputs)
-        self.assertTrue(
-            isinstance(output, list) and isinstance(output[0], PIL.Image.Image),
-            f"Expected `List[PIL.Image.Image]` output, got {type(output)}",
+        assert isinstance(output, list) and isinstance(output[0], PIL.Image.Image), (
+            f"Expected `List[PIL.Image.Image]` output, got {type(output)}"
         )
-        self.assertEqual(
-            output[0].height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output[0].height}"
-        )
-        self.assertEqual(
-            output[0].width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output[0].width}"
-        )
+        assert output[0].height == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output[0].height}"
+        assert output[0].width == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output[0].width}"
         output_slice = torch.from_numpy(np.array(output[0])[0, -3:, -3:].flatten())
-        self.assertTrue(
-            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1),
-            f"{output_slice}",
-        )
+        assert torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1)
 
     def test_output_type_pt_partial_postprocess(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pt", partial_postprocess=True, **inputs)
-        self.assertTrue(
-            isinstance(output, list) and isinstance(output[0], PIL.Image.Image),
-            f"Expected `List[PIL.Image.Image]` output, got {type(output)}",
+        assert isinstance(output, list) and isinstance(output[0], PIL.Image.Image), (
+            f"Expected `List[PIL.Image.Image]` output, got {type(output)}"
         )
-        self.assertEqual(
-            output[0].height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output[0].height}"
-        )
-        self.assertEqual(
-            output[0].width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output[0].width}"
-        )
+        assert output[0].height == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output[0].height}"
+        assert output[0].width == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output[0].width}"
         output_slice = torch.from_numpy(np.array(output[0])[0, -3:, -3:].flatten())
-        self.assertTrue(
-            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1),
-            f"{output_slice}",
-        )
+        assert torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1)
 
     def test_output_type_pt_return_type_pt(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pt", return_type="pt", **inputs)
-        self.assertTrue(isinstance(output, torch.Tensor), f"Expected `torch.Tensor` output, got {type(output)}")
-        self.assertEqual(
-            output.shape[3], self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.shape[2]}"
-        )
-        self.assertEqual(
-            output.shape[4], self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.shape[3]}"
-        )
+        assert isinstance(output, torch.Tensor), f"Expected `torch.Tensor` output, got {type(output)}"
+        assert output.shape[3] == self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.shape[3]}"
+        assert output.shape[4] == self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.shape[4]}"
         output_slice = output[0, 0, 0, -3:, -3:].flatten()
-        self.assertTrue(
-            torch_all_close(output_slice, self.return_pt_slice.to(output_slice.dtype), rtol=1e-3, atol=1e-3),
-            f"{output_slice}",
-        )
+        assert torch_all_close(output_slice, self.return_pt_slice.to(output_slice.dtype), rtol=1e-3, atol=1e-3)
 
     def test_output_type_mp4(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="mp4", return_type="mp4", **inputs)
-        self.assertTrue(isinstance(output, bytes), f"Expected `bytes` output, got {type(output)}")
+        assert isinstance(output, bytes), f"Expected `bytes` output, got {type(output)}"
 
 
-class RemoteAutoencoderKLSDv1Tests(
-    RemoteAutoencoderKLMixin,
-    unittest.TestCase,
-):
+# The tests below hit live HF Inference Endpoints, which are not part of the fast CI contract, so they are
+# gated behind `RUN_SLOW` instead of running on every push. The reference slices are recorded against the
+# deployed `DECODE_ENDPOINT_*` models and drift if those are redeployed.
+@slow
+class TestRemoteAutoencoderKLSDv1(RemoteAutoencoderKLMixin):
     shape = (
         1,
         4,
@@ -358,15 +284,15 @@ class RemoteAutoencoderKLSDv1Tests(
     scaling_factor = 0.18215
     shift_factor = None
     processor_cls = VaeImageProcessor
-    output_pt_slice = torch.tensor([31, 15, 11, 55, 30, 21, 66, 42, 30], dtype=torch.uint8)
-    partial_postprocess_return_pt_slice = torch.tensor([100, 130, 99, 133, 106, 112, 97, 100, 121], dtype=torch.uint8)
-    return_pt_slice = torch.tensor([-0.2177, 0.0217, -0.2258, 0.0412, -0.1687, -0.1232, -0.2416, -0.2130, -0.0543])
+    output_pt_slice = torch.tensor([162, 131, 123, 158, 131, 124, 148, 128, 115], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor(
+        [133, 146, 130, 161, 141, 132, 148, 134, 135], dtype=torch.uint8
+    )
+    return_pt_slice = torch.tensor([0.0400, 0.1448, 0.0217, 0.2649, 0.1049, 0.0376, 0.1622, 0.0552, 0.0574])
 
 
-class RemoteAutoencoderKLSDXLTests(
-    RemoteAutoencoderKLMixin,
-    unittest.TestCase,
-):
+@slow
+class TestRemoteAutoencoderKLSDXL(RemoteAutoencoderKLMixin):
     shape = (
         1,
         4,
@@ -382,15 +308,15 @@ class RemoteAutoencoderKLSDXLTests(
     scaling_factor = 0.13025
     shift_factor = None
     processor_cls = VaeImageProcessor
-    output_pt_slice = torch.tensor([104, 52, 23, 114, 61, 35, 108, 87, 38], dtype=torch.uint8)
-    partial_postprocess_return_pt_slice = torch.tensor([77, 86, 89, 49, 60, 75, 52, 65, 78], dtype=torch.uint8)
-    return_pt_slice = torch.tensor([-0.3945, -0.3289, -0.2993, -0.6177, -0.5259, -0.4119, -0.5898, -0.4863, -0.3845])
+    output_pt_slice = torch.tensor([133, 182, 166, 131, 179, 163, 122, 173, 151], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor(
+        [172, 160, 147, 149, 136, 126, 118, 112, 107], dtype=torch.uint8
+    )
+    return_pt_slice = torch.tensor([0.3511, 0.2539, 0.1550, 0.1720, 0.0688, -0.0117, -0.0730, -0.1215, -0.1581])
 
 
-class RemoteAutoencoderKLFluxTests(
-    RemoteAutoencoderKLMixin,
-    unittest.TestCase,
-):
+@slow
+class TestRemoteAutoencoderKLFlux(RemoteAutoencoderKLMixin):
     shape = (
         1,
         16,
@@ -406,17 +332,15 @@ class RemoteAutoencoderKLFluxTests(
     scaling_factor = 0.3611
     shift_factor = 0.1159
     processor_cls = VaeImageProcessor
-    output_pt_slice = torch.tensor([110, 72, 91, 62, 35, 52, 69, 55, 69], dtype=torch.uint8)
+    output_pt_slice = torch.tensor([236, 222, 171, 226, 208, 160, 210, 193, 154], dtype=torch.uint8)
     partial_postprocess_return_pt_slice = torch.tensor(
-        [202, 203, 203, 197, 195, 193, 189, 188, 178], dtype=torch.uint8
+        [173, 174, 173, 188, 182, 178, 183, 175, 167], dtype=torch.uint8
     )
-    return_pt_slice = torch.tensor([0.5820, 0.5962, 0.5898, 0.5439, 0.5327, 0.5112, 0.4797, 0.4773, 0.3984])
+    return_pt_slice = torch.tensor([0.3538, 0.3613, 0.3582, 0.4749, 0.4294, 0.3977, 0.4336, 0.3738, 0.3098])
 
 
-class RemoteAutoencoderKLFluxPackedTests(
-    RemoteAutoencoderKLMixin,
-    unittest.TestCase,
-):
+@slow
+class TestRemoteAutoencoderKLFluxPacked(RemoteAutoencoderKLMixin):
     shape = (
         1,
         4096,
@@ -434,17 +358,15 @@ class RemoteAutoencoderKLFluxPackedTests(
     shift_factor = 0.1159
     processor_cls = VaeImageProcessor
     # slices are different due to randn on different shape. we can pack the latent instead if we want the same
-    output_pt_slice = torch.tensor([96, 116, 157, 45, 67, 104, 34, 56, 89], dtype=torch.uint8)
+    output_pt_slice = torch.tensor([203, 188, 127, 163, 140, 89, 113, 86, 50], dtype=torch.uint8)
     partial_postprocess_return_pt_slice = torch.tensor(
-        [168, 212, 202, 155, 191, 185, 150, 180, 168], dtype=torch.uint8
+        [194, 173, 131, 192, 168, 126, 187, 158, 129], dtype=torch.uint8
     )
-    return_pt_slice = torch.tensor([0.3198, 0.6631, 0.5864, 0.2131, 0.4944, 0.4482, 0.1776, 0.4153, 0.3176])
+    return_pt_slice = torch.tensor([0.5259, 0.3564, 0.0272, 0.5093, 0.3171, -0.0111, 0.4639, 0.2371, 0.0083])
 
 
-class RemoteAutoencoderKLHunyuanVideoTests(
-    RemoteAutoencoderKLHunyuanVideoMixin,
-    unittest.TestCase,
-):
+@slow
+class TestRemoteAutoencoderKLHunyuanVideo(RemoteAutoencoderKLHunyuanVideoMixin):
     shape = (
         1,
         16,
@@ -460,11 +382,9 @@ class RemoteAutoencoderKLHunyuanVideoTests(
     dtype = torch.float16
     scaling_factor = 0.476986
     processor_cls = VideoProcessor
-    output_pt_slice = torch.tensor([112, 92, 85, 112, 93, 85, 112, 94, 85], dtype=torch.uint8)
-    partial_postprocess_return_pt_slice = torch.tensor(
-        [149, 161, 168, 136, 150, 156, 129, 143, 149], dtype=torch.uint8
-    )
-    return_pt_slice = torch.tensor([0.1656, 0.2661, 0.3157, 0.0693, 0.1755, 0.2252, 0.0127, 0.1221, 0.1708])
+    output_pt_slice = torch.tensor([126, 129, 195, 128, 130, 196, 129, 130, 196], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor([19, 16, 13, 30, 25, 21, 39, 35, 31], dtype=torch.uint8)
+    return_pt_slice = torch.tensor([-0.8501, -0.8750, -0.8979, -0.7681, -0.8027, -0.8389, -0.6958, -0.7222, -0.7593])
 
 
 class RemoteAutoencoderKLSlowTestMixin:
@@ -486,27 +406,24 @@ class RemoteAutoencoderKLSlowTestMixin:
         }
         return inputs
 
-    def test_multi_res(self):
+    def test_multi_res(self, tmp_path):
         inputs = self.get_dummy_inputs()
         for height in {320, 512, 640, 704, 896, 1024, 1208, 1384, 1536, 1608, 1864, 2048}:
             for width in {320, 512, 640, 704, 896, 1024, 1208, 1384, 1536, 1608, 1864, 2048}:
                 inputs["tensor"] = torch.randn(
                     (1, self.channels, height // 8, width // 8),
-                    device=torch_device,
+                    device="cpu",
                     dtype=self.dtype,
-                    generator=torch.Generator(torch_device).manual_seed(13),
-                )
+                    generator=torch.Generator("cpu").manual_seed(13),
+                ).to(torch_device)
                 inputs["height"] = height
                 inputs["width"] = width
                 output = remote_decode(output_type="pt", partial_postprocess=True, **inputs)
-                output.save(f"test_multi_res_{height}_{width}.png")
+                output.save(tmp_path / f"test_multi_res_{height}_{width}.png")
 
 
 @slow
-class RemoteAutoencoderKLSDv1SlowTests(
-    RemoteAutoencoderKLSlowTestMixin,
-    unittest.TestCase,
-):
+class TestRemoteAutoencoderKLSDv1Slow(RemoteAutoencoderKLSlowTestMixin):
     endpoint = DECODE_ENDPOINT_SD_V1
     dtype = torch.float16
     scaling_factor = 0.18215
@@ -514,10 +431,7 @@ class RemoteAutoencoderKLSDv1SlowTests(
 
 
 @slow
-class RemoteAutoencoderKLSDXLSlowTests(
-    RemoteAutoencoderKLSlowTestMixin,
-    unittest.TestCase,
-):
+class TestRemoteAutoencoderKLSDXLSlow(RemoteAutoencoderKLSlowTestMixin):
     endpoint = DECODE_ENDPOINT_SD_XL
     dtype = torch.float16
     scaling_factor = 0.13025
@@ -525,10 +439,7 @@ class RemoteAutoencoderKLSDXLSlowTests(
 
 
 @slow
-class RemoteAutoencoderKLFluxSlowTests(
-    RemoteAutoencoderKLSlowTestMixin,
-    unittest.TestCase,
-):
+class TestRemoteAutoencoderKLFluxSlow(RemoteAutoencoderKLSlowTestMixin):
     channels = 16
     endpoint = DECODE_ENDPOINT_FLUX
     dtype = torch.bfloat16

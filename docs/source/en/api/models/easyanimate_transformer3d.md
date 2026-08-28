@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import EasyAnimateTransformer3DModel
 
-transformer = EasyAnimateTransformer3DModel.from_pretrained("alibaba-pai/EasyAnimateV5.1-12b-zh", subfolder="transformer", dtype=torch.float16).to("cuda")
+transformer = EasyAnimateTransformer3DModel.from_pretrained("alibaba-pai/EasyAnimateV5.1-12b-zh", subfolder="transformer", dtype=torch.float16).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ## EasyAnimateTransformer3DModel

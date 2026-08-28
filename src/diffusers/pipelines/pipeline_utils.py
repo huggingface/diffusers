@@ -30,13 +30,11 @@ import PIL.Image
 import requests
 import torch
 from huggingface_hub import (
-    DDUFEntry,
     ModelCard,
     create_repo,
     get_cached_repo_tree,
     hf_hub_download,
     model_info,
-    read_dduf_file,
     snapshot_download,
 )
 from huggingface_hub.errors import CachedRepoTreeNotFoundError
@@ -66,7 +64,6 @@ from ..utils import (
     _get_detailed_type,
     _is_valid_type,
     _resolve_dtype,
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_bitsandbytes_version,
@@ -91,7 +88,6 @@ from .pipeline_loading_utils import (
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
     TRANSFORMERS_COMPONENT_AUX_FILES,
-    _download_dduf_file,
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
@@ -99,7 +95,6 @@ from .pipeline_loading_utils import (
     _get_ignore_patterns,
     _get_pipeline_class,
     _identify_model_variants,
-    _maybe_raise_error_for_incorrect_transformers,
     _maybe_raise_warning_for_inpainting,
     _maybe_warn_for_wrong_component_in_quant_config,
     _resolve_custom_pipeline_and_cls,
@@ -123,9 +118,9 @@ for library in LOADABLE_CLASSES:
 
 SUPPORTED_DEVICE_MAP = ["balanced"] + [get_device(), "cpu"]
 
-_DDUF_DEPRECATION_MESSAGE = (
-    "Loading pipelines from DDUF files is deprecated and DDUF support will be removed entirely. "
-    "Please save and load your pipelines using the standard Diffusers directory format instead."
+_DDUF_REMOVAL_MESSAGE = (
+    "Loading pipelines from DDUF files is no longer supported. Please save and load your pipelines using the "
+    "standard Diffusers directory format instead."
 )
 
 logger = logging.get_logger(__name__)
@@ -601,11 +596,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     def device(self) -> torch.device:
         r"""
         Returns:
-            `torch.device`: The torch device on which the pipeline is located.
+            `torch.device`: The torch device on which the pipeline is located. When components are split across devices
+            (for example, text encoders on CPU while the denoising backbone runs on an accelerator), the accelerator
+            device is returned.
         """
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
+
+        # Prefer a non-CPU, non-meta component so a split pipeline reports the accelerator it computes on,
+        # rather than whichever component happens to sort first.
+        for module in modules:
+            if module.device.type not in ("cpu", "meta"):
+                return module.device
 
         for module in modules:
             return module.device
@@ -652,7 +655,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
-                    - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf file
             dtype (`torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. To load submodels with
                 different dtype pass a `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`).
@@ -742,9 +744,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 below for more information.
             variant (`str`, *optional*):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
-            dduf_file(`str`, *optional*):
-                Load weights from the specified dduf file. <Deprecated> This argument is deprecated and will be removed
-                in version 0.41.0. </Deprecated>
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
@@ -794,7 +793,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         offload_state_dict = kwargs.pop("offload_state_dict", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
-        dduf_file = kwargs.pop("dduf_file", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
@@ -854,12 +852,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
-        if dduf_file:
-            deprecate("dduf_file", "0.41.0", _DDUF_DEPRECATION_MESSAGE)
-            if custom_pipeline:
-                raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
-            if load_connected_pipeline:
-                raise NotImplementedError("Connected pipelines are not supported with DDUF at the moment.")
+        if "dduf_file" in kwargs:
+            raise ValueError(_DDUF_REMOVAL_MESSAGE)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -882,7 +876,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 custom_pipeline=custom_pipeline,
                 custom_revision=custom_revision,
                 variant=variant,
-                dduf_file=dduf_file,
                 load_connected_pipeline=load_connected_pipeline,
                 trust_remote_code=trust_remote_code,
                 **kwargs,
@@ -905,17 +898,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
             logger.warning(warn_msg)
 
-        dduf_entries = None
-        if dduf_file:
-            dduf_file_path = os.path.join(cached_folder, dduf_file)
-            dduf_entries = read_dduf_file(dduf_file_path)
-            # The reader contains already all the files needed, no need to check it again
-            cached_folder = ""
-
-        config_dict = cls.load_config(cached_folder, dduf_entries=dduf_entries)
-
-        if dduf_file:
-            _maybe_raise_error_for_incorrect_transformers(config_dict)
+        config_dict = cls.load_config(cached_folder)
 
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
@@ -1073,7 +1056,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                     use_safetensors=use_safetensors,
-                    dduf_entries=dduf_entries,
                     provider_options=provider_options,
                     disable_mmap=disable_mmap,
                     quantization_config=quantization_config,
@@ -1568,9 +1550,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 information.
             variant (`str`, *optional*):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
-            dduf_file(`str`, *optional*):
-                Load weights from the specified DDUF file. <Deprecated> This argument is deprecated and will be removed
-                in version 0.41.0. </Deprecated>
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
@@ -1609,25 +1588,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
-        dduf_file: dict[str, DDUFEntry] | None = kwargs.pop("dduf_file", None)
         use_flashpack = kwargs.pop("use_flashpack", False)
 
-        if dduf_file:
-            deprecate("dduf_file", "0.41.0", _DDUF_DEPRECATION_MESSAGE)
-            if custom_pipeline:
-                raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
-            if load_connected_pipeline:
-                raise NotImplementedError("Connected pipelines are not supported with DDUF at the moment.")
-            return _download_dduf_file(
-                pretrained_model_name=pretrained_model_name,
-                dduf_file=dduf_file,
-                pipeline_class_name=cls.__name__,
-                cache_dir=cache_dir,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-            )
+        if "dduf_file" in kwargs:
+            raise ValueError(_DDUF_REMOVAL_MESSAGE)
 
         allow_pickle = True if (use_safetensors is None or use_safetensors is False) else False
         use_safetensors = use_safetensors if use_safetensors is not None else True

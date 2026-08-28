@@ -60,6 +60,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -1443,3 +1444,17 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         expected_output_slice = torch.tensor(expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
+
+
+class TestUNet2DConditionSingleFile(UNet2DConditionTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "stable-diffusion-v1-5/stable-diffusion-v1-5"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "unet"}

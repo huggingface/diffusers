@@ -21,3 +21,18 @@ class LTX2PipelineOutput(BaseOutput):
 
     frames: torch.Tensor
     audio: torch.Tensor
+
+
+@dataclass
+class LTX2VideoDecodeOutput(BaseOutput):
+    r"""
+    Output class for the LTX-2 diffusion decode pipeline, which produces video only.
+
+    Args:
+        frames (`torch.Tensor`, `np.ndarray`, or list[list[PIL.Image.Image]]):
+            List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
+            denoised PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
+            `(batch_size, num_frames, channels, height, width)`.
+    """
+
+    frames: torch.Tensor
