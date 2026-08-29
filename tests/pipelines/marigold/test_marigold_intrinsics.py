@@ -17,7 +17,6 @@
 # Marigold project website: https://marigoldcomputervision.github.io
 # --------------------------------------------------------------------------
 import gc
-import random
 
 import numpy as np
 import pytest
@@ -37,7 +36,6 @@ from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
-    floats_tensor,
     load_image,
     require_torch_accelerator,
     slow,
@@ -120,8 +118,9 @@ class MarigoldIntrinsicsPipelineTesterConfig(BasePipelineTesterConfig):
         return AutoencoderTiny(in_channels=3, out_channels=3, latent_channels=4)
 
     def get_dummy_inputs(self, seed: int = 0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed))
-        image = image / 2 + 0.5
+        # Marigold validates that the input image lies in [0, 1] (`MarigoldImageProcessor.check_image_values_range`),
+        # so the Gaussian is squashed into that range rather than clipped against it.
+        image = torch.randn((1, 3, 32, 32), generator=self.get_generator(seed)).sigmoid()
         return {
             "image": image,
             "num_inference_steps": 1,
@@ -245,7 +244,7 @@ class TestMarigoldIntrinsicsPipeline(MarigoldIntrinsicsPipelineTesterConfig, Pip
         self._test_marigold_intrinsics(
             generator_seed=0,
             expected_slice=torch.tensor(
-                [0.52018, 0.45545, 0.42104, 0.58673, 0.63164, 0.38469, 0.52228, 0.54939, 0.48622]
+                [0.52219, 0.45487, 0.42093, 0.58746, 0.63236, 0.38438, 0.52289, 0.54885, 0.48601]
             ),
             num_inference_steps=2,
             processing_resolution=32,

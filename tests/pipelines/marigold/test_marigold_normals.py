@@ -17,7 +17,6 @@
 # Marigold project website: https://marigoldcomputervision.github.io
 # --------------------------------------------------------------------------
 import gc
-import random
 
 import numpy as np
 import pytest
@@ -36,7 +35,6 @@ from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
-    floats_tensor,
     load_image,
     require_torch_accelerator,
     slow,
@@ -119,8 +117,9 @@ class MarigoldNormalsPipelineTesterConfig(BasePipelineTesterConfig):
         return AutoencoderTiny(in_channels=3, out_channels=3, latent_channels=4)
 
     def get_dummy_inputs(self, seed: int = 0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed))
-        image = image / 2 + 0.5
+        # Marigold validates that the input image lies in [0, 1] (`MarigoldImageProcessor.check_image_values_range`),
+        # so the Gaussian is squashed into that range rather than clipped against it.
+        image = torch.randn((1, 3, 32, 32), generator=self.get_generator(seed)).sigmoid()
         return {
             "image": image,
             "num_inference_steps": 1,
@@ -162,7 +161,7 @@ class TestMarigoldNormalsPipeline(MarigoldNormalsPipelineTesterConfig, PipelineT
     def test_marigold_depth_dummy_defaults(self):
         self._test_marigold_normals(
             expected_slice=torch.tensor(
-                [0.01655, 0.54110, 0.01681, -0.27346, -0.16697, -0.55219, 0.63358, 0.57275, -0.26173]
+                [-0.01402, 0.54840, -0.00052, -0.27905, -0.16117, -0.55048, 0.63950, 0.53618, -0.26825]
             ),
         )
 
@@ -170,7 +169,7 @@ class TestMarigoldNormalsPipeline(MarigoldNormalsPipelineTesterConfig, PipelineT
         self._test_marigold_normals(
             generator_seed=0,
             expected_slice=torch.tensor(
-                [0.01655, 0.54110, 0.01681, -0.27346, -0.16697, -0.55219, 0.63358, 0.57275, -0.26173]
+                [-0.01402, 0.54840, -0.00052, -0.27905, -0.16117, -0.55048, 0.63950, 0.53618, -0.26825]
             ),
             num_inference_steps=1,
             processing_resolution=32,
@@ -183,7 +182,7 @@ class TestMarigoldNormalsPipeline(MarigoldNormalsPipelineTesterConfig, PipelineT
         self._test_marigold_normals(
             generator_seed=0,
             expected_slice=torch.tensor(
-                [-0.46928, -0.23894, -0.10984, -0.27850, -0.53089, -0.58686, -0.09792, -0.36364, -0.46909]
+                [-0.54494, -0.31659, -0.17026, -0.49534, -0.65212, -0.66506, -0.28120, -0.45898, -0.52408]
             ),
             num_inference_steps=1,
             processing_resolution=16,
@@ -196,7 +195,7 @@ class TestMarigoldNormalsPipeline(MarigoldNormalsPipelineTesterConfig, PipelineT
         self._test_marigold_normals(
             generator_seed=2024,
             expected_slice=torch.tensor(
-                [0.75023, -0.90784, -0.08686, 0.07177, -0.59057, -0.73950, 0.52375, -0.26714, -0.43062]
+                [0.75286, -0.88962, -0.11049, 0.06276, -0.55335, -0.70896, 0.52707, -0.27555, -0.43498]
             ),
             num_inference_steps=1,
             processing_resolution=32,
@@ -209,7 +208,7 @@ class TestMarigoldNormalsPipeline(MarigoldNormalsPipelineTesterConfig, PipelineT
         self._test_marigold_normals(
             generator_seed=0,
             expected_slice=torch.tensor(
-                [0.04868, -0.58444, -0.26729, 0.13351, 0.36448, 0.86063, 0.74093, 0.58727, 0.91568]
+                [0.04780, -0.58508, -0.28968, 0.13094, 0.38533, 0.86582, 0.73544, 0.58218, 0.92315]
             ),
             num_inference_steps=2,
             processing_resolution=32,
@@ -222,7 +221,7 @@ class TestMarigoldNormalsPipeline(MarigoldNormalsPipelineTesterConfig, PipelineT
         self._test_marigold_normals(
             generator_seed=0,
             expected_slice=torch.tensor(
-                [-0.31085, 0.85586, 0.43578, 0.23959, 0.64753, -0.33613, -0.02879, -0.78712, -0.56993]
+                [-0.26170, 0.85460, 0.45221, 0.15963, 0.54384, -0.32731, 0.00334, -0.83391, -0.57067]
             ),
             num_inference_steps=1,
             processing_resolution=64,
@@ -235,7 +234,7 @@ class TestMarigoldNormalsPipeline(MarigoldNormalsPipelineTesterConfig, PipelineT
         self._test_marigold_normals(
             generator_seed=0,
             expected_slice=torch.tensor(
-                [0.28313, -0.91824, -0.38751, 0.35233, 0.13069, -0.58350, 0.82024, 0.04305, -0.27604]
+                [0.25150, -0.93332, -0.39775, 0.34287, 0.15370, -0.58052, 0.83557, 0.04513, -0.27762]
             ),
             num_inference_steps=1,
             processing_resolution=32,
@@ -249,7 +248,7 @@ class TestMarigoldNormalsPipeline(MarigoldNormalsPipelineTesterConfig, PipelineT
         self._test_marigold_normals(
             generator_seed=0,
             expected_slice=torch.tensor(
-                [0.09912, -0.29170, -0.23348, 0.14560, 0.27345, -0.40117, 0.98967, 0.38735, -0.21680]
+                [0.08004, -0.32468, -0.25072, 0.13662, 0.28124, -0.40264, 0.98766, 0.40109, -0.21820]
             ),
             num_inference_steps=1,
             processing_resolution=32,
@@ -263,7 +262,7 @@ class TestMarigoldNormalsPipeline(MarigoldNormalsPipelineTesterConfig, PipelineT
         self._test_marigold_normals(
             generator_seed=0,
             expected_slice=torch.tensor(
-                [0.87316, 0.43462, -0.15760, 0.20502, -0.42155, 0.07312, 0.36621, 0.03301, -0.46909]
+                [0.85842, 0.45535, -0.18574, 0.15936, -0.44240, 0.04431, 0.33110, -0.18396, -0.52408]
             ),
             num_inference_steps=1,
             processing_resolution=16,
