@@ -31,12 +31,14 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`CogView4LoraLoaderMixin`] provides similar functions for [CogView4](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogview4).
 - [`AmusedLoraLoaderMixin`] is for the [`AmusedPipeline`].
 - [`AnimaLoraLoaderMixin`] provides similar functions for [Anima](https://huggingface.co/docs/diffusers/main/en/api/pipelines/anima).
+- [`AceStepLoraLoaderMixin`] provides similar functions for [ACE-Step](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ace_step).
 - [`HiDreamImageLoraLoaderMixin`] provides similar functions for [HiDream Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hidream)
 - [`QwenImageLoraLoaderMixin`] provides similar functions for [Qwen Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/qwen).
 - [`ZImageLoraLoaderMixin`] provides similar functions for [Z-Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/zimage).
 - [`Flux2LoraLoaderMixin`] provides similar functions for [Flux2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux2).
 - [`ErnieImageLoraLoaderMixin`] provides similar functions for [Ernie-Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ernie_image).
 - [`LTX2LoraLoaderMixin`] provides similar functions for [Flux2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ltx2).
+- [`MiniMaxH3LoraLoaderMixin`] provides similar functions for [MiniMax-H3](https://huggingface.co/docs/diffusers/main/en/api/pipelines/minimax_h3).
 - [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
 
 > [!TIP]
@@ -125,6 +127,10 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 
 [[autodoc]] loaders.lora_pipeline.AnimaLoraLoaderMixin
 
+## AceStepLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.AceStepLoraLoaderMixin
+
 ## HiDreamImageLoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.HiDreamImageLoraLoaderMixin
@@ -151,6 +157,10 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 ## Krea2LoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.Krea2LoraLoaderMixin
+
+## MiniMaxH3LoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.MiniMaxH3LoraLoaderMixin
 
 ## LoraBaseMixin
 

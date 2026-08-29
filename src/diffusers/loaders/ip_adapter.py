@@ -29,6 +29,7 @@ from ..utils import (
     is_accelerate_available,
     is_torch_version,
     is_transformers_available,
+    is_transformers_version,
     logging,
 )
 from .unet_loader_utils import _maybe_expand_lora_scales
@@ -204,13 +205,19 @@ class IPAdapterMixin:
                         else:
                             image_encoder_subfolder = Path(image_encoder_folder).as_posix()
 
+                        # transformers renamed `torch_dtype` to `dtype` in 4.56.0.
+                        dtype_kwarg = (
+                            {"dtype": self.dtype}
+                            if is_transformers_version(">=", "4.56.0")
+                            else {"torch_dtype": self.dtype}
+                        )
                         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
                             pretrained_model_name_or_path_or_dict,
                             subfolder=image_encoder_subfolder,
                             low_cpu_mem_usage=low_cpu_mem_usage,
                             cache_dir=cache_dir,
                             local_files_only=local_files_only,
-                            torch_dtype=self.dtype,
+                            **dtype_kwarg,
                         ).to(self.device)
                         self.register_modules(image_encoder=image_encoder)
                     else:
@@ -1043,11 +1050,17 @@ class SD3IPAdapterMixin:
                         "cache_dir": cache_dir,
                         "local_files_only": local_files_only,
                     }
+                    # transformers renamed `torch_dtype` to `dtype` in 4.56.0.
+                    dtype_kwarg = (
+                        {"dtype": self.dtype}
+                        if is_transformers_version(">=", "4.56.0")
+                        else {"torch_dtype": self.dtype}
+                    )
 
                     self.register_modules(
                         feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs),
                         image_encoder=SiglipVisionModel.from_pretrained(
-                            image_encoder_subfolder, torch_dtype=self.dtype, **kwargs
+                            image_encoder_subfolder, **dtype_kwarg, **kwargs
                         ).to(self.device),
                     )
                 else:

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -210,7 +210,9 @@ class TrainingTesterMixin:
 
         # Test with bfloat16
         if torch.device(torch_device).type != "cpu":
-            if torch.device(torch_device).type == "cuda" and not torch.cuda.is_bf16_supported():
+            if torch.device(torch_device).type == "cuda" and not torch.cuda.is_bf16_supported(
+                including_emulation=False
+            ):
                 pytest.skip("bfloat16 training is not supported on this GPU.")
             else:
                 model.zero_grad()

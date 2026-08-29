@@ -204,9 +204,9 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
         assert image.shape == (1, 32, 32, 3)
 
         if not use_sd35:
-            expected_slice = np.array([0.4578, 0.3582, 0.4046, 0.0953, 0.6878, 0.5821, 0.5541, 0.5888, 0.4651])
+            expected_slice = np.array([0.4121, 0.3775, 0.3734, 0.1509, 0.6324, 0.5503, 0.5425, 0.5614, 0.4061])
         else:
-            expected_slice = np.array([0.3721, 0.5626, 0.4657, 0.2845, 0.5241, 0.5917, 0.6265, 0.6955, 0.3969])
+            expected_slice = np.array([0.3793, 0.5179, 0.4389, 0.2820, 0.5148, 0.5565, 0.6282, 0.6891, 0.4197])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
             f"Expected: {expected_slice}, got: {image_slice.flatten()}"

@@ -101,8 +101,8 @@ EXAMPLE_DOC_STRING = """
         ... ).to("cuda")
 
         >>> # enable memory savings
-        >>> pipe.enable_vae_slicing()
-        >>> pipe.enable_vae_tiling()
+        >>> pipe.vae.enable_slicing()
+        >>> pipe.vae.enable_tiling()
 
         >>> output = pipe(
         ...     prompt="a panda surfing in the ocean, realistic, high quality",

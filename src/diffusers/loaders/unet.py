@@ -33,14 +33,8 @@ from ..models.embeddings import (
 from ..models.model_loading_utils import load_model_dict_into_meta
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
-    USE_PEFT_BACKEND,
     _get_model_file,
-    convert_unet_state_dict_to_peft,
-    deprecate,
-    get_adapter_name,
-    get_peft_kwargs,
     is_accelerate_available,
-    is_peft_version,
     is_torch_version,
     logging,
 )
@@ -68,11 +62,11 @@ class UNet2DConditionLoadersMixin:
     @validate_hf_hub_args
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor], **kwargs):
         r"""
-        Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
-        defined in
+        Load pretrained Custom Diffusion attention processor layers into [`UNet2DConditionModel`]. Attention processor
+        layers have to be defined in
         [`attention_processor.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py)
-        and be a `torch.nn.Module` class. Currently supported: LoRA, Custom Diffusion. For LoRA, one must install
-        `peft`: `pip install -U peft`.
+        and be a `torch.nn.Module` class. To load LoRA layers, use [`~loaders.PeftAdapterMixin.load_lora_adapter`]
+        instead.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -106,31 +100,20 @@ class UNet2DConditionLoadersMixin:
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            network_alphas (`dict[str, float]`):
-                The value of the network alpha used for stable learning and preventing underflow. This value has the
-                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
-                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
-            adapter_name (`str`, *optional*, defaults to None):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
 
         Example:
 
         ```py
-        from diffusers import AutoPipelineForText2Image
         import torch
+        from diffusers import DiffusionPipeline
 
-        pipeline = AutoPipelineForText2Image.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        pipeline = DiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4",
+            torch_dtype=torch.float16,
         ).to("cuda")
-        pipeline.unet.load_attn_procs(
-            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
-        )
+        pipeline.unet.load_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
         ```
         """
         from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
@@ -144,16 +127,8 @@ class UNet2DConditionLoadersMixin:
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
-        adapter_name = kwargs.pop("adapter_name", None)
         _pipeline = kwargs.pop("_pipeline", None)
-        network_alphas = kwargs.pop("network_alphas", None)
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         allow_pickle = False
-
-        if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         if use_safetensors is None:
             use_safetensors = True
@@ -204,42 +179,24 @@ class UNet2DConditionLoadersMixin:
             state_dict = pretrained_model_name_or_path_or_dict
 
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
-        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-        is_group_offload = False
-
-        if is_lora:
-            deprecation_message = "Using the `load_attn_procs()` method has been deprecated and will be removed in a future version. Please use `load_lora_adapter()`."
-            deprecate("load_attn_procs", "0.40.0", deprecation_message)
-
-        if is_custom_diffusion:
-            attn_processors = self._process_custom_diffusion(state_dict=state_dict)
-        elif is_lora:
-            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._process_lora(
-                state_dict=state_dict,
-                unet_identifier_key=self.unet_name,
-                network_alphas=network_alphas,
-                adapter_name=adapter_name,
-                _pipeline=_pipeline,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
-        else:
+        if not is_custom_diffusion:
             raise ValueError(
                 f"{model_file} does not seem to be in the correct format expected by Custom Diffusion training."
             )
 
-        # <Unsafe code
-        # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
-        # Now we remove any existing hooks to `_pipeline`.
+        attn_processors = self._process_custom_diffusion(state_dict=state_dict)
 
-        # For LoRA, the UNet is already offloaded at this stage as it is handled inside `_process_lora`.
-        if is_custom_diffusion and _pipeline is not None:
+        # <Unsafe code
+        # We can be sure that the following works as it just sets attention processors and puts all in the same dtype.
+        # Now we remove any existing hooks to `_pipeline`.
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+        is_group_offload = False
+        if _pipeline is not None:
             is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
                 _pipeline=_pipeline
             )
 
-            # only custom diffusion needs to set attn processors
             self.set_attn_processor(attn_processors)
             self.to(dtype=self.dtype, device=self.device)
 
@@ -288,123 +245,6 @@ class UNet2DConditionLoadersMixin:
 
         return attn_processors
 
-    def _process_lora(
-        self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline, low_cpu_mem_usage
-    ):
-        # This method does the following things:
-        # 1. Filters the `state_dict` with keys matching  `unet_identifier_key` when using the non-legacy
-        #    format. For legacy format no filtering is applied.
-        # 2. Converts the `state_dict` to the `peft` compatible format.
-        # 3. Creates a `LoraConfig` and then injects the converted `state_dict` into the UNet per the
-        #    `LoraConfig` specs.
-        # 4. It also reports if the underlying `_pipeline` has any kind of offloading inside of it.
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
-        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
-
-        keys = list(state_dict.keys())
-
-        unet_keys = [k for k in keys if k.startswith(unet_identifier_key)]
-        unet_state_dict = {
-            k.replace(f"{unet_identifier_key}.", ""): v for k, v in state_dict.items() if k in unet_keys
-        }
-
-        if network_alphas is not None:
-            alpha_keys = [k for k in network_alphas.keys() if k.startswith(unet_identifier_key)]
-            network_alphas = {
-                k.replace(f"{unet_identifier_key}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
-            }
-
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-        is_group_offload = False
-        state_dict_to_be_used = unet_state_dict if len(unet_state_dict) > 0 else state_dict
-
-        if len(state_dict_to_be_used) > 0:
-            if adapter_name in getattr(self, "peft_config", {}):
-                raise ValueError(
-                    f"Adapter name {adapter_name} already in use in the Unet - please select a new adapter name."
-                )
-
-            state_dict = convert_unet_state_dict_to_peft(state_dict_to_be_used)
-
-            if network_alphas is not None:
-                # The alphas state dict have the same structure as Unet, thus we convert it to peft format using
-                # `convert_unet_state_dict_to_peft` method.
-                network_alphas = convert_unet_state_dict_to_peft(network_alphas)
-
-            rank = {}
-            for key, val in state_dict.items():
-                if "lora_B" in key:
-                    rank[key] = val.shape[1]
-
-            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
-            if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"]:
-                    if is_peft_version("<", "0.9.0"):
-                        raise ValueError(
-                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                        )
-                else:
-                    if is_peft_version("<", "0.9.0"):
-                        lora_config_kwargs.pop("use_dora")
-
-            if "lora_bias" in lora_config_kwargs:
-                if lora_config_kwargs["lora_bias"]:
-                    if is_peft_version("<=", "0.13.2"):
-                        raise ValueError(
-                            "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
-                        )
-                else:
-                    if is_peft_version("<=", "0.13.2"):
-                        lora_config_kwargs.pop("lora_bias")
-
-            lora_config = LoraConfig(**lora_config_kwargs)
-
-            # adapter_name
-            if adapter_name is None:
-                adapter_name = get_adapter_name(self)
-
-            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
-            # otherwise loading LoRA weights will lead to an error
-            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
-                _pipeline
-            )
-            peft_kwargs = {}
-            if is_peft_version(">=", "0.13.1"):
-                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-
-            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
-            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
-
-            warn_msg = ""
-            if incompatible_keys is not None:
-                # Check only for unexpected keys.
-                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-                if unexpected_keys:
-                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
-                    if lora_unexpected_keys:
-                        warn_msg = (
-                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
-                            f" {', '.join(lora_unexpected_keys)}. "
-                        )
-
-                # Filter missing keys specific to the current adapter.
-                missing_keys = getattr(incompatible_keys, "missing_keys", None)
-                if missing_keys:
-                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
-                    if lora_missing_keys:
-                        warn_msg += (
-                            f"Loading adapter weights from state_dict led to missing keys in the model:"
-                            f" {', '.join(lora_missing_keys)}."
-                        )
-
-            if warn_msg:
-                logger.warning(warn_msg)
-
-        return is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload
-
     @classmethod
     # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
     def _optionally_disable_offloading(cls, _pipeline):
@@ -420,8 +260,9 @@ class UNet2DConditionLoadersMixin:
         **kwargs,
     ):
         r"""
-        Save attention processor layers to a directory so that it can be reloaded with the
-        [`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`] method.
+        Save Custom Diffusion attention processor layers to a directory so that it can be reloaded with the
+        [`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`] method. To save LoRA layers, use
+        [`~loaders.PeftAdapterMixin.save_lora_adapter`] instead.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -468,27 +309,22 @@ class UNet2DConditionLoadersMixin:
             )
             for (_, x) in self.attn_processors.items()
         )
-        if is_custom_diffusion:
-            state_dict = self._get_custom_diffusion_state_dict()
-            if save_function is None and safe_serialization:
-                # safetensors does not support saving dicts with non-tensor values
-                empty_state_dict = {k: v for k, v in state_dict.items() if not isinstance(v, torch.Tensor)}
-                if len(empty_state_dict) > 0:
-                    logger.warning(
-                        f"Safetensors does not support saving dicts with non-tensor values. "
-                        f"The following keys will be ignored: {empty_state_dict.keys()}"
-                    )
-                state_dict = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
-        else:
-            deprecation_message = "Using the `save_attn_procs()` method has been deprecated and will be removed in a future version. Please use `save_lora_adapter()`."
-            deprecate("save_attn_procs", "0.40.0", deprecation_message)
+        if not is_custom_diffusion:
+            raise ValueError(
+                "`save_attn_procs()` only supports saving Custom Diffusion attention processors. Please use "
+                "`save_lora_adapter()` to save LoRA layers."
+            )
 
-            if not USE_PEFT_BACKEND:
-                raise ValueError("PEFT backend is required for saving LoRAs using the `save_attn_procs()` method.")
-
-            from peft.utils import get_peft_model_state_dict
-
-            state_dict = get_peft_model_state_dict(self)
+        state_dict = self._get_custom_diffusion_state_dict()
+        if save_function is None and safe_serialization:
+            # safetensors does not support saving dicts with non-tensor values
+            empty_state_dict = {k: v for k, v in state_dict.items() if not isinstance(v, torch.Tensor)}
+            if len(empty_state_dict) > 0:
+                logger.warning(
+                    f"Safetensors does not support saving dicts with non-tensor values. "
+                    f"The following keys will be ignored: {empty_state_dict.keys()}"
+                )
+            state_dict = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
 
         if save_function is None:
             if safe_serialization:
@@ -503,9 +339,9 @@ class UNet2DConditionLoadersMixin:
 
         if weight_name is None:
             if safe_serialization:
-                weight_name = CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE if is_custom_diffusion else LORA_WEIGHT_NAME_SAFE
+                weight_name = CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE
             else:
-                weight_name = CUSTOM_DIFFUSION_WEIGHT_NAME if is_custom_diffusion else LORA_WEIGHT_NAME
+                weight_name = CUSTOM_DIFFUSION_WEIGHT_NAME
 
         # Save the model
         save_path = Path(save_directory, weight_name).as_posix()

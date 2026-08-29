@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import ConsisIDTransformer3DModel
 
-transformer = ConsisIDTransformer3DModel.from_pretrained("BestWishYsh/ConsisID-preview", subfolder="transformer", torch_dtype=torch.bfloat16).to("cuda")
+transformer = ConsisIDTransformer3DModel.from_pretrained("BestWishYsh/ConsisID-preview", subfolder="transformer", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ## ConsisIDTransformer3DModel

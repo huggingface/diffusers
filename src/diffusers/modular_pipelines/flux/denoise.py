@@ -215,14 +215,6 @@ class FluxLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> list[tuple[str, Any]]:
-        return []
-
-    @property
-    def intermediate_inputs(self) -> list[str]:
-        return [InputParam("generator")]
-
-    @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 

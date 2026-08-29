@@ -158,7 +158,7 @@ After training, load the base pipeline and your LoRA:
 import torch
 from diffusers import Ideogram4Pipeline
 
-pipeline = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4-diffusers", torch_dtype=torch.bfloat16)
+pipeline = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4-diffusers", dtype=torch.bfloat16)
 pipeline.to("cuda")
 pipeline.load_lora_weights("trained-ideogram4-lora", weight_name="pytorch_lora_weights.safetensors")
 

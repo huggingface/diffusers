@@ -495,6 +495,61 @@ def find_nearest_bucket(h, w, bucket_options):
     return best_bucket_idx
 
 
+# Common aspect ratios (width, height) used to generate an aspect-ratio bucket ladder on the fly.
+_DEFAULT_BUCKET_ASPECT_RATIOS = [
+    (1, 1),
+    (4, 5),
+    (5, 4),
+    (2, 3),
+    (3, 2),
+    (3, 4),
+    (4, 3),
+    (9, 16),
+    (16, 9),
+    (1, 2),
+    (2, 1),
+]
+
+
+def generate_aspect_ratio_buckets(resolution, divisibility=16, base_resolutions=None):
+    """Generate a discrete list of ``(height, width)`` buckets for a target pixel budget.
+
+    Buckets are sized so that ``height * width`` is close to ``resolution ** 2`` while spanning a range of aspect
+    ratios, with each dimension rounded to a multiple of ``divisibility``. When ``base_resolutions`` (a list of
+    ``(height, width)`` pairs, e.g. a model's preferred resolutions) is provided, its aspect ratios are used instead of
+    the default set and rescaled to the target pixel budget.
+
+    Args:
+        resolution (`int`): Target resolution; the pixel budget is ``resolution ** 2``.
+        divisibility (`int`, *optional*, defaults to 16): Each bucket dimension is rounded to a
+            multiple of this value (16 satisfies the patch-size constraints of the Flux/Z-Image VAEs).
+        base_resolutions (`list[tuple[int, int]]`, *optional*): ``(height, width)`` pairs whose aspect
+            ratios seed the ladder instead of the default aspect-ratio set.
+
+    Returns:
+        `list[tuple[int, int]]`: The unique ``(height, width)`` buckets.
+    """
+    target_pixels = resolution * resolution
+    if base_resolutions is not None:
+        aspect_ratios = [(w, h) for (h, w) in base_resolutions]
+    else:
+        aspect_ratios = _DEFAULT_BUCKET_ASPECT_RATIOS
+
+    buckets = []
+    seen = set()
+    for rw, rh in aspect_ratios:
+        aspect = rw / rh
+        # h * w == target_pixels and w / h == aspect  =>  h = sqrt(target_pixels / aspect)
+        h = (target_pixels / aspect) ** 0.5
+        w = h * aspect
+        h = max(divisibility, round(h / divisibility) * divisibility)
+        w = max(divisibility, round(w / divisibility) * divisibility)
+        if (h, w) not in seen:
+            seen.add((h, w))
+            buckets.append((h, w))
+    return buckets
+
+
 def _to_cpu_contiguous(state_dicts) -> dict:
     return {k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v for k, v in state_dicts.items()}
 

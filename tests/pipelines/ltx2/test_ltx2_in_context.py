@@ -56,7 +56,6 @@ class LTX2InContextPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     test_attention_slicing = False
     test_xformers_attention = False
-    supports_dduf = False
 
     base_text_encoder_ckpt_id = "hf-internal-testing/tiny-gemma3"
 
@@ -173,6 +172,8 @@ class LTX2InContextPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "connectors": connectors,
             "vocoder": vocoder,
             "audio_scheduler": None,
+            "processor": None,
+            "prompt_enhancer": None,
         }
 
         return components
@@ -193,7 +194,8 @@ class LTX2InContextPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
 
         image = torch.rand((1, 3, 32, 32), generator=generator, device=device)
-        img_cond = LTX2VideoCondition(frames=image, index=0, strength=1.0)
+        # Synthetic float tensors skip H.264 CRF re-compression (training path uses PIL/uint8).
+        img_cond = LTX2VideoCondition(frames=image, index=0, strength=1.0, crf=0)
 
         inputs = {
             "conditions": img_cond,

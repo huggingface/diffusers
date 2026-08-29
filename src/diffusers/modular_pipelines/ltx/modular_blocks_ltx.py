@@ -166,7 +166,7 @@ class LTXBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX Video text-to-video.
 
       Components:
-          text_encoder (`T5EncoderModel`) tokenizer (`T5TokenizerFast`) guider (`ClassifierFreeGuidance`) scheduler
+          text_encoder (`T5EncoderModel`) tokenizer (`T5Tokenizer`) guider (`ClassifierFreeGuidance`) scheduler
           (`FlowMatchEulerDiscreteScheduler`) pachifier (`LTXVideoPachifier`) transformer
           (`LTXVideoTransformer3DModel`) vae (`AutoencoderKLLTXVideo`) video_processor (`VideoProcessor`)
 
@@ -343,7 +343,7 @@ class LTXAutoBlocks(SequentialPipelineBlocks):
         - `image2video`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`T5EncoderModel`) tokenizer (`T5TokenizerFast`) guider (`ClassifierFreeGuidance`) vae
+          text_encoder (`T5EncoderModel`) tokenizer (`T5Tokenizer`) guider (`ClassifierFreeGuidance`) vae
           (`AutoencoderKLLTXVideo`) video_processor (`VideoProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`)
           pachifier (`LTXVideoPachifier`) transformer (`LTXVideoTransformer3DModel`)
 
@@ -420,7 +420,7 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX Video image-to-video.
 
       Components:
-          text_encoder (`T5EncoderModel`) tokenizer (`T5TokenizerFast`) guider (`ClassifierFreeGuidance`) vae
+          text_encoder (`T5EncoderModel`) tokenizer (`T5Tokenizer`) guider (`ClassifierFreeGuidance`) vae
           (`AutoencoderKLLTXVideo`) video_processor (`VideoProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`)
           pachifier (`LTXVideoPachifier`) transformer (`LTXVideoTransformer3DModel`)
 

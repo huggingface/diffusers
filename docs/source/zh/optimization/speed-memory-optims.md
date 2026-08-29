@@ -56,7 +56,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 ).to("cuda")
 
 # 编译
@@ -97,7 +97,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 ).to("cuda")
 
 # 模型 CPU 卸载
@@ -137,12 +137,12 @@ pipeline_quant_config = PipelineQuantizationConfig(
 )
 
 text_encoder = UMT5EncoderModel.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16
+    "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16
 )
 pipeline = DiffusionPipeline.from_pretrained(
     "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 ).to("cuda")
 
 # 组卸载

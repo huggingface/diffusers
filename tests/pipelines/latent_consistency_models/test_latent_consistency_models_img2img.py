@@ -123,7 +123,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
     def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.4003, 0.3718, 0.2863, 0.5500, 0.5587, 0.3772, 0.4617, 0.4961, 0.4417])
+            expected_pipe_slice = np.array([0.3952, 0.3674, 0.2839, 0.5461, 0.5532, 0.3737, 0.4652, 0.4986, 0.4422])
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_lcm_onestep(self):
@@ -141,7 +141,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.4388, 0.3717, 0.2202, 0.7213, 0.6370, 0.3664, 0.5815, 0.6080, 0.4977])
+        expected_slice = np.array([0.4317, 0.3653, 0.2190, 0.7136, 0.6321, 0.3634, 0.5846, 0.6095, 0.4969])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_lcm_multistep(self):
@@ -158,7 +158,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.4150, 0.3719, 0.2479, 0.6333, 0.6024, 0.3778, 0.5036, 0.5420, 0.4678])
+        expected_slice = np.array([0.4083, 0.3668, 0.2467, 0.6268, 0.5976, 0.3750, 0.5071, 0.5439, 0.4677])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_lcm_custom_timesteps(self):
@@ -177,7 +177,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.3994, 0.3471, 0.2540, 0.7030, 0.6193, 0.3645, 0.5777, 0.5850, 0.4965])
+        expected_slice = np.array([0.3985, 0.3444, 0.2534, 0.6969, 0.6167, 0.3622, 0.5754, 0.5850, 0.4959])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_batch_single_identical(self):

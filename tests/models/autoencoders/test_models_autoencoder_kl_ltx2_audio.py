@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import is_flaky, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 class AutoencoderKLLTX2AudioTesterConfig(BaseModelTesterConfig):
@@ -61,10 +61,9 @@ class AutoencoderKLLTX2AudioTesterConfig(BaseModelTesterConfig):
             "double_z": True,
         }
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self, num_frames: int = 8):
         batch_size = 2
         num_channels = 2
-        num_frames = 8
         num_mel_bins = 16
         spectrogram = randn_tensor(
             (batch_size, num_channels, num_frames, num_mel_bins),
@@ -88,6 +87,16 @@ class TestAutoencoderKLLTX2AudioTraining(AutoencoderKLLTX2AudioTesterConfig, Tra
 class TestAutoencoderKLLTX2AudioMemory(AutoencoderKLLTX2AudioTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKLLTX2Audio."""
 
+    # This is specific for this model and also for our CI setup.
+    # The underlying model being so tiny, it doesn't pass some memory-related
+    # tests with even smaller inputs. See: https://github.com/huggingface/diffusers/pull/14505
+    def get_dummy_inputs(self, num_frames: int = 512):
+        return super().get_dummy_inputs(num_frames=num_frames)
+
+    @property
+    def output_shape(self):
+        return (2, 509, 16)
+
     @is_flaky()
     @pytest.mark.parametrize("record_stream", [False, True])
     @pytest.mark.parametrize("offload_type", ["block_level", "leaf_level"])
@@ -95,5 +104,5 @@ class TestAutoencoderKLLTX2AudioMemory(AutoencoderKLLTX2AudioTesterConfig, Memor
         super().test_group_offloading_with_disk(tmp_path, record_stream, offload_type, atol=atol, rtol=rtol)
 
 
-class TestAutoencoderKLLTX2AudioSlicingTiling(AutoencoderKLLTX2AudioTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLLTX2AudioSlicingTiling(AutoencoderKLLTX2AudioTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLLTX2Audio."""

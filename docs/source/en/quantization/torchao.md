@@ -34,10 +34,23 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
-    device_map="cuda"
+    dtype=torch.bfloat16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
+
+`device_map="cuda"` quantizes each layer on the GPU while it loads. This is fast, but it temporarily requires additional GPU memory for the original and quantized weights. If the model already uses most of your GPU memory, loading can fail with an out-of-memory error. In that case, drop `device_map` and move the pipeline to the GPU after loading:
+
+```py
+pipeline = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
+)
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
+```
+
+Without `device_map`, Diffusers quantizes the layers on the CPU. This is slower, but avoids the temporary GPU-memory spike during quantization. To reduce GPU memory usage further, use [`~DiffusionPipeline.enable_model_cpu_offload`] instead. You can also quantize additional components, such as the text encoder.
 
 ## torch.compile
 
@@ -54,8 +67,8 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
-    device_map="cuda"
+    dtype=torch.bfloat16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 pipeline.transformer.compile(transformer, mode="max-autotune", fullgraph=True)
@@ -98,7 +111,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=quantization_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 transformer.save_pretrained("/path/to/flux_int8wo", safe_serialization=False)
 ```
@@ -109,9 +122,9 @@ To load a serialized quantized model, use the [`~ModelMixin.from_pretrained`] me
 import torch
 from diffusers import FluxPipeline, AutoModel
 
-transformer = AutoModel.from_pretrained("/path/to/flux_int8wo", torch_dtype=torch.bfloat16, use_safetensors=False)
-pipe = FluxPipeline.from_pretrained("black-forest-labs/Flux.1-Dev", transformer=transformer, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+transformer = AutoModel.from_pretrained("/path/to/flux_int8wo", dtype=torch.bfloat16, use_safetensors=False)
+pipe = FluxPipeline.from_pretrained("black-forest-labs/Flux.1-Dev", transformer=transformer, dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A cat holding a sign that says hello world"
 image = pipe(prompt, num_inference_steps=30, guidance_scale=7.0).images[0]
@@ -131,7 +144,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=TorchAoConfig(IntxWeightOnlyConfig(dtype=torch.uint4)),
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 transformer.save_pretrained("/path/to/flux_uint4wo", safe_serialization=False, max_shard_size="50GB")
 # ...

@@ -43,11 +43,12 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "single_file: marks tests for single file checkpoint loading")
     config.addinivalue_line("markers", "quantization: marks tests for quantization functionality")
     config.addinivalue_line("markers", "bitsandbytes: marks tests for BitsAndBytes quantization functionality")
-    config.addinivalue_line("markers", "quanto: marks tests for Quanto quantization functionality")
     config.addinivalue_line("markers", "torchao: marks tests for TorchAO quantization functionality")
     config.addinivalue_line("markers", "gguf: marks tests for GGUF quantization functionality")
     config.addinivalue_line("markers", "modelopt: marks tests for NVIDIA ModelOpt quantization functionality")
+    config.addinivalue_line("markers", "sdnq: marks tests for SDNQ quantization functionality")
     config.addinivalue_line("markers", "context_parallel: marks tests for context parallel inference functionality")
+    config.addinivalue_line("markers", "tensor_parallel: marks tests for tensor parallel inference functionality")
     config.addinivalue_line("markers", "slow: mark test as slow")
     config.addinivalue_line("markers", "nightly: mark test as nightly")
 

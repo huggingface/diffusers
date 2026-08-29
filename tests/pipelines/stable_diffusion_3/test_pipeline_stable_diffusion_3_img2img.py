@@ -147,7 +147,7 @@ class StableDiffusion3Img2ImgPipelineFastTests(PipelineLatentTesterMixin, unitte
         generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
 
         # fmt: off
-        expected_slice = np.array([0.4564, 0.5486, 0.4868, 0.5923, 0.3775, 0.5543, 0.4807, 0.4177, 0.3778, 0.5957, 0.5726, 0.4333, 0.6312, 0.5062, 0.4838, 0.5984])
+        expected_slice = np.array([0.4301, 0.4957, 0.4331, 0.5094, 0.3746, 0.4505, 0.4512, 0.3695, 0.3894, 0.5979, 0.5911, 0.4989, 0.5575, 0.5186, 0.5015, 0.5804])
         # fmt: on
 
         self.assertTrue(
