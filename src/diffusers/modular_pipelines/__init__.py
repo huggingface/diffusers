@@ -7,14 +7,8 @@ from ..utils import (
     get_objects_from_module,
     is_torch_available,
     is_transformers_available,
-    logging,
 )
 
-
-logger = logging.get_logger(__name__)
-logger.warning(
-    "Modular Diffusers is currently an experimental feature under active development. The API is subject to breaking changes in future releases."
-)
 
 # These modules contain pipelines from multiple libraries/frameworks
 _dummy_objects = {}
@@ -47,6 +41,12 @@ else:
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
     _import_structure["stable_diffusion_3"] = ["StableDiffusion3AutoBlocks", "StableDiffusion3ModularPipeline"]
+    _import_structure["wan_animate_2"] = [
+        "WanAnimate2Blocks",
+        "WanAnimate2DistilledBlocks",
+        "WanAnimate2DistilledModularPipeline",
+        "WanAnimate2ModularPipeline",
+    ]
     _import_structure["wan"] = [
         "WanBlocks",
         "Wan22Blocks",
@@ -121,9 +121,19 @@ else:
         "LTXAutoBlocks",
         "LTXModularPipeline",
     ]
+    _import_structure["ltx2"] = [
+        "LTX2AutoBlocks",
+        "LTX25AutoBlocks",
+        "LTX2ModularPipeline",
+        "LTX25ModularPipeline",
+    ]
     _import_structure["minimax_h3"] = [
         "MiniMaxH3Blocks",
         "MiniMaxH3ModularPipeline",
+    ]
+    _import_structure["minimax_music3"] = [
+        "MiniMaxMusic3Blocks",
+        "MiniMaxMusic3ModularPipeline",
     ]
     _import_structure["z_image"] = [
         "ZImageAutoBlocks",
@@ -179,9 +189,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Krea2TurboModularPipeline,
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
+        from .ltx2 import LTX2AutoBlocks, LTX2ModularPipeline, LTX25AutoBlocks, LTX25ModularPipeline
         from .minimax_h3 import (
             MiniMaxH3Blocks,
             MiniMaxH3ModularPipeline,
+        )
+        from .minimax_music3 import (
+            MiniMaxMusic3Blocks,
+            MiniMaxMusic3ModularPipeline,
         )
         from .modular_pipeline import (
             AutoPipelineBlocks,
@@ -215,6 +230,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanImage2VideoAutoBlocks,
             WanImage2VideoModularPipeline,
             WanModularPipeline,
+        )
+        from .wan_animate_2 import (
+            WanAnimate2Blocks,
+            WanAnimate2DistilledBlocks,
+            WanAnimate2DistilledModularPipeline,
+            WanAnimate2ModularPipeline,
         )
         from .z_image import ZImageAutoBlocks, ZImageModularPipeline
 else:

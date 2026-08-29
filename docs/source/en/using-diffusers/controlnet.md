@@ -59,7 +59,7 @@ controlnet = FluxControlNetModel.from_pretrained(
 )
 pipeline = FluxControlNetPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev", controlnet=controlnet, dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 A photorealistic overhead image of a cat reclining sideways in a flamingo pool floatie holding a margarita. 
@@ -105,7 +105,7 @@ from diffusers import ControlNetModel, StableDiffusionXLControlNetImg2ImgPipelin
 from diffusers.utils import load_image
 
 
-depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")
+depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")  # or "mps", "xpu", "cpu"
 feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
 
 def get_depth_map(image):
@@ -143,7 +143,7 @@ pipeline = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
     controlnet=controlnet,
     vae=vae,
     dtype=torch.float16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 A photorealistic overhead image of a cat reclining sideways in a flamingo pool floatie holding a margarita. 
@@ -273,7 +273,7 @@ controlnets = [
 vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
 pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnets, vae=vae, dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 a relaxed rabbit sitting on a striped towel next to a pool with a tropical drink nearby, 
@@ -324,7 +324,7 @@ pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   controlnet=controlnet,
   dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 canny_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/canny-cat.png")
 pipeline(

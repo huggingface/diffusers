@@ -38,7 +38,7 @@ from ..pipelines.pipeline_loading_utils import (
 )
 from ..utils import PushToHubMixin, is_accelerate_available, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
-from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import _resolve_revision, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache, is_compiled_module
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
@@ -132,6 +132,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
         ("stable-diffusion-3", _create_default_map_fn("StableDiffusion3ModularPipeline")),
         ("wan", _wan_map_fn),
+        ("wan-animate-2", _create_default_map_fn("WanAnimate2ModularPipeline")),
+        ("wan-animate-2-distilled", _create_default_map_fn("WanAnimate2DistilledModularPipeline")),
         ("wan-i2v", _wan_i2v_map_fn),
         ("flux", _create_default_map_fn("FluxModularPipeline")),
         ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),
@@ -150,7 +152,10 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("helios-pyramid", _helios_pyramid_map_fn),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
         ("ltx", _create_default_map_fn("LTXModularPipeline")),
+        ("ltx2", _create_default_map_fn("LTX2ModularPipeline")),
+        ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
         ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
+        ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
     ]
 )
@@ -325,7 +330,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     [`ModularPipelineBlocks`] provides method to load and save the definition of pipeline blocks.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     config_name = "modular_config.json"
@@ -434,6 +438,15 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
+
+        # Resolve the revision only once
+        hub_kwargs["revision"] = _resolve_revision(
+            pretrained_model_name_or_path,
+            revision=hub_kwargs.get("revision"),
+            cache_dir=hub_kwargs.get("cache_dir"),
+            local_files_only=hub_kwargs.get("local_files_only"),
+            token=hub_kwargs.get("token"),
+        )
 
         config = cls.load_config(pretrained_model_name_or_path, **hub_kwargs)
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
@@ -606,8 +619,6 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
-
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: List of block classes to be used. Must have the same length as `block_names`.
@@ -967,8 +978,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
-
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: list of block classes to be used
@@ -1330,8 +1339,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
-
     Attributes:
         block_classes: list of block classes to be used
         block_names: list of prefixes for each block
@@ -1624,8 +1631,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
-
     Args:
         blocks: ModularPipelineBlocks, the blocks to be used in the pipeline
     """
@@ -1875,6 +1880,15 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 components that workflow uses.
         """
         from ..pipelines.pipeline_loading_utils import _get_pipeline_class
+
+        # Resolve the revision only once
+        kwargs["revision"] = _resolve_revision(
+            pretrained_model_name_or_path,
+            revision=kwargs.get("revision"),
+            cache_dir=kwargs.get("cache_dir"),
+            local_files_only=kwargs.get("local_files_only"),
+            token=kwargs.get("token"),
+        )
 
         try:
             blocks = ModularPipelineBlocks.from_pretrained(

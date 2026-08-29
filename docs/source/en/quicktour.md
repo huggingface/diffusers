@@ -53,7 +53,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 prompt = """
@@ -83,7 +83,7 @@ pipeline = DiffusionPipeline.from_pretrained(
   "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
   vae=vae
   dtype=torch.bfloat16,
-  device_map="cuda"
+  device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 prompt = """
@@ -110,7 +110,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.load_lora_weights(
   "flymy-ai/qwen-image-realism-lora",
@@ -147,7 +147,7 @@ pipeline = DiffusionPipeline.from_pretrained(
   "Qwen/Qwen-Image",
   dtype=torch.bfloat16,
   quantization_config=quant_config,
-  device_map="cuda"
+  device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 prompt = """
@@ -189,7 +189,7 @@ pipeline = DiffusionPipeline.from_pretrained(
   "Qwen/Qwen-Image",
   dtype=torch.bfloat16,
   quantization_config=quant_config,
-  device_map="cuda"
+  device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.enable_model_cpu_offload()
 
@@ -216,7 +216,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 pipeline.transformer.compile_repeated_blocks(

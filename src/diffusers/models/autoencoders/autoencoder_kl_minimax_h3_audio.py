@@ -524,6 +524,10 @@ class AutoencoderKLMiniMaxH3Audio(ModelMixin, ConfigMixin, AttentionMixin):
     """
 
     _supports_gradient_checkpointing = False
+    # `weight_norm` recomputes `weight` from `weight_g` / `weight_v` in a forward pre-hook, which runs before the
+    # leaf-level group offloading hook has onloaded them, so the convolution would see a CPU weight. Same reason the
+    # other weight-normalized audio autoencoders (`AutoencoderOobleck`, `Cosmos3AVAEAudioTokenizer`) opt out.
+    _supports_group_offloading = False
     # The released checkpoint is float32 and the DAC/BigVGAN stack (weight-normalized convolutions, Snake
     # activations) degrades audibly under bfloat16 (roughly 20 dB quieter decodes), so a pipeline-level
     # `torch_dtype=torch.bfloat16` must not downcast the weights.

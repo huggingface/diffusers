@@ -42,7 +42,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.transformer.set_attention_backend("_flash_3_hub")
 
@@ -68,7 +68,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 prompt = """
 cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
@@ -115,7 +115,7 @@ The checks are run now before every attention operation.
 ```py
 import torch
 
-query = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
+query = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")  # or "mps", "xpu", "cpu"
 key = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
 value = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
 
@@ -156,7 +156,7 @@ Refer to the table below for a complete list of available attention backends and
 | `flash_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-2 from kernels |
 | `flash_varlen` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention |
 | `flash_varlen_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention from kernels |
-| `aiter` | [AI Tensor Engine for ROCm](https://github.com/ROCm/aiter) | FlashAttention for AMD ROCm |
+| `aiter_fa2_hub` | [AI Tensor Engine for ROCm](https://github.com/ROCm/aiter) | FlashAttention-2 for AMD ROCm from kernels |
 | `flash_4_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-4 |
 | `_flash_3` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-3 |
 | `_flash_varlen_3` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention-3 |

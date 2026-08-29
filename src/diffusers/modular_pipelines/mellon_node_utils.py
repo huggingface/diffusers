@@ -1,3 +1,9 @@
+"""
+Utilities for exposing modular pipeline blocks as nodes in [Mellon](https://github.com/cubiq/Mellon).
+
+> [!WARNING] > The Mellon integration is still under active development and its API may change.
+"""
+
 import copy
 import json
 import logging
@@ -255,6 +261,8 @@ class MellonParamMeta(type):
 class MellonParam(metaclass=MellonParamMeta):
     """
         Parameter definition for Mellon nodes.
+
+        > [!WARNING] > The Mellon integration is still under active development and its API may change.
 
         Usage:
     ```python
@@ -692,6 +700,8 @@ def node_spec_to_mellon_dict(node_spec: dict[str, Any], node_type: str) -> dict[
 class MellonPipelineConfig:
     """
     Configuration for an entire Mellon pipeline containing multiple nodes.
+
+    > [!WARNING] > The Mellon integration is still under active development and its API may change.
 
     Accepts node specs as dicts with inputs/model_inputs/outputs lists of MellonParam, converts them to Mellon-ready
     format, and handles save/load to Hub.

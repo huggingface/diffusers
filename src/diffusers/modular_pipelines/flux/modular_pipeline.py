@@ -25,7 +25,6 @@ class FluxModularPipeline(ModularPipeline, FluxLoraLoaderMixin, TextualInversion
     """
     A ModularPipeline for Flux.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "FluxAutoBlocks"
@@ -61,7 +60,6 @@ class FluxKontextModularPipeline(FluxModularPipeline):
     """
     A ModularPipeline for Flux Kontext.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "FluxKontextAutoBlocks"

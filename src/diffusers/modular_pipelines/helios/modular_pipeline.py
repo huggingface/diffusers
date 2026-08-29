@@ -28,7 +28,6 @@ class HeliosModularPipeline(
     """
     A ModularPipeline for Helios text-to-video generation.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "HeliosAutoBlocks"
@@ -69,7 +68,6 @@ class HeliosPyramidModularPipeline(HeliosModularPipeline):
     """
     A ModularPipeline for Helios pyramid (progressive resolution) video generation.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "HeliosPyramidAutoBlocks"
@@ -81,7 +79,6 @@ class HeliosPyramidDistilledModularPipeline(HeliosModularPipeline):
 
     Uses guidance_scale=1.0 (no CFG) and supports is_amplify_first_chunk for the DMD scheduler.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "HeliosPyramidDistilledAutoBlocks"
