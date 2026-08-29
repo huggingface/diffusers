@@ -615,6 +615,10 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 The scale factor(s) for the ControlNet outputs. A single float is broadcast to all control blocks.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide generation. Required unless `prompt_embeds` is supplied.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                not greater than `1`).
             height (`int`, defaults to `704`):
                 The height in pixels of the generated image.
             width (`int`, *optional*):
@@ -623,6 +627,9 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             num_frames (`int`, *optional*):
                 Number of output frames. Defaults to `None` to output the same number of frames as the input
                 `controls`.
+            num_frames_per_chunk (`int`, *optional*, defaults to `93`):
+                Number of frames generated per auto-regressive chunk. When the total number of frames exceeds this
+                value, generation is split into multiple chunks using a sliding-window approach.
             num_inference_steps (`int`, defaults to `36`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -662,6 +669,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             max_sequence_length (`int`, defaults to `512`):
                 The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated. If
                 the prompt is shorter than this length, it will be padded.
+            conditional_frame_timestep (`float`, *optional*, defaults to 0.1):
+                Timestep value used for the conditional frames during denoising. Must be in the `[0, 1]` interval.
             num_ar_conditional_frames (`int`, *optional*, defaults to `1`):
                 Number of frames to condition on subsequent inference loops in auto-regressive inference, i.e. for the
                 second chunk and onwards. Only used if `num_ar_latent_conditional_frames` is `None`.

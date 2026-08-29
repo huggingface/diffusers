@@ -386,6 +386,8 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
+            sigma (`torch.Tensor`, *optional*):
+                The sigma of the current step in the noise schedule.
 
         Returns:
             `torch.Tensor`:
@@ -470,6 +472,10 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
                 A current instance of a sample created by the diffusion process.
             order (`int`):
                 The order of UniP at this timestep (corresponds to the *p* in UniPC-p).
+            sigma (`torch.Tensor`, *optional*):
+                The sigma of the current step in the noise schedule.
+            sigma_next (`torch.Tensor`, *optional*):
+                The sigma of the next step in the noise schedule.
 
         Returns:
             `torch.Tensor`:
@@ -607,6 +613,10 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
                 The generated sample after the last predictor `x_{t}`.
             order (`int`):
                 The `p` of UniC-p at this step. The effective order of accuracy should be `order + 1`.
+            sigma_before (`torch.Tensor`, *optional*):
+                The sigma of the previous step in the noise schedule.
+            sigma (`torch.Tensor`, *optional*):
+                The sigma of the current step in the noise schedule.
 
         Returns:
             `torch.Tensor`:

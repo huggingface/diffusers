@@ -81,30 +81,37 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         eta: float = 1.0,
         s_noise: float = 1.0,
-    ):
+    ) -> None:
         # Note: num_train_timesteps is kept only for config compatibility.
-        self.num_inference_steps: int = None
+        self.num_inference_steps: int | None = None
         self.sigmas: torch.Tensor | None = None
         self.timesteps: torch.Tensor | None = None
-        self._step_index: int = None
-        self._begin_index: int = None
+        self._step_index: int | None = None
+        self._begin_index: int | None = None
 
     @property
-    def step_index(self) -> int:
+    def step_index(self) -> int | None:
+        """
+        The index counter for the current timestep. It increases by one after each scheduler step.
+        """
         return self._step_index
 
     @property
-    def begin_index(self) -> int:
+    def begin_index(self) -> int | None:
         """
         The index for the first timestep. It can be set from a pipeline with `set_begin_index` to support
         image-to-image like workflows that start denoising part-way through the schedule.
         """
         return self._begin_index
 
-    def set_begin_index(self, begin_index: int = 0):
+    def set_begin_index(self, begin_index: int = 0) -> None:
         """
         Included for API compatibility; not strictly needed here but kept to allow pipelines that call
         `set_begin_index`.
+
+        Args:
+            begin_index (`int`, defaults to `0`):
+                The index of the first timestep in the denoising schedule.
         """
         self._begin_index = begin_index
 
@@ -117,6 +124,16 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         This follows the convention used in other discrete schedulers: if the same timestep value appears multiple
         times in the schedule (which can happen when starting in the middle of the schedule), the *second* occurrence
         is used for the first `step` call so that no sigma is accidentally skipped.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The timestep value to find in the schedule.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search. If `None`, `self.timesteps` is used.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule.
         """
         if schedule_timesteps is None:
             if self.timesteps is None:
@@ -141,9 +158,13 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
 
         return indices[pos].item()
 
-    def _init_step_index(self, timestep: float | torch.Tensor):
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
         """
         Initialize the internal step index based on a given timestep.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The current timestep used to initialize the step index.
         """
         if self.timesteps is None:
             raise ValueError("Timesteps have not been set. Call `set_timesteps` first.")
@@ -162,8 +183,8 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         sigmas: list[float] | torch.Tensor | None = None,
         timesteps: list[float] | torch.Tensor | None = None,
         mu: float | None = None,
-        **kwargs,
-    ):
+        **kwargs: object,
+    ) -> None:
         """
         Set the sigma / timestep schedule for sampling.
 
@@ -186,6 +207,8 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
             mu (`float`, *optional*):
                 Optional shift parameter used when delegating to [`FlowMatchEulerDiscreteScheduler.set_timesteps`] and
                 `config.use_dynamic_shifting` is `True`.
+            kwargs (`object`):
+                Additional keyword arguments accepted for API compatibility.
         """
         # 1. Auto-generate schedule (FlowMatch-style) when no explicit sigmas/timesteps are given
         if sigmas is None and timesteps is None:
@@ -269,6 +292,16 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
     def _sigma_broadcast(self, sigma: torch.Tensor, sample: torch.Tensor) -> torch.Tensor:
         """
         Helper to broadcast a scalar sigma to the shape of `sample`.
+
+        Args:
+            sigma (`torch.Tensor`):
+                The scalar sigma tensor to broadcast.
+            sample (`torch.Tensor`):
+                The sample tensor whose number of dimensions determines the broadcast shape.
+
+        Returns:
+            `torch.Tensor`:
+                The sigma tensor reshaped for broadcasting with `sample`.
         """
         while sigma.ndim < sample.ndim:
             sigma = sigma.view(*sigma.shape, 1)
@@ -295,9 +328,15 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
                 Current latent sample `x_t`.
             generator (`torch.Generator`, *optional*):
                 Optional generator for reproducible noise.
-            return_dict (`bool`):
+            return_dict (`bool`, defaults to `True`):
                 If `True`, return a `LTXEulerAncestralRFSchedulerOutput`; otherwise return a tuple where the first
                 element is the updated sample.
+
+        Returns:
+            [`~schedulers.scheduling_ltx_euler_ancestral_rf.LTXEulerAncestralRFSchedulerOutput`] or `tuple`:
+                If `return_dict` is `True`,
+                [`~schedulers.scheduling_ltx_euler_ancestral_rf.LTXEulerAncestralRFSchedulerOutput`] is returned.
+                Otherwise, a tuple is returned where the first element is the updated sample.
         """
 
         if isinstance(timestep, (int, torch.IntTensor, torch.LongTensor)):
@@ -380,6 +419,11 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         return LTXEulerAncestralRFSchedulerOutput(prev_sample=prev_sample)
 
     def __len__(self) -> int:
-        # For compatibility with other schedulers; used e.g. in some training
-        # utilities to infer the maximum number of training timesteps.
+        """
+        Return the number of training timesteps for compatibility with scheduler utilities.
+
+        Returns:
+            `int`:
+                The configured number of training timesteps.
+        """
         return int(getattr(self.config, "num_train_timesteps", 1000))

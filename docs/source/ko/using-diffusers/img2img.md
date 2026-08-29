@@ -33,7 +33,7 @@ from io import BytesIO
 from diffusers import StableDiffusionImg2ImgPipeline
 
 device = "cuda"
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained("nitrosocke/Ghibli-Diffusion", torch_dtype=torch.float16).to(
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained("nitrosocke/Ghibli-Diffusion", dtype=torch.float16).to(
     device
 )
 ```

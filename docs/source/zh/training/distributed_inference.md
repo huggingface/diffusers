@@ -27,7 +27,7 @@ from accelerate import PartialState
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True
 )
 distributed_state = PartialState()
 pipeline.to(distributed_state.device)
@@ -61,7 +61,7 @@ import torch.multiprocessing as mp
 from diffusers import DiffusionPipeline
 
 sd = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True
 )
 ```
 
@@ -128,7 +128,7 @@ pipeline = FluxPipeline.from_pretrained(
     vae=None,
     device_map="balanced",
     max_memory={0: "16GB", 1: "16GB"},
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 with torch.no_grad():
     print("Encoding prompts.")
@@ -167,7 +167,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map="auto",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 ```
 
@@ -185,7 +185,7 @@ pipeline = FluxPipeline.from_pretrained(
     tokenizer_2=None,
     vae=None,
     transformer=transformer,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 
 print("Running denoising.")
@@ -219,7 +219,7 @@ from diffusers import AutoencoderKL
 from diffusers.image_processor import VaeImageProcessor
 import torch 
 
-vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", torch_dtype=torch.bfloat16).to("cuda")
+vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", dtype=torch.bfloat16).to("cuda")
 vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
 image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
 

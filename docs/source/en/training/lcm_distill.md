@@ -218,11 +218,11 @@ Once training is complete, you can use your new LCM for inference.
 from diffusers import UNet2DConditionModel, DiffusionPipeline, LCMScheduler
 import torch
 
-unet = UNet2DConditionModel.from_pretrained("your-username/your-model", torch_dtype=torch.float16, variant="fp16")
-pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, torch_dtype=torch.float16, variant="fp16")
+unet = UNet2DConditionModel.from_pretrained("your-username/your-model", dtype=torch.float16, variant="fp16")
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, dtype=torch.float16, variant="fp16")
 
 pipeline.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "sushi rolls in the form of panda heads, sushi platter"
 
@@ -245,5 +245,5 @@ The SDXL training script is discussed in more detail in the [SDXL training](sdxl
 
 Congratulations on distilling a LCM model! To learn more about LCM, the following may be helpful:
 
-- Learn how to use [LCMs for inference](../using-diffusers/inference_with_lcm) for text-to-image, image-to-image, and with LoRA checkpoints.
+- Learn how to use [LCMs for inference](../api/pipelines/latent_consistency_models) for text-to-image, image-to-image, and with LoRA checkpoints.
 - Read the [SDXL in 4 steps with Latent Consistency LoRAs](https://huggingface.co/blog/lcm_lora) blog post to learn more about SDXL LCM-LoRA's for super fast inference, quality comparisons, benchmarks, and more.

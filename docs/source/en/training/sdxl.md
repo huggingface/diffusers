@@ -212,7 +212,7 @@ After you've finished training, you can use your newly trained SDXL model for in
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("path/to/your/model", torch_dtype=torch.float16).to("cuda")
+pipeline = DiffusionPipeline.from_pretrained("path/to/your/model", dtype=torch.float16).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A naruto with green eyes and red legs."
 image = pipeline(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
@@ -250,5 +250,5 @@ print(f'Inference time is {time()-start} sec after compilation')
 
 Congratulations on training a SDXL model! To learn more about how to use your new model, the following guides may be helpful:
 
-- Read the [Stable Diffusion XL](../using-diffusers/sdxl) guide to learn how to use it for a variety of different tasks (text-to-image, image-to-image, inpainting), how to use its refiner model, and the different types of micro-conditionings.
+- Read the [Stable Diffusion XL](../api/pipelines/stable_diffusion/stable_diffusion_xl) guide to learn how to use it for a variety of different tasks (text-to-image, image-to-image, inpainting), how to use its refiner model, and the different types of micro-conditionings.
 - Check out the [DreamBooth](dreambooth) and [LoRA](lora) training guides to learn how to train a personalized SDXL model with just a few example images. These two training techniques can even be combined!

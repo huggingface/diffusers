@@ -121,8 +121,6 @@
       title: (번역중) Stable Diffusion XL
     - local: in_translation # training/kandinsky
       title: (번역중) Kandinsky 2.2
-    - local: in_translation # training/wuerstchen
-      title: (번역중) Wuerstchen
     - local: training/controlnet
       title: ControlNet
     - local: in_translation # training/t2i_adapters
@@ -162,8 +160,6 @@
   - local: in_translation # optimization/tgate
     title: (번역중) TGATE
   - sections:
-    - local: using-diffusers/stable_diffusion_jax_how_to
-      title: JAX/Flax
     - local: optimization/onnx
       title: ONNX
     - local: optimization/open_vino

@@ -170,6 +170,9 @@ tags
 
 # RL pipelines may produce mp4 outputs
 *.mp4
+*.jpg
+*.jepg
+*.wav
 
 # dependencies
 /transformers
@@ -181,7 +184,5 @@ tags
 wandb
 
 # AI agent generated symlinks
-/AGENTS.md
-/CLAUDE.md
 /.agents/skills
 /.claude/skills

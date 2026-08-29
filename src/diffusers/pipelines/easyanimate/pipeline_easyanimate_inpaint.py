@@ -819,7 +819,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         r"""
         The call function to the pipeline for generation with HunyuanDiT.
 
-        Examples:
+        Args:
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             num_frames (`int`, *optional*):
@@ -886,6 +886,11 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             strength (`float`, *optional*, defaults to 1.0):
                 Affects the overall styling or quality of the generated output. Values closer to 1 usually provide
                 direct adherence to prompts.
+            noise_aug_strength (`float`, *optional*, defaults to 0.0563):
+                Strength of the noise augmentation applied to the conditioning video latents.
+            timesteps (`list[int]`, *optional*):
+                Custom timesteps to use for the denoising process. If not defined, the scheduler's default schedule for
+                `num_inference_steps` is used.
 
         Examples:
             # Example usage of the function for generating images based on prompts.

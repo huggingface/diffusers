@@ -33,7 +33,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline
-        >>> from diffusers.pipelines.ltx2.export_utils import encode_video
+        >>> from diffusers.utils import encode_video
         >>> from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
         >>> from diffusers.utils import load_image
 

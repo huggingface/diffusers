@@ -32,11 +32,12 @@ RUN uv venv --python ${PYTHON_VERSION} --seed ${VIRTUAL_ENV}
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-# Install torch, torchvision, and torchaudio together to ensure compatibility
+# Pin torch, torchvision, and torchaudio to a matching set so the torchvision C++
+# extension's ABI lines up with torch (otherwise torchvision::nms fails to register).
 RUN uv pip install --no-cache-dir \
-    torch \
-    torchvision \
-    torchaudio \
+    torch==2.10.0 \
+    torchvision==0.25.0 \
+    torchaudio==2.10.0 \
     --index-url https://download.pytorch.org/whl/cu129
 
 # Install compatible versions of numba/llvmlite for Python 3.10+

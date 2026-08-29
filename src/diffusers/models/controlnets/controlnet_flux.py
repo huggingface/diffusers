@@ -188,8 +188,12 @@ class FluxControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
                 from the embeddings of input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
-                A list of tensors that if specified are added to the residuals of transformer blocks.
+            img_ids (`torch.Tensor`):
+                Positional ids for the image tokens.
+            txt_ids (`torch.Tensor`):
+                Positional ids for the text tokens.
+            guidance (`torch.Tensor`, *optional*):
+                Guidance scale tensor used by guidance-distilled variants of the model.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -355,6 +359,40 @@ class FluxMultiControlNetModel(ModelMixin):
         joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> FluxControlNetOutput | tuple:
+        r"""
+        Args:
+            hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
+                Input `hidden_states`.
+            controlnet_cond (`list` of `torch.Tensor`):
+                A list of conditional input tensors, one per ControlNet.
+            controlnet_mode (`list` of `torch.Tensor`):
+                A list of mode tensors selecting the control type for each ControlNet.
+            conditioning_scale (`list` of `float`):
+                A list of scale factors applied to the ControlNet outputs.
+            encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`):
+                Embeddings projected from the embeddings of input conditions.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            img_ids (`torch.Tensor`):
+                Positional ids for the image tokens.
+            txt_ids (`torch.Tensor`):
+                Positional ids for the text tokens.
+            guidance (`torch.Tensor`, *optional*):
+                Guidance scale tensor used by guidance-distilled variants of the model.
+            joint_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`FluxControlNetOutput`] instead of a plain tuple.
+
+        Returns:
+            [`FluxControlNetOutput`] or `tuple`:
+                If `return_dict` is True, a [`FluxControlNetOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
         # ControlNet-Union with multiple conditions
         # only load one ControlNet for saving memories
         if len(self.nets) == 1:

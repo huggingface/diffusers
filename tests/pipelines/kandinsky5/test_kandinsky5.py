@@ -58,7 +58,6 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     }
     test_xformers_attention = False
     supports_optional_components = True
-    supports_dduf = False
     test_attention_slicing = False
 
     def get_dummy_components(self):

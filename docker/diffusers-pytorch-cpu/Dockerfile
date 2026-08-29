@@ -20,9 +20,9 @@ ENV UV_PYTHON=/usr/local/bin/python
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
 RUN pip install uv
 RUN uv pip install --no-cache-dir \
-    torch \
-    torchvision \
-    torchaudio \
+    torch==2.10.0 \
+    torchvision==0.25.0 \
+    torchaudio==2.10.0 \
     --extra-index-url https://download.pytorch.org/whl/cpu
 
 RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers[test]"

@@ -20,6 +20,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
 from ...utils import logging
+from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..activations import get_activation
 from ..attention import Attention, AttentionMixin, FeedForward
 from ..attention_processor import (
@@ -461,6 +462,10 @@ class I2VGenXLUNet(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoade
                 Projection embeddings of the conditioning image computed with a vision encoder.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
+            timestep_cond (`torch.Tensor`, *optional*):
+                Additional conditional embeddings for timestep. If provided, the embeddings will be summed with the
+                timestep_embedding passed through the `self.time_embedding` layer to obtain the final timestep
+                embeddings.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -495,12 +500,9 @@ class I2VGenXLUNet(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoade
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass `timesteps` as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            is_npu = sample.device.type == "npu"
-            if isinstance(timesteps, float):
-                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
-            else:
-                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
+            dtype = maybe_adjust_dtype_for_device(
+                torch.float64 if isinstance(timesteps, float) else torch.int64, sample.device
+            )
             timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)

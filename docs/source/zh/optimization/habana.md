@@ -18,7 +18,7 @@ Diffusers 管道可以利用 HPU 加速，即使管道尚未添加到 [Optimum f
 import torch
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+pipeline = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16)
 pipeline.to("hpu")
 
 image = pipeline("一张松鼠在毕加索风格中的图像").images[0]

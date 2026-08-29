@@ -1,4 +1,4 @@
-from ...utils import is_flax_available, is_torch_available
+from ...utils import is_torch_available
 
 
 if is_torch_available():
@@ -23,6 +23,3 @@ if is_torch_available():
     from .controlnet_z_image import ZImageControlNetModel
     from .multicontrolnet import MultiControlNetModel
     from .multicontrolnet_union import MultiControlNetUnionModel
-
-if is_flax_available():
-    from .controlnet_flax import FlaxControlNetModel

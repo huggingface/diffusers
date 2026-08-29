@@ -102,7 +102,7 @@ Once you have trained a model using above command, the inference can be done sim
 from diffusers import StableDiffusionPipeline
 
 model_id = "path-to-your-trained-model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id,dtype=torch.float16).to("cuda")
 
 prompt = "A <cat-toy> backpack"
 
@@ -113,6 +113,9 @@ image.save("cat-backpack.png")
 
 
 ## Training with Flax/JAX
+
+> [!WARNING]
+> JAX/Flax support was removed from the `diffusers` library in v0.40.0. These scripts require `diffusers<=0.39.x` to run.
 
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
 

@@ -314,7 +314,7 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G2024_S1_P32_E1_B1_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=2024,
-            expected_slice=np.array([0.40257, 0.39468, 0.51373, 0.4161, 0.40162, 0.58535, 0.43581, 0.47834, 0.48951]),
+            expected_slice=np.array([0.40250, 0.39464, 0.51378, 0.41603, 0.40150, 0.58531, 0.43581, 0.47833, 0.48946]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=1,
@@ -325,7 +325,7 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S2_P32_E1_B1_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.49636, 0.4518, 0.42722, 0.59044, 0.6362, 0.39011, 0.53522, 0.55153, 0.48699]),
+            expected_slice=np.array([0.52018, 0.45545, 0.42104, 0.58673, 0.63164, 0.38469, 0.52228, 0.54939, 0.48622]),
             num_inference_steps=2,
             processing_resolution=32,
             ensemble_size=1,
@@ -336,7 +336,7 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S1_P64_E1_B1_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.55547, 0.43511, 0.4887, 0.56399, 0.63867, 0.56337, 0.47889, 0.52925, 0.49235]),
+            expected_slice=np.array([0.55574, 0.43518, 0.48871, 0.56418, 0.63882, 0.56345, 0.47897, 0.52932, 0.49240]),
             num_inference_steps=1,
             processing_resolution=64,
             ensemble_size=1,
@@ -347,7 +347,7 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S1_P32_E3_B1_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.57249, 0.49824, 0.54438, 0.57733, 0.52404, 0.5255, 0.56493, 0.56336, 0.48579]),
+            expected_slice=np.array([0.57244, 0.49813, 0.54442, 0.57727, 0.52388, 0.52545, 0.56492, 0.56334, 0.48579]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=3,
@@ -359,7 +359,7 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S1_P32_E4_B2_M1(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.6294, 0.5575, 0.53414, 0.61077, 0.57156, 0.53974, 0.52956, 0.55467, 0.48751]),
+            expected_slice=np.array([0.62939, 0.55744, 0.53417, 0.61068, 0.57141, 0.53967, 0.52955, 0.55467, 0.48751]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=4,
@@ -371,7 +371,7 @@ class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin,
     def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M0(self):
         self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.63511, 0.68137, 0.48783, 0.46689, 0.58505, 0.36757, 0.58465, 0.54302, 0.50387]),
+            expected_slice=np.array([0.63543, 0.68147, 0.48780, 0.46715, 0.58511, 0.36761, 0.58482, 0.54309, 0.50388]),
             num_inference_steps=1,
             processing_resolution=16,
             ensemble_size=1,
@@ -467,11 +467,24 @@ class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
         )
 
     def test_marigold_intrinsics_einstein_f32_accelerator_G0_S1_P768_E1_B1_M1(self):
+        expected_slices = Expectations(
+            {
+                ("xpu", 5): np.array(
+                    [0.62477, 0.62261, 0.62027, 0.62281, 0.62241, 0.62271, 0.62184, 0.62479, 0.63226]
+                ),
+                ("xpu", 3): np.array(
+                    [0.62127, 0.61906, 0.61687, 0.61946, 0.61903, 0.61961, 0.61808, 0.62099, 0.62894]
+                ),
+                (None, None): np.array(
+                    [0.62127, 0.61906, 0.61687, 0.61946, 0.61903, 0.61961, 0.61808, 0.62099, 0.62894]
+                ),
+            }
+        )
         self._test_marigold_intrinsics(
             is_fp16=False,
             device=torch_device,
             generator_seed=0,
-            expected_slice=np.array([0.62127, 0.61906, 0.61687, 0.61946, 0.61903, 0.61961, 0.61808, 0.62099, 0.62894]),
+            expected_slice=expected_slices.get_expectation(),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=1,
@@ -480,11 +493,24 @@ class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
         )
 
     def test_marigold_intrinsics_einstein_f16_accelerator_G0_S1_P768_E1_B1_M1(self):
+        expected_slices = Expectations(
+            {
+                ("xpu", 5): np.array(
+                    [0.62451, 0.62256, 0.62012, 0.62256, 0.62207, 0.62256, 0.62158, 0.62451, 0.63184]
+                ),
+                ("xpu", 3): np.array(
+                    [0.62109, 0.61914, 0.61719, 0.61963, 0.61914, 0.61963, 0.61816, 0.62109, 0.62891]
+                ),
+                (None, None): np.array(
+                    [0.62109, 0.61914, 0.61719, 0.61963, 0.61914, 0.61963, 0.61816, 0.62109, 0.62891]
+                ),
+            }
+        )
         self._test_marigold_intrinsics(
             is_fp16=True,
             device=torch_device,
             generator_seed=0,
-            expected_slice=np.array([0.62109, 0.61914, 0.61719, 0.61963, 0.61914, 0.61963, 0.61816, 0.62109, 0.62891]),
+            expected_slice=expected_slices.get_expectation(),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=1,
@@ -493,11 +519,22 @@ class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
         )
 
     def test_marigold_intrinsics_einstein_f16_accelerator_G2024_S1_P768_E1_B1_M1(self):
+        expected_slices = Expectations(
+            {
+                ("xpu", 5): np.array(
+                    [0.63330, 0.63135, 0.62793, 0.63184, 0.63135, 0.63135, 0.63037, 0.63379, 0.64160]
+                ),
+                ("xpu", 3): np.array([0.64111, 0.63916, 0.63623, 0.63965, 0.63916, 0.63965, 0.6377, 0.64062, 0.64941]),
+                (None, None): np.array(
+                    [0.64111, 0.63916, 0.63623, 0.63965, 0.63916, 0.63965, 0.6377, 0.64062, 0.64941]
+                ),
+            }
+        )
         self._test_marigold_intrinsics(
             is_fp16=True,
             device=torch_device,
             generator_seed=2024,
-            expected_slice=np.array([0.64111, 0.63916, 0.63623, 0.63965, 0.63916, 0.63965, 0.6377, 0.64062, 0.64941]),
+            expected_slice=expected_slices.get_expectation(),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=1,
@@ -506,11 +543,22 @@ class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
         )
 
     def test_marigold_intrinsics_einstein_f16_accelerator_G0_S2_P768_E1_B1_M1(self):
+        expected_slices = Expectations(
+            {
+                ("xpu", 5): np.array([0.61475, 0.61328, 0.6123, 0.61426, 0.61328, 0.61475, 0.61475, 0.61621, 0.62402]),
+                ("xpu", 3): np.array(
+                    [0.60254, 0.60059, 0.59961, 0.60156, 0.60107, 0.60205, 0.60254, 0.60449, 0.61133]
+                ),
+                (None, None): np.array(
+                    [0.60254, 0.60059, 0.59961, 0.60156, 0.60107, 0.60205, 0.60254, 0.60449, 0.61133]
+                ),
+            }
+        )
         self._test_marigold_intrinsics(
             is_fp16=True,
             device=torch_device,
             generator_seed=0,
-            expected_slice=np.array([0.60254, 0.60059, 0.59961, 0.60156, 0.60107, 0.60205, 0.60254, 0.60449, 0.61133]),
+            expected_slice=expected_slices.get_expectation(),
             num_inference_steps=2,
             processing_resolution=768,
             ensemble_size=1,
@@ -545,6 +593,19 @@ class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
                         0.62255,
                         0.62647,
                         0.63379,
+                    ]
+                ),
+                ("xpu", 5): np.array(
+                    [
+                        0.62354,
+                        0.62158,
+                        0.61963,
+                        0.62207,
+                        0.62158,
+                        0.62207,
+                        0.62109,
+                        0.62354,
+                        0.63135,
                     ]
                 ),
                 ("cuda", 7): np.array(
@@ -589,6 +650,19 @@ class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
                         0.62646,
                         0.62939,
                         0.63721,
+                    ]
+                ),
+                ("xpu", 5): np.array(
+                    [
+                        0.62207,
+                        0.62012,
+                        0.61865,
+                        0.62061,
+                        0.62061,
+                        0.62158,
+                        0.62012,
+                        0.62305,
+                        0.63086,
                     ]
                 ),
                 ("cuda", 7): np.array(

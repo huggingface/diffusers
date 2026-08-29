@@ -149,6 +149,19 @@ class UVit2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
 
     @apply_lora_scale("cross_attention_kwargs")
     def forward(self, input_ids, encoder_hidden_states, pooled_text_emb, micro_conds, cross_attention_kwargs=None):
+        r"""
+        Args:
+            input_ids (`torch.LongTensor`):
+                Token ids of the masked latent image tokens, with shape `(batch_size, height, width)`.
+            encoder_hidden_states (`torch.Tensor`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            pooled_text_emb (`torch.Tensor`):
+                Pooled text embeddings used for additional conditioning.
+            micro_conds (`torch.Tensor`):
+                Micro-conditioning values that are embedded and combined with `pooled_text_emb`.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor`.
+        """
         encoder_hidden_states = self.encoder_proj(encoder_hidden_states)
         encoder_hidden_states = self.encoder_proj_layer_norm(encoder_hidden_states)
 
