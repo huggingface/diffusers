@@ -21,7 +21,7 @@ from ..dependency_versions_check import dep_version_check
 from .import_utils import ENV_VARS_TRUE_VALUES, is_peft_available, is_transformers_available
 
 
-MIN_PEFT_VERSION = "0.6.0"
+MIN_PEFT_VERSION = "0.17.0"
 MIN_TRANSFORMERS_VERSION = "4.34.0"
 _CHECK_PEFT = os.environ.get("_CHECK_PEFT", "1") in ENV_VARS_TRUE_VALUES
 
@@ -48,11 +48,16 @@ DEFAULT_HF_PARALLEL_LOADING_WORKERS = 8
 HF_ENABLE_PARALLEL_LOADING = os.environ.get("HF_ENABLE_PARALLEL_LOADING", "").upper() in ENV_VARS_TRUE_VALUES
 DIFFUSERS_DISABLE_REMOTE_CODE = os.getenv("DIFFUSERS_DISABLE_REMOTE_CODE", "false").upper() in ENV_VARS_TRUE_VALUES
 DIFFUSERS_SDNQ_TRANSFORMERS = os.getenv("DIFFUSERS_SDNQ_TRANSFORMERS", "false").upper() in ENV_VARS_TRUE_VALUES
+# Kernels published by untrusted publishers execute remote code, so a globally disabled remote code wins over the opt-in.
+DIFFUSERS_TRUST_REMOTE_KERNELS = (
+    os.getenv("DIFFUSERS_TRUST_REMOTE_KERNELS", "false").upper() in ENV_VARS_TRUE_VALUES
+    and not DIFFUSERS_DISABLE_REMOTE_CODE
+)
 
 # Below should be `True` if the current version of `peft` and `transformers` are compatible with
 # PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
 # available.
-# For PEFT it is has to be greater than or equal to 0.6.0 and for transformers it has to be greater than or equal to 4.34.0.
+# For PEFT it has to be at least `MIN_PEFT_VERSION` and for transformers at least `MIN_TRANSFORMERS_VERSION`.
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
 ) >= version.parse(MIN_PEFT_VERSION)

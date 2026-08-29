@@ -151,7 +151,7 @@ export_to_video(video, "output.mp4", fps=24)
 
   pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.7-dev", dtype=torch.bfloat16)
   pipeline_upsample = LTXLatentUpsamplePipeline.from_pretrained("Lightricks/ltxv-spatial-upscaler-0.9.7", vae=pipeline.vae, dtype=torch.bfloat16)
-  pipeline.to("cuda")
+  pipeline.to("cuda")  # or "mps", "xpu", "cpu"
   pipe_upsample.to("cuda")
   pipeline.vae.enable_tiling()
 
@@ -249,7 +249,7 @@ export_to_video(video, "output.mp4", fps=24)
 
   pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.7-distilled", dtype=torch.bfloat16)
   pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained("Lightricks/ltxv-spatial-upscaler-0.9.7", vae=pipeline.vae, dtype=torch.bfloat16)
-  pipeline.to("cuda")
+  pipeline.to("cuda")  # or "mps", "xpu", "cpu"
   pipe_upsample.to("cuda")
   pipeline.vae.enable_tiling()
 
@@ -341,7 +341,7 @@ export_to_video(video, "output.mp4", fps=24)
   # TODO: Update the checkpoint here once updated in LTX org
   upsampler = LTXLatentUpsamplerModel.from_pretrained("a-r-r-o-w/LTX-0.9.8-Latent-Upsampler", dtype=torch.bfloat16)
   pipe_upsample = LTXLatentUpsamplePipeline(vae=pipeline.vae, latent_upsampler=upsampler).to(torch.bfloat16)
-  pipeline.to("cuda")
+  pipeline.to("cuda")  # or "mps", "xpu", "cpu"
   pipe_upsample.to("cuda")
   pipeline.vae.enable_tiling()
 

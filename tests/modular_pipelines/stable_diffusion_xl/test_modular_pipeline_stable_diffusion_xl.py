@@ -24,14 +24,22 @@ from diffusers import ClassifierFreeGuidance, StableDiffusionXLAutoBlocks, Stabl
 from diffusers.loaders import ModularIPAdapterMixin
 
 from ...models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
-from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
+from ...testing_utils import enable_full_determinism, floats_tensor, is_ip_adapter, torch_device
+from ..testing_utils import (
+    BaseModularPipelineOutputMixin,
+    BaseModularPipelineTesterConfig,
+    ModularGuiderTesterMixin,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class SDXLModularTesterMixin:
+class SDXLModularTesterMixin(BaseModularPipelineOutputMixin):
     """
     This mixin defines method to create pipeline, base input and base test across all SDXL modular tests.
     """
@@ -48,6 +56,7 @@ class SDXLModularTesterMixin:
         assert max_diff < expected_max_diff, f"Image slice does not match expected slice. Max Difference: {max_diff}"
 
 
+@is_ip_adapter
 class SDXLModularIPAdapterTesterMixin:
     """
     This mixin is designed to test IP Adapter.
@@ -183,7 +192,7 @@ class SDXLModularIPAdapterTesterMixin:
         )
 
 
-class SDXLModularControlNetTesterMixin:
+class SDXLModularControlNetTesterMixin(BaseModularPipelineOutputMixin):
     """
     This mixin is designed to test ControlNet.
     """
@@ -321,14 +330,8 @@ TEXT2IMAGE_WORKFLOWS = {
 }
 
 
-class TestSDXLModularPipelineFast(
-    SDXLModularTesterMixin,
-    SDXLModularIPAdapterTesterMixin,
-    SDXLModularControlNetTesterMixin,
-    ModularGuiderTesterMixin,
-    ModularPipelineTesterMixin,
-):
-    """Test cases for Stable Diffusion XL modular pipeline fast tests."""
+class SDXLModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
+    """Shared configuration for the Stable Diffusion XL text-to-image modular pipeline tests."""
 
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
@@ -357,6 +360,8 @@ class TestSDXLModularPipelineFast(
         }
         return inputs
 
+
+class TestSDXLModularPipelineFast(SDXLModularPipelineTesterConfig, SDXLModularTesterMixin, ModularPipelineTesterMixin):
     def test_stable_diffusion_xl_euler(self):
         self._test_stable_diffusion_xl_euler(
             expected_image_shape=self.expected_image_output_shape,
@@ -368,6 +373,30 @@ class TestSDXLModularPipelineFast(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+
+class TestSDXLModularPipelineIPAdapter(SDXLModularPipelineTesterConfig, SDXLModularIPAdapterTesterMixin):
+    pass
+
+
+class TestSDXLModularPipelineControlNet(SDXLModularPipelineTesterConfig, SDXLModularControlNetTesterMixin):
+    pass
+
+
+class TestSDXLModularPipelineGuider(SDXLModularPipelineTesterConfig, ModularGuiderTesterMixin):
+    pass
+
+
+class TestSDXLModularPipelineLoading(SDXLModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestSDXLModularPipelineWorkflow(SDXLModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestSDXLModularPipelineMemory(SDXLModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
 
 
 IMAGE2IMAGE_WORKFLOWS = {
@@ -429,14 +458,8 @@ IMAGE2IMAGE_WORKFLOWS = {
 }
 
 
-class TestSDXLImg2ImgModularPipelineFast(
-    SDXLModularTesterMixin,
-    SDXLModularIPAdapterTesterMixin,
-    SDXLModularControlNetTesterMixin,
-    ModularGuiderTesterMixin,
-    ModularPipelineTesterMixin,
-):
-    """Test cases for Stable Diffusion XL image-to-image modular pipeline fast tests."""
+class SDXLImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
+    """Shared configuration for the Stable Diffusion XL image-to-image modular pipeline tests."""
 
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
@@ -472,6 +495,10 @@ class TestSDXLImg2ImgModularPipelineFast(
 
         return inputs
 
+
+class TestSDXLImg2ImgModularPipelineFast(
+    SDXLImg2ImgModularPipelineTesterConfig, SDXLModularTesterMixin, ModularPipelineTesterMixin
+):
     def test_stable_diffusion_xl_euler(self):
         self._test_stable_diffusion_xl_euler(
             expected_image_shape=self.expected_image_output_shape,
@@ -481,6 +508,32 @@ class TestSDXLImg2ImgModularPipelineFast(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+
+class TestSDXLImg2ImgModularPipelineIPAdapter(SDXLImg2ImgModularPipelineTesterConfig, SDXLModularIPAdapterTesterMixin):
+    pass
+
+
+class TestSDXLImg2ImgModularPipelineControlNet(
+    SDXLImg2ImgModularPipelineTesterConfig, SDXLModularControlNetTesterMixin
+):
+    pass
+
+
+class TestSDXLImg2ImgModularPipelineGuider(SDXLImg2ImgModularPipelineTesterConfig, ModularGuiderTesterMixin):
+    pass
+
+
+class TestSDXLImg2ImgModularPipelineLoading(SDXLImg2ImgModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestSDXLImg2ImgModularPipelineWorkflow(SDXLImg2ImgModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestSDXLImg2ImgModularPipelineMemory(SDXLImg2ImgModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
 
 
 INPAINTING_WORKFLOWS = {
@@ -543,6 +596,7 @@ INPAINTING_WORKFLOWS = {
 
 
 class SDXLInpaintingModularPipelineFastTests(
+    BaseModularPipelineTesterConfig,
     SDXLModularTesterMixin,
     SDXLModularIPAdapterTesterMixin,
     SDXLModularControlNetTesterMixin,

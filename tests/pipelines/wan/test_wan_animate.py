@@ -31,6 +31,7 @@ from diffusers import (
     WanAnimateTransformer3DModel,
 )
 
+from ...testing_utils import assert_tensors_close
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
@@ -40,6 +41,7 @@ class WanAnimatePipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt"])
+    output_shape = (17, 3, 16, 16)
     # Wan is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
@@ -58,7 +60,9 @@ class WanAnimatePipelineTesterConfig(BasePipelineTesterConfig):
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder = T5EncoderModel(config).eval()
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -151,7 +155,7 @@ class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin
 
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames[0]
-        assert video.shape == (17, 3, 16, 16)
+        assert video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4525, 0.4521, 0.4486, 0.4534, 0.4523, 0.4529, 0.454, 0.4533, 0.5055, 0.5203, 0.5363, 0.4827, 0.5057, 0.5176, 0.5117, 0.5139])
@@ -159,7 +163,7 @@ class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin
 
         generated_slice = video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_replacement(self):
         # Replacement mode with background and mask videos. Run on CPU.
@@ -174,7 +178,7 @@ class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin
         inputs["mask_video"] = [Image.new("L", (height, width))] * num_frames
 
         video = pipe(**inputs).frames[0]
-        assert video.shape == (17, 3, 16, 16)
+        assert video.shape == self.output_shape
 
     @pytest.mark.skip(
         reason="Setting the Wan Animate latents to zero at the last denoising step does not guarantee that the output"

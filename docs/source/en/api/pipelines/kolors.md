@@ -33,7 +33,7 @@ import torch
 from diffusers import DPMSolverMultistepScheduler, KolorsPipeline
 
 pipe = KolorsPipeline.from_pretrained("Kwai-Kolors/Kolors-diffusers", dtype=torch.float16, variant="fp16")
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 
 image = pipe(

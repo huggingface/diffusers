@@ -344,6 +344,7 @@ else:
         "LTX2InContextPipeline",
         "LTX2ImageToVideoPipeline",
         "LTX2LatentUpsamplePipeline",
+        "LTX2VideoDiffusionDecodePipeline",
     ]
     _import_structure["joyimage"] = [
         "JoyImageEditPipeline",
@@ -388,6 +389,12 @@ else:
     _import_structure["stable_audio"] = [
         "StableAudioProjectionModel",
         "StableAudioPipeline",
+    ]
+    _import_structure["stable_audio_3"] = [
+        "StableAudio3AudioToAudioPipeline",
+        "StableAudio3DurationEmbedder",
+        "StableAudio3InpaintPipeline",
+        "StableAudio3Pipeline",
     ]
     _import_structure["stable_cascade"] = [
         "StableCascadeCombinedPipeline",
@@ -800,6 +807,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2InContextPipeline,
             LTX2LatentUpsamplePipeline,
             LTX2Pipeline,
+            LTX2VideoDiffusionDecodePipeline,
         )
         from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
@@ -859,6 +867,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
+        from .stable_audio_3 import (
+            StableAudio3AudioToAudioPipeline,
+            StableAudio3DurationEmbedder,
+            StableAudio3InpaintPipeline,
+            StableAudio3Pipeline,
+        )
         from .stable_cascade import (
             StableCascadeCombinedPipeline,
             StableCascadeDecoderPipeline,

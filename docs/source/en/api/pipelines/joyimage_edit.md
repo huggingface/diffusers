@@ -28,7 +28,7 @@ from diffusers.utils import load_image
 pipeline = JoyImageEditPipeline.from_pretrained(
     "jdopensource/JoyAI-Image-Edit-Diffusers", dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg")
 prompt = "Add wings to the astronaut."
