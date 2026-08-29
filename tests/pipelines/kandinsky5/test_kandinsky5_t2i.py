@@ -189,6 +189,57 @@ class Kandinsky5T2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-3)
 
+    def test_num_images_per_prompt(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to("cpu")
+        pipe.resolutions = [(64, 64)]
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs("cpu")
+        inputs["num_images_per_prompt"] = 2
+
+        image = pipe(**inputs).image
+
+        self.assertEqual(image.shape, (2, 3, 16, 16))
+
+    def test_precomputed_embeddings_with_classifier_free_guidance(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to("cpu")
+        pipe.resolutions = [(64, 64)]
+        pipe.set_progress_bar_config(disable=None)
+        prompt_embeds = pipe.encode_prompt("a red square", max_sequence_length=8)
+        negative_prompt_embeds = pipe.encode_prompt("", max_sequence_length=8)
+        inputs = self.get_dummy_inputs("cpu")
+        inputs.pop("prompt")
+        inputs.update(
+            prompt_embeds_qwen=prompt_embeds[0],
+            prompt_embeds_clip=prompt_embeds[1],
+            prompt_cu_seqlens=prompt_embeds[2],
+            negative_prompt_embeds_qwen=negative_prompt_embeds[0],
+            negative_prompt_embeds_clip=negative_prompt_embeds[1],
+            negative_prompt_cu_seqlens=negative_prompt_embeds[2],
+            num_images_per_prompt=2,
+        )
+
+        image = pipe(**inputs).image
+
+        self.assertEqual(image.shape, (2, 3, 16, 16))
+
+    def test_precomputed_embeddings_with_default_negative_prompt(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to("cpu")
+        pipe.resolutions = [(64, 64)]
+        pipe.set_progress_bar_config(disable=None)
+        prompt_embeds = pipe.encode_prompt(["a red square", "a blue circle"], max_sequence_length=8)
+        inputs = self.get_dummy_inputs("cpu")
+        inputs.pop("prompt")
+        inputs.update(
+            prompt_embeds_qwen=prompt_embeds[0],
+            prompt_embeds_clip=prompt_embeds[1],
+            prompt_cu_seqlens=prompt_embeds[2],
+            num_images_per_prompt=2,
+        )
+
+        image = pipe(**inputs).image
+
+        self.assertEqual(image.shape, (4, 3, 16, 16))
+
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass

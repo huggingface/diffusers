@@ -207,8 +207,13 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         """
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
-        if not isinstance(image, list):
-            image = [image]
+        image = self.image_processor.postprocess(self.image_processor.preprocess(image), output_type="pil")
+        if len(image) == 1:
+            image = image * len(prompt)
+        elif len(image) != len(prompt):
+            raise ValueError(
+                f"The image batch size must be 1 or match the prompt batch size, but got {len(image)} and {len(prompt)}."
+            )
         image = [i.resize((i.size[0] // 2, i.size[1] // 2)) for i in image]
         full_texts = [self.prompt_template.format(p) for p in prompt]
         max_allowed_len = self.prompt_template_encode_start_idx + max_sequence_length
@@ -332,8 +337,6 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         if not isinstance(prompt, list):
             prompt = [prompt]
 
-        batch_size = len(prompt)
-
         prompt = [prompt_clean(p) for p in prompt]
 
         # Encode with Qwen2.5-VL
@@ -356,20 +359,10 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         # Repeat embeddings for num_images_per_prompt
         # Qwen embeddings: repeat sequence for each image, then reshape
-        prompt_embeds_qwen = prompt_embeds_qwen.repeat(
-            1, num_images_per_prompt, 1
-        )  # [batch_size, seq_len * num_images_per_prompt, embed_dim]
-        # Reshape to [batch_size * num_images_per_prompt, seq_len, embed_dim]
-        prompt_embeds_qwen = prompt_embeds_qwen.view(
-            batch_size * num_images_per_prompt, -1, prompt_embeds_qwen.shape[-1]
-        )
+        prompt_embeds_qwen = prompt_embeds_qwen.repeat_interleave(num_images_per_prompt, dim=0)
 
         # CLIP embeddings: repeat for each image
-        prompt_embeds_clip = prompt_embeds_clip.repeat(
-            1, num_images_per_prompt, 1
-        )  # [batch_size, num_images_per_prompt, clip_embed_dim]
-        # Reshape to [batch_size * num_images_per_prompt, clip_embed_dim]
-        prompt_embeds_clip = prompt_embeds_clip.view(batch_size * num_images_per_prompt, -1)
+        prompt_embeds_clip = prompt_embeds_clip.repeat_interleave(num_images_per_prompt, dim=0)
 
         # Repeat cumulative sequence lengths for num_images_per_prompt
         # Original differences (lengths) for each prompt in the batch
@@ -448,6 +441,13 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     "If any of `prompt_embeds_qwen`, `prompt_embeds_clip`, or `prompt_cu_seqlens` is provided, "
                     "all three must be provided."
                 )
+            if (
+                prompt_embeds_qwen.shape[0] != prompt_embeds_clip.shape[0]
+                or prompt_cu_seqlens.shape[0] != prompt_embeds_qwen.shape[0] + 1
+            ):
+                raise ValueError(
+                    "Precomputed positive prompt embeddings and sequence lengths must have matching batch sizes."
+                )
 
         # Check for consistency within negative prompt embeddings and sequence lengths
         if (
@@ -463,6 +463,13 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 raise ValueError(
                     "If any of `negative_prompt_embeds_qwen`, `negative_prompt_embeds_clip`, or `negative_prompt_cu_seqlens` is provided, "
                     "all three must be provided."
+                )
+            if (
+                negative_prompt_embeds_qwen.shape[0] != negative_prompt_embeds_clip.shape[0]
+                or negative_prompt_cu_seqlens.shape[0] != negative_prompt_embeds_qwen.shape[0] + 1
+            ):
+                raise ValueError(
+                    "Precomputed negative prompt embeddings and sequence lengths must have matching batch sizes."
                 )
 
         # Check if prompt or embeddings are provided (either prompt or all required embedding components for positive)
@@ -533,6 +540,11 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         # Encode the input image to use as first frame
         # Preprocess image
         image_tensor = self.image_processor.preprocess(image, height=height, width=width).to(device, dtype=dtype)
+        if batch_size % image_tensor.shape[0] != 0:
+            raise ValueError(
+                f"The effective batch size {batch_size} must be divisible by the image batch size {image_tensor.shape[0]}."
+            )
+        image_tensor = image_tensor.repeat_interleave(batch_size // image_tensor.shape[0], dim=0)
         # Encode image to latents using VAE
         with torch.no_grad():
             image_latents = self.vae.encode(image_tensor).latent_dist.sample(generator=generator)
@@ -649,7 +661,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
         # 1. Check inputs. Raise error if not correct
         if height is None and width is None:
-            width, height = image[0].size if isinstance(image, list) else image.size
+            height, width = self.image_processor.get_default_height_width(image)
         self.check_inputs(
             prompt=prompt,
             negative_prompt=negative_prompt,
@@ -695,18 +707,22 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 device=device,
                 dtype=dtype,
             )
+        else:
+            prompt_embeds_qwen = prompt_embeds_qwen.repeat_interleave(num_images_per_prompt, dim=0)
+            prompt_embeds_clip = prompt_embeds_clip.repeat_interleave(num_images_per_prompt, dim=0)
+            prompt_lengths = prompt_cu_seqlens.diff().repeat_interleave(num_images_per_prompt)
+            prompt_cu_seqlens = F.pad(prompt_lengths.cumsum(0), (1, 0), value=0)
 
         if self.guidance_scale > 1.0:
-            if negative_prompt is None:
-                negative_prompt = ""
+            if negative_prompt is None and negative_prompt_embeds_qwen is None:
+                negative_prompt = [""] * batch_size
 
             if isinstance(negative_prompt, str):
-                negative_prompt = [negative_prompt] * len(prompt) if prompt is not None else [negative_prompt]
-            elif len(negative_prompt) != len(prompt):
+                negative_prompt = [negative_prompt] * batch_size
+            elif negative_prompt is not None and len(negative_prompt) != batch_size:
                 raise ValueError(
-                    f"`negative_prompt` must have same length as `prompt`. Got {len(negative_prompt)} vs {len(prompt)}."
+                    f"`negative_prompt` must have the same batch size as `prompt`. Got {len(negative_prompt)} vs {batch_size}."
                 )
-
             if negative_prompt_embeds_qwen is None:
                 negative_prompt_embeds_qwen, negative_prompt_embeds_clip, negative_prompt_cu_seqlens = (
                     self.encode_prompt(
@@ -718,6 +734,15 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                         dtype=dtype,
                     )
                 )
+            else:
+                negative_prompt_embeds_qwen = negative_prompt_embeds_qwen.repeat_interleave(
+                    num_images_per_prompt, dim=0
+                )
+                negative_prompt_embeds_clip = negative_prompt_embeds_clip.repeat_interleave(
+                    num_images_per_prompt, dim=0
+                )
+                negative_prompt_lengths = negative_prompt_cu_seqlens.diff().repeat_interleave(num_images_per_prompt)
+                negative_prompt_cu_seqlens = F.pad(negative_prompt_lengths.cumsum(0), (1, 0), value=0)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
