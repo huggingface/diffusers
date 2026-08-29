@@ -268,8 +268,8 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
     """Block/leaf-level group offload, both component-scoped and pipeline-level orchestration."""
 
     def create_pipe(self):
-            torch.manual_seed(0)
-            return self.get_pipeline()
+        torch.manual_seed(0)
+        return self.get_pipeline()
 
     def _skip_if_group_offloading_unsupported(self, pipe):
         for component in pipe.components.values():
