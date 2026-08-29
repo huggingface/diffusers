@@ -218,7 +218,7 @@ class HeliosAttention(torch.nn.Module, AttentionModuleMixin):
             self.history_scale_mode = history_scale_mode
             self.max_scale = 10.0
 
-    def fuse_projections(self):
+    def fuse_projections(self, inplace: bool = False):
         if getattr(self, "fused_projections", False):
             return
 
