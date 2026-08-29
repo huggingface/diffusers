@@ -182,6 +182,7 @@ def _register_transformer_blocks_metadata():
     from ..models.transformers.transformer_bria import BriaTransformerBlock
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
     from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
+    from ..models.transformers.transformer_chroma import ChromaSingleTransformerBlock, ChromaTransformerBlock
     from ..models.transformers.transformer_flux2 import Flux2SingleTransformerBlock, Flux2TransformerBlock
     from ..models.transformers.transformer_hunyuan_video import (
         HunyuanVideoSingleTransformerBlock,
@@ -248,6 +249,22 @@ def _register_transformer_blocks_metadata():
     )
     TransformerBlockRegistry.register(
         model_class=FluxSingleTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+        ),
+    )
+
+    # Chroma
+    TransformerBlockRegistry.register(
+        model_class=ChromaTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+        ),
+    )
+    TransformerBlockRegistry.register(
+        model_class=ChromaSingleTransformerBlock,
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=1,
             return_encoder_hidden_states_index=0,
