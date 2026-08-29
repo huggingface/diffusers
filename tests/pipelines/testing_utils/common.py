@@ -66,28 +66,25 @@ class BasePipelineTesterConfig:
     )
 
     # The group offload tests derive what they offload: every `torch.nn.Module` component of the pipeline is
-    # offloaded unless it is named in one of the three lists below, which are kept on the accelerator instead. A
-    # component that is covered by default is the point — a pipeline that adds a second denoiser or an extra
-    # encoder gets it exercised without touching this file, and dropping something from the tests takes naming it
-    # next to a reason.
+    # offloaded unless the list for that level names it, in which case it is kept on the accelerator. A component
+    # that is covered by default is the point — a pipeline that adds a second denoiser or an extra encoder gets it
+    # exercised without touching this file, and dropping something from the tests takes naming it next to a reason.
+    # The two levels fail on opposite hazards, so each gets its own list; a component that fails at both goes in
+    # both.
 
-    # Components that cannot be offloaded at leaf level, e.g. a `transformers` model whose attention is a
-    # `torch.nn.MultiheadAttention` (it reads its projection weights directly instead of calling the submodules, so
-    # the leaf-level onload hooks never fire and the weights stay on the offload device). Such a component is often
-    # fine at block level, hence the level in the name, and it is still covered by the block-level test.
+    # Components that cannot be offloaded at leaf level. Leaf-level offloading onloads each supported leaf on its
+    # own `forward`, so any code that reads a leaf's `.weight` instead of calling the leaf bypasses that leaf's
+    # hook and computes against offloaded weights — `torch.nn.MultiheadAttention` being the usual instance. Such a
+    # component is normally fine at block level, where the whole group is onloaded at once, and stays covered
+    # there.
     group_offloading_leaf_level_exclude_modules = []
 
-    # Components that cannot be group offloaded at either level. Prefer the leaf-level list above — this one drops
-    # the component from every group offload test, so state why in a comment next to the name.
-    group_offloading_exclude_modules = []
-
-    # Components the component-scoped tests keep on the accelerator rather than offloading. Unlike the two
-    # exclusion lists above, this one does not reach `test_pipeline_level_group_offloading_inference`, which walks
-    # the whole pipeline — a component listed here is still leaf offloaded there. The VAE is the reason the list
-    # exists: some tests enable tiling, and when accelerator streams are used the execution order of a tiled
-    # forward pass is not traced correctly, which errors out. Group offloading a VAE wants a warmup forward pass
-    # first (even on dummy inputs).
-    group_offloading_onload_component_names = ["vae", "vqvae", "image_encoder"]
+    # Components that cannot be offloaded at block level. Block-level offloading onloads a group when the group's
+    # leader runs its `forward`, so a component whose compute re-enters submodules without going through that
+    # leader finds its weights still on the offload device. VAE decode paths are the usual instance — measured
+    # across the suite, offloading a `vae` at block level breaks 28 of 86 pipeline test classes, while every one of
+    # them offloads it at leaf level without complaint, which is what the pipeline-level test has always done.
+    group_offloading_block_level_exclude_modules = ["vae", "image_encoder"]
 
     # ==================== Required interface ====================
 

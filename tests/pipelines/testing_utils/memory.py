@@ -30,7 +30,7 @@ from ...testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
-from .common import BasePipelineOutputMixin
+from .common import BasePipelineOutputMixin, BasePipelineTesterConfig
 
 
 if is_accelerate_available():
@@ -279,20 +279,27 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
     def _group_offload_exclude_modules(self, pipe, offload_type):
         """Config-declared components to keep out of group offloading at `offload_type`.
 
-        Every group offload test routes its exclusions through here, so a name that matches no component on the
-        pipeline is reported as the typo it is rather than silently costing coverage and surfacing later as a
-        device mismatch. The onload names are not checked: they are a shared default covering several pipelines,
-        most of which have only some of them.
+        The two levels fail on opposite hazards, so each reads its own list — see the attributes on
+        `BasePipelineTesterConfig`. Every group offload test routes its exclusions through here, so a name a config
+        adds that matches no component on the pipeline is reported as the typo it is rather than silently costing
+        coverage and surfacing later as a device mismatch.
         """
-        exclude = set(self.group_offloading_exclude_modules)
         if offload_type == "leaf_level":
-            exclude |= set(self.group_offloading_leaf_level_exclude_modules)
+            exclude = set(self.group_offloading_leaf_level_exclude_modules)
+        elif offload_type == "block_level":
+            exclude = set(self.group_offloading_block_level_exclude_modules)
+        else:
+            raise ValueError(f"Unknown `offload_type` {offload_type!r}.")
 
-        # Checked against every registered component rather than the module-valued ones, so that excluding an
-        # optional component a config leaves unset reads as the no-op it is instead of a typo.
-        unknown = sorted(exclude - set(pipe.components))
+        # Only names a config adds are checked: the shared defaults cover the whole suite and most pipelines have
+        # just some of them. The check is against every registered component rather than the module-valued ones, so
+        # that excluding an optional component a config leaves unset reads as the no-op it is instead of a typo.
+        shared_defaults = set(BasePipelineTesterConfig.group_offloading_leaf_level_exclude_modules) | set(
+            BasePipelineTesterConfig.group_offloading_block_level_exclude_modules
+        )
+        unknown = sorted(exclude - set(pipe.components) - shared_defaults)
         assert not unknown, (
-            f"{type(self).__name__} excludes {unknown} from group offloading, but "
+            f"{type(self).__name__} excludes {unknown} from {offload_type} group offloading, but "
             f"{self.pipeline_class.__name__} has no such component. Its components are "
             f"{sorted(pipe.components)}."
         )
@@ -301,14 +308,11 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
     def _split_group_offload_components(self, pipe, offload_type):
         """Split the pipeline's module components into the ones to offload and the ones to keep on the accelerator.
 
-        Everything is offloaded unless the config lists it, so a component a pipeline adds under a name this file
-        has never heard of is covered by default rather than silently left on CPU. See the three list attributes on
-        `BasePipelineTesterConfig`.
+        Everything is offloaded unless the list for this level names it, so a component a pipeline adds under a
+        name this file has never heard of is covered by default rather than silently left on CPU.
         """
         module_names = [name for name, component in pipe.components.items() if isinstance(component, torch.nn.Module)]
-        onload_names = self._group_offload_exclude_modules(pipe, offload_type) | set(
-            self.group_offloading_onload_component_names
-        )
+        onload_names = self._group_offload_exclude_modules(pipe, offload_type)
         offload = [name for name in module_names if name not in onload_names]
         onload = [name for name in module_names if name in onload_names]
         return offload, onload

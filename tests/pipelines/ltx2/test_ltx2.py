@@ -46,10 +46,10 @@ class LTX2PipelineTesterConfig(BasePipelineTesterConfig):
     )
     batch_input_params = frozenset(["prompt", "negative_prompt"])
     output_shape = (5, 3, 32, 32)
-    # `audio_vae` belongs with the other VAEs the group offload tests keep on the accelerator: its decode-time
-    # convolutions read weights the offload hooks have not onloaded yet.
-    group_offloading_onload_component_names = [
-        *BasePipelineTesterConfig.group_offloading_onload_component_names,
+    # `audio_vae` fails at block level for the same reason the other VAEs do: its decode-time convolutions run
+    # without the group leader's `forward` having onloaded the group.
+    group_offloading_block_level_exclude_modules = [
+        *BasePipelineTesterConfig.group_offloading_block_level_exclude_modules,
         "audio_vae",
     ]
     # LTX2 is a video pipeline (`num_videos_per_prompt`, not `num_images_per_prompt`) and takes a second latent
