@@ -17,7 +17,7 @@ import torch
 
 from ...schedulers import MiniMaxH3Scheduler
 from ...utils import logging
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import (
@@ -441,7 +441,10 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
             components.video_tag,
             block_state.keyframe_anchors,
         )
-        block_state.position_ids = position_ids.to(device)
+        # `position_ids` is built in float64 for cumsum precision over long sequences (see `_temporal_position_grid`);
+        # MPS/NPU have no float64 support, so only those devices get the float32 downcast the rope embedding applies
+        # anyway (`MiniMaxH3RotaryPosEmbed.forward`).
+        block_state.position_ids = position_ids.to(device, dtype=maybe_adjust_dtype_for_device(torch.float64, device))
         block_state.token_tags = token_tags.to(device)
         block_state.video_indices = video_indices.to(device)
         block_state.audio_indices = audio_indices.to(device)
@@ -765,7 +768,10 @@ class MiniMaxH3Ref2VAPrepareLayoutStep(ModularPipelineBlocks):
             components.audio_tag,
             components.video_tag,
         )
-        block_state.position_ids = position_ids.to(device)
+        # `position_ids` is built in float64 for cumsum precision over long sequences (see `_temporal_position_grid`);
+        # MPS/NPU have no float64 support, so only those devices get the float32 downcast the rope embedding applies
+        # anyway (`MiniMaxH3RotaryPosEmbed.forward`).
+        block_state.position_ids = position_ids.to(device, dtype=maybe_adjust_dtype_for_device(torch.float64, device))
         block_state.token_tags = token_tags.to(device)
         block_state.video_indices = video_indices.to(device)
         block_state.audio_indices = audio_indices.to(device)
