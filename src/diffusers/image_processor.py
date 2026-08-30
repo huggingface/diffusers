@@ -1039,37 +1039,22 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
     def rgblike_to_depthmap(image: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
         r"""
         Convert an RGB-like depth image to a depth map.
+
+        The depth is reconstructed by combining two 8-bit channels into a 16-bit
+        value, so the result is always returned as `uint16` regardless of the
+        input dtype. Casting back to the 8-bit input dtype would truncate the
+        value (see #14206) and make the subsequent `numpy_to_depth` build of the
+        `mode="I;16"` PIL image fail with "buffer is not large enough".
         """
-        # 1. Cast the tensor to a larger integer type (e.g., int32)
-        #    to safely perform the multiplication by 256.
-        # 2. Perform the 16-bit combination: High-byte * 256 + Low-byte.
-        # 3. Cast the final result to the desired depth map type (uint16) if needed
-        #    before returning, though leaving it as int32/int64 is often safer
-        #    for return value from a library function.
-
         if isinstance(image, torch.Tensor):
-            # Cast to a safe dtype (e.g., int32 or int64) for the calculation
-            original_dtype = image.dtype
             image_safe = image.to(torch.int32)
-
-            # Calculate the depth map
             depth_map = image_safe[:, :, 1] * 256 + image_safe[:, :, 2]
-
-            # You may want to cast the final result to uint16, but casting to a
-            # larger int type (like int32) is sufficient to fix the overflow.
-            # depth_map = depth_map.to(torch.uint16) # Uncomment if uint16 is strictly required
-            return depth_map.to(original_dtype)
+            return depth_map.to(torch.uint16)
 
         elif isinstance(image, np.ndarray):
-            # NumPy equivalent: Cast to a safe dtype (e.g., np.int32)
-            original_dtype = image.dtype
             image_safe = image.astype(np.int32)
-
-            # Calculate the depth map
             depth_map = image_safe[:, :, 1] * 256 + image_safe[:, :, 2]
-
-            # depth_map = depth_map.astype(np.uint16) # Uncomment if uint16 is strictly required
-            return depth_map.astype(original_dtype)
+            return depth_map.astype(np.uint16)
         else:
             raise TypeError("Input image must be a torch.Tensor or np.ndarray")
 
