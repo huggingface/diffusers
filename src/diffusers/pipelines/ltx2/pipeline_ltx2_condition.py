@@ -1316,7 +1316,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
 
     @property
     def do_classifier_free_guidance(self):
-        return (self._guidance_scale > 1.0) or (self._audio_guidance_scale > 1.0)
+        return (self._guidance_scale > 1.0) and (self._audio_guidance_scale > 1.0)
 
     @property
     def do_spatio_temporal_guidance(self):
