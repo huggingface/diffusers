@@ -186,11 +186,15 @@ class FromPipeTesterMixin(BasePipelineOutputMixin):
     def test_from_pipe_consistent_forward_pass_cpu_offload(self, expected_max_diff=1e-3):
         components = self.get_dummy_components()
 
+        # Build the original pipeline before running anything. Both pipelines share one scheduler object, and some
+        # `__init__`s edit that object in place: `StableDiffusionPipeline`, for one, rewrites a `steps_offset` of 0
+        # to 1. Building it later would put the two forward passes below on different schedules.
+        pipe_original, current_pipe_additional_components = self._build_original_pipeline(components)
+
         pipe = self.get_pipeline(**components)
         pipe.enable_model_cpu_offload(device=torch_device)
         output = pipe(**self.get_dummy_inputs_pipe())[0]
 
-        pipe_original, current_pipe_additional_components = self._build_original_pipeline(components)
         pipe_from_original = self.pipeline_class.from_pipe(pipe_original, **current_pipe_additional_components)
         pipe_from_original.set_progress_bar_config(disable=None)
         pipe_from_original.enable_model_cpu_offload(device=torch_device)

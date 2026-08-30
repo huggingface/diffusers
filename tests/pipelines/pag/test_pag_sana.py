@@ -24,7 +24,13 @@ from diffusers import (
     SanaTransformer2DModel,
 )
 
-from ...testing_utils import assert_tensors_close, enable_full_determinism
+from ...testing_utils import (
+    assert_tensors_close,
+    enable_full_determinism,
+    require_accelerator,
+    skip_if_no_cudnn_engine,
+    torch_device,
+)
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin
 from .testing_utils import PAGPipelineTesterMixin
@@ -201,6 +207,21 @@ class TestSanaPAGPipeline(SanaPAGPipelineTesterConfig, PAGPipelineTesterMixin):
     def test_inference_batch_single_identical(self):
         pass
 
+    # Sana's multiscale linear attention runs a depthwise `Conv2d`, which some cuDNN builds have no bfloat16
+    # engine for. The decorators below repeat the ones the base method is declared with: overriding a test drops
+    # the marks it inherited.
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @require_accelerator
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        with skip_if_no_cudnn_engine():
+            super().test_half_precision_inference_no_nan(dtype)
+
 
 class TestSanaPAGPipelineMemory(SanaPAGPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Sana PAG pipeline."""
+
+    # Layerwise casting computes in bfloat16, which lands on the same missing depthwise-conv engine as above.
+    def test_layerwise_casting_inference(self):
+        with skip_if_no_cudnn_engine():
+            super().test_layerwise_casting_inference()
