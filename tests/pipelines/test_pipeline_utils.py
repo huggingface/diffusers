@@ -1111,3 +1111,29 @@ class TestPipelinePushToHub:
 
         # Reset repo
         delete_repo(repo_id, token=TOKEN)
+
+
+class TestFetchClassLibraryTuple:
+    def test_diffusers_model(self):
+        from diffusers import UNet2DConditionModel
+        from diffusers.pipelines.pipeline_loading_utils import _fetch_class_library_tuple
+
+        assert _fetch_class_library_tuple(UNet2DConditionModel) == ("diffusers", "UNet2DConditionModel")
+
+    def test_pipeline_module_class(self):
+        from diffusers.pipelines.deepfloyd_if import IFWatermarker
+        from diffusers.pipelines.pipeline_loading_utils import _fetch_class_library_tuple
+
+        assert _fetch_class_library_tuple(IFWatermarker) == ("deepfloyd_if", "IFWatermarker")
+
+    def test_other_library_class_shadowing_pipeline_dir(self):
+        from diffusers.pipelines.pipeline_loading_utils import _fetch_class_library_tuple
+
+        # A transformers class whose model folder shares its name with a diffusers pipeline folder
+        # (e.g. `transformers.models.diffusion_gemma` vs `diffusers.pipelines.diffusion_gemma`) must
+        # resolve to its own library, not to the pipeline folder.
+        class FakeModel:
+            pass
+
+        FakeModel.__module__ = "transformers.models.diffusion_gemma.modeling_diffusion_gemma"
+        assert _fetch_class_library_tuple(FakeModel) == ("transformers", "FakeModel")
