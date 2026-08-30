@@ -1432,89 +1432,6 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         )
         return self._unpack_audio_latents(audio_latents, audio_num_frames, num_mel_bins=latent_mel_bins)
 
-    def _finalize_output(
-        self,
-        video_latents: torch.Tensor,
-        audio_latents: torch.Tensor,
-        keyframe_latents: torch.Tensor | None,
-        keyframe_positions: list[int] | None,
-        output_type: str,
-        return_dict: bool,
-        output_cls,
-        requested_frames: int | None,
-        playback_fps: float,
-        decode_timestep: float | list[float],
-        decode_noise_scale: float | list[float] | None,
-        generator: torch.Generator | list[torch.Generator] | None,
-        prompt_embeds: torch.Tensor,
-    ):
-        """Denormalize, optionally trim and decode, and wrap the DFR return value.
-
-        `video_latents` / `keyframe_latents` are VAE-normalized 5D. `audio_latents` is unpacked denormalized 4D (the
-        public audio contract). Latent output is untrimmed so a slot on the padded canvas is not dropped; decode trims
-        to `requested_frames` when that is set.
-        """
-        output_cls = output_cls or LTX2DFRPipelineOutput
-        batch_size = video_latents.shape[0]
-        device = video_latents.device
-
-        if output_type != "latent" and requested_frames is not None:
-            video_latents = trim_canvas(video_latents, requested_frames, self.vae_temporal_compression_ratio)
-            num_frames = requested_frames
-        else:
-            num_frames = (video_latents.shape[2] - 1) * self.vae_temporal_compression_ratio + 1
-
-        video = self._denormalize_latents(
-            video_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-        )
-        keyframes = None
-        if keyframe_latents is not None:
-            keyframes = self._denormalize_latents(
-                keyframe_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-            )
-
-        if output_type == "latent":
-            audio = audio_latents
-        else:
-            video_latents = video_latents.to(prompt_embeds.dtype)
-            if not self.vae.config.timestep_conditioning:
-                timestep = None
-            else:
-                noise = randn_tensor(
-                    video_latents.shape, generator=generator, device=device, dtype=video_latents.dtype
-                )
-                if not isinstance(decode_timestep, list):
-                    decode_timestep = [decode_timestep] * batch_size
-                if decode_noise_scale is None:
-                    decode_noise_scale = decode_timestep
-                elif not isinstance(decode_noise_scale, list):
-                    decode_noise_scale = [decode_noise_scale] * batch_size
-
-                timestep = torch.tensor(decode_timestep, device=device, dtype=video_latents.dtype)
-                decode_noise_scale = torch.tensor(decode_noise_scale, device=device, dtype=video_latents.dtype)[
-                    :, None, None, None, None
-                ]
-                video_latents = (1 - decode_noise_scale) * video_latents + decode_noise_scale * noise
-
-            video_latents = self._denormalize_latents(
-                video_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-            )
-            video = self.vae.decode(video_latents.to(self.vae.dtype), timestep, return_dict=False)[0]
-            video = self.video_processor.postprocess_video(video, output_type=output_type)
-
-            audio = self.vocoder(self.audio_vae.decode(audio_latents.to(self.audio_vae.dtype), return_dict=False)[0])
-            audio_samples = min(
-                audio.shape[-1], round(num_frames / playback_fps * self.vocoder.config.output_sampling_rate)
-            )
-            audio = audio[..., :audio_samples]
-
-        self.maybe_free_model_hooks()
-
-        if not return_dict:
-            return (video, audio)
-
-        return output_cls(frames=video, audio=audio, keyframes=keyframes, keyframe_positions=keyframe_positions)
-
     @property
     def num_timesteps(self):
         return self._num_timesteps
@@ -1976,18 +1893,59 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             slot_latents = self._maybe_normalize_video_latents(guidance_keyframe_latents, False)
             out_positions = list(guidance_keyframe_positions)
 
-        return self._finalize_output(
-            video_latents=video_latents,
-            audio_latents=public_audio,
-            keyframe_latents=slot_latents,
-            keyframe_positions=out_positions,
-            output_type=output_type,
-            return_dict=return_dict,
-            output_cls=LTX2DFRPipelineOutput,
-            requested_frames=requested_frames,
-            playback_fps=frame_rate,
-            decode_timestep=decode_timestep,
-            decode_noise_scale=decode_noise_scale,
-            generator=generator,
-            prompt_embeds=prompt_embeds,
+        # Latent output keeps the padded canvas so a slot on the pad is not dropped (`trim_canvas` before a
+        # standalone decode is the caller's job); decode trims to the request. `video_latents` / `slot_latents`
+        # are VAE-normalized here; the public contract is raw.
+        if output_type != "latent":
+            video_latents = trim_canvas(video_latents, requested_frames, self.vae_temporal_compression_ratio)
+
+        video = self._denormalize_latents(
+            video_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
         )
+        keyframes = None
+        if slot_latents is not None:
+            keyframes = self._denormalize_latents(
+                slot_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
+
+        if output_type == "latent":
+            audio = public_audio
+        else:
+            video_latents = video_latents.to(prompt_embeds.dtype)
+            if not self.vae.config.timestep_conditioning:
+                timestep = None
+            else:
+                noise = randn_tensor(
+                    video_latents.shape, generator=generator, device=device, dtype=video_latents.dtype
+                )
+                if not isinstance(decode_timestep, list):
+                    decode_timestep = [decode_timestep] * video_latents.shape[0]
+                if decode_noise_scale is None:
+                    decode_noise_scale = decode_timestep
+                elif not isinstance(decode_noise_scale, list):
+                    decode_noise_scale = [decode_noise_scale] * video_latents.shape[0]
+
+                timestep = torch.tensor(decode_timestep, device=device, dtype=video_latents.dtype)
+                decode_noise_scale = torch.tensor(decode_noise_scale, device=device, dtype=video_latents.dtype)[
+                    :, None, None, None, None
+                ]
+                video_latents = (1 - decode_noise_scale) * video_latents + decode_noise_scale * noise
+
+            video_latents = self._denormalize_latents(
+                video_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
+            video = self.vae.decode(video_latents.to(self.vae.dtype), timestep, return_dict=False)[0]
+            video = self.video_processor.postprocess_video(video, output_type=output_type)
+
+            audio = self.vocoder(self.audio_vae.decode(public_audio.to(self.audio_vae.dtype), return_dict=False)[0])
+            audio_samples = min(
+                audio.shape[-1], round(requested_frames / frame_rate * self.vocoder.config.output_sampling_rate)
+            )
+            audio = audio[..., :audio_samples]
+
+        self.maybe_free_model_hooks()
+
+        if not return_dict:
+            return (video, audio)
+
+        return LTX2DFRPipelineOutput(frames=video, audio=audio, keyframes=keyframes, keyframe_positions=out_positions)
