@@ -16,13 +16,9 @@ import pytest
 import torch
 
 from diffusers import LTX2DFRPipeline, LTX2LatentUpsamplePipeline, LTXEulerAncestralRFScheduler
-from diffusers.pipelines.ltx2.dfr_core import (
-    EPILOGUE_KEYFRAME_STRENGTH,
-    MAX_CONDITIONING_FPS,
-    _audio_window_for_tile,
-    trim_canvas,
-)
 from diffusers.pipelines.ltx2.dfr_layout import LTX2DFREpilogueTile, epilogue_tiles, video_tile_plan
+from diffusers.pipelines.ltx2.pipeline_ltx2_dfr_temporal_refine import _audio_window_for_tile
+from diffusers.pipelines.ltx2.utils import EPILOGUE_KEYFRAME_STRENGTH, MAX_CONDITIONING_FPS, trim_canvas
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin

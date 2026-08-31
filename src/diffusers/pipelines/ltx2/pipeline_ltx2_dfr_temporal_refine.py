@@ -36,17 +36,19 @@ from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .connectors import LTX2TextConnectors
-from .dfr_core import (
-    ANCHOR_KEYFRAME_STRENGTH,
-    TEMPORAL_ANCESTRAL_ETA,
-    _audio_window_for_tile,
-    _conditioning_fps,
-)
 from .dfr_layout import temporal_tile_plan
 from .latent_upsampler import LTX2LatentUpsamplerModel
 from .pipeline_ltx2_condition import LTX2VideoCondition
 from .pipeline_output import LTX2DFRPipelineOutput
-from .utils import TEMPORAL_ROUND_DISTILLED_SIGMA_VALUES, apply_image_conditioning_crf, resolve_default_image_crf
+from .utils import (
+    ANCHOR_KEYFRAME_STRENGTH,
+    MAX_CONDITIONING_FPS,
+    SNAP_CONDITIONING_FPS_ABOVE,
+    TEMPORAL_ANCESTRAL_ETA,
+    TEMPORAL_ROUND_DISTILLED_SIGMA_VALUES,
+    apply_image_conditioning_crf,
+    resolve_default_image_crf,
+)
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
@@ -58,6 +60,41 @@ else:
     XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _audio_window_for_tile(
+    audio_latents: torch.Tensor,
+    pixel_start: int,
+    tile_frames: int,
+    playback_fps: float,
+    source_seconds: float,
+    conditioning_fps: float,
+    audio_latents_per_second: float,
+) -> torch.Tensor:
+    """
+    Cut the frozen stage-1 audio to one temporal tile's window and resample it to that tile's token count.
+
+    The window is wall clock: `pixel_start / playback_fps` through `(pixel_start + tile_frames) / playback_fps`, as a
+    fraction of `source_seconds`. Taking a fraction of the *canvas* instead would drift, because a refine round maps `N
+    -> 2 (N - 1) + 1` while the frame rate doubles, so each round's canvas is a hair shorter than twice the last one
+    and the tail tiles would pull audio from past their own playback. `conditioning_fps` only sizes the output token
+    count, matching what the video side asks the transformer for.
+
+    Returns the packed `(batch_size, tile_audio_frames, channels * mel_bins)` window.
+    """
+    source_frames = audio_latents.shape[1]
+    tile_audio_frames = round(tile_frames / conditioning_fps * audio_latents_per_second)
+    start = pixel_start / playback_fps / source_seconds * source_frames
+    span = tile_frames / playback_fps / source_seconds * source_frames
+    positions = start + (span / tile_audio_frames) * torch.arange(
+        tile_audio_frames, device=audio_latents.device, dtype=torch.float32
+    )
+    positions = positions.clamp(0, source_frames - 1)
+    low = positions.floor().long()
+    high = (low + 1).clamp(max=source_frames - 1)
+    weight = (positions - low).to(audio_latents.dtype).view(1, -1, 1)
+    return audio_latents[:, low] * (1 - weight) + audio_latents[:, high] * weight
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -1506,7 +1543,8 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
         video_latents = self.upsample_latents(video_latents, self.temporal_latent_upsampler)
         canvas_frames = 2 * (num_frames - 1) + 1
         playback_fps = 2 * frame_rate
-        conditioning_fps = _conditioning_fps(playback_fps)
+        # The fps the transformer sees; the doubled playback rate only affects muxing.
+        conditioning_fps = MAX_CONDITIONING_FPS if playback_fps > SNAP_CONDITIONING_FPS_ABOVE else playback_fps
         seam_positions = [2 * position for position in keyframe_positions]
         tiles = temporal_tile_plan(seam_positions, canvas_frames, 2**round_index, temporal_ratio)
         pixel_scale = 2**round_index

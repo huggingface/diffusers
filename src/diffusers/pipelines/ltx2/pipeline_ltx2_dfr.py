@@ -39,7 +39,6 @@ from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .connectors import LTX2TextConnectors
-from .dfr_core import EPILOGUE_KEYFRAME_STRENGTH, _conditioning_fps, trim_canvas
 from .dfr_layout import LTX2DFREpilogueTile, resolve_canvas, video_tile_plan
 from .duration_head import LTX2DurationHead
 from .pipeline_ltx2_condition import LTX2VideoCondition
@@ -51,12 +50,16 @@ from .prompt_enhancement import (
 )
 from .utils import (
     DISTILLED_SIGMA_VALUES,
+    EPILOGUE_KEYFRAME_STRENGTH,
     GEMMA3_PROMPT_ENHANCEMENT_CONFIG,
     GEMMA4_PROMPT_ENHANCEMENT_CONFIG,
     LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT,
     LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT,
+    MAX_CONDITIONING_FPS,
+    SNAP_CONDITIONING_FPS_ABOVE,
     apply_image_conditioning_crf,
     resolve_default_image_crf,
+    trim_canvas,
 )
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
@@ -1797,7 +1800,8 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             self.audio_sampling_rate / self.audio_hop_length / float(self.audio_vae_temporal_compression_ratio)
         )
         audio_num_frames = round(canvas_frames / frame_rate * audio_latents_per_second)
-        conditioning_fps = _conditioning_fps(frame_rate)
+        # The fps the transformer sees; playback rates above 30 only affect muxing.
+        conditioning_fps = MAX_CONDITIONING_FPS if frame_rate > SNAP_CONDITIONING_FPS_ABOVE else frame_rate
 
         self._num_timesteps = len(sigmas)
         progress_bar = self.progress_bar(total=self._num_timesteps)

@@ -1053,7 +1053,7 @@ from diffusers import (
     LTXEulerAncestralRFScheduler,
 )
 from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel
-from diffusers.pipelines.ltx2.dfr_core import trim_canvas
+from diffusers.pipelines.ltx2.utils import trim_canvas
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.utils import STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video, load_image

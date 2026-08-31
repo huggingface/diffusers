@@ -23,8 +23,8 @@ from diffusers import (
     LTX2DFRTemporalRefinePipeline,
     LTXEulerAncestralRFScheduler,
 )
-from diffusers.pipelines.ltx2.dfr_core import ANCHOR_KEYFRAME_STRENGTH
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
+from diffusers.pipelines.ltx2.utils import ANCHOR_KEYFRAME_STRENGTH
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin
