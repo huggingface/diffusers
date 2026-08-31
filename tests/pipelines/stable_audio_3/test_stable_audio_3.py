@@ -73,7 +73,6 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     # SA3 uses a bespoke attention path with no xformers processor, and CFG is not
     # applicable (the distilled model bakes it in; the base model runs at cfg=1).
     test_xformers_attention = False
-    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
