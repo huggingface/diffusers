@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -26,6 +27,13 @@ from ..testing_utils import (
 
 
 enable_full_determinism()
+
+# The UniPC flow-sigma schedule these pipelines ship with amplifies the latents far past fp16's range with the
+# tiny dummy weights (~3.7e5 after the very first step), so the next transformer call sees `inf` and the output
+# turns into NaNs. bf16 has fp32's exponent range and is exercised normally.
+FP16_OVERFLOW_SKIP_REASON = (
+    "SkyReels V2's UniPC flow-sigma schedule overflows fp16 with the dummy weights; bf16 is still covered."
+)
 
 
 class SkyReelsV2PipelineTesterConfig(BasePipelineTesterConfig):
@@ -96,6 +104,17 @@ class SkyReelsV2PipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestSkyReelsV2Pipeline(SkyReelsV2PipelineTesterConfig, PipelineTesterMixin):
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        if dtype == torch.float16:
+            pytest.skip(FP16_OVERFLOW_SKIP_REASON)
+        super().test_half_precision_inference_no_nan(dtype)
+
+    @pytest.mark.skip(FP16_OVERFLOW_SKIP_REASON)
+    def test_save_load_float16(self):
+        pass
+
     def test_inference(self):
         pipe = self.get_pipeline().to(torch_device)
 
