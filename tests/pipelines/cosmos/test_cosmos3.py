@@ -46,7 +46,6 @@ class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "callback_on_step_end_tensor_inputs",
         ]
     )
-    supports_dduf = False
     test_xformers_attention = False
     test_layerwise_casting = False
     test_group_offloading = True

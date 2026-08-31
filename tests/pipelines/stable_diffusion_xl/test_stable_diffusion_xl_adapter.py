@@ -13,15 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import random
-import unittest
 
 import numpy as np
+import pytest
 import torch
-from parameterized import parameterized
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
-import diffusers
 from diffusers import (
     AutoencoderKL,
     EulerDiscreteScheduler,
@@ -31,28 +30,33 @@ from diffusers import (
     T2IAdapter,
     UNet2DConditionModel,
 )
-from diffusers.utils import logging
 
 from ...testing_utils import (
-    enable_full_determinism,
+    assert_tensors_close,
+    backend_empty_cache,
     floats_tensor,
+    load_image,
+    nightly,
+    numpy_cosine_similarity_distance,
+    require_peft_backend,
+    require_torch_accelerator,
+    slow,
     torch_device,
 )
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import (
+from ..testing_utils import (
+    BasePipelineTesterConfig,
     IPAdapterTesterMixin,
+    MemoryTesterMixin,
     PipelineTesterMixin,
-    assert_mean_pixel_difference,
 )
 
 
-enable_full_determinism()
-
-
-class StableDiffusionXLAdapterPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionXLAdapterPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionXLAdapterPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+    batch_input_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    output_shape = (3, 64, 64)
 
     def get_dummy_components(self, adapter_type="full_adapter_xl", time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -152,7 +156,6 @@ class StableDiffusionXLAdapterPipelineFastTests(IPAdapterTesterMixin, PipelineTe
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
-            # "safety_checker": None,
             "feature_extractor": None,
             "image_encoder": None,
         }
@@ -259,70 +262,61 @@ class StableDiffusionXLAdapterPipelineFastTests(IPAdapterTesterMixin, PipelineTe
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
-            # "safety_checker": None,
             "feature_extractor": None,
             "image_encoder": None,
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0, height=64, width=64, num_images=1):
+    def get_dummy_inputs(self, seed=0, height=64, width=64, num_images=1):
         if num_images == 1:
-            image = floats_tensor((1, 3, height, width), rng=random.Random(seed)).to(device)
+            image = floats_tensor((1, 3, height, width), rng=random.Random(seed)).to(torch_device)
         else:
             image = [
-                floats_tensor((1, 3, height, width), rng=random.Random(seed)).to(device) for _ in range(num_images)
+                floats_tensor((1, 3, height, width), rng=random.Random(seed)).to(torch_device)
+                for _ in range(num_images)
             ]
 
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "image": image,
-            "generator": generator,
+            "generator": self.get_generator(seed),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
         return inputs
 
-    def test_ip_adapter(self, from_multi=False, expected_pipe_slice=None):
-        if not from_multi:
-            expected_pipe_slice = None
-            if torch_device == "cpu":
-                expected_pipe_slice = np.array(
-                    [0.6002, 0.6262, 0.4981, 0.5304, 0.5774, 0.4685, 0.5228, 0.5208, 0.4938]
-                )
 
-        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
-
-    @unittest.skip("We test this functionality elsewhere already.")
+class TestStableDiffusionXLAdapterPipeline(StableDiffusionXLAdapterPipelineTesterConfig, PipelineTesterMixin):
+    @pytest.mark.skip("Every `_optional_component` is needed to encode the prompt this pipeline requires.")
     def test_save_load_optional_components(self):
         pass
 
     def test_stable_diffusion_adapter_default_case(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, 3, 64, 64)
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.6002, 0.6262, 0.4981, 0.5304, 0.5774, 0.4685, 0.5228, 0.5208, 0.4938])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
+        # fmt: off
+        expected_slice = torch.tensor([0.6002, 0.6262, 0.4981, 0.5304, 0.5774, 0.4685, 0.5228, 0.5208, 0.4938])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=5e-3)
 
-    @parameterized.expand(
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    @pytest.mark.parametrize(
+        "dim",
         [
             # (dim=144) The internal feature map will be 9x9 after initial pixel unshuffling (downscaled x16).
-            (((4 * 2 + 1) * 16),),
+            ((4 * 2 + 1) * 16),
             # (dim=160) The internal feature map will be 5x5 after the first T2I down block (downscaled x32).
-            (((4 * 1 + 1) * 32),),
-        ]
+            ((4 * 1 + 1) * 32),
+        ],
     )
     def test_multiple_image_dimensions(self, dim):
         """Test that the T2I-Adapter pipeline supports any input dimension that
@@ -333,17 +327,13 @@ class StableDiffusionXLAdapterPipelineFastTests(IPAdapterTesterMixin, PipelineTe
         Note that we have selected `dim` values to produce odd resolutions at
         each downscaling level.
         """
-        components = self.get_dummy_components_with_full_downscaling()
-        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe = self.get_pipeline(**self.get_dummy_components_with_full_downscaling()).to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device, height=dim, width=dim)
-        image = sd_pipe(**inputs).images
+        image = sd_pipe(**self.get_dummy_inputs(height=dim, width=dim)).images
 
-        assert image.shape == (1, dim, dim, 3)
+        assert image.shape == (1, 3, dim, dim)
 
-    @parameterized.expand(["full_adapter", "full_adapter_xl", "light_adapter"])
+    @pytest.mark.parametrize("adapter_type", ["full_adapter", "full_adapter_xl", "light_adapter"])
     def test_total_downscale_factor(self, adapter_type):
         """Test that the T2IAdapter correctly reports its total_downscale_factor."""
         batch_size = 1
@@ -375,231 +365,119 @@ class StableDiffusionXLAdapterPipelineFastTests(IPAdapterTesterMixin, PipelineTe
         )
 
     def test_adapter_sdxl_lcm(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components(time_cond_proj_dim=256)
-        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline(**self.get_dummy_components(time_cond_proj_dim=256))
         sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, 3, 64, 64)
 
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5425, 0.5385, 0.4964, 0.5045, 0.6149, 0.4974, 0.5469, 0.5332, 0.5426])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        # fmt: off
+        expected_slice = torch.tensor([0.5425, 0.5385, 0.4964, 0.5045, 0.6149, 0.4974, 0.5469, 0.5332, 0.5426])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
     def test_adapter_sdxl_lcm_custom_timesteps(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components(time_cond_proj_dim=256)
-        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline(**self.get_dummy_components(time_cond_proj_dim=256))
         sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         del inputs["num_inference_steps"]
         inputs["timesteps"] = [999, 499]
-        output = sd_pipe(**inputs)
-        image = output.images
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 3, 64, 64)
 
-        image_slice = image[0, -3:, -3:, -1]
+        # Custom timesteps matching the default 2-step schedule reproduce `test_adapter_sdxl_lcm`'s output.
+        # fmt: off
+        expected_slice = torch.tensor([0.5425, 0.5385, 0.4964, 0.5045, 0.6149, 0.4974, 0.5469, 0.5332, 0.5426])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5425, 0.5385, 0.4964, 0.5045, 0.6149, 0.4974, 0.5469, 0.5332, 0.5426])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+class TestStableDiffusionXLAdapterPipelineMemory(StableDiffusionXLAdapterPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SDXL adapter pipeline."""
 
 
-class StableDiffusionXLMultiAdapterPipelineFastTests(
-    StableDiffusionXLAdapterPipelineFastTests, PipelineTesterMixin, unittest.TestCase
+class TestStableDiffusionXLAdapterPipelineIPAdapter(
+    StableDiffusionXLAdapterPipelineTesterConfig, IPAdapterTesterMixin
 ):
+    """IP-Adapter tests for the SDXL adapter pipeline."""
+
+
+class StableDiffusionXLMultiAdapterPipelineTesterConfig(StableDiffusionXLAdapterPipelineTesterConfig):
+    """Same pipeline, driven by a `MultiAdapter` — so `image` is a list of one image per adapter."""
+
     def get_dummy_components(self, time_cond_proj_dim=None):
         return super().get_dummy_components("multi_adapter", time_cond_proj_dim=time_cond_proj_dim)
 
     def get_dummy_components_with_full_downscaling(self):
         return super().get_dummy_components_with_full_downscaling("multi_adapter")
 
-    def get_dummy_inputs(self, device, seed=0, height=64, width=64):
-        inputs = super().get_dummy_inputs(device, seed, height, width, num_images=2)
+    def get_dummy_inputs(self, seed=0, height=64, width=64):
+        inputs = super().get_dummy_inputs(seed, height, width, num_images=2)
         inputs["adapter_conditioning_scale"] = [0.5, 0.5]
         return inputs
 
+    def batchify_inputs(self, inputs, batch_size):
+        """Batch the standard inputs, keeping `image` as one list of `batch_size` images per adapter."""
+        batched_inputs = dict(inputs)
+        for name in self.batch_input_params:
+            if name not in inputs:
+                continue
+
+            value = inputs[name]
+            if name == "prompt":
+                len_prompt = len(value)
+                # make unequal batch sizes
+                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+                # make last batch super long
+                batched_inputs[name][-1] = 100 * "very long"
+            elif name == "image":
+                batched_inputs[name] = [batch_size * [image] for image in value]
+            else:
+                batched_inputs[name] = batch_size * [value]
+
+        return batched_inputs
+
+
+class TestStableDiffusionXLMultiAdapterPipeline(
+    StableDiffusionXLMultiAdapterPipelineTesterConfig, PipelineTesterMixin
+):
     def test_stable_diffusion_adapter_default_case(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, 3, 64, 64)
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.6114, 0.6256, 0.4972, 0.5219, 0.5668, 0.4658, 0.5210, 0.5188, 0.4908])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
+        # fmt: off
+        expected_slice = torch.tensor([0.6114, 0.6256, 0.4972, 0.5219, 0.5668, 0.4658, 0.5210, 0.5188, 0.4908])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=5e-3)
 
-    def test_ip_adapter(self):
-        expected_pipe_slice = None
-        if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.6114, 0.6256, 0.4972, 0.5219, 0.5668, 0.4658, 0.5210, 0.5188, 0.4908])
+    def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
+        # `image` holds one conditioning image per adapter, so it needs the multi-adapter batching.
+        pipe = self.get_pipeline().to(torch_device)
 
-        return super().test_ip_adapter(from_multi=True, expected_pipe_slice=expected_pipe_slice)
-
-    def test_inference_batch_consistent(
-        self, batch_sizes=[2, 4, 13], additional_params_copy_to_batched_inputs=["num_inference_steps"]
-    ):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-
-        logger = logging.get_logger(pipe.__module__)
-        logger.setLevel(level=diffusers.logging.FATAL)
-
-        # batchify inputs
+        inputs = self.get_dummy_inputs()
         for batch_size in batch_sizes:
-            batched_inputs = {}
-            for name, value in inputs.items():
-                if name in self.batch_params:
-                    # prompt is string
-                    if name == "prompt":
-                        len_prompt = len(value)
-                        # make unequal batch sizes
-                        batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
-
-                        # make last batch super long
-                        batched_inputs[name][-1] = 100 * "very long"
-                    elif name == "image":
-                        batched_images = []
-
-                        for image in value:
-                            batched_images.append(batch_size * [image])
-
-                        batched_inputs[name] = batched_images
-                    else:
-                        batched_inputs[name] = batch_size * [value]
-
-                elif name == "batch_size":
-                    batched_inputs[name] = batch_size
-                else:
-                    batched_inputs[name] = value
-
-            for arg in additional_params_copy_to_batched_inputs:
-                batched_inputs[arg] = inputs[arg]
-
-            batched_inputs["output_type"] = "np"
+            batched_inputs = self.batchify_inputs(inputs, batch_size)
+            if batch_generator:
+                batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
 
             output = pipe(**batched_inputs)
-
             assert len(output[0]) == batch_size
 
-            batched_inputs["output_type"] = "np"
-
-            output = pipe(**batched_inputs)[0]
-
-            assert output.shape[0] == batch_size
-
-        logger.setLevel(level=diffusers.logging.WARNING)
-
-    @unittest.skip("We test this functionality elsewhere already.")
-    def test_save_load_optional_components(self):
-        pass
-
-    def test_num_images_per_prompt(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        batch_sizes = [1, 2]
-        num_images_per_prompts = [1, 2]
-
-        for batch_size in batch_sizes:
-            for num_images_per_prompt in num_images_per_prompts:
-                inputs = self.get_dummy_inputs(torch_device)
-
-                for key in inputs.keys():
-                    if key in self.batch_params:
-                        if key == "image":
-                            batched_images = []
-
-                            for image in inputs[key]:
-                                batched_images.append(batch_size * [image])
-
-                            inputs[key] = batched_images
-                        else:
-                            inputs[key] = batch_size * [inputs[key]]
-
-                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
-
-                assert images.shape[0] == batch_size * num_images_per_prompt
-
     def test_inference_batch_single_identical(
-        self,
-        batch_size=3,
-        test_max_difference=None,
-        test_mean_pixel_difference=None,
-        relax_max_difference=False,
-        expected_max_diff=2e-3,
-        additional_params_copy_to_batched_inputs=["num_inference_steps"],
+        self, batch_size=3, expected_max_diff=2e-3, additional_params_copy_to_batched_inputs=["num_inference_steps"]
     ):
-        if test_max_difference is None:
-            # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
-            # make sure that batched and non-batched is identical
-            test_max_difference = torch_device != "mps"
+        # `image` holds one conditioning image per adapter, so it needs the multi-adapter batching.
+        pipe = self.get_pipeline().to(torch_device)
 
-        if test_mean_pixel_difference is None:
-            # TODO same as above
-            test_mean_pixel_difference = torch_device != "mps"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-
-        logger = logging.get_logger(pipe.__module__)
-        logger.setLevel(level=diffusers.logging.FATAL)
-
-        # batchify inputs
-        batched_inputs = {}
-        for name, value in inputs.items():
-            if name in self.batch_params:
-                # prompt is string
-                if name == "prompt":
-                    len_prompt = len(value)
-                    # make unequal batch sizes
-                    batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
-
-                    # make last batch super long
-                    batched_inputs[name][-1] = 100 * "very long"
-                elif name == "image":
-                    batched_images = []
-
-                    for image in value:
-                        batched_images.append(batch_size * [image])
-
-                    batched_inputs[name] = batched_images
-                else:
-                    batched_inputs[name] = batch_size * [value]
-            elif name == "batch_size":
-                batched_inputs[name] = batch_size
-            elif name == "generator":
-                batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
-            else:
-                batched_inputs[name] = value
-
+        inputs = self.get_dummy_inputs()
+        batched_inputs = self.batchify_inputs(inputs, batch_size)
+        batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
         for arg in additional_params_copy_to_batched_inputs:
             batched_inputs[arg] = inputs[arg]
 
@@ -607,63 +485,110 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
         assert output_batch[0].shape[0] == batch_size
 
         inputs["generator"] = self.get_generator(0)
-
         output = pipe(**inputs)
 
-        logger.setLevel(level=diffusers.logging.WARNING)
-        if test_max_difference:
-            if relax_max_difference:
-                # Taking the median of the largest <n> differences
-                # is resilient to outliers
-                diff = np.abs(output_batch[0][0] - output[0][0])
-                diff = diff.flatten()
-                diff.sort()
-                max_diff = np.median(diff[-5:])
-            else:
-                max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
-            assert max_diff < expected_max_diff
+        assert_tensors_close(
+            output_batch[0][0], output[0][0], atol=expected_max_diff, msg="Batched output differs from single."
+        )
 
-        if test_mean_pixel_difference:
-            assert_mean_pixel_difference(output_batch[0][0], output[0][0])
+    def test_num_images_per_prompt(self):
+        # `image` holds one conditioning image per adapter, so it needs the multi-adapter batching.
+        pipe = self.get_pipeline().to(torch_device)
+
+        for batch_size in [1, 2]:
+            for num_images_per_prompt in [1, 2]:
+                inputs = self.batchify_inputs(self.get_dummy_inputs(), batch_size)
+                # `test_inference_batch_*` makes the prompts unequal on purpose; here they just get duplicated.
+                inputs["prompt"] = batch_size * [self.get_dummy_inputs()["prompt"]]
+
+                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
+
+                assert images.shape[0] == batch_size * num_images_per_prompt
 
     def test_adapter_sdxl_lcm(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components(time_cond_proj_dim=256)
-        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline(**self.get_dummy_components(time_cond_proj_dim=256))
         sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, 3, 64, 64)
 
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5313, 0.5375, 0.4942, 0.5021, 0.6142, 0.4968, 0.5434, 0.5311, 0.5448])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        # fmt: off
+        expected_slice = torch.tensor([0.5313, 0.5375, 0.4942, 0.5021, 0.6142, 0.4968, 0.5434, 0.5311, 0.5448])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
     def test_adapter_sdxl_lcm_custom_timesteps(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components(time_cond_proj_dim=256)
-        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline(**self.get_dummy_components(time_cond_proj_dim=256))
         sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         del inputs["num_inference_steps"]
         inputs["timesteps"] = [999, 499]
-        output = sd_pipe(**inputs)
-        image = output.images
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 3, 64, 64)
 
-        image_slice = image[0, -3:, -3:, -1]
+        # Custom timesteps matching the default 2-step schedule reproduce `test_adapter_sdxl_lcm`'s output.
+        # fmt: off
+        expected_slice = torch.tensor([0.5313, 0.5375, 0.4942, 0.5021, 0.6142, 0.4968, 0.5434, 0.5311, 0.5448])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-2)
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5313, 0.5375, 0.4942, 0.5021, 0.6142, 0.4968, 0.5434, 0.5311, 0.5448])
+    @pytest.mark.skip("Every `_optional_component` is needed to encode the prompt this pipeline requires.")
+    def test_save_load_optional_components(self):
+        pass
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+class TestStableDiffusionXLMultiAdapterPipelineMemory(
+    StableDiffusionXLMultiAdapterPipelineTesterConfig, MemoryTesterMixin
+):
+    """Memory optimization tests for the SDXL pipeline driven by a `MultiAdapter`."""
+
+
+class TestStableDiffusionXLMultiAdapterPipelineIPAdapter(
+    StableDiffusionXLMultiAdapterPipelineTesterConfig, IPAdapterTesterMixin
+):
+    """IP-Adapter tests for the SDXL pipeline driven by a `MultiAdapter`."""
+
+
+@slow
+@nightly
+@require_torch_accelerator
+@require_peft_backend
+class TestStableDiffusionXLAdapterLoRAIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+        yield
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def test_sdxl_t2i_adapter_canny_lora(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16).to(
+            "cpu"
+        )
+        pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            adapter=adapter,
+            torch_dtype=torch.float16,
+            variant="fp16",
+        )
+        pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors")
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "toy"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
+        )
+
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+
+        assert images[0].shape == (768, 512, 3)
+
+        image_slice = images[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.4284, 0.4337, 0.4319, 0.4255, 0.4329, 0.4280, 0.4338, 0.4420, 0.4226])
+        assert numpy_cosine_similarity_distance(image_slice, expected_slice) < 1e-4
