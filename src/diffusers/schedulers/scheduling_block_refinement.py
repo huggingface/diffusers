@@ -502,14 +502,15 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         masked_rev = torch.zeros_like(original_samples, dtype=torch.bool)
 
         valid = attention_mask.to(dtype=torch.bool)
+        rand_device = _generator_device(original_samples, generator)
         for block_start in range(prompt_length, seq_len, block_length):
             block_end = min(seq_len, block_start + block_length)
             seg_len = block_end - block_start
             if seg_len <= 0:
                 continue
 
-            p_mask = torch.rand((batch_size, 1), device=device, generator=generator)
-            seg = torch.rand((batch_size, seg_len), device=device, generator=generator) < p_mask
+            p_mask = torch.rand((batch_size, 1), device=rand_device, generator=generator).to(device)
+            seg = torch.rand((batch_size, seg_len), device=rand_device, generator=generator).to(device) < p_mask
             seg = seg & valid[:, block_start:block_end]
             seg_rev = (~seg) & valid[:, block_start:block_end]
 
