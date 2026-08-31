@@ -19,8 +19,10 @@ import torch
 import torch.nn.functional as F
 
 from diffusers.pipelines.cosmos.mixed_precision import (
+    FIRST_LAST_N_FP8_POLICY,
     Cosmos3MixedPrecisionConfig,
     apply_cosmos3_mixed_precision_step,
+    parse_diffusion_step_policy,
     reset_cosmos3_mixed_precision,
 )
 
@@ -154,6 +156,75 @@ class Cosmos3MixedPrecisionConfigTests(unittest.TestCase):
         expected_w8a8 = reasoner(inputs)
         apply_cosmos3_mixed_precision_step(transformer, config, 2, 5)
         torch.testing.assert_close(reasoner(inputs), expected_w8a8)
+
+
+class Cosmos3CheckpointPolicyTests(unittest.TestCase):
+    def _transformer_with_quant_config(self, quantization_config):
+        transformer = _Transformer()
+        transformer.config = {"quantization_config": quantization_config}
+        return transformer
+
+    def test_official_policy_enables_first_last_three(self):
+        parsed = parse_diffusion_step_policy(FIRST_LAST_N_FP8_POLICY)
+        self.assertEqual(parsed.first_steps, 3)
+        self.assertEqual(parsed.last_steps, 3)
+        self.assertEqual(parsed.reasoner_policy, "high_precision")
+        self.assertEqual(parsed.overlap, "a16")
+
+        transformer = self._transformer_with_quant_config(
+            {"quant_method": "modelopt", "quant_algo": "FP8", "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY}}
+        )
+        config = Cosmos3MixedPrecisionConfig.resolve(transformer)
+        self.assertTrue(config.enabled)
+        self.assertEqual([i for i in range(50) if config.use_high_precision(i, 50)], [0, 1, 2, 47, 48, 49])
+
+    def test_missing_runtime_stays_native_including_four_step_overlap(self):
+        transformer = self._transformer_with_quant_config(
+            {"quant_method": "modelopt", "quant_algo": "FP8", "runtime": None}
+        )
+        config = Cosmos3MixedPrecisionConfig.resolve(transformer)
+        self.assertFalse(config.enabled)
+        # Distill 4-step must not inherit a hardcoded first/last-3 schedule.
+        self.assertEqual([config.precision_name(i, 4) for i in range(4)], ["base"] * 4)
+
+    def test_explicit_none_disables_checkpoint_policy(self):
+        transformer = self._transformer_with_quant_config(
+            {"quant_method": "modelopt", "quant_algo": "FP8", "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY}}
+        )
+        config = Cosmos3MixedPrecisionConfig.resolve(transformer, mixed_precision_format="none")
+        self.assertFalse(config.enabled)
+
+    def test_call_site_overrides_checkpoint_counts(self):
+        transformer = self._transformer_with_quant_config(
+            {"quant_method": "modelopt", "quant_algo": "FP8", "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY}}
+        )
+        config = Cosmos3MixedPrecisionConfig.resolve(
+            transformer,
+            mixed_precision_first_steps=1,
+            mixed_precision_last_steps=1,
+        )
+        self.assertEqual([i for i in range(5) if config.use_high_precision(i, 5)], [0, 4])
+
+    def test_force_fp8_without_policy_uses_explicit_schedule(self):
+        config = Cosmos3MixedPrecisionConfig.resolve(
+            _Transformer(),
+            mixed_precision_format="fp8",
+            mixed_precision_first_steps=1,
+            mixed_precision_last_steps=1,
+        )
+        self.assertTrue(config.enabled)
+        self.assertEqual([i for i in range(5) if config.use_high_precision(i, 5)], [0, 4])
+
+    def test_malformed_policy_fails_closed(self):
+        with self.assertRaises(ValueError):
+            parse_diffusion_step_policy({"schema_version": 2, "type": "first_last_n"})
+        with self.assertRaises(ValueError):
+            Cosmos3MixedPrecisionConfig.resolve(
+                quantization_config={
+                    "quant_algo": "NVFP4",
+                    "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY},
+                }
+            )
 
 
 if __name__ == "__main__":

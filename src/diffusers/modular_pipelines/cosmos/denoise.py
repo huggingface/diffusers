@@ -471,40 +471,38 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
             InputParam(
                 name="mixed_precision_format",
                 type_hint=str,
-                default="none",
-                description="Set to 'fp8' to enable mixed W8A8/W8A16 denoising.",
+                default=None,
+                description="None reads the checkpoint diffusion_step_policy; 'fp8' forces mixed precision; 'none' disables it.",
             ),
             InputParam(
                 name="mixed_precision_first_steps",
                 type_hint=int,
-                default=3,
-                description="Leading W8A16 step count when mixed precision is enabled.",
+                default=None,
+                description="Optional override for the leading W8A16 step count.",
             ),
             InputParam(
                 name="mixed_precision_last_steps",
                 type_hint=int,
-                default=3,
-                description="Trailing W8A16 step count when mixed precision is enabled.",
+                default=None,
+                description="Optional override for the trailing W8A16 step count.",
             ),
             InputParam(
                 name="mixed_precision_reasoner_policy",
                 type_hint=str,
-                default="high_precision",
-                description="Use W8A16 or checkpoint-native W8A8 for the reasoner path.",
+                default=None,
+                description="Optional override: W8A16 ('high_precision') or native W8A8 ('base_precision') for the reasoner path.",
             ),
         ]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        first_steps = getattr(block_state, "mixed_precision_first_steps", None)
-        last_steps = getattr(block_state, "mixed_precision_last_steps", None)
-        mixed_precision = Cosmos3MixedPrecisionConfig.from_kwargs(
-            mixed_precision_format=getattr(block_state, "mixed_precision_format", None) or "none",
-            mixed_precision_first_steps=3 if first_steps is None else first_steps,
-            mixed_precision_last_steps=3 if last_steps is None else last_steps,
-            mixed_precision_reasoner_policy=getattr(block_state, "mixed_precision_reasoner_policy", None)
-            or "high_precision",
+        mixed_precision = Cosmos3MixedPrecisionConfig.resolve(
+            components.transformer,
+            mixed_precision_format=getattr(block_state, "mixed_precision_format", None),
+            mixed_precision_first_steps=getattr(block_state, "mixed_precision_first_steps", None),
+            mixed_precision_last_steps=getattr(block_state, "mixed_precision_last_steps", None),
+            mixed_precision_reasoner_policy=getattr(block_state, "mixed_precision_reasoner_policy", None),
         )
         trace = []
         try:

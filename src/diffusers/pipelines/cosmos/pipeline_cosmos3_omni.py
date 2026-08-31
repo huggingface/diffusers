@@ -1345,10 +1345,10 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         add_resolution_template: bool = True,
         add_duration_template: bool = True,
         enable_safety_check: bool = True,
-        mixed_precision_format: str = "none",
-        mixed_precision_first_steps: int = 3,
-        mixed_precision_last_steps: int = 3,
-        mixed_precision_reasoner_policy: str = "high_precision",
+        mixed_precision_format: str | None = None,
+        mixed_precision_first_steps: int | None = None,
+        mixed_precision_last_steps: int | None = None,
+        mixed_precision_reasoner_policy: str | None = None,
     ) -> Cosmos3OmniPipelineOutput:
         r"""
         Run the Cosmos 3 omni pipeline end-to-end: encode the (optional) conditioning image/video, denoise vision and
@@ -1444,18 +1444,20 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 When `True` and a `CosmosSafetyChecker` is attached, runs the text guardrail on the prompt before
                 generation and the video guardrail on the decoded frames. Set to `False` to skip both for this call;
                 the checker remains loaded for subsequent calls.
-            mixed_precision_format (`str`, *optional*, defaults to `"none"`):
-                Set to `"fp8"` to use mixed W8A8/W8A16 denoising on a serialized ModelOpt FP8 checkpoint. Disabled
-                unless this is `"fp8"`.
-            mixed_precision_first_steps (`int`, *optional*, defaults to `3`):
-                Number of leading denoising steps that run W8A16 (activation quantizers disabled) when mixed precision
-                is enabled.
-            mixed_precision_last_steps (`int`, *optional*, defaults to `3`):
-                Number of trailing denoising steps that run W8A16 when mixed precision is enabled. Middle steps keep
-                native W8A8. Precision is selected once per scheduler step so CFG cond/uncond calls match.
-            mixed_precision_reasoner_policy (`str`, *optional*, defaults to `"high_precision"`):
-                Whether the reasoner path always uses W8A16 (`"high_precision"`) or follows the checkpoint's native
-                W8A8 path (`"base_precision"`).
+            mixed_precision_format (`str`, *optional*):
+                `"fp8"` forces mixed W8A8/W8A16 denoising. `"none"` disables it even if the checkpoint declares a
+                policy. The default `None` reads `quantization_config.runtime.diffusion_step_policy` from the
+                transformer: Nano/Super/Super-I2V FP8 enable first/last-3 W8A16 automatically; distilled FP8
+                checkpoints omit that policy and stay native W8A8.
+            mixed_precision_first_steps (`int`, *optional*):
+                Override the leading W8A16 step count from the checkpoint policy. Unused when mixed precision is
+                disabled.
+            mixed_precision_last_steps (`int`, *optional*):
+                Override the trailing W8A16 step count. Middle steps keep native W8A8. Precision is selected once
+                per scheduler step so CFG cond/uncond calls match.
+            mixed_precision_reasoner_policy (`str`, *optional*):
+                Override reasoner precision: W8A16 (`"high_precision"`) or checkpoint-native W8A8
+                (`"base_precision"`). Defaults to the checkpoint policy (`reasoner: a16`).
 
         Returns:
             [`Cosmos3OmniPipelineOutput`] or `tuple`:
@@ -1706,7 +1708,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-        mixed_precision = Cosmos3MixedPrecisionConfig.from_kwargs(
+        mixed_precision = Cosmos3MixedPrecisionConfig.resolve(
+            self.transformer,
             mixed_precision_format=mixed_precision_format,
             mixed_precision_first_steps=mixed_precision_first_steps,
             mixed_precision_last_steps=mixed_precision_last_steps,
