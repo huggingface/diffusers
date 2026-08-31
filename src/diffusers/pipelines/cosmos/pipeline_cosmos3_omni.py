@@ -16,6 +16,7 @@ import copy
 import json
 import math
 from collections.abc import Iterable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
@@ -40,6 +41,11 @@ from ..pipeline_utils import DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _cache_context(transformer: torch.nn.Module, name: str):
+    cache_context = getattr(transformer, "cache_context", None)
+    return cache_context(name) if callable(cache_context) else nullcontext()
 
 
 if is_cosmos_guardrail_available():
@@ -1294,6 +1300,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         return self._current_timestep
 
     @property
+    def current_step_index(self):
+        return self._current_step_index
+
+    @property
+    def current_sigma(self):
+        return self._current_sigma
+
+    @property
     def guidance_scale(self):
         return self._guidance_scale
 
@@ -1449,6 +1463,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 `sound` (`torch.Tensor` of shape `[C, N]`, or `None` when `enable_sound=False`). Otherwise a tuple
                 `(video, sound)` with the same fields.
         """
+        if hasattr(self.transformer, "_reset_stateful_cache"):
+            self.transformer._reset_stateful_cache()
+
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
@@ -1493,6 +1510,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             )
 
         self._current_timestep = None
+        self._current_step_index = None
+        self._current_sigma = None
         self._interrupt = False
         self._guidance_scale = guidance_scale
 
@@ -1699,6 +1718,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     continue
 
                 self._current_timestep = t
+                self._current_step_index = i
+                self._current_sigma = self.scheduler.sigmas[i]
                 timestep = t.item()
 
                 # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
@@ -1717,33 +1738,34 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 )
 
                 # --- Conditional pass ---
-                preds_vision, preds_sound, preds_action = self.transformer(
-                    input_ids=cond_packed_static["input_ids"],
-                    text_indexes=cond_packed_static["text_indexes"],
-                    position_ids=cond_packed_static["position_ids"],
-                    und_len=cond_packed_static["und_len"],
-                    sequence_length=cond_packed_static["sequence_length"],
-                    vision_tokens=[vision_tokens],
-                    vision_token_shapes=cond_packed_static["vision_token_shapes"],
-                    vision_sequence_indexes=cond_packed_static["vision_sequence_indexes"],
-                    vision_mse_loss_indexes=cond_packed_static["vision_mse_loss_indexes"],
-                    vision_timesteps=vision_timesteps,
-                    vision_noisy_frame_indexes=cond_packed_static["vision_noisy_frame_indexes"],
-                    sound_tokens=[sound_tokens] if sound_tokens is not None else None,
-                    sound_token_shapes=cond_packed_static.get("sound_token_shapes"),
-                    sound_sequence_indexes=cond_packed_static.get("sound_sequence_indexes"),
-                    sound_mse_loss_indexes=cond_packed_static.get("sound_mse_loss_indexes"),
-                    sound_timesteps=sound_timesteps,
-                    sound_noisy_frame_indexes=cond_packed_static.get("sound_noisy_frame_indexes"),
-                    action_tokens=[action_tokens] if action_tokens is not None else None,
-                    action_token_shapes=cond_packed_static.get("action_token_shapes"),
-                    action_sequence_indexes=cond_packed_static.get("action_sequence_indexes"),
-                    action_mse_loss_indexes=cond_packed_static.get("action_mse_loss_indexes"),
-                    action_timesteps=action_timesteps,
-                    action_noisy_frame_indexes=cond_packed_static.get("action_noisy_frame_indexes"),
-                    action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
-                    return_dict=False,
-                )
+                with _cache_context(self.transformer, "cond"):
+                    preds_vision, preds_sound, preds_action = self.transformer(
+                        input_ids=cond_packed_static["input_ids"],
+                        text_indexes=cond_packed_static["text_indexes"],
+                        position_ids=cond_packed_static["position_ids"],
+                        und_len=cond_packed_static["und_len"],
+                        sequence_length=cond_packed_static["sequence_length"],
+                        vision_tokens=[vision_tokens],
+                        vision_token_shapes=cond_packed_static["vision_token_shapes"],
+                        vision_sequence_indexes=cond_packed_static["vision_sequence_indexes"],
+                        vision_mse_loss_indexes=cond_packed_static["vision_mse_loss_indexes"],
+                        vision_timesteps=vision_timesteps,
+                        vision_noisy_frame_indexes=cond_packed_static["vision_noisy_frame_indexes"],
+                        sound_tokens=[sound_tokens] if sound_tokens is not None else None,
+                        sound_token_shapes=cond_packed_static.get("sound_token_shapes"),
+                        sound_sequence_indexes=cond_packed_static.get("sound_sequence_indexes"),
+                        sound_mse_loss_indexes=cond_packed_static.get("sound_mse_loss_indexes"),
+                        sound_timesteps=sound_timesteps,
+                        sound_noisy_frame_indexes=cond_packed_static.get("sound_noisy_frame_indexes"),
+                        action_tokens=[action_tokens] if action_tokens is not None else None,
+                        action_token_shapes=cond_packed_static.get("action_token_shapes"),
+                        action_sequence_indexes=cond_packed_static.get("action_sequence_indexes"),
+                        action_mse_loss_indexes=cond_packed_static.get("action_mse_loss_indexes"),
+                        action_timesteps=action_timesteps,
+                        action_noisy_frame_indexes=cond_packed_static.get("action_noisy_frame_indexes"),
+                        action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                        return_dict=False,
+                    )
                 cond_v_vision, cond_v_sound, cond_v_action = self._mask_velocity_predictions(
                     preds_vision,
                     preds_sound,
@@ -1757,33 +1779,34 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 # --- Unconditional pass (Skip if not using CFG) ---
                 uncond_v_vision = uncond_v_sound = uncond_v_action = None
                 if self.do_classifier_free_guidance:
-                    preds_vision, preds_sound, preds_action = self.transformer(
-                        input_ids=uncond_packed_static["input_ids"],
-                        text_indexes=uncond_packed_static["text_indexes"],
-                        position_ids=uncond_packed_static["position_ids"],
-                        und_len=uncond_packed_static["und_len"],
-                        sequence_length=uncond_packed_static["sequence_length"],
-                        vision_tokens=[vision_tokens],
-                        vision_token_shapes=uncond_packed_static["vision_token_shapes"],
-                        vision_sequence_indexes=uncond_packed_static["vision_sequence_indexes"],
-                        vision_mse_loss_indexes=uncond_packed_static["vision_mse_loss_indexes"],
-                        vision_timesteps=vision_timesteps,
-                        vision_noisy_frame_indexes=uncond_packed_static["vision_noisy_frame_indexes"],
-                        sound_tokens=[sound_tokens] if sound_tokens is not None else None,
-                        sound_token_shapes=uncond_packed_static.get("sound_token_shapes"),
-                        sound_sequence_indexes=uncond_packed_static.get("sound_sequence_indexes"),
-                        sound_mse_loss_indexes=uncond_packed_static.get("sound_mse_loss_indexes"),
-                        sound_timesteps=sound_timesteps,
-                        sound_noisy_frame_indexes=uncond_packed_static.get("sound_noisy_frame_indexes"),
-                        action_tokens=[action_tokens] if action_tokens is not None else None,
-                        action_token_shapes=uncond_packed_static.get("action_token_shapes"),
-                        action_sequence_indexes=uncond_packed_static.get("action_sequence_indexes"),
-                        action_mse_loss_indexes=uncond_packed_static.get("action_mse_loss_indexes"),
-                        action_timesteps=action_timesteps,
-                        action_noisy_frame_indexes=uncond_packed_static.get("action_noisy_frame_indexes"),
-                        action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
-                        return_dict=False,
-                    )
+                    with _cache_context(self.transformer, "uncond"):
+                        preds_vision, preds_sound, preds_action = self.transformer(
+                            input_ids=uncond_packed_static["input_ids"],
+                            text_indexes=uncond_packed_static["text_indexes"],
+                            position_ids=uncond_packed_static["position_ids"],
+                            und_len=uncond_packed_static["und_len"],
+                            sequence_length=uncond_packed_static["sequence_length"],
+                            vision_tokens=[vision_tokens],
+                            vision_token_shapes=uncond_packed_static["vision_token_shapes"],
+                            vision_sequence_indexes=uncond_packed_static["vision_sequence_indexes"],
+                            vision_mse_loss_indexes=uncond_packed_static["vision_mse_loss_indexes"],
+                            vision_timesteps=vision_timesteps,
+                            vision_noisy_frame_indexes=uncond_packed_static["vision_noisy_frame_indexes"],
+                            sound_tokens=[sound_tokens] if sound_tokens is not None else None,
+                            sound_token_shapes=uncond_packed_static.get("sound_token_shapes"),
+                            sound_sequence_indexes=uncond_packed_static.get("sound_sequence_indexes"),
+                            sound_mse_loss_indexes=uncond_packed_static.get("sound_mse_loss_indexes"),
+                            sound_timesteps=sound_timesteps,
+                            sound_noisy_frame_indexes=uncond_packed_static.get("sound_noisy_frame_indexes"),
+                            action_tokens=[action_tokens] if action_tokens is not None else None,
+                            action_token_shapes=uncond_packed_static.get("action_token_shapes"),
+                            action_sequence_indexes=uncond_packed_static.get("action_sequence_indexes"),
+                            action_mse_loss_indexes=uncond_packed_static.get("action_mse_loss_indexes"),
+                            action_timesteps=action_timesteps,
+                            action_noisy_frame_indexes=uncond_packed_static.get("action_noisy_frame_indexes"),
+                            action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                            return_dict=False,
+                        )
                     uncond_v_vision, uncond_v_sound, uncond_v_action = self._mask_velocity_predictions(
                         preds_vision,
                         preds_sound,
@@ -1853,6 +1876,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     progress_bar.update()
 
         self._current_timestep = None
+        self._current_step_index = None
+        self._current_sigma = None
 
         # 8. Postprocess + decode
         sound = self.decode_sound(sound_latents) if sound_latents is not None else None

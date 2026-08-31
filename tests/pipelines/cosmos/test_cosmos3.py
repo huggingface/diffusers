@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import contextmanager
 from unittest import mock
 
 import numpy as np
@@ -141,6 +142,30 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
         assert callback_latent_dtypes
         assert all(dtype == torch.float32 for dtype in callback_latent_dtypes)
         assert latents.dtype == torch.float32
+
+    def test_transformer_cache_contexts_receive_exact_scheduler_metadata(self):
+        pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
+        observed = []
+
+        @contextmanager
+        def record_context(name):
+            observed.append((name, pipeline.current_step_index, pipeline.current_sigma))
+            yield
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["guidance_scale"] = 2.0
+        with mock.patch.object(pipeline.transformer, "cache_context", side_effect=record_context):
+            pipeline(**inputs)
+
+        assert [name for name, _, _ in observed] == ["cond", "uncond", "cond", "uncond"]
+        for call_index, (_, step_index, sigma) in enumerate(observed):
+            expected_step = call_index // 2
+            assert step_index == expected_step
+            torch.testing.assert_close(sigma, pipeline.scheduler.sigmas[expected_step])
+        assert pipeline.current_step_index is None
+        assert pipeline.current_sigma is None
+
     def test_cosmos3_tokenize_prompt_uses_checkpoint_system_prompt_default(self):
         components = self.get_dummy_components()
         components["default_use_system_prompt"] = False
