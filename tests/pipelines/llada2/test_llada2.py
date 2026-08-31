@@ -1,8 +1,15 @@
-import unittest
-
+import pytest
 import torch
+from transformers import CLIPTokenizer, GPT2Config, GPT2LMHeadModel
 
 from diffusers import BlockRefinementScheduler, LLaDA2Pipeline
+
+from ...testing_utils import enable_full_determinism
+from ..pipeline_params import TEXT_TO_TEXT_BATCH_PARAMS, TEXT_TO_TEXT_PARAMS
+from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin
+
+
+enable_full_determinism()
 
 
 class _DummyModelOutput:
@@ -41,7 +48,74 @@ def _make_pipeline(tokenizer=None):
     return LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
 
 
-class LLaDA2PipelineTest(unittest.TestCase):
+class LLaDA2PipelineTesterConfig(BasePipelineTesterConfig):
+    pipeline_class = LLaDA2Pipeline
+    required_input_params_in_call_signature = TEXT_TO_TEXT_PARAMS
+    batch_input_params = TEXT_TO_TEXT_BATCH_PARAMS
+    # LLaDA2 has neither `num_images_per_prompt` (batching is over `prompt` only) nor `latents` (the template is a
+    # fully-masked sequence built fresh inside `__call__`), and `output_type` is `"seq"`/`"text"`, not an image format.
+    optional_input_params = frozenset(["num_inference_steps", "generator", "output_type", "return_dict"])
+    # `gen_length` for the dummy inputs below (see `get_dummy_inputs`); `_DummyCausalLM` ignores token values (only
+    # reads `input_ids.shape`), so this is independent of the tokenizer's own vocab size.
+    output_shape = (16,)
+    mask_token_id = 31
+
+    def get_dummy_components(self):
+        # `LLaDA2Pipeline.model` accepts any object exposing `forward(input_ids, attention_mask, position_ids) ->
+        # logits`, so unlike `DiffusionGemma`'s VLM-backed pipeline there's no pretrained checkpoint to pull. The
+        # `save_pretrained`/`from_pretrained` round trip the mixin exercises does need a real `PreTrainedModel`
+        # though (the `_DummyCausalLM` stand-in the hand-written tests below use isn't one), so build a tiny
+        # `GPT2LMHeadModel` locally instead, matching its `vocab_size` to the tokenizer's like other pipeline tests do.
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        torch.manual_seed(0)
+        model = GPT2LMHeadModel(GPT2Config(n_embd=16, n_head=1, n_layer=1, vocab_size=len(tokenizer), n_ctx=99))
+        return {"model": model, "scheduler": BlockRefinementScheduler(), "tokenizer": tokenizer}
+
+    def get_dummy_inputs(self):
+        return {
+            "prompt": "Name a color.",
+            "use_chat_template": False,
+            "generator": self.get_generator(0),
+            "gen_length": self.output_shape[0],
+            "block_length": self.output_shape[0],
+            "num_inference_steps": 4,
+            "temperature": 0.0,
+            "threshold": 2.0,  # force top-k commits so every step transfers a deterministic number of tokens
+            "minimal_topk": 1,
+            "eos_early_stop": False,
+            "mask_token_id": self.mask_token_id,
+            "output_type": "seq",
+        }
+
+
+class TestLLaDA2Pipeline(LLaDA2PipelineTesterConfig, PipelineTesterMixin):
+    # LLaDA2 samples its template with a single `torch.randint`/`torch.multinomial` call inside the scheduler, unlike
+    # the `randn_tensor`-backed image pipelines the base test assumes, so it can't take a per-batch-row generator list.
+    def test_inference_batch_consistent(self):
+        super().test_inference_batch_consistent(batch_generator=False)
+
+    @pytest.mark.skip(
+        "Test not supported: passes a per-row generator list, which the scheduler's single-generator sampling "
+        "doesn't accept."
+    )
+    def test_inference_batch_single_identical(self):
+        pass
+
+    @pytest.mark.skip(
+        "Test not supported: assumes an image/video pipeline (`output_type='latent'`, tensor key `'latents'`), "
+        "neither of which LLaDA2's `check_inputs` accepts."
+    )
+    def test_callback_inputs(self):
+        pass
+
+    @pytest.mark.skip(
+        "Test not supported: drops `tokenizer` and reruns the dummy `prompt` input, but dropping the tokenizer "
+        "means the caller must switch to pre-tokenized `input_ids` instead (see "
+        "`test_output_type_text_without_tokenizer` below, which covers this)."
+    )
+    def test_save_load_optional_components(self):
+        pass
+
     def test_pipeline_runs(self):
         pipe = _make_pipeline().to("cpu")
 
@@ -61,8 +135,8 @@ class LLaDA2PipelineTest(unittest.TestCase):
             output_type="seq",
         )
 
-        self.assertEqual(out.sequences.shape, (2, 24))
-        self.assertFalse((out.sequences == 31).any().item())
+        assert out.sequences.shape == (2, 24)
+        assert not (out.sequences == 31).any().item()
 
     def test_pipeline_return_tuple(self):
         pipe = _make_pipeline().to("cpu")
@@ -83,8 +157,8 @@ class LLaDA2PipelineTest(unittest.TestCase):
             return_dict=False,
         )
 
-        self.assertEqual(sequences.shape, (1, 16))
-        self.assertIsNone(texts)
+        assert sequences.shape == (1, 16)
+        assert texts is None
 
     def test_output_type_seq(self):
         """output_type='seq' should return sequences but no texts."""
@@ -104,9 +178,9 @@ class LLaDA2PipelineTest(unittest.TestCase):
             output_type="seq",
         )
 
-        self.assertIsNotNone(out.sequences)
-        self.assertEqual(out.sequences.shape, (1, 16))
-        self.assertIsNone(out.texts)
+        assert out.sequences is not None
+        assert out.sequences.shape == (1, 16)
+        assert out.texts is None
 
     def test_output_type_text_without_tokenizer(self):
         """output_type='text' without a tokenizer should return texts=None."""
@@ -126,8 +200,8 @@ class LLaDA2PipelineTest(unittest.TestCase):
             output_type="text",
         )
 
-        self.assertIsNotNone(out.sequences)
-        self.assertIsNone(out.texts)
+        assert out.sequences is not None
+        assert out.texts is None
 
     def test_output_type_text_with_tokenizer(self):
         """output_type='text' with a tokenizer should return decoded texts."""
@@ -155,16 +229,16 @@ class LLaDA2PipelineTest(unittest.TestCase):
             output_type="text",
         )
 
-        self.assertIsNotNone(out.sequences)
-        self.assertIsNotNone(out.texts)
-        self.assertEqual(len(out.texts), 1)
-        self.assertTrue(out.texts[0].startswith("decoded_"))
+        assert out.sequences is not None
+        assert out.texts is not None
+        assert len(out.texts) == 1
+        assert out.texts[0].startswith("decoded_")
 
     def test_output_type_invalid_raises(self):
         """Invalid output_type should raise ValueError."""
         pipe = _make_pipeline().to("cpu")
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             pipe(
                 input_ids=torch.tensor([[5, 6, 7, 8]], dtype=torch.long),
                 use_chat_template=False,
@@ -186,9 +260,9 @@ class LLaDA2PipelineTest(unittest.TestCase):
             add_generation_prompt=False,
             chat_template_kwargs=None,
         )
-        self.assertTrue(torch.equal(result_ids, ids))
-        self.assertEqual(result_mask.shape, ids.shape)
-        self.assertTrue((result_mask == 1).all().item())
+        assert torch.equal(result_ids, ids)
+        assert result_mask.shape == ids.shape
+        assert (result_mask == 1).all().item()
 
     def test_prepare_input_ids_from_1d_tensor(self):
         pipe = _make_pipeline()
@@ -201,12 +275,12 @@ class LLaDA2PipelineTest(unittest.TestCase):
             add_generation_prompt=False,
             chat_template_kwargs=None,
         )
-        self.assertEqual(result_ids.shape, (1, 3))
-        self.assertEqual(result_mask.shape, (1, 3))
+        assert result_ids.shape == (1, 3)
+        assert result_mask.shape == (1, 3)
 
     def test_prepare_input_ids_no_tokenizer_raises(self):
         pipe = _make_pipeline(tokenizer=None)
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             pipe._prepare_input_ids(
                 prompt="hello",
                 messages=None,
@@ -220,7 +294,7 @@ class LLaDA2PipelineTest(unittest.TestCase):
         pipe = _make_pipeline()
         # Manually set tokenizer to a simple object so _prepare_input_ids doesn't short-circuit
         pipe.tokenizer = type("Tok", (), {"eos_token_id": None, "mask_token_id": None})()
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             pipe._prepare_input_ids(
                 prompt="hello",
                 messages=[{"role": "user", "content": "hi"}],
@@ -233,7 +307,7 @@ class LLaDA2PipelineTest(unittest.TestCase):
     def test_prepare_input_ids_neither_raises(self):
         pipe = _make_pipeline()
         pipe.tokenizer = type("Tok", (), {"eos_token_id": None, "mask_token_id": None})()
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             pipe._prepare_input_ids(
                 prompt=None,
                 messages=None,
@@ -244,7 +318,7 @@ class LLaDA2PipelineTest(unittest.TestCase):
             )
 
 
-class LLaDA2RegressionTest(unittest.TestCase):
+class TestLLaDA2Regression:
     """Pin the regressions identified in https://github.com/huggingface/diffusers/issues/13598."""
 
     def test_attention_mask_carried_through_for_pre_tokenized_input(self):
@@ -278,16 +352,16 @@ class LLaDA2RegressionTest(unittest.TestCase):
             output_type="seq",
         )
 
-        self.assertGreater(len(captured), 0)
+        assert len(captured) > 0
         first_mask = captured[0]
         # Padded prompt positions stay zero in the runtime mask (Issue #1).
-        self.assertEqual(first_mask[0, 3].item(), 0)
-        self.assertEqual(first_mask[1, 1].item(), 0)
-        self.assertEqual(first_mask[1, 2].item(), 0)
-        self.assertEqual(first_mask[1, 3].item(), 0)
+        assert first_mask[0, 3].item() == 0
+        assert first_mask[1, 1].item() == 0
+        assert first_mask[1, 2].item() == 0
+        assert first_mask[1, 3].item() == 0
         # Real prompt positions stay one.
-        self.assertEqual(first_mask[0, 0].item(), 1)
-        self.assertEqual(first_mask[1, 0].item(), 1)
+        assert first_mask[0, 0].item() == 1
+        assert first_mask[1, 0].item() == 1
 
     def test_block_length_routes_into_scheduler_transfer_schedule(self):
         """Issue #2: the per-call `block_length` must drive the scheduler's `_transfer_schedule`."""
@@ -313,9 +387,9 @@ class LLaDA2RegressionTest(unittest.TestCase):
             callback_on_step_end_tensor_inputs=["transfer_index"],
         )
         # With block_length=num_inference_steps=8 the schedule commits exactly one token per step.
-        self.assertEqual(commits[0], 1)
-        self.assertEqual(commits[1], 1)
-        self.assertEqual(commits[2], 1)
+        assert commits[0] == 1
+        assert commits[1] == 1
+        assert commits[2] == 1
 
     def test_callback_tensor_inputs_advertised_keys_resolve(self):
         """Issue #3: every advertised callback key must be a bound local at callback time."""
@@ -341,7 +415,7 @@ class LLaDA2RegressionTest(unittest.TestCase):
             callback_on_step_end=cb,
             callback_on_step_end_tensor_inputs=keys,
         )
-        self.assertEqual(set(observed), set(keys))
+        assert set(observed) == set(keys)
 
     def test_eos_at_first_generated_position_triggers_finished(self):
         """Issue #4: EOS exactly at index `prompt_length` must mark the row finished."""
@@ -357,7 +431,7 @@ class LLaDA2RegressionTest(unittest.TestCase):
             mask_token_id=99,
             prompt_length=1,
         )
-        self.assertTrue(bool(finished[0].item()))
+        assert bool(finished[0].item())
 
     def test_finished_rows_are_frozen_for_subsequent_blocks(self):
         """Issue #5: once a row emits EOS, later blocks must not overwrite its committed tokens."""
@@ -393,7 +467,7 @@ class LLaDA2RegressionTest(unittest.TestCase):
             output_type="seq",
         )
         # Row 0's first generated tokens must not be overwritten by later-block sampling (token 7).
-        self.assertNotIn(7, out.sequences[0].tolist()[:2])
+        assert 7 not in out.sequences[0].tolist()[:2]
 
     def test_progress_bar_disable_is_preserved_after_call(self):
         """Issue #6: calling the pipeline must not mutate `_progress_bar_config`."""
@@ -412,8 +486,4 @@ class LLaDA2RegressionTest(unittest.TestCase):
             eos_early_stop=False,
             output_type="seq",
         )
-        self.assertEqual(pipe._progress_bar_config, before)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert pipe._progress_bar_config == before
