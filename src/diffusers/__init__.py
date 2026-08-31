@@ -1,4 +1,4 @@
-__version__ = "0.40.0.dev0"
+__version__ = "0.41.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -189,6 +189,7 @@ else:
             "ClassifierFreeGuidance",
             "ClassifierFreeZeroStarGuidance",
             "FrequencyDecoupledGuidance",
+            "LTX2Guidance",
             "PerturbedAttentionGuidance",
             "SkipLayerGuidance",
             "SmoothedEnergyGuidance",
@@ -727,6 +728,9 @@ else:
             "LongCatImageEditPipeline",
             "LongCatImagePipeline",
             "LTX2ConditionPipeline",
+            "LTX2DFRPipeline",
+            "LTX2DFRPipelineOutput",
+            "LTX2DFRTemporalRefinePipeline",
             "LTX2HDRPipeline",
             "LTX2ImageToVideoPipeline",
             "LTX2InContextPipeline",
@@ -1067,6 +1071,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ClassifierFreeGuidance,
             ClassifierFreeZeroStarGuidance,
             FrequencyDecoupledGuidance,
+            LTX2Guidance,
             PerturbedAttentionGuidance,
             SkipLayerGuidance,
             SmoothedEnergyGuidance,
@@ -1576,6 +1581,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LongCatImageEditPipeline,
             LongCatImagePipeline,
             LTX2ConditionPipeline,
+            LTX2DFRPipeline,
+            LTX2DFRPipelineOutput,
+            LTX2DFRTemporalRefinePipeline,
             LTX2HDRPipeline,
             LTX2ImageToVideoPipeline,
             LTX2InContextPipeline,

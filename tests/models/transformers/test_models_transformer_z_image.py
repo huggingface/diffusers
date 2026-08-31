@@ -182,10 +182,6 @@ class TestZImageTransformerTraining(ZImageTransformerTesterConfig, TrainingTeste
 class TestZImageTransformerLoRA(ZImageTransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for Z-Image Transformer."""
 
-    @pytest.mark.skip("Model output `sample` is a list of tensors, not a single tensor.")
-    def test_save_load_lora_adapter(self, tmp_path, rank=4, lora_alpha=4, use_dora=False, atol=1e-4, rtol=1e-4):
-        pass
-
 
 # TODO: Add pretrained_model_name_or_path once a tiny Z-Image model is available on the Hub
 # class TestZImageTransformerBitsAndBytes(ZImageTransformerTesterConfig, BitsAndBytesTesterMixin):

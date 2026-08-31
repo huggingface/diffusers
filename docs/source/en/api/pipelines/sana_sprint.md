@@ -98,7 +98,7 @@ image = load_image(
 pipe = SanaSprintImg2ImgPipeline.from_pretrained(
     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers", 
     dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(
     prompt="a cute pink bear", 

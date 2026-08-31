@@ -35,7 +35,7 @@ import torch
 import numpy as np
 from diffusers import DDIMPipeline
 
-ddim = DDIMPipeline.from_pretrained("google/ddpm-cifar10-32", device_map="cuda")
+ddim = DDIMPipeline.from_pretrained("google/ddpm-cifar10-32", device_map="cuda")  # or "mps", "xpu", "cpu"
 generator = torch.manual_seed(0)
 image = ddim(num_inference_steps=2, output_type="np", generator=generator).images
 print(np.abs(image).sum())

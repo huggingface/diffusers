@@ -181,7 +181,7 @@ class StableDiffusionXLPAGImg2ImgPipelineFastTests(
         }
         return components
 
-    # based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_img2img_pipeline.StableDiffusionXLImg2ImgPipelineFastTests
+    # based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipelineTesterConfig
     # add `pag_scale` to the inputs
     def get_dummy_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)

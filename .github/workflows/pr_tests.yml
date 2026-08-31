@@ -138,7 +138,6 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
         pytest -n 8 --max-worker-restart=0 --dist=loadfile \
-          -k "not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
 
@@ -146,7 +145,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -k "not Onnx and not Dependency" \
+          -k "not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/hooks tests/others
 
@@ -277,12 +276,17 @@ jobs:
           \
           --make-reports=tests_models_lora_peft_main \
           tests/models/ -k "lora"
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          \
+          --make-reports=tests_pipelines_lora_peft_main \
+          tests/pipelines/ -m "lora"
 
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
         cat reports/tests_peft_main_failures_short.txt
         cat reports/tests_models_lora_peft_main_failures_short.txt
+        cat reports/tests_pipelines_lora_peft_main_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}

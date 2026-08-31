@@ -140,8 +140,6 @@
       title: Stable Diffusion XL
     - local: training/kandinsky
       title: Kandinsky 2.2
-    - local: training/wuerstchen
-      title: Wuerstchen
     - local: training/controlnet
       title: ControlNet
     - local: training/t2i_adapters
@@ -786,8 +784,6 @@
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
       title: IPNDMScheduler
-    - local: api/schedulers/stochastic_karras_ve
-      title: KarrasVeScheduler
     - local: api/schedulers/dpm_discrete_ancestral
       title: KDPM2AncestralDiscreteScheduler
     - local: api/schedulers/dpm_discrete
@@ -804,8 +800,6 @@
       title: RePaintScheduler
     - local: api/schedulers/score_sde_ve
       title: ScoreSdeVeScheduler
-    - local: api/schedulers/score_sde_vp
-      title: ScoreSdeVpScheduler
     - local: api/schedulers/tcd
       title: TCDScheduler
     - local: api/schedulers/unipc

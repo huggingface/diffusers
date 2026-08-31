@@ -22,6 +22,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
+    LoraTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
     TorchAoTesterMixin,
@@ -269,6 +270,10 @@ class TestSD35TransformerTorchAo(SD35TransformerQuantTesterConfig, TorchAoTester
     @property
     def torch_dtype(self):
         return torch.bfloat16
+
+
+class TestSD3TransformerLoRA(SD3TransformerTesterConfig, LoraTesterMixin):
+    pass
 
 
 class TestSD3Transformer2DSingleFile(SD3TransformerTesterConfig, SingleFileTesterMixin):

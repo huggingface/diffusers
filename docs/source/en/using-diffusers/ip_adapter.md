@@ -29,7 +29,7 @@ from diffusers.utils import load_image
 pipeline = AutoPipelineForText2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="sdxl_models",
@@ -73,7 +73,7 @@ from diffusers.utils import load_image
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="sdxl_models",
@@ -117,7 +117,7 @@ from diffusers.utils import load_image
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="sdxl_models",
@@ -230,7 +230,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     image_encoder=image_encoder,
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
@@ -249,7 +249,7 @@ from transformers import AutoPipelineForText2Image
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 pipeline.load_ip_adapter(
   "h94/IP-Adapter-FaceID",
@@ -273,7 +273,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     image_encoder=image_encoder,
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 pipeline.load_ip_adapter(
   "h94/IP-Adapter-FaceID",
@@ -296,7 +296,7 @@ from diffusers import AutoPipelineForText2Image
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image_embeds = pipeline.prepare_ip_adapter_image_embeds(
     ip_adapter_image=image,
@@ -347,7 +347,7 @@ from diffusers.utils import load_image
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 mask1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_mask1.png")
 mask2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_mask2.png")
@@ -435,7 +435,7 @@ from diffusers.utils import load_image
 pipeline = StableDiffusionPipeline.from_pretrained(
   "stable-diffusion-v1-5/stable-diffusion-v1-5",
   dtype=torch.float16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
@@ -480,7 +480,7 @@ from insightface.app import FaceAnalysis
 pipeline = StableDiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     dtype=torch.float16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter(
   "h94/IP-Adapter-FaceID",
@@ -673,7 +673,7 @@ pipeline = StableDiffusionControlNetPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     controlnet=controlnet,
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="models",
@@ -721,7 +721,7 @@ from diffusers.utils import load_image
 pipeline = AutoPipelineForText2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
   subfolder="sdxl_models",

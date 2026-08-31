@@ -16,15 +16,17 @@ Fibo Edit is an 8B parameter image-to-image model that introduces a new paradigm
 Featuring native masking for granular precision, it moves beyond simple prompt-based diffusion to offer explicit, interpretable control optimized for production environments.
 Its lightweight architecture is designed for deep customization, empowering researchers to build specialized "Edit" models for domain-specific tasks while delivering top-tier aesthetic quality
 
+Refer to the Bria Fibo Edit Hugging Face [page](https://huggingface.co/briaai/Fibo-Edit-1.5-base) to learn more. A distilled checkpoint is available at [Fibo-Edit-1.5-turbo](https://huggingface.co/briaai/Fibo-Edit-1.5-turbo).
+
 ## Usage
-_As the model is gated, before using it with diffusers you first need to go to the [Bria Fibo Hugging Face page](https://huggingface.co/briaai/Fibo-Edit), fill in the form and accept the gate. Once you are in, you need to login so that your system knows you’ve accepted the gate._
+
+_As the model is gated, before using it with diffusers you first need to go to the [Bria Fibo Edit Hugging Face page](https://huggingface.co/briaai/Fibo-Edit-1.5-base), fill in the form and accept the gate. Once you are in, you need to login so that your system knows you’ve accepted the gate._
 
 Use the command below to log in:
 
 ```bash
 hf auth login
 ```
-
 
 ## BriaFiboEditPipeline
 
