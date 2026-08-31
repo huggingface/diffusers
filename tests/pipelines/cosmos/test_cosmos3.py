@@ -21,7 +21,13 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer
 
-from diffusers import AutoencoderKLWan, Cosmos3OmniPipeline, Cosmos3OmniTransformer, UniPCMultistepScheduler
+from diffusers import (
+    AutoencoderKLWan,
+    Cosmos3OmniPipeline,
+    Cosmos3OmniTransformer,
+    SeaCacheConfig,
+    UniPCMultistepScheduler,
+)
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import _preprocess_conditioning_image
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -118,6 +124,27 @@ class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipeline(**self.get_dummy_inputs(torch_device)).video
 
         self.assertEqual(video.shape, (1, 16, 16, 3))
+        self.assertIsInstance(pipeline.transformer._cache_config, SeaCacheConfig)
+
+    def test_default_sea_cache_can_be_disabled_and_reenabled(self):
+        components = self.get_dummy_components()
+        pipeline = self.pipeline_class(**components)
+        pipeline._maybe_enable_sea_cache()
+
+        self.assertIsInstance(pipeline.transformer._cache_config, SeaCacheConfig)
+        pipeline.disable_sea_cache()
+        self.assertFalse(pipeline.transformer.is_cache_enabled)
+
+        pipeline._maybe_enable_sea_cache()
+        self.assertFalse(pipeline.transformer.is_cache_enabled)
+
+        pipeline.enable_sea_cache()
+        self.assertIsInstance(pipeline.transformer._cache_config, SeaCacheConfig)
+
+        replacement_pipeline = self.pipeline_class(**components)
+        replacement_pipeline._current_step_index = 3
+        replacement_pipeline._maybe_enable_sea_cache()
+        self.assertEqual(replacement_pipeline.transformer._cache_config.current_step_callback(), 3)
 
     def test_fp32_sampling_state_keeps_transformer_inputs_in_model_dtype(self):
         pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)

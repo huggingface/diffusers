@@ -30,7 +30,20 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
     def num_timesteps(self):
         return getattr(self, "_num_timesteps", None)
 
+    def _prepare_sea_cache_config(self, config=None):
+        return Cosmos3OmniPipeline._prepare_sea_cache_config(self, config)
+
+    def enable_sea_cache(self, config=None):
+        return Cosmos3OmniPipeline.enable_sea_cache(self, config)
+
+    def disable_sea_cache(self):
+        return Cosmos3OmniPipeline.disable_sea_cache(self)
+
+    def _maybe_enable_sea_cache(self):
+        return Cosmos3OmniPipeline._maybe_enable_sea_cache(self)
+
     def __call__(self, *args, **kwargs):
+        self._maybe_enable_sea_cache()
         transformer = getattr(self, "transformer", None)
         if hasattr(transformer, "_reset_stateful_cache"):
             transformer._reset_stateful_cache()
