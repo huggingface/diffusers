@@ -146,6 +146,10 @@ transformer = Flux2Transformer2DModel.from_pretrained(
 
 Pass `exclude_targets` (substring match; it replaces the default name patterns) to exclude further modules, or an explicit `targets` list for full control. Quantization happens per weight as the checkpoint streams in, so peak memory stays near the quantized model size. The result is identical to loading a checkpoint produced offline by a data-free SVDQuant exporter.
 
+Two quality knobs are worth tuning per model. `rank` sets the size of the bf16 low-rank branch that absorbs the largest singular components before 4-bit coding — larger ranks trade a modest size increase for fidelity, and the gain can be substantial (on a 19B video DiT, int4 at `rank=128` recovered ~2.7 dB over `rank=32` for ~16% more transformer memory). `smooth_exponent` (default `0.5`) sets the weight-span smoothing strength; it interacts with `rank` — larger low-rank branches tend to prefer weaker smoothing (e.g. `0.25` at `rank=128`) — so when raising `rank`, sweep the exponent rather than assuming the default.
+
+Quantize-on-load runs one SVD per target at load time (minutes for large models on a fast GPU). For repeated loads of the same configuration, prefer a pre-quantized checkpoint produced by an offline exporter — loading packed weights takes seconds, and the packed format is identical.
+
 ## Fused kernels
 
 The original [Nunchaku](https://github.com/nunchaku-ai/nunchaku) engine gets much of its speed from model-specific fused execution paths. It combines the Q, K, and V projections with RMSNorm and RoPE, and uses a fused GELU kernel for the MLP. Nunchaku Lite instead uses the standard Diffusers model with generic quantized linear layers, so it does not include these fusions.
