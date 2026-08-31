@@ -1,4 +1,5 @@
 import inspect
+from contextlib import nullcontext
 
 import torch
 
@@ -12,6 +13,11 @@ from ..modular_pipeline import (
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
+
+
+def _cache_context(transformer: torch.nn.Module, name: str):
+    cache_context = getattr(transformer, "cache_context", None)
+    return cache_context(name) if callable(cache_context) else nullcontext()
 
 
 class Cosmos3VisionLoopPrepareStep(ModularPipelineBlocks):
@@ -215,7 +221,10 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
             transformer_kwargs = {
                 name: value for name, value in transformer_kwargs.items() if name in transformer_args
             }
-            preds_vision, preds_sound, preds_action = components.transformer(**transformer_kwargs, return_dict=False)
+            with _cache_context(components.transformer, pass_name):
+                preds_vision, preds_sound, preds_action = components.transformer(
+                    **transformer_kwargs, return_dict=False
+                )
             velocities[pass_name] = components._mask_velocity_predictions(
                 preds_vision,
                 preds_sound,
@@ -480,13 +489,23 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+        components._current_step_index = None
+        components._current_sigma = None
+        components._num_timesteps = len(block_state.timesteps)
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
+                components._current_step_index = i
+                scheduler_sigmas = getattr(components.scheduler, "sigmas", None)
+                components._current_sigma = (
+                    scheduler_sigmas[i] if scheduler_sigmas is not None and i < len(scheduler_sigmas) else None
+                )
                 components, block_state = self.loop_step(components, block_state, i=i, t=t)
                 if i == len(block_state.timesteps) - 1 or (
                     (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
                 ):
                     progress_bar.update()
+        components._current_step_index = None
+        components._current_sigma = None
         self.set_block_state(state, block_state)
         return components, state
 
@@ -718,21 +737,22 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         return [OutputParam("velocity", type_hint=torch.Tensor, description="Predicted (masked) transfer velocity.")]
 
     @staticmethod
-    def _forward(components, static, vision_tokens, vision_timesteps):
-        preds_vision, _, _ = components.transformer(
-            input_ids=static["input_ids"],
-            text_indexes=static["text_indexes"],
-            position_ids=static["position_ids"],
-            und_len=static["und_len"],
-            sequence_length=static["sequence_length"],
-            vision_tokens=vision_tokens,
-            vision_token_shapes=static["vision_token_shapes"],
-            vision_sequence_indexes=static["vision_sequence_indexes"],
-            vision_mse_loss_indexes=static["vision_mse_loss_indexes"],
-            vision_timesteps=vision_timesteps,
-            vision_noisy_frame_indexes=static["vision_noisy_frame_indexes"],
-            return_dict=False,
-        )
+    def _forward(components, static, vision_tokens, vision_timesteps, context_name):
+        with _cache_context(components.transformer, context_name):
+            preds_vision, _, _ = components.transformer(
+                input_ids=static["input_ids"],
+                text_indexes=static["text_indexes"],
+                position_ids=static["position_ids"],
+                und_len=static["und_len"],
+                sequence_length=static["sequence_length"],
+                vision_tokens=vision_tokens,
+                vision_token_shapes=static["vision_token_shapes"],
+                vision_sequence_indexes=static["vision_sequence_indexes"],
+                vision_mse_loss_indexes=static["vision_mse_loss_indexes"],
+                vision_timesteps=vision_timesteps,
+                vision_noisy_frame_indexes=static["vision_noisy_frame_indexes"],
+                return_dict=False,
+            )
         return preds_vision[-1]
 
     @torch.no_grad()
@@ -757,7 +777,11 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         uncond_full_static = denoiser_input_fields["uncond_full_static"]
 
         cond_full = self._forward(
-            components, cond_full_static, block_state.vision_tokens_full, block_state.vision_timesteps
+            components,
+            cond_full_static,
+            block_state.vision_tokens_full,
+            block_state.vision_timesteps,
+            "cond",
         )
 
         cond_no_control = None
@@ -767,6 +791,7 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 cond_no_control_static,
                 block_state.vision_tokens_target,
                 block_state.vision_timesteps,
+                "cond_no_control",
             )
 
         uncond_full = None
@@ -776,6 +801,7 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 uncond_full_static,
                 block_state.vision_tokens_full,
                 block_state.vision_timesteps,
+                "uncond",
             )
 
         if needs_control_cfg and needs_text_cfg:

@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import contextmanager
+from unittest import mock
+
 import numpy as np
 import pytest
 import torch
@@ -166,6 +169,26 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
     @pytest.mark.skip(reason="Cosmos3 checkpoints support bfloat16, not float16, inference.")
     def test_float16_inference(self):
         pass
+
+    def test_transformer_cache_contexts_receive_exact_scheduler_metadata(self):
+        pipe = self.get_pipeline().to(torch_device)
+        observed = []
+
+        @contextmanager
+        def record_context(name):
+            observed.append((name, pipe.current_step_index, pipe.current_sigma))
+            yield
+
+        with mock.patch.object(pipe.transformer, "cache_context", side_effect=record_context):
+            pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert [name for name, _, _ in observed] == ["cond", "uncond", "cond", "uncond"]
+        for call_index, (_, step_index, sigma) in enumerate(observed):
+            expected_step = call_index // 2
+            assert step_index == expected_step
+            torch.testing.assert_close(sigma, pipe.scheduler.sigmas[expected_step])
+        assert pipe.current_step_index is None
+        assert pipe.current_sigma is None
 
     def test_vae_encoder_is_standalone_and_validates_conditioning_inputs(self):
         pipe = self.get_pipeline()

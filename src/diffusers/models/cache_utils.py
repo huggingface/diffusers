@@ -69,6 +69,7 @@ class CacheMixin:
         from ..hooks import (
             FasterCacheConfig,
             FirstBlockCacheConfig,
+            HookRegistry,
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
             TaylorSeerCacheConfig,
@@ -102,6 +103,7 @@ class CacheMixin:
             raise ValueError(f"Cache config {type(config)} is not supported.")
 
         self._cache_config = config
+        HookRegistry.check_if_exists_or_initialize(self)._child_registries_cache = None
 
     def disable_cache(self) -> None:
         from ..hooks import (
@@ -145,6 +147,7 @@ class CacheMixin:
             raise ValueError(f"Cache config {type(self._cache_config)} is not supported.")
 
         self._cache_config = None
+        registry._child_registries_cache = None
 
     def _reset_stateful_cache(self, recurse: bool = True) -> None:
         from ..hooks import HookRegistry
@@ -159,6 +162,7 @@ class CacheMixin:
         registry = HookRegistry.check_if_exists_or_initialize(self)
         registry._set_context(name)
 
-        yield
-
-        registry._set_context(None)
+        try:
+            yield
+        finally:
+            registry._set_context(None)
