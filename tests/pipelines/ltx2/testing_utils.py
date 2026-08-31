@@ -19,7 +19,6 @@ per-pipeline configs subclass `LTX2BaseTesterConfig`. The two scoped tester mixi
 pipeline-family-wide skips so each test file does not restate them.
 """
 
-import pytest
 import torch
 from transformers import AutoTokenizer, Gemma3ForConditionalGeneration
 
@@ -65,6 +64,13 @@ class LTX2BaseTesterConfig(BasePipelineTesterConfig):
     # pipeline — only the pipelines that can predict a duration take a `duration_head`, and only some take an
     # `audio_scheduler` — so each config lists its own set and `get_dummy_components` fills them with `None`.
     unset_components = ("processor", "prompt_enhancer", "duration_head")
+
+    # `audio_vae` fails at block level for the same reason the other VAEs do: its decode-time convolutions run
+    # without the group leader's `forward` having onloaded the group.
+    group_offloading_block_level_exclude_modules = [
+        *BasePipelineTesterConfig.group_offloading_block_level_exclude_modules,
+        "audio_vae",
+    ]
 
     def get_dummy_components(self):
         tokenizer = AutoTokenizer.from_pretrained(self.base_text_encoder_ckpt_id)
@@ -202,13 +208,6 @@ class LTX2BaseTesterConfig(BasePipelineTesterConfig):
 
 class LTX2MemoryTesterMixin(MemoryTesterMixin):
     """`MemoryTesterMixin` for the LTX2 pipelines in this directory."""
-
-    # The shared helper only offloads a fixed set of component names and leaves LTX2's extra module components
-    # (`connectors`, `audio_vae`, `vocoder`) on CPU, so the forward pass mixes devices. Pipeline-level
-    # offloading, which walks every component, is exercised by `test_pipeline_level_group_offloading_inference`.
-    @pytest.mark.skip("Using test_pipeline_level_group_offloading_inference instead")
-    def test_group_offloading_inference(self):
-        pass
 
 
 class LTX2LoraTesterMixin(LoraTesterMixin):
