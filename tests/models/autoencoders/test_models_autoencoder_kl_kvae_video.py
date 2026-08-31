@@ -27,7 +27,7 @@ from ..testing_utils import (
     TrainingTesterMixin,
     run_nondeterministic,
 )
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -116,5 +116,5 @@ class TestAutoencoderKLKVAEVideoMemory(AutoencoderKLKVAEVideoTesterConfig, Memor
         run_nondeterministic(super().test_layerwise_casting_training)
 
 
-class TestAutoencoderKLKVAEVideoSlicingTiling(AutoencoderKLKVAEVideoTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLKVAEVideoSlicingTiling(AutoencoderKLKVAEVideoTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLKVAEVideo."""

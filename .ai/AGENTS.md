@@ -60,6 +60,7 @@ codex plugin marketplace add huggingface/diffusers    # then install from the Pl
 - **Pipelines** — see [pipelines.md](references/pipelines.md) for pipeline conventions, patterns, and gotchas.
 - **Modular pipelines** — see [modular.md](references/modular.md) for modular pipeline conventions, patterns, and gotchas.
 - **Tests** — see [testing.md](references/testing.md) for test conventions: required test layers, tester mixins, and dummy-component rules.
+- **Reporting** — see [reporting.md](references/reporting.md) for how to write bug reports (what a reproduction is) and performance claims (end-to-end numbers first).
 
 ## Skills
 

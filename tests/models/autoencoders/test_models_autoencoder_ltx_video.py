@@ -27,7 +27,7 @@ from ..testing_utils import (
     SingleFileTesterMixin,
     TrainingTesterMixin,
 )
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -110,7 +110,7 @@ class TestAutoencoderKLLTXVideo090Memory(AutoencoderKLLTXVideo090TesterConfig, M
     """Memory optimization tests for AutoencoderKLLTXVideo (0.9.0 config)."""
 
 
-class TestAutoencoderKLLTXVideo090SlicingTiling(AutoencoderKLLTXVideo090TesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLLTXVideo090SlicingTiling(AutoencoderKLLTXVideo090TesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLLTXVideo (0.9.0 config)."""
 
     @pytest.mark.skip("AutoencoderKLLTXVideo does not support `norm_num_groups` because it does not use GroupNorm.")

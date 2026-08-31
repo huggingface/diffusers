@@ -27,7 +27,7 @@ from ..testing_utils import (
     SingleFileTesterMixin,
     TrainingTesterMixin,
 )
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -90,7 +90,7 @@ class TestAutoencoderKLWanMemory(AutoencoderKLWanTesterConfig, MemoryTesterMixin
         pass
 
 
-class TestAutoencoderKLWanSlicingTiling(AutoencoderKLWanTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLWanSlicingTiling(AutoencoderKLWanTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLWan."""
 
 

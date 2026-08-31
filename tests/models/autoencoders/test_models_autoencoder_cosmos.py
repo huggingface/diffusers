@@ -20,7 +20,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -92,5 +92,5 @@ class TestAutoencoderKLCosmosMemory(AutoencoderKLCosmosTesterConfig, MemoryTeste
     """Memory optimization tests for AutoencoderKLCosmos."""
 
 
-class TestAutoencoderKLCosmosSlicingTiling(AutoencoderKLCosmosTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLCosmosSlicingTiling(AutoencoderKLCosmosTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLCosmos."""
