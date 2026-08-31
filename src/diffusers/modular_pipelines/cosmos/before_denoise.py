@@ -69,6 +69,10 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
         return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
 
     @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [ConfigSpec(name="default_use_fp32_sampling_state", default=False)]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(
@@ -98,6 +102,15 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
                 description="Pre-generated noisy vision latents.",
             ),
             InputParam.template("generator"),
+            InputParam(
+                name="use_fp32_sampling_state",
+                type_hint=bool | None,
+                default=None,
+                description=(
+                    "Whether to keep vision latents, masks, and scheduler state in float32. If unset, uses the "
+                    "pipeline's `default_use_fp32_sampling_state` config."
+                ),
+            ),
         ]
 
     @property
@@ -121,13 +134,20 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Clean encoded vision latents used to re-anchor image conditioning each step.",
             ),
+            OutputParam(
+                "use_fp32_sampling_state",
+                type_hint=bool,
+                description="Whether vision sampling state is kept in float32.",
+            ),
         ]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = components.transformer.dtype
+        if block_state.use_fp32_sampling_state is None:
+            block_state.use_fp32_sampling_state = components.config.default_use_fp32_sampling_state
+        sampling_dtype = torch.float32 if block_state.use_fp32_sampling_state else components.transformer.dtype
 
         x0_tokens_vision = block_state.x0_tokens_vision
         if x0_tokens_vision is None:
@@ -151,21 +171,26 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
 
         block_state.fps_vision = float(block_state.fps)
         condition_frames = block_state.vision_condition_frames or []
-        block_state.vision_condition_mask = torch.zeros((x0_tokens_vision.shape[2], 1, 1), device=device, dtype=dtype)
+        block_state.vision_condition_mask = torch.zeros(
+            (x0_tokens_vision.shape[2], 1, 1), device=device, dtype=sampling_dtype
+        )
         for frame_idx in condition_frames:
             if 0 <= frame_idx < block_state.vision_condition_mask.shape[0]:
                 block_state.vision_condition_mask[frame_idx, 0, 0] = 1.0
 
         if block_state.latents is None:
             pure_noise = randn_tensor(
-                tuple(x0_tokens_vision.shape), generator=block_state.generator, device=device, dtype=dtype
+                tuple(x0_tokens_vision.shape),
+                generator=block_state.generator,
+                device=device,
+                dtype=sampling_dtype,
             )
             block_state.latents = (
-                block_state.vision_condition_mask * x0_tokens_vision.to(device=device, dtype=dtype)
+                block_state.vision_condition_mask * x0_tokens_vision.to(device=device, dtype=sampling_dtype)
                 + (1.0 - block_state.vision_condition_mask) * pure_noise
             )
         else:
-            block_state.latents = block_state.latents.to(device=device, dtype=dtype)
+            block_state.latents = block_state.latents.to(device=device, dtype=sampling_dtype)
 
         vision_condition_indexes = torch.nonzero(
             block_state.vision_condition_mask[:, 0, 0] > 0, as_tuple=False
