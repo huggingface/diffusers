@@ -146,6 +146,40 @@ frames = pipe(
 export_to_video(frames, "output.mp4", fps=30)
 ```
 
+### Video Inpaint Pipeline
+
+**Akilesh KR**
+
+`VideoInpaintPipeline` extends the classic Stable Diffusion inpainting pipeline to full videos. It adds temporal reuse of diffusion noise and optional optical-flow–guided warping (RAFT) so that successive frames stay coherent while still running on lightweight image weights. This is aimed at creators who cannot fit fully video-native diffusion models on their GPUs but still need flicker-free edits.
+
+#### Usage example
+
+```python
+from diffusers import VideoInpaintPipeline
+
+pipe = VideoInpaintPipeline.from_pretrained(
+    "runwayml/stable-diffusion-inpainting",
+    torch_dtype="auto",
+)
+pipe.enable_model_cpu_offload()
+
+result = pipe(
+    prompt="replace the background with a snowy mountain",
+    video_path="input.mp4",
+    mask_path="mask.mp4",
+    num_inference_steps=12,
+    use_optical_flow=True,          # requires torchvision>=0.15
+    flow_strength=0.85,
+    noise_blend=0.7,
+    output_video_path="output.mp4",
+)
+
+print(f"Generated {len(result.frames)} frames")
+print("Saved video:", result.video_path)
+```
+
+> **Tip:** Install `torchvision>=0.15` to enable RAFT optical flow (`use_optical_flow=True`). Without it the pipeline still works but falls back to latent reuse only.
+
 ### Adaptive Mask Inpainting
 
 **Hyeonwoo Kim\*, Sookwan Han\*, Patrick Kwon, Hanbyul Joo**
