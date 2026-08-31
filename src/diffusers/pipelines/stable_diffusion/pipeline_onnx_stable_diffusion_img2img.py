@@ -24,7 +24,7 @@ from ...configuration_utils import FrozenDict
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import PIL_INTERPOLATION, deprecate, logging
 from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 
 
@@ -55,7 +55,9 @@ def preprocess(image):
     return image
 
 
-class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
+class OnnxStableDiffusionImg2ImgPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
+    _last_supported_version = "0.42.0"
+
     r"""
     Pipeline for text-guided image to image generation using Stable Diffusion.
 

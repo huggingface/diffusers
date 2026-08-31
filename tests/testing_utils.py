@@ -40,7 +40,6 @@ from diffusers.utils.import_utils import (
     is_kernels_available,
     is_note_seq_available,
     is_nvidia_modelopt_version,
-    is_onnx_available,
     is_opencv_available,
     is_peft_available,
     is_sdnq_available,
@@ -700,13 +699,6 @@ def require_compel(test_case):
     the library is not installed.
     """
     return pytest.mark.skipif(not is_compel_available(), reason="test requires compel")(test_case)
-
-
-def require_onnxruntime(test_case):
-    """
-    Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
-    """
-    return pytest.mark.skipif(not is_onnx_available(), reason="test requires onnxruntime")(test_case)
 
 
 def require_note_seq(test_case):
