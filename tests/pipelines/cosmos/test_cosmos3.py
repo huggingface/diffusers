@@ -166,7 +166,6 @@ class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs.update(
             output_type="latent",
             enable_safety_check=False,
-            use_fp32_sampling_state=True,
             callback_on_step_end=callback_on_step_end,
         )
         with mock.patch.object(pipeline.transformer, "forward", side_effect=transformer_forward):

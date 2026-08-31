@@ -86,7 +86,7 @@ class Cosmos3DistilledVisionCoreDenoiseStep(SequentialPipelineBlocks):
           transformer (`Cosmos3OmniTransformer`) scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          default_use_fp32_sampling_state (default: False) is_distilled (default: True) distilled_sigmas (default:
+          default_use_fp32_sampling_state (default: True) is_distilled (default: True) distilled_sigmas (default:
           None)
 
       Inputs:
@@ -170,7 +170,7 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
 
       Configs:
           default_use_system_prompt (default: True) enable_safety_checker (default: True)
-          default_use_fp32_sampling_state (default: False) is_distilled (default: True) distilled_sigmas (default:
+          default_use_fp32_sampling_state (default: True) is_distilled (default: True) distilled_sigmas (default:
           None)
 
       Inputs:

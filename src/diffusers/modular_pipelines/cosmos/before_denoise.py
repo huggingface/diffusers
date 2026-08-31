@@ -70,7 +70,7 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def expected_configs(self) -> list[ConfigSpec]:
-        return [ConfigSpec(name="default_use_fp32_sampling_state", default=False)]
+        return [ConfigSpec(name="default_use_fp32_sampling_state", default=True)]
 
     @property
     def inputs(self) -> list[InputParam]:
