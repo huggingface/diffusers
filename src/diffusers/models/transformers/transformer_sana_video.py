@@ -583,6 +583,36 @@ class SanaVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         controlnet_block_samples: tuple[torch.Tensor] | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor, ...] | Transformer2DModelOutput:
+        """
+        The [`SanaVideoTransformer3DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, in_channels, num_frames, height, width)`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            guidance (`torch.Tensor`, *optional*):
+                Guidance scale embedding.
+            encoder_attention_mask (`torch.Tensor`, *optional*):
+                Cross-attention mask applied to `encoder_hidden_states`.
+            attention_mask (`torch.Tensor`, *optional*):
+                Self-attention mask applied to `hidden_states`.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            controlnet_block_samples (`tuple` of `torch.Tensor`, *optional*):
+                A list of tensors that if specified are added to the residuals of transformer blocks.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.

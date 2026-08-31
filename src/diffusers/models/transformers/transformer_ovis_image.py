@@ -21,8 +21,8 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import logging
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils import apply_lora_scale, logging
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
 from ..attention import AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -364,9 +364,7 @@ class OvisImagePosEmbed(nn.Module):
         cos_out = []
         sin_out = []
         pos = ids.float()
-        is_mps = ids.device.type == "mps"
-        is_npu = ids.device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+        freqs_dtype = maybe_adjust_dtype_for_device(torch.float64, ids.device)
         for i in range(n_axes):
             cos, sin = get_1d_rotary_pos_embed(
                 self.axes_dim[i],
@@ -475,6 +473,7 @@ class OvisImageTransformer2DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("joint_attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -482,6 +481,7 @@ class OvisImageTransformer2DModel(
         timestep: torch.LongTensor = None,
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor | Transformer2DModelOutput:
         """
@@ -498,6 +498,10 @@ class OvisImageTransformer2DModel(
                 The position ids for image tokens.
             txt_ids (`torch.Tensor`):
                 The position ids for text tokens.
+            joint_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
@@ -540,6 +544,7 @@ class OvisImageTransformer2DModel(
                     encoder_hidden_states,
                     temb,
                     image_rotary_emb,
+                    joint_attention_kwargs,
                 )
 
             else:
@@ -548,6 +553,7 @@ class OvisImageTransformer2DModel(
                     encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
+                    joint_attention_kwargs=joint_attention_kwargs,
                 )
 
         for index_block, block in enumerate(self.single_transformer_blocks):
@@ -558,6 +564,7 @@ class OvisImageTransformer2DModel(
                     encoder_hidden_states,
                     temb,
                     image_rotary_emb,
+                    joint_attention_kwargs,
                 )
 
             else:
@@ -566,6 +573,7 @@ class OvisImageTransformer2DModel(
                     encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
+                    joint_attention_kwargs=joint_attention_kwargs,
                 )
 
         hidden_states = self.norm_out(hidden_states, temb)

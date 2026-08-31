@@ -37,3 +37,10 @@ The `AutoPipeline` is designed to make it easy to load a checkpoint for a task w
 	- all
 	- from_pretrained
 	- from_pipe
+
+## AutoPipelineForText2Audio
+
+[[autodoc]] AutoPipelineForText2Audio
+	- all
+	- from_pretrained
+	- from_pipe

@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -929,6 +929,8 @@ class StableDiffusionInpaintPipeline(
                 color channel (L) instead of 3, so the expected shape for pytorch tensor would be `(B, 1, H, W)`, `(B,
                 H, W)`, `(1, H, W)`, `(H, W)`. And for numpy array would be for `(B, H, W, 1)`, `(B, H, W)`, `(H, W,
                 1)`, or `(H, W)`.
+            masked_image_latents (`torch.Tensor`, *optional*):
+                Pre-encoded latent of the masked image (for inpainting).
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):

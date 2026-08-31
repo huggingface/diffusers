@@ -49,7 +49,7 @@ repo_id_embeds = "sd-concepts-library/cat-toy"
 이제 파이프라인을 로드하고 사전학습된 컨셉을 파이프라인에 전달할 수 있습니다:
 
 ```py
-pipeline = StableDiffusionPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.float16).to("cuda")
+pipeline = StableDiffusionPipeline.from_pretrained(pretrained_model_name_or_path, dtype=torch.float16).to("cuda")
 
 pipeline.load_textual_inversion(repo_id_embeds)
 ```

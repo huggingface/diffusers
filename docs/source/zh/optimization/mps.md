@@ -68,7 +68,7 @@ M1/M2 性能对内存压力非常敏感。当发生这种情况时，系统会�
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True).to("mps")
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True).to("mps")
 pipeline.enable_attention_slicing()
 ```
 

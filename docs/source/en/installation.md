@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Installation
 
-Diffusers is tested on Python 3.8+ and PyTorch 1.4+. Install [PyTorch](https://pytorch.org/get-started/locally/) according to your system and setup.
+Diffusers is tested on Python 3.8+ and PyTorch 2.6+. Install [PyTorch](https://pytorch.org/get-started/locally/) according to your system and setup.
 
 Create a [virtual environment](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) for easier management of separate projects and to avoid compatibility issues between dependencies. Use [uv](https://docs.astral.sh/uv/), a Rust-based Python package and project manager, to create a virtual environment and install Diffusers.
 
@@ -30,6 +30,24 @@ PyTorch only supports Python 3.8 - 3.11 on Windows.
 
 ```bash
 uv pip install diffusers["torch"] transformers
+```
+
+</hfoption>
+<hfoption id="NVIDIA Spark (ARM64)">
+
+To install Diffusers with PyTorch on NVIDIA Spark devices (such as an RTX Spark laptop) running ARM64, install PyTorch from the NVIDIA PyPI index. These devices require NVIDIA's ARM64 builds of PyTorch, which are not available on the default PyPI index or the standard PyTorch wheel index.
+
+Run the command below to check if your system detects an NVIDIA GPU.
+
+```bash
+nvidia-smi
+```
+
+Install PyTorch from the NVIDIA PyPI index, then install Diffusers.
+
+```bash
+uv pip install torch --index-url https://pypi.nvidia.com
+uv pip install diffusers
 ```
 
 </hfoption>
@@ -58,6 +76,23 @@ uv pip install git+https://github.com/huggingface/diffusers
 
 </hfoption>
 </hfoptions>
+
+## Devices
+
+Diffusers runs on any accelerator supported by PyTorch. The examples throughout the docs use `"cuda"` because it is the most common setup, but nothing is CUDA-specific. Swap in the device string for your hardware, such as `"xpu"` for Intel GPUs, `"mps"` for Apple silicon, or `"cpu"`.
+
+```py
+device = "cuda"  # or "mps", "xpu", "cpu"
+pipeline.to(device)
+```
+
+To pick the device at runtime instead of hardcoding it, use [torch.accelerator](https://docs.pytorch.org/docs/stable/accelerator.html).
+
+```py
+import torch
+
+device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+```
 
 ## Editable install
 

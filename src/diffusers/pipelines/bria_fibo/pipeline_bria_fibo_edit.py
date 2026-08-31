@@ -50,38 +50,47 @@ PipelineMaskInput = Union[
     torch.FloatTensor, Image.Image, List[Image.Image], List[torch.FloatTensor], np.ndarray, List[np.ndarray]
 ]
 
-# TODO: Update example docstring
 EXAMPLE_DOC_STRING = """
     Example:
     ```python
     import torch
-    from diffusers import BriaFiboEditPipeline
-    from diffusers.modular_pipelines import ModularPipeline
+    from PIL import Image
 
-    torch.set_grad_enabled(False)
-    vlm_pipe = ModularPipelineBlocks.from_pretrained("briaai/FIBO-VLM-prompt-to-JSON", trust_remote_code=True)
+    from diffusers import BriaFiboEditPipeline
+    from diffusers.modular_pipelines import ModularPipelineBlocks
+
+    # This prompt-to-JSON block calls Gemini and needs GEMINI_API_KEY in the environment.
+    vlm_pipe = ModularPipelineBlocks.from_pretrained("briaai/FIBO-edit-gemini-prompt-to-JSON", trust_remote_code=True)
     vlm_pipe = vlm_pipe.init_pipeline()
 
     pipe = BriaFiboEditPipeline.from_pretrained(
-        "briaai/fibo-edit",
+        "briaai/Fibo-Edit-1.5-base",
         torch_dtype=torch.bfloat16,
     )
     pipe.to("cuda")
 
-    output = vlm_pipe(
-        prompt="A hyper-detailed, ultra-fluffy owl sitting in the trees at night, looking directly at the camera with wide, adorable, expressive eyes. Its feathers are soft and voluminous, catching the cool moonlight with subtle silver highlights. The owl's gaze is curious and full of charm, giving it a whimsical, storybook-like personality."
+    image = Image.open("owl.png")
+    json_prompt = vlm_pipe(image=image, prompt="Make the owl into a cat").values["json_prompt"]
+
+    result = pipe(prompt=json_prompt, image=image, num_inference_steps=30, guidance_scale=5)
+
+    # Multiple reference images: pass a list. Each reference conditions the edit at its
+    # own aspect ratio; the output resolution follows the first reference.
+    owl, forest = Image.open("owl.png"), Image.open("forest.png")
+    json_prompt = vlm_pipe(
+        image=[owl, forest], prompt="Place the owl from the first image in the forest from the second image"
+    ).values["json_prompt"]
+    result = pipe(
+        prompt=json_prompt,
+        image=[owl, forest],
+        num_inference_steps=30,
+        guidance_scale=5,
     )
-    json_prompt_generate = json.loads(output.values["json_prompt"])
 
-    image = Image.open("image_generate.png")
-
-    edit_prompt = "Make the owl to be a cat"
-
-    json_prompt_generate["edit_instruction"] = edit_prompt
-
-    results_generate = pipe(
-        prompt=json_prompt_generate, num_inference_steps=50, guidance_scale=3.5, image=image, output_type="np"
-    )
+    # The distilled Turbo checkpoint edits in 4 steps without classifier-free guidance.
+    pipe = BriaFiboEditPipeline.from_pretrained("briaai/Fibo-Edit-1.5-turbo", torch_dtype=torch.bfloat16)
+    pipe.to("cuda")
+    result = pipe(prompt=json_prompt, image=[owl, forest], num_inference_steps=4, guidance_scale=1)
     ```
 """
 
@@ -173,18 +182,15 @@ def get_mask_size(mask: PipelineMaskInput):
         return None
 
 
-def get_image_size(image: PipelineImageInput):
+def _vae_safe_dims(width, height, base_resolution=1024, multiple=16):
+    """Return VAE-safe ``(width, height)`` for a reference image.
+
+    Dimensions are rounded to a multiple of 16 (required by the VAE) and large references are capped at
+    ``base_resolution`` square pixels, so each reference keeps its own aspect ratio without producing an unbounded
+    context sequence.
     """
-    Get the size of the image.
-    """
-    if isinstance(image, torch.Tensor):
-        return image.shape[-2:]
-    elif isinstance(image, Image.Image):
-        return image.size[::-1]  # (height, width)
-    elif isinstance(image, list):
-        return [get_image_size(i) for i in image]
-    else:
-        return None
+    scale = min(1.0, ((base_resolution * base_resolution) / float(width * height)) ** 0.5)
+    return tuple(max(multiple, int(round(side * scale / multiple)) * multiple) for side in (width, height))
 
 
 def paste_mask_on_image(mask: PipelineMaskInput, image: PipelineImageInput):
@@ -363,8 +369,6 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         num_images_per_prompt: int = 1,
         guidance_scale: float = 5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         max_sequence_length: int = 3000,
         lora_scale: bool | None = None,
     ):
@@ -379,16 +383,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             guidance_scale (`float`):
                 Guidance scale for classifier free guidance.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
         """
         device = device or self._execution_device
 
@@ -402,22 +398,19 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 scale_lora_layers(self.text_encoder, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        if prompt is not None:
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
+        batch_size = len(prompt)
 
         prompt_attention_mask = None
         negative_prompt_attention_mask = None
-        if prompt_embeds is None:
-            prompt_embeds, prompt_layers, prompt_attention_mask = self.get_prompt_embeds(
-                prompt=prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-            )
-            prompt_embeds = prompt_embeds.to(dtype=self.transformer.dtype)
-            prompt_layers = [tensor.to(dtype=self.transformer.dtype) for tensor in prompt_layers]
+        negative_prompt_embeds = None
+        prompt_embeds, prompt_layers, prompt_attention_mask = self.get_prompt_embeds(
+            prompt=prompt,
+            num_images_per_prompt=num_images_per_prompt,
+            max_sequence_length=max_sequence_length,
+            device=device,
+        )
+        prompt_embeds = prompt_embeds.to(dtype=self.transformer.dtype)
+        prompt_layers = [tensor.to(dtype=self.transformer.dtype) for tensor in prompt_layers]
 
         if guidance_scale > 1:
             if isinstance(negative_prompt, list) and negative_prompt[0] is None:
@@ -603,22 +596,12 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         return latents, latent_image_ids
 
-    @staticmethod
-    def _prepare_attention_mask(attention_mask):
-        attention_matrix = torch.einsum("bi,bj->bij", attention_mask, attention_mask)
-
-        # convert to 0 - keep, -inf ignore
-        attention_matrix = torch.where(
-            attention_matrix == 1, 0.0, -torch.inf
-        )  # Apply -inf to ignored tokens for nulling softmax score
-        return attention_matrix
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Optional[PipelineImageInput] = None,
+        image: Optional[Union[Image.Image, List[Image.Image]]] = None,
         mask: Optional[PipelineMaskInput] = None,
         height: int | None = None,
         width: int | None = None,
@@ -630,8 +613,6 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         num_images_per_prompt: Optional[int] = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: str = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -645,17 +626,20 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
-            image (`PIL.Image.Image` or `torch.FloatTensor`, *optional*):
-                The image to guide the image generation. If not defined, the pipeline will generate an image from
-                scratch.
+            prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the image generation.
+            image (`PIL.Image.Image` or `List[PIL.Image.Image]`, *optional*):
+                One or more reference images to guide the image generation. A list is interpreted as multiple
+                references (not a batch): each reference is VAE-encoded at its own aspect ratio and placed on its own
+                RoPE time plane 1, 2, ... . If not defined, the pipeline generates an image from scratch.
+            mask (`PipelineMaskInput`, *optional*):
+                Optional mask defining the region of `image` to be edited. Pixels covered by the mask are regenerated
+                while the rest of the image is preserved.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             seed (`int`, *optional*):
@@ -671,9 +655,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -683,13 +666,6 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -711,6 +687,9 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 3000): Maximum sequence length to use with the `prompt`.
             do_patching (`bool`, *optional*, defaults to `False`): Whether to use patching.
+            _auto_resize (`bool`, *optional*, defaults to `True`):
+                Whether to snap the default output resolution (taken from the first reference image) to the preferred
+                resolutions.
         Examples:
           Returns:
             [`~pipelines.flux.BriaFiboPipelineOutput`] or `tuple`: [`~pipelines.flux.BriaFiboPipelineOutput`] if
@@ -718,9 +697,18 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             generated images.
         """
 
+        # A list is interpreted as multiple references, not as a batch; Fibo Edit has no batched-edit API.
+        references = [] if image is None else image if isinstance(image, list) else [image]
+        if image is not None and (
+            not references or not all(isinstance(reference, Image.Image) for reference in references)
+        ):
+            raise ValueError("`image` must be a `PIL.Image.Image` or a non-empty list of them.")
+
         if height is None or width is None:
-            if image is not None:
-                image_height, image_width = self.image_processor.get_default_height_width(image)
+            if references:
+                # Output resolution follows the first reference image; the other
+                # references only condition generation at their own size.
+                image_width, image_height = _vae_safe_dims(*references[0].size)
                 if _auto_resize:
                     image_width, image_height = min(
                         PREFERRED_RESOLUTION[1024 * 1024],
@@ -733,18 +721,17 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             seed=seed,
-            image=image,
+            references=references,
             mask=mask,
             prompt=prompt,
             height=height,
             width=width,
-            prompt_embeds=prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
         )
 
-        if mask is not None and image is not None:
-            image = paste_mask_on_image(mask, image)
+        if mask is not None:
+            references[0] = paste_mask_on_image(mask, references[0])
 
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
@@ -752,18 +739,19 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         # 2. Define call parameters
 
-        if prompt is not None and is_valid_edit_json(prompt):
+        if isinstance(prompt, dict):
             prompt = json.dumps(prompt)
-        if prompt is not None and isinstance(prompt, str):
+        elif isinstance(prompt, list):
+            prompt = [json.dumps(p) if isinstance(p, dict) else p for p in prompt]
+        if isinstance(prompt, str):
             batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
         else:
-            batch_size = prompt_embeds.shape[0]
+            batch_size = len(prompt)
 
         device = self._execution_device
         if generator is None and seed is not None:
             generator = torch.Generator(device=device).manual_seed(seed)
+
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
@@ -780,8 +768,6 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             prompt=prompt,
             negative_prompt=negative_prompt,
             guidance_scale=guidance_scale,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
             device=device,
             max_sequence_length=max_sequence_length,
             num_images_per_prompt=num_images_per_prompt,
@@ -806,12 +792,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             # duplicate last layer
             prompt_layers = prompt_layers + [prompt_layers[-1]] * (total_num_layers_transformer - len(prompt_layers))
 
-        # Preprocess image
-        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
-            image = self.image_processor.resize(image, height, width)
-            image = self.image_processor.preprocess(image, height, width)
-
-        # 5. Prepare latent variables
+        # 5. Prepare generated and reference latent variables. Every reference is
+        # VAE-encoded at its own size and receives RoPE time id 1, 2, ... .
         num_channels_latents = self.transformer.config.in_channels
         if do_patching:
             num_channels_latents = int(num_channels_latents / 4)
@@ -828,18 +810,21 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             do_patching,
         )
 
-        if image is not None:
-            image_latents, image_ids = self.prepare_image_latents(
-                image=image,
-                batch_size=batch_size * num_images_per_prompt,
+        reference_latents, reference_ids = [], []
+        for reference_index, reference in enumerate(references, start=1):
+            packed, ids = self.prepare_reference_latents(
+                image=reference,
                 num_channels_latents=num_channels_latents,
-                height=height,
-                width=width,
                 dtype=prompt_embeds.dtype,
                 device=device,
-                generator=generator,
+                do_patching=do_patching,
+                reference_index=reference_index,
             )
-            latent_image_ids = torch.cat([latent_image_ids, image_ids], dim=0)  # dim 0 is sequence dimension
+            reference_latents.append(packed)
+            reference_ids.append(ids)
+        if reference_latents:
+            image_latents = torch.cat(reference_latents, dim=1).repeat(prompt_batch_size, 1, 1)
+            latent_image_ids = torch.cat([latent_image_ids, *reference_ids], dim=0)
         else:
             image_latents = None
 
@@ -863,12 +848,14 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 [prompt_attention_mask, latent_attention_mask, image_latent_attention_mask], dim=1
             )
 
-        attention_mask = self.create_attention_matrix(attention_mask)  # batch, seq => batch, seq, seq
-        attention_mask = attention_mask.unsqueeze(dim=1).to(dtype=self.transformer.dtype)  # for head broadcasting
-
         if self._joint_attention_kwargs is None:
             self._joint_attention_kwargs = {}
-        self._joint_attention_kwargs["attention_mask"] = attention_mask
+        attention_mask = attention_mask.bool()
+        if not attention_mask.all():
+            # Bool key-padding mask (batch, 1, 1, seq): every real query attends to the same keys as
+            # with a full (seq, seq) matrix, and varlen backends require bool. When nothing is padded
+            # the mask is a no-op, and omitting it keeps backends without mask support usable.
+            self._joint_attention_kwargs["attention_mask"] = attention_mask[:, None, None, :]
 
         # Adapt scheduler to dynamic shifting (resolution dependent)
 
@@ -877,7 +864,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         else:
             seq_len = (height // self.vae_scale_factor) * (width // self.vae_scale_factor)
 
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        sigmas = None if timesteps is not None else np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
         mu = calculate_shift(
             seq_len,
@@ -893,7 +880,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             self.scheduler,
             num_inference_steps=num_inference_steps,
             device=device,
-            timesteps=None,
+            timesteps=timesteps,
             sigmas=sigmas,
             mu=mu,
         )
@@ -990,17 +977,9 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
                 latents_device, latents_dtype
             )
-            latents_scaled = [latent / latents_std + latents_mean for latent in latents]
-            latents_scaled = torch.cat(latents_scaled, dim=0)
-            image = []
-            for scaled_latent in latents_scaled:
-                curr_image = self.vae.decode(scaled_latent.unsqueeze(0), return_dict=False)[0]
-                curr_image = self.image_processor.postprocess(curr_image.squeeze(dim=2), output_type=output_type)
-                image.append(curr_image)
-            if len(image) == 1:
-                image = image[0]
-            else:
-                image = np.stack(image, axis=0)
+            latents_scaled = torch.cat([latent / latents_std + latents_mean for latent in latents], dim=0)
+            image = self.vae.decode(latents_scaled, return_dict=False)[0]
+            image = self.image_processor.postprocess(image.squeeze(dim=2), output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
@@ -1010,76 +989,64 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         return BriaFiboPipelineOutput(images=image)
 
-    def prepare_image_latents(
+    def prepare_reference_latents(
         self,
-        image: torch.Tensor,
-        batch_size: int,
+        image: Image.Image,
         num_channels_latents: int,
-        height: int,
-        width: int,
         dtype: torch.dtype,
         device: torch.device,
-        generator: torch.Generator | list[torch.Generator] | None = None,
+        do_patching: bool = False,
+        reference_index: int = 1,
     ):
-        image = image.to(device=device, dtype=dtype)
+        """VAE-encode one PIL reference at its own size and pack it as an edit-context token stream."""
+        vae_dtype = next(self.vae.parameters()).dtype
+        reference_width, reference_height = _vae_safe_dims(*image.size)
+        encoded_input = self.image_processor.preprocess(
+            image.convert("RGB"), height=reference_height, width=reference_width
+        ).to(device=device)
 
-        height = int(height) // self.vae_scale_factor
-        width = int(width) // self.vae_scale_factor
+        latent = self.vae.encode(encoded_input.to(dtype=vae_dtype).unsqueeze(2)).latent_dist.mean[:, :, 0, :, :]
+        latents_mean = torch.tensor(self.vae.config.latents_mean, device=device, dtype=latent.dtype).view(1, -1, 1, 1)
+        latents_std = torch.tensor(self.vae.config.latents_std, device=device, dtype=latent.dtype).view(1, -1, 1, 1)
+        latent = (latent - latents_mean) / latents_std
 
-        # scaling
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).to(device, dtype)
-        )
-        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-            device, dtype
-        )
-
-        image_latents_cthw = self.vae.encode(image.unsqueeze(2)).latent_dist.mean
-        latents_scaled = [(latent - latents_mean) * latents_std for latent in image_latents_cthw]
-        image_latents_cthw = torch.concat(latents_scaled, dim=0)
-        image_latents_bchw = image_latents_cthw[:, :, 0, :, :]
-
-        image_latent_height, image_latent_width = image_latents_bchw.shape[2:]
-        image_latents_bsd = self._pack_latents_no_patch(
-            latents=image_latents_bchw,
-            batch_size=batch_size,
-            num_channels_latents=num_channels_latents,
-            height=image_latent_height,
-            width=image_latent_width,
-        )
-        # breakpoint()
-        image_ids = self._prepare_latent_image_ids(
-            batch_size=batch_size, height=image_latent_height, width=image_latent_width, device=device, dtype=dtype
-        )
-        # image ids are the same as latent ids with the first dimension set to 1 instead of 0
-        image_ids[..., 0] = 1
-        return image_latents_bsd, image_ids
+        latent_height, latent_width = latent.shape[-2:]
+        if do_patching:
+            if latent_height % 2 or latent_width % 2:
+                raise ValueError("Patched reference latents require even height and width.")
+            packed = self._pack_latents(latent, 1, num_channels_latents, latent_height, latent_width)
+            id_height, id_width = latent_height // 2, latent_width // 2
+        else:
+            packed = self._pack_latents_no_patch(latent, 1, num_channels_latents, latent_height, latent_width)
+            id_height, id_width = latent_height, latent_width
+        image_ids = self._prepare_latent_image_ids(1, id_height, id_width, device, dtype)
+        # Fibo Edit conditions on references by placing each one on a distinct RoPE
+        # time plane. Generated image tokens remain on plane zero.
+        image_ids[..., 0] = reference_index
+        return packed.to(dtype=dtype), image_ids
 
     def check_inputs(
         self,
         prompt,
         seed,
-        image,
+        references,
         mask,
         height,
         width,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
         if seed is not None and not isinstance(seed, int):
             raise ValueError("Seed must be an integer")
-        if image is not None and not isinstance(image, (torch.Tensor, Image.Image, list)):
-            raise ValueError("Image must be a valid image")
-        if image is None and mask is not None:
+        if not references and mask is not None:
             raise ValueError("If mask is provided, image must also be provided")
+        if mask is not None and len(references) != 1:
+            raise ValueError("Masks are supported only with exactly one reference image.")
 
         if mask is not None and not is_valid_mask(mask):
             raise ValueError("Mask must be a valid mask")
 
-        if mask is not None and image is not None and not (get_mask_size(mask) == get_image_size(image)):
+        if mask is not None and tuple(get_mask_size(mask)) != references[0].size[::-1]:
             raise ValueError("Mask and image must have the same size")
 
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
@@ -1094,40 +1061,11 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and not is_valid_edit_json(prompt):
-            raise ValueError(f"`prompt` has to be a valid JSON string or dict but is {type(prompt)}")
-
-        if negative_prompt is not None and negative_prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-            )
-
-        if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
+        if prompt is None:
+            raise ValueError("`prompt` must be provided.")
+        prompts = prompt if isinstance(prompt, list) else [prompt]
+        if not prompts or not all(is_valid_edit_json(p) for p in prompts):
+            raise ValueError(f"`prompt` has to be a valid edit JSON string/dict or a list of them but is {prompt!r}")
 
         if max_sequence_length is not None and max_sequence_length > 3000:
             raise ValueError(f"`max_sequence_length` cannot be greater than 3000 but is {max_sequence_length}")
-
-    def create_attention_matrix(self, attention_mask):
-        attention_matrix = torch.einsum("bi,bj->bij", attention_mask, attention_mask)
-
-        # convert to 0 - keep, -inf ignore
-        attention_matrix = torch.where(
-            attention_matrix == 1, 0.0, -torch.inf
-        )  # Apply -inf to ignored tokens for nulling softmax score
-        return attention_matrix

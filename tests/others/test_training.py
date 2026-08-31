@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import torch
 
 from diffusers import DDIMScheduler, DDPMScheduler, UNet2DModel
@@ -26,7 +24,7 @@ from ..testing_utils import slow
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class TrainingTests(unittest.TestCase):
+class TestTraining:
     def get_model_optimizer(self, resolution=32):
         set_seed(0)
         model = UNet2DModel(sample_size=resolution, in_channels=3, out_channels=3)
@@ -83,8 +81,8 @@ class TrainingTests(unittest.TestCase):
             optimizer.step()
         del model, optimizer
 
-        self.assertTrue(torch.allclose(ddpm_noisy_images, ddim_noisy_images, atol=1e-5))
-        self.assertTrue(torch.allclose(ddpm_noise_pred, ddim_noise_pred, atol=1e-5))
+        assert torch.allclose(ddpm_noisy_images, ddim_noisy_images, atol=1e-5)
+        assert torch.allclose(ddpm_noise_pred, ddim_noise_pred, atol=1e-5)
 
     def test_confidence_aware_loss(self):
         logits = torch.tensor([[[5.0, 0.0], [0.0, 5.0]]])
@@ -94,8 +92,8 @@ class TrainingTests(unittest.TestCase):
         loss, loss_sft, loss_conf = compute_confidence_aware_loss(
             logits, labels, lambda_conf=0.0, per_token_weights=weights
         )
-        self.assertTrue(torch.allclose(loss, loss_sft))
-        self.assertTrue(torch.allclose(loss_conf, torch.zeros_like(loss_conf)))
+        assert torch.allclose(loss, loss_sft)
+        assert torch.allclose(loss_conf, torch.zeros_like(loss_conf))
 
         lambda_conf = 0.25
         loss, loss_sft, loss_conf = compute_confidence_aware_loss(
@@ -118,14 +116,14 @@ class TrainingTests(unittest.TestCase):
         ).sum().clamp_min(1)
 
         expected = expected_sft + lambda_conf * expected_conf
-        self.assertTrue(torch.allclose(loss_sft, expected_sft))
-        self.assertTrue(torch.allclose(loss_conf, expected_conf))
-        self.assertTrue(torch.allclose(loss, expected))
+        assert torch.allclose(loss_sft, expected_sft)
+        assert torch.allclose(loss_conf, expected_conf)
+        assert torch.allclose(loss, expected)
 
         # Temperature affects only the confidence term.
         loss_t, loss_sft_t, loss_conf_t = compute_confidence_aware_loss(
             logits, labels, lambda_conf=lambda_conf, temperature=0.5, per_token_weights=weights
         )
-        self.assertTrue(torch.allclose(loss_sft_t, expected_sft))
-        self.assertFalse(torch.allclose(loss_conf_t, expected_conf))
-        self.assertTrue(torch.allclose(loss_t, loss_sft_t + lambda_conf * loss_conf_t))
+        assert torch.allclose(loss_sft_t, expected_sft)
+        assert not torch.allclose(loss_conf_t, expected_conf)
+        assert torch.allclose(loss_t, loss_sft_t + lambda_conf * loss_conf_t)

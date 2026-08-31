@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,18 +14,18 @@
 # limitations under the License.
 
 import gc
-import unittest
 
+import pytest
 import torch
 from parameterized import parameterized
 
 from diffusers import AutoencoderKL
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
-    floats_tensor,
     load_hf_numpy,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
@@ -35,22 +35,40 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    SingleFileTesterMixin,
+    TrainingTesterMixin,
+)
 from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKL
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderKLTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderKL
 
-    def get_autoencoder_kl_config(self, block_out_channels=None, norm_num_groups=None):
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self):
+        return (3, 32, 32)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self, block_out_channels=None, norm_num_groups=None):
         block_out_channels = block_out_channels or [2, 4]
         norm_num_groups = norm_num_groups or 2
-        init_dict = {
+        return {
             "block_out_channels": block_out_channels,
             "in_channels": 3,
             "out_channels": 3,
@@ -59,30 +77,40 @@ class AutoencoderKLTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Test
             "latent_channels": 4,
             "norm_num_groups": norm_num_groups,
         }
-        return init_dict
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self):
         batch_size = 4
         num_channels = 3
         sizes = (32, 32)
-
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-
+        image = randn_tensor((batch_size, num_channels, *sizes), generator=self.generator, device=torch_device)
         return {"sample": image}
 
-    @property
-    def input_shape(self):
-        return (3, 32, 32)
 
-    @property
-    def output_shape(self):
-        return (3, 32, 32)
+class TestAutoencoderKL(AutoencoderKLTesterConfig, ModelTesterMixin, TrainingTesterMixin):
+    @pytest.mark.skip(
+        "`forward` runs through the `apply_forward_hook`-decorated `encode` and `decode`, and that decorator's "
+        "`pre_forward` call clears the input device accelerate's `AlignDevicesHook` recorded for the caller, so the "
+        "output comes back on the last device of the split rather than the input device and the comparison raises. "
+        "`test_cpu_offload` covers split placement instead — there every submodule executes on the same device."
+    )
+    def test_model_parallelism(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
+        pass
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # The reference and reloaded models hold identical weights, so any output difference is
+        # half-precision kernel nondeterminism between the two module instances rather than a save/load
+        # fidelity issue. The default zero-rtol, 1e-4-atol tolerance is too tight for that noise, and it has to
+        # be relaxed per dtype: bf16's coarser mantissa produces a larger absolute noise floor (~1 ULP, e.g.
+        # 3.9e-3 near magnitude 0.5) than fp16's (~1e-3), so a single shared tolerance is either too tight for
+        # bf16 or needlessly loose for fp16. Each dtype gets an absolute floor sized to its own noise plus
+        # `torch.testing.assert_close`'s recommended rtol (1e-3 for fp16, 1.6e-2 for bf16) so the allowed error
+        # also scales with the output magnitude.
+        atol, rtol = {
+            torch.float16: (2e-3, 1e-3),
+            torch.bfloat16: (5e-3, 1.6e-2),
+        }[dtype]
+        super().test_from_save_pretrained_dtype_inference(tmp_path, dtype, atol=atol, rtol=rtol)
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Decoder", "Encoder", "UNetMidBlock2D"}
@@ -90,11 +118,11 @@ class AutoencoderKLTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Test
 
     def test_from_pretrained_hub(self):
         model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)
-        self.assertIsNotNone(model)
-        self.assertEqual(len(loading_info["missing_keys"]), 0)
+        assert model is not None
+        assert len(loading_info["missing_keys"]) == 0
 
         model.to(torch_device)
-        image = model(**self.dummy_input)
+        image = model(**self.get_dummy_inputs())
 
         assert image is not None, "Make sure output is not None"
 
@@ -168,17 +196,24 @@ class AutoencoderKLTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Test
                 ]
             )
 
-        self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
+        assert torch_all_close(output_slice, expected_output_slice, rtol=1e-2)
+
+
+class TestAutoencoderKLMemory(AutoencoderKLTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderKL."""
+
+
+class TestAutoencoderKLSlicingTiling(AutoencoderKLTesterConfig, AutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderKL."""
 
 
 @slow
-class AutoencoderKLIntegrationTests(unittest.TestCase):
+class AutoencoderKLIntegrationTests:
     def get_file_format(self, seed, shape):
         return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
 
-    def tearDown(self):
+    def teardown_method(self):
         # clean up the VRAM after each test
-        super().tearDown()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -341,10 +376,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     @parameterized.expand([(13,), (16,), (27,)])
     @require_torch_gpu
-    @unittest.skipIf(
-        not is_xformers_available(),
-        reason="xformers is not required when using PyTorch 2.0.",
-    )
+    @pytest.mark.skipif(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
     def test_stable_diffusion_decode_xformers_vs_2_0_fp16(self, seed):
         model = self.get_sd_vae_model(fp16=True)
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64), fp16=True)
@@ -362,10 +394,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     @parameterized.expand([(13,), (16,), (37,)])
     @require_torch_gpu
-    @unittest.skipIf(
-        not is_xformers_available(),
-        reason="xformers is not required when using PyTorch 2.0.",
-    )
+    @pytest.mark.skipif(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
     def test_stable_diffusion_decode_xformers_vs_2_0(self, seed):
         model = self.get_sd_vae_model()
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64))
@@ -405,3 +434,19 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
         tolerance = 3e-3 if torch_device != "mps" else 1e-2
         assert torch_all_close(output_slice, expected_output_slice, atol=tolerance)
+
+
+class TestAutoencoderKLSingleFile(AutoencoderKLTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        # `from_single_file` resolves a bare VAE checkpoint against the SD 1.5 repo, so compare against that
+        # rather than against `stabilityai/sd-vae-ft-mse`, whose own config differs (sample_size 256 vs 512).
+        return "stable-diffusion-v1-5/stable-diffusion-v1-5"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "vae"}

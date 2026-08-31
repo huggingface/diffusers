@@ -469,6 +469,33 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         control_latents: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
+        """
+        The [`EasyAnimateTransformer3DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, channels, num_frames, height, width)`):
+                Input `hidden_states`.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            timestep_cond (`torch.Tensor`, *optional*):
+                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
+                through the `self.time_embedding` layer to obtain the final timestep embeddings.
+            encoder_hidden_states (`torch.Tensor`, *optional*):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            encoder_hidden_states_t5 (`torch.Tensor`, *optional*):
+                Additional conditional embeddings computed from a T5 text encoder.
+            inpaint_latents (`torch.Tensor`, *optional*):
+                Latents concatenated to `hidden_states` for inpainting variants of the model.
+            control_latents (`torch.Tensor`, *optional*):
+                Latents concatenated to `hidden_states` for control variants of the model.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         batch_size, channels, video_length, height, width = hidden_states.size()
         p = self.config.patch_size
         post_patch_height = height // p

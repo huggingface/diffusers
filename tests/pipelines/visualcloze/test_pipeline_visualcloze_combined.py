@@ -43,8 +43,6 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     test_layerwise_casting = True
     test_group_offloading = True
 
-    supports_dduf = False
-
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = FluxTransformer2DModel(

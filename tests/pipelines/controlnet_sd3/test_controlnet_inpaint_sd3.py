@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -156,14 +156,14 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
             (1, 3, 32, 32),
             generator=generator,
             device=torch.device(device),
-            dtype=torch.float16,
+            dtype=torch.float32,
         )
 
         control_mask = randn_tensor(
             (1, 1, 32, 32),
             generator=generator,
             device=torch.device(device),
-            dtype=torch.float16,
+            dtype=torch.float32,
         )
 
         controlnet_conditioning_scale = 0.95
@@ -184,7 +184,7 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
     def test_controlnet_inpaint_sd3(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusion3ControlNetInpaintingPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device, dtype=torch.float16)
+        sd_pipe = sd_pipe.to(torch_device, dtype=torch.float32)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -195,9 +195,7 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
 
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array(
-            [0.51708984, 0.7421875, 0.4580078, 0.6435547, 0.65625, 0.43603516, 0.5151367, 0.65722656, 0.60839844]
-        )
+        expected_slice = np.array([0.4627, 0.3686, 0.3741, 0.5855, 0.6071, 0.4046, 0.1916, 0.3938, 0.4953])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
             f"Expected: {expected_slice}, got: {image_slice.flatten()}"

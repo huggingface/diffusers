@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1000,6 +1000,9 @@ class StableDiffusionXLPAGPipeline(
                 as the `target_size` for most cases. Part of SDXL's micro-conditioning as explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
                 information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,

@@ -22,8 +22,8 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Load the word embeddings with [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] and include the unique token in the prompt to activate its generation.
@@ -48,8 +48,8 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_textual_inversion(
     "EvilEngine/easynegative",
     weight_name="easynegative.safetensors",

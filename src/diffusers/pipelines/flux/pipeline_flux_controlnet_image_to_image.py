@@ -454,7 +454,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
-        if height % self.vae_scale_factor * 2 != 0 or width % self.vae_scale_factor * 2 != 0:
+        if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
             logger.warning(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
             )
@@ -695,6 +695,10 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             controlnet_conditioning_scale (`float` or `list[float]`, *optional*, defaults to 1.0):
                 The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
                 to the residual in the original transformer.
+            control_guidance_start (`float` or `list[float]`, *optional*, defaults to 0.0):
+                The percentage of total steps at which the ControlNet starts applying.
+            control_guidance_end (`float` or `list[float]`, *optional*, defaults to 1.0):
+                The percentage of total steps at which the ControlNet stops applying.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):

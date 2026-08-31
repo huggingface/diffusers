@@ -5,13 +5,14 @@ on:
     types: [created]
 
 permissions:
-  contents: write
   pull-requests: write
+  contents: read
 
 jobs:
   style:
-    uses: huggingface/huggingface_hub/.github/workflows/style-bot-action.yml@e000c1c89c65aee188041723456ac3a479416d4c  # main
+    uses: huggingface/huggingface_hub/.github/workflows/style-bot-action.yml@e2867e92c07d15e1bf18994d0a945ef5ad6b8d65
     with:
       python_quality_dependencies: "[quality]"
     secrets:
-      bot_token: ${{ secrets.HF_STYLE_BOT_ACTION }}
+      app_id: ${{ secrets.HF_BOT_STYLE_APP_ID }}
+      app_private_key: ${{ secrets.HF_BOT_STYLE_SECRET_PEM }}

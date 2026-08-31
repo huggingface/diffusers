@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import is_torchvision_available
 from ..attention import FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -551,7 +551,7 @@ class CosmosLearnablePositionalEmbed(nn.Module):
         return (emb / norm).type_as(hidden_states)
 
 
-class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin):
     r"""
     A Transformer model for video-like data used in [Cosmos](https://github.com/NVIDIA/Cosmos).
 
@@ -697,6 +697,34 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         padding_mask: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
+        """
+        The [`CosmosTransformer3DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, num_channels, num_frames, height, width)`):
+                Input `hidden_states`.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            block_controlnet_hidden_states (`list` of `torch.Tensor`, *optional*):
+                A list of tensors that if specified are added to the residuals of transformer blocks.
+            attention_mask (`torch.Tensor`, *optional*):
+                Mask applied to `encoder_hidden_states` during attention.
+            fps (`int`, *optional*):
+                Frames per second of the input video used to compute the rotary positional embeddings.
+            condition_mask (`torch.Tensor`, *optional*):
+                Mask channel concatenated to `hidden_states` to indicate the conditioning region.
+            padding_mask (`torch.Tensor`, *optional*):
+                Padding mask concatenated to `hidden_states` when `concat_padding_mask` is enabled.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
         # 1. Concatenate padding mask if needed & prepare attention mask

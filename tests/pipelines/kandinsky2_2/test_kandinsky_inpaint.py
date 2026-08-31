@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -247,9 +247,6 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=5e-1)
-
-    def test_save_load_dduf(self):
-        super().test_save_load_dduf(atol=1e-3, rtol=1e-3)
 
     @is_flaky()
     def test_model_cpu_offload_forward_pass(self):

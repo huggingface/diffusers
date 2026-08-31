@@ -1,4 +1,4 @@
-diffusers==0.20.1
+diffusers==0.38.0
 accelerate==0.23.0
 transformers==4.38.0
 peft==0.5.0

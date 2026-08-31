@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ import os
 import shutil
 import subprocess
 import tempfile
-import unittest
 from typing import List
 
 from accelerate.utils import write_basic_config
@@ -45,10 +44,9 @@ def run_command(command: List[str], return_stdout=False):
         ) from e
 
 
-class ExamplesTestsAccelerate(unittest.TestCase):
+class ExamplesTestsAccelerate:
     @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
+    def setup_class(cls):
         cls._tmpdir = tempfile.mkdtemp()
         cls.configPath = os.path.join(cls._tmpdir, "default_config.yml")
 
@@ -56,6 +54,5 @@ class ExamplesTestsAccelerate(unittest.TestCase):
         cls._launch_args = ["accelerate", "launch", "--config_file", cls.configPath]
 
     @classmethod
-    def tearDownClass(cls):
-        super().tearDownClass()
+    def teardown_class(cls):
         shutil.rmtree(cls._tmpdir)

@@ -25,7 +25,6 @@ from ...models import AutoencoderKL, ChromaTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
-    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -539,59 +538,6 @@ class ChromaImg2ImgPipeline(
 
         return latents
 
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_tiling()
-
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
@@ -739,6 +685,8 @@ class ChromaImg2ImgPipeline(
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 not greater than `1`).
+            image (`PipelineImageInput`):
+                The image input for the pipeline.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):

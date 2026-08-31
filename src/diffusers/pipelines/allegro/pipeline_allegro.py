@@ -68,7 +68,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> vae = AutoencoderKLAllegro.from_pretrained("rhymes-ai/Allegro", subfolder="vae", torch_dtype=torch.float32)
         >>> pipe = AllegroPipeline.from_pretrained("rhymes-ai/Allegro", vae=vae, torch_dtype=torch.bfloat16).to("cuda")
-        >>> pipe.enable_vae_tiling()
+        >>> pipe.vae.enable_tiling()
 
         >>> prompt = (
         ...     "A seaside harbor with bright sunlight and sparkling seawater, with many boats in the water. From an aerial view, "
@@ -646,59 +646,6 @@ class AllegroPipeline(DiffusionPipeline):
 
         return (freqs_t, freqs_h, freqs_w), (grid_t, grid_h, grid_w)
 
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_tiling()
-
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -797,12 +744,15 @@ class AllegroPipeline(DiffusionPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
-            callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that is called at the end of each denoising step during inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
             clean_caption (`bool`, *optional*, defaults to `True`):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw

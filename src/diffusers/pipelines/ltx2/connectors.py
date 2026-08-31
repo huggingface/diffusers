@@ -2,7 +2,6 @@ import math
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
@@ -295,22 +294,25 @@ class LTX2ConnectorTransformer1d(nn.Module):
                 )
 
             num_register_repeats = seq_len // self.num_learnable_registers
-            registers = torch.tile(self.learnable_registers, (num_register_repeats, 1))  # [seq_len, inner_dim]
+            registers = (
+                self.learnable_registers.unsqueeze(0).expand(num_register_repeats, -1, -1).reshape(seq_len, -1)
+            )  # [seq_len, inner_dim]
 
             binary_attn_mask = (attention_mask >= attn_mask_binarize_threshold).int()
             if binary_attn_mask.ndim == 4:
                 binary_attn_mask = binary_attn_mask.squeeze(1).squeeze(1)  # [B, 1, 1, L] --> [B, L]
 
-            hidden_states_non_padded = [hidden_states[i, binary_attn_mask[i].bool(), :] for i in range(batch_size)]
-            valid_seq_lens = [x.shape[0] for x in hidden_states_non_padded]
-            pad_lengths = [seq_len - valid_seq_len for valid_seq_len in valid_seq_lens]
-            padded_hidden_states = [
-                F.pad(x, pad=(0, 0, 0, p), value=0) for x, p in zip(hidden_states_non_padded, pad_lengths)
-            ]
-            padded_hidden_states = torch.cat([x.unsqueeze(0) for x in padded_hidden_states], dim=0)  # [B, L, D]
-
-            flipped_mask = torch.flip(binary_attn_mask, dims=[1]).unsqueeze(-1)  # [B, L, 1]
-            hidden_states = flipped_mask * padded_hidden_states + (1 - flipped_mask) * registers
+            # Move the valid tokens to the front in their original order and fill the tail
+            # with registers indexed by absolute position, matching the original LTX
+            # implementation (`_replace_padded_with_learnable_registers`). A stable argsort
+            # of the inverted mask gathers valid tokens first while preserving their order.
+            order = torch.argsort(1 - binary_attn_mask, dim=1, stable=True)  # [B, L]
+            front_aligned = torch.gather(hidden_states, 1, order.unsqueeze(-1).expand(-1, -1, hidden_states.shape[-1]))
+            num_valid = binary_attn_mask.sum(dim=1, keepdim=True)  # [B, 1]
+            positions = torch.arange(seq_len, device=hidden_states.device).unsqueeze(0)  # [1, L]
+            front_mask = (positions < num_valid).unsqueeze(-1)  # [B, L, 1]
+            registers_expanded = registers.unsqueeze(0).expand(batch_size, -1, -1)  # [B, L, D]
+            hidden_states = torch.where(front_mask, front_aligned, registers_expanded.to(hidden_states.dtype))
 
             # Overwrite attention_mask with an all-zeros mask if using registers.
             attention_mask = torch.zeros_like(attention_mask)

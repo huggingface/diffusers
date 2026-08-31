@@ -417,12 +417,14 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
+            image (`torch.Tensor`, `PIL.Image.Image`, `list[torch.Tensor]` or `list[PIL.Image.Image]`):
+                `Image`, or tensor representing an image batch, that will be used as the starting point for the image
+                embedding. Can also accept image latents as `image`, if passing latents directly, it will not be
+                encoded again.
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `emb`. Must be between 0 and 1. `image`
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
                 will be used as a starting point, adding more noise to it the larger the `strength`. The number of
                 denoising steps depends on the amount of noise initially added.
-            emb (`torch.Tensor`):
-                The image embedding.
             negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).

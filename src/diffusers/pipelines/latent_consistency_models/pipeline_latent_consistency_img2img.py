@@ -737,13 +737,18 @@ class LatentConsistencyModelImg2ImgPipeline(
         Args:
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
-                The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
-                The width in pixels of the generated image.
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
+                `Image` or tensor representing an image batch to be used as the starting point. Can also accept image
+                latents as `image`, but if passing latents directly it is not encoded again.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            strength (`float`, *optional*, defaults to 0.8):
+                Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
+                starting point and more noise is added the higher the `strength`. The number of denoising steps depends
+                on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
+                process runs for the full number of iterations specified in `num_inference_steps`. A value of 1
+                essentially ignores `image`.
             original_inference_steps (`int`, *optional*):
                 The original number of inference steps use to generate a linearly-spaced timestep schedule, from which
                 we will draw `num_inference_steps` evenly spaced timesteps from as our final timestep schedule,
