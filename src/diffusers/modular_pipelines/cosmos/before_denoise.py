@@ -12,6 +12,15 @@ from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, Outp
 from .modular_pipeline import Cosmos3OmniModularPipeline
 
 
+def _resolve_sampling_dtype(
+    components: Cosmos3OmniModularPipeline, use_fp32_sampling_state: bool | None
+) -> tuple[bool, torch.dtype]:
+    if use_fp32_sampling_state is None:
+        use_fp32_sampling_state = components.config.default_use_fp32_sampling_state
+    sampling_dtype = torch.float32 if use_fp32_sampling_state else components.transformer.dtype
+    return use_fp32_sampling_state, sampling_dtype
+
+
 class Cosmos3PrepareTextSegmentsStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
@@ -107,7 +116,8 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
                 type_hint=bool | None,
                 default=None,
                 description=(
-                    "Whether to keep vision latents, masks, and scheduler state in float32. If unset, uses the "
+                    "Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. "
+                    "If unset, uses the "
                     "pipeline's `default_use_fp32_sampling_state` config."
                 ),
             ),
@@ -145,9 +155,9 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        if block_state.use_fp32_sampling_state is None:
-            block_state.use_fp32_sampling_state = components.config.default_use_fp32_sampling_state
-        sampling_dtype = torch.float32 if block_state.use_fp32_sampling_state else components.transformer.dtype
+        block_state.use_fp32_sampling_state, sampling_dtype = _resolve_sampling_dtype(
+            components, block_state.use_fp32_sampling_state
+        )
 
         x0_tokens_vision = block_state.x0_tokens_vision
         if x0_tokens_vision is None:
@@ -217,6 +227,10 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [ConfigSpec(name="default_use_fp32_sampling_state", default=True)]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="num_frames", type_hint=int, required=True, description="Number of frames to generate."),
@@ -228,6 +242,16 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
                 description="Pre-generated noisy sound latents.",
             ),
             InputParam.template("generator"),
+            InputParam(
+                name="use_fp32_sampling_state",
+                type_hint=bool | None,
+                default=None,
+                description=(
+                    "Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. "
+                    "If unset, uses the "
+                    "pipeline's `default_use_fp32_sampling_state` config."
+                ),
+            ),
         ]
 
     @property
@@ -248,7 +272,9 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = components.transformer.dtype
+        block_state.use_fp32_sampling_state, sampling_dtype = _resolve_sampling_dtype(
+            components, block_state.use_fp32_sampling_state
+        )
 
         if not components.transformer.config.sound_gen:
             raise ValueError("Sound generation requires a transformer trained with sound_gen=True.")
@@ -258,19 +284,21 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
         n_audio_samples = int(block_state.num_frames / block_state.fps * components.sound_sampling_rate)
         hop_size = components.sound_hop_size
         t_sound = (n_audio_samples + hop_size - 1) // hop_size
-        x0_tokens_sound = torch.zeros(sound_dim, t_sound, device=device, dtype=dtype)
-        block_state.sound_condition_mask = torch.zeros((x0_tokens_sound.shape[1], 1), device=device, dtype=dtype)
+        x0_tokens_sound = torch.zeros(sound_dim, t_sound, device=device, dtype=sampling_dtype)
+        block_state.sound_condition_mask = torch.zeros(
+            (x0_tokens_sound.shape[1], 1), device=device, dtype=sampling_dtype
+        )
 
         if block_state.sound_latents is None:
             pure_noise = randn_tensor(
-                tuple(x0_tokens_sound.shape), generator=block_state.generator, device=device, dtype=dtype
+                tuple(x0_tokens_sound.shape), generator=block_state.generator, device=device, dtype=sampling_dtype
             )
             block_state.sound_latents = (
                 block_state.sound_condition_mask.T * x0_tokens_sound
                 + (1.0 - block_state.sound_condition_mask.T) * pure_noise
             )
         else:
-            block_state.sound_latents = block_state.sound_latents.to(device=device, dtype=dtype)
+            block_state.sound_latents = block_state.sound_latents.to(device=device, dtype=sampling_dtype)
 
         block_state.sound_scheduler = copy.deepcopy(components.scheduler)
 
@@ -291,6 +319,10 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
             ComponentSpec("transformer", Cosmos3OmniTransformer),
             ComponentSpec("scheduler", UniPCMultistepScheduler),
         ]
+
+    @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [ConfigSpec(name="default_use_fp32_sampling_state", default=True)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -314,6 +346,16 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
                 description="Pre-generated noisy action latents.",
             ),
             InputParam.template("generator"),
+            InputParam(
+                name="use_fp32_sampling_state",
+                type_hint=bool | None,
+                default=None,
+                description=(
+                    "Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. "
+                    "If unset, uses the "
+                    "pipeline's `default_use_fp32_sampling_state` config."
+                ),
+            ),
         ]
 
     @property
@@ -345,7 +387,9 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = components.transformer.dtype
+        block_state.use_fp32_sampling_state, sampling_dtype = _resolve_sampling_dtype(
+            components, block_state.use_fp32_sampling_state
+        )
         action = block_state.action
 
         if not components.transformer.config.action_gen:
@@ -367,7 +411,7 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
             raw_actions = action.raw_actions
             if raw_actions is None:
                 raise ValueError("action_mode='forward_dynamics' requires an action tensor.")
-            raw_actions = raw_actions.to(device=device, dtype=dtype)
+            raw_actions = raw_actions.to(device=device, dtype=sampling_dtype)
             if raw_actions.shape[-1] > action_dim:
                 raise ValueError(
                     f"Cosmos3 action dimension {raw_actions.shape[-1]} exceeds model action_dim={action_dim}."
@@ -388,7 +432,7 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
                 raw_actions = torch.cat([raw_actions, action_padding], dim=-1)
             x0_tokens_action = raw_actions
         else:
-            x0_tokens_action = torch.zeros(action_chunk_size, action_dim, device=device, dtype=dtype)
+            x0_tokens_action = torch.zeros(action_chunk_size, action_dim, device=device, dtype=sampling_dtype)
 
         if action.domain_name not in _EMBODIMENT_TO_DOMAIN_ID:
             raise ValueError(
@@ -398,14 +442,16 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
             torch.tensor([_EMBODIMENT_TO_DOMAIN_ID[action.domain_name]], dtype=torch.long, device=device)
         ]
         condition_frames = block_state.action_condition_frame_indexes or []
-        block_state.action_condition_mask = torch.zeros((x0_tokens_action.shape[0], 1), device=device, dtype=dtype)
+        block_state.action_condition_mask = torch.zeros(
+            (x0_tokens_action.shape[0], 1), device=device, dtype=sampling_dtype
+        )
         for frame_idx in condition_frames:
             if 0 <= frame_idx < block_state.action_condition_mask.shape[0]:
                 block_state.action_condition_mask[frame_idx, 0] = 1.0
 
         if block_state.action_latents is None:
             pure_noise = randn_tensor(
-                tuple(x0_tokens_action.shape), generator=block_state.generator, device=device, dtype=dtype
+                tuple(x0_tokens_action.shape), generator=block_state.generator, device=device, dtype=sampling_dtype
             )
             block_state.action_latents = (
                 block_state.action_condition_mask * x0_tokens_action
@@ -414,7 +460,7 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
             if block_state.raw_action_dim_resolved is not None:
                 block_state.action_latents[:, block_state.raw_action_dim_resolved :] = 0
         else:
-            block_state.action_latents = block_state.action_latents.to(device=device, dtype=dtype)
+            block_state.action_latents = block_state.action_latents.to(device=device, dtype=sampling_dtype)
 
         block_state.action_scheduler = copy.deepcopy(components.scheduler)
 
@@ -1022,6 +1068,10 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
         return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
 
     @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [ConfigSpec(name="default_use_fp32_sampling_state", default=True)]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(
@@ -1037,6 +1087,16 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
                 description="Number of pixel frames used to seed this chunk's target.",
             ),
             InputParam.template("generator"),
+            InputParam(
+                name="use_fp32_sampling_state",
+                type_hint=bool | None,
+                default=None,
+                description=(
+                    "Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. "
+                    "If unset, uses the "
+                    "pipeline's `default_use_fp32_sampling_state` config."
+                ),
+            ),
         ]
 
     @property
@@ -1064,20 +1124,24 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = components.transformer.dtype
+        block_state.use_fp32_sampling_state, sampling_dtype = _resolve_sampling_dtype(
+            components, block_state.use_fp32_sampling_state
+        )
         tcf = components.vae_scale_factor_temporal
 
-        target_x0 = block_state.x0_tokens_vision.to(device=device)
+        target_x0 = block_state.x0_tokens_vision.to(device=device, dtype=sampling_dtype)
         current_conditional_frames = block_state.current_conditional_frames
 
         # Build the noisy target latents + conditioning mask from the clean target latents.
         latent_t = target_x0.shape[2]
-        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=dtype)
+        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=sampling_dtype)
         latent_condition_frames = 0
         if current_conditional_frames > 0:
             latent_condition_frames = (current_conditional_frames - 1) // tcf + 1
             condition_mask[:latent_condition_frames] = 1.0
-        noise = randn_tensor(tuple(target_x0.shape), generator=block_state.generator, device=device, dtype=dtype)
+        noise = randn_tensor(
+            tuple(target_x0.shape), generator=block_state.generator, device=device, dtype=sampling_dtype
+        )
         block_state.latents = condition_mask * target_x0 + (1.0 - condition_mask) * noise
         block_state.velocity_mask = 1.0 - condition_mask
         block_state.condition_latents = condition_mask * target_x0

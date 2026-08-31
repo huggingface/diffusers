@@ -100,11 +100,16 @@ def _make_config(runtime, **kwargs):
     return SeaCacheConfig(**config_kwargs)
 
 
+def _get_root_hook(model):
+    return model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+
+
 @torch.no_grad()
 def test_sea_cache_uses_independent_gates_and_histories_per_context():
     runtime = {"step": 0, "sigma": 0.9, "num_steps": 4}
     model = DummySeaTransformer()
     model.enable_cache(_make_config(runtime, threshold=0.5))
+    root_hook = _get_root_hook(model)
 
     first_input = torch.ones(2, 2, 2, 1)
     with model.cache_context("cond"):
@@ -129,11 +134,25 @@ def test_sea_cache_uses_independent_gates_and_histories_per_context():
     torch.testing.assert_close(uncond_output, changed_uncond_input * 8)
     assert [block.calls for block in model.layers] == [3, 3, 3]
     assert model.layers[0].indicator_norm.calls == 4
+    assert root_hook.num_full_steps == 3
+    assert root_hook.num_cached_steps == 1
+    stats = model.get_cache_stats()
+    assert stats["indicator_source"] == "first_block"
+    assert stats["residual_order"] == 1
+    assert stats["residual_boundary"] == "repeated_block_stack"
+    assert stats["transformer_calls"] == 4
+    assert stats["gate_evaluations"] == 4
+    assert stats["gate_trace"] == [True, True, False, True]
+    assert stats["branch_full_executions"] == {"cond": 1, "uncond": 2}
+    assert stats["branch_reuses"] == {"cond": 1}
+    assert stats["persistent_cache_bytes"] > 0
 
     model._reset_stateful_cache()
-    with model.cache_context("cond"):
-        model(first_input)
-    assert [block.calls for block in model.layers] == [4, 4, 4]
+    assert root_hook.num_full_steps == 0
+    assert root_hook.num_cached_steps == 0
+    archived_stats = model.get_cache_stats()
+    assert archived_stats["transformer_calls"] == 4
+    assert archived_stats["gate_trace"] == [True, True, False, True]
 
     model.disable_cache()
     assert not model.is_cache_enabled
@@ -158,6 +177,15 @@ def test_sea_cache_max_consecutive_cached_forces_full_per_context():
         with model.cache_context("cond"):
             model(torch.ones(1, 1, 1, 1))
 
+    stats = model.get_cache_stats()
+    assert stats["gate_trace"] == [True, False, False, True, False, False, True, False]
+    assert stats["actual_full_executions"] == 3
+    assert stats["actual_reuses"] == 5
+    assert stats["max_consecutive_cached"] == 2
+    assert stats["max_consecutive_cached_observed"] == 2
+    assert stats["max_consecutive_forced_full"] == 2
+    assert stats["per_branch"]["cond"]["max_consecutive_cached_observed"] == 2
+    assert stats["per_branch"]["cond"]["max_consecutive_forced_full"] == 2
     assert [block.calls for block in model.layers] == [3, 3, 3]
 
 
@@ -190,7 +218,11 @@ def test_sea_cache_raw_vision_indicator_includes_conditioning_frames():
     with model.cache_context("cond"):
         model(second_input)
 
-    assert [block.calls for block in model.layers] == [2, 2, 2]
+    stats = model.get_cache_stats()
+    assert stats["indicator_source"] == "raw_vision_latents"
+    assert stats["gate_trace"] == [True, True]
+    assert stats["actual_full_executions"] == 2
+    assert stats["actual_reuses"] == 0
     assert model.layers[0].indicator_norm.calls == 0
 
 
@@ -215,7 +247,34 @@ def test_sea_cache_residual_order_one_uses_actual_full_step_history():
 
     # Full residuals are 7 and 14 at steps 0 and 1, so linear extrapolation predicts 21 at step 2.
     torch.testing.assert_close(output, torch.full_like(output, 24.0))
-    assert [block.calls for block in model.layers] == [2, 2, 2]
+    root_hook = _get_root_hook(model)
+    assert root_hook.num_full_steps == 2
+    assert root_hook.num_cached_steps == 1
+
+
+@torch.no_grad()
+def test_sea_cache_replays_gate_schedule_and_reports_natural_mismatches():
+    runtime = {"step": 0, "sigma": 0.9, "num_steps": 3}
+    model = DummySeaTransformer()
+    model.enable_cache(
+        _make_config(
+            runtime,
+            threshold=0.0,
+            gate_schedule=(True, False, True),
+        )
+    )
+
+    for step, sigma in enumerate((0.9, 0.6, 0.3)):
+        runtime.update(step=step, sigma=sigma)
+        with model.cache_context("cond"):
+            model(torch.full((1, 1, 1, 1), float(step + 1)))
+
+    stats = model.get_cache_stats()
+    assert stats["gate_trace"] == [True, False, True]
+    assert stats["gate_schedule_replayed"]
+    assert stats["gate_schedule_mismatches"] == 1
+    assert stats["actual_full_executions"] == 2
+    assert stats["actual_reuses"] == 1
 
 
 @torch.no_grad()
@@ -231,7 +290,7 @@ def test_cache_context_registry_is_refreshed_when_cache_is_enabled_after_an_unca
     with model.cache_context("cond"):
         model(torch.ones(1, 1, 1, 1))
 
-    assert model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK) is not None
+    assert model.get_cache_stats()["branch_full_executions"] == {"cond": 1}
 
 
 @torch.no_grad()
@@ -249,26 +308,54 @@ def test_sea_cache_fails_open_without_vision_metadata():
         model(torch.ones(1, 1, 1, 1))
 
     assert [block.calls for block in model.layers] == [2, 2, 2]
+    root_hook = _get_root_hook(model)
+    assert root_hook.num_full_steps == 2
+    assert root_hook.num_cached_steps == 0
 
 
 @torch.no_grad()
-def test_sea_cache_fails_open_for_non_adjacent_steps_and_shape_changes():
-    runtime = {"step": 0, "sigma": 0.9, "num_steps": 4}
+def test_sea_cache_non_adjacent_steps_start_a_new_residual_trajectory():
+    runtime = {"step": 0, "sigma": 0.9, "num_steps": 2}
+    config = _make_config(runtime, threshold=0.0, retention_steps=0, residual_order=1)
+    model = DummySeaTransformer()
+    model.enable_cache(config)
+
+    with model.cache_context("cond"):
+        model(torch.ones(1, 1, 1, 1))
+    runtime.update(step=1, sigma=0.5)
+    with model.cache_context("cond"):
+        model(torch.full((1, 1, 1, 1), 100.0))
+
+    config.threshold = 100.0
+    runtime.update(step=0, sigma=0.9)
+    with model.cache_context("cond"):
+        model(torch.full((1, 1, 1, 1), 2.0))
+    runtime.update(step=1, sigma=0.5)
+    with model.cache_context("cond"):
+        _, output = model(torch.full((1, 1, 1, 1), 2.0))
+
+    torch.testing.assert_close(output, torch.full_like(output, 16.0))
+    assert [block.calls for block in model.layers] == [3, 3, 3]
+    assert model.get_cache_stats()["gate_trace"] == [True, True, True, False]
+
+
+@torch.no_grad()
+def test_sea_cache_fails_open_for_shape_changes():
+    runtime = {"step": 0, "sigma": 0.9, "num_steps": 2}
     model = DummySeaTransformer()
     model.enable_cache(_make_config(runtime, residual_order=1))
 
     with model.cache_context("cond"):
         model(torch.ones(1, 1, 1, 1))
 
-    runtime.update(step=2, sigma=0.5)
+    runtime.update(step=1, sigma=0.5)
     with model.cache_context("cond"):
         model(torch.ones(1, 2, 1, 1))
 
-    runtime.update(step=3, sigma=0.2)
-    with model.cache_context("cond"):
-        model(torch.ones(1, 2, 1, 1))
-
-    assert [block.calls for block in model.layers] == [3, 3, 3]
+    root_hook = _get_root_hook(model)
+    assert root_hook.num_full_steps == 2
+    assert root_hook.num_cached_steps == 0
+    assert [block.calls for block in model.layers] == [2, 2, 2]
 
 
 def test_sea_cache_is_inference_only_and_fails_open_with_autograd():
@@ -276,12 +363,17 @@ def test_sea_cache_is_inference_only_and_fails_open_with_autograd():
     model = DummySeaTransformer()
     model.enable_cache(_make_config(runtime))
 
-    with model.cache_context("cond"):
+    with torch.enable_grad(), model.cache_context("cond"):
         model(torch.ones(1, 1, 1, 1, requires_grad=True))
     runtime.update(step=1, sigma=0.5)
-    with model.cache_context("cond"):
+    with torch.enable_grad(), model.cache_context("cond"):
         model(torch.ones(1, 1, 1, 1, requires_grad=True))
 
+    root_hook = _get_root_hook(model)
+    assert root_hook.shared_state.transformer_calls == 2
+    assert root_hook.shared_state.fail_open_calls == 2
+    assert root_hook.num_full_steps == 2
+    assert root_hook.num_cached_steps == 0
     assert [block.calls for block in model.layers] == [2, 2, 2]
 
 
@@ -330,6 +422,8 @@ def test_sea_cache_single_block_supports_full_and_cached_execution_then_disables
         _, cached_output = model(torch.full((1, 1, 1, 1), 2.0))
     torch.testing.assert_close(cached_output, torch.full_like(cached_output, 3.0))
     assert model.layers[0].calls == 1
+    assert model.get_cache_stats()["actual_full_executions"] == 1
+    assert model.get_cache_stats()["actual_reuses"] == 1
 
     model.disable_cache()
 
@@ -353,6 +447,10 @@ def test_sea_cache_fails_open_for_parameter_sharded_blocks():
     with model.cache_context("cond"):
         model(torch.ones(1, 1, 1, 1))
 
+    stats = model.get_cache_stats()
+    assert stats["actual_full_executions"] == 2
+    assert stats["actual_reuses"] == 0
+    assert stats["fail_open_calls"] == 2
     assert [block.calls for block in model.layers] == [2, 2, 2]
 
 
@@ -401,6 +499,11 @@ def test_sea_cache_config_defaults():
 def test_sea_cache_config_validation(kwargs, message):
     with pytest.raises(ValueError, match=message):
         SeaCacheConfig(**kwargs)
+
+
+def test_sea_cache_gate_schedule_validation():
+    with pytest.raises(TypeError, match="gate_schedule"):
+        SeaCacheConfig(gate_schedule=(True, 1))
 
 
 @pytest.mark.parametrize("callback_name", ["metadata_callback", "raw_vision_callback"])

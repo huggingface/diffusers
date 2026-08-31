@@ -25,7 +25,8 @@ class Cosmos3DistilledAutoVaeEncoderStep(ConditionalPipelineBlocks):
        - when no image or video conditioning is provided, this block is skipped.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          vae (`AutoencoderKLWan`)
+          video_processor (`VideoProcessor`)
 
       Inputs:
           video (`None`, *optional*):
@@ -83,11 +84,13 @@ class Cosmos3DistilledVisionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text-and-vision distilled Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          default_use_fp32_sampling_state (default: True) is_distilled (default: True) distilled_sigmas (default:
-          None)
+          default_use_fp32_sampling_state (default: True)
+          is_distilled (default: True)
+          distilled_sigmas (default: None)
 
       Inputs:
           cond_input_ids (`None`):
@@ -111,13 +114,13 @@ class Cosmos3DistilledVisionCoreDenoiseStep(SequentialPipelineBlocks):
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           use_fp32_sampling_state (`bool | NoneType`, *optional*):
-              Whether to keep vision latents, masks, and scheduler state in float32. If unset, uses the pipeline's
-              `default_use_fp32_sampling_state` config.
+              Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. If unset, uses the
+              pipeline's `default_use_fp32_sampling_state` config.
           num_inference_steps (`int`, *optional*):
               The number of denoising steps.
           guidance_scale (`float`, *optional*):
-              Unused for distilled checkpoints; classifier-free guidance is baked into the weights and the scale is
-              forced to 1.0. Passing a value other than 1.0 raises an error.
+              Unused for distilled checkpoints; classifier-free guidance is baked into the weights and the scale is forced to
+              1.0. Passing a value other than 1.0 raises an error.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
@@ -165,13 +168,18 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
         - `video2video`: requires `prompt`, `video`
 
       Components:
-          text_tokenizer (`AutoTokenizer`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer
-          (`Cosmos3OmniTransformer`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          text_tokenizer (`AutoTokenizer`)
+          vae (`AutoencoderKLWan`)
+          video_processor (`VideoProcessor`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          default_use_system_prompt (default: True) enable_safety_checker (default: True)
-          default_use_fp32_sampling_state (default: True) is_distilled (default: True) distilled_sigmas (default:
-          None)
+          default_use_system_prompt (default: True)
+          enable_safety_checker (default: True)
+          default_use_fp32_sampling_state (default: True)
+          is_distilled (default: True)
+          distilled_sigmas (default: None)
 
       Inputs:
           prompt (`str`):
@@ -184,7 +192,7 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
               Width of the generated video or image in pixels.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          use_system_prompt (`bool`, *optional*, defaults to True):
+          use_system_prompt (`bool | NoneType`, *optional*):
               Whether to prepend the Cosmos3 system prompt.
           add_resolution_template (`bool`, *optional*, defaults to True):
               Whether to add resolution metadata to the prompt.
@@ -207,13 +215,13 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           use_fp32_sampling_state (`bool | NoneType`, *optional*):
-              Whether to keep vision latents, masks, and scheduler state in float32. If unset, uses the pipeline's
-              `default_use_fp32_sampling_state` config.
+              Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. If unset, uses the
+              pipeline's `default_use_fp32_sampling_state` config.
           num_inference_steps (`int`, *optional*):
               The number of denoising steps.
           guidance_scale (`float`, *optional*):
-              Unused for distilled checkpoints; classifier-free guidance is baked into the weights and the scale is
-              forced to 1.0. Passing a value other than 1.0 raises an error.
+              Unused for distilled checkpoints; classifier-free guidance is baked into the weights and the scale is forced to
+              1.0. Passing a value other than 1.0 raises an error.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           output_type (`str`, *optional*, defaults to pil):
