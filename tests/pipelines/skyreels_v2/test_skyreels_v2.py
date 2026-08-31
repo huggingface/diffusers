@@ -12,39 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
-import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, SkyReelsV2Pipeline, SkyReelsV2Transformer3DModel, UniPCMultistepScheduler
 
-from ...testing_utils import enable_full_determinism
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
+# The UniPC flow-sigma schedule these pipelines ship with amplifies the latents far past fp16's range with the
+# tiny dummy weights (~3.7e5 after the very first step), so the next transformer call sees `inf` and the output
+# turns into NaNs. bf16 has fp32's exponent range and is exercised normally.
+FP16_OVERFLOW_SKIP_REASON = (
+    "SkyReels V2's UniPC flow-sigma schedule overflows fp16 with the dummy weights; bf16 is still covered."
+)
 
-class SkyReelsV2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+
+class SkyReelsV2PipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = SkyReelsV2Pipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
-    test_xformers_attention = False
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    # SkyReels V2 is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
+    )
+    output_shape = (9, 3, 16, 16)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -77,51 +79,50 @@ class SkyReelsV2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             rope_max_seq_len=32,
         )
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "dance monkey",
             "negative_prompt": "negative",  # TODO
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "height": 16,
             "width": 16,
             "num_frames": 9,
             "max_sequence_length": 16,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
-        return inputs
+
+
+class TestSkyReelsV2Pipeline(SkyReelsV2PipelineTesterConfig, PipelineTesterMixin):
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        if dtype == torch.float16:
+            pytest.skip(FP16_OVERFLOW_SKIP_REASON)
+        super().test_half_precision_inference_no_nan(dtype)
+
+    @pytest.mark.skip(FP16_OVERFLOW_SKIP_REASON)
+    def test_save_load_float16(self):
+        pass
 
     def test_inference(self):
-        device = "cpu"
+        pipe = self.get_pipeline().to(torch_device)
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        video = pipe(**inputs).frames
+        video = pipe(**self.get_dummy_inputs()).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-        expected_video = torch.randn(9, 3, 16, 16)
-        max_diff = np.abs(generated_video - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
+        assert generated_video.shape == self.output_shape
 
-    @unittest.skip("Test not supported")
-    def test_attention_slicing_forward_pass(self):
-        pass
+
+class TestSkyReelsV2PipelineMemory(SkyReelsV2PipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SkyReels V2 pipeline."""
