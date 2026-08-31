@@ -27,6 +27,15 @@ from ..utils import BaseOutput, PushToHubMixin
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
 
+def _generator_device(tensor: torch.Tensor, generator: torch.Generator | None) -> torch.device:
+    """Device to sample on for a discrete (`torch.randint`/`torch.multinomial`/`torch.rand`) draw: the generator's
+    own device when one is passed, else `tensor`'s device. Mirrors `randn_tensor`'s CPU-generator portability (a CPU
+    generator, the recommended default for reproducible pipeline calls, samples on CPU regardless of `tensor`'s device)
+    for the discrete samplers, which have no `randn_tensor` equivalent to call into.
+    """
+    return generator.device if generator is not None else tensor.device
+
+
 # NOTE: We make this type an enum because it simplifies usage in docs and prevents
 # circular imports when used for `_compatibles` within the schedulers module.
 # When it's used as a type in pipelines, it really is a Union because the actual

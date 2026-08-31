@@ -21,7 +21,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, _generator_device
 
 
 @dataclass
@@ -117,7 +117,12 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
             token = flat_logits.argmax(dim=-1, keepdim=True)
         else:
             scaled_probs = torch.softmax(flat_logits.float() / temperature, dim=-1)
-            token = torch.multinomial(scaled_probs, num_samples=1, generator=generator)
+            # `torch.multinomial` requires the generator and the sampled tensor's device to match; `_generator_device`
+            # gives the CPU-generator portability `randn_tensor` gives the continuous samplers.
+            rand_device = _generator_device(scaled_probs, generator)
+            token = torch.multinomial(scaled_probs.to(rand_device), num_samples=1, generator=generator).to(
+                scaled_probs.device
+            )
 
         token_prob = torch.gather(probs, -1, token)
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
@@ -200,11 +205,16 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         route_probs = torch.stack([clean_mass, stay_mass, noise_mass], dim=-1)
         route_probs = route_probs / route_probs.sum(dim=-1, keepdim=True)
-        routes = torch.multinomial(route_probs.view(-1, 3), num_samples=1, generator=generator).view_as(sample)
+        rand_device = _generator_device(route_probs, generator)
+        routes = (
+            torch.multinomial(route_probs.view(-1, 3).to(rand_device), num_samples=1, generator=generator)
+            .to(route_probs.device)
+            .view_as(sample)
+        )
 
         random_tokens = torch.randint(
-            low=0, high=vocab_size, size=sample.shape, device=sample.device, generator=generator
-        )
+            low=0, high=vocab_size, size=sample.shape, device=rand_device, generator=generator
+        ).to(sample.device)
         prev_sample = torch.where(routes == 0, sampled_tokens, sample)
         prev_sample = torch.where(routes == 2, random_tokens, prev_sample)
 
@@ -226,7 +236,8 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         k_eff = min(max(1, int(self.config.corrector_k)), seq_len)
 
         if selection == "random":
-            scores = torch.rand(batch_size, seq_len, device=sample.device, generator=generator)
+            rand_device = _generator_device(sample, generator)
+            scores = torch.rand(batch_size, seq_len, device=rand_device, generator=generator).to(sample.device)
             return torch.topk(scores, k=k_eff, dim=-1).indices
 
         if selection == "lowest_maxprob":
@@ -241,7 +252,8 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(f"Unknown `corrector_selection`: {selection!r}.")
 
         keys = confidence / float(self.config.corrector_selection_tau)
-        u = torch.rand(keys.shape, device=keys.device, generator=generator).clamp_(1e-12, 1.0 - 1e-12)
+        rand_device = _generator_device(keys, generator)
+        u = torch.rand(keys.shape, device=rand_device, generator=generator).to(keys.device).clamp_(1e-12, 1.0 - 1e-12)
         keys = keys + (-torch.log(-torch.log(u)))
         return torch.topk(keys, k=k_eff, dim=-1).indices
 
@@ -295,9 +307,12 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         positions = self._select_positions(sample, cond_log_probs, generator)
         rows = torch.arange(sample.shape[0], device=sample.device).unsqueeze(-1).expand_as(positions)
         chosen_probs = cond_log_probs[rows, positions].exp()
-        resampled = torch.multinomial(
-            chosen_probs.reshape(-1, vocab_size), num_samples=1, generator=generator
-        ).view_as(positions)
+        rand_device = _generator_device(chosen_probs, generator)
+        resampled = (
+            torch.multinomial(chosen_probs.reshape(-1, vocab_size).to(rand_device), num_samples=1, generator=generator)
+            .to(chosen_probs.device)
+            .view_as(positions)
+        )
 
         prev_sample = sample.clone()
         prev_sample[rows, positions] = resampled

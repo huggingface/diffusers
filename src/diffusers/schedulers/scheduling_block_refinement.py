@@ -20,7 +20,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, _generator_device
 
 
 @dataclass
@@ -173,7 +173,10 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         filtered = BlockRefinementScheduler._top_p_filtering(filtered, top_p=top_p)
 
         probs = torch.softmax(filtered.float(), dim=-1)
-        token = torch.multinomial(probs, num_samples=1, generator=generator)
+        # `torch.multinomial` requires the generator and the sampled tensor's device to match; `_generator_device`
+        # gives the CPU-generator portability `randn_tensor` gives the continuous samplers.
+        rand_device = _generator_device(probs, generator)
+        token = torch.multinomial(probs.to(rand_device), num_samples=1, generator=generator).to(probs.device)
         token_prob = torch.gather(probs, -1, token)
 
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
@@ -285,9 +288,10 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
 
             prev_sample = torch.where(transfer_index | editing_transfer_index, sampled_tokens, sample)
             self._committed = committed | transfer_index
+            rand_device = _generator_device(sample, generator)
             random_tokens = torch.randint(
-                low=0, high=model_output.shape[-1], size=sample.shape, device=sample.device, generator=generator
-            )
+                low=0, high=model_output.shape[-1], size=sample.shape, device=rand_device, generator=generator
+            ).to(sample.device)
             prev_sample = torch.where(self._committed, prev_sample, random_tokens)
 
             if not return_dict:
