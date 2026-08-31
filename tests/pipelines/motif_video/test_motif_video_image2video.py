@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 from PIL import Image
 from transformers import (
@@ -28,37 +27,26 @@ from transformers import (
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, MotifVideoImage2VideoPipeline
 from diffusers.guiders import AdaptiveProjectedGuidance
 from diffusers.models.transformers.transformer_motif_video import MotifVideoTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism
 
-from ..pipeline_params import (
-    IMAGE_TO_IMAGE_IMAGE_PARAMS,
-    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
-    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
-    TEXT_TO_IMAGE_IMAGE_PARAMS,
-)
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import enable_full_determinism
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class MotifVideoImage2VideoPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = MotifVideoImage2VideoPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"guidance_scale"}
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
+    required_input_params_in_call_signature = frozenset(
+        ["image", "prompt", "height", "width", "negative_prompt", "prompt_embeds", "negative_prompt_embeds"]
     )
-    test_xformers_attention = False
+    batch_input_params = frozenset(["prompt", "negative_prompt", "image"])
+    output_shape = (9, 3, 16, 16)
+    group_offloading_leaf_level_exclude_modules = ["text_encoder"]
+    # MotifVideo is a video pipeline: it exposes `num_videos_per_prompt`, not `num_images_per_prompt`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -127,7 +115,7 @@ class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
 
         guider = AdaptiveProjectedGuidance()
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
@@ -136,63 +124,83 @@ class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
             "feature_extractor": feature_extractor,
             "guider": guider,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        image = Image.new("RGB", (16, 16))
-
-        inputs = {
-            "image": image,
+    def get_dummy_inputs(self):
+        return {
+            "image": Image.new("RGB", (16, 16)),
             "prompt": "A test video",
             "negative_prompt": "bad quality",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "height": 16,
             "width": 16,
             "num_frames": 9,
             "max_sequence_length": 16,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
+
+
+class TestMotifVideoImage2VideoPipeline(MotifVideoImage2VideoPipelineTesterConfig, PipelineTesterMixin):
+    # The pipeline rejects a batched `image` ("`image` must be a single image, got a list of N images"), so the two
+    # tests that batch every input in `batch_input_params` cannot pass.
+    SINGLE_IMAGE_XFAIL = pytest.mark.xfail(
+        condition=True,
+        reason="MotifVideo I2V only supports a single conditioning image.",
+        strict=False,
+    )
 
     def test_inference(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        video = pipe(**inputs).frames
+        video = pipe(**self.get_dummy_inputs()).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 16, 16, 3))
+        assert generated_video.shape == self.output_shape
 
-    @unittest.skip("MotifVideo I2V only supports a single conditioning image")
-    def test_inference_batch_consistent(self):
-        pass
+    @SINGLE_IMAGE_XFAIL
+    def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
+        super().test_inference_batch_consistent(batch_sizes=batch_sizes, batch_generator=batch_generator)
 
-    @unittest.skip("MotifVideo I2V only supports a single conditioning image")
-    def test_inference_batch_single_identical(self):
-        pass
+    @SINGLE_IMAGE_XFAIL
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-4):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    @unittest.skip("MotifVideo I2V requires vision tower for image conditioning - cannot work without text_encoder")
-    def test_encode_prompt_works_in_isolation(self):
-        pass
+    # The image conditioning goes through the text encoder's vision tower, so a pipeline holding only the text stack
+    # cannot reproduce the full pipeline's output: the isolated run differs by ~7e-3.
+    @pytest.mark.xfail(
+        condition=True,
+        reason="MotifVideo I2V conditions on the image through the text encoder's vision tower.",
+        strict=False,
+    )
+    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
+        super().test_encode_prompt_works_in_isolation(
+            extra_required_param_value_dict=extra_required_param_value_dict, atol=atol, rtol=rtol
+        )
 
-    @unittest.skip("T5Gemma2Encoder's vision_tower doesn't support block-level or leaf-level offloading")
-    def test_pipeline_level_group_offloading_inference(self):
-        pass
 
-    @unittest.skip("T5Gemma2Encoder's vision_tower doesn't support block-level or leaf-level offloading")
-    def test_sequential_cpu_offload_forward_pass(self):
-        pass
+class TestMotifVideoImage2VideoPipelineMemory(MotifVideoImage2VideoPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the MotifVideo I2V pipeline.
 
-    @unittest.skip("T5Gemma2Encoder's vision_tower doesn't support block-level or leaf-level offloading")
-    def test_sequential_offload_forward_pass_twice(self):
-        pass
+    The `text_encoder`'s vision tower cannot be offloaded at leaf level, so it is excluded from the pipeline-level
+    group offloading test (see `group_offloading_leaf_level_exclude_modules`); the tests that offload every component
+    unconditionally are expected failures below.
+    """
+
+    VISION_TOWER_OFFLOAD_XFAIL = pytest.mark.xfail(
+        condition=True,
+        reason="T5Gemma2Encoder's vision_tower doesn't support block-level or leaf-level offloading.",
+        strict=False,
+    )
+
+    @VISION_TOWER_OFFLOAD_XFAIL
+    def test_group_offloading_inference(self):
+        super().test_group_offloading_inference()
+
+    @VISION_TOWER_OFFLOAD_XFAIL
+    def test_sequential_cpu_offload_forward_pass(self, base_pipe_output, expected_max_diff=1e-4):
+        super().test_sequential_cpu_offload_forward_pass(base_pipe_output, expected_max_diff=expected_max_diff)
+
+    @VISION_TOWER_OFFLOAD_XFAIL
+    def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
+        super().test_sequential_offload_forward_pass_twice(expected_max_diff=expected_max_diff)
