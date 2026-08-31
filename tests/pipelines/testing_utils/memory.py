@@ -287,6 +287,7 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
                 "text_encoder",
                 "text_encoder_2",
                 "text_encoder_3",
+                "text_encoder_4",
                 "transformer",
                 "transformer_2",
                 "unet",
