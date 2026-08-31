@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import numpy as np
 import PIL.Image
 import torch
@@ -22,7 +20,7 @@ import torch
 from diffusers.image_processor import VaeImageProcessor
 
 
-class ImageProcessorTest(unittest.TestCase):
+class TestImageProcessor:
     @property
     def dummy_sample(self):
         batch_size = 1

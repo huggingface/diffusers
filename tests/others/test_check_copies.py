@@ -16,8 +16,8 @@ import os
 import re
 import shutil
 import sys
-import tempfile
-import unittest
+
+import pytest
 
 
 git_repo_path = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -45,42 +45,42 @@ REFERENCE_CODE = """    \"""
 """
 
 
-class CopyCheckTester(unittest.TestCase):
-    def setUp(self):
-        self.diffusers_dir = tempfile.mkdtemp()
-        os.makedirs(os.path.join(self.diffusers_dir, "schedulers/"))
-        check_copies.DIFFUSERS_PATH = self.diffusers_dir
+class TestCopyCheck:
+    @pytest.fixture
+    def diffusers_dir(self, tmp_path, monkeypatch):
+        """A stand-in `src/diffusers` holding only `scheduling_ddpm.py`, pointed at by `check_copies`."""
+        os.makedirs(tmp_path / "schedulers")
         shutil.copy(
             os.path.join(git_repo_path, "src/diffusers/schedulers/scheduling_ddpm.py"),
-            os.path.join(self.diffusers_dir, "schedulers/scheduling_ddpm.py"),
+            tmp_path / "schedulers" / "scheduling_ddpm.py",
         )
+        monkeypatch.setattr(check_copies, "DIFFUSERS_PATH", str(tmp_path))
+        return tmp_path
 
-    def tearDown(self):
-        check_copies.DIFFUSERS_PATH = "src/diffusers"
-        shutil.rmtree(self.diffusers_dir)
-
-    def check_copy_consistency(self, comment, class_name, class_code, overwrite_result=None):
+    def check_copy_consistency(self, diffusers_dir, comment, class_name, class_code, overwrite_result=None):
         code = comment + f"\nclass {class_name}(nn.Module):\n" + class_code
         if overwrite_result is not None:
             expected = comment + f"\nclass {class_name}(nn.Module):\n" + overwrite_result
         code = check_copies.run_ruff(code)
-        fname = os.path.join(self.diffusers_dir, "new_code.py")
+        fname = diffusers_dir / "new_code.py"
         with open(fname, "w", newline="\n") as f:
             f.write(code)
         if overwrite_result is None:
-            self.assertTrue(len(check_copies.is_copy_consistent(fname)) == 0)
+            assert len(check_copies.is_copy_consistent(fname)) == 0
         else:
-            check_copies.is_copy_consistent(f.name, overwrite=True)
+            check_copies.is_copy_consistent(fname, overwrite=True)
             with open(fname, "r") as f:
-                self.assertTrue(f.read(), expected)
+                assert f.read() == expected
 
-    def test_find_code_in_diffusers(self):
+    def test_find_code_in_diffusers(self, diffusers_dir):
+        # `diffusers_dir` is requested for its `DIFFUSERS_PATH` patch — the lookup below resolves against it.
         code = check_copies.find_code_in_diffusers("schedulers.scheduling_ddpm.DDPMSchedulerOutput")
-        self.assertEqual(code, REFERENCE_CODE)
+        assert code == REFERENCE_CODE
 
-    def test_is_copy_consistent(self):
+    def test_is_copy_consistent(self, diffusers_dir):
         # Base copy consistency
         self.check_copy_consistency(
+            diffusers_dir,
             "# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput",
             "DDPMSchedulerOutput",
             REFERENCE_CODE + "\n",
@@ -88,6 +88,7 @@ class CopyCheckTester(unittest.TestCase):
 
         # With no empty line at the end
         self.check_copy_consistency(
+            diffusers_dir,
             "# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput",
             "DDPMSchedulerOutput",
             REFERENCE_CODE,
@@ -95,6 +96,7 @@ class CopyCheckTester(unittest.TestCase):
 
         # Copy consistency with rename
         self.check_copy_consistency(
+            diffusers_dir,
             "# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->Test",
             "TestSchedulerOutput",
             re.sub("DDPM", "Test", REFERENCE_CODE),
@@ -103,6 +105,7 @@ class CopyCheckTester(unittest.TestCase):
         # Copy consistency with a really long name
         long_class_name = "TestClassWithAReallyLongNameBecauseSomePeopleLikeThatForSomeReason"
         self.check_copy_consistency(
+            diffusers_dir,
             f"# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->{long_class_name}",
             f"{long_class_name}SchedulerOutput",
             re.sub("Bert", long_class_name, REFERENCE_CODE),
@@ -110,6 +113,7 @@ class CopyCheckTester(unittest.TestCase):
 
         # Copy consistency with overwrite
         self.check_copy_consistency(
+            diffusers_dir,
             "# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->Test",
             "TestSchedulerOutput",
             REFERENCE_CODE,

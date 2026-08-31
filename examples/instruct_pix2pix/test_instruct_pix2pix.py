@@ -30,7 +30,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class InstructPix2Pix(ExamplesTestsAccelerate):
+class TestInstructPix2Pix(ExamplesTestsAccelerate):
     def test_instruct_pix2pix_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -49,10 +49,7 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_instruct_pix2pix_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -72,10 +69,7 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
             run_command(self._launch_args + test_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-4"}
 
             resume_run_args = f"""
                 examples/instruct_pix2pix/train_instruct_pix2pix.py
@@ -95,7 +89,4 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
             run_command(self._launch_args + resume_run_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-6", "checkpoint-8"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-6", "checkpoint-8"}

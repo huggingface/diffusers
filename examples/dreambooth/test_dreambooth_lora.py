@@ -34,7 +34,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class DreamBoothLoRA(ExamplesTestsAccelerate):
+class TestDreamBoothLoRA(ExamplesTestsAccelerate):
     def test_dreambooth_lora(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -55,17 +55,17 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"unet"` in their names.
             starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
-            self.assertTrue(starts_with_unet)
+            assert starts_with_unet
 
     def test_dreambooth_lora_with_text_encoder(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -88,18 +88,18 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # check `text_encoder` is present at all.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             keys = lora_state_dict.keys()
             is_text_encoder_present = any(k.startswith("text_encoder") for k in keys)
-            self.assertTrue(is_text_encoder_present)
+            assert is_text_encoder_present
 
             # the names of the keys of the state dict should either start with `unet`
             # or `text_encoder`.
             is_correct_naming = all(k.startswith("unet") or k.startswith("text_encoder") for k in keys)
-            self.assertTrue(is_correct_naming)
+            assert is_correct_naming
 
     def test_dreambooth_lora_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -119,10 +119,7 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_dreambooth_lora_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -141,7 +138,7 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-2", "checkpoint-4"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-4"}
 
             resume_run_args = f"""
             examples/dreambooth/train_dreambooth_lora.py
@@ -160,7 +157,7 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + resume_run_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-6", "checkpoint-8"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-6", "checkpoint-8"}
 
     def test_dreambooth_lora_if_model(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -185,20 +182,20 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"unet"` in their names.
             starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
-            self.assertTrue(starts_with_unet)
+            assert starts_with_unet
 
 
-class DreamBoothLoRASDXL(ExamplesTestsAccelerate):
+class TestDreamBoothLoRASDXL(ExamplesTestsAccelerate):
     def test_dreambooth_lora_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -219,17 +216,17 @@ class DreamBoothLoRASDXL(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"unet"` in their names.
             starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
-            self.assertTrue(starts_with_unet)
+            assert starts_with_unet
 
     def test_dreambooth_lora_sdxl_with_text_encoder(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -252,12 +249,12 @@ class DreamBoothLoRASDXL(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"unet"` or `"text_encoder"` or `"text_encoder_2"` in their names.
@@ -265,7 +262,7 @@ class DreamBoothLoRASDXL(ExamplesTestsAccelerate):
             starts_with_unet = all(
                 k.startswith("unet") or k.startswith("text_encoder") or k.startswith("text_encoder_2") for k in keys
             )
-            self.assertTrue(starts_with_unet)
+            assert starts_with_unet
 
     def test_dreambooth_lora_sdxl_custom_captions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -340,7 +337,7 @@ class DreamBoothLoRASDXL(ExamplesTestsAccelerate):
 
             # check checkpoint directories exist
             # checkpoint-2 should have been deleted
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_dreambooth_lora_sdxl_text_encoder_checkpointing_checkpoints_total_limit(self):
         pipeline_path = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
@@ -372,8 +369,4 @@ class DreamBoothLoRASDXL(ExamplesTestsAccelerate):
             pipe("a prompt", num_inference_steps=2)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                # checkpoint-2 should have been deleted
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}

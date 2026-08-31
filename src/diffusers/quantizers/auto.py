@@ -32,9 +32,11 @@ from .quantization_config import (
     QuantizationConfigMixin,
     QuantizationMethod,
     QuantoConfig,
+    SDNQConfig,
     TorchAoConfig,
 )
 from .quanto import QuantoQuantizer
+from .sdnq import SDNQQuantizer
 from .torchao import TorchAoHfQuantizer
 
 
@@ -47,6 +49,7 @@ AUTO_QUANTIZER_MAPPING = {
     "modelopt": NVIDIAModelOptQuantizer,
     "auto-round": AutoRoundQuantizer,
     "nunchaku_lite": NunchakuLiteQuantizer,
+    "sdnq": SDNQQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -58,6 +61,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "modelopt": NVIDIAModelOptConfig,
     "auto-round": AutoRoundConfig,
     "nunchaku_lite": NunchakuLiteQuantizationConfig,
+    "sdnq": SDNQConfig,
 }
 
 

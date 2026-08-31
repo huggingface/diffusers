@@ -35,7 +35,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class TextToImageLoRA(ExamplesTestsAccelerate):
+class TestTextToImageLoRA(ExamplesTestsAccelerate):
     def test_text_to_image_lora_sdxl_checkpointing_checkpoints_total_limit(self):
         prompt = "a prompt"
         pipeline_path = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
@@ -71,7 +71,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
 
             # check checkpoint directories exist
             # checkpoint-2 should have been deleted
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_text_to_image_lora_checkpointing_checkpoints_total_limit(self):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-torch"
@@ -114,7 +114,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
 
             # check checkpoint directories exist
             # checkpoint-2 should have been deleted
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_text_to_image_lora_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-torch"
@@ -154,10 +154,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
             pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-4"}
 
             # resume and we should try to checkpoint at 6, where we'll have to remove
             # checkpoint-2 and checkpoint-4 instead of just a single previous checkpoint
@@ -193,13 +190,10 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
             pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-6", "checkpoint-8"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-6", "checkpoint-8"}
 
 
-class TextToImageLoRASDXL(ExamplesTestsAccelerate):
+class TestTextToImageLoRASDXL(ExamplesTestsAccelerate):
     def test_text_to_image_lora_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -219,12 +213,12 @@ class TextToImageLoRASDXL(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
     def test_text_to_image_lora_sdxl_with_text_encoder(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -246,12 +240,12 @@ class TextToImageLoRASDXL(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"unet"` or `"text_encoder"` or `"text_encoder_2"` in their names.
@@ -259,7 +253,7 @@ class TextToImageLoRASDXL(ExamplesTestsAccelerate):
             starts_with_unet = all(
                 k.startswith("unet") or k.startswith("text_encoder") or k.startswith("text_encoder_2") for k in keys
             )
-            self.assertTrue(starts_with_unet)
+            assert starts_with_unet
 
     def test_text_to_image_lora_sdxl_text_encoder_checkpointing_checkpoints_total_limit(self):
         prompt = "a prompt"
@@ -297,4 +291,4 @@ class TextToImageLoRASDXL(ExamplesTestsAccelerate):
 
             # check checkpoint directories exist
             # checkpoint-2 should have been deleted
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}

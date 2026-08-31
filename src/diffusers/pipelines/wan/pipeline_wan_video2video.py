@@ -419,6 +419,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
 
         if latents is None:
+            video = video.to(device=device, dtype=self.vae.dtype)
             init_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), sample_mode="argmax") for vid in video]
 
             init_latents = torch.cat(init_latents, dim=0).to(dtype)

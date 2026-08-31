@@ -33,7 +33,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class DreamBoothFlux(ExamplesTestsAccelerate):
+class TestDreamBoothFlux(ExamplesTestsAccelerate):
     instance_data_dir = "docs/source/en/imgs"
     instance_prompt = "photo"
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-pipe"
@@ -59,8 +59,8 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "transformer", "diffusion_pytorch_model.safetensors")))
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+            assert os.path.isfile(os.path.join(tmpdir, "transformer", "diffusion_pytorch_model.safetensors"))
+            assert os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json"))
 
     def test_dreambooth_checkpointing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -93,8 +93,8 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
             pipe(self.instance_prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
-            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
-            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
+            assert os.path.isdir(os.path.join(tmpdir, "checkpoint-2"))
+            assert os.path.isdir(os.path.join(tmpdir, "checkpoint-4"))
 
             # check can run an intermediate checkpoint
             transformer = FluxTransformer2DModel.from_pretrained(tmpdir, subfolder="checkpoint-2/transformer")
@@ -132,11 +132,11 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
             pipe(self.instance_prompt, num_inference_steps=1)
 
             # check old checkpoints do not exist
-            self.assertFalse(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
+            assert not os.path.isdir(os.path.join(tmpdir, "checkpoint-2"))
 
             # check new checkpoints exist
-            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
-            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-6")))
+            assert os.path.isdir(os.path.join(tmpdir, "checkpoint-4"))
+            assert os.path.isdir(os.path.join(tmpdir, "checkpoint-6"))
 
     def test_dreambooth_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -156,10 +156,7 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_dreambooth_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -178,10 +175,7 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-4"}
 
             resume_run_args = f"""
             {self.script_path}
@@ -200,4 +194,4 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + resume_run_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-6", "checkpoint-8"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-6", "checkpoint-8"}

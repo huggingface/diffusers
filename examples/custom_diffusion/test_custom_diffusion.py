@@ -17,7 +17,8 @@ import logging
 import os
 import sys
 import tempfile
-import unittest
+
+import pytest
 
 from diffusers.utils import is_transformers_version
 
@@ -33,8 +34,8 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-@unittest.skipIf(is_transformers_version(">=", "4.57.5"), "Size mismatch")
-class CustomDiffusion(ExamplesTestsAccelerate):
+@pytest.mark.skipif(is_transformers_version(">=", "4.57.5"), reason="Size mismatch")
+class TestCustomDiffusion(ExamplesTestsAccelerate):
     def test_custom_diffusion(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -57,8 +58,8 @@ class CustomDiffusion(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_custom_diffusion_weights.bin")))
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "<new1>.bin")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_custom_diffusion_weights.bin"))
+            assert os.path.isfile(os.path.join(tmpdir, "<new1>.bin"))
 
     def test_custom_diffusion_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -80,7 +81,7 @@ class CustomDiffusion(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_custom_diffusion_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -101,10 +102,7 @@ class CustomDiffusion(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-4"}
 
             resume_run_args = f"""
             examples/custom_diffusion/train_custom_diffusion.py
@@ -125,4 +123,4 @@ class CustomDiffusion(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + resume_run_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-6", "checkpoint-8"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-6", "checkpoint-8"}

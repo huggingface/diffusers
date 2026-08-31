@@ -95,7 +95,7 @@ This is non-invasive — it monkey-patches bound methods without modifying sourc
 
 **Pipeline config registry** — each entry specifies:
 
-- `pipeline_cls`, `pretrained_model_name_or_path`, `torch_dtype`
+- `pipeline_cls`, `pretrained_model_name_or_path`, `dtype`
 - `call_kwargs` with pipeline-specific defaults:
 
 | Pipeline | Resolution | Frames | Steps | Extra |

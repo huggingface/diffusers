@@ -50,6 +50,7 @@ class QuantizationMethod(str, Enum):
     QUANTO = "quanto"
     MODELOPT = "modelopt"
     AUTOROUND = "auto-round"
+    SDNQ = "sdnq"
 
 
 @dataclass
@@ -652,6 +653,13 @@ class QuantoConfig(QuantizationConfigMixin):
     This is a wrapper class about all possible attributes and features that you can play with a model that has been
     loaded using `quanto`.
 
+    <Tip warning={true}>
+
+    `QuantoConfig` is deprecated and will be removed in version 1.0.0. Consider switching to one of the other supported
+    quantization backends, such as [`BitsAndBytesConfig`] or [`TorchAoConfig`].
+
+    </Tip>
+
     Args:
         weights_dtype (`str`, *optional*, defaults to `"int8"`):
             The target dtype for the weights after quantization. Supported values are ("float8","int8","int4","int2")
@@ -950,3 +958,39 @@ class AutoRoundConfig(QuantizationConfigMixin):
         # (e.g. quant_method is set automatically)
         config_dict = {k: v for k, v in config_dict.items() if k != "quant_method"}
         return super().from_dict(config_dict, return_unused_kwargs=return_unused_kwargs, **kwargs)
+
+
+class SDNQConfig(QuantizationConfigMixin):
+    """Configuration class for SDNQ (SD.Next Quantization).
+
+    The `sdnq` library ships its own diffusers-compatible config and quantizer; this class is a thin factory that
+    defers to them so that `quant_method="sdnq"` checkpoints load natively with diffusers. All arguments are forwarded
+    to `sdnq.SDNQConfig`. Requires the `sdnq` library: `pip install sdnq`.
+
+    Reference: https://github.com/Disty0/sdnq
+
+    Args:
+        weights_dtype (`str`, *optional*, defaults to `"int8"`):
+            The target dtype for the weights after quantization, e.g. `"int8"`, `"uint4"`, `"float8_e4m3fn"`. See
+            `sdnq.common.accepted_weight_dtypes` for all supported values.
+        group_size (`int`, *optional*, defaults to `0`):
+            How many elements of a tensor share the same quantization group. `0` auto-selects based on `weights_dtype`,
+            `-1` disables grouping and uses row-wise quantization.
+        use_svd (`bool`, *optional*, defaults to `False`):
+            Whether to apply the SVDQuant algorithm on top of SDNQ quantization.
+        use_quantized_matmul (`bool`, *optional*, defaults to `False`):
+            Whether to use quantized INT8 / FP8 / FP16 matmul on the forward pass instead of BF16 / FP16.
+        modules_to_not_convert (`list`, *optional*, defaults to `None`):
+            The list of modules to skip during quantization.
+        kwargs (`dict[str, Any]`, *optional*):
+            Additional keyword arguments forwarded to `sdnq.SDNQConfig` (e.g. `quantized_matmul_dtype`, `svd_rank`,
+            `use_hadamard`, `quant_conv`, `quant_embedding`, `modules_dtype_dict`).
+    """
+
+    def __new__(cls, *args, **kwargs):
+        from .sdnq.sdnq_quantizer import _check_sdnq_requirement
+
+        _check_sdnq_requirement()
+        from sdnq import SDNQConfig as SDNQLibConfig
+
+        return SDNQLibConfig(*args, **kwargs)

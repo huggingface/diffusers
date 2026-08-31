@@ -30,7 +30,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class TextualInversion(ExamplesTestsAccelerate):
+class TestTextualInversion(ExamplesTestsAccelerate):
     def test_textual_inversion(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -55,7 +55,7 @@ class TextualInversion(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "learned_embeds.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "learned_embeds.safetensors"))
 
     def test_textual_inversion_checkpointing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -84,10 +84,7 @@ class TextualInversion(ExamplesTestsAccelerate):
             run_command(self._launch_args + test_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-3"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-3"}
 
     def test_textual_inversion_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -115,10 +112,7 @@ class TextualInversion(ExamplesTestsAccelerate):
             run_command(self._launch_args + test_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-1", "checkpoint-2"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-1", "checkpoint-2"}
 
             resume_run_args = f"""
                 examples/textual_inversion/textual_inversion.py
@@ -146,7 +140,4 @@ class TextualInversion(ExamplesTestsAccelerate):
             run_command(self._launch_args + resume_run_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-3"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-3"}

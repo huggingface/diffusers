@@ -172,6 +172,9 @@ class LTX2ConditionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "connectors": connectors,
             "vocoder": vocoder,
             "audio_scheduler": None,
+            "processor": None,
+            "prompt_enhancer": None,
+            "duration_head": None,
         }
 
         return components
@@ -192,7 +195,8 @@ class LTX2ConditionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
 
         image = torch.rand((1, 3, 32, 32), generator=generator, device=device)
-        img_cond = LTX2VideoCondition(frames=image, index=0, strength=1.0)
+        # Synthetic float tensors skip H.264 CRF re-compression (training path uses PIL/uint8).
+        img_cond = LTX2VideoCondition(frames=image, index=0, strength=1.0, crf=0)
 
         inputs = {
             "conditions": img_cond,
@@ -201,6 +205,17 @@ class LTX2ConditionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
+            # Pin legacy sampling knobs so unit tests stay stable when production defaults
+            # track LTX-2.3/2.5 (STG on, modality/rescale, cross-timestep).
+            "stg_scale": 0.0,
+            "modality_scale": 1.0,
+            "guidance_rescale": 0.0,
+            "audio_guidance_scale": 1.0,
+            "audio_stg_scale": 0.0,
+            "audio_modality_scale": 1.0,
+            "audio_guidance_rescale": 0.0,
+            "spatio_temporal_guidance_blocks": None,
+            "use_cross_timestep": False,
             "height": 32,
             "width": 32,
             "num_frames": 5,

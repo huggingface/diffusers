@@ -20,8 +20,14 @@ from diffusers import AutoencoderKLLTXVideo
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    SingleFileTesterMixin,
+    TrainingTesterMixin,
+)
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -104,7 +110,7 @@ class TestAutoencoderKLLTXVideo090Memory(AutoencoderKLLTXVideo090TesterConfig, M
     """Memory optimization tests for AutoencoderKLLTXVideo (0.9.0 config)."""
 
 
-class TestAutoencoderKLLTXVideo090SlicingTiling(AutoencoderKLLTXVideo090TesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLLTXVideo090SlicingTiling(AutoencoderKLLTXVideo090TesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLLTXVideo (0.9.0 config)."""
 
     @pytest.mark.skip("AutoencoderKLLTXVideo does not support `norm_num_groups` because it does not use GroupNorm.")
@@ -179,3 +185,17 @@ class TestAutoencoderKLLTXVideo091Training(AutoencoderKLLTXVideo091TesterConfig,
 
 class TestAutoencoderKLLTXVideo091Memory(AutoencoderKLLTXVideo091TesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKLLTXVideo (0.9.1 config)."""
+
+
+class TestAutoencoderKLLTXVideoSingleFile(AutoencoderKLLTXVideo090TesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "diffusers/LTX-Video-0.9.0"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "vae"}

@@ -262,9 +262,9 @@ from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 from diffusers.utils import load_image
 import torch
 
-controlnet = ControlNetModel.from_pretrained("path/to/controlnet", torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained("path/to/controlnet", dtype=torch.float16)
 pipeline = StableDiffusionControlNetPipeline.from_pretrained(
-    "path/to/base/model", controlnet=controlnet, torch_dtype=torch.float16
+    "path/to/base/model", controlnet=controlnet, dtype=torch.float16
 ).to("cuda")
 
 control_image = load_image("./conditioning_image_1.png")

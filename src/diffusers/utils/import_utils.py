@@ -214,10 +214,10 @@ _cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("
 _sageattention_available, _sageattention_version = _is_package_available("sageattention")
 _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
-_aiter_available, _aiter_version = _is_package_available("aiter", get_dist_name=True)
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
 _auto_round_available, _auto_round_version = _is_package_available("auto_round")
+_sdnq_available, _sdnq_version = _is_package_available("sdnq")
 _flashpack_available, _flashpack_version = _is_package_available("flashpack")
 _av_available, _av_version = _is_package_available("av")
 
@@ -374,6 +374,10 @@ def is_auto_round_available():
     return _auto_round_available
 
 
+def is_sdnq_available():
+    return _sdnq_available
+
+
 def is_timm_available():
     return _timm_available
 
@@ -408,10 +412,6 @@ def is_flash_attn_available():
 
 def is_flash_attn_3_available():
     return _flash_attn_3_available
-
-
-def is_aiter_available():
-    return _aiter_available
 
 
 def is_kornia_available():
@@ -558,6 +558,10 @@ QUANTO_IMPORT_ERROR = """
 install optimum-quanto`
 """
 
+SDNQ_IMPORT_ERROR = """
+{0} requires the sdnq library but it was not found in your environment. You can install it with pip: `pip install sdnq`
+"""
+
 # docstyle-ignore
 PYTORCH_RETINAFACE_IMPORT_ERROR = """
 {0} requires the pytorch_retinaface library but it was not found in your environment. You can install it with pip: `pip install pytorch_retinaface`
@@ -605,6 +609,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("gguf", (is_gguf_available, GGUF_IMPORT_ERROR)),
         ("torchao", (is_torchao_available, TORCHAO_IMPORT_ERROR)),
         ("quanto", (is_optimum_quanto_available, QUANTO_IMPORT_ERROR)),
+        ("sdnq", (is_sdnq_available, SDNQ_IMPORT_ERROR)),
         ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
         ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
         ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
@@ -820,6 +825,22 @@ def is_gguf_version(operation: str, version: str):
 
 
 @cache
+def is_sdnq_version(operation: str, version: str):
+    """
+    Compares the current sdnq version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _sdnq_available:
+        return False
+    return compare_versions(parse(_sdnq_version), operation, version)
+
+
+@cache
 def is_torchao_version(operation: str, version: str):
     """
     Compares the current torchao version to a given reference with an operation.
@@ -913,22 +934,6 @@ def is_flash_attn_version(operation: str, version: str):
     if not _flash_attn_available:
         return False
     return compare_versions(parse(_flash_attn_version), operation, version)
-
-
-@cache
-def is_aiter_version(operation: str, version: str):
-    """
-    Compares the current aiter version to a given reference with an operation.
-
-    Args:
-        operation (`str`):
-            A string representation of an operator, such as `">"` or `"<="`
-        version (`str`):
-            A version string
-    """
-    if not _aiter_available:
-        return False
-    return compare_versions(parse(_aiter_version), operation, version)
 
 
 def get_objects_from_module(module):

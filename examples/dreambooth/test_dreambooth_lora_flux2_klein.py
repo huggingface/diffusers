@@ -18,8 +18,8 @@ import logging
 import os
 import sys
 import tempfile
-import unittest
 
+import pytest
 import safetensors
 
 from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
@@ -36,7 +36,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
+class TestDreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
     instance_data_dir = "docs/source/en/imgs"
     instance_prompt = "dog"
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein"
@@ -65,17 +65,17 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"transformer"` in their names.
             starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
-            self.assertTrue(starts_with_transformer)
+            assert starts_with_transformer
 
     def test_dreambooth_lora_latent_caching(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -100,17 +100,17 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"transformer"` in their names.
             starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
-            self.assertTrue(starts_with_transformer)
+            assert starts_with_transformer
 
     def test_dreambooth_lora_layers(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -136,12 +136,12 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"transformer"` in their names. In this test, we only params of
@@ -149,7 +149,7 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
             starts_with_transformer = all(
                 key.startswith(f"transformer.{self.transformer_layer_type}") for key in lora_state_dict.keys()
             )
-            self.assertTrue(starts_with_transformer)
+            assert starts_with_transformer
 
     def test_dreambooth_lora_flux2_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -171,10 +171,7 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_dreambooth_lora_flux2_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -195,7 +192,7 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-2", "checkpoint-4"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-4"}
 
             resume_run_args = f"""
             {self.script_path}
@@ -216,7 +213,7 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + resume_run_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-6", "checkpoint-8"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-6", "checkpoint-8"}
 
     def test_dreambooth_lora_with_metadata(self):
         # Use a `lora_alpha` that is different from `rank`.
@@ -246,7 +243,7 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
             state_dict_file = os.path.join(tmpdir, "pytorch_lora_weights.safetensors")
-            self.assertTrue(os.path.isfile(state_dict_file))
+            assert os.path.isfile(state_dict_file)
 
             # Check if the metadata was properly serialized.
             with safetensors.torch.safe_open(state_dict_file, framework="pt", device="cpu") as f:
@@ -258,11 +255,11 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
                 raw = json.loads(raw)
 
             loaded_lora_alpha = raw["transformer.lora_alpha"]
-            self.assertTrue(loaded_lora_alpha == lora_alpha)
+            assert loaded_lora_alpha == lora_alpha
             loaded_lora_rank = raw["transformer.r"]
-            self.assertTrue(loaded_lora_rank == rank)
+            assert loaded_lora_rank == rank
 
-    @unittest.skip("Aspect-ratio bucketing is opt-in and not widely used yet; re-enable when it is.")
+    @pytest.mark.skip(reason="Aspect-ratio bucketing is opt-in and not widely used yet; re-enable when it is.")
     def test_dreambooth_lora_flux2_aspect_ratio_buckets(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -284,12 +281,12 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
                 """.split()
 
             run_command(self._launch_args + test_args)
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
-            self.assertTrue(all("lora" in k for k in lora_state_dict.keys()))
-            self.assertTrue(all(key.startswith("transformer") for key in lora_state_dict.keys()))
+            assert all("lora" in k for k in lora_state_dict.keys())
+            assert all(key.startswith("transformer") for key in lora_state_dict.keys())
 
-    @unittest.skip("Caption dropout is opt-in and not widely used yet; re-enable when it is.")
+    @pytest.mark.skip(reason="Caption dropout is opt-in and not widely used yet; re-enable when it is.")
     def test_dreambooth_lora_flux2_caption_dropout(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -311,6 +308,6 @@ class DreamBoothLoRAFlux2Klein(ExamplesTestsAccelerate):
                 """.split()
 
             run_command(self._launch_args + test_args)
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
-            self.assertTrue(all("lora" in k for k in lora_state_dict.keys()))
+            assert all("lora" in k for k in lora_state_dict.keys())

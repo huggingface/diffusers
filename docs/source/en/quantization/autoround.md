@@ -42,8 +42,8 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipe = DiffusionPipeline.from_pretrained(
     "INCModel/Z-Image-W4A16-AutoRound",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
-    device_map="cuda",
+    dtype=torch.bfloat16,
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 
 image = pipe("a cat holding a sign that says hello").images[0]
@@ -63,14 +63,14 @@ transformer = ZImageTransformer2DModel.from_pretrained(
     model_id,
     subfolder="transformer",
     quantization_config=quantization_config,
-    torch_dtype=torch.bfloat16,
-    device_map="cuda",
+    dtype=torch.bfloat16,
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 
 pipe = ZImagePipeline.from_pretrained(
     model_id,
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     device_map="cuda",
 )
 
@@ -95,8 +95,8 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipe = DiffusionPipeline.from_pretrained(
     "INCModel/Z-Image-W4A16-AutoRound",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
-    device_map="cuda",
+    dtype=torch.bfloat16,
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 
 pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False)
@@ -171,8 +171,8 @@ model_id = "INCModel/Z-Image-W4A16-AutoRound"
 # The inference backend will be automatically selected.
 pipe = ZImagePipeline.from_pretrained(
     model_id,
-    torch_dtype=torch.bfloat16,
-    device_map="cuda",
+    dtype=torch.bfloat16,
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 
 image = pipe("a cat holding a sign that says hello").images[0]
