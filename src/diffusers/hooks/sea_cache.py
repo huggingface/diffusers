@@ -12,12 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import inspect
 import math
-import time
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Sequence
+from typing import Any, Callable, Literal
 
 import torch
 
@@ -79,9 +77,6 @@ class SeaCacheConfig:
         raw_vision_callback (`Callable`, *optional*):
             Advanced model adapter returning raw vision latents with shape `(C, T, H, W)` for the
             `"raw_vision_latents"` indicator. Cosmos 3 uses its native adapter when this is omitted.
-        gate_schedule (`Sequence[bool]`, *optional*):
-            Per-step full-compute decisions to replay for controlled residual-prediction ablations. SEA still evaluates
-            its natural decision and reports mismatches; invalid or unsafe calls always fail open to full compute.
 
     Example:
         ```python
@@ -116,7 +111,6 @@ class SeaCacheConfig:
         [torch.nn.Module, tuple[Any, ...], dict[str, Any]],
         list[torch.Tensor] | None,
     ] = None
-    gate_schedule: Sequence[bool] = None
 
     def __post_init__(self):
         if not math.isfinite(self.threshold) or self.threshold < 0:
@@ -151,10 +145,6 @@ class SeaCacheConfig:
             callback = getattr(self, name)
             if callback is not None and not callable(callback):
                 raise TypeError(f"`{name}` must be callable or `None`.")
-        if self.gate_schedule is not None:
-            self.gate_schedule = tuple(self.gate_schedule)
-            if any(not isinstance(value, bool) for value in self.gate_schedule):
-                raise TypeError("`gate_schedule` must contain only boolean values.")
 
 
 @dataclass
@@ -174,8 +164,6 @@ class SeaCacheContextState(BaseState):
         self.previous_indicator: list[torch.Tensor] | None = None
         self.accumulated_distance = 0.0
         self.consecutive_cached = 0
-        self.max_consecutive_cached_observed = 0
-        self.max_consecutive_forced_full = 0
         self.skip_remaining = False
         self.full_execution_pending = False
         self.cacheable_execution = False
@@ -184,7 +172,6 @@ class SeaCacheContextState(BaseState):
         self.und_output: torch.Tensor | None = None
         self.cached_und_output: torch.Tensor | None = None
         self.cached_gen_residual: torch.Tensor | None = None
-        self.full_started_at: float | None = None
 
     def reset_forward(self):
         self.skip_remaining = False
@@ -195,7 +182,6 @@ class SeaCacheContextState(BaseState):
         self.und_output = None
         self.cached_und_output = None
         self.cached_gen_residual = None
-        self.full_started_at = None
 
     def reset_trajectory(self):
         self.history = []
@@ -207,8 +193,6 @@ class SeaCacheContextState(BaseState):
 
     def reset(self):
         self.reset_trajectory()
-        self.max_consecutive_cached_observed = 0
-        self.max_consecutive_forced_full = 0
         self.reset_forward()
 
 
@@ -219,20 +203,6 @@ class SeaCacheSharedState:
 
     def reset(self):
         self.forward_metadata: _SeaCacheForwardMetadata | None = None
-        self.transformer_calls = 0
-        self.gate_evaluations = 0
-        self.gate_full_decisions = 0
-        self.gate_skip_decisions = 0
-        self.gate_trace: list[bool] = []
-        self.gate_schedule_mismatches = 0
-        self.num_full_steps = 0
-        self.num_cached_steps = 0
-        self.fail_open_calls = 0
-        self.indicator_seconds = 0.0
-        self.decision_seconds = 0.0
-        self.full_seconds = 0.0
-        self.branch_full_executions: dict[str, int] = {}
-        self.branch_reuses: dict[str, int] = {}
 
     def warn_once(self, message: str):
         if message not in self._warned_messages:
@@ -240,7 +210,6 @@ class SeaCacheSharedState:
             self._warned_messages.add(message)
 
     def mark_fail_open(self, message: str):
-        self.fail_open_calls += 1
         self.warn_once(message)
 
     def resolve_gate(
@@ -254,7 +223,6 @@ class SeaCacheSharedState:
         if state.gate_key == gate_key:
             return state.gate_should_compute
 
-        self.gate_evaluations += 1
         is_non_adjacent = state.gate_key is not None and metadata.step_index != state.gate_key[0] + 1
         if is_non_adjacent:
             self.mark_fail_open("SeaCache received non-adjacent scheduler steps; running full.")
@@ -299,37 +267,14 @@ class SeaCacheSharedState:
 
         should_compute = natural_should_compute
 
-        if config.gate_schedule is not None:
-            schedule_is_valid = len(config.gate_schedule) == metadata.num_inference_steps
-            scheduled_compute = bool(config.gate_schedule[metadata.step_index]) if schedule_is_valid else True
-            can_replay_skip = not (invalid_gate or is_retained or is_in_cache_end or is_first_observation)
-            if not schedule_is_valid:
-                self.mark_fail_open(
-                    "SeaCache gate schedule length does not match the number of inference steps; running full."
-                )
-                should_compute = True
-            elif scheduled_compute or can_replay_skip:
-                if natural_should_compute != scheduled_compute:
-                    self.gate_schedule_mismatches += 1
-                should_compute = scheduled_compute
-            else:
-                self.mark_fail_open("SeaCache gate schedule requested an unsafe cache hit; running full.")
-                should_compute = True
-
         if is_max_consecutive:
             should_compute = True
-            state.max_consecutive_forced_full += 1
 
         state.accumulated_distance = 0.0 if should_compute else candidate_accumulated_distance
 
         state.gate_key = gate_key
         state.gate_should_compute = should_compute
         state.previous_indicator = None if indicator is None else [value.detach() for value in indicator]
-        self.gate_trace.append(should_compute)
-        if should_compute:
-            self.gate_full_decisions += 1
-        else:
-            self.gate_skip_decisions += 1
         return should_compute
 
 
@@ -375,18 +320,11 @@ def _get_block_outputs(
 
 def _record_full_execution(
     config: SeaCacheConfig,
-    state_manager: StateManager,
-    shared_state: SeaCacheSharedState,
     state: SeaCacheContextState,
     gen_output: torch.Tensor,
     und_output: torch.Tensor | None,
 ) -> None:
-    shared_state.num_full_steps += 1
     state.consecutive_cached = 0
-    branch = state_manager._current_context
-    shared_state.branch_full_executions[branch] = shared_state.branch_full_executions.get(branch, 0) + 1
-    if state.full_started_at is not None:
-        shared_state.full_seconds += time.perf_counter() - state.full_started_at
     if (
         state.cacheable_execution
         and state.step_index is not None
@@ -570,7 +508,6 @@ class SeaCacheRootHook(ModelHook):
         shared_state: SeaCacheSharedState,
         metadata_callback: Callable,
         raw_vision_callback: Callable,
-        residual_boundary: str,
     ):
         super().__init__()
         self.config = config
@@ -578,73 +515,9 @@ class SeaCacheRootHook(ModelHook):
         self.shared_state = shared_state
         self.metadata_callback = metadata_callback
         self.raw_vision_callback = raw_vision_callback
-        self.residual_boundary = residual_boundary
-        self._last_stats: dict[str, Any] | None = None
-
-    @property
-    def num_full_steps(self) -> int:
-        return self.shared_state.num_full_steps
-
-    @property
-    def num_cached_steps(self) -> int:
-        return self.shared_state.num_cached_steps
-
-    def stats(self) -> dict[str, Any]:
-        if self.shared_state.transformer_calls == 0 and self._last_stats is not None:
-            return copy.deepcopy(self._last_stats)
-
-        persistent_cache_bytes = 0
-        per_branch = {}
-        for branch, state in sorted(self.state_manager._state_cache.items()):
-            if state.previous_indicator is not None:
-                persistent_cache_bytes += sum(
-                    value.numel() * value.element_size() for value in state.previous_indicator
-                )
-            for _, und_output, gen_residual in state.history:
-                persistent_cache_bytes += und_output.numel() * und_output.element_size()
-                persistent_cache_bytes += gen_residual.numel() * gen_residual.element_size()
-            per_branch[branch] = {
-                "full_calls": self.shared_state.branch_full_executions.get(branch, 0),
-                "reuse_calls": self.shared_state.branch_reuses.get(branch, 0),
-                "max_consecutive_cached_observed": state.max_consecutive_cached_observed,
-                "max_consecutive_forced_full": state.max_consecutive_forced_full,
-            }
-
-        opportunities = self.shared_state.num_full_steps + self.shared_state.num_cached_steps
-        return {
-            "indicator_source": self.config.indicator_source,
-            "residual_order": self.config.residual_order,
-            "residual_boundary": self.residual_boundary,
-            "max_consecutive_cached": self.config.max_consecutive_cached,
-            "max_consecutive_cached_observed": max(
-                (stats["max_consecutive_cached_observed"] for stats in per_branch.values()), default=0
-            ),
-            "max_consecutive_forced_full": sum(stats["max_consecutive_forced_full"] for stats in per_branch.values()),
-            "transformer_calls": self.shared_state.transformer_calls,
-            "gate_evaluations": self.shared_state.gate_evaluations,
-            "gate_full_decisions": self.shared_state.gate_full_decisions,
-            "gate_skip_decisions": self.shared_state.gate_skip_decisions,
-            "gate_trace": list(self.shared_state.gate_trace),
-            "gate_schedule_replayed": self.config.gate_schedule is not None,
-            "gate_schedule_mismatches": self.shared_state.gate_schedule_mismatches,
-            "actual_full_executions": self.shared_state.num_full_steps,
-            "actual_reuses": self.shared_state.num_cached_steps,
-            "actual_reuse_rate": (self.shared_state.num_cached_steps / opportunities if opportunities else 0.0),
-            "fail_open_calls": self.shared_state.fail_open_calls,
-            "sea_indicator_seconds": self.shared_state.indicator_seconds,
-            "sea_decision_seconds": self.shared_state.decision_seconds,
-            "sea_seconds": (self.shared_state.indicator_seconds + self.shared_state.decision_seconds),
-            "full_seconds": self.shared_state.full_seconds,
-            "timing_note": "host wall time; CUDA work is asynchronous",
-            "persistent_cache_bytes": persistent_cache_bytes,
-            "branch_full_executions": dict(sorted(self.shared_state.branch_full_executions.items())),
-            "branch_reuses": dict(sorted(self.shared_state.branch_reuses.items())),
-            "per_branch": per_branch,
-        }
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
         self.shared_state.forward_metadata = None
-        self.shared_state.transformer_calls += 1
         if torch.is_grad_enabled():
             self.shared_state.mark_fail_open(
                 "SeaCache is inference-only; calls with autograd enabled run in fail-open mode."
@@ -743,8 +616,6 @@ class SeaCacheRootHook(ModelHook):
         return output
 
     def reset_state(self, module: torch.nn.Module):
-        if self.shared_state.transformer_calls > 0:
-            self._last_stats = self.stats()
         self.state_manager.reset()
         self.shared_state.reset()
         return module
@@ -829,13 +700,10 @@ class SeaCacheLeaderBlockHook(ModelHook):
 
         forward_metadata = self.shared_state.forward_metadata
         if state is None or forward_metadata is None:
-            if state is not None:
-                state.full_started_at = time.perf_counter()
             return self.fn_ref.original_forward(*args, **kwargs)
 
         state.step_index = forward_metadata.step_index
         state.cacheable_execution = True
-        indicator_started = time.perf_counter()
         indicator_error_reported = False
         if _is_parameter_sharded(module):
             self.shared_state.mark_fail_open(
@@ -852,14 +720,11 @@ class SeaCacheLeaderBlockHook(ModelHook):
                 )
                 indicator = None
                 indicator_error_reported = True
-        self.shared_state.indicator_seconds += time.perf_counter() - indicator_started
         if indicator is None and not indicator_error_reported:
             self.shared_state.mark_fail_open(
                 "SeaCache could not construct its vision indicator; running in fail-open mode."
             )
-        decision_started = time.perf_counter()
         should_compute = self.shared_state.resolve_gate(state, forward_metadata, indicator, self.config)
-        self.shared_state.decision_seconds += time.perf_counter() - decision_started
 
         if should_compute or not state.history:
             if not should_compute:
@@ -867,7 +732,6 @@ class SeaCacheLeaderBlockHook(ModelHook):
                 self.shared_state.mark_fail_open(
                     "SeaCache selected a cache hit without residual history; running in fail-open mode."
                 )
-            state.full_started_at = time.perf_counter()
             return self.fn_ref.original_forward(*args, **kwargs)
 
         residual_history = state.history[-(self.config.residual_order + 1) :]
@@ -889,7 +753,6 @@ class SeaCacheLeaderBlockHook(ModelHook):
             self.shared_state.mark_fail_open(
                 "SeaCache residual history changed shape, device, or dtype; running in fail-open mode."
             )
-            state.full_started_at = time.perf_counter()
             return self.fn_ref.original_forward(*args, **kwargs)
 
         if self.config.residual_order == 1 and len(residual_history) >= 2:
@@ -904,10 +767,6 @@ class SeaCacheLeaderBlockHook(ModelHook):
         state.cached_und_output = cached_und
         state.cached_gen_residual = cached_residual
         state.consecutive_cached += 1
-        state.max_consecutive_cached_observed = max(state.max_consecutive_cached_observed, state.consecutive_cached)
-        self.shared_state.num_cached_steps += 1
-        branch = self.state_manager._current_context
-        self.shared_state.branch_reuses[branch] = self.shared_state.branch_reuses.get(branch, 0) + 1
         if self.post_norm_boundary:
             return _build_block_output(self._metadata, hidden_states, encoder_hidden_states)
         return _build_block_output(self._metadata, hidden_states + cached_residual, cached_und)
@@ -952,8 +811,6 @@ class SeaCacheBlockHook(ModelHook):
         hidden_states, encoder_hidden_states = _get_block_outputs(self._metadata, output)
         _record_full_execution(
             self.config,
-            self.state_manager,
-            self.shared_state,
             state,
             gen_output=hidden_states,
             und_output=encoder_hidden_states,
@@ -1006,8 +863,6 @@ class SeaCachePostNormHook(ModelHook):
 
         _record_full_execution(
             self.config,
-            self.state_manager,
-            self.shared_state,
             state,
             gen_output=output,
             und_output=state.und_output,
@@ -1055,7 +910,6 @@ def apply_sea_cache(module: torch.nn.Module, config: SeaCacheConfig) -> None:
                 "residual boundary."
             )
     post_norm_boundary = post_norm_modules is not None
-    residual_boundary = "post_language_model_norm" if post_norm_boundary else "repeated_block_stack"
 
     blocks = []
     for name, submodule in unwrapped_module.named_children():
@@ -1085,7 +939,6 @@ def apply_sea_cache(module: torch.nn.Module, config: SeaCacheConfig) -> None:
                 shared_state,
                 metadata_callback,
                 raw_vision_callback,
-                residual_boundary,
             ),
             _SEA_CACHE_ROOT_HOOK,
         )
@@ -1134,13 +987,3 @@ def apply_sea_cache(module: torch.nn.Module, config: SeaCacheConfig) -> None:
         raise
 
     root_registry._child_registries_cache = None
-
-
-def get_sea_cache_stats(module: torch.nn.Module) -> dict[str, Any]:
-    """Return statistics for the SeaCache instance currently attached to ``module``."""
-
-    registry = getattr(module, "_diffusers_hook", None)
-    root_hook = registry.get_hook(_SEA_CACHE_ROOT_HOOK) if registry is not None else None
-    if not isinstance(root_hook, SeaCacheRootHook):
-        raise ValueError("SeaCache is not enabled on this module.")
-    return root_hook.stats()

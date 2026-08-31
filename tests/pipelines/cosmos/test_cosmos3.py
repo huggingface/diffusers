@@ -28,9 +28,10 @@ from diffusers import (
     SeaCacheConfig,
     UniPCMultistepScheduler,
 )
+from diffusers.models.transformers.transformer_cosmos3 import Cosmos3VLTextMoTDecoderLayer
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import _preprocess_conditioning_image
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import count_transformer_cache_reuse, enable_full_determinism, torch_device
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
@@ -148,15 +149,15 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
         pipeline.set_progress_bar_config(disable=None)
         pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, use_flow_sigmas=True)
         pipeline.register_to_config(use_native_flow_schedule=True)
-        pipeline.enable_sea_cache(SeaCacheConfig(threshold=1e6))
         inputs = self.get_dummy_inputs(torch_device)
         inputs.update(num_inference_steps=4, output_type="latent", enable_safety_check=False)
 
-        pipeline(**inputs)
+        with count_transformer_cache_reuse(pipeline.transformer, Cosmos3VLTextMoTDecoderLayer) as counts:
+            pipeline.enable_sea_cache(SeaCacheConfig(threshold=1e6))
+            pipeline(**inputs)
 
-        stats = pipeline.transformer.get_cache_stats()
-        self.assertGreater(stats["actual_reuses"], 0)
-        self.assertGreater(stats["actual_full_executions"], 0)
+        self.assertGreater(counts["cached_steps"], 0)
+        self.assertGreater(counts["full_steps"], 0)
 
     def test_fp32_sampling_state_keeps_transformer_inputs_in_model_dtype(self):
         pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
