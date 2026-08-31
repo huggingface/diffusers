@@ -1,4 +1,4 @@
-# Copyright 2026 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The NVIDIA Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -157,6 +157,18 @@ class Cosmos3MixedPrecisionConfigTests(unittest.TestCase):
         apply_cosmos3_mixed_precision_step(transformer, config, 2, 5)
         torch.testing.assert_close(reasoner(inputs), expected_w8a8)
 
+    def test_dispatches_w8a16_with_fp32_activations(self):
+        config = Cosmos3MixedPrecisionConfig(format="fp8", first_steps=1, last_steps=0)
+        transformer = _Transformer()
+        generation = transformer.layers[0].self_attn.to_q
+        inputs = torch.tensor([[1.1, -0.7]], dtype=torch.float32)
+        expected_w8a16 = F.linear(
+            inputs,
+            generation.weight.to(inputs.dtype) * generation.weight_quantizer._scale.to(inputs.dtype),
+        )
+        apply_cosmos3_mixed_precision_step(transformer, config, 0, 3)
+        torch.testing.assert_close(generation(inputs), expected_w8a16)
+
 
 class Cosmos3CheckpointPolicyTests(unittest.TestCase):
     def _transformer_with_quant_config(self, quantization_config):
@@ -172,7 +184,11 @@ class Cosmos3CheckpointPolicyTests(unittest.TestCase):
         self.assertEqual(parsed.overlap, "a16")
 
         transformer = self._transformer_with_quant_config(
-            {"quant_method": "modelopt", "quant_algo": "FP8", "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY}}
+            {
+                "quant_method": "modelopt",
+                "quant_algo": "FP8",
+                "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY},
+            }
         )
         config = Cosmos3MixedPrecisionConfig.resolve(transformer)
         self.assertTrue(config.enabled)
@@ -189,14 +205,22 @@ class Cosmos3CheckpointPolicyTests(unittest.TestCase):
 
     def test_explicit_none_disables_checkpoint_policy(self):
         transformer = self._transformer_with_quant_config(
-            {"quant_method": "modelopt", "quant_algo": "FP8", "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY}}
+            {
+                "quant_method": "modelopt",
+                "quant_algo": "FP8",
+                "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY},
+            }
         )
         config = Cosmos3MixedPrecisionConfig.resolve(transformer, mixed_precision_format="none")
         self.assertFalse(config.enabled)
 
     def test_call_site_overrides_checkpoint_counts(self):
         transformer = self._transformer_with_quant_config(
-            {"quant_method": "modelopt", "quant_algo": "FP8", "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY}}
+            {
+                "quant_method": "modelopt",
+                "quant_algo": "FP8",
+                "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY},
+            }
         )
         config = Cosmos3MixedPrecisionConfig.resolve(
             transformer,
@@ -215,9 +239,64 @@ class Cosmos3CheckpointPolicyTests(unittest.TestCase):
         self.assertTrue(config.enabled)
         self.assertEqual([i for i in range(5) if config.use_high_precision(i, 5)], [0, 4])
 
+    def test_policy_on_module_quantization_config_attribute(self):
+        transformer = _Transformer()
+        transformer.quantization_config = {
+            "quant_method": "modelopt",
+            "quant_algo": "FP8",
+            "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY},
+        }
+        config = Cosmos3MixedPrecisionConfig.resolve(transformer)
+        self.assertTrue(config.enabled)
+        self.assertEqual(config.first_steps, 3)
+        self.assertEqual(config.last_steps, 3)
+
+    def test_live_null_runtime_overlays_on_disk_policy(self):
+        class _TransformerWithDiskConfig(_Transformer):
+            @classmethod
+            def load_config(cls, name_or_path, local_files_only=True):
+                return {
+                    "quantization_config": {
+                        "quant_method": "modelopt",
+                        "quant_algo": "FP8",
+                        "runtime": {"diffusion_step_policy": FIRST_LAST_N_FP8_POLICY},
+                    }
+                }
+
+        transformer = _TransformerWithDiskConfig()
+        transformer.quantization_config = {
+            "quant_method": "modelopt",
+            "quant_algo": "FP8",
+            "runtime": None,
+        }
+        transformer.config = SimpleNamespace(_name_or_path="/unused/official-fp8")
+        config = Cosmos3MixedPrecisionConfig.resolve(transformer)
+        self.assertTrue(config.enabled)
+        self.assertEqual(config.first_steps, 3)
+        self.assertEqual(config.last_steps, 3)
+
+    def test_live_null_runtime_without_disk_stays_native(self):
+        transformer = _Transformer()
+        transformer.quantization_config = {
+            "quant_method": "modelopt",
+            "quant_algo": "FP8",
+            "runtime": None,
+        }
+        transformer.config = SimpleNamespace(_name_or_path=None)
+        config = Cosmos3MixedPrecisionConfig.resolve(transformer)
+        self.assertFalse(config.enabled)
+
     def test_malformed_policy_fails_closed(self):
         with self.assertRaises(ValueError):
             parse_diffusion_step_policy({"schema_version": 2, "type": "first_last_n"})
+        incomplete = dict(FIRST_LAST_N_FP8_POLICY)
+        del incomplete["overlap"]
+        with self.assertRaises(ValueError):
+            parse_diffusion_step_policy(incomplete)
+        extra_scope = dict(FIRST_LAST_N_FP8_POLICY)
+        extra_scope["scope"] = ["transformer", "vae"]
+        with self.assertRaises(ValueError):
+            parse_diffusion_step_policy(extra_scope)
         with self.assertRaises(ValueError):
             Cosmos3MixedPrecisionConfig.resolve(
                 quantization_config={

@@ -43,6 +43,33 @@ Two checkpoints are released on the Hub — [`nvidia/Cosmos3-Nano`](https://hugg
 > [!TIP]
 > Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
+## FP8 mixed W8A8/W8A16 denoising
+
+Official ModelOpt FP8 checkpoints live on the Hub `fp8` revision (for example [`nvidia/Cosmos3-Nano`](https://huggingface.co/nvidia/Cosmos3-Nano) with `revision="fp8"`). The serialized weights are static W8A8. Video Nano / Super / Super-I2V checkpoints also store a `quantization_config.runtime.diffusion_step_policy` on the transformer: the **first 3 and last 3** denoising steps run **W8A16** (dequantized FP8 weights, `torch.nn.functional.linear`), and the middle steps keep native **W8A8**. Precision is chosen once per scheduler step so CFG cond/uncond calls match. Distilled 4-step and Super-T2I FP8 checkpoints omit that policy (`runtime` is `null`) and stay native W8A8 on every step.
+
+Loading those weights still uses [`NVIDIAModelOptConfig`](../../quantization/modelopt) as in the ModelOpt guide. After restore, mixed precision is **on by default** when the checkpoint declares the policy — you do not pass a format flag:
+
+```python
+import torch
+from diffusers import Cosmos3OmniPipeline
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano",
+    revision="fp8",
+    dtype=torch.bfloat16,
+    device_map="cuda",
+)
+result = pipe(prompt="...", num_inference_steps=35)  # 3×W8A16 / 29×W8A8 / 3×W8A16
+```
+
+Call-site overrides:
+
+- `mixed_precision_format="none"` disables the schedule only (quantized W8A8 remains).
+- `mixed_precision_format="fp8"` forces the first/last-N schedule even if the checkpoint has no policy.
+- `mixed_precision_first_steps` / `mixed_precision_last_steps` / `mixed_precision_reasoner_policy` override the checkpoint counts and reasoner path (`"high_precision"` = W8A16, `"base_precision"` = native W8A8).
+
+These kwargs are not Accelerate `mixed_precision`. They only select W8A8 vs W8A16 on Cosmos3 ModelOpt linears.
+
 ## Prompt upsampling
 
 Cosmos 3 was trained on long, highly descriptive captions. For optimal quality, short text prompts should be **upsampled into a specific JSON structure** before they are passed to the pipeline. The upsampler lives in the [cosmos-framework](https://github.com/NVIDIA/cosmos-framework) package.
@@ -1116,6 +1143,9 @@ not support them. `num_inference_steps` is fixed to the length of the `distilled
 config (from the checkpoint's `modular_model_index.json`) and `guidance_scale` is forced to
 1.0 since guidance is baked into the weights — passing any other value for either raises an error,
 and `negative_prompt` is warned about and ignored.
+
+FP8 distilled checkpoints (`revision="fp8"`) do not declare a mixed-precision policy, so every
+step stays native W8A8.
 
 Prompts follow the same descriptive JSON structure as the non-distilled models, so short text
 must be upsampled first — use `--mode text2image` (T2I) or `--mode image2video` (I2V) as

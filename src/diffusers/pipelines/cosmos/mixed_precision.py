@@ -20,8 +20,8 @@ uses :func:`torch.nn.functional.linear`. This matches the uncached strategy in
 vLLM-Omni (vllm-project/vllm-omni#6560).
 
 Schedule defaults come from ``quantization_config.runtime.diffusion_step_policy``
-on the transformer (Cosmos3-Experimental discussion #19). Distilled checkpoints
-omit that policy and stay on native W8A8.
+in the transformer's ``config.json`` (official Hub ``revision=fp8``). Distilled
+checkpoints omit that policy and stay on native W8A8.
 """
 
 from __future__ import annotations
@@ -45,8 +45,20 @@ _RUNTIME_ATTRIBUTE = "_cosmos3_mixed_precision_runtime"
 _SUPPORTED_POLICY_TYPE = "first_last_n"
 _SUPPORTED_INDEX_SPACE = "denoising_loop_iteration"
 _SUPPORTED_SCHEMA_VERSION = 1
+_SUPPORTED_DEFAULT_MODE = "native"
+_REQUIRED_POLICY_FIELDS = (
+    "schema_version",
+    "type",
+    "index_space",
+    "scope",
+    "default_mode",
+    "first_steps",
+    "last_steps",
+    "overlap",
+    "reasoner",
+)
 
-# Official Nano/Super/Super-I2V FP8 policy (nvidia/Cosmos3-Experimental#19).
+# Official Nano / Super / Super-I2V FP8 policy on Hub ``revision=fp8``.
 FIRST_LAST_N_FP8_POLICY = {
     "schema_version": 1,
     "type": "first_last_n",
@@ -114,13 +126,9 @@ class Cosmos3MixedPrecisionConfig:
                 f"{sorted(MIXED_PRECISION_FORMATS)} or None, got {mixed_precision_format!r}"
             )
         if mixed_precision_first_steps is not None:
-            mixed_precision_first_steps = _non_negative_int(
-                mixed_precision_first_steps, "mixed_precision_first_steps"
-            )
+            mixed_precision_first_steps = _non_negative_int(mixed_precision_first_steps, "mixed_precision_first_steps")
         if mixed_precision_last_steps is not None:
-            mixed_precision_last_steps = _non_negative_int(
-                mixed_precision_last_steps, "mixed_precision_last_steps"
-            )
+            mixed_precision_last_steps = _non_negative_int(mixed_precision_last_steps, "mixed_precision_last_steps")
         if mixed_precision_reasoner_policy is not None:
             mixed_precision_reasoner_policy = _validated_reasoner(mixed_precision_reasoner_policy)
         if mixed_precision_overlap is not None:
@@ -287,8 +295,8 @@ def _validate_modelopt_fp8_linear(name: str, layer: nn.Module) -> None:
 
 
 def _w8a16_linear(layer: nn.Module, inputs: torch.Tensor, name: str) -> torch.Tensor:
-    if inputs.dtype not in (torch.bfloat16, torch.float16):
-        raise TypeError(f"{name} W8A16 requires BF16/FP16 activations, got {inputs.dtype}")
+    if inputs.dtype not in (torch.bfloat16, torch.float16, torch.float32):
+        raise TypeError(f"{name} W8A16 requires BF16/FP16/FP32 activations, got {inputs.dtype}")
     scale = layer.weight_quantizer._scale.to(device=layer.weight.device, dtype=inputs.dtype)
     dense_weight = layer.weight.to(dtype=inputs.dtype) * scale
     return F.linear(inputs, dense_weight, layer.bias)
@@ -325,7 +333,12 @@ def apply_cosmos3_mixed_precision_step(
 
 
 def reset_cosmos3_mixed_precision(module: nn.Module, config: Cosmos3MixedPrecisionConfig) -> None:
-    """Return installed wrappers to the checkpoint's native W8A8 path."""
+    """Return installed wrappers to the checkpoint's native W8A8 path.
+
+    Wrappers stay on ``layer.forward`` for the rest of the process. When inactive
+    they call the original ModelOpt forward, so a later bare ``transformer(...)``
+    still runs native W8A8.
+    """
     if not config.enabled:
         return
     runtime = getattr(module, _RUNTIME_ATTRIBUTE, None)
@@ -356,10 +369,7 @@ def _optional_lower(value: str | None) -> str | None:
 def _validated_reasoner(value: str) -> ReasonerPolicy:
     reasoner_policy = str(value).strip().lower()
     if reasoner_policy not in REASONER_POLICIES:
-        raise ValueError(
-            "mixed_precision_reasoner_policy must be one of "
-            f"{sorted(REASONER_POLICIES)}, got {value!r}"
-        )
+        raise ValueError(f"mixed_precision_reasoner_policy must be one of {sorted(REASONER_POLICIES)}, got {value!r}")
     return reasoner_policy  # type: ignore[return-value]
 
 
@@ -381,9 +391,26 @@ def _maybe_mapping(value: Any) -> dict[str, Any] | None:
 
 
 def quantization_config_from_module(module: nn.Module | None) -> dict[str, Any] | None:
-    """Read ModelOpt ``quantization_config`` from a loaded transformer, if present."""
+    """Read ModelOpt ``quantization_config`` from a loaded transformer, if present.
+
+    Diffusers strips ``quantization_config`` from the in-memory FrozenDict, and ModelOpt
+    restore may attach a live config without ``runtime``. Prefer the live object, then
+    overlay ``runtime`` from the on-disk ``transformer/config.json`` when present.
+    """
     if module is None:
         return None
+    live = _live_quantization_config(module)
+    on_disk = _on_disk_quantization_config(module)
+    if live is None:
+        return on_disk
+    if live.get("runtime") is None and on_disk is not None and on_disk.get("runtime") is not None:
+        merged = dict(live)
+        merged["runtime"] = on_disk["runtime"]
+        return merged
+    return live
+
+
+def _live_quantization_config(module: nn.Module) -> dict[str, Any] | None:
     candidates: list[Any] = [getattr(module, "quantization_config", None)]
     config = getattr(module, "config", None)
     if config is not None:
@@ -394,27 +421,30 @@ def quantization_config_from_module(module: nn.Module | None) -> dict[str, Any] 
         mapped = _maybe_mapping(candidate)
         if mapped is not None:
             return mapped
+    return None
 
+
+def _on_disk_quantization_config(module: nn.Module) -> dict[str, Any] | None:
+    config = getattr(module, "config", None)
     name_or_path = None
     if config is not None:
         name_or_path = getattr(config, "_name_or_path", None)
         if name_or_path is None and hasattr(config, "get"):
             name_or_path = config.get("_name_or_path")
     loader = getattr(type(module), "load_config", None)
-    if name_or_path and callable(loader):
+    if not name_or_path or not callable(loader):
+        return None
+    try:
+        raw = loader(name_or_path, local_files_only=True)
+    except TypeError:
         try:
-            raw = loader(name_or_path, local_files_only=True)
-        except TypeError:
-            try:
-                raw = loader(name_or_path)
-            except Exception:
-                raw = None
+            raw = loader(name_or_path)
         except Exception:
             raw = None
-        if isinstance(raw, dict):
-            mapped = _maybe_mapping(raw.get("quantization_config"))
-            if mapped is not None:
-                return mapped
+    except Exception:
+        raw = None
+    if isinstance(raw, dict):
+        return _maybe_mapping(raw.get("quantization_config"))
     return None
 
 
@@ -441,46 +471,63 @@ def parse_diffusion_step_policy(
     policy: Any,
     quantization_config: dict[str, Any] | None = None,
 ) -> _ParsedCheckpointPolicy:
-    """Validate the versioned first/last-N policy from transformer/config.json."""
+    """Validate the versioned first/last-N policy from transformer/config.json.
+
+    Missing fields fail closed. Official Hub policies include every key in
+    ``_REQUIRED_POLICY_FIELDS``.
+    """
     policy_map = _maybe_mapping(policy)
     if policy_map is None:
         raise ValueError("diffusion_step_policy must be a mapping")
 
-    schema_version = policy_map.get("schema_version", _SUPPORTED_SCHEMA_VERSION)
+    missing = [name for name in _REQUIRED_POLICY_FIELDS if name not in policy_map]
+    if missing:
+        raise ValueError(f"diffusion_step_policy missing required fields: {missing}")
+
+    schema_version = policy_map["schema_version"]
     if schema_version != _SUPPORTED_SCHEMA_VERSION:
         raise ValueError(
             f"Unsupported diffusion_step_policy.schema_version={schema_version}; "
             f"Diffusers supports version {_SUPPORTED_SCHEMA_VERSION}"
         )
-    policy_type = policy_map.get("type")
+    policy_type = policy_map["type"]
     if policy_type != _SUPPORTED_POLICY_TYPE:
         raise ValueError(
-            f"Unsupported diffusion_step_policy.type={policy_type!r}; "
-            f"expected {_SUPPORTED_POLICY_TYPE!r}"
+            f"Unsupported diffusion_step_policy.type={policy_type!r}; expected {_SUPPORTED_POLICY_TYPE!r}"
         )
-    index_space = policy_map.get("index_space", _SUPPORTED_INDEX_SPACE)
+    index_space = policy_map["index_space"]
     if index_space != _SUPPORTED_INDEX_SPACE:
         raise ValueError(
-            f"Unsupported diffusion_step_policy.index_space={index_space!r}; "
-            f"expected {_SUPPORTED_INDEX_SPACE!r}"
+            f"Unsupported diffusion_step_policy.index_space={index_space!r}; expected {_SUPPORTED_INDEX_SPACE!r}"
+        )
+    default_mode = policy_map["default_mode"]
+    if default_mode != _SUPPORTED_DEFAULT_MODE:
+        raise ValueError(
+            f"Unsupported diffusion_step_policy.default_mode={default_mode!r}; expected {_SUPPORTED_DEFAULT_MODE!r}"
+        )
+    scope = policy_map["scope"]
+    if not isinstance(scope, (list, tuple)) or not all(isinstance(item, str) for item in scope):
+        raise ValueError("diffusion_step_policy.scope must be a list of strings")
+    if "transformer" not in scope:
+        raise ValueError("diffusion_step_policy.scope must include 'transformer'")
+    unknown_scope = sorted({item for item in scope if item != "transformer"})
+    if unknown_scope:
+        raise ValueError(
+            f"diffusion_step_policy.scope currently supports only 'transformer', got extra {unknown_scope}"
         )
 
     if quantization_config:
-        algo = str(
-            quantization_config.get("quant_algo")
-            or quantization_config.get("quant_type")
-            or ""
-        ).upper()
+        algo = str(quantization_config.get("quant_algo") or quantization_config.get("quant_type") or "").upper()
         if algo and "FP8" not in algo:
             raise ValueError(
                 "Cosmos3 mixed precision in Diffusers currently supports ModelOpt FP8 "
                 f"checkpoints, got quant_algo/quant_type={algo!r}"
             )
 
-    first_steps = _window_count(policy_map.get("first_steps"), "first_steps")
-    last_steps = _window_count(policy_map.get("last_steps"), "last_steps")
-    overlap = _validated_overlap(str(policy_map.get("overlap", "a16")))
-    reasoner = policy_map.get("reasoner", "a16")
+    first_steps = _window_count(policy_map["first_steps"], "first_steps")
+    last_steps = _window_count(policy_map["last_steps"], "last_steps")
+    overlap = _validated_overlap(str(policy_map["overlap"]))
+    reasoner = policy_map["reasoner"]
     if reasoner == "a16":
         reasoner_policy: ReasonerPolicy = "high_precision"
     elif reasoner == "native":
@@ -506,4 +553,3 @@ def _window_count(spec: Any, name: str) -> int:
     if mode == "native":
         return 0
     return count
-
