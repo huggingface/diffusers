@@ -81,7 +81,9 @@ class DreamLiteBaseTesterConfig(BasePipelineTesterConfig):
     """Component set shared by ``DreamLitePipeline`` and ``DreamLiteMobilePipeline``."""
 
     # DreamLite samples its own noise; `latents` cannot be supplied by the caller.
-    optional_input_params = BasePipelineTesterConfig.optional_input_params - {"latents"}
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_images_per_prompt", "generator", "output_type", "return_dict"]
+    )
     output_shape = (3, 64, 64)
 
     def get_dummy_components(self):

@@ -13,9 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
-import numpy as np
 import torch
 from transformers import (
     AutoConfig,
@@ -34,23 +31,26 @@ from diffusers import (
     HiDreamImageTransformer2DModel,
 )
 
-from ...testing_utils import enable_full_determinism
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import assert_tensors_close, enable_full_determinism
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class HiDreamImagePipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = HiDreamImagePipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "prompt_embeds", "negative_prompt_embeds"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = PipelineTesterMixin.required_optional_params
-    test_xformers_attention = False
-    test_layerwise_casting = True
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "negative_prompt"]
+    )
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (3, 128, 128)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -107,7 +107,7 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         scheduler = FlowMatchEulerDiscreteScheduler()
 
-        components = {
+        return {
             "scheduler": scheduler,
             "vae": vae,
             "text_encoder": text_encoder,
@@ -120,42 +120,46 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer_4": tokenizer_4,
             "transformer": transformer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestHiDreamImagePipeline(HiDreamImagePipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs)[0]
+        image = pipe(**self.get_dummy_inputs())[0]
         generated_image = image[0]
-        self.assertEqual(generated_image.shape, (128, 128, 3))
+        assert generated_image.shape == self.output_shape
 
         # fmt: off
-        expected_slice = np.array([0.3841, 0.5881, 0.3958, 0.5585, 0.4646, 0.4385, 0.4529, 0.4178, 0.6595, 0.2871, 0.7331, 0.5203, 0.5525, 0.5296, 0.4695, 0.5524])
+        expected_slice = torch.tensor([0.3841, 0.5585, 0.4529, 0.5123, 0.4314, 0.5122, 0.4885, 0.4554, 0.4653, 0.3369, 0.1799, 0.6126, 0.6202, 0.2871, 0.5525, 0.5524])
         # fmt: on
 
         generated_slice = generated_image.flatten()
-        generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(np.allclose(generated_slice, expected_slice, atol=5e-3))
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert_tensors_close(generated_slice, expected_slice, atol=5e-3)
 
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-4)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=3e-4):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
+
+
+class TestHiDreamImagePipelineMemory(HiDreamImagePipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the HiDream Image pipeline."""
+
+
+class TestHiDreamImagePipelineLoRA(HiDreamImagePipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the HiDream Image pipeline."""
+
+
+class TestHiDreamImagePipelineLoRAMemory(HiDreamImagePipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the HiDream Image pipeline."""

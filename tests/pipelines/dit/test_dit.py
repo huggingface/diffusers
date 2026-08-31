@@ -47,7 +47,7 @@ class DiTPipelineTesterConfig(BasePipelineTesterConfig):
     batch_input_params = CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS
     # DiT is class-conditioned and samples its own noise: there is no prompt to repeat
     # (`num_images_per_prompt`) and no user-suppliable `latents`.
-    optional_input_params = BasePipelineTesterConfig.optional_input_params - {"num_images_per_prompt", "latents"}
+    optional_input_params = frozenset(["num_inference_steps", "generator", "output_type", "return_dict"])
     output_shape = (3, 16, 16)
 
     def get_dummy_components(self):
