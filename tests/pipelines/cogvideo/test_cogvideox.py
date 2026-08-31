@@ -124,7 +124,6 @@ class CogVideoXPipelineTesterConfig(BasePipelineTesterConfig):
             "width": 16,
             "num_frames": 8,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

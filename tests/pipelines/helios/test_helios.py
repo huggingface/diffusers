@@ -107,7 +107,6 @@ class HeliosPipelineTesterConfig(BasePipelineTesterConfig):
             "width": 16,
             "num_frames": 9,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

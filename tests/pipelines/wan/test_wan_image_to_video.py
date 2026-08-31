@@ -119,7 +119,6 @@ class WanImageToVideoPipelineTesterConfig(BasePipelineTesterConfig):
             "guidance_scale": 6.0,
             "num_frames": 9,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
@@ -266,7 +265,6 @@ class WanFLFToVideoPipelineTesterConfig(BasePipelineTesterConfig):
             "guidance_scale": 6.0,
             "num_frames": 9,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
