@@ -272,6 +272,21 @@ class PyramidAttentionBroadcastConfig(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class SeaCacheConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class SmoothedEnergyGuidanceConfig(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -337,12 +352,20 @@ def apply_pyramid_attention_broadcast(*args, **kwargs):
     requires_backends(apply_pyramid_attention_broadcast, ["torch"])
 
 
+def apply_sea_cache(*args, **kwargs):
+    requires_backends(apply_sea_cache, ["torch"])
+
+
 def apply_taylorseer_cache(*args, **kwargs):
     requires_backends(apply_taylorseer_cache, ["torch"])
 
 
 def apply_text_kv_cache(*args, **kwargs):
     requires_backends(apply_text_kv_cache, ["torch"])
+
+
+def get_sea_cache_stats(*args, **kwargs):
+    requires_backends(get_sea_cache_stats, ["torch"])
 
 
 class InpaintProcessor(metaclass=DummyObject):
