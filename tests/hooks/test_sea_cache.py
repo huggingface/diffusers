@@ -158,6 +158,37 @@ def test_sea_cache_uses_independent_gates_and_histories_per_context():
 
 
 @torch.no_grad()
+def test_sea_cache_max_consecutive_cached_forces_full_per_context():
+    runtime = {"step": 0, "sigma": 0.9, "num_steps": 8}
+    model = DummySeaTransformer()
+    model.enable_cache(
+        _make_config(
+            runtime,
+            threshold=100.0,
+            retention_steps=0,
+            cache_end_steps=0,
+            max_consecutive_cached=2,
+        )
+    )
+
+    for step in range(runtime["num_steps"]):
+        runtime.update(step=step, sigma=0.9 - step * 0.1)
+        with model.cache_context("cond"):
+            model(torch.ones(1, 1, 1, 1))
+
+    stats = model.get_cache_stats()
+    assert stats["gate_trace"] == [True, False, False, True, False, False, True, False]
+    assert stats["actual_full_executions"] == 3
+    assert stats["actual_reuses"] == 5
+    assert stats["max_consecutive_cached"] == 2
+    assert stats["max_consecutive_cached_observed"] == 2
+    assert stats["max_consecutive_forced_full"] == 2
+    assert stats["per_branch"]["cond"]["max_consecutive_cached_observed"] == 2
+    assert stats["per_branch"]["cond"]["max_consecutive_forced_full"] == 2
+    assert [block.calls for block in model.layers] == [3, 3, 3]
+
+
+@torch.no_grad()
 def test_sea_cache_raw_vision_indicator_includes_conditioning_frames():
     runtime = {"step": 0, "sigma": 0.9, "num_steps": 2}
     model = DummySeaTransformer()
@@ -414,6 +445,13 @@ def test_sea_cache_failed_enable_rolls_back_only_new_hooks():
     assert not hasattr(model.layers[2], "_diffusers_hook")
 
 
+def test_sea_cache_config_defaults():
+    config = SeaCacheConfig()
+
+    assert config.threshold == 0.25
+    assert config.max_consecutive_cached == 2
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
@@ -421,6 +459,9 @@ def test_sea_cache_failed_enable_rolls_back_only_new_hooks():
         ({"residual_order": 2}, "residual_order"),
         ({"retention_steps": -1}, "retention_steps"),
         ({"cache_end_steps": -1}, "cache_end_steps"),
+        ({"max_consecutive_cached": -1}, "max_consecutive_cached"),
+        ({"max_consecutive_cached": 1.5}, "max_consecutive_cached"),
+        ({"max_consecutive_cached": True}, "max_consecutive_cached"),
         ({"power_exp": 0.0}, "power_exp"),
         ({"indicator_source": "raw"}, "indicator_source"),
         ({"threshold": float("nan")}, "threshold"),
