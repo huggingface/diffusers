@@ -364,10 +364,6 @@ def apply_text_kv_cache(*args, **kwargs):
     requires_backends(apply_text_kv_cache, ["torch"])
 
 
-def get_sea_cache_stats(*args, **kwargs):
-    requires_backends(get_sea_cache_stats, ["torch"])
-
-
 class InpaintProcessor(metaclass=DummyObject):
     _backends = ["torch"]
 

@@ -175,17 +175,6 @@ class CacheMixin:
         self._cache_config = None
         registry._child_registries_cache = None
 
-    def get_cache_stats(self) -> dict:
-        """Return statistics for the currently enabled cache implementation."""
-
-        from ..hooks import SeaCacheConfig, get_sea_cache_stats
-
-        if self._cache_config is None:
-            raise ValueError("Caching is not enabled.")
-        if isinstance(self._cache_config, SeaCacheConfig):
-            return get_sea_cache_stats(self)
-        raise NotImplementedError(f"Cache statistics are not available for {type(self._cache_config).__name__}.")
-
     def _reset_stateful_cache(self, recurse: bool = True) -> None:
         from ..hooks import HookRegistry
 

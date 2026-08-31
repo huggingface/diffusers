@@ -216,7 +216,6 @@ else:
             "apply_sea_cache",
             "apply_taylorseer_cache",
             "apply_text_kv_cache",
-            "get_sea_cache_stats",
         ]
     )
     _import_structure["image_processor"] = [
@@ -1098,7 +1097,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             apply_sea_cache,
             apply_taylorseer_cache,
             apply_text_kv_cache,
-            get_sea_cache_stats,
         )
         from .image_processor import (
             InpaintProcessor,

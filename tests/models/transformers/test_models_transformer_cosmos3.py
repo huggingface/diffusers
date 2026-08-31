@@ -150,15 +150,9 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         with torch.no_grad(), model.cache_context("cond"):
             output = model(**cached_inputs)
 
-        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
         # A hit bypasses both final pathway normalizations but still runs the prediction heads.
         assert norm_calls == {"und": 1, "gen": 1}
         assert output.sample[0].shape == self.output_shape
-        assert root_hook.num_full_steps == 1
-        assert root_hook.num_cached_steps == 1
-        stats = model.get_cache_stats()
-        assert stats["indicator_source"] == indicator_source
-        assert stats["residual_boundary"] == "post_language_model_norm"
 
         model.disable_cache()
         assert set(model.state_dict()) == state_dict_keys
@@ -183,7 +177,7 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         projection_head_calls = 0
 
         def capture_first_block_gen_input(module, args):
-            first_block_gen_inputs.append(args[0].detach().clone())
+            first_block_gen_inputs.append(args[1].detach().clone())
 
         def capture_und_output(module, args, output):
             returned_und_outputs.append(output.detach().clone())
@@ -199,7 +193,7 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
             projection_head_inputs.append(hidden_states.detach().clone())
             return original_projection_forward(hidden_states)
 
-        model.layers[0].input_layernorm_moe_gen.register_forward_pre_hook(capture_first_block_gen_input)
+        model.layers[0].register_forward_pre_hook(capture_first_block_gen_input)
         model.norm.register_forward_hook(capture_und_output)
         model.norm_moe_gen.register_forward_hook(capture_gen_output)
         model.proj_out.forward = counted_projection_forward
@@ -231,8 +225,6 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         )
         torch.testing.assert_close(projection_head_inputs[1], returned_gen_outputs[1])
         assert projection_head_calls == 2
-        assert root_hook.num_full_steps == 1
-        assert root_hook.num_cached_steps == 1
 
     def test_cosmos3_decoder_layer_cache_metadata_tracks_generation_stream(self):
         metadata = TransformerBlockRegistry.get(Cosmos3VLTextMoTDecoderLayer)
