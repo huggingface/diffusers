@@ -137,6 +137,27 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
         replacement_pipeline._maybe_enable_sea_cache()
         self.assertEqual(replacement_pipeline.transformer._cache_config.current_step_callback(), 3)
 
+        replacement_config = SeaCacheConfig(threshold=0.1)
+        replacement_pipeline.enable_sea_cache(replacement_config)
+        self.assertIs(replacement_pipeline.transformer._cache_config, replacement_config)
+        self.assertEqual(replacement_pipeline.transformer._cache_config.threshold, 0.1)
+        self.assertEqual(replacement_pipeline.transformer._cache_config.current_step_callback(), 3)
+
+    def test_default_sea_cache_reuses_transformer_execution(self):
+        pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
+        pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, use_flow_sigmas=True)
+        pipeline.register_to_config(use_native_flow_schedule=True)
+        pipeline.enable_sea_cache(SeaCacheConfig(threshold=1e6))
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.update(num_inference_steps=4, output_type="latent", enable_safety_check=False)
+
+        pipeline(**inputs)
+
+        stats = pipeline.transformer.get_cache_stats()
+        self.assertGreater(stats["actual_reuses"], 0)
+        self.assertGreater(stats["actual_full_executions"], 0)
+
     def test_fp32_sampling_state_keeps_transformer_inputs_in_model_dtype(self):
         pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         pipeline.transformer.to(dtype=torch.float16)

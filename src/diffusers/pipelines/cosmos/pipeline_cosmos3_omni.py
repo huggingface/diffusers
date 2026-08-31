@@ -493,12 +493,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         current_config = getattr(transformer, "_cache_config", None)
         if current_config is not None:
             if isinstance(current_config, SeaCacheConfig):
-                self._prepare_sea_cache_config(current_config)
-                self._is_sea_cache_enabled = True
-                return
-            raise ValueError(
-                f"Caching is already enabled with {type(current_config).__name__}. Disable it before enabling SeaCache."
-            )
+                if config is None or config is current_config:
+                    self._prepare_sea_cache_config(current_config)
+                    self._is_sea_cache_enabled = True
+                    return
+                transformer.disable_cache()
+            else:
+                raise ValueError(
+                    f"Caching is already enabled with {type(current_config).__name__}. Disable it before enabling SeaCache."
+                )
 
         transformer.enable_cache(self._prepare_sea_cache_config(config))
         self._is_sea_cache_enabled = True

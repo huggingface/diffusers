@@ -21,7 +21,7 @@ import pytest
 import torch
 from PIL import Image
 
-from diffusers import ModularPipeline, SeaCacheConfig, UniPCMultistepScheduler
+from diffusers import CosmosActionCondition, ModularPipeline, SeaCacheConfig, UniPCMultistepScheduler
 from diffusers.modular_pipelines import (
     Cosmos3OmniBlocks,
     Cosmos3OmniModularPipeline,
@@ -30,12 +30,16 @@ from diffusers.modular_pipelines import (
 from diffusers.modular_pipelines.cosmos.before_denoise import (
     Cosmos3ActionDenoiseInputStep,
     Cosmos3ActionPackSequenceStep,
+    Cosmos3ActionPrepareLatentsStep,
     Cosmos3SetTimestepsStep,
     Cosmos3SoundDenoiseInputStep,
+    Cosmos3SoundPrepareLatentsStep,
+    Cosmos3TransferPrepareLatentsStep,
     Cosmos3VisionDenoiseInputStep,
     Cosmos3VisionPackSequenceStep,
 )
 from diffusers.modular_pipelines.cosmos.encoders import Cosmos3TextEncoderStep
+from diffusers.modular_pipelines.cosmos.modular_blocks_cosmos3 import Cosmos3TransferChunkDenoiseStep
 
 from ...testing_utils import torch_device
 from ..testing_utils import (
@@ -204,6 +208,119 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
 
         pipe.enable_sea_cache()
         assert isinstance(pipe.transformer._cache_config, SeaCacheConfig)
+
+    def test_default_sea_cache_reuses_transformer_execution(self):
+        pipe = self.get_pipeline().to(torch_device)
+        scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, use_flow_sigmas=True)
+        pipe.update_components(scheduler=scheduler, use_native_flow_schedule=True)
+        pipe.enable_sea_cache(SeaCacheConfig(threshold=1e6))
+        inputs = self.get_dummy_inputs()
+        inputs["num_inference_steps"] = 4
+
+        pipe(**inputs, output=self.output_name)
+
+        stats = pipe.transformer.get_cache_stats()
+        assert stats["actual_reuses"] > 0
+        assert stats["actual_full_executions"] > 0
+
+    def _get_sampling_state_block_pipe(self, block):
+        pipe = block.init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components(torch_dtype=torch.bfloat16)
+        pipe.to(torch_device)
+        return pipe
+
+    @pytest.mark.parametrize(
+        ("use_fp32_sampling_state", "expected_dtype"),
+        [(False, torch.bfloat16), (True, torch.float32)],
+    )
+    def test_sound_prepare_latents_sampling_dtype(self, use_fp32_sampling_state, expected_dtype):
+        pipe = self._get_sampling_state_block_pipe(Cosmos3SoundPrepareLatentsStep())
+
+        outputs = pipe(
+            num_frames=5,
+            fps=24.0,
+            generator=self.get_generator(0),
+            use_fp32_sampling_state=use_fp32_sampling_state,
+            output=["sound_latents", "sound_condition_mask"],
+        )
+
+        assert outputs["sound_latents"].dtype == expected_dtype
+        assert outputs["sound_condition_mask"].dtype == expected_dtype
+
+    @pytest.mark.parametrize(
+        ("use_fp32_sampling_state", "expected_dtype"),
+        [(False, torch.bfloat16), (True, torch.float32)],
+    )
+    def test_action_prepare_latents_sampling_dtype(self, use_fp32_sampling_state, expected_dtype):
+        pipe = self._get_sampling_state_block_pipe(Cosmos3ActionPrepareLatentsStep())
+        action = CosmosActionCondition(
+            mode="policy",
+            chunk_size=2,
+            domain_name="av",
+            image=torch.zeros(3, 16, 16),
+        )
+
+        outputs = pipe(
+            action=action,
+            action_condition_frame_indexes=[],
+            generator=self.get_generator(0),
+            use_fp32_sampling_state=use_fp32_sampling_state,
+            output=["action_latents", "action_condition_mask"],
+        )
+
+        assert outputs["action_latents"].dtype == expected_dtype
+        assert outputs["action_condition_mask"].dtype == expected_dtype
+
+    @pytest.mark.parametrize(
+        ("use_fp32_sampling_state", "expected_dtype"),
+        [(False, torch.bfloat16), (True, torch.float32)],
+    )
+    def test_transfer_prepare_latents_sampling_dtype(self, use_fp32_sampling_state, expected_dtype):
+        pipe = self._get_sampling_state_block_pipe(Cosmos3TransferPrepareLatentsStep())
+
+        outputs = pipe(
+            x0_tokens_vision=torch.zeros(1, 4, 2, 2, 2),
+            current_conditional_frames=1,
+            generator=self.get_generator(0),
+            use_fp32_sampling_state=use_fp32_sampling_state,
+            output=["latents", "velocity_mask", "condition_latents"],
+        )
+
+        assert outputs["latents"].dtype == expected_dtype
+        assert outputs["velocity_mask"].dtype == expected_dtype
+        assert outputs["condition_latents"].dtype == expected_dtype
+
+    def test_transfer_chunks_reset_stateful_cache_at_boundaries(self):
+        block = Cosmos3TransferChunkDenoiseStep()
+        child_block = mock.Mock(side_effect=lambda components, state: (components, state))
+        block.sub_blocks = {"child": child_block}
+        components = mock.Mock()
+        state = mock.Mock()
+        state.get.return_value = 3
+
+        block(components, state)
+
+        assert child_block.call_count == 3
+        assert components.transformer._reset_stateful_cache.call_count == 2
+        assert [call.args for call in state.set.call_args_list if call.args[0] == "chunk_id"] == [
+            ("chunk_id", 0),
+            ("chunk_id", 1),
+            ("chunk_id", 2),
+        ]
+
+    @pytest.mark.parametrize(
+        ("use_fp32_sampling_state", "expected_dtype"),
+        [(False, torch.bfloat16), (True, torch.float32)],
+    )
+    def test_sampling_state_controls_modular_cfg_and_scheduler_dtype(self, use_fp32_sampling_state, expected_dtype):
+        pipe = self.get_pipeline(dtype=torch.bfloat16).to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs["use_fp32_sampling_state"] = use_fp32_sampling_state
+
+        outputs = pipe(**inputs, output=["velocity_vision", "latents"])
+
+        assert outputs["velocity_vision"].dtype == expected_dtype
+        assert outputs["latents"].dtype == expected_dtype
 
     def test_vae_encoder_is_standalone_and_validates_conditioning_inputs(self):
         pipe = self.get_pipeline()
