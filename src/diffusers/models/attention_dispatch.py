@@ -242,6 +242,7 @@ class AttentionBackendName(str, Enum):
     # `sageattention`
     SAGE = "sage"
     SAGE_HUB = "sage_hub"
+    SAGE_BLACKWELL_HUB = "sage_blackwell_hub"
     SAGE_VARLEN = "sage_varlen"
     _SAGE_QK_INT8_PV_FP8_CUDA = "_sage_qk_int8_pv_fp8_cuda"
     _SAGE_QK_INT8_PV_FP8_CUDA_SM90 = "_sage_qk_int8_pv_fp8_cuda_sm90"
@@ -353,6 +354,11 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
         repo_id="kernels-community/sage-attention",
         function_attr="sageattn",
         version=3,
+    ),
+    AttentionBackendName.SAGE_BLACKWELL_HUB: _HubKernelConfig(
+        repo_id="kernels-community/sage-blackwell",
+        function_attr="sageattn3_blackwell",
+        version=1,
     ),
     AttentionBackendName.FLASH_4_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn4",
@@ -473,6 +479,13 @@ def _check_device_cuda_atleast_smXY(major: int, minor: int) -> Callable:
     return check_device_cuda
 
 
+def _check_head_dim_64_or_128(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, **kwargs) -> None:
+    # The SM120 SageAttention3 kernel rejects head dims below 64 outright, fails to compile its
+    # Triton pre-pass on non-power-of-two dims, and silently falls back to SDPA at 256 and above.
+    if query.shape[-1] not in (64, 128):
+        raise ValueError(f"Query, key, and value must have a head dimension of 64 or 128, got {query.shape[-1]}.")
+
+
 def _check_qkv_dtype_match(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, **kwargs) -> None:
     if query.dtype != key.dtype:
         raise ValueError("Query and key must have the same dtype.")
@@ -535,6 +548,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         AttentionBackendName._FLASH_3_HUB,
         AttentionBackendName._FLASH_3_VARLEN_HUB,
         AttentionBackendName.SAGE_HUB,
+        AttentionBackendName.SAGE_BLACKWELL_HUB,
         AttentionBackendName.FLASH_4_HUB,
         AttentionBackendName.AITER_FA2_HUB,
     ]:
@@ -4101,6 +4115,40 @@ def _sage_attention_hub(
             out, lse = out
 
     return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.SAGE_BLACKWELL_HUB,
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_head_dim_64_or_128, _check_shape],
+)
+def _sage_attention_blackwell_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor | None = None,
+    is_causal: bool = False,
+    scale: float | None = None,
+    return_lse: bool = False,
+    _parallel_config: "ParallelConfig" | None = None,
+) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for sage attention")
+    if return_lse:
+        # `sageattn3_blackwell` returns the output only, so there is no LSE to hand back. This
+        # also rules out context parallelism, hence `supports_context_parallel` is not set above.
+        raise ValueError("`return_lse` is not supported by the `sage_blackwell_hub` backend.")
+    if scale is not None and scale != query.shape[-1] ** -0.5:
+        # The kernel derives the softmax scale from the head dimension internally and silently
+        # swallows unknown kwargs, so a custom scale would be ignored rather than applied.
+        raise ValueError("A custom `scale` is not supported by the `sage_blackwell_hub` backend.")
+
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_BLACKWELL_HUB].kernel_fn
+    # The kernel works on the HND layout, unlike the other Sage backends which take NHD. It also
+    # subtracts the per-token mean from `key` in place, so the transposed copies we build here
+    # double as protection for the caller's tensors.
+    query, key, value = (x.transpose(1, 2).contiguous() for x in (query, key, value))
+    out = func(query, key, value, is_causal=is_causal)
+    return out.transpose(1, 2).contiguous()
 
 
 @_AttentionBackendRegistry.register(

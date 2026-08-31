@@ -12,6 +12,7 @@ _BF16_REQUIRED_BACKENDS = {
     # Sage attention quantizes QK to INT8 and PV to FP8/FP16, so it only accepts
     # fp16/bf16 inputs and rejects the fp32 the test models default to.
     AttentionBackendName.SAGE_HUB,
+    AttentionBackendName.SAGE_BLACKWELL_HUB,
 }
 
 

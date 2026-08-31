@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _CUDA_AVAILABLE = torch.cuda.is_available()
+# Every build variant of `kernels-community/sage-blackwell` declares `archs: ["12.0a"]`, so the
+# kernel only loads on SM120 (consumer/workstation Blackwell). `a` targets are architecture
+# specific, so neither SM100 nor SM121 is covered.
+_IS_SM120 = _CUDA_AVAILABLE and torch.cuda.get_device_capability() == (12, 0)
 
 _PARAM_NATIVE_CUDNN = pytest.param(
     AttentionBackendName._NATIVE_CUDNN,
@@ -106,6 +110,20 @@ _PARAM_SAGE_HUB = pytest.param(
     ],
 )
 
+_PARAM_SAGE_BLACKWELL_HUB = pytest.param(
+    AttentionBackendName.SAGE_BLACKWELL_HUB,
+    id="sage_blackwell_hub",
+    marks=[
+        pytest.mark.skipif(
+            not _IS_SM120, reason="An SM120 Blackwell GPU is required for the sage_blackwell_hub backend."
+        ),
+        pytest.mark.skipif(
+            not is_kernels_available(),
+            reason="`kernels` package is required for sage_blackwell_hub backend. Install with `pip install kernels`.",
+        ),
+    ],
+)
+
 # All backends under test.
 _ALL_BACKEND_PARAMS = [
     _PARAM_NATIVE_CUDNN,
@@ -114,6 +132,7 @@ _ALL_BACKEND_PARAMS = [
     _PARAM_FLASH_VARLEN_HUB,
     _PARAM_FLASH_3_VARLEN_HUB,
     _PARAM_SAGE_HUB,
+    _PARAM_SAGE_BLACKWELL_HUB,
 ]
 
 # Backends that perform non-deterministic operations and therefore cannot run when
@@ -124,7 +143,7 @@ _NON_DETERMINISTIC_BACKENDS = {AttentionBackendName._NATIVE_CUDNN}
 # capability on every call (`torch.cuda.device_count()` returns a non-Tensor, which Dynamo
 # rejects) and its arch-specific paths reach a Triton quantizer and torch ops that have no
 # registered fake implementations.
-_NO_FULLGRAPH_COMPILE_BACKENDS = {AttentionBackendName.SAGE_HUB}
+_NO_FULLGRAPH_COMPILE_BACKENDS = {AttentionBackendName.SAGE_HUB, AttentionBackendName.SAGE_BLACKWELL_HUB}
 
 
 def _skip_if_backend_requires_nondeterminism(backend):

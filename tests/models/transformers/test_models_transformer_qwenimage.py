@@ -259,7 +259,7 @@ class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, Attent
 class TestQwenImageTransformerAttentionBackend(QwenImageTransformerTesterConfig, AttentionBackendTesterMixin):
     """Attention backend tests for QwenImage Transformer."""
 
-    unsupported_attn_backends = ["flash_hub", "_flash_3_hub", "sage_hub"]
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub", "sage_hub", "sage_blackwell_hub"]
 
     def get_dummy_inputs(self, batch_size: int = 2):
         inputs = super().get_dummy_inputs(batch_size=batch_size)
@@ -290,8 +290,8 @@ class TestQwenImageTransformerContextParallelAttnBackends(
     """Context Parallel inference x attention backends tests for QwenImage Transformer"""
 
     # QwenImage always passes a joint attention mask (text + image), which flash_hub,
-    # _flash_3_hub and sage_hub do not support.
-    unsupported_attn_backends = ["flash_hub", "_flash_3_hub", "sage_hub"]
+    # _flash_3_hub and the sage hub backends do not support.
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub", "sage_hub", "sage_blackwell_hub"]
 
     def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
         inputs = super().get_dummy_inputs(batch_size=batch_size)
