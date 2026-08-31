@@ -321,7 +321,8 @@ class TestStableAudioPipeline(StableAudioPipelineTesterConfig, PipelineTesterMix
 
         prompt = "A hammer hitting a wooden surface"
 
-        initial_audio_waveforms = torch.ones((1, 5))
+        # The pipeline builds its latents from this tensor without moving it, so it has to be on `torch_device`.
+        initial_audio_waveforms = torch.ones((1, 5), device=torch_device)
 
         # test raises error when no sampling rate
         with pytest.raises(ValueError):
@@ -360,7 +361,7 @@ class TestStableAudioPipeline(StableAudioPipelineTesterConfig, PipelineTesterMix
 
         # test num_waveforms_per_prompt for batch of prompts and input audio (two channels)
         batch_size = 2
-        initial_audio_waveforms = torch.ones((batch_size, 2, 5))
+        initial_audio_waveforms = torch.ones((batch_size, 2, 5), device=torch_device)
         audios = stable_audio_pipe(
             [prompt] * batch_size,
             num_inference_steps=2,
