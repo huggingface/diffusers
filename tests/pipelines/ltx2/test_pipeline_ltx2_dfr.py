@@ -22,7 +22,11 @@ from diffusers.pipelines.ltx2.utils import EPILOGUE_KEYFRAME_STRENGTH, MAX_CONDI
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+<<<<<<< HEAD
 from .testing_utils import get_dfr_dummy_components, get_dfr_dummy_inputs
+=======
+from .dfr_dummies import get_dfr_dummy_components, get_dfr_dummy_inputs
+>>>>>>> main
 
 
 enable_full_determinism()
@@ -35,6 +39,7 @@ class LTX2DFRPipelineTesterConfig(BasePipelineTesterConfig):
     )
     batch_input_params = frozenset(["prompt"])
     output_shape = (9, 3, 32, 32)
+<<<<<<< HEAD
     # DFR is a video pipeline (`num_videos_per_prompt`, not `num_images_per_prompt`), takes a second latent input
     # for the audio stream, and schedules its passes with an explicit `sigmas` list instead of `num_inference_steps`.
     optional_input_params = frozenset(
@@ -47,6 +52,13 @@ class LTX2DFRPipelineTesterConfig(BasePipelineTesterConfig):
             "return_dict",
         ]
     )
+=======
+    optional_input_params = BasePipelineTesterConfig.optional_input_params - {
+        "num_inference_steps",
+        "num_images_per_prompt",
+        "latents",
+    }
+>>>>>>> main
 
     def get_dummy_components(self):
         return get_dfr_dummy_components()
@@ -66,13 +78,21 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         )
 
     def test_padded_canvas_is_trimmed_back_to_the_request(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         inputs = self.get_dummy_inputs()
         inputs["num_frames"] = 11
         assert pipe(**inputs).frames.shape[1] == 11
 
     def test_latent_output_keeps_the_padded_canvas(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         inputs = self.get_dummy_inputs()
         inputs["num_frames"] = 11
         inputs["output_type"] = "latent"
@@ -81,7 +101,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         assert trimmed.shape[2] < output.frames.shape[2]
 
     def test_the_pass_conditions_at_the_snapped_fps(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         captured = []
         original = pipe.prepare_latents
 
@@ -111,7 +135,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         assert torch.allclose(coords[:1, :, : expected.shape[2]], expected)
 
     def test_partially_conditioned_keyframe_starts_from_its_clean_content(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         keyframe = torch.randn(1, 4, 1, 16, 16, device=torch_device)
         latents, conditioning_mask, clean_latents, _, _, _ = pipe.prepare_latents(
             keyframe_latents=[(8, keyframe, 0.95)],
@@ -130,7 +158,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         assert torch.allclose(latents[:, block], packed_keyframe * 0.95, atol=1e-6)
 
     def test_public_latents_are_normalized_on_the_way_in(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         raw = torch.randn(1, 4, 5, 16, 16, device=torch_device)
         packed_raw = pipe._pack_latents(raw)
         _, _, clean, _, _, _ = pipe.prepare_latents(
@@ -148,10 +180,18 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         assert not torch.allclose(clean[:, : packed_raw.shape[1]], packed_raw)
 
     def test_keyframe_marker_reaches_the_transformer(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
         marked = pipe(**self.get_dummy_inputs()).frames
         with torch.no_grad():
             pipe.transformer.keyframes_abs_pos_embedding.zero_()
+=======
+        components = self.get_dummy_components()
+        pipe = self.get_pipeline(**components).to(torch_device)
+        marked = pipe(**self.get_dummy_inputs()).frames
+        with torch.no_grad():
+            components["transformer"].keyframes_abs_pos_embedding.zero_()
+>>>>>>> main
         unmarked = pipe(**self.get_dummy_inputs()).frames
         assert not torch.allclose(marked, unmarked)
 
@@ -211,7 +251,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         return tiles, video_coords, plan, len(keyframe_positions), latent_frames * latent_height * latent_width
 
     def test_a_tiled_epilogue_pass_routes_every_token_with_unit_total_weight(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         _, video_coords, plan, _, _ = self._epilogue_plan(pipe)
         totals = torch.zeros(video_coords.shape[2], device=video_coords.device)
         for tile in plan:
@@ -219,7 +263,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         assert torch.allclose(totals, torch.ones_like(totals), atol=1e-6)
 
     def test_a_keyframe_two_epilogue_windows_share_is_a_single_token(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         tiles, _, plan, num_keyframes, first_keyframe_token = self._epilogue_plan(pipe)
         assert len({(frames.start, frames.stop) for frames, _, _, _ in tiles}) > 1
         tokens_per_keyframe = (32 // pipe.vae_spatial_compression_ratio) ** 2
@@ -236,7 +284,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         assert shared, "no keyframe token is shared across windows"
 
     def test_the_epilogue_is_given_its_keyframes_rather_than_regenerating_them(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         keyframe = torch.randn(1, 4, 1, 16, 16, device=torch_device)
         positions = [8, 16, 24, 32, 40, 48, 56, 64]
         guidance = torch.cat([keyframe] * len(positions), dim=2)
@@ -264,7 +316,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
     def test_composed_epilogue_pins_guidance_and_tiles(self):
         # `__call__` takes the tiling, not a resolved token plan: the plan needs the RoPE coordinates
         # `prepare_latents` builds inside the call, so a caller cannot produce one that is guaranteed to match.
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         keyframe = torch.randn(1, 4, 1, 16, 16, device=torch_device)
         output = pipe(
             **self.get_dummy_inputs(),
@@ -287,7 +343,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
     def test_a_single_call_tile_reproduces_the_untiled_call(self):
         # The whole canvas as one tile with unit weights must be a no-op, which is what pins the token plan
         # `__call__` resolves against its own coordinates.
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         keyframe = torch.randn(1, 4, 1, 16, 16, device=torch_device)
         shared = {
             "generate_slots": False,
@@ -327,7 +387,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         assert torch.allclose(window.flatten(), expected)
 
     def test_a_single_tile_plan_reproduces_the_untiled_pass(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         pipe._interrupt = False
         pipe._current_timestep = None
         pipe._attention_kwargs = None
@@ -402,7 +466,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
     def test_distilled_euler_keeps_the_scheduler_step(self):
         # Stage 1 / 2 stay on FlowMatch Euler. Re-pinning after every step is ancestral-only; doing it here
         # would snap IC-LoRA reference tokens and first-frame anchors every step and change the canvas.
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         pipe._interrupt = False
         pipe._current_timestep = None
         pipe._attention_kwargs = None
@@ -452,7 +520,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         assert torch.allclose(out, torch.zeros_like(out))
 
     def test_ancestral_step_does_not_erode_conditioning(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         pipe.scheduler = LTXEulerAncestralRFScheduler(eta=0.5)
         pipe._interrupt = False
         pipe._current_timestep = None
@@ -504,7 +576,11 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
         assert cos > 0.9, f"anchor tokens drifted from their conditioned content (cos={cos:.3f})"
 
     def test_the_epilogue_keeps_every_batch_element_distinct(self):
+<<<<<<< HEAD
         pipe = self.get_pipeline().to(torch_device)
+=======
+        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+>>>>>>> main
         rebuilt = pipe.rebuild_epilogue_keyframes(
             torch.randn(2, 4, 2, 8, 8, device=torch_device),
             decode_timestep=0.0,
