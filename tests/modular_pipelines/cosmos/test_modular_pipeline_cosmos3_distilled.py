@@ -118,7 +118,8 @@ class TestCosmos3DistilledModularPipelineFast(Cosmos3DistilledModularPipelineTes
         assert pipe.config.is_distilled is True
         assert pipe.config.distilled_sigmas is None
         assert pipe.config.default_use_system_prompt is True
-        assert pipe.config.default_use_fp32_sampling_state is False
+        assert pipe.config.default_use_fp32_sampling_state is True
+
     @pytest.mark.parametrize(
         ("config_enabled", "input_enabled", "expected_dtype"),
         [
