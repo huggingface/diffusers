@@ -14,8 +14,7 @@
 # limitations under the License.
 
 
-import unittest
-
+import pytest
 import torch
 from transformers import AutoTokenizer, T5GemmaConfig, T5GemmaEncoderModel
 from transformers.models.t5gemma.configuration_t5gemma import T5GemmaModuleConfig
@@ -32,7 +31,11 @@ from ...testing_utils import (
     enable_full_determinism,
     torch_device,
 )
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -47,9 +50,9 @@ COND_DIM = 16
 TINY_TOKENIZER_REPO = "hf-internal-testing/tiny-random-Gemma3ForCausalLM"
 
 
-class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableAudio3PipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableAudio3Pipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
             "prompt",
             "duration",
@@ -57,8 +60,9 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "encoder_attention_mask",
         ]
     )
-    batch_params = frozenset(["prompt"])
-    required_optional_params = frozenset(
+    batch_input_params = frozenset(["prompt"])
+    # An audio pipeline: it exposes `num_waveforms_per_prompt`, not the base default `num_images_per_prompt`.
+    optional_input_params = frozenset(
         [
             "num_inference_steps",
             "num_waveforms_per_prompt",
@@ -70,10 +74,8 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "callback_on_step_end_tensor_inputs",
         ]
     )
-    # SA3 uses a bespoke attention path with no xformers processor, and CFG is not
-    # applicable (the distilled model bakes it in; the base model runs at cfg=1).
-    test_xformers_attention = False
-    supports_dduf = False
+    # `(audio_channels, waveform_length)`; waveform_length = int(duration * sampling_rate) = 1.0 * 16.
+    output_shape = (2, 16)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -130,7 +132,7 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         duration_embedder = StableAudio3DurationEmbedder(output_dim=COND_DIM, fourier_dim=16)
 
-        components = {
+        return {
             "transformer": transformer,
             "scheduler": scheduler,
             "vae": vae,
@@ -138,27 +140,23 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "duration_embedder": duration_embedder,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A hammer hitting a wooden surface",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "duration": 1.0,
             "num_inference_steps": 2,
         }
-        return inputs
 
-    def test_save_load_local(self):
+
+class TestStableAudio3Pipeline(StableAudio3PipelineTesterConfig, PipelineTesterMixin):
+    def test_save_load_local(self, tmp_path, base_pipe_output):
         # increase tolerance to account for the large composite model
-        super().test_save_load_local(expected_max_difference=7e-3)
+        super().test_save_load_local(tmp_path, base_pipe_output, expected_max_difference=7e-3)
 
-    def test_save_load_optional_components(self):
-        super().test_save_load_optional_components(expected_max_difference=7e-3)
+    def test_save_load_optional_components(self, tmp_path):
+        super().test_save_load_optional_components(tmp_path, expected_max_difference=7e-3)
 
     def test_encode_prompt_works_in_isolation(self):
         # SA3's `encode_prompt` requires `device` and `num_waveforms_per_prompt`, neither of which
@@ -170,25 +168,19 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol=1e-3, rtol=1e-3)
 
     def test_stable_audio_3_output_shape(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = StableAudio3Pipeline(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         audio = pipe(**inputs).audios[0]
 
         assert audio.ndim == 2
         # audio_channels=2; waveform_length = int(duration * sampling_rate) = 1.0 * 16 = 16
-        assert audio.shape == (2, 16)
+        assert audio.shape == self.output_shape
 
     def test_stable_audio_3_latent_output(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = StableAudio3Pipeline(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["output_type"] = "latent"
         latents = pipe(**inputs).audios
 
@@ -196,13 +188,10 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert latents.shape == (1, 8, 4)
 
     def test_stable_audio_3_num_waveforms_per_prompt(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = StableAudio3Pipeline(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         num_waveforms_per_prompt = 3
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         audios = pipe(**inputs, num_waveforms_per_prompt=num_waveforms_per_prompt).audios
         assert audios.shape[0] == num_waveforms_per_prompt
 
@@ -211,17 +200,14 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert audios.shape[0] == 2 * num_waveforms_per_prompt
 
     def test_stable_audio_3_prompt_embeds(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = StableAudio3Pipeline(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         # forward with string prompt
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         audio_1 = pipe(**inputs).audios[0]
 
         # forward again passing precomputed prompt embeddings
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         prompt = inputs.pop("prompt")
         prompt_embeds, encoder_attention_mask = pipe.encode_prompt(prompt, torch_device, num_waveforms_per_prompt=1)
         inputs["prompt_embeds"] = prompt_embeds
@@ -233,15 +219,13 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_stable_audio_3_default_steps_follow_scheduler(self):
         # When num_inference_steps is None, the pipeline must fall back to a step count based on
         # the scheduler's `stochastic_sampling` config: 8 for the distilled (ping-pong-style) model.
-        device = "cpu"
         components = self.get_dummy_components()
         components["scheduler"] = FlowMatchEulerDiscreteScheduler(
             num_train_timesteps=1, shift=1.0, stochastic_sampling=True
         )
-        pipe = StableAudio3Pipeline(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline(**components).to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs.pop("num_inference_steps")  # let the pipeline default decide
         pipe(**inputs)
         assert len(pipe.scheduler.timesteps) == 8
@@ -254,10 +238,14 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         sig = inspect.signature(StableAudio3Pipeline.__call__)
         assert sig.parameters["silence_padding_duration"].default == 0.0
 
-    @unittest.skip("Not supported yet: the weight-normalised SAME VAE breaks under sequential CPU offload.")
+
+class TestStableAudio3PipelineMemory(StableAudio3PipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Stable Audio 3 pipeline."""
+
+    @pytest.mark.skip("Not supported yet: the weight-normalised SAME VAE breaks under sequential CPU offload.")
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
-    @unittest.skip("Not supported yet: the weight-normalised SAME VAE breaks under sequential CPU offload.")
+    @pytest.mark.skip("Not supported yet: the weight-normalised SAME VAE breaks under sequential CPU offload.")
     def test_sequential_offload_forward_pass_twice(self):
         pass

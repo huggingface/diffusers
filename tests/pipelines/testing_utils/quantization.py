@@ -47,7 +47,6 @@ from diffusers import (
     FluxTransformer2DModel,
     GGUFQuantizationConfig,
     NVIDIAModelOptConfig,
-    QuantoConfig,
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
     TorchAoConfig,
@@ -80,7 +79,6 @@ from ...testing_utils import (
     require_modelopt_version_greater_or_equal,
     require_peft_backend,
     require_peft_version_greater,
-    require_quanto,
     require_torch,
     require_torch_accelerator,
     require_torch_version_greater,
@@ -173,7 +171,7 @@ class QuantCompileTests:
 
 @is_quantization
 @require_bitsandbytes_version_greater("0.43.2")
-@require_quanto
+@require_torchao_version_greater_or_equal("0.16.0")
 @require_accelerate
 @require_torch
 @require_torch_accelerator
@@ -212,7 +210,7 @@ class TestPipelineQuantization:
     def test_quant_config_set_correctly_through_granular(self):
         quant_config = PipelineQuantizationConfig(
             quant_mapping={
-                "transformer": QuantoConfig(weights_dtype="int8"),
+                "transformer": TorchAoConfig(Int8WeightOnlyConfig(version=2)),
                 "text_encoder_2": TranBitsAndBytesConfig(load_in_4bit=True, compute_dtype=torch.bfloat16),
             }
         )
@@ -231,7 +229,7 @@ class TestPipelineQuantization:
                     assert quantization_config.load_in_4bit
                     assert quantization_config.quant_method == "bitsandbytes"
                 else:
-                    assert quantization_config.quant_method == "quanto"
+                    assert quantization_config.quant_method == "torchao"
 
         _ = pipe(self.prompt, num_inference_steps=self.num_inference_steps)
 
@@ -239,7 +237,7 @@ class TestPipelineQuantization:
         with pytest.raises(ValueError) as err_context:
             _ = PipelineQuantizationConfig(
                 quant_mapping={
-                    "transformer": QuantoConfig(weights_dtype="int8"),
+                    "transformer": TorchAoConfig(Int8WeightOnlyConfig(version=2)),
                     "text_encoder_2": TranBitsAndBytesConfig(load_in_4bit=True, compute_dtype=torch.bfloat16),
                 },
                 quant_backend="bitsandbytes_4bit",
@@ -253,8 +251,8 @@ class TestPipelineQuantization:
         components_to_quantize = ["transformer", "text_encoder_2"]
         with pytest.raises(ValueError) as err_context:
             _ = PipelineQuantizationConfig(
-                quant_backend="quanto",
-                quant_kwargs={"weights_dtype": "int8"},
+                quant_backend="torchao",
+                quant_kwargs={"quant_type": Int8WeightOnlyConfig(version=2)},
                 components_to_quantize=components_to_quantize,
             )
 
@@ -262,7 +260,7 @@ class TestPipelineQuantization:
 
     def test_raises_error_for_wrong_config_class(self):
         quant_config = {
-            "transformer": QuantoConfig(weights_dtype="int8"),
+            "transformer": TorchAoConfig(Int8WeightOnlyConfig(version=2)),
             "text_encoder_2": TranBitsAndBytesConfig(load_in_4bit=True, compute_dtype=torch.bfloat16),
         }
         with pytest.raises(ValueError) as err_context:
@@ -287,7 +285,7 @@ class TestPipelineQuantization:
     def test_saving_loading(self):
         quant_config = PipelineQuantizationConfig(
             quant_mapping={
-                "transformer": QuantoConfig(weights_dtype="int8"),
+                "transformer": TorchAoConfig(Int8WeightOnlyConfig(version=2)),
                 "text_encoder_2": TranBitsAndBytesConfig(load_in_4bit=True, compute_dtype=torch.bfloat16),
             }
         )
@@ -313,7 +311,7 @@ class TestPipelineQuantization:
                     assert quantization_config.load_in_4bit
                     assert quantization_config.quant_method == "bitsandbytes"
                 else:
-                    assert quantization_config.quant_method == "quanto"
+                    assert quantization_config.quant_method == "torchao"
 
         output_2 = loaded_pipe(**pipe_inputs, generator=torch.manual_seed(self.seed)).images
 
@@ -332,7 +330,7 @@ class TestPipelineQuantization:
         else:
             quant_config = PipelineQuantizationConfig(
                 quant_mapping={
-                    "transformer": QuantoConfig("int8"),
+                    "transformer": TorchAoConfig(Int8WeightOnlyConfig(version=2)),
                     invalid_component: TranBitsAndBytesConfig(load_in_8bit=True),
                 }
             )
@@ -1019,9 +1017,6 @@ class TestBnb8BitCompile(QuantCompileTests):
 
     def test_torch_compile_with_cpu_offload(self):
         super()._test_torch_compile_with_cpu_offload(torch_dtype=torch.float16)
-
-
-# ======================== Quanto ========================
 
 
 # ======================== TorchAO ========================

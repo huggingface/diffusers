@@ -222,7 +222,7 @@ unet = UNet2DConditionModel.from_pretrained("your-username/your-model", dtype=to
 pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, dtype=torch.float16, variant="fp16")
 
 pipeline.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "sushi rolls in the form of panda heads, sushi platter"
 

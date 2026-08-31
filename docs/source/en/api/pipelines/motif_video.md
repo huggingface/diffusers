@@ -24,7 +24,7 @@ pipe = MotifVideoPipeline.from_pretrained(
     "Motif-Technologies/Motif-Video-2B",
     dtype=torch.bfloat16,
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A woman with long brown hair and light skin smiles at another woman with long blonde hair."
 negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
@@ -54,7 +54,7 @@ pipe = MotifVideoImage2VideoPipeline.from_pretrained(
     "Motif-Technologies/Motif-Video-2B",
     dtype=torch.bfloat16,
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = load_image("input_image.png")
 prompt = "A cinematic scene with vivid colors."

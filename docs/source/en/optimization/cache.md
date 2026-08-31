@@ -31,7 +31,7 @@ import torch
 from diffusers import CogVideoXPipeline, PyramidAttentionBroadcastConfig
 
 pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 config = PyramidAttentionBroadcastConfig(
     spatial_attention_block_skip_range=2,
@@ -54,7 +54,7 @@ import torch
 from diffusers import CogVideoXPipeline, FasterCacheConfig
 
 pipe line= CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 config = FasterCacheConfig(
     spatial_attention_block_skip_range=2,
@@ -101,7 +101,7 @@ from diffusers import FluxPipeline, TaylorSeerCacheConfig
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 config = TaylorSeerCacheConfig(
     cache_interval=5,
@@ -130,7 +130,7 @@ from diffusers import FluxPipeline, MagCacheConfig
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-schnell",
     dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # 1. Calibration Step
 # Run full inference to measure model behavior.

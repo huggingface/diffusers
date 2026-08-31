@@ -50,7 +50,7 @@ import torch
 
 pipeline = HunyuanDiTPipeline.from_pretrained(
 	"Tencent-Hunyuan/HunyuanDiT-Diffusers", dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Then change the memory layout of the pipelines `transformer` and `vae` components to `torch.channels-last`:
