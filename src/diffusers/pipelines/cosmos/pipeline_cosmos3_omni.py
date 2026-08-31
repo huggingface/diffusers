@@ -1341,6 +1341,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         add_resolution_template: bool = True,
         add_duration_template: bool = True,
         enable_safety_check: bool = True,
+        use_fp32_sampling_state: bool = False,
     ) -> Cosmos3OmniPipelineOutput:
         r"""
         Run the Cosmos 3 omni pipeline end-to-end: encode the (optional) conditioning image/video, denoise vision and
@@ -1436,6 +1437,11 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 When `True` and a `CosmosSafetyChecker` is attached, runs the text guardrail on the prompt before
                 generation and the video guardrail on the decoded frames. Set to `False` to skip both for this call;
                 the checker remains loaded for subsequent calls.
+            use_fp32_sampling_state (`bool`, *optional*, defaults to `False`):
+                When `True`, keeps vision, sound, and action denoising latents plus classifier-free-guidance arithmetic
+                in `torch.float32`. Transformer inputs are still cast to the transformer's dtype before each forward.
+                This improves sampling-state precision at the cost of additional memory and preserves the existing
+                model-dtype behavior when disabled.
 
         Returns:
             [`Cosmos3OmniPipelineOutput`] or `tuple`:
@@ -1498,6 +1504,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         device = self._get_execution_device()
         dtype = self.transformer.dtype
+        sampling_dtype = torch.float32 if use_fp32_sampling_state else dtype
 
         if enable_safety_check and isinstance(self.safety_checker, CosmosSafetyChecker):
             self.safety_checker.to(device)
@@ -1558,7 +1565,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             action_latents=action_latents,
             generator=generator,
             device=device,
-            dtype=dtype,
+            dtype=sampling_dtype,
             enable_sound=enable_sound,
             action=action,
         )
@@ -1787,6 +1794,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         raw_action_dim=raw_action_dim_resolved,
                     )
 
+                if use_fp32_sampling_state:
+                    cond_v_vision = cond_v_vision.float()
+                    cond_v_sound = cond_v_sound.float() if cond_v_sound is not None else None
+                    cond_v_action = cond_v_action.float() if cond_v_action is not None else None
+                    uncond_v_vision = uncond_v_vision.float() if uncond_v_vision is not None else None
+                    uncond_v_sound = uncond_v_sound.float() if uncond_v_sound is not None else None
+                    uncond_v_action = uncond_v_action.float() if uncond_v_action is not None else None
+
                 # --- CFG combine + per-modality scheduler step ---
                 # UniPC's multistep_uni_p_bh_update einsum ("k,bkc...->bc...") requires sample
                 # to carry a batch dim; per-modality latents have no batch axis, so wrap for the step.
@@ -1831,6 +1846,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         callback_kwargs[key] = locals()[key]
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
+                    if use_fp32_sampling_state:
+                        latents = latents.float()
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()

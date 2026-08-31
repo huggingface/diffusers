@@ -319,6 +319,12 @@ class Cosmos3DistilledVisionLoopSchedulerStep(ModularPipelineBlocks):
                 description="Indexes of conditioned vision latent frames; non-empty for image-to-video.",
             ),
             InputParam.template("generator"),
+            InputParam(
+                name="use_fp32_sampling_state",
+                type_hint=bool,
+                default=False,
+                description="Whether to keep the distilled vision scheduler state in float32.",
+            ),
         ]
 
     @property
@@ -327,11 +333,17 @@ class Cosmos3DistilledVisionLoopSchedulerStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        velocity_vision = block_state.velocity_vision
+        latents = block_state.latents
+        if block_state.use_fp32_sampling_state:
+            velocity_vision = velocity_vision.float()
+            latents = latents.float()
+
         # Pass the generator so the scheduler's stochastic (SDE) re-noising is seedable/reproducible.
         block_state.latents = components.scheduler.step(
-            block_state.velocity_vision.unsqueeze(0),
+            velocity_vision.unsqueeze(0),
             t,
-            block_state.latents.unsqueeze(0),
+            latents.unsqueeze(0),
             generator=block_state.generator,
             return_dict=False,
         )[0].squeeze(0)

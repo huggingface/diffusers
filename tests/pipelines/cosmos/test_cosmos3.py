@@ -110,6 +110,37 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
 
         assert video[0].shape == self.output_shape
 
+    def test_fp32_sampling_state_keeps_transformer_inputs_in_model_dtype(self):
+        pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipeline.transformer.to(dtype=torch.float16)
+        pipeline.set_progress_bar_config(disable=None)
+        transformer_input_dtypes = []
+        callback_latent_dtypes = []
+
+        def transformer_forward(**kwargs):
+            vision_tokens = kwargs["vision_tokens"][0]
+            transformer_input_dtypes.append(vision_tokens.dtype)
+            return ([torch.zeros_like(vision_tokens)], None, None)
+
+        def callback_on_step_end(_pipeline, _step_index, _timestep, callback_kwargs):
+            callback_latent_dtypes.append(callback_kwargs["latents"].dtype)
+            return {"latents": callback_kwargs["latents"].to(torch.float16)}
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.update(
+            output_type="latent",
+            enable_safety_check=False,
+            use_fp32_sampling_state=True,
+            callback_on_step_end=callback_on_step_end,
+        )
+        with mock.patch.object(pipeline.transformer, "forward", side_effect=transformer_forward):
+            latents = pipeline(**inputs).video
+
+        assert transformer_input_dtypes
+        assert all(dtype == torch.float16 for dtype in transformer_input_dtypes)
+        assert callback_latent_dtypes
+        assert all(dtype == torch.float32 for dtype in callback_latent_dtypes)
+        assert latents.dtype == torch.float32
     def test_cosmos3_tokenize_prompt_uses_checkpoint_system_prompt_default(self):
         components = self.get_dummy_components()
         components["default_use_system_prompt"] = False

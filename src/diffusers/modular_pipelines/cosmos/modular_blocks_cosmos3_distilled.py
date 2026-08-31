@@ -86,7 +86,8 @@ class Cosmos3DistilledVisionCoreDenoiseStep(SequentialPipelineBlocks):
           transformer (`Cosmos3OmniTransformer`) scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          is_distilled (default: True) distilled_sigmas (default: None)
+          default_use_fp32_sampling_state (default: False) is_distilled (default: True) distilled_sigmas (default:
+          None)
 
       Inputs:
           cond_input_ids (`None`):
@@ -109,6 +110,9 @@ class Cosmos3DistilledVisionCoreDenoiseStep(SequentialPipelineBlocks):
               Pre-generated noisy vision latents.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
+          use_fp32_sampling_state (`bool | NoneType`, *optional*):
+              Whether to keep vision latents, masks, and scheduler state in float32. If unset, uses the pipeline's
+              `default_use_fp32_sampling_state` config.
           num_inference_steps (`int`, *optional*):
               The number of denoising steps.
           guidance_scale (`float`, *optional*):
@@ -165,8 +169,9 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
           (`Cosmos3OmniTransformer`) scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          default_use_system_prompt (default: True) enable_safety_checker (default: True) is_distilled (default: True)
-          distilled_sigmas (default: None)
+          default_use_system_prompt (default: True) enable_safety_checker (default: True)
+          default_use_fp32_sampling_state (default: False) is_distilled (default: True) distilled_sigmas (default:
+          None)
 
       Inputs:
           prompt (`str`):
@@ -201,6 +206,9 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
               Pre-generated noisy vision latents.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
+          use_fp32_sampling_state (`bool | NoneType`, *optional*):
+              Whether to keep vision latents, masks, and scheduler state in float32. If unset, uses the pipeline's
+              `default_use_fp32_sampling_state` config.
           num_inference_steps (`int`, *optional*):
               The number of denoising steps.
           guidance_scale (`float`, *optional*):

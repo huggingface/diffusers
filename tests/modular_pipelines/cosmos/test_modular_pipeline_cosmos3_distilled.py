@@ -17,8 +17,12 @@ import pytest
 import torch
 from PIL import Image
 
-from diffusers import ModularPipeline
+from diffusers import FlowMatchEulerDiscreteScheduler, ModularPipeline
 from diffusers.modular_pipelines import Cosmos3DistilledBlocks, Cosmos3DistilledModularPipeline
+from diffusers.modular_pipelines.cosmos.before_denoise import Cosmos3VisionPrepareLatentsStep
+from diffusers.modular_pipelines.cosmos.denoise import Cosmos3DistilledVisionLoopSchedulerStep
+from diffusers.modular_pipelines.cosmos.encoders import Cosmos3DistilledTextEncoderStep
+from diffusers.modular_pipelines.modular_pipeline import BlockState, PipelineState
 
 from ...testing_utils import torch_device
 from ..testing_utils import (
@@ -113,6 +117,67 @@ class TestCosmos3DistilledModularPipelineFast(Cosmos3DistilledModularPipelineTes
         pipe = self.pipeline_class()
         assert pipe.config.is_distilled is True
         assert pipe.config.distilled_sigmas is None
+        assert pipe.config.default_use_system_prompt is True
+        assert pipe.config.default_use_fp32_sampling_state is False
+    @pytest.mark.parametrize(
+        ("config_enabled", "input_enabled", "expected_dtype"),
+        [
+            (False, None, torch.bfloat16),
+            (True, None, torch.float32),
+            (True, False, torch.bfloat16),
+        ],
+    )
+    def test_prepare_vision_latents_fp32_sampling_state(
+        self, config_enabled, input_enabled, expected_dtype
+    ):
+        components = BlockState(
+            _execution_device=torch.device("cpu"),
+            transformer=BlockState(dtype=torch.bfloat16),
+            config=BlockState(default_use_fp32_sampling_state=config_enabled),
+            vae_scale_factor_spatial=16,
+            vae_scale_factor_temporal=4,
+            num_channels_latents=4,
+        )
+        state = PipelineState()
+        state.set("x0_tokens_vision", None)
+        state.set("vision_condition_frames", None)
+        state.set("num_frames", 5)
+        state.set("height", 32)
+        state.set("width", 32)
+        state.set("fps", 24.0)
+        state.set("latents", None)
+        state.set("generator", torch.Generator("cpu").manual_seed(0))
+        state.set("use_fp32_sampling_state", input_enabled)
+
+        Cosmos3VisionPrepareLatentsStep()(components, state)
+
+        assert state.get("latents").dtype == expected_dtype
+        assert state.get("vision_condition_mask").dtype == expected_dtype
+        assert state.get("use_fp32_sampling_state") is (config_enabled if input_enabled is None else input_enabled)
+
+    @pytest.mark.parametrize(
+        ("use_fp32_sampling_state", "expected_dtype"),
+        [(False, torch.bfloat16), (True, torch.float32)],
+    )
+    def test_distilled_scheduler_fp32_state(self, use_fp32_sampling_state, expected_dtype):
+        scheduler = FlowMatchEulerDiscreteScheduler(stochastic_sampling=True)
+        scheduler.set_timesteps(sigmas=[1.0, 0.5])
+        latents = torch.zeros((1, 2, 1, 1, 1), dtype=torch.bfloat16)
+        block_state = BlockState(
+            latents=latents,
+            velocity_vision=torch.zeros_like(latents),
+            vision_condition_mask=torch.zeros((1, 1, 1), dtype=expected_dtype),
+            vision_conditioning_latents=None,
+            vision_condition_indexes_for_pack=[],
+            generator=torch.Generator("cpu").manual_seed(0),
+            use_fp32_sampling_state=use_fp32_sampling_state,
+        )
+
+        Cosmos3DistilledVisionLoopSchedulerStep()(
+            BlockState(scheduler=scheduler), block_state, i=0, t=scheduler.timesteps[0]
+        )
+
+        assert block_state.latents.dtype == expected_dtype
 
     def test_vae_encoder_rejects_image_and_video_together(self):
         vae_encoder = Cosmos3DistilledBlocks().sub_blocks["vae_encoder"]
