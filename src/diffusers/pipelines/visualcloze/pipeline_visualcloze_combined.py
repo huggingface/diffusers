@@ -146,6 +146,9 @@ class VisualClozePipeline(
             transformer=transformer,
             scheduler=scheduler,
         )
+        # `resolution` is not a module, so it has to be registered explicitly to survive a
+        # `save_pretrained` / `from_pretrained` round-trip.
+        self.register_to_config(resolution=resolution)
 
         self.generation_pipe = VisualClozeGenerationPipeline(
             vae=vae,
@@ -376,6 +379,10 @@ class VisualClozePipeline(
             output_type=output_type if upsampling_strength == 0 else "pil",
         )
         if upsampling_strength == 0:
+            # Offload all models. The inner pipelines free their own (empty) hooks, so the ones installed on this
+            # pipeline by `enable_model_cpu_offload` have to be freed here.
+            self.maybe_free_model_hooks()
+
             if not return_dict:
                 return (generation_output,)
 
@@ -433,6 +440,9 @@ class VisualClozePipeline(
                 start += n
         else:
             output = image
+
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (output,)

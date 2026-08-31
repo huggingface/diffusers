@@ -94,7 +94,6 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-             -k "not Onnx" \
             --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
             --report-log=tests_pipeline_${{ matrix.module }}_cuda.log \
             tests/pipelines/${{ matrix.module }}
@@ -150,7 +149,7 @@ jobs:
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -k "not Onnx" \
+          -m "not compile" \
           --make-reports=tests_torch_${{ matrix.module }}_cuda \
           --report-log=tests_torch_${{ matrix.module }}_cuda.log \
           tests/${{ matrix.module }}
@@ -210,9 +209,8 @@ jobs:
     - name: Run torch compile tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
-        RUN_COMPILE: yes
       run: |
-        pytest -n 1 --max-worker-restart=0 --dist=loadfile -k "compile" --make-reports=tests_torch_compile_cuda tests/
+        pytest -n 1 --max-worker-restart=0 --dist=loadfile -m compile --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
       if: ${{ failure() }}
       run: cat reports/tests_torch_compile_cuda_failures_short.txt
@@ -311,7 +309,6 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-            -k "not Onnx" \
             --make-reports=tests_torch_minimum_version_cuda \
             tests/models/test_modeling_common.py \
             tests/pipelines/test_pipelines_common.py \
@@ -350,9 +347,6 @@ jobs:
           - backend: "torchao"
             marker: "torchao"
             additional_deps: ["mslk"]
-          - backend: "optimum_quanto"
-            marker: "quanto"
-            additional_deps: []
           - backend: "nvidia_modelopt"
             marker: "modelopt"
             additional_deps: []
@@ -428,7 +422,7 @@ jobs:
         run: |
           printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
-          uv pip install -U bitsandbytes optimum_quanto
+          uv pip install -U bitsandbytes
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
           uv pip install pytest-reportlog
       - name: Environment

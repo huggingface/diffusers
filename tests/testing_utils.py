@@ -42,7 +42,6 @@ from diffusers.utils.import_utils import (
     is_nvidia_modelopt_version,
     is_onnx_available,
     is_opencv_available,
-    is_optimum_quanto_available,
     is_peft_available,
     is_sdnq_available,
     is_timm_available,
@@ -429,14 +428,6 @@ def is_bitsandbytes(test_case):
     return pytest.mark.bitsandbytes(test_case)
 
 
-def is_quanto(test_case):
-    """
-    Decorator marking a test as a Quanto quantization test. These tests can be filtered using:
-        pytest -m "not quanto" to skip pytest -m quanto to run only these tests
-    """
-    return pytest.mark.quanto(test_case)
-
-
 def is_torchao(test_case):
     """
     Decorator marking a test as a TorchAO quantization test. These tests can be filtered using:
@@ -760,13 +751,6 @@ def require_bitsandbytes(test_case):
     Decorator marking a test that requires bitsandbytes. These tests are skipped when bitsandbytes isn't installed.
     """
     return pytest.mark.skipif(not is_bitsandbytes_available(), reason="test requires bitsandbytes")(test_case)
-
-
-def require_quanto(test_case):
-    """
-    Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
-    """
-    return pytest.mark.skipif(not is_optimum_quanto_available(), reason="test requires quanto")(test_case)
 
 
 def require_sdnq(test_case):

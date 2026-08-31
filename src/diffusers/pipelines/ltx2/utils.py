@@ -17,6 +17,7 @@ from io import BytesIO
 from typing import Any
 
 import numpy as np
+import torch
 
 from ...utils import is_av_available
 
@@ -33,6 +34,42 @@ LTX2_5_IMAGE_CRF = 18
 
 # Reduced schedule for super-resolution stage 2 (subset of distilled values)
 STAGE_2_DISTILLED_SIGMA_VALUES = [0.909375, 0.725, 0.421875]
+
+# Schedule for the DFR pipeline's temporal refine rounds: the distilled schedule from its fifth sigma on. The rounds
+# densify an already-structured canvas, so they skip the near-1.0 head of the schedule.
+TEMPORAL_ROUND_DISTILLED_SIGMA_VALUES = DISTILLED_SIGMA_VALUES[4:]
+
+# Keyframes carried between DFR temporal rounds are pinned just short of fully clean so a tile can still settle its
+# seam frame.
+ANCHOR_KEYFRAME_STRENGTH = 0.95
+
+# The DFR epilogue's keyframes arrive as finished frames, rebuilt at the output resolution, so they are pinned fully
+# clean.
+EPILOGUE_KEYFRAME_STRENGTH = 1.0
+
+# Ancestral noise fraction used by the DFR temporal refine rounds. Their short schedule densifies detail rather than
+# building structure, so a partly stochastic step is what fills in the freshly interpolated frames.
+TEMPORAL_ANCESTRAL_ETA = 0.5
+
+# RoPE time is `pixel_frame / fps`. The transformer is trained around 24/25/30 and 60 fps, not 48 or 120. A 120 fps
+# time base halves every token's temporal span and the model can no longer lay out the VAE's pixel frames inside one
+# latent -- it decodes as a motion spike at each latent border followed by a stall. 48 fps stretches the same span the
+# other way. Condition at 60 in both cases and treat the decoded frames at the playback rate (120 fps: generate 2x
+# frames at 60, mux as 120; 48 fps: generate the 24x2 canvas at 60, mux as 48). Playback fps is used for the returned
+# frame count and the audio trim only.
+MAX_CONDITIONING_FPS = 60.0
+SNAP_CONDITIONING_FPS_ABOVE = 30.0
+
+
+def trim_canvas(latents: torch.Tensor, num_frames: int, temporal_compression_ratio: int) -> torch.Tensor:
+    """Drop the padded tail of a DFR canvas so it matches `num_frames` pixel frames.
+
+    The canvas is padded to a whole number of keyframe segments; this keeps the tokens that cover `num_frames` and is
+    the last step before VAE decode. `output_type="latent"` returns the padded grid so a slot on the pad (e.g. pixel 96
+    on an 81→97 canvas) is not dropped.
+    """
+    keep = (num_frames - 1) // temporal_compression_ratio + 1
+    return latents[:, :, :keep]
 
 
 # Default negative prompt from
