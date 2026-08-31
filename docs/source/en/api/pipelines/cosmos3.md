@@ -660,6 +660,44 @@ if result.action is not None:
 </hfoption>
 </hfoptions>
 
+## SeaCache
+
+Cosmos 3 inference uses [`SeaCacheConfig`] by default. SeaCache reuses transformer residuals when the
+Spectral-Evolution-Aware indicator changes slowly, reducing the number of full transformer executions. The default
+configuration filters raw vision latents, linearly extrapolates cached residuals, uses a `0.25` threshold, and forces a
+full execution after at most two consecutive cached steps.
+
+SeaCache is approximate and can change generated outputs. Disable it before inference when you need every denoising
+step to execute the full transformer, for example when producing an uncached baseline:
+
+```python
+pipe.disable_sea_cache()
+result = pipe(
+    prompt=prompt,
+    num_frames=189,
+    height=720,
+    width=1280,
+)
+```
+
+The same method works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
+[`Cosmos3DistilledModularPipeline`]. Reenable the default configuration with `pipe.enable_sea_cache()`, or pass a
+custom configuration:
+
+```python
+from diffusers import SeaCacheConfig
+
+pipe.enable_sea_cache(
+    SeaCacheConfig(
+        threshold=0.2,
+        max_consecutive_cached=2,
+    )
+)
+```
+
+The pipeline supplies SeaCache with the active scheduler step, sigma, and number of inference steps. Cache state is
+reset for each pipeline call, and conditional and unconditional guidance branches keep independent histories.
+
 ## Context parallelism
 
 For long videos or high resolutions, a single forward pass can exceed the memory and latency budget of one GPU. Cosmos 3 supports **context parallelism (CP)** to shard the sequence dimension across multiple GPUs, splitting the attention computation so each device holds only a slice of the tokens.
