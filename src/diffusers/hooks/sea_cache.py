@@ -47,7 +47,7 @@ class SeaCacheConfig:
     prediction heads still execute.
 
     Args:
-        threshold (`float`, defaults to `0.35`):
+        threshold (`float`, defaults to `0.25`):
             Accumulated relative-L1 budget. Larger values reuse the cache more often.
         residual_order (`int`, defaults to `0`):
             Order used to predict the generation-stream language-model residual. `0` directly reuses the most recent
@@ -56,6 +56,9 @@ class SeaCacheConfig:
             Number of initial scheduler steps that always execute in full.
         cache_end_steps (`int`, defaults to `1`):
             Number of final scheduler steps that always execute in full.
+        max_consecutive_cached (`int`, defaults to `2`):
+            Maximum consecutive residual reuses per cache context before forcing a full execution. `0` disables the
+            limit.
         power_exp (`float`, defaults to `3.0`):
             Exponent of the SEA clean-signal power prior. SeaCache uses `3.0` for video features.
         indicator_source (`str`, defaults to `"first_block"`):
@@ -96,10 +99,11 @@ class SeaCacheConfig:
         ```
     """
 
-    threshold: float = 0.35
+    threshold: float = 0.25
     residual_order: int = 0
     retention_steps: int = 1
     cache_end_steps: int = 1
+    max_consecutive_cached: int = 2
     power_exp: float = 3.0
     indicator_source: Literal["first_block", "raw_vision_latents"] = "first_block"
     current_step_callback: Callable[[], int] = None
@@ -124,6 +128,14 @@ class SeaCacheConfig:
             raise ValueError(f"`retention_steps` must be non-negative, got {self.retention_steps}.")
         if self.cache_end_steps < 0:
             raise ValueError(f"`cache_end_steps` must be non-negative, got {self.cache_end_steps}.")
+        if (
+            isinstance(self.max_consecutive_cached, bool)
+            or not isinstance(self.max_consecutive_cached, int)
+            or self.max_consecutive_cached < 0
+        ):
+            raise ValueError(
+                f"`max_consecutive_cached` must be a non-negative integer, got {self.max_consecutive_cached!r}."
+            )
         if not math.isfinite(self.power_exp) or self.power_exp <= 0:
             raise ValueError(f"`power_exp` must be positive, got {self.power_exp}.")
         if self.indicator_source not in ("first_block", "raw_vision_latents"):
@@ -162,6 +174,9 @@ class SeaCacheContextState(BaseState):
         self.gate_should_compute = True
         self.previous_indicator: list[torch.Tensor] | None = None
         self.accumulated_distance = 0.0
+        self.consecutive_cached = 0
+        self.max_consecutive_cached_observed = 0
+        self.max_consecutive_forced_full = 0
         self.skip_remaining = False
         self.full_execution_pending = False
         self.cacheable_execution = False
@@ -191,6 +206,9 @@ class SeaCacheContextState(BaseState):
         self.gate_should_compute = True
         self.previous_indicator = None
         self.accumulated_distance = 0.0
+        self.consecutive_cached = 0
+        self.max_consecutive_cached_observed = 0
+        self.max_consecutive_forced_full = 0
         self.reset_forward()
 
 
@@ -243,8 +261,11 @@ class SeaCacheSharedState:
         is_retained = metadata.step_index < config.retention_steps
         is_in_cache_end = metadata.step_index >= metadata.num_inference_steps - config.cache_end_steps
         is_first_observation = state.previous_indicator is None
+        is_max_consecutive = bool(
+            config.max_consecutive_cached and state.consecutive_cached >= config.max_consecutive_cached
+        )
         invalid_gate = is_non_adjacent or indicator is None
-        forced_compute = invalid_gate or is_retained or is_in_cache_end or is_first_observation
+        forced_compute = invalid_gate or is_retained or is_in_cache_end or is_first_observation or is_max_consecutive
         candidate_accumulated_distance = 0.0
 
         if forced_compute:
@@ -293,6 +314,10 @@ class SeaCacheSharedState:
             else:
                 self.mark_fail_open("SeaCache gate schedule requested an unsafe cache hit; running full.")
                 should_compute = True
+
+        if is_max_consecutive:
+            should_compute = True
+            state.max_consecutive_forced_full += 1
 
         state.accumulated_distance = 0.0 if should_compute else candidate_accumulated_distance
 
@@ -356,6 +381,7 @@ def _record_full_execution(
     und_output: torch.Tensor | None,
 ) -> None:
     shared_state.num_full_steps += 1
+    state.consecutive_cached = 0
     branch = state_manager._current_context
     shared_state.branch_full_executions[branch] = shared_state.branch_full_executions.get(branch, 0) + 1
     if state.full_started_at is not None:
@@ -579,6 +605,8 @@ class SeaCacheRootHook(ModelHook):
             per_branch[branch] = {
                 "full_calls": self.shared_state.branch_full_executions.get(branch, 0),
                 "reuse_calls": self.shared_state.branch_reuses.get(branch, 0),
+                "max_consecutive_cached_observed": state.max_consecutive_cached_observed,
+                "max_consecutive_forced_full": state.max_consecutive_forced_full,
             }
 
         opportunities = self.shared_state.num_full_steps + self.shared_state.num_cached_steps
@@ -586,6 +614,11 @@ class SeaCacheRootHook(ModelHook):
             "indicator_source": self.config.indicator_source,
             "residual_order": self.config.residual_order,
             "residual_boundary": self.residual_boundary,
+            "max_consecutive_cached": self.config.max_consecutive_cached,
+            "max_consecutive_cached_observed": max(
+                (stats["max_consecutive_cached_observed"] for stats in per_branch.values()), default=0
+            ),
+            "max_consecutive_forced_full": sum(stats["max_consecutive_forced_full"] for stats in per_branch.values()),
             "transformer_calls": self.shared_state.transformer_calls,
             "gate_evaluations": self.shared_state.gate_evaluations,
             "gate_full_decisions": self.shared_state.gate_full_decisions,
@@ -870,6 +903,8 @@ class SeaCacheLeaderBlockHook(ModelHook):
         state.full_execution_pending = False
         state.cached_und_output = cached_und
         state.cached_gen_residual = cached_residual
+        state.consecutive_cached += 1
+        state.max_consecutive_cached_observed = max(state.max_consecutive_cached_observed, state.consecutive_cached)
         self.shared_state.num_cached_steps += 1
         branch = self.state_manager._current_context
         self.shared_state.branch_reuses[branch] = self.shared_state.branch_reuses.get(branch, 0) + 1
