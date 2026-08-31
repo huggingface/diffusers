@@ -22,6 +22,7 @@ import torch
 from PIL import Image
 
 from diffusers import CosmosActionCondition, ModularPipeline, SeaCacheConfig, UniPCMultistepScheduler
+from diffusers.models.transformers.transformer_cosmos3 import Cosmos3VLTextMoTDecoderLayer
 from diffusers.modular_pipelines import (
     Cosmos3OmniBlocks,
     Cosmos3OmniModularPipeline,
@@ -41,7 +42,7 @@ from diffusers.modular_pipelines.cosmos.before_denoise import (
 from diffusers.modular_pipelines.cosmos.encoders import Cosmos3TextEncoderStep
 from diffusers.modular_pipelines.cosmos.modular_blocks_cosmos3 import Cosmos3TransferChunkDenoiseStep
 
-from ...testing_utils import torch_device
+from ...testing_utils import count_transformer_cache_reuse, torch_device
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
@@ -213,15 +214,15 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
         pipe = self.get_pipeline().to(torch_device)
         scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, use_flow_sigmas=True)
         pipe.update_components(scheduler=scheduler, use_native_flow_schedule=True)
-        pipe.enable_sea_cache(SeaCacheConfig(threshold=1e6))
         inputs = self.get_dummy_inputs()
         inputs["num_inference_steps"] = 4
 
-        pipe(**inputs, output=self.output_name)
+        with count_transformer_cache_reuse(pipe.transformer, Cosmos3VLTextMoTDecoderLayer) as counts:
+            pipe.enable_sea_cache(SeaCacheConfig(threshold=1e6))
+            pipe(**inputs, output=self.output_name)
 
-        stats = pipe.transformer.get_cache_stats()
-        assert stats["actual_reuses"] > 0
-        assert stats["actual_full_executions"] > 0
+        assert counts["cached_steps"] > 0
+        assert counts["full_steps"] > 0
 
     def _get_sampling_state_block_pipe(self, block):
         pipe = block.init_pipeline(self.pretrained_model_name_or_path)
