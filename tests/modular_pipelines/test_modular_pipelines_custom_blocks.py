@@ -36,7 +36,7 @@ from diffusers.modular_pipelines import (
 )
 from diffusers.utils import logging
 
-from ..testing_utils import CaptureLogger, nightly, require_torch, require_torch_accelerator, slow, torch_device
+from ..testing_utils import CaptureLogger, nightly, require_torch_accelerator, require_torch_gpu, slow, torch_device
 
 
 def _create_tiny_model_dir(model_dir):
@@ -711,7 +711,7 @@ class TestBlockKwargsTypeInputs:
 
 @slow
 @nightly
-@require_torch
+@require_torch_gpu
 class TestKreaCustomBlocksIntegration:
     repo_id = "krea/krea-realtime-video"
 
