@@ -4,7 +4,7 @@ from transformers import CLIPTokenizer, GPT2Config, GPT2LMHeadModel
 
 from diffusers import BlockRefinementScheduler, LLaDA2Pipeline
 
-from ...testing_utils import enable_full_determinism
+from ...testing_utils import assert_tensors_close, enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_TEXT_BATCH_PARAMS, TEXT_TO_TEXT_PARAMS
 from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin
 
@@ -72,8 +72,11 @@ class LLaDA2PipelineTesterConfig(BasePipelineTesterConfig):
         return {"model": model, "scheduler": BlockRefinementScheduler(), "tokenizer": tokenizer}
 
     def get_dummy_inputs(self):
+        return {"prompt": "Name a color.", **self._common_inputs()}
+
+    def _common_inputs(self):
+        """Generation knobs shared by every dummy call, regardless of how the prompt is supplied."""
         return {
-            "prompt": "Name a color.",
             "use_chat_template": False,
             "generator": self.get_generator(0),
             "gen_length": self.output_shape[0],
@@ -108,13 +111,28 @@ class TestLLaDA2Pipeline(LLaDA2PipelineTesterConfig, PipelineTesterMixin):
     def test_callback_inputs(self):
         pass
 
-    @pytest.mark.skip(
-        "Test not supported: drops `tokenizer` and reruns the dummy `prompt` input, but dropping the tokenizer "
-        "means the caller must switch to pre-tokenized `input_ids` instead (see "
-        "`test_output_type_text_without_tokenizer` below, which covers this)."
-    )
-    def test_save_load_optional_components(self):
-        pass
+    def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
+        # Adapted from the base test: dropping `tokenizer` means there's nothing left to encode a `prompt` string
+        # with, so the dummy input switches to pre-tokenized `input_ids` instead (see `_common_inputs`).
+        pipe = self.get_pipeline().to(torch_device)
+        pipe.tokenizer = None
+
+        input_ids = torch.tensor([[5, 6, 7, 8]], dtype=torch.long)
+        output = pipe(input_ids=input_ids, **self._common_inputs())[0]
+
+        pipe.save_pretrained(tmp_path, safe_serialization=False)
+        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path)
+        pipe_loaded.to(torch_device)
+        pipe_loaded.set_progress_bar_config(disable=None)
+        assert pipe_loaded.tokenizer is None, "`tokenizer` did not stay set to None after loading."
+
+        output_loaded = pipe_loaded(input_ids=input_ids, **self._common_inputs())[0]
+        assert_tensors_close(
+            output_loaded,
+            output,
+            atol=expected_max_difference,
+            msg="Output changed after dropping optional components.",
+        )
 
     def test_pipeline_runs(self):
         pipe = _make_pipeline().to("cpu")
