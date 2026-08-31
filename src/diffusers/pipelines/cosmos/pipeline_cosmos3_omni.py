@@ -27,6 +27,7 @@ from PIL import Image
 from transformers import AutoTokenizer, BatchEncoding
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...hooks import SeaCacheConfig
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.modeling_utils import get_parameter_device
@@ -475,9 +476,55 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         # Recommended quality-control negative prompts are documented in the Cosmos3 docs
         # page (text2video / image2video). When the caller passes None we fall back to "".
+        self._is_sea_cache_enabled = True
+
+    def _prepare_sea_cache_config(self, config: SeaCacheConfig | None = None) -> SeaCacheConfig:
+        config = SeaCacheConfig() if config is None else config
+        config.current_step_callback = lambda: self.current_step_index
+        config.current_sigma_callback = lambda: self.current_sigma
+        config.num_inference_steps_callback = lambda: self.num_timesteps
+        return config
+
+    def enable_sea_cache(self, config: SeaCacheConfig | None = None) -> None:
+        """Enable SeaCache for subsequent pipeline calls."""
+        transformer = getattr(self, "transformer", None)
+        if transformer is None:
+            raise ValueError("SeaCache requires a loaded transformer.")
+        current_config = getattr(transformer, "_cache_config", None)
+        if current_config is not None:
+            if isinstance(current_config, SeaCacheConfig):
+                self._prepare_sea_cache_config(current_config)
+                self._is_sea_cache_enabled = True
+                return
+            raise ValueError(
+                f"Caching is already enabled with {type(current_config).__name__}. Disable it before enabling SeaCache."
+            )
+
+        transformer.enable_cache(self._prepare_sea_cache_config(config))
+        self._is_sea_cache_enabled = True
+
+    def disable_sea_cache(self) -> None:
+        """Disable the default SeaCache optimization for subsequent pipeline calls."""
+        self._is_sea_cache_enabled = False
+        transformer = getattr(self, "transformer", None)
+        if isinstance(getattr(transformer, "_cache_config", None), SeaCacheConfig):
+            transformer.disable_cache()
+
+    def _maybe_enable_sea_cache(self) -> None:
+        transformer = getattr(self, "transformer", None)
+        if transformer is None or not getattr(self, "_is_sea_cache_enabled", True):
+            return
+        if isinstance(getattr(transformer, "_cache_config", None), SeaCacheConfig):
+            self._prepare_sea_cache_config(transformer._cache_config)
+            return
+        if transformer.is_cache_enabled:
+            return
+        self.enable_sea_cache()
 
     # TODO YiYi & Daniel: fix for this use case in the base class
     def _get_execution_device(self) -> torch.device:
+        from ...hooks.group_offloading import _get_group_onload_device
+
         # `self._execution_device` walks `self.components` and ultimately falls back to
         # `self.device`, which iterates modules in sorted order and ignores
         # `_exclude_from_cpu_offload`. With `safety_checker` registered, that path picks
@@ -488,6 +535,11 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         for component in (self.transformer, self.vae, self.sound_tokenizer):
             if not isinstance(component, torch.nn.Module):
                 continue
+
+            try:
+                return _get_group_onload_device(component)
+            except ValueError:
+                pass
 
             for module in component.modules():
                 hook = getattr(module, "_hf_hook", None)
@@ -1463,6 +1515,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 `sound` (`torch.Tensor` of shape `[C, N]`, or `None` when `enable_sound=False`). Otherwise a tuple
                 `(video, sound)` with the same fields.
         """
+        self._maybe_enable_sea_cache()
         if hasattr(self.transformer, "_reset_stateful_cache"):
             self.transformer._reset_stateful_cache()
 

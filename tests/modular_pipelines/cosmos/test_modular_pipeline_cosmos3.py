@@ -21,7 +21,7 @@ import pytest
 import torch
 from PIL import Image
 
-from diffusers import ModularPipeline, UniPCMultistepScheduler
+from diffusers import ModularPipeline, SeaCacheConfig, UniPCMultistepScheduler
 from diffusers.modular_pipelines import (
     Cosmos3OmniBlocks,
     Cosmos3OmniModularPipeline,
@@ -189,6 +189,21 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
             torch.testing.assert_close(sigma, pipe.scheduler.sigmas[expected_step])
         assert pipe.current_step_index is None
         assert pipe.current_sigma is None
+        assert isinstance(pipe.transformer._cache_config, SeaCacheConfig)
+
+    def test_default_sea_cache_can_be_disabled_and_reenabled(self):
+        pipe = self.get_pipeline()
+        pipe._maybe_enable_sea_cache()
+
+        assert isinstance(pipe.transformer._cache_config, SeaCacheConfig)
+        pipe.disable_sea_cache()
+        assert not pipe.transformer.is_cache_enabled
+
+        pipe._maybe_enable_sea_cache()
+        assert not pipe.transformer.is_cache_enabled
+
+        pipe.enable_sea_cache()
+        assert isinstance(pipe.transformer._cache_config, SeaCacheConfig)
 
     def test_vae_encoder_is_standalone_and_validates_conditioning_inputs(self):
         pipe = self.get_pipeline()
