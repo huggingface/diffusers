@@ -30,8 +30,7 @@ from ...testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
-from .common import BasePipelineOutputMixin
-from .utils import cast_pipeline_to_dtype
+from .common import BasePipelineOutputMixin, cast_pipeline_to_dtype
 
 
 if is_accelerate_available():
