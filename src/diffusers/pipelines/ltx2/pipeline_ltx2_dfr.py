@@ -84,7 +84,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.enable_model_cpu_offload()
 
         >>> frame_rate = 24.0
-        >>> video, audio = pipe(
+        >>> video, audio, _, _ = pipe(
         ...     prompt="A tabby cat stretching in a sunlit window, dust motes drifting in the light",
         ...     height=704,
         ...     width=1216,
@@ -1569,8 +1569,7 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
 
         One denoise pass at `height` × `width`. Compose stages in the caller: this pipeline at half-res, spatial
         upsample, this pipeline again with `latents` / `keyframes_latents` / `reference_latents`, then
-        [`LTX2DFRTemporalRefinePipeline`] for each temporal round. `return_dict=False` stays `(frames, audio)` so the
-        diffusion-decoder path does not break; composition uses `return_dict=True` for keyframes.
+        [`LTX2DFRTemporalRefinePipeline`] for each temporal round.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
@@ -1652,7 +1651,8 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             output_type (`str`, *optional*, defaults to `"pil"`):
                 Output format. Choose `"pil"`, `"np"`, `"pt"` or `"latent"`. Latent output is the untrimmed canvas.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether to return a [`LTX2DFRPipelineOutput`] or a plain `(frames, audio)` tuple.
+                Whether to return a [`LTX2DFRPipelineOutput`] or a plain `(frames, audio, keyframes,
+                keyframe_positions)` tuple.
             attention_kwargs (`dict`, *optional*):
                 Additional kwargs passed to the attention processor.
             callback_on_step_end (`Callable`, *optional*):
@@ -1667,7 +1667,7 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         Returns:
             [`LTX2DFRPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`LTX2DFRPipelineOutput`] is returned, otherwise a `tuple` of `(video,
-                audio)` is returned.
+                audio, keyframes, keyframe_positions)` is returned.
         """
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -1906,15 +1906,19 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         video = self._denormalize_latents(
             video_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
         )
-        keyframes = None
-        if slot_latents is not None:
-            keyframes = self._denormalize_latents(
-                slot_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-            )
 
         if output_type == "latent":
             audio = public_audio
+            keyframes = None
+            if slot_latents is not None:
+                keyframes = self._denormalize_latents(
+                    slot_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+                )
         else:
+            # Decoded output is terminal: the video latents the keyframes would seed are gone, so the
+            # composition baton is latent-only.
+            keyframes = None
+            out_positions = None
             video_latents = video_latents.to(prompt_embeds.dtype)
             if not self.vae.config.timestep_conditioning:
                 timestep = None
@@ -1950,6 +1954,6 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (video, audio)
+            return (video, audio, keyframes, out_positions)
 
         return LTX2DFRPipelineOutput(frames=video, audio=audio, keyframes=keyframes, keyframe_positions=out_positions)

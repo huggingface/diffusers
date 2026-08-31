@@ -1433,7 +1433,8 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
             output_type (`str`, *optional*, defaults to `"pil"`):
                 Output format. Choose `"pil"`, `"np"`, `"pt"` or `"latent"`. Latent output is the untrimmed canvas.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether to return a [`LTX2DFRPipelineOutput`] or a plain `(frames, audio)` tuple.
+                Whether to return a [`LTX2DFRPipelineOutput`] or a plain `(frames, audio, keyframes,
+                keyframe_positions)` tuple.
             attention_kwargs (`dict`, *optional*):
                 Additional kwargs passed to the attention processor.
             callback_on_step_end (`Callable`, *optional*):
@@ -1448,7 +1449,7 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
         Returns:
             [`LTX2DFRPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`LTX2DFRPipelineOutput`] is returned, otherwise a `tuple` of `(video,
-                audio)` is returned.
+                audio, keyframes, keyframe_positions)` is returned.
         """
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -1704,13 +1705,17 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
         video = self._denormalize_latents(
             video_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
         )
-        keyframes = self._denormalize_latents(
-            carry_keyframes, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-        )
 
         if output_type == "latent":
             audio = public_audio
+            keyframes = self._denormalize_latents(
+                carry_keyframes, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
         else:
+            # Decoded output is terminal: the video latents the keyframes would seed are gone, so the
+            # composition baton is latent-only.
+            keyframes = None
+            carry_positions = None
             video_latents = video_latents.to(prompt_embeds.dtype)
             if not self.vae.config.timestep_conditioning:
                 timestep = None
@@ -1746,7 +1751,7 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (video, audio)
+            return (video, audio, keyframes, carry_positions)
 
         return LTX2DFRPipelineOutput(
             frames=video, audio=audio, keyframes=keyframes, keyframe_positions=carry_positions

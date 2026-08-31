@@ -1040,7 +1040,7 @@ This needs a transformer whose config sets `use_keyframes_abs_pos_embedding`, wh
 
 Budget for the extra tokens: each slot adds one latent frame's worth, so stage 2 runs a longer sequence than the equivalent two-stage distilled pass — +31% at 1024x1536 / 121 frames (24576 -> 32256 tokens, 5 slots on a 24-frame segment grid). Peak activation memory scales with that, so a resolution that just fits the plain distilled recipe may need `enable_sequential_cpu_offload`, `vae.enable_tiling()`, or a smaller canvas under DFR.
 
-`return_dict=False` stays `(frames, audio)` so the diffusion-decoder path does not break. Composition uses `return_dict=True` for `keyframes` and `keyframe_positions`.
+Composition uses `return_dict=True` for `keyframes` and `keyframe_positions` (`return_dict=False` returns the same four fields as a tuple).
 
 The full recipe below is the one worth starting from: 1088×1920 image-to-video, one x2 temporal refine round, and the x2 spatial detailing IC-LoRA on stage 2.
 

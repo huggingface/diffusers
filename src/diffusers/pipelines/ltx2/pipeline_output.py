@@ -36,10 +36,12 @@ class LTX2DFRPipelineOutput(LTX2PipelineOutput):
             Accompanying audio latents or waveform.
         keyframes (`torch.Tensor`, *optional*):
             Generated or carried keyframe latents of shape `(batch_size, num_channels, num_keyframes, latent_height,
-            latent_width)`. `None` when the pass did not produce slots (e.g. a tiled epilogue).
+            latent_width)`. `None` when `output_type != "latent"`, or when the pass did not produce slots (e.g. a tiled
+            epilogue).
         keyframe_positions (`list[int]`, *optional*):
-            Pixel-frame index of each keyframe on this pass's canvas. After a temporal round these cannot be re-derived
-            from the original `num_frames` and must be passed into the next stage.
+            Pixel-frame index of each keyframe on this pass's canvas; `None` whenever `keyframes` is `None`. After a
+            temporal round these cannot be re-derived from the original `num_frames` and must be passed into the next
+            stage.
     """
 
     keyframes: torch.Tensor | None = None
