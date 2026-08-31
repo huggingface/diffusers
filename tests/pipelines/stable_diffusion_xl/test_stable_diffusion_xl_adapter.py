@@ -44,9 +44,9 @@ from ...testing_utils import (
     torch_device,
 )
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..stable_diffusion.ip_adapter_tester import IPAdapterTesterMixin
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    IPAdapterTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
