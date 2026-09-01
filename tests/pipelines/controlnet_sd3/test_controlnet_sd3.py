@@ -212,6 +212,36 @@ class TestStableDiffusion3ControlNetPipeline(StableDiffusion3ControlNetPipelineT
         # fmt: on
         self._run_and_check_slice(components, expected_slice)
 
+    def test_controlnet_pooled_projections_accepts_tensor(self):
+        # Regression: when the ControlNet does not force zeroed pooled projections, the pipeline
+        # resolved this argument with `controlnet_pooled_projections or pooled_prompt_embeds`.
+        # `or` takes the truthiness of the tensor, which raises "Boolean value of Tensor with more
+        # than one value is ambiguous" for any real pooled projection. See huggingface/diffusers#9686.
+        components = self.get_dummy_components()
+        torch.manual_seed(0)
+        components["controlnet"] = SD3ControlNetModel(
+            sample_size=32,
+            patch_size=1,
+            in_channels=8,
+            num_layers=1,
+            attention_head_dim=8,
+            num_attention_heads=4,
+            joint_attention_dim=32,
+            caption_projection_dim=32,
+            pooled_projection_dim=64,
+            out_channels=8,
+            qk_norm="rms_norm",
+            force_zeros_for_pooled_projection=False,
+        )
+        pipe = self.get_pipeline(**components).to(torch_device, dtype=torch.float32)
+
+        inputs = self.get_dummy_inputs()
+        inputs["controlnet_pooled_projections"] = torch.zeros((1, 64), device=torch_device)
+
+        image = pipe(**inputs).images
+
+        assert image.shape == (1, *self.output_shape)
+
 
 class TestStableDiffusion3ControlNetPipelineMemory(StableDiffusion3ControlNetPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SD3 ControlNet pipeline."""
