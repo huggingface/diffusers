@@ -394,7 +394,7 @@ If pipeline stages share components (e.g., the same VAE used for encoding and de
 
 ## Streaming
 
-[`~ModularPipeline.stream`] runs the same pipeline as a generator. It yields a [`StreamEvent`] after every iteration of every loop block — each denoising step, each segment of a chunked video — with the live [`PipelineState`] attached, so you can show progress, decode a preview, or stop early. The generator's return value is the final state, exactly what `__call__` returns.
+[`~ModularPipeline.stream`] runs the same pipeline as a generator. It yields a [`StreamEvent`] after every iteration of every loop block, e.g. each denoising step, each segment of a chunked video, with the live [`PipelineState`] attached, so you can show progress, decode a preview, or stop early. The generator's return value is the final state, exactly what `__call__` returns.
 
 ```py
 generator = pipeline.stream(prompt="a cat", num_inference_steps=20)
@@ -403,11 +403,11 @@ for event in generator:
     latents = event.state.get("latents")   # the live state — clone anything you keep
 ```
 
-`event.path` is the loop block's dotted name from the top of the pipeline, and `event.loop_kwargs` its loop variables for that iteration. When loops are nested — an autoregressive video that denoises one chunk at a time — the inner loop's events surface too, so a consumer that only wants finished chunks filters on the outer path:
+`event.path` is the loop block's dotted name from the top of the pipeline, and `event.loop_kwargs` its loop variables for that iteration. When loops are nested (e.g. an autoregressive video that denoises one chunk at a time), you receive events from both loops: one after every denoising step of the inner loop (path `"denoise.denoise_inner"`), and one after each completed chunk of the outer loop (path `"denoise"`). Check `event.path` to tell them apart — for example, to react only when a chunk is finished:
 
 ```py
 for event in pipeline.stream(...):
-    if event.path == "denoise":            # the chunk loop, not "denoise.denoise_inner"
+    if event.path == "denoise":            # an outer-loop event: a whole chunk is done
         show(event.state.get("out_frames"))
 ```
 
@@ -440,23 +440,6 @@ class DenoiseLoop(IterativePipelineBlocks):
 ```
 
 `pipeline.stream(...)` raises `NotImplementedError` if a loop on its path doesn't implement `stream`. Check `pipeline.blocks.supports_streaming` to find out ahead of time — it is `True` unless the blocks contain a loop that can't yield per iteration (an `IterativePipelineBlocks` that doesn't implement `stream`, or a legacy `LoopSequentialPipelineBlocks`).
-
-If you need to own the loop yourself — a serving engine that advances every request by one denoising step per tick, or a real-time pipeline fed one chunk of input at a time — run the blocks before the loop, then call the loop block's `loop_step` once per iteration. Anything you write into the state between calls is seen by the next iteration:
-
-```py
-from diffusers.modular_pipelines import PipelineState
-
-loop = pipeline.blocks.sub_blocks["denoise"]
-
-state = PipelineState()
-for param in pipeline.blocks.inputs:  # seed the declared defaults
-    state.set(param.name, param.default)
-state.set("prompt", "a cat")
-state.set("num_inference_steps", 20)
-# ... run the blocks before `denoise` on `state` ...
-for i, t in enumerate(state.get("timesteps")):
-    _, state = loop.loop_step(pipeline, state, i=i, t=t)
-```
 
 ## Modular repository
 

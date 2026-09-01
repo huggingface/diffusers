@@ -284,7 +284,7 @@ class DenoiseLoop(IterativePipelineBlocks):
         return components, state
 ```
 
-A nested loop's `stream` takes the outer loop's variables exactly like its `__call__` does. Streaming is opt-in per loop: `pipeline.blocks.supports_streaming` tells you whether every loop on the path implements it. See [Streaming](./modular_pipeline#streaming) for the consumer side, including how to run a single iteration at a time with `loop_step` when a serving engine or a real-time input source needs to own the loop.
+A nested loop's `stream` takes the outer loop's variables exactly like its `__call__` does. Streaming is opt-in per loop: `pipeline.blocks.supports_streaming` tells you whether every loop on the path implements it. See [Streaming](./modular_pipeline#streaming) for the consumer side.
 
 ## LoopSequentialPipelineBlocks
 
