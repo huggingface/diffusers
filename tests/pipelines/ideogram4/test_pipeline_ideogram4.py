@@ -50,7 +50,7 @@ class Ideogram4PipelineTesterConfig(BasePipelineTesterConfig):
     required_input_params_in_call_signature = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_input_params = frozenset(["prompt"])
     output_shape = (3, 16, 16)
-    # `encode_prompt` drives the Qwen3-VL decoder layers directly instead of calling `text_encoder.forward`, and
+    # `encode_prompt` calls the Qwen3-VL decoder layers directly instead of calling `text_encoder.forward`, and
     # pins its inputs to `self.text_encoder.device`. Leaf-level hooks onload each leaf on its own forward while the
     # module keeps reporting the offload device, so the inputs are left behind; block-level onloads the whole group
     # up front and is unaffected, which is where the text encoder does get covered.
