@@ -33,8 +33,7 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..stable_diffusion.ip_adapter_tester import IPAdapterTesterMixin
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, IPAdapterTesterMixin, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
