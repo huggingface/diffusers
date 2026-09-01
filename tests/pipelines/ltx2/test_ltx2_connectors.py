@@ -12,19 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import torch
 
 from diffusers.pipelines.ltx2.connectors import LTX2ConnectorTransformer1d
 
-from ...testing_utils import enable_full_determinism
+from ...testing_utils import assert_tensors_close, enable_full_determinism
 
 
 enable_full_determinism()
 
 
-class LTX2ConnectorRegisterLayoutTests(unittest.TestCase):
+class TestLTX2ConnectorRegisterLayout:
     """The connector must lay out its sequence exactly like the original LTX
     implementation (``ltx_core`` ``_replace_padded_with_learnable_registers``,
     also matched by ComfyUI): the valid tokens move to the front *in their
@@ -82,7 +80,7 @@ class LTX2ConnectorRegisterLayoutTests(unittest.TestCase):
         with torch.no_grad():
             output, _ = connector(hidden_states, additive_mask)
         expected = self.reference_layout(connector, hidden_states, binary_mask)
-        self.assertTrue(torch.allclose(output, expected, atol=1e-5))
+        assert_tensors_close(output, expected, atol=1e-5)
 
     def test_register_layout_left_padded(self):
         self.check_layout([5])
