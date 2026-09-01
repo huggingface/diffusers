@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 from transformers import (
     AutoConfig,
@@ -194,6 +195,35 @@ class TestStableDiffusion3ControlNetInpaintingPipeline(
         # fmt: on
 
         assert_tensors_close(image_slice.flatten().cpu(), expected_slice, atol=1e-2)
+
+    def _check_inputs_with_ip_adapter_embeds(self, pipe, ip_adapter_image_embeds):
+        pipe.check_inputs(
+            height=32,
+            width=32,
+            image=torch.zeros(1, 3, 32, 32),
+            prompt=None,
+            prompt_2=None,
+            prompt_3=None,
+            prompt_embeds=torch.zeros(1, 2, 32),
+            pooled_prompt_embeds=torch.zeros(1, 64),
+            ip_adapter_image_embeds=ip_adapter_image_embeds,
+            control_guidance_start=[0.0],
+            control_guidance_end=[1.0],
+        )
+
+    def test_check_inputs_accepts_ip_adapter_image_embeds_tensor(self):
+        # Regression: `check_inputs` required a `list`, but the `__call__` docstring and
+        # `prepare_ip_adapter_image_embeds` (which calls `.chunk(2)` on it) both document and use a
+        # tensor, so the documented argument could never be passed.
+        pipe = self.get_pipeline()
+
+        self._check_inputs_with_ip_adapter_embeds(pipe, torch.zeros(1, 2, 32))
+
+    def test_check_inputs_rejects_ip_adapter_image_embeds_with_bad_ndim(self):
+        pipe = self.get_pipeline()
+
+        with pytest.raises(ValueError, match="has to be a 3D or 4D tensor"):
+            self._check_inputs_with_ip_adapter_embeds(pipe, torch.zeros(1, 32))
 
 
 class TestStableDiffusion3ControlNetInpaintingPipelineMemory(
