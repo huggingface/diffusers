@@ -21,7 +21,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin, _generator_device
+from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
@@ -117,9 +117,9 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
             token = flat_logits.argmax(dim=-1, keepdim=True)
         else:
             scaled_probs = torch.softmax(flat_logits.float() / temperature, dim=-1)
-            # `torch.multinomial` requires the generator and the sampled tensor's device to match; `_generator_device`
-            # gives the CPU-generator portability `randn_tensor` gives the continuous samplers.
-            rand_device = _generator_device(scaled_probs, generator)
+            # `torch.multinomial` requires the generator and the sampled tensor's device to match, so (as with
+            # `randn_tensor`) a CPU generator samples on CPU and the result is moved back to `scaled_probs`'s device.
+            rand_device = generator.device if generator is not None else scaled_probs.device
             token = torch.multinomial(scaled_probs.to(rand_device), num_samples=1, generator=generator).to(
                 scaled_probs.device
             )
@@ -205,7 +205,7 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         route_probs = torch.stack([clean_mass, stay_mass, noise_mass], dim=-1)
         route_probs = route_probs / route_probs.sum(dim=-1, keepdim=True)
-        rand_device = _generator_device(route_probs, generator)
+        rand_device = generator.device if generator is not None else route_probs.device
         routes = (
             torch.multinomial(route_probs.view(-1, 3).to(rand_device), num_samples=1, generator=generator)
             .to(route_probs.device)
@@ -236,7 +236,7 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         k_eff = min(max(1, int(self.config.corrector_k)), seq_len)
 
         if selection == "random":
-            rand_device = _generator_device(sample, generator)
+            rand_device = generator.device if generator is not None else sample.device
             scores = torch.rand(batch_size, seq_len, device=rand_device, generator=generator).to(sample.device)
             return torch.topk(scores, k=k_eff, dim=-1).indices
 
@@ -252,7 +252,7 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(f"Unknown `corrector_selection`: {selection!r}.")
 
         keys = confidence / float(self.config.corrector_selection_tau)
-        rand_device = _generator_device(keys, generator)
+        rand_device = generator.device if generator is not None else keys.device
         u = torch.rand(keys.shape, device=rand_device, generator=generator).to(keys.device).clamp_(1e-12, 1.0 - 1e-12)
         keys = keys + (-torch.log(-torch.log(u)))
         return torch.topk(keys, k=k_eff, dim=-1).indices
@@ -307,7 +307,7 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         positions = self._select_positions(sample, cond_log_probs, generator)
         rows = torch.arange(sample.shape[0], device=sample.device).unsqueeze(-1).expand_as(positions)
         chosen_probs = cond_log_probs[rows, positions].exp()
-        rand_device = _generator_device(chosen_probs, generator)
+        rand_device = generator.device if generator is not None else chosen_probs.device
         resampled = (
             torch.multinomial(chosen_probs.reshape(-1, vocab_size).to(rand_device), num_samples=1, generator=generator)
             .to(chosen_probs.device)

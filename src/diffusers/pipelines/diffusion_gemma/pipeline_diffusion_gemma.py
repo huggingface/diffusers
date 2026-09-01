@@ -23,7 +23,6 @@ from transformers import DynamicCache, StaticCache
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...schedulers import BlockRefinementScheduler, DiscreteDDIMScheduler, EntropyBoundScheduler
-from ...schedulers.scheduling_utils import _generator_device
 from ...utils import logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import DiffusionGemmaPipelineOutput
@@ -347,7 +346,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             # Start from a fully random canvas and denoise it; the scheduler resets its committed state at step 0.
             # `torch.randint` requires the generator and the output device to match, so (as with `randn_tensor`) a
             # CPU generator samples on CPU and the result is moved to `device` afterwards.
-            rand_device = _generator_device(cur_input_ids, generator)
+            rand_device = generator.device if generator is not None else device
             canvas = torch.randint(
                 0, text_config.vocab_size, (batch_size, canvas_length), device=rand_device, generator=generator
             ).to(device)

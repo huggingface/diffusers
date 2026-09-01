@@ -20,7 +20,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin, _generator_device
+from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
@@ -173,9 +173,9 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         filtered = BlockRefinementScheduler._top_p_filtering(filtered, top_p=top_p)
 
         probs = torch.softmax(filtered.float(), dim=-1)
-        # `torch.multinomial` requires the generator and the sampled tensor's device to match; `_generator_device`
-        # gives the CPU-generator portability `randn_tensor` gives the continuous samplers.
-        rand_device = _generator_device(probs, generator)
+        # `torch.multinomial` requires the generator and the sampled tensor's device to match, so (as with
+        # `randn_tensor`) a CPU generator samples on CPU and the result is moved back to `probs`'s device.
+        rand_device = generator.device if generator is not None else probs.device
         token = torch.multinomial(probs.to(rand_device), num_samples=1, generator=generator).to(probs.device)
         token_prob = torch.gather(probs, -1, token)
 
@@ -288,7 +288,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
 
             prev_sample = torch.where(transfer_index | editing_transfer_index, sampled_tokens, sample)
             self._committed = committed | transfer_index
-            rand_device = _generator_device(sample, generator)
+            rand_device = generator.device if generator is not None else sample.device
             random_tokens = torch.randint(
                 low=0, high=model_output.shape[-1], size=sample.shape, device=rand_device, generator=generator
             ).to(sample.device)
@@ -502,7 +502,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         masked_rev = torch.zeros_like(original_samples, dtype=torch.bool)
 
         valid = attention_mask.to(dtype=torch.bool)
-        rand_device = _generator_device(original_samples, generator)
+        rand_device = generator.device if generator is not None else device
         for block_start in range(prompt_length, seq_len, block_length):
             block_end = min(seq_len, block_start + block_length)
             seg_len = block_end - block_start
