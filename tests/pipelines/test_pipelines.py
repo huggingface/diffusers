@@ -60,6 +60,7 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
+from diffusers.pipelines.onnx_utils import OnnxRuntimeModel
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, is_transformers_version
 from diffusers.utils.import_utils import is_peft_available
@@ -76,7 +77,6 @@ from ..testing_utils import (
     load_numpy,
     nightly,
     require_compel,
-    require_onnxruntime,
     require_peft_backend,
     require_peft_version_greater,
     require_torch_2,
@@ -327,35 +327,6 @@ class TestDownload:
         # make sure that by default no openvino weights are downloaded
         assert all((f.endswith(".json") or f.endswith(".bin") or f.endswith(".txt")) for f in files)
         assert not any("openvino_" in f for f in files)
-
-    def test_download_no_onnx_by_default(self, tmp_path):
-        tmpdirname = DiffusionPipeline.download(
-            "hf-internal-testing/tiny-stable-diffusion-xl-pipe",
-            cache_dir=tmp_path,
-            use_safetensors=False,
-        )
-
-        all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
-        files = [item for sublist in all_root_files for item in sublist]
-
-        # make sure that by default no onnx weights are downloaded for non-ONNX pipelines
-        assert all((f.endswith(".json") or f.endswith(".bin") or f.endswith(".txt")) for f in files)
-        assert not any((f.endswith(".onnx") or f.endswith(".pb")) for f in files)
-
-    @require_onnxruntime
-    def test_download_onnx_by_default_for_onnx_pipelines(self, tmp_path):
-        tmpdirname = DiffusionPipeline.download(
-            "hf-internal-testing/tiny-random-OnnxStableDiffusionPipeline",
-            cache_dir=tmp_path,
-        )
-
-        all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
-        files = [item for sublist in all_root_files for item in sublist]
-
-        # make sure that by default onnx weights are downloaded for ONNX pipelines
-        assert any((f.endswith(".json") or f.endswith(".bin") or f.endswith(".txt")) for f in files)
-        assert any((f.endswith(".onnx")) for f in files)
-        assert any((f.endswith(".pb")) for f in files)
 
     @pytest.mark.xfail(
         condition=is_transformers_version(">", "4.56.2"),
@@ -1315,6 +1286,12 @@ class TestPipelineFast:
         # clean up the VRAM after each test
         gc.collect()
         backend_empty_cache(torch_device)
+
+    def test_onnx_runtime_model_deprecation(self):
+        with pytest.warns(
+            FutureWarning, match=r"`OnnxRuntimeModel` is deprecated and will be removed in version 0\.43\.0"
+        ):
+            OnnxRuntimeModel()
 
     def dummy_image(self):
         batch_size = 1
