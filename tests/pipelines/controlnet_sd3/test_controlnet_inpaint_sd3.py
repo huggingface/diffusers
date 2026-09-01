@@ -195,6 +195,29 @@ class TestStableDiffusion3ControlNetInpaintingPipeline(
 
         assert_tensors_close(image_slice.flatten().cpu(), expected_slice, atol=1e-2)
 
+    def test_dynamic_shifting_scheduler(self):
+        # Regression: this pipeline called `retrieve_timesteps()` without computing `mu`, so any
+        # scheduler with `use_dynamic_shifting=True` (the SD3.5 style configs) raised
+        # "`mu` must be passed when `use_dynamic_shifting` is set to be `True`" before inference.
+        components = self.get_dummy_components()
+        components["scheduler"] = FlowMatchEulerDiscreteScheduler(use_dynamic_shifting=True)
+        pipe = self.get_pipeline(**components).to(torch_device, dtype=torch.float32)
+
+        image = pipe(**self.get_dummy_inputs()).images
+
+        assert image.shape == (1, *self.output_shape)
+
+    def test_dynamic_shifting_scheduler_accepts_explicit_mu(self):
+        components = self.get_dummy_components()
+        components["scheduler"] = FlowMatchEulerDiscreteScheduler(use_dynamic_shifting=True)
+        pipe = self.get_pipeline(**components).to(torch_device, dtype=torch.float32)
+
+        inputs = self.get_dummy_inputs()
+        inputs["mu"] = 0.7
+        image = pipe(**inputs).images
+
+        assert image.shape == (1, *self.output_shape)
+
 
 class TestStableDiffusion3ControlNetInpaintingPipelineMemory(
     StableDiffusion3ControlNetInpaintingPipelineTesterConfig, MemoryTesterMixin
