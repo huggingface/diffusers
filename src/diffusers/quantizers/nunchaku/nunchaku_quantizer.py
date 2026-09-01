@@ -26,12 +26,20 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
         self.pre_quantized = self.pre_quantized and quantization_config.pre_quantized
 
     def validate_environment(self, *args, **kwargs):
+        import torch
+
+        if not self.pre_quantized and not torch.cuda.is_available():
+            # Data-free quantize-on-load (weight-span smoothing, SVD, group
+            # quantization) is pure PyTorch and never invokes a CUDA kernel, so a
+            # GPU-less machine can quantize-and-export a checkpoint here for later
+            # GPU inference (see `save_pretrained`).
+            return
+
         if not is_kernels_available():
             raise ImportError(
                 "Loading Nunchaku checkpoints requires the Hugging Face `kernels` package. "
                 "Install it with `pip install kernels`."
             )
-        import torch
 
         cuda_available = torch.cuda.is_available()
         if not cuda_available:
@@ -86,6 +94,35 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
 
         if self.pre_quantized and state_dict is not None:
             check_strict_state_dict_match(model, state_dict)
+
+        if not self.pre_quantized:
+            # `save_pretrained` afterward must write a config a later `pre_quantized=True`
+            # reload accepts: `smooth_exponent` and other data-free-only knobs are baked
+            # into the packed residual and are rejected by `post_init` once pre_quantized
+            # is True, and the checkpoint itself is now pre-quantized either way. Building
+            # a fresh config (rather than mutating `self.quantization_config`, which this
+            # load's own `pre_quantized=False` state must keep) also re-validates it.
+            from ..quantization_config import NunchakuLiteQuantizationConfig
+
+            export_config = NunchakuLiteQuantizationConfig(
+                compute_dtype=self.compute_dtype,
+                svdq_w4a4={
+                    "precision": svdq_config["precision"],
+                    "group_size": svdq_config["group_size"],
+                    "rank": svdq_config["rank"],
+                    "targets": svdq_config["targets"],
+                },
+                pre_quantized=True,
+            )
+            # `model.config` is a `FrozenDict`: attribute assignment only shadows via
+            # instance `__dict__` and is invisible to the dict-based serialization
+            # `save_pretrained` uses, so the item assignment below is the one that
+            # actually matters; the attribute is set too so in-memory reads of
+            # `model.config.quantization_config` (e.g. right after this load) agree.
+            if hasattr(model.config, "__setitem__"):
+                model.config["quantization_config"] = export_config
+            model.config.quantization_config = export_config
+
         logger.info(f"Applied Nunchaku quantization config with {num_replaced} targets.")
 
     def update_missing_keys(self, model, missing_keys: list[str], prefix: str) -> list[str]:
@@ -156,7 +193,7 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
 
     @property
     def is_serializable(self):
-        return False
+        return True
 
     @property
     def is_trainable(self) -> bool:

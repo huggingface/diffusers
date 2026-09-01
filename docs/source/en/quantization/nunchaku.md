@@ -150,6 +150,32 @@ Two quality knobs are worth tuning per model. `rank` sets the size of the bf16 l
 
 Quantize-on-load runs one SVD per target at load time (minutes for large models on a fast GPU). For repeated loads of the same configuration, prefer a pre-quantized checkpoint produced by an offline exporter — loading packed weights takes seconds, and the packed format is identical.
 
+### Quantize on a CPU-only machine, then save
+
+Data-free quantization is pure PyTorch (weight-span smoothing, SVD, group quantization) and never calls a CUDA kernel, so it also runs on a machine with no GPU and no `kernels` package installed. Quantize once, `save_pretrained` the result, then load the packed checkpoint anywhere with the usual (fast, kernel-free) `pre_quantized` path:
+
+```python
+import torch
+from diffusers import Flux2Transformer2DModel, NunchakuLiteQuantizationConfig
+
+# Runs on CPU - no GPU or `kernels` package required for this step.
+transformer = Flux2Transformer2DModel.from_pretrained(
+    "black-forest-labs/FLUX.2-klein-9B",
+    subfolder="transformer",
+    quantization_config=NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
+        pre_quantized=False,
+    ),
+    torch_dtype=torch.bfloat16,
+)
+transformer.save_pretrained("flux2-klein-9b-nvfp4")
+
+# Later, on a GPU machine, loads through the ordinary pre-quantized path.
+transformer = Flux2Transformer2DModel.from_pretrained(
+    "flux2-klein-9b-nvfp4", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+```
+
 ## Fused kernels
 
 The original [Nunchaku](https://github.com/nunchaku-ai/nunchaku) engine gets much of its speed from model-specific fused execution paths. It combines the Q, K, and V projections with RMSNorm and RoPE, and uses a fused GELU kernel for the MLP. Nunchaku Lite instead uses the standard Diffusers model with generic quantized linear layers, so it does not include these fusions.

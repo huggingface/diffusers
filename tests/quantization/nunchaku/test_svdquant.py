@@ -324,6 +324,7 @@ def test_quantizer_infers_targets_when_omitted(monkeypatch):
     )
     quantizer = NunchakuLiteQuantizer(config, pre_quantized=False)
     model = _InferenceToyModel()
+    model.config = types.SimpleNamespace()  # plain nn.Module here; ModelMixin normally provides this
 
     # Stub out `.utils` (its import fetches the CUDA kernels) so only the
     # target-inference part of _process_model_before_weight_loading runs.
@@ -396,3 +397,81 @@ def test_quantizer_update_missing_keys_filters_data_free_params():
     quantizer_pre = NunchakuLiteQuantizer(pre_config, pre_quantized=True)
     assert quantizer_pre.pre_quantized is True
     assert quantizer_pre.update_missing_keys(None, missing, prefix="") == missing
+
+
+def test_validate_environment_allows_cpu_for_data_free(monkeypatch):
+    import torch
+
+    import diffusers.quantizers.nunchaku.nunchaku_quantizer as nunchaku_quantizer_module
+    from diffusers.quantizers.nunchaku.nunchaku_quantizer import NunchakuLiteQuantizer
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    # `kernels` isn't installed in this CPU-only test environment either; that must
+    # not matter for the data-free bypass (it returns before that check), but pin
+    # it explicitly so the pre_quantized=True branch below hits the intended
+    # CUDA-capable error rather than an environment-dependent ImportError.
+    monkeypatch.setattr(nunchaku_quantizer_module, "is_kernels_available", lambda: True)
+
+    data_free_config = NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
+        pre_quantized=False,
+    )
+    quantizer = NunchakuLiteQuantizer(data_free_config, pre_quantized=False)
+    quantizer.validate_environment()  # must not raise, even without `kernels` installed
+
+    pre_quantized_config = NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32, "targets": ["proj"]}
+    )
+    quantizer_pre = NunchakuLiteQuantizer(pre_quantized_config, pre_quantized=True)
+    with pytest.raises(ValueError, match="CUDA-capable"):
+        quantizer_pre.validate_environment()
+
+
+def test_is_serializable():
+    from diffusers.quantizers.nunchaku.nunchaku_quantizer import NunchakuLiteQuantizer
+
+    config = NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32, "targets": ["proj"]}
+    )
+    assert NunchakuLiteQuantizer(config, pre_quantized=True).is_serializable is True
+
+
+def test_quantizer_exports_reload_ready_config_after_data_free_load(monkeypatch):
+    import sys
+    import types
+
+    from diffusers.quantizers.nunchaku.nunchaku_quantizer import NunchakuLiteQuantizer
+
+    config = NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32, "smooth_exponent": 0.25},
+        pre_quantized=False,
+        # Explicit (matching the sibling `test_quantizer_infers_targets_when_omitted`
+        # test): `exclude_targets=None` on the config becomes `()` in the call to
+        # `infer_data_free_targets`, which is itself the "no exclusions" override
+        # rather than "use the norm/modulation defaults" - a separate, pre-existing
+        # quirk this test sidesteps rather than depends on.
+        exclude_targets=["norm_linear"],
+    )
+    quantizer = NunchakuLiteQuantizer(config, pre_quantized=False)
+    model = _InferenceToyModel()
+    model.config = types.SimpleNamespace()  # plain nn.Module here; ModelMixin normally provides this
+
+    # Stub out `.utils` (its import fetches the CUDA kernels) so only the
+    # target-inference and config-export parts of _process_model_before_weight_loading run.
+    stub = types.ModuleType("diffusers.quantizers.nunchaku.utils")
+    stub.replace_with_nunchaku_linear = lambda target_model, quantization_config, compute_dtype: len(
+        quantization_config["svdq_w4a4"]["targets"]
+    )
+    stub.check_strict_state_dict_match = None
+    monkeypatch.setitem(sys.modules, "diffusers.quantizers.nunchaku.utils", stub)
+
+    quantizer._process_model_before_weight_loading(model)
+
+    exported = model.config.quantization_config
+    assert isinstance(exported, NunchakuLiteQuantizationConfig)
+    assert exported.pre_quantized is True
+    assert exported.svdq_w4a4["targets"] == ["blocks.0.proj", "blocks.1.proj"]
+    assert "smooth_exponent" not in exported.svdq_w4a4
+    # The original, still-loading config keeps its own pre_quantized=False state.
+    assert quantizer.pre_quantized is False
+    assert config.pre_quantized is False
