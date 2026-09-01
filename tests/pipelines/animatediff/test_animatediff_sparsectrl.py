@@ -1,4 +1,3 @@
-import pytest
 import torch
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -9,14 +8,13 @@ from diffusers import (
     DDIMScheduler,
     MotionAdapter,
     SparseControlNetModel,
-    StableDiffusionPipeline,
     UNet2DConditionModel,
 )
 
 from ...testing_utils import assert_tensors_close, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineFromPipeTesterMixin
 from ..testing_utils import (
+    FromPipeTesterMixin,
     IPAdapterTesterMixin,
     LoraMemoryTesterMixin,
     LoraTesterMixin,
@@ -24,7 +22,6 @@ from ..testing_utils import (
     UNetLoraTesterMixin,
 )
 from .testing_utils import (
-    FROM_PIPE_SKIP_REASON,
     FreeInitTesterMixin,
     MotionPipelineTesterConfig,
     MotionPipelineTesterMixin,
@@ -138,32 +135,6 @@ class TestAnimateDiffSparseControlNetPipeline(
     MotionPipelineTesterMixin,
     FreeInitTesterMixin,
 ):
-    def test_from_pipe_consistent_config(self):
-        original_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"
-
-        # create StableDiffusionPipeline
-        pipe_original = StableDiffusionPipeline.from_pretrained(original_repo, requires_safety_checker=False)
-
-        # StableDiffusionPipeline -> AnimateDiffSparseControlNetPipeline
-        pipe_components = self.get_dummy_components()
-        pipe_additional_components = {
-            name: component for name, component in pipe_components.items() if name not in pipe_original.components
-        }
-        pipe = self.pipeline_class.from_pipe(pipe_original, **pipe_additional_components)
-
-        # AnimateDiffSparseControlNetPipeline -> StableDiffusionPipeline
-        original_pipe_additional_components = {}
-        for name, component in pipe_original.components.items():
-            if name not in pipe.components or not isinstance(component, pipe.components[name].__class__):
-                original_pipe_additional_components[name] = component
-
-        pipe_original_2 = StableDiffusionPipeline.from_pipe(pipe, **original_pipe_additional_components)
-
-        # compare the config
-        original_config = {k: v for k, v in pipe_original.config.items() if not k.startswith("_")}
-        original_config_2 = {k: v for k, v in pipe_original_2.config.items() if not k.startswith("_")}
-        assert original_config_2 == original_config
-
     def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=1e-4):
         if torch_device == "cpu" and expected_slice is None:
             # fmt: off
@@ -229,12 +200,9 @@ class TestAnimateDiffSparseControlNetPipelineLoRAMemory(
     """LoRA x memory-optimization tests (group offload, CPU offload) for the pipeline."""
 
 
-@pytest.mark.skip(FROM_PIPE_SKIP_REASON)
 class TestAnimateDiffSparseControlNetPipelineFromPipe(
-    AnimateDiffSparseControlNetPipelineTesterConfig, PipelineFromPipeTesterMixin
+    AnimateDiffSparseControlNetPipelineTesterConfig, FromPipeTesterMixin
 ):
-    """`from_pipe` forward-pass parity and offload round trip for the AnimateDiff SparseControlNet pipeline.
+    """`from_pipe` round-trip tests against `StableDiffusionPipeline` for the AnimateDiff SparseControlNet pipeline."""
 
-    Parked, not deleted: `test_from_pipe_consistent_config` runs for real as a method on the main test class above,
-    but the forward-pass checks in `PipelineFromPipeTesterMixin` have no pytest-style equivalent yet.
-    """
+    original_pipeline_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"

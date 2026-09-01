@@ -1011,6 +1011,25 @@ def export_to_gif(image: list[PIL.Image.Image], output_gif_path: str = None) -> 
 
 
 @contextmanager
+def skip_if_no_cudnn_engine():
+    """
+    Skip the enclosing test when cuDNN has no kernel for an op the pipeline runs.
+
+    cuDNN does not ship an engine for every (op, dtype, layout) combination, and the set it covers differs between
+    cuDNN builds and GPU architectures. When none applies it raises `RuntimeError: GET was unable to find an engine
+    to execute this computation` — for instance for Sana's depthwise `Conv2d` in bfloat16. That is a property of the
+    runner, not of the code under test, so tests that can hit it are skipped there rather than failed. Any other
+    `RuntimeError` propagates untouched.
+    """
+    try:
+        yield
+    except RuntimeError as e:
+        if "unable to find an engine" not in str(e):
+            raise
+        pytest.skip(f"cuDNN has no engine for this computation on {torch_device}: {e}")
+
+
+@contextmanager
 def buffered_writer(raw_f):
     f = io.BufferedWriter(raw_f)
     yield f
