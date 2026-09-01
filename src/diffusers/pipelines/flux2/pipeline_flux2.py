@@ -765,6 +765,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         max_sequence_length: int = 512,
         text_encoder_out_layers: tuple[int] = (10, 20, 30),
         caption_upsample_temperature: float = None,
+        max_area: int = 1024**2,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -832,6 +833,9 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             caption_upsample_temperature (`float`):
                 When specified, we will try to perform caption upsampling for potentially improved outputs. We
                 recommend setting it to 0.15 if caption upsampling is to be performed.
+            max_area (`int`, defaults to `1024 ** 2`):
+                The maximum area (in pixels) allowed for each condition image. Condition images whose area exceeds
+                this value are downscaled to fit it while preserving their aspect ratio.
 
         Examples:
 
@@ -891,8 +895,8 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             condition_images = []
             for img in image:
                 image_width, image_height = img.size
-                if image_width * image_height > 1024 * 1024:
-                    img = self.image_processor._resize_to_target_area(img, 1024 * 1024)
+                if image_width * image_height > max_area:
+                    img = self.image_processor._resize_to_target_area(img, max_area)
                     image_width, image_height = img.size
 
                 multiple_of = self.vae_scale_factor * 2
