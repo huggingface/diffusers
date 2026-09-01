@@ -152,15 +152,17 @@ Quantize-on-load runs one SVD per target at load time (minutes for large models 
 
 ### Quantize on a CPU-only machine, then save
 
-Data-free quantization is pure PyTorch (weight-span smoothing, SVD, group quantization) and never calls a CUDA kernel, so it also runs on a machine with no GPU and no `kernels` package installed. Quantize once, `save_pretrained` the result, then load the packed checkpoint anywhere with the usual (fast, kernel-free) `pre_quantized` path:
+Data-free quantization is pure PyTorch (weight-span smoothing, SVD, group quantization) and never calls a CUDA kernel, so it also runs on a machine with no GPU and no `kernels` package installed. Quantize the transformer once, `save_pretrained` the whole pipeline, and load the result anywhere with the usual (fast, kernel-free) `pre_quantized` path — [`~DiffusionPipeline.save_pretrained`] saves every component to its own subfolder (each by calling that component's own `save_pretrained`), so this produces the same self-contained, directly loadable layout as [Load a quantized pipeline](#load-a-quantized-pipeline) above:
 
 ```python
 import torch
-from diffusers import Flux2Transformer2DModel, NunchakuLiteQuantizationConfig
+from diffusers import Flux2Pipeline, Flux2Transformer2DModel, NunchakuLiteQuantizationConfig
+
+model_id = "black-forest-labs/FLUX.2-klein-9B"
 
 # Runs on CPU - no GPU or `kernels` package required for this step.
 transformer = Flux2Transformer2DModel.from_pretrained(
-    "black-forest-labs/FLUX.2-klein-9B",
+    model_id,
     subfolder="transformer",
     quantization_config=NunchakuLiteQuantizationConfig(
         svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
@@ -168,12 +170,11 @@ transformer = Flux2Transformer2DModel.from_pretrained(
     ),
     torch_dtype=torch.bfloat16,
 )
-transformer.save_pretrained("flux2-klein-9b-nvfp4")
+pipe = Flux2Pipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.bfloat16)
+pipe.save_pretrained("flux2-klein-9b-nvfp4")
 
 # Later, on a GPU machine, loads through the ordinary pre-quantized path.
-transformer = Flux2Transformer2DModel.from_pretrained(
-    "flux2-klein-9b-nvfp4", torch_dtype=torch.bfloat16, device_map="cuda"
-)
+pipe = Flux2Pipeline.from_pretrained("flux2-klein-9b-nvfp4", torch_dtype=torch.bfloat16).to("cuda")
 ```
 
 ## Fused kernels
