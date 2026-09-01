@@ -183,6 +183,16 @@ class BasePipelineTesterConfig:
     def is_text_stack_component(self, name: str) -> bool:
         return any(key in name for key in self.text_stack_component_names)
 
+    def batch_input(self, name, value, batch_size):
+        """Expand one `batch_input_params` entry into a batch of `batch_size`.
+
+        Defaults to repeating the value, which is what a single tensor/string input needs. Override it for an input
+        whose batch dimension isn't the outer list — a list holding one conditioning image per adapter, say, where
+        each adapter takes its own batch (see the multi-adapter tests in
+        `tests/pipelines/stable_diffusion_adapter/test_stable_diffusion_adapter.py`).
+        """
+        return batch_size * [value]
+
     def get_generator(self, seed=0):
         # Always build the generator on CPU: a CPU generator works with a pipeline placed on any device (the tensor
         # is created on CPU and moved), whereas an accelerator generator cannot seed a CPU tensor (see
@@ -350,7 +360,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                     # make last batch super long
                     batched_input[name][-1] = 100 * "very long"
                 else:
-                    batched_input[name] = batch_size * [value]
+                    batched_input[name] = self.batch_input(name, value, batch_size)
 
             if batch_generator and "generator" in inputs:
                 batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
@@ -391,7 +401,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                 batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
                 batched_inputs[name][-1] = 100 * "very long"
             else:
-                batched_inputs[name] = batch_size * [value]
+                batched_inputs[name] = self.batch_input(name, value, batch_size)
 
         if "generator" in inputs:
             batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
@@ -586,7 +596,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
 
                 for key in inputs.keys():
                     if key in self.batch_input_params:
-                        inputs[key] = batch_size * [inputs[key]]
+                        inputs[key] = self.batch_input(key, inputs[key], batch_size)
 
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
 
