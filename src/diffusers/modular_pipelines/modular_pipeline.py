@@ -679,8 +679,8 @@ class ModularLoopPipelineBlocks(ModularPipelineBlocks):
     Base class for leaf blocks that run inside an [`IterativePipelineBlocks`] loop.
 
     The only difference from [`ModularPipelineBlocks`] is the `__call__` contract: in addition to `(components,
-    state)`, the block receives the enclosing loop's variables as keyword call arguments — its signature names the
-    loop variables it uses and declares `**kwargs` for any it ignores (e.g. `def __call__(self, components, state, t,
+    state)`, the block receives the enclosing loop's variables as keyword call arguments — its signature names the loop
+    variables it uses and declares `**kwargs` for any it ignores (e.g. `def __call__(self, components, state, t,
     **kwargs)`; naming all of them without `**kwargs` works too). The loop validates this at construction: a named
     parameter that is not a loop variable, or a missing loop variable without a `**kwargs` catch-all, raises.
 
@@ -1490,10 +1490,10 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
 
     Loop variables are passed to sub-blocks as keyword call arguments: a sub-block's `__call__` names the loop
     variables it uses after `(components, state)` and declares `**kwargs` for any it ignores (naming all of them and
-    omitting `**kwargs` is fine too). This is validated at construction: a named parameter that is not a loop
-    variable, or a missing loop variable without a `**kwargs` catch-all, raises. A nested
-    loop accepts the outer loop's variables in its own hand-written `__call__` (ignoring or forwarding them) and passes
-    its own `loop_variables` to its own sub-blocks:
+    omitting `**kwargs` is fine too). This is validated at construction: a named parameter that is not a loop variable,
+    or a missing loop variable without a `**kwargs` catch-all, raises. A nested loop accepts the outer loop's variables
+    in its own hand-written `__call__` (ignoring or forwarding them) and passes its own `loop_variables` to its own
+    sub-blocks:
 
     ```python
     class InnerDenoiseLoop(IterativePipelineBlocks):
@@ -1510,11 +1510,11 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
     ```
 
     Sub-block outputs are written to the pipeline state as usual and persist after the loop. The loop logic's own
-    inputs (e.g. `timesteps`) and outputs are declared in `loop_inputs` / `loop_intermediate_outputs`: they join
-    the sub-blocks' in the aggregated `inputs` / `intermediate_outputs`, and they are what
-    `get_block_state` / `set_block_state` read and write for the loop block itself — sub-block values live in the
-    pipeline state, not in the loop's block state. A component used by the loop logic itself (e.g. the scheduler) is added by
-    overriding `expected_components`.
+    inputs (e.g. `timesteps`) and outputs are declared in `loop_inputs` / `loop_intermediate_outputs`: they join the
+    sub-blocks' in the aggregated `inputs` / `intermediate_outputs`, and they are what `get_block_state` /
+    `set_block_state` read and write for the loop block itself — sub-block values live in the pipeline state, not in
+    the loop's block state. A component used by the loop logic itself (e.g. the scheduler) is added by overriding
+    `expected_components`.
 
     Streaming is opt-in: to let `pipe.stream(...)` hand back the live [`PipelineState`] after every iteration, also
     implement `stream` — the same loop, written as a generator over `stream_step` (which runs one iteration like
@@ -1601,8 +1601,8 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
 
     def _validate_sub_blocks(self):
         """Sub-blocks must be loop steps (`ModularLoopPipelineBlocks`) or nested loops (`IterativePipelineBlocks`)
-        and accept the loop variables after `(components, state)` — either all of them by name, or the ones the
-        step uses plus a `**kwargs` catch-all for the rest."""
+        and accept the loop variables after `(components, state)` — either all of them by name, or the ones the step
+        uses plus a `**kwargs` catch-all for the rest."""
         expected = set(self.loop_variables)
         for block_name, block in self.sub_blocks.items():
             if not isinstance(block, (ModularLoopPipelineBlocks, IterativePipelineBlocks)):
@@ -3313,8 +3313,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
     def stream(self, state: PipelineState = None, **kwargs):
         """
-        Run the pipeline as a generator that yields a [`StreamEvent`] after every iteration of every loop block
-        (e.g. each denoising step, each segment of a chunked video), with the live [`PipelineState`] attached. The
+        Run the pipeline as a generator that yields a [`StreamEvent`] after every iteration of every loop block (e.g.
+        each denoising step, each segment of a chunked video), with the live [`PipelineState`] attached. The
         generator's return value is the final state, the same one `__call__` returns.
 
         Args:
