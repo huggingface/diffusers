@@ -136,7 +136,18 @@ state = pipeline(latents=torch.tensor(0.0), timesteps=torch.tensor([1.0, 2.0, 3.
 state.get("latents")   # tensor(6.)  — 0 + 1 + 2 + 3
 ```
 
-The wrapper contains only the loop logic, i.e. how to iterate through its steps, so its `loop_inputs` should be just what that takes (the `timesteps` above). All data flows through the steps, which read and write the pipeline state directly. If the loop logic seems to need to do more than iterate: e.g. collect results, you should add a loop step for it instead: in `wan_animate_2`, a small collect step appends each segment's decoded frames to `segment_frames`, and the next segment's prep step reads it back to condition on; under [streaming](#streaming), the partial collection is visible after every iteration.
+The wrapper contains only the loop logic, i.e. how to iterate through its steps, so its `loop_inputs` should be just what that takes (the `timesteps` above). All data flows through the steps, which read and write the pipeline state directly: in the example above, `DenoiserStep` writes `noise_pred` to the state and `SchedulerStep` reads it back and writes the updated `latents`; the wrapper touches none of them. If the loop logic seems to need to do more than iterate: e.g. collect results, you should add a loop step for it instead: in `wan_animate_2`, a small collect step appends each segment's decoded frames to `segment_frames`, and the next segment's prep step reads it back to condition on; under [streaming](#streaming), the partial collection is visible after every iteration. What we don't want is the wrapper doing it inline:
+
+```py
+# don't: loop logic collecting results itself
+def __call__(self, components, state):
+    block_state = self.get_block_state(state)
+    segment_frames = []
+    for k in range(block_state.num_segments):
+        components, state = self.loop_step(components, state, k=k)
+        segment_frames.append(state.get("out_frames"))  # reaching into the state: make this a collect loop step
+    ...
+```
 
 ## Nesting loops
 
