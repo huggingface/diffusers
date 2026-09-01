@@ -40,6 +40,13 @@ class LTX2DFRPipelineTesterConfig(BasePipelineTesterConfig):
         "num_images_per_prompt",
         "latents",
     }
+    # This config subclasses `BasePipelineTesterConfig` rather than `LTX2BaseTesterConfig`, so it has to restate the
+    # family's `audio_vae` exclusion: its decode-time convolutions run without the group leader's `forward` having
+    # onloaded the group.
+    group_offloading_block_level_exclude_modules = [
+        *BasePipelineTesterConfig.group_offloading_block_level_exclude_modules,
+        "audio_vae",
+    ]
 
     def get_dummy_components(self):
         return get_dfr_dummy_components()
@@ -512,11 +519,4 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
 
 
 class TestLTX2DFRPipelineMemory(LTX2DFRPipelineTesterConfig, MemoryTesterMixin):
-    @pytest.mark.skip(
-        "Pre-existing for the whole LTX-2 family, not DFR-specific: the shared harness group-offloads only "
-        "`text_encoder` / `transformer` and moves `vae`, leaving the LTX-2-specific `connectors` on the CPU while it "
-        "receives accelerator tensors from the offloaded text encoder. Verified to fail identically on the stock "
-        "`LTX2Pipeline`. `test_pipeline_level_group_offloading_inference`, which offloads every component, passes."
-    )
-    def test_group_offloading_inference(self):
-        pass
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LTX2 DFR pipeline."""

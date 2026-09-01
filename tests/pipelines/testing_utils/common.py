@@ -129,9 +129,10 @@ class BasePipelineTesterConfig:
 
     # Components that cannot be offloaded at block level. Block-level offloading onloads a group when the group's
     # leader runs its `forward`, so a component whose compute re-enters submodules without going through that
-    # leader finds its weights still on the offload device. VAE decode paths are the usual instance — measured
-    # across the suite, offloading a `vae` at block level breaks 28 of 86 pipeline test classes, while every one of
-    # them offloads it at leaf level without complaint, which is what the pipeline-level test has always done.
+    # leader finds its weights still on the offload device. VAE decode paths are the usual instance: a pipeline
+    # calls `vae.decode()`, which never runs `vae.forward()`, so a VAE whose class does not declare
+    # `_group_offload_block_modules` keeps every weight in one group gated on a `forward` that is never entered.
+    # Leaf level is unaffected — it hooks each leaf on its own `forward` — which is why the exclusion is per level.
     group_offloading_block_level_exclude_modules = ["vae", "image_encoder"]
 
     # ==================== Required interface ====================

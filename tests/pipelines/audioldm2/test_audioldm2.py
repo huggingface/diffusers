@@ -469,11 +469,20 @@ class TestAudioLDM2PipelineMemory(AudioLDM2PipelineTesterConfig, MemoryTesterMix
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
-    @pytest.mark.skip(
-        "The pipeline encodes prompts through `text_encoder.get_text_features()` rather than the CLAP model's "
-        "`forward()`, so the top-level group-offloading hook never fires and the embedding weights stay offloaded."
+    # The pipeline encodes prompts through `text_encoder.get_text_features()` rather than the CLAP model's
+    # `forward()`. Block-level offloading gates the ungrouped weights on that `forward`, so they stay on the offload
+    # device; leaf level onloads each leaf on its own `forward` and is unaffected, so only block level is skipped.
+    CLAP_BLOCK_OFFLOAD_SKIP = pytest.mark.skip(
+        "`text_encoder.get_text_features()` bypasses the CLAP model's `forward()`, so block-level group offloading "
+        "never onloads the embedding weights."
     )
-    def test_group_offloading_inference(self):
+
+    @CLAP_BLOCK_OFFLOAD_SKIP
+    def test_group_offloading_inference_block_level(self, base_pipe_output, expected_max_difference=1e-4):
+        pass
+
+    @CLAP_BLOCK_OFFLOAD_SKIP
+    def test_group_offloading_inference_block_level_streaming(self, base_pipe_output, expected_max_difference=1e-4):
         pass
 
     @pytest.mark.skip("Not supported yet due to CLAPModel.")

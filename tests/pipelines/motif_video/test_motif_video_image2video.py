@@ -194,8 +194,16 @@ class TestMotifVideoImage2VideoPipelineMemory(MotifVideoImage2VideoPipelineTeste
     )
 
     @VISION_TOWER_OFFLOAD_XFAIL
-    def test_group_offloading_inference(self):
-        super().test_group_offloading_inference()
+    def test_group_offloading_inference_block_level(self, base_pipe_output, expected_max_difference=1e-4):
+        super().test_group_offloading_inference_block_level(
+            base_pipe_output, expected_max_difference=expected_max_difference
+        )
+
+    @VISION_TOWER_OFFLOAD_XFAIL
+    def test_group_offloading_inference_block_level_streaming(self, base_pipe_output, expected_max_difference=1e-4):
+        super().test_group_offloading_inference_block_level_streaming(
+            base_pipe_output, expected_max_difference=expected_max_difference
+        )
 
     @VISION_TOWER_OFFLOAD_XFAIL
     def test_sequential_cpu_offload_forward_pass(self, base_pipe_output, expected_max_diff=1e-4):
