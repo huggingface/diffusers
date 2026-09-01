@@ -14,11 +14,11 @@ from ...testing_utils import floats_tensor, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
     FasterCacheTesterMixin,
+    FluxIPAdapterTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
 )
-from .testing_utils import FluxIPAdapterTesterMixin
 
 
 class FluxKontextInpaintPipelineTesterConfig(BasePipelineTesterConfig):

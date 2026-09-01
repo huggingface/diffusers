@@ -6,8 +6,12 @@ from transformers import AutoConfig, AutoTokenizer, CLIPTextConfig, CLIPTextMode
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxImg2ImgPipeline, FluxTransformer2DModel
 
 from ...testing_utils import floats_tensor, torch_device
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
-from .testing_utils import FluxIPAdapterTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    FluxIPAdapterTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 class FluxImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):

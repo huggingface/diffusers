@@ -6,9 +6,9 @@ from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKL, ChromaImg2ImgPipeline, ChromaTransformer2DModel, FlowMatchEulerDiscreteScheduler
 
 from ...testing_utils import assert_tensors_close, floats_tensor, torch_device
-from ..flux.testing_utils import FluxIPAdapterTesterMixin
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    FluxIPAdapterTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
     check_qkv_fused_layers_exist,
