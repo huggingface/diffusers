@@ -144,7 +144,7 @@ class ChunkUpdateStep(ModularLoopPipelineBlocks):
     def description(self):
         return "records the denoised chunk and updates the history"
 
-    def __call__(self, components, state, k):
+    def __call__(self, components, state, **kwargs):  # ignores the loop's `k`: a catch-all is enough
         block_state = self.get_block_state(state)
         block_state.history = block_state.chunk_latents
         block_state.latent_chunks = [*(block_state.latent_chunks or []), float(block_state.chunk_latents)]
@@ -180,7 +180,13 @@ class ChunkLoop(IterativePipelineBlocks):
 
 
 class CollectingChunkLoop(ChunkLoop):
-    """Chunk loop whose loop logic has an output of its own, written through `set_block_state`."""
+    """Chunk loop whose loop logic has an output of its own, written through `set_block_state`, and which
+    observes a step output (`history`) by declaring it in `loop_inputs` and calling `get_block_state` again
+    after each `loop_step` — the fresh snapshot picks up what the steps just wrote."""
+
+    @property
+    def loop_inputs(self):
+        return [*super().loop_inputs, InputParam(name="history")]
 
     @property
     def loop_intermediate_outputs(self):
@@ -189,10 +195,12 @@ class CollectingChunkLoop(ChunkLoop):
     @torch.no_grad()
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
-        block_state.chunk_history = []
+        chunk_history = []
         for k in range(block_state.num_latent_chunk):
             components, state = self.loop_step(components, state, k=k)
-            block_state.chunk_history.append(float(state.get("history")))
+            block_state = self.get_block_state(state)
+            chunk_history.append(float(block_state.history))
+        block_state.chunk_history = chunk_history
         self.set_block_state(state, block_state)
         return components, state
 
@@ -266,6 +274,8 @@ class TestIterativePipelineBlocksExecution:
     def test_loop_output_via_set_block_state(self):
         pipe = SequentialPipelineBlocks.from_blocks_dict({"chunks": CollectingChunkLoop()}).init_pipeline()
         state = pipe(num_latent_chunk=3, timesteps=torch.tensor([1.0, 2.0]), history=torch.tensor(0.0))
+        # `history` is re-read with `get_block_state` after every iteration — without the re-read this
+        # would collect the stale iteration-0 seed, [0.0, 0.0, 0.0]
         assert state.get("chunk_history") == [3.0, 7.0, 12.0]
         # sub-block outputs are untouched by the loop's own write-back
         assert state.get("latent_chunks") == [3.0, 7.0, 12.0]
@@ -294,26 +304,16 @@ class TestIterativePipelineBlocksExecution:
         with pytest.raises(ValueError, match="must be a `ModularLoopPipelineBlocks`"):
             BadTypeLoop()
 
-    def test_leaf_signature_is_validated(self):
-        # a loop step whose signature doesn't match the loop's variables fails at construction
-        class WrongSigStep(ModularLoopPipelineBlocks):
+    @staticmethod
+    def _loop_over(step_cls):
+        class Loop(IterativePipelineBlocks):
             model_name = "test"
+            block_classes = [step_cls]
+            block_names = ["step"]
 
             @property
             def description(self):
-                return "loop step with the wrong loop variables"
-
-            def __call__(self, components, state, k):
-                return components, state
-
-        class BadSigLoop(IterativePipelineBlocks):
-            model_name = "test"
-            block_classes = [WrongSigStep]
-            block_names = ["wrong"]
-
-            @property
-            def description(self):
-                return "loop whose sub-block names the wrong loop variables"
+                return "loop over i, t"
 
             @property
             def loop_variables(self):
@@ -330,8 +330,50 @@ class TestIterativePipelineBlocksExecution:
                     components, state = self.loop_step(components, state, i=i, t=t)
                 return components, state
 
+        return Loop
+
+    def test_leaf_signature_is_validated(self):
+        # a named parameter that isn't a loop variable fails at construction, even with a catch-all
+        class UnknownVarStep(ModularLoopPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def description(self):
+                return "loop step naming a variable the loop doesn't have"
+
+            def __call__(self, components, state, k, **kwargs):
+                return components, state
+
+        with pytest.raises(ValueError, match="not loop variables"):
+            self._loop_over(UnknownVarStep)()
+
+        # naming only some loop variables without a `**kwargs` catch-all fails at construction
+        class MissingVarStep(ModularLoopPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def description(self):
+                return "loop step naming only one of the loop variables, without a catch-all"
+
+            def __call__(self, components, state, t):
+                return components, state
+
         with pytest.raises(ValueError, match="must accept the loop variables"):
-            BadSigLoop()
+            self._loop_over(MissingVarStep)()
+
+    def test_leaf_signature_subset_with_kwargs_is_valid(self):
+        # naming only the used loop variables plus `**kwargs` is accepted
+        class SubsetStep(ModularLoopPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def description(self):
+                return "loop step using only `t`, ignoring the rest via a catch-all"
+
+            def __call__(self, components, state, t, **kwargs):
+                return components, state
+
+        self._loop_over(SubsetStep)()  # does not raise
 
     def test_loop_leaf_standalone_raises(self):
         # outside a loop, a leaf block with loop variables in its signature cannot run

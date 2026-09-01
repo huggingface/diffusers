@@ -78,18 +78,18 @@ Because each step works on the [`~modular_pipelines.PipelineState`], the values 
 
 The loop itself is a subclass of [`~modular_pipelines.IterativePipelineBlocks`]. It declares:
 
-- `loop_variables`, the names of the variables it passes to its steps on every iteration. Every step's `__call__` must accept exactly these after `(components, state)`; this is validated when the loop is constructed.
+- `loop_variables`, the names of the variables it passes to its steps on every iteration (as keyword arguments). A step's `__call__` names the ones it uses after `(components, state)` and declares `**kwargs` for any it ignores — naming all of them works too. This is validated when the loop is constructed: a named parameter that isn't a loop variable, or a missing one without a `**kwargs` catch-all, raises.
 - `loop_inputs`, the inputs the loop logic itself reads — here the `timesteps` it iterates. They join the inputs aggregated from the steps (see below), and they are what `get_block_state` returns for the loop block.
 - `__call__`, the loop logic: read the loop's block state, and call `loop_step` once per iteration with the loop variables. `loop_step` runs every step once.
+
+Note that the wrapper defines only the loop logic - which steps run inside it should be attached separately, in a subclass:
 
 ```py
 import torch
 from diffusers.modular_pipelines import IterativePipelineBlocks
 
-class DenoiseLoop(IterativePipelineBlocks):
+class DenoiseLoopWrapper(IterativePipelineBlocks):
     model_name = "test"
-    block_classes = [DenoiserStep, SchedulerStep]
-    block_names = ["denoiser", "scheduler"]
 
     @property
     def description(self):
@@ -109,6 +109,23 @@ class DenoiseLoop(IterativePipelineBlocks):
         for i, t in enumerate(block_state.timesteps):
             components, state = self.loop_step(components, state, i=i, t=t)
         return components, state
+
+
+class DenoiseLoop(DenoiseLoopWrapper):
+    block_classes = [DenoiserStep, SchedulerStep]
+    block_names = ["denoiser", "scheduler"]
+```
+
+This separation means the same loop logic can work with different combination of loop steps: subclass the wrapper again with different `block_classes` (this is exactly how `Flux2DenoiseLoopWrapper` serves the base and klein denoise steps). Steps can also be attached to the loop with [`~modular_pipelines.IterativePipelineBlocks.from_blocks_dict`]:
+
+```py
+loop = DenoiseLoopWrapper.from_blocks_dict({"denoiser": DenoiserStep(), "scheduler": SchedulerStep()})
+```
+
+You can also change what runs inside a loop you already have: add a step, reorder, swap one out. e.g. you can insert a logging step like this:
+
+```py
+loop = DenoiseLoopWrapper.from_blocks_dict(loop.sub_blocks.copy().insert("log", LogStep(), 1))
 ```
 
 An [`~modular_pipelines.IterativePipelineBlocks`] is a [`~modular_pipelines.SequentialPipelineBlocks`], so it [aggregates](./sequential_pipeline_blocks#aggregated-inputs-and-outputs) its steps' `inputs` and `intermediate_outputs` the same way any assembled block does, and adds `loop_inputs` / `loop_intermediate_outputs` on top. `DenoiseLoop.inputs` is therefore `timesteps` (its own) and `latents` (what the steps need from outside the loop) — but not `noise_pred`, which `DenoiserStep` produces before `SchedulerStep` reads it, so it is satisfied inside the loop. The assembled loop ends up with the same kind of input/output contract as a single block, which is what lets it be dropped into a [`~modular_pipelines.SequentialPipelineBlocks`], or into another loop. Outputs the steps write persist in the state after the loop. Run it like any other block:
@@ -119,51 +136,28 @@ state = pipeline(latents=torch.tensor(0.0), timesteps=torch.tensor([1.0, 2.0, 3.
 state.get("latents")   # tensor(6.)  — 0 + 1 + 2 + 3
 ```
 
-Steps can also be attached after the fact with [`~modular_pipelines.IterativePipelineBlocks.from_blocks_dict`], which keeps the loop logic separate from what runs inside it:
-
-```py
-loop = DenoiseLoop.from_blocks_dict({"denoiser": DenoiserStep(), "scheduler": SchedulerStep()})
-```
-
-You can also change what runs inside a loop you already have: `sub_blocks` is an ordered dict, so any loop step that takes the same loop variables can be inserted into it.
-
-```py
-loop.sub_blocks.insert("log", LogStep(), 2)   # after the denoiser and the scheduler
-```
-
-A step inserted this way isn't signature-checked the way the ones a loop is constructed with are — a mismatch raises a `TypeError` on the first iteration.
-
-If the loop logic produces a value of its own — an autoregressive loop collecting the decoded frames of every chunk, for example — declare it in `loop_intermediate_outputs` and write it back with `set_block_state`, exactly as a leaf block would:
-
-```py
-@property
-def loop_intermediate_outputs(self):
-    return [OutputParam(name="history")]
-
-@torch.no_grad()
-def __call__(self, components, state):
-    block_state = self.get_block_state(state)
-    block_state.history = []
-    for i, t in enumerate(block_state.timesteps):
-        components, state = self.loop_step(components, state, i=i, t=t)
-        block_state.history.append(state.get("latents"))
-    self.set_block_state(state, block_state)
-    return components, state
-```
-
-The loop's block state holds only its `loop_inputs` and `loop_intermediate_outputs`. The values the steps produce live in the [`~modular_pipelines.PipelineState`] — read them with `state.get(...)`, as above — so the loop never works from a stale copy.
+The wrapper contains only the loop logic, i.e. how to iterate through its steps, so its `loop_inputs` should be just what that takes (the `timesteps` above). All data flows through the steps, which read and write the pipeline state directly. If the loop logic seems to need to do more than iterate: e.g. collect results, you should add a loop step for it instead: in `wan_animate_2`, a small collect step appends each segment's decoded frames to `segment_frames`, and the next segment's prep step reads it back to condition on; under [streaming](#streaming), the partial collection is visible after every iteration.
 
 ## Nesting loops
 
 An [`~modular_pipelines.IterativePipelineBlocks`] can be a step of another one. An autoregressive video pipeline generates a chunk of frames at a time, so it is an outer loop over chunks: each of its iterations prepares the chunk's latents from the frames generated so far, runs a full denoising loop over them, and appends the result to the history.
 
-The inner denoising loop is a step of the outer loop, so its `__call__` must accept the outer loop's variables, and it declares `loop_variables` of its own for its own steps. The two sets are independent: `k` arrives as a call argument and the inner loop is free to use it — the wan-animate-2 denoise loop puts the chunk index in its progress bar — but it is not forwarded to the steps, which are passed the inner loop's `i` and `t`.
+The inner denoising loop is a step of the outer loop, so its `__call__` must accept the outer loop's variables (or take `**kwargs` if it ignores them), and it declares `loop_variables` of its own for its own steps. The two sets are independent: `k` arrives as a call argument and the inner loop is free to use it — the wan-animate-2 denoise loop puts the chunk index in its progress bar — but it is not forwarded to the steps, which are passed the inner loop's `i` and `t`.
+
+This is the structure this section builds:
+
+```
+VideoLoop                 outer loop — loop_variables ["k"], iterates over chunks
+├─ prepare                PrepareChunkStep    (leaf step, takes k)
+├─ denoise                ChunkDenoiseLoop    (the INNER loop — a step of the outer one)
+│  ├─ denoiser            DenoiserStep        (takes the inner loop's i, t)
+│  └─ scheduler           SchedulerStep
+└─ update                 UpdateHistoryStep   (leaf step, takes k)
+```
 
 ```py
-class ChunkDenoiseLoop(IterativePipelineBlocks):
+class ChunkDenoiseLoopWrapper(IterativePipelineBlocks):
     model_name = "test"
-    block_classes = [DenoiserStep, SchedulerStep]
-    block_names = ["denoiser", "scheduler"]
 
     @property
     def description(self):
@@ -178,13 +172,21 @@ class ChunkDenoiseLoop(IterativePipelineBlocks):
         return [InputParam(name="timesteps", required=True)]
 
     @torch.no_grad()
-    def __call__(self, components, state, k):   # `k` comes from the chunk loop
+    def __call__(self, components, state, k):   # `k` comes from the outer video loop
         block_state = self.get_block_state(state)
         for i, t in enumerate(block_state.timesteps):
             components, state = self.loop_step(components, state, i=i, t=t)
         return components, state
 
 
+class ChunkDenoiseLoop(ChunkDenoiseLoopWrapper):
+    block_classes = [DenoiserStep, SchedulerStep]
+    block_names = ["denoiser", "scheduler"]
+```
+
+`ChunkDenoiseLoop` is the *inner* loop: it denoises a single chunk. It becomes a step of the outer loop below, which iterates over the chunks — at each `k` it prepares the chunk's latents from the history, runs the full inner denoising loop over them, and records the result:
+
+```py
 class PrepareChunkStep(ModularLoopPipelineBlocks):
     model_name = "test"
 
@@ -229,10 +231,8 @@ class UpdateHistoryStep(ModularLoopPipelineBlocks):
         return components, state
 
 
-class ChunkLoop(IterativePipelineBlocks):
+class VideoLoopWrapper(IterativePipelineBlocks):
     model_name = "test"
-    block_classes = [PrepareChunkStep, ChunkDenoiseLoop, UpdateHistoryStep]
-    block_names = ["prepare", "denoise", "update"]
 
     @property
     def description(self):
@@ -252,12 +252,17 @@ class ChunkLoop(IterativePipelineBlocks):
         for k in range(block_state.num_chunks):
             components, state = self.loop_step(components, state, k=k)
         return components, state
+
+
+class VideoLoop(VideoLoopWrapper):
+    block_classes = [PrepareChunkStep, ChunkDenoiseLoop, UpdateHistoryStep]
+    block_names = ["prepare", "denoise", "update"]
 ```
 
-`ChunkDenoiseLoop` is `DenoiseLoop` with `k` added to `__call__`, spelled out in full here so the whole loop is visible in one place. When two loops share their logic and differ only in what runs inside them, write the logic once in a wrapper class and subclass it to attach `block_classes` / `block_names` — that is how `WanAnimate2DenoiseLoopWrapper` serves both the regular and the distilled denoise step.
+Run the outer loop like any other block:
 
 ```py
-pipeline = ChunkLoop().init_pipeline()
+pipeline = VideoLoop().init_pipeline()
 state = pipeline(num_chunks=2, timesteps=torch.tensor([1.0, 2.0]), history=torch.tensor(0.0))
 state.get("history")   # tensor(7.) — chunk 0: 0 + 0 + 3 = 3, chunk 1: 3 + 1 + 3 = 7
 ```

@@ -125,16 +125,18 @@ for i, t in enumerate(timesteps):
 
 ## Key pattern: Denoising loop
 
-The denoising loop is an `IterativePipelineBlocks` whose steps are `ModularLoopPipelineBlocks` (canonical: `flux2/denoise.py`). The wrapper declares the loop variables it passes to its steps, the inputs its own loop logic reads, and the loop in `__call__`; `stream` is the same loop as a generator over `stream_step` and is what makes `pipe.stream(...)` work — implement both:
+The denoising loop is an `IterativePipelineBlocks` whose steps are `ModularLoopPipelineBlocks` (see `flux2/denoise.py` as example). The wrapper declares the loop variables it passes to its steps, the inputs its own loop logic reads (in addition to the inputs/outputs of the loop steps), and the loop in `__call__`; `stream` is the same loop as a generator over `stream_step` and is what makes `pipe.stream(...)` work — implement both:
 
 ```python
 class MyModelDenoiseLoopWrapper(IterativePipelineBlocks):
     @property
-    def loop_variables(self):
+    def loop_variables(self):  # passed to every loop step
         return ["i", "t"]
 
     @property
-    def loop_inputs(self):  # what the loop logic itself reads; `get_block_state` returns exactly these
+    def loop_inputs(self):
+        # what the loop logic itself reads — `get_block_state` returns exactly these
+        # (the loop steps declare their own `inputs` on top of this)
         return [InputParam("timesteps", required=True), InputParam.template("num_inference_steps", required=True)]
 
     @torch.no_grad()
@@ -157,14 +159,37 @@ class MyModelDenoiseStep(MyModelDenoiseLoopWrapper):
     block_names = ["denoiser", "after_denoiser"]
 ```
 
-Loop steps are regular blocks (own `inputs` / `intermediate_outputs`, `get_block_state` / `set_block_state` on the full `PipelineState`) whose `__call__` takes the loop variables as arguments — `def __call__(self, components, state, i, t)`. Every step of a loop must accept exactly that loop's variables (validated at construction), even if it ignores some of them.
+Loop steps are regular blocks (own `inputs` / `intermediate_outputs`, `get_block_state` / `set_block_state` on the full `PipelineState`) whose `__call__` takes the loop variables as extra keyword arguments — name the ones the step uses, declare `**kwargs` for any it ignores (validated at construction: unknown names raise, and so does a missing variable without a `**kwargs` catch-all). A minimal one:
 
-Autoregressive video models nest loops: an outer chunk loop (`loop_variables = ["k"]`) whose steps prepare the chunk, run the full inner denoising loop, and update the history (canonical: `wan_animate_2/denoise.py`). The inner loop is a step of the outer one, so its `__call__` / `stream` accept the outer variable — `def __call__(self, components, state, k)` — and pass its own `i`, `t` to its own steps.
+```python
+class MyModelLoopAfterDenoiser(ModularLoopPipelineBlocks):
+    @property
+    def expected_components(self):
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
 
-Conventions that fall out of this:
-- A value the loop logic itself produces (e.g. the collected per-chunk frames) goes in `loop_intermediate_outputs` and is written with `set_block_state`, like a leaf output. Step outputs are read from the state (`state.get("out_frames")`) — the loop's block state holds only its `loop_inputs` / `loop_intermediate_outputs`.
-- A loop-carried value (written by a step at the end of iteration `k`, read by a step at the start of `k + 1` — a decoder cache, the previous segment's frames) just flows through the state. Because the reader comes before the writer, it would surface as a pipeline input; if seeding it on the first iteration is not meaningful, have the prepare step before the loop declare it as an output and set its initial value (`None`). Don't filter it out of `inputs` in the wrapper.
-- Components the loop logic itself uses (e.g. `scheduler.order` for the progress bar) are added by overriding `expected_components`.
+    @property
+    def inputs(self):
+        return [InputParam("latents", required=True), InputParam("noise_pred", required=True)]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam("latents")]
+
+    @torch.no_grad()
+    def __call__(self, components, state, i, t):
+        block_state = self.get_block_state(state)
+        block_state.latents = components.scheduler.step(block_state.noise_pred, t, block_state.latents, return_dict=False)[0]
+        self.set_block_state(state, block_state)
+        return components, state
+```
+
+Autoregressive video models nest loops: an outer segment loop (`loop_variables = ["k"]`) whose steps prepare the segment, run the full inner denoising loop, and update the history (see `wan_animate_2/denoise.py` as an example). The inner loop is a step of the outer one, so its `__call__` / `stream` accept the outer variable — `def __call__(self, components, state, k)` — and pass its own `i`, `t` to its own steps.
+
+The wrapper contains only the loop logic — how to iterate through the steps. Its `loop_inputs` are just what that takes (`timesteps`, `num_segments`); all data flows through the steps, which read and write the pipeline state directly. If the loop logic seems to need to do more than iterate — collect results, carry something to the next iteration — add a loop step for it instead (in `wan_animate_2`, a small `collect` step appends each segment's decoded frames to `segment_frames`, and the next segment's prep step reads it back).
+
+Two small notes:
+- A value written late in iteration `k` and read early in iteration `k + 1` would surface as a pipeline input (the first read has no writer before it). Seed it in a block that runs before the loop, declare it as an output, set it to `None`, and it stays internal.
+- Components the loop logic itself uses (e.g. `flux2`'s wrapper reads `scheduler.order` to compute the progress-bar warmup steps) are added by overriding `expected_components`.
 
 Existing pipelines still use `LoopSequentialPipelineBlocks` (steps receive a shared flattened `block_state`, no nesting, no streaming). Leave them alone unless you are porting the pipeline; don't use it for new ones.
 
@@ -342,11 +367,9 @@ ComponentSpec(
 
 9. **Serving a checkpoint variant through a config flag in a shared block.** `ConfigSpec(name="is_distilled")` plus `if components.config.is_distilled:` bundles two checkpoints' behavior into one blockset — and it can't change the input surface at all (the distilled variant would still accept `negative_prompt`). Suggest a separate blockset for the variant instead (see Key pattern: Checkpoint variants).
 
-10. **Writing loop-level values with `state.set()` inside a loop wrapper.** Same rule as leaf blocks: declare them in `loop_intermediate_outputs` and write through `set_block_state`. `state.get(...)` to *read* a step's output inside the loop logic is fine — those live in the `PipelineState`, not in the loop's block state.
+10. **Hiding a loop-carried input by overriding `inputs` on the loop wrapper.** Seed it from the block that runs before the loop instead (declare it as that block's output, set it to `None` / its initial value); the sequential aggregation then hides it on its own. See Key pattern: Denoising loop.
 
-11. **Hiding a loop-carried input by overriding `inputs` on the loop wrapper.** Seed it from the block that runs before the loop instead (declare it as that block's output, set it to `None` / its initial value); the sequential aggregation then hides it on its own. See Key pattern: Denoising loop.
-
-12. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
+11. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
 
 ## Conversion checklist
 

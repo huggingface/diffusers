@@ -1487,8 +1487,10 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
     one — loops can be nested and composed freely. Sub-blocks must be [`ModularLoopPipelineBlocks`] (loop steps) or
     nested `IterativePipelineBlocks`, which is validated at construction.
 
-    Loop variables are passed to sub-blocks as call arguments: every sub-block must have the signature `__call__(self,
-    components, state, <loop_variables...>)`, which is validated against `loop_variables` at construction. A nested
+    Loop variables are passed to sub-blocks as keyword call arguments: a sub-block's `__call__` names the loop
+    variables it uses after `(components, state)` and declares `**kwargs` for any it ignores (naming all of them and
+    omitting `**kwargs` is fine too). This is validated at construction: a named parameter that is not a loop
+    variable, or a missing loop variable without a `**kwargs` catch-all, raises. A nested
     loop accepts the outer loop's variables in its own hand-written `__call__` (ignoring or forwarding them) and passes
     its own `loop_variables` to its own sub-blocks:
 
@@ -1510,8 +1512,8 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
     inputs (e.g. `timesteps`) and outputs are declared in `loop_inputs` / `loop_intermediate_outputs`: they are
     surfaced alongside the sub-blocks' in the aggregated `inputs` / `intermediate_outputs`, and they are what
     `get_block_state` / `set_block_state` read and write for the loop block itself — sub-block values live in the
-    pipeline state, not in the loop's block state. A component used by the loop logic itself (e.g. the scheduler) is
-    added by overriding `expected_components`.
+    pipeline state, not in the loop's block state. A component used by the loop logic itself (e.g. the scheduler) is added by
+    overriding `expected_components`.
 
     Streaming is opt-in: to let `pipe.stream(...)` hand back the live [`PipelineState`] after every iteration, also
     implement `stream` — the same loop, written as a generator over `stream_step` (which runs one iteration like
@@ -1597,7 +1599,8 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
 
     def _validate_sub_blocks(self):
         """Sub-blocks must be loop steps (`ModularLoopPipelineBlocks`) or nested loops (`IterativePipelineBlocks`)
-        and accept exactly the loop variables after `(components, state)`."""
+        and accept the loop variables after `(components, state)` — either all of them by name, or the ones the
+        step uses plus a `**kwargs` catch-all for the rest."""
         expected = set(self.loop_variables)
         for block_name, block in self.sub_blocks.items():
             if not isinstance(block, (ModularLoopPipelineBlocks, IterativePipelineBlocks)):
@@ -1606,13 +1609,23 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
                     "a `ModularLoopPipelineBlocks` (a loop step) or an `IterativePipelineBlocks` (a nested loop); "
                     f"got `{block.__class__.__bases__[0].__name__}`."
                 )
-            params = list(inspect.signature(block.__call__).parameters)
-            extra = set(params[2:])
-            if extra != expected:
+            params = inspect.signature(block.__call__).parameters
+            has_var_keyword = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+            # `block.__call__` is bound, so `self` is already excluded; `[2:]` skips `components` and `state`,
+            # leaving only the loop-variable parameters
+            named = {name for name in list(params)[2:] if params[name].kind is not inspect.Parameter.VAR_KEYWORD}
+            if not named <= expected:
                 raise ValueError(
                     f"Loop sub-block '{block_name}' ({block.__class__.__name__}) of {self.__class__.__name__} "
-                    f"must accept the loop variables {sorted(expected)} after `(components, state)`; "
-                    f"its `__call__` accepts {sorted(extra)}."
+                    f"accepts {sorted(named - expected)}, which are not loop variables of this loop "
+                    f"({sorted(expected)})."
+                )
+            if named != expected and not has_var_keyword:
+                raise ValueError(
+                    f"Loop sub-block '{block_name}' ({block.__class__.__name__}) of {self.__class__.__name__} "
+                    f"must accept the loop variables {sorted(expected)} after `(components, state)` — either "
+                    f"all of them by name, or the ones it uses plus `**kwargs`; its `__call__` accepts "
+                    f"{sorted(named)}."
                 )
 
     def loop_step(self, components, state: PipelineState, **loop_kwargs) -> PipelineState:

@@ -170,9 +170,9 @@ class WanAnimate2SegmentPrevFramesStep(ModularLoopPipelineBlocks):
                 description="i2v mask + reference image latents `[20, 1, latent_height, latent_width]`, from the image VAE encoder step",
             ),
             InputParam(
-                "out_frames",
-                type_hint=torch.Tensor,
-                description="The previous segment's decoded frames on device, written by the decode step of the previous iteration; `None` for the first segment",
+                "segment_frames",
+                type_hint=list,
+                description="The decoded segments collected so far (on CPU), written by the collect step; the previous segment's tail is read from the last entry. `None` for the first segment",
             ),
             InputParam(
                 "segment_frame_length",
@@ -210,7 +210,8 @@ class WanAnimate2SegmentPrevFramesStep(ModularLoopPipelineBlocks):
         num_frames = block_state.segment_frame_length + 1
         mask_len = block_state.prev_segment_conditioning_frames if k > 0 else 0
         if mask_len > 0:
-            prev_frames = block_state.out_frames[0, :, -mask_len:].clone().detach()
+            # slice the tail on CPU first so only the few conditioning frames are transferred
+            prev_frames = block_state.segment_frames[-1][0, :, -mask_len:].to(device)
             prev_frames = F.interpolate(prev_frames.permute(1, 0, 2, 3), size=(height, width), mode="bicubic").permute(
                 1, 0, 2, 3
             )
@@ -279,7 +280,7 @@ class WanAnimate2SegmentPrepareStep(ModularLoopPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState, k: int):
+    def __call__(self, components, state: PipelineState, **kwargs):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -331,7 +332,7 @@ class WanAnimate2SegmentSchedulerResetStep(ModularLoopPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState, k: int):
+    def __call__(self, components, state: PipelineState, **kwargs):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -415,7 +416,7 @@ class WanAnimate2RefExtractStep(ModularLoopPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState, k: int):
+    def __call__(self, components, state: PipelineState, **kwargs):
         block_state = self.get_block_state(state)
         device = components._execution_device
         transformer_dtype = components.transformer.dtype
@@ -806,7 +807,7 @@ class WanAnimate2SegmentDecodeStep(ModularLoopPipelineBlocks):
             OutputParam(
                 "out_frames",
                 type_hint=torch.Tensor,
-                description="This segment's decoded frames on device; the next segment conditions on its tail",
+                description="This segment's decoded frames on device, consumed (and freed) by the collect step",
             ),
         ]
 
@@ -832,6 +833,53 @@ class WanAnimate2SegmentDecodeStep(ModularLoopPipelineBlocks):
         return components, state
 
 
+class WanAnimate2SegmentCollectStep(ModularLoopPipelineBlocks):
+    model_name = "wan-animate-2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the segment loop that appends this segment's decoded frames to the collected video, "
+            "moving them to CPU, and frees the on-device copy — the next segment's conditioning reads the tail "
+            "of the last collected entry. This block should be used to compose the `sub_blocks` attribute of an "
+            "`IterativePipelineBlocks` object (e.g. `WanAnimate2SegmentLoopWrapper`)."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "out_frames",
+                required=True,
+                type_hint=torch.Tensor,
+                description="This segment's decoded frames on device, from the decode step",
+            ),
+            InputParam(
+                "segment_frames",
+                type_hint=list,
+                description="The segments collected so far; `None` before the first segment",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "segment_frames",
+                type_hint=list[torch.Tensor],
+                description="Per-segment decoded frames on CPU, each `[1, 3, T, H, W]`",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState, **kwargs):
+        block_state = self.get_block_state(state)
+        block_state.segment_frames = [*(block_state.segment_frames or []), block_state.out_frames.cpu()]
+        block_state.out_frames = None  # release the on-device copy; nothing reads it after this
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 # ========================================
 # Segment Loop Wrapper
 # ========================================
@@ -848,8 +896,8 @@ class WanAnimate2SegmentLoopWrapper(IterativePipelineBlocks):
     def description(self) -> str:
         return (
             "Pipeline block that iterates over the driving video's segments. At each segment it runs sub-blocks "
-            "for per-segment encoding, preparation, reference extraction, denoising, and decoding; each segment "
-            "conditions on the previous one's decoded tail frames."
+            "for per-segment encoding, preparation, reference extraction, denoising, decoding, and collection; "
+            "each segment conditions on the previous one's decoded tail frames."
         )
 
     @property
@@ -863,41 +911,18 @@ class WanAnimate2SegmentLoopWrapper(IterativePipelineBlocks):
             ),
         ]
 
-    @property
-    def loop_intermediate_outputs(self) -> list[OutputParam]:
-        # the loop logic collects each segment's decoded frames
-        return [
-            OutputParam(
-                "segment_frames",
-                type_hint=list[torch.Tensor],
-                description="Per-segment decoded frames on CPU, each `[1, 3, T, H, W]`",
-            ),
-        ]
-
     @torch.no_grad()
     def __call__(self, components, state: PipelineState):
         block_state = self.get_block_state(state)
-
-        # `segment_frames` collects each segment's decoded frames on CPU; `out_frames` (this segment's frames,
-        # on device) stays in the state for the prev-frames step of the next iteration to condition on.
-        block_state.segment_frames = []
         for k in range(block_state.num_segments):
             components, state = self.loop_step(components, state, k=k)
-            block_state.segment_frames.append(state.get("out_frames").cpu())
-        self.set_block_state(state, block_state)
-
         return components, state
 
     @torch.no_grad()
     def stream(self, components, state: PipelineState):
         block_state = self.get_block_state(state)
-
-        block_state.segment_frames = []
         for k in range(block_state.num_segments):
             components, state = yield from self.stream_step(components, state, k=k)
-            block_state.segment_frames.append(state.get("out_frames").cpu())
-        self.set_block_state(state, block_state)
-
         return components, state
 
 
@@ -915,6 +940,7 @@ class WanAnimate2DenoiseStep(WanAnimate2SegmentLoopWrapper):
         WanAnimate2RefExtractStep,
         WanAnimate2SegmentDenoiseStep,
         WanAnimate2SegmentDecodeStep,
+        WanAnimate2SegmentCollectStep,
     ]
     block_names = [
         "vae_encoder",
@@ -924,6 +950,7 @@ class WanAnimate2DenoiseStep(WanAnimate2SegmentLoopWrapper):
         "ref_extract",
         "denoise_inner",
         "decode",
+        "collect",
     ]
 
     @property
@@ -931,7 +958,7 @@ class WanAnimate2DenoiseStep(WanAnimate2SegmentLoopWrapper):
         return (
             "Segment denoise step that iterates over the driving video's segments.\n"
             "At each segment: vae_encoder -> prev_frames -> prepare -> scheduler_reset -> ref_extract -> "
-            "denoise_inner (a nested denoising loop over this segment's timesteps) -> decode."
+            "denoise_inner (a nested denoising loop over this segment's timesteps) -> decode -> collect."
         )
 
 
@@ -946,6 +973,7 @@ class WanAnimate2DistilledDenoiseStep(WanAnimate2SegmentLoopWrapper):
         WanAnimate2RefExtractStep,
         WanAnimate2DistilledSegmentDenoiseStep,
         WanAnimate2SegmentDecodeStep,
+        WanAnimate2SegmentCollectStep,
     ]
     block_names = [
         "vae_encoder",
@@ -955,6 +983,7 @@ class WanAnimate2DistilledDenoiseStep(WanAnimate2SegmentLoopWrapper):
         "ref_extract",
         "denoise_inner",
         "decode",
+        "collect",
     ]
 
     @property
@@ -963,5 +992,5 @@ class WanAnimate2DistilledDenoiseStep(WanAnimate2SegmentLoopWrapper):
             "Segment denoise step for the distilled model that iterates over the driving video's segments.\n"
             "At each segment: vae_encoder -> prev_frames -> prepare -> scheduler_reset -> ref_extract -> "
             "denoise_inner (a nested denoising loop over this segment's timesteps, no classifier-free guidance) "
-            "-> decode."
+            "-> decode -> collect."
         )
