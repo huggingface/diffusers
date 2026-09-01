@@ -6,7 +6,7 @@ from .cache import (
     PyramidAttentionBroadcastTesterMixin,
     TaylorSeerCacheTesterMixin,
 )
-from .common import BasePipelineTesterConfig, PipelineTesterMixin
+from .common import BasePipelineTesterConfig, PipelineTesterMixin, assert_mean_pixel_difference
 from .from_pipe import FromPipeTesterMixin
 from .ip_adapter import FluxIPAdapterTesterMixin, IPAdapterTesterMixin
 from .lora import LoraMemoryTesterMixin, LoraTesterMixin, UNetLoraTesterMixin
@@ -17,7 +17,6 @@ from .memory import (
     PipelineOffloadTesterMixin,
 )
 from .utils import (
-    assert_mean_pixel_difference,
     check_qkv_fused_layers_exist,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,

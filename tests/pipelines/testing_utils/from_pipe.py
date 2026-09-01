@@ -42,7 +42,7 @@ class FromPipeTesterMixin(BasePipelineOutputMixin):
     """`DiffusionPipeline.from_pipe` tests for pipelines that are variants of an existing one.
 
     Composed with `BasePipelineTesterConfig`, which supplies `pipeline_class`, `get_dummy_components()` and
-    `get_dummy_inputs()`. The pytest-style successor of the removed unittest-era `PipelineFromPipeTesterMixin`.
+    `get_dummy_inputs()`.
     """
 
     # Set on the test class to pull the original pipeline from a repo other than the default for its class.
