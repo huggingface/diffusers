@@ -17,7 +17,6 @@ import torch
 
 from diffusers import LTX2ImageToVideoPipeline
 from diffusers.pipelines.ltx2 import LTX2LatentUpsamplePipeline
-from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 
 from ...testing_utils import assert_tensors_close, enable_full_determinism, torch_device
 from ..testing_utils import PipelineTesterMixin
@@ -26,6 +25,7 @@ from .testing_utils import (
     LTX2LoraMemoryTesterMixin,
     LTX2LoraTesterMixin,
     LTX2MemoryTesterMixin,
+    get_dummy_latent_upsampler,
 )
 
 
@@ -47,13 +47,6 @@ class LTX2ImageToVideoPipelineTesterConfig(LTX2BaseTesterConfig):
         ]
     )
     batch_input_params = frozenset(["prompt", "negative_prompt", "image"])
-
-    def get_dummy_upsample_component(self, in_channels=4, mid_channels=32, num_blocks_per_stage=1):
-        return LTX2LatentUpsamplerModel(
-            in_channels=in_channels,
-            mid_channels=mid_channels,
-            num_blocks_per_stage=num_blocks_per_stage,
-        )
 
     def get_dummy_inputs(self):
         generator = self.get_generator(0)
@@ -183,7 +176,7 @@ class TestLTX2ImageToVideoPipeline(LTX2ImageToVideoPipelineTesterConfig, Pipelin
         assert audio_latent.shape == (1, 2, 5, 2)
         assert audio_latent.shape[1] == pipe.vocoder.config.out_channels
 
-        upsampler = self.get_dummy_upsample_component(in_channels=video_latent.shape[1])
+        upsampler = get_dummy_latent_upsampler(in_channels=video_latent.shape[1])
         upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=upsampler)
         upscaled_video_latent = upsample_pipe(latents=video_latent, output_type="latent", return_dict=False)[0]
         assert upscaled_video_latent.shape == (1, 4, 3, 32, 32)
