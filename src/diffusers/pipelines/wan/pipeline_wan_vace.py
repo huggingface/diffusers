@@ -955,6 +955,14 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             boundary_timestep = None
 
+        if boundary_timestep is not None:
+            n_steps_t1 = sum(1 for t in timesteps if t >= boundary_timestep)
+            n_steps_t2 = len(timesteps) - n_steps_t1
+            if self.transformer is not None:
+                self.transformer._mag_cache_expected_steps = n_steps_t1
+            if self.transformer_2 is not None:
+                self.transformer_2._mag_cache_expected_steps = n_steps_t2
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
