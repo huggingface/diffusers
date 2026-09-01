@@ -341,6 +341,38 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
         for component_name in onload_names:
             getattr(pipe, component_name).to(torch_device)
 
+        if group_offloading_kwargs.get("use_stream"):
+            self._assert_streams_took_effect(pipe, offload_names)
+
+    @staticmethod
+    def _count_streamed_groups(component):
+        """Distinct offload groups on `component` that carry a stream (several submodules share one group)."""
+        streamed = {}
+        for submodule in component.modules():
+            registry = getattr(submodule, "_diffusers_hook", None)
+            hook = registry.get_hook("group_offloading") if registry is not None else None
+            if hook is not None:
+                streamed[id(hook.group)] = hook.group.stream is not None
+        return sum(streamed.values())
+
+    def _assert_streams_took_effect(self, pipe, offload_names):
+        """Guard against `use_stream=True` silently becoming a no-op.
+
+        The count is pipeline-wide on purpose. A component can legitimately contribute zero: only groups built from
+        `ModuleList`/`Sequential` children get a stream, while the per-node unmatched group is always created with
+        `stream=None` because nothing precedes it to prefetch it. So a component with no such children streams
+        nothing — a `transformers` CLIP text encoder at block level, for instance — and that is not a defect.
+        Across the whole pipeline at least one group must stream, and asserting rather than skipping matters here:
+        if `use_stream` ever stopped being honoured, every count would fall to zero, and a skip would turn the
+        entire streaming suite green by omission instead of failing.
+        """
+        streamed = sum(self._count_streamed_groups(getattr(pipe, name)) for name in offload_names)
+        assert streamed > 0, (
+            f"`use_stream=True` produced no streamed offload group across {sorted(offload_names)} for "
+            f"{self.pipeline_class.__name__}. Either the flag stopped taking effect, or none of these components "
+            f"has `ModuleList`/`Sequential` children to group into prefetchable blocks."
+        )
+
     def _run_group_offload_inference(self, base_pipe_output, expected_max_difference, msg, **group_offloading_kwargs):
         # Build the offload pipeline the same way as `base_pipe_output` so that group offloading is the only
         # difference under test. It stays on CPU here — the components are placed as they are hooked.
@@ -367,6 +399,37 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
             expected_max_difference,
             msg="leaf-level group offloading should not affect the inference results",
             offload_type="leaf_level",
+        )
+
+    def _skip_if_streams_unsupported(self):
+        # `apply_group_offloading` raises rather than degrading when `use_stream=True` has nowhere to put a stream.
+        if not (torch.cuda.is_available() or (hasattr(torch, "xpu") and torch.xpu.is_available())):
+            pytest.skip("Group offloading with streams requires a CUDA or Intel XPU device.")
+
+    @require_torch_accelerator
+    def test_group_offloading_inference_block_level_streaming(self, base_pipe_output, expected_max_difference=1e-4):
+        # `use_stream=True` prefetches the next group on a side stream while the current one computes, which needs
+        # the group execution order. `LazyPrefetchGroupOffloadingHook` traces it on the first forward pass and wires
+        # each group to its successor, so this covers a code path the non-streaming tests never reach.
+        self._skip_if_streams_unsupported()
+        self._run_group_offload_inference(
+            base_pipe_output,
+            expected_max_difference,
+            msg="block-level group offloading with streams should not affect the inference results",
+            offload_type="block_level",
+            num_blocks_per_group=1,
+            use_stream=True,
+        )
+
+    @require_torch_accelerator
+    def test_group_offloading_inference_leaf_level_streaming(self, base_pipe_output, expected_max_difference=1e-4):
+        self._skip_if_streams_unsupported()
+        self._run_group_offload_inference(
+            base_pipe_output,
+            expected_max_difference,
+            msg="leaf-level group offloading with streams should not affect the inference results",
+            offload_type="leaf_level",
+            use_stream=True,
         )
 
     @require_torch_accelerator
