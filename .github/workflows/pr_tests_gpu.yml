@@ -14,7 +14,7 @@ on:
       - "src/diffusers/loaders/lora_base.py"
       - "src/diffusers/loaders/lora_pipeline.py"
       - "src/diffusers/loaders/peft.py"
-      - "tests/pipelines/test_pipelines_common.py"
+      - "tests/pipelines/testing_utils/**.py"
       - "tests/models/test_modeling_common.py"
       - "examples/**/*.py"
   workflow_dispatch:
