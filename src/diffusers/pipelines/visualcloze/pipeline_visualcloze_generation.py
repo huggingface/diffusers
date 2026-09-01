@@ -175,6 +175,9 @@ class VisualClozeGenerationPipeline(
             transformer=transformer,
             scheduler=scheduler,
         )
+        # `resolution` is not a module, so it has to be registered explicitly to survive a
+        # `save_pretrained` / `from_pretrained` round-trip.
+        self.register_to_config(resolution=resolution)
         self.resolution = resolution
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
@@ -715,8 +718,9 @@ class VisualClozeGenerationPipeline(
                 Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
                 If not provided, pooled text embeddings will be generated from `prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                The output format of the generate image. Choose between `"pil"`
+                ([PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`), `"np"` (`np.array`) or `"pt"`
+                (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.flux.FluxPipelineOutput`] instead of a plain tuple.
             joint_attention_kwargs (`dict`, *optional*):
@@ -907,11 +911,17 @@ class VisualClozeGenerationPipeline(
                     if cur_target_position[i]:
                         if output_type == "pil":
                             cropped.append(cur_image.crop((start, 0, start + size[1], size[0])))
+                        elif output_type == "pt":
+                            # `"pt"` images are `(channels, height, width)`, unlike the `(height, width, channels)`
+                            # layout of `"np"`, so the spatial crop applies to the last two axes.
+                            cropped.append(cur_image[:, 0 : size[0], start : start + size[1]])
                         else:
                             cropped.append(cur_image[0 : size[0], start : start + size[1]])
                     start += size[1]
                 image.append(cropped)
-            if output_type != "pil":
+            if output_type == "pt":
+                image = torch.stack([arr for sub_image in image for arr in sub_image], dim=0)
+            elif output_type != "pil":
                 image = np.concatenate([arr[None] for sub_image in image for arr in sub_image], axis=0)
 
         # Offload all models

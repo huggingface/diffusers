@@ -28,7 +28,7 @@ from diffusers.pipelines.ltx2.utils import ANCHOR_KEYFRAME_STRENGTH
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin
-from .dfr_dummies import get_dfr_dummy_components, get_dfr_dummy_inputs, get_temporal_dummy_components
+from .testing_utils import get_dfr_dummy_components, get_dfr_dummy_inputs, get_temporal_dummy_components
 
 
 enable_full_determinism()
@@ -41,11 +41,9 @@ class LTX2DFRTemporalRefinePipelineTesterConfig(BasePipelineTesterConfig):
     )
     batch_input_params = frozenset(["prompt"])
     output_shape = (17, 3, 32, 32)
-    optional_input_params = BasePipelineTesterConfig.optional_input_params - {
-        "num_inference_steps",
-        "num_images_per_prompt",
-        "latents",
-    }
+    # A refine round takes one canvas at a time, so there is no per-prompt multiplier; it takes a second latent
+    # input for the audio stream and schedules its passes with an explicit `sigmas` list, not `num_inference_steps`.
+    optional_input_params = frozenset(["generator", "latents", "audio_latents", "output_type", "return_dict"])
 
     def get_dummy_components(self):
         return get_temporal_dummy_components()
@@ -80,7 +78,7 @@ class TestLTX2DFRTemporalRefinePipeline(LTX2DFRTemporalRefinePipelineTesterConfi
         pass
 
     def test_temporal_upsample_round_doubles_the_frame_count(self):
-        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         output = pipe(**self.get_dummy_inputs())
         assert output.frames.shape[1] == (9 - 1) * 2 + 1
         assert pipe.num_timesteps == 2
@@ -104,7 +102,7 @@ class TestLTX2DFRTemporalRefinePipeline(LTX2DFRTemporalRefinePipelineTesterConfi
     def test_temporal_round_tiles_get_distinct_ancestral_noise(self):
         dfr = LTX2DFRPipeline(**get_dfr_dummy_components()).to(torch_device)
         stage = dfr(**get_dfr_dummy_inputs(generator=self.get_generator(0), num_frames=17, output_type="latent"))
-        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         seeds = []
         original = pipe.denoise
 
@@ -147,7 +145,7 @@ class TestLTX2DFRTemporalRefinePipeline(LTX2DFRTemporalRefinePipelineTesterConfi
                 conditions=[LTX2VideoCondition(frames=image, index=4, strength=1.0, crf=0)],
             )
         )
-        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         coords = []
         original = pipe.prepare_latents
 
@@ -207,7 +205,7 @@ class TestLTX2DFRTemporalRefinePipeline(LTX2DFRTemporalRefinePipelineTesterConfi
                 conditions=LTX2VideoCondition(frames=frame, index=0, strength=1.0, crf=0),
             )
         )
-        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         shared = {
             "prompt": "a robot dancing",
             "height": 32,
@@ -244,7 +242,7 @@ class TestLTX2DFRTemporalRefinePipeline(LTX2DFRTemporalRefinePipelineTesterConfi
     def test_a_carried_slot_is_the_copy_the_stitched_canvas_kept(self):
         dfr = LTX2DFRPipeline(**get_dfr_dummy_components()).to(torch_device)
         stage = dfr(**get_dfr_dummy_inputs(generator=self.get_generator(0), num_frames=17, output_type="latent"))
-        pipe = self.get_pipeline(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         slot_slices, anchors, denoised = [], [], []
         original_prepare, original_denoise = pipe.prepare_latents, pipe.denoise
 
