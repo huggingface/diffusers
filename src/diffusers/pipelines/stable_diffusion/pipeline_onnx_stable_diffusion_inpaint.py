@@ -54,7 +54,7 @@ def prepare_mask_and_masked_image(image, mask, latents_shape):
 
 
 class OnnxStableDiffusionInpaintPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
-    _last_supported_version = "0.42.0"
+    _last_supported_version = "0.43.0"
 
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.

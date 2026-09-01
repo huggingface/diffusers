@@ -50,7 +50,7 @@ ORT_TO_NP_TYPE = {
 
 
 class OnnxRuntimeModel:
-    _last_supported_version = "0.42.0"
+    _last_supported_version = "0.43.0"
 
     def __init__(self, model=None, **kwargs):
         deprecate(

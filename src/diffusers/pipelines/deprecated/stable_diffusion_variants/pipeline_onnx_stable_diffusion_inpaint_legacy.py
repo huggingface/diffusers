@@ -39,7 +39,7 @@ def preprocess_mask(mask, scale_factor=8):
 
 
 class OnnxStableDiffusionInpaintPipelineLegacy(DeprecatedPipelineMixin, DiffusionPipeline):
-    _last_supported_version = "0.42.0"
+    _last_supported_version = "0.43.0"
 
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. This is a *legacy feature* for Onnx pipelines to

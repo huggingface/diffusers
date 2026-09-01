@@ -54,7 +54,7 @@ def preprocess(image):
 
 
 class OnnxStableDiffusionUpscalePipeline(DeprecatedPipelineMixin, DiffusionPipeline):
-    _last_supported_version = "0.42.0"
+    _last_supported_version = "0.43.0"
 
     vae: OnnxRuntimeModel
     text_encoder: OnnxRuntimeModel
