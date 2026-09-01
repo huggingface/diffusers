@@ -254,8 +254,8 @@ class SD3ControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMix
     def from_transformer(
         cls, transformer, num_layers=12, num_extra_conditioning_channels=1, load_weights_from_transformer=True
     ):
-        config = transformer.config
-        config["num_layers"] = num_layers or config.num_layers
+        config = dict(transformer.config)
+        config["num_layers"] = num_layers or transformer.config.num_layers
         config["extra_conditioning_channels"] = num_extra_conditioning_channels
         controlnet = cls.from_config(config)
 
