@@ -679,9 +679,10 @@ class ModularLoopPipelineBlocks(ModularPipelineBlocks):
     Base class for leaf blocks that run inside an [`IterativePipelineBlocks`] loop.
 
     The only difference from [`ModularPipelineBlocks`] is the `__call__` contract: in addition to `(components,
-    state)`, the block accepts the enclosing loop's variables as call arguments — its signature must name exactly the
-    loop's `loop_variables` (e.g. `def __call__(self, components, state, i, t)`), which the loop validates before the
-    first iteration.
+    state)`, the block receives the enclosing loop's variables as keyword call arguments — its signature names the
+    loop variables it uses and declares `**kwargs` for any it ignores (e.g. `def __call__(self, components, state, t,
+    **kwargs)`; naming all of them without `**kwargs` works too). The loop validates this at construction: a named
+    parameter that is not a loop variable, or a missing loop variable without a `**kwargs` catch-all, raises.
 
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
@@ -883,8 +884,8 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             raise
 
     def stream(self, pipeline, state: PipelineState):
-        # Same branch selection as `__call__`. The branch is transparent in event paths, as it is in
-        # `get_execution_blocks`: events carry the name this conditional block has in its parent, not the branch name.
+        # Same branch selection as `__call__`. The branch does not add a level to event paths: "core_denoise.denoise",
+        # not "core_denoise.t2v.denoise"/"core_denoise.i2v.denoise" — so `event.path` filters keep working whichever branch runs.
         trigger_kwargs = {name: state.get(name) for name in self.block_trigger_inputs if name is not None}
         block_name = self.select_block(**trigger_kwargs)
 
@@ -1509,8 +1510,8 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
     ```
 
     Sub-block outputs are written to the pipeline state as usual and persist after the loop. The loop logic's own
-    inputs (e.g. `timesteps`) and outputs are declared in `loop_inputs` / `loop_intermediate_outputs`: they are
-    surfaced alongside the sub-blocks' in the aggregated `inputs` / `intermediate_outputs`, and they are what
+    inputs (e.g. `timesteps`) and outputs are declared in `loop_inputs` / `loop_intermediate_outputs`: they join
+    the sub-blocks' in the aggregated `inputs` / `intermediate_outputs`, and they are what
     `get_block_state` / `set_block_state` read and write for the loop block itself — sub-block values live in the
     pipeline state, not in the loop's block state. A component used by the loop logic itself (e.g. the scheduler) is added by
     overriding `expected_components`.
@@ -1593,7 +1594,8 @@ class IterativePipelineBlocks(SequentialPipelineBlocks):
     @classmethod
     def from_blocks_dict(cls, blocks_dict, description: str | None = None) -> "IterativePipelineBlocks":
         instance = super().from_blocks_dict(blocks_dict, description)
-        # sub_blocks are assigned after __init__ on this path, so validate again
+        # `super().from_blocks_dict` runs `__init__` first and fills `sub_blocks` from `blocks_dict` after,
+        # so the validation in `__init__` never saw these blocks — validate them now
         instance._validate_sub_blocks()
         return instance
 
@@ -3311,8 +3313,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
     def stream(self, state: PipelineState = None, **kwargs):
         """
-        Run the pipeline as a generator that yields a [`StreamEvent`] after every iteration of every loop block — each
-        denoising step, each segment of a chunked video, and so on — with the live [`PipelineState`] attached. The
+        Run the pipeline as a generator that yields a [`StreamEvent`] after every iteration of every loop block
+        (e.g. each denoising step, each segment of a chunked video), with the live [`PipelineState`] attached. The
         generator's return value is the final state, the same one `__call__` returns.
 
         Args:

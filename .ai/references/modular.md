@@ -188,7 +188,7 @@ Autoregressive video models nest loops: an outer segment loop (`loop_variables =
 The wrapper contains only the loop logic — how to iterate through the steps. Its `loop_inputs` are just what that takes (`timesteps`, `num_segments`); all data flows through the steps, which read and write the pipeline state directly. If the loop logic seems to need to do more than iterate — collect results, carry something to the next iteration — add a loop step for it instead (in `wan_animate_2`, a small `collect` step appends each segment's decoded frames to `segment_frames`, and the next segment's prep step reads it back).
 
 Two small notes:
-- A value written late in iteration `k` and read early in iteration `k + 1` would surface as a pipeline input (the first read has no writer before it). Seed it in a block that runs before the loop, declare it as an output, set it to `None`, and it stays internal.
+- A value written late in iteration `k` and read early in iteration `k + 1` would become a pipeline input (the first read has no writer before it). Seed it in a block that runs before the loop, declare it as an output, set it to `None`, and it stays internal.
 - Components the loop logic itself uses (e.g. `flux2`'s wrapper reads `scheduler.order` to compute the progress-bar warmup steps) are added by overriding `expected_components`.
 
 Existing pipelines still use `LoopSequentialPipelineBlocks` (steps receive a shared flattened `block_state`, no nesting, no streaming). Leave them alone unless you are porting the pipeline; don't use it for new ones.
