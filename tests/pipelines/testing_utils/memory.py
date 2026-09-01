@@ -283,6 +283,7 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
             return self.get_pipeline()
 
         def enable_group_offload_on_component(pipe, group_offloading_kwargs):
+            offloaded_component_names = set()
             # We intentionally don't test VAE's here. This is because some tests enable tiling on the VAE. If
             # tiling is enabled and a forward pass is run, when accelerator streams are used, the execution order
             # of the layers is not traced correctly. This causes errors. For apply group offloading to VAE, a
@@ -318,9 +319,13 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
                     for module in component.modules()
                     if hasattr(module, "_diffusers_hook")
                 )
-            for component_name in ["vae", "vqvae", "image_encoder"]:
-                component = getattr(pipe, component_name, None)
-                if isinstance(component, torch.nn.Module):
+                offloaded_component_names.add(component_name)
+            # Everything not group-offloaded above still has to be moved to the accelerator: the pipeline is built
+            # on CPU, so any module component left behind would meet accelerator inputs with CPU weights. Covers
+            # the VAE skipped above as well as components no pipeline-agnostic list would name — the depth
+            # estimator of `StableDiffusionDepth2ImgPipeline`, for one.
+            for component_name, component in pipe.components.items():
+                if component_name not in offloaded_component_names and isinstance(component, torch.nn.Module):
                     component.to(torch_device)
 
         def run_forward(pipe):
