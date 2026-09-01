@@ -445,12 +445,9 @@ def test_quantizer_exports_reload_ready_config_after_data_free_load(monkeypatch)
     config = NunchakuLiteQuantizationConfig(
         svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32, "smooth_exponent": 0.25},
         pre_quantized=False,
-        # Explicit (matching the sibling `test_quantizer_infers_targets_when_omitted`
-        # test): `exclude_targets=None` on the config becomes `()` in the call to
-        # `infer_data_free_targets`, which is itself the "no exclusions" override
-        # rather than "use the norm/modulation defaults" - a separate, pre-existing
-        # quirk this test sidesteps rather than depends on.
-        exclude_targets=["norm_linear"],
+        # exclude_targets omitted: relies on the default norm/modulation exclusion
+        # patterns to filter out `norm_linear` (see
+        # test_quantizer_applies_default_exclude_patterns_when_omitted).
     )
     quantizer = NunchakuLiteQuantizer(config, pre_quantized=False)
     model = _InferenceToyModel()
@@ -475,3 +472,43 @@ def test_quantizer_exports_reload_ready_config_after_data_free_load(monkeypatch)
     # The original, still-loading config keeps its own pre_quantized=False state.
     assert quantizer.pre_quantized is False
     assert config.pre_quantized is False
+
+
+def test_quantizer_applies_default_exclude_patterns_when_omitted(monkeypatch):
+    """A config with no `exclude_targets` must still get the norm/modulation defaults.
+
+    Regression test: `_process_model_before_weight_loading` used to pass
+    `self.quantization_config.exclude_targets or ()` to `infer_data_free_targets`,
+    turning the config's own `None` default into an explicit empty sequence -
+    which that function treats as "use exactly this (no exclusions)" rather than
+    "fall back to the norm/modulation defaults". `norm_linear`-style targets were
+    silently never excluded when going through the quantizer, unlike a direct
+    `infer_data_free_targets(model, group_size=...)` call with the argument
+    genuinely omitted (see `test_infer_data_free_targets`).
+    """
+    import sys
+    import types
+
+    from diffusers.quantizers.nunchaku.nunchaku_quantizer import NunchakuLiteQuantizer
+
+    config = NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
+        pre_quantized=False,
+    )
+    assert config.exclude_targets is None
+    quantizer = NunchakuLiteQuantizer(config, pre_quantized=False)
+    model = _InferenceToyModel()
+    model.config = types.SimpleNamespace()
+
+    stub = types.ModuleType("diffusers.quantizers.nunchaku.utils")
+    stub.replace_with_nunchaku_linear = lambda target_model, quantization_config, compute_dtype: len(
+        quantization_config["svdq_w4a4"]["targets"]
+    )
+    stub.check_strict_state_dict_match = None
+    monkeypatch.setitem(sys.modules, "diffusers.quantizers.nunchaku.utils", stub)
+
+    quantizer._process_model_before_weight_loading(model)
+
+    # Matches infer_data_free_targets(model, group_size=16)'s own default-pattern
+    # result in test_infer_data_free_targets: norm_linear is excluded.
+    assert config.svdq_w4a4["targets"] == ["blocks.0.proj", "blocks.1.proj"]

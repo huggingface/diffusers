@@ -85,7 +85,11 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
             svdq_config["targets"] = infer_data_free_targets(
                 model,
                 group_size=svdq_config["group_size"],
-                exclude_targets=self.quantization_config.exclude_targets or (),
+                # `None` (the config's own default when unset) must reach
+                # `infer_data_free_targets` as-is, not coerced to `()` - that function
+                # treats `None` as "use the norm/modulation defaults" and any explicit
+                # sequence, including an empty one, as "use exactly this instead".
+                exclude_targets=self.quantization_config.exclude_targets,
             )
             logger.info(f"Inferred {len(svdq_config['targets'])} data-free quantization targets.")
 
