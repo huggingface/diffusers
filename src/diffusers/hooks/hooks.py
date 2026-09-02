@@ -205,8 +205,10 @@ class HookRegistry:
             )
 
         rewritten_forward = create_new_forward(fn_ref)
+        # Wrap from the original `forward` so `inspect.signature` follows `__wrapped__` to the real
+        # signature instead of the generic `(module, *args, **kwargs)`, which breaks `torch.export`.
         self._module_ref.forward = functools.update_wrapper(
-            functools.partial(rewritten_forward, self._module_ref), rewritten_forward
+            functools.partial(rewritten_forward, self._module_ref), forward
         )
 
         hook.fn_ref = fn_ref

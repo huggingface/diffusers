@@ -35,8 +35,8 @@ import torch
 from diffusers import Krea2Pipeline
 
 # Load from a local directory produced by the Krea 2 conversion (no hub repo yet).
-pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Raw", torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Raw", dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "a fox in the snow"
 image = pipe(
@@ -56,8 +56,8 @@ We additionally provide an example for using Krea2 Turbo :
 import torch
 from diffusers import Krea2Pipeline
 
-pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(
     "a fox in the snow",
@@ -92,8 +92,8 @@ import torch
 from diffusers import ClassifierFreeGuidance, ModularPipeline
 
 pipe = ModularPipeline.from_pretrained("krea/Krea-2-Raw")
-pipe.load_components(torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 
 image = pipe(
@@ -116,8 +116,8 @@ import torch
 from diffusers import ModularPipeline
 
 pipe = ModularPipeline.from_pretrained("krea/Krea-2-Turbo")
-pipe.load_components(torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(
     prompt="a fox in the snow",

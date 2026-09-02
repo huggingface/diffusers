@@ -178,12 +178,12 @@ Variant란 일반적으로 다음과 같은 체크포인트들을 의미합니�
 | **checkpoint type** | **weight name**                     | **argument for loading weights** |
 | ------------------- | ----------------------------------- | -------------------------------- |
 | original            | diffusion_pytorch_model.bin         |                                  |
-| floating point      | diffusion_pytorch_model.fp16.bin    | `variant`, `torch_dtype`         |
+| floating point      | diffusion_pytorch_model.fp16.bin    | `variant`, `dtype`         |
 | non-EMA             | diffusion_pytorch_model.non_ema.bin | `variant`                        |
 
 variant를 로드할 때 2개의 중요한 argument가 있습니다.
 
-* `torch_dtype`은 불러올 체크포인트의 부동소수점을 정의합니다. 예를 들어 `torch_dtype=torch.float16`을 명시함으로써 가중치의 부동소수점 타입을 `fl16`으로 변환할 수 있습니다. (만약 따로 설정하지 않을 경우, 기본값으로 `fp32` 타입의 가중치가 로딩됩니다.) 또한 `variant` 인자를 명시하지 않은 채로 체크포인트를 불러온 다음, 해당 체크포인트를 `torch_dtype=torch.float16` 인자를 통해 `fp16` 타입으로 변환하는 것 역시 가능합니다. 이 경우 기본으로 설정된 `fp32` 가중치가 먼저 다운로드되고, 해당 가중치들을 불러온 다음 `fp16` 타입으로 변환하게 됩니다.
+* `dtype`은 불러올 체크포인트의 부동소수점을 정의합니다. 예를 들어 `dtype=torch.float16`을 명시함으로써 가중치의 부동소수점 타입을 `fl16`으로 변환할 수 있습니다. (만약 따로 설정하지 않을 경우, 기본값으로 `fp32` 타입의 가중치가 로딩됩니다.) 또한 `variant` 인자를 명시하지 않은 채로 체크포인트를 불러온 다음, 해당 체크포인트를 `dtype=torch.float16` 인자를 통해 `fp16` 타입으로 변환하는 것 역시 가능합니다. 이 경우 기본으로 설정된 `fp32` 가중치가 먼저 다운로드되고, 해당 가중치들을 불러온 다음 `fp16` 타입으로 변환하게 됩니다.
 * `variant` 인자는 리포지토리에서 어떤 variant를 불러올 것인가를 정의합니다. 가령  [`diffusers/stable-diffusion-variants`](https://huggingface.co/diffusers/stable-diffusion-variants/tree/main/unet) 리포지토리로부터 `non_ema` 체크포인트를 불러오고자 한다면, `variant="non_ema"` 인자를 전달해야 합니다.
 
 ```python
@@ -191,7 +191,7 @@ from diffusers import DiffusionPipeline
 
 # load fp16 variant
 stable_diffusion = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", variant="fp16", dtype=torch.float16
 )
 # load non_ema variant
 stable_diffusion = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", variant="non_ema")
@@ -212,10 +212,10 @@ stable_diffusion.save_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", 
 
 ```python
 # 👎 this won't work
-stable_diffusion = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", torch_dtype=torch.float16)
+stable_diffusion = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", dtype=torch.float16)
 # 👍 this works
 stable_diffusion = DiffusionPipeline.from_pretrained(
-    "./stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
+    "./stable-diffusion-v1-5", variant="fp16", dtype=torch.float16
 )
 ```
 

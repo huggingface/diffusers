@@ -13,13 +13,13 @@
 # limitations under the License.
 
 
-import numpy as np
 import torch
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel, CogVideoXVideoToVideoPipeline, DDIMScheduler
 
+from ...testing_utils import assert_tensors_close
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
@@ -35,6 +35,7 @@ class CogVideoXVideoToVideoPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt", "video"])
+    output_shape = (8, 3, 16, 16)
     # CogVideoX is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
@@ -129,7 +130,7 @@ class TestCogVideoXVideoToVideoPipeline(CogVideoXVideoToVideoPipelineTesterConfi
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (8, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.5644, 0.6029, 0.6017, 0.5937, 0.5991, 0.5907, 0.6141, 0.5340, 0.3184, 0.4219, 0.4406, 0.4330, 0.4692, 0.4547, 0.4562, 0.5092])
@@ -137,7 +138,7 @@ class TestCogVideoXVideoToVideoPipeline(CogVideoXVideoToVideoPipelineTesterConfi
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
@@ -194,14 +195,26 @@ class TestCogVideoXVideoToVideoPipeline(CogVideoXVideoToVideoPipelineTesterConfi
         frames = pipe(**inputs).frames
         image_slice_disabled = frames[0, -2:, -1, -3:, -3:]
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
-            "Fusion of QKV projections shouldn't affect the outputs."
+        assert_tensors_close(
+            original_image_slice,
+            image_slice_fused,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Fusion of QKV projections shouldn't affect the outputs.",
         )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert_tensors_close(
+            image_slice_fused,
+            image_slice_disabled,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
         )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
+        assert_tensors_close(
+            original_image_slice,
+            image_slice_disabled,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Original outputs should match when fused QKV projections are disabled.",
         )
 
 

@@ -20,17 +20,33 @@ detecting its runtime type, and can submit the same call to an HF Sandbox via `-
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import shlex
 import sys
-from argparse import ArgumentParser, Namespace, _SubParsersAction
+import time
+import uuid
+import wave
+from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _SubParsersAction
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
+import numpy as np
+import torch
+from huggingface_hub import HfApi, Sandbox, Volume, get_token, parse_hf_uri
 from huggingface_hub.cli._output import out
+from huggingface_hub.utils import send_telemetry
+from PIL import Image
 
+import diffusers
+from diffusers import ContextParallelConfig
 from diffusers.models.attention_dispatch import _HUB_KERNELS_REGISTRY
-from diffusers.utils import load_image, load_video, logging
+from diffusers.utils import export_to_video, load_image, load_video, logging
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+from diffusers.utils.torch_utils import torch_device
 
 from . import BaseDiffusersCLICommand
 
@@ -44,7 +60,7 @@ logger = logging.get_logger("diffusers-cli/run")
 
 DEFAULT_OUTPUT_DIR = str(Path.home() / ".diffusers" / "cli" / "run" / "outputs")
 DTYPE_CHOICES = ("auto", "float16", "fp16", "bfloat16", "bf16", "float32", "fp32")
-CPU_OFFLOAD_CHOICES = ("model", "group")
+CPU_OFFLOAD_CHOICES = ("model", "group", "auto")
 
 
 ATTENTION_BACKEND_CHOICES = ("default", *sorted(b.value for b in _HUB_KERNELS_REGISTRY))
@@ -54,6 +70,7 @@ ATTENTION_BACKEND_CHOICES = ("default", *sorted(b.value for b in _HUB_KERNELS_RE
 # `diffusers.utils.load_video` → list[PIL.Image.Image].
 _IMAGE_INPUT_KEYS = (
     "image",
+    "last_image",
     "mask_image",
     "control_image",
     "ip_adapter_image",
@@ -80,6 +97,9 @@ _DEFAULT_REMOTE_DEPS = (
     "safetensors",
     "sentencepiece",  # required by several text-encoder tokenizers (T5, LLaMA, …)
     "ftfy",  # required by older CLIP text-encoder paths
+    "peft",  # required by `load_lora_weights` when `--lora` is passed
+    "imageio",  # preferred `export_to_video` backend
+    "imageio-ffmpeg",  # bundles a static ffmpeg; the cv2 fallback needs system libs the slim image lacks
 )
 
 # Base sandbox image — provides torch + CUDA so `uv pip install --system`
@@ -147,7 +167,8 @@ def _add_loading_arguments(parser: ArgumentParser) -> None:
         help=(
             "JSON dict describing a LoRA adapter to attach after the pipeline loads. Repeat to stack "
             'multiple adapters. Format: \'{"lora_id": "<id>", "lora_scale": <float>}\'. `lora_scale` '
-            "defaults to 1.0; `adapter_name` is optional (auto-generated as `lora_<i>` when stacking)."
+            "defaults to 1.0; `adapter_name` is optional (auto-generated as `lora_<i>` when stacking); "
+            "`weight_name` picks the weight file when the repo ships more than one."
         ),
     )
 
@@ -160,7 +181,9 @@ def _add_optimization_arguments(parser: ArgumentParser) -> None:
         help=(
             "Offload pipeline components to CPU during inference. "
             "'model' uses enable_model_cpu_offload, "
-            "'group' uses pipeline.enable_group_offload(leaf_level, use_stream=True)."
+            "'group' uses pipeline.enable_group_offload(leaf_level, use_stream=True). "
+            "Modular pipelines only support 'auto', which offloads through a ComponentsManager "
+            "via enable_auto_cpu_offload."
         ),
     )
     parser.add_argument(
@@ -305,7 +328,6 @@ def _add_remote_arguments(parser: ArgumentParser) -> None:
 def _resolve_dtype(name: str | None):
     if name in (None, "auto"):
         return "auto"
-    import torch
 
     mapping = {
         "fp32": torch.float32,
@@ -327,13 +349,9 @@ def _resolve_device_map(raw: str | None) -> str | dict:
     `"cuda:1"`, `"cpu"`, `"mps"`). Auto-detects when `raw is None`, pinning to `cuda:$LOCAL_RANK` under torchrun.
     """
     if raw is None:
-        from diffusers.utils.torch_utils import torch_device
-
         if torch_device == "cuda":
             local_rank = os.environ.get("LOCAL_RANK")
             if local_rank is not None:
-                import torch
-
                 torch.cuda.set_device(int(local_rank))
                 return f"cuda:{local_rank}"
         return torch_device
@@ -350,19 +368,36 @@ def _resolve_device_map(raw: str | None) -> str | dict:
     return raw
 
 
-def _apply_cpu_offload(pipeline: Any, mode: str, device_map: str | dict) -> None:
-    """Apply model or group CPU offload. Requires a single-device target (not balanced or dict)."""
+def _apply_cpu_offload(pipeline: Any, mode: str, device_map: str | dict, offload_margin: str | None = None) -> None:
+    """Apply CPU offload. Requires a single-device target (not balanced or dict).
+
+    Standard pipelines support 'model' and 'group'; modular pipelines offload through the ComponentsManager they were
+    loaded with ('auto').
+    """
     if not isinstance(device_map, str) or device_map == "balanced":
         raise SystemExit(
             "--cpu-offload requires --device-map to be a single device string (e.g. 'cuda'); "
             f"got {device_map!r}. balanced/dict placement is incompatible with CPU offload."
         )
 
+    if isinstance(pipeline, diffusers.ModularPipeline):
+        offload_kwargs = {"memory_reserve_margin": offload_margin} if offload_margin is not None else {}
+        pipeline._components_manager.enable_auto_cpu_offload(device=device_map, **offload_kwargs)
+        return
+
+    if mode == "auto":
+        raise SystemExit(
+            "--cpu-offload auto only applies to modular pipelines (it offloads through a "
+            "ComponentsManager). Use 'model' or 'group' for standard pipelines."
+        )
+    if offload_margin is not None:
+        logger.warning(
+            f"--offload-margin {offload_margin!r} only applies to `--cpu-offload auto`; "
+            f"ignoring it for `--cpu-offload {mode}`."
+        )
     if mode == "model":
         pipeline.enable_model_cpu_offload(device=device_map)
     elif mode == "group":
-        import torch
-
         pipeline.enable_group_offload(
             onload_device=torch.device(device_map),
             offload_type="leaf_level",
@@ -388,8 +423,6 @@ def _set_attention_backend(pipeline: Any, backend: str) -> None:
 
 
 def _enable_context_parallel(pipeline: Any) -> None:
-    import torch
-
     if not torch.distributed.is_available():
         raise SystemExit("--context-parallel requires a torch build with distributed support.")
 
@@ -404,8 +437,6 @@ def _enable_context_parallel(pipeline: Any) -> None:
             "--context-parallel requires a DiT-based pipeline. "
             f"{type(pipeline).__name__} does not expose a `transformer` with `enable_parallelism`."
         )
-
-    from diffusers import ContextParallelConfig
 
     transformer.enable_parallelism(
         config=ContextParallelConfig(
@@ -444,7 +475,6 @@ def _compile_denoiser(pipeline: Any, compile_spec: str) -> None:
     blocks (the bulk of the compute), much faster first-step latency than compiling the whole module. Falls back to
     full `torch.compile` if the model doesn't expose `_repeated_blocks`.
     """
-    import torch
 
     try:
         compile_kwargs = json.loads(compile_spec)
@@ -472,8 +502,9 @@ def _load_lora(pipeline: Any, args: Namespace) -> None:
     """Attach one or more LoRA adapters. Each `--lora` value is a JSON dict.
 
     Per-entry fields: `lora_id` (required), `lora_scale` (optional float, default 1.0), `adapter_name` (optional;
-    auto-generated as `lora_<i>` when stacking). Multiple `--lora` flags stack via a single `set_adapters(...)` call at
-    the end.
+    auto-generated as `lora_<i>` when stacking), `weight_name` (optional; required when the repo ships more than one
+    weight file, e.g. a ComfyUI variant alongside the diffusers one). Multiple `--lora` flags stack via a single
+    `set_adapters(...)` call at the end.
     """
     if not args.lora:
         return
@@ -496,7 +527,7 @@ def _load_lora(pipeline: Any, args: Namespace) -> None:
         if not lora_id:
             raise SystemExit(f"--lora entry {i} is missing 'lora_id'.")
         adapter_name = spec.get("adapter_name") or (f"lora_{i}" if len(specs) > 1 else "default")
-        pipeline.load_lora_weights(lora_id, adapter_name=adapter_name)
+        pipeline.load_lora_weights(lora_id, adapter_name=adapter_name, weight_name=spec.get("weight_name", None))
         names.append(adapter_name)
         scales.append(float(spec.get("lora_scale", 1.0)))
 
@@ -505,13 +536,14 @@ def _load_lora(pipeline: Any, args: Namespace) -> None:
 
 
 def _load_pipeline(args: Namespace) -> Any:
-    import diffusers
-
     # Detect modular repos by trying the standard config; `ModularPipeline` repos ship
     # `modular_model_index.json` instead of `model_index.json`, so `load_config` OSErrors.
+    # A repo can also ship a `model_index.json` whose `_class_name` is a modular pipeline
+    # (e.g. MiniMax-H3's repository-level entry), so route on the class, not just the file.
     try:
-        diffusers.DiffusionPipeline.load_config(args.model, token=args.token, revision=args.revision)
-        modular = False
+        config = diffusers.DiffusionPipeline.load_config(args.model, token=args.token, revision=args.revision)
+        cls = getattr(diffusers, str(config.get("_class_name")), None)
+        modular = isinstance(cls, type) and issubclass(cls, diffusers.ModularPipeline)
     except OSError:
         modular = True
 
@@ -531,6 +563,12 @@ def _load_pipeline(args: Namespace) -> Any:
         common_kwargs["device_map"] = device_map
 
     if modular:
+        if args.cpu_offload and args.cpu_offload != "auto":
+            raise SystemExit(
+                f"--cpu-offload {args.cpu_offload!r} is not supported for modular pipelines — they "
+                "offload through a ComponentsManager. Use `--cpu-offload auto`."
+            )
+        components_manager = diffusers.ComponentsManager() if args.cpu_offload else None
         # ModularPipeline.from_pretrained fetches only the pipeline config; component
         # weights come in via load_components(). `revision` scopes the config fetch,
         # so it stays on from_pretrained — each ComponentSpec pins its own revision,
@@ -540,14 +578,21 @@ def _load_pipeline(args: Namespace) -> Any:
             trust_remote_code=args.trust_remote_code,
             token=args.token,
             revision=args.revision,
+            components_manager=components_manager,
+            workflow=args.workflow,
         )
         pipeline.load_components(**common_kwargs)
     else:
+        if args.workflow:
+            logger.warning(
+                f"--workflow {args.workflow!r} only applies to modular pipelines; "
+                f"ignoring it — '{args.model}' loads as a standard DiffusionPipeline."
+            )
         pipeline = diffusers.DiffusionPipeline.from_pretrained(args.model, revision=args.revision, **common_kwargs)
 
     _load_lora(pipeline, args)
     if args.cpu_offload:
-        _apply_cpu_offload(pipeline, args.cpu_offload, device_map)
+        _apply_cpu_offload(pipeline, args.cpu_offload, device_map, args.offload_margin)
     _apply_optimizations(pipeline, args)
 
     return pipeline
@@ -575,12 +620,6 @@ def _load_audio(url_or_path: str) -> tuple[Any, int]:
     import torchaudio
 
     if url_or_path.startswith(("http://", "https://")):
-        import io
-
-        import httpx
-
-        from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
-
         resp = httpx.get(url_or_path, follow_redirects=True, timeout=DIFFUSERS_REQUEST_TIMEOUT)
         resp.raise_for_status()
         return torchaudio.load(io.BytesIO(resp.content))
@@ -629,21 +668,24 @@ def _resolve_media_inputs(call_kwargs: dict[str, Any]) -> None:
 def _get_generator(seed: int | None, device: str):
     if seed is None:
         return None
-    import torch
 
     generator_device = "cpu" if device == "mps" else device
     return torch.Generator(device=generator_device).manual_seed(seed)
 
 
-def _unwrap_pipeline_output(result: Any) -> Any:
-    """Unwrap a pipeline-output object into the raw payload the saver can dispatch on."""
-    if hasattr(result, "images"):
-        return result.images
-    if hasattr(result, "frames"):
-        return result.frames[0]
-    if hasattr(result, "audios"):
-        return result.audios
-    return result
+def _unwrap_pipeline_output(result: Any) -> list[Any]:
+    """Resolve a pipeline-output object into the media payloads the saver dispatches on.
+
+    An output can carry more than one media field (e.g. LTX2 returns video in `frames` and a waveform in `audio`), so
+    every known field that is present is saved, not just the first match. Payloads keep their batch dimension —
+    `_save_output` dispatches on the full batched shape.
+    """
+    payloads = [
+        getattr(result, name)
+        for name in ("images", "frames", "audios", "audio")
+        if getattr(result, name, None) is not None
+    ]
+    return payloads or [result]
 
 
 # ---------------------------------------------------------------------------
@@ -657,8 +699,6 @@ def _get_or_create_run_id() -> str:
     Format: `diffusers-run-<YYYYMMDDTHHMMSS>-<6-char-uuid>`. Same id is reused as the local output subdirectory, the
     remote bucket prefix, and the container-side `RUN_ID_ENV` so a run's artifacts are traceable end-to-end.
     """
-    import uuid
-    from datetime import datetime
 
     existing = os.environ.get(RUN_ID_ENV)
     if existing:
@@ -668,7 +708,7 @@ def _get_or_create_run_id() -> str:
     return run_id
 
 
-def _resolve_output_paths(task: str, num: int, explicit: str | None, ext: str) -> list[Path]:
+def _resolve_output_paths(num: int, explicit: str | None, ext: str) -> list[Path]:
     if explicit is None:
         base = Path(DEFAULT_OUTPUT_DIR) / _get_or_create_run_id()
         base.mkdir(parents=True, exist_ok=True)
@@ -687,59 +727,36 @@ def _resolve_output_paths(task: str, num: int, explicit: str | None, ext: str) -
 
 
 def _as_pil_list(value: Any):
-    try:
-        from PIL.Image import Image as PILImage
-    except ImportError:
-        return None
-    if isinstance(value, PILImage):
+    if isinstance(value, Image.Image):
         return [value]
-    if isinstance(value, (list, tuple)) and value and all(isinstance(v, PILImage) for v in value):
+    if isinstance(value, (list, tuple)) and value and all(isinstance(v, Image.Image) for v in value):
         return list(value)
     return None
 
 
 def _as_frame_sequence(value: Any):
-    try:
-        from PIL.Image import Image as PILImage
-    except ImportError:
-        PILImage = None  # type: ignore[assignment]
-
-    if isinstance(value, (list, tuple)) and len(value) >= 2:
-        first = value[0]
-        if PILImage is not None and isinstance(first, PILImage):
-            return list(value)
-        try:
-            import numpy as np
-
-            if isinstance(first, np.ndarray):
-                return list(value)
-        except ImportError:
-            pass
+    if isinstance(value, (list, tuple)) and len(value) >= 2 and isinstance(value[0], (Image.Image, np.ndarray)):
+        return list(value)
     return None
 
 
 def _as_audio_arrays(value: Any):
-    try:
-        import numpy as np
-    except ImportError:
-        return None
     if isinstance(value, np.ndarray) and value.ndim <= 2:
         return [value]
+    if isinstance(value, np.ndarray) and value.ndim == 3:
+        return list(value)
     if isinstance(value, (list, tuple)) and value and all(isinstance(v, np.ndarray) for v in value):
         return list(value)
     return None
 
 
-def _save_audio_arrays(audios, sampling_rate: int, args: Namespace, task: str) -> list[str]:
+def _save_audio_arrays(audios, sampling_rate: int, args: Namespace) -> list[str]:
     """Write each numpy audio array to a 16-bit PCM WAV at `sampling_rate` Hz.
 
     Uses the stdlib `wave` module so no scipy dependency is required.
     """
-    import wave
 
-    import numpy as np
-
-    paths = _resolve_output_paths(task, len(audios), args.output, ext="wav")
+    paths = _resolve_output_paths(len(audios), args.output, ext="wav")
     saved: list[str] = []
     for audio, path in zip(audios, paths):
         data = np.asarray(audio)
@@ -764,30 +781,92 @@ def _save_audio_arrays(audios, sampling_rate: int, args: Namespace, task: str) -
     return saved
 
 
-def _save_output(value: Any, args: Namespace, task: str) -> list[str]:
-    """Save `value` by dispatching on its runtime type."""
+def _save_videos(videos: list[Any], args: Namespace) -> list[str]:
+    """Write each frame sequence to mp4, plus every frame as `<video-stem>-frames/<NNNN>.png` beside it.
+
+    The per-video subfolder ties each frame to its video and keeps paths unique across a batch. Frames are written
+    first and need no video backend, so they double as the safety net: if `export_to_video` fails (e.g. `imageio`
+    missing), the frames are already on disk and only the mp4 is skipped.
+    """
+    mp4_paths = _resolve_output_paths(len(videos), args.output, ext="mp4")
+    saved: list[str] = []
+    for frames, path in zip(videos, mp4_paths):
+        frames = list(frames)
+        frames_dir = path.with_name(f"{path.stem}-frames")
+        frames_dir.mkdir(parents=True, exist_ok=True)
+        for i, frame in enumerate(frames):
+            if not isinstance(frame, Image.Image):
+                arr = np.asarray(frame)
+                if arr.dtype != np.uint8:
+                    arr = (np.clip(arr, 0.0, 1.0) * 255).round().astype(np.uint8)
+                frame = Image.fromarray(arr)
+            frame_path = frames_dir / f"{i:04d}.png"
+            frame.save(frame_path)
+            saved.append(str(frame_path))
+        try:
+            export_to_video(frames, str(path), fps=args.fps)
+            saved.append(str(path))
+        except Exception as e:
+            logger.warning(
+                f"Video export failed ({e}); the individual frames of {path.stem} are saved next to it as PNGs. "
+                "Install a video backend with: pip install imageio imageio-ffmpeg"
+            )
+    return saved
+
+
+def _save_output(value: Any, args: Namespace) -> list[str]:
+    """Save `value` by dispatching on its runtime type and, for arrays, its shape."""
+    # Tensors arrive only when the user explicitly asked for `output_type="pt"` (or the pipeline
+    # natively defaults to it, e.g. StableAudio). Postprocessed pt outputs are channels-first per
+    # frame — (B, C, H, W) images, (B, F, C, H, W) video from `postprocess_video` — while the array
+    # branches below expect channels-last, so convert here.
+    if isinstance(value, torch.Tensor):
+        arr = value.detach().to(torch.float32).cpu().numpy()
+        if arr.ndim == 5:
+            arr = arr.transpose(0, 1, 3, 4, 2)
+        elif arr.ndim == 4:
+            arr = arr.transpose(0, 2, 3, 1)
+        value = arr
+
+    # Array shapes are unambiguous where PIL lists are not: (B, F, H, W, C) is batched video,
+    # (B, H, W, C) is batched images.
+    if isinstance(value, np.ndarray):
+        if value.ndim == 5:
+            return _save_videos(list(value), args)
+        if value.ndim == 4:
+            paths = _resolve_output_paths(len(value), args.output, ext="png")
+            for arr, path in zip(value, paths):
+                if arr.dtype != np.uint8:
+                    arr = (np.clip(arr, 0.0, 1.0) * 255).round().astype(np.uint8)
+                Image.fromarray(arr).save(path)
+            return [str(p) for p in paths]
+
     pil_images = _as_pil_list(value)
     if pil_images is not None:
-        paths = _resolve_output_paths(task, len(pil_images), args.output, ext="png")
+        paths = _resolve_output_paths(len(pil_images), args.output, ext="png")
         for img, path in zip(pil_images, paths):
             img.save(path)
         return [str(p) for p in paths]
 
     frames = _as_frame_sequence(value)
     if frames is not None:
-        from diffusers.utils import export_to_video
+        return _save_videos([frames], args)
 
-        path = _resolve_output_paths(task, 1, args.output, ext="mp4")[0]
-        export_to_video(frames, str(path), fps=args.fps)
-        return [str(path)]
+    # A batch of PIL frame sequences — what video pipelines return for an explicit
+    # `output_type="pil"`. Previously this matched no branch and fell through to the JSON dump.
+    if isinstance(value, (list, tuple)) and value and all(_as_frame_sequence(v) is not None for v in value):
+        return _save_videos([list(v) for v in value], args)
 
     audios = _as_audio_arrays(value)
     if audios is not None:
-        return _save_audio_arrays(audios, args.sampling_rate or 16000, args, task)
+        return _save_audio_arrays(audios, args.sampling_rate or 16000, args)
 
-    path = _resolve_output_paths(task, 1, args.output, ext="json")[0]
-    Path(path).write_text(json.dumps(value, default=str, indent=2))
-    return [str(path)]
+    raise ValueError(
+        f"Cannot save pipeline output of type {type(value).__name__!r}: not a recognized image, video, or audio "
+        "payload. For modular pipelines, name the media outputs to save with `--output-key` (repeat it for "
+        "several, e.g. `--output-key videos --output-key audio`); non-media values like a sample rate are not "
+        "saved and are set with their own flag (`--sampling-rate`)."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -802,7 +881,6 @@ def _parse_push_to(spec: str) -> tuple[str, str]:
     `hf://buckets/<namespace>/<name>[/<subpath>]` URI, or a Hub web URL for the same. Non-bucket URIs (models,
     datasets, spaces) are rejected — `--push-to` targets storage buckets only.
     """
-    from huggingface_hub import parse_hf_uri
 
     # Bare shorthand → canonical URI so a single parser handles every accepted form.
     if not spec.startswith(("hf://", "http://", "https://")):
@@ -813,12 +891,27 @@ def _parse_push_to(spec: str) -> tuple[str, str]:
     return uri.id, uri.path_in_repo
 
 
-def _push_outputs(args: Namespace, saved_paths: list[str], task: str) -> dict[str, Any] | None:
+def _collapse_frame_dirs(paths: list[str]) -> list[str]:
+    """Replace each `<stem>-frames/` group with its directory path for reporting.
+
+    A video's frames are hundreds of files; listing them all buries the mp4 and floods the terminal scrollback. Entries
+    stay real paths, so the reported list is still usable programmatically. The files themselves are untouched — only
+    what is reported changes.
+    """
+    collapsed: list[str] = []
+    for path in paths:
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        if not parent.endswith("-frames"):
+            collapsed.append(path)
+        elif parent not in collapsed:
+            collapsed.append(parent)
+    return collapsed
+
+
+def _push_outputs(args: Namespace, saved_paths: list[str]) -> dict[str, Any] | None:
     """Upload `saved_paths` to the `--push-to` bucket. Returns a summary or None."""
     if not args.push_to:
         return None
-
-    from huggingface_hub import HfApi
 
     bucket_id, subpath = _parse_push_to(args.push_to)
     api = HfApi(token=args.token)
@@ -826,10 +919,13 @@ def _push_outputs(args: Namespace, saved_paths: list[str], task: str) -> dict[st
 
     run_id = _get_or_create_run_id()
     prefix = f"{subpath}/{run_id}" if subpath else run_id
-    add = [(local, f"{prefix}/{Path(local).name}") for local in saved_paths]
+    # Destination paths keep their structure relative to the common output dir, so files in
+    # subfolders (e.g. `0000-frames/0003.png`) don't collide on basename in the bucket.
+    base = Path(os.path.commonpath([str(Path(p).parent) for p in saved_paths]))
+    add = [(local, f"{prefix}/{Path(local).relative_to(base).as_posix()}") for local in saved_paths]
     api.batch_bucket_files(bucket_id, add=add)
 
-    uploaded = [f"hf://buckets/{bucket_id}/{dest}" for _, dest in add]
+    uploaded = _collapse_frame_dirs([f"hf://buckets/{bucket_id}/{dest}" for _, dest in add])
     return {"bucket_id": bucket_id, "uploaded": uploaded}
 
 
@@ -917,15 +1013,16 @@ def _upload_inputs_to_sandbox(args: Namespace, sbx: Any, run_id: str) -> None:
 
 
 def _download_outputs_from_sandbox(sbx: Any, sandbox_dir: str, local_dir: Path) -> list[str]:
-    """Download every file the sandbox CLI wrote under `sandbox_dir` into `local_dir`."""
+    """Download everything the sandbox CLI wrote under `sandbox_dir` into `local_dir`, recursing into subfolders."""
     local_dir.mkdir(parents=True, exist_ok=True)
     saved: list[str] = []
     for entry in sbx.files.list(sandbox_dir):
-        if entry.type != "file":
-            continue
-        target = local_dir / Path(entry.path).name
-        sbx.files.download(entry.path, str(target))
-        saved.append(str(target))
+        if entry.type == "dir":
+            saved.extend(_download_outputs_from_sandbox(sbx, entry.path, local_dir / Path(entry.path).name))
+        elif entry.type == "file":
+            target = local_dir / Path(entry.path).name
+            sbx.files.download(entry.path, str(target))
+            saved.append(str(target))
     return saved
 
 
@@ -933,22 +1030,6 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     """If `--remote` was set, run this invocation inside an HF Sandbox and return True."""
     if not args.remote:
         return False
-
-    import shlex
-    import time
-
-    from huggingface_hub import get_token
-    from huggingface_hub.utils import send_telemetry
-
-    import diffusers
-
-    try:
-        from huggingface_hub import Sandbox
-    except ImportError:
-        raise SystemExit(
-            "--remote requires huggingface_hub>=1.23 for HF Sandbox support. "
-            "Upgrade with `pip install -U huggingface_hub`."
-        )
 
     if Path(args.model).exists():
         raise SystemExit(
@@ -986,10 +1067,11 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
                 "DIFFUSERS_VERBOSITY": os.environ.get("DIFFUSERS_VERBOSITY", "info"),
             },
             "idle_timeout": args.idle_timeout,
+            # The 120s default expires while a cold node pulls the multi-GB pytorch base image or
+            # waits for GPU capacity, which fails the run before it starts.
+            "start_timeout": 600.0,
         }
         if args.volume:
-            from huggingface_hub import Volume
-
             volumes = []
             for spec in args.volume:
                 bucket_id, sep, mount_path = spec.partition(":")
@@ -1086,7 +1168,7 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     if keep_alive:
         payload["sandbox_id"] = sbx.id
     if download_locally:
-        payload["outputs"] = saved
+        payload["outputs"] = _collapse_frame_dirs(saved)
     if args.push_to:
         bucket_id, subpath = _parse_push_to(args.push_to)
         prefix = f"{subpath}/{run_id}" if subpath else run_id
@@ -1108,8 +1190,6 @@ class RunCommand(BaseDiffusersCLICommand):
 
     @staticmethod
     def register_subcommand(subparsers: _SubParsersAction) -> None:
-        from argparse import RawDescriptionHelpFormatter
-
         epilog = (
             "Examples\n"
             "  $ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
@@ -1151,8 +1231,31 @@ class RunCommand(BaseDiffusersCLICommand):
         )
         parser.add_argument(
             "--output-key",
+            action="append",
             default=None,
-            help="For modular pipelines: name of the intermediate to extract (passed as `output=` to the call).",
+            metavar="NAME",
+            help=(
+                "For modular pipelines: name of the intermediate to extract (passed as `output=` to the call). "
+                "Repeat to request several, e.g. `--output-key videos --output-key audio`; each is saved by its "
+                "own media type."
+            ),
+        )
+        parser.add_argument(
+            "--workflow",
+            default=None,
+            help=(
+                "For modular pipelines: workflow to load (passed to `ModularPipeline.from_pretrained`). "
+                "Prunes the blocks to that workflow so `load_components` only fetches its components."
+            ),
+        )
+        parser.add_argument(
+            "--offload-margin",
+            default=None,
+            help=(
+                "For `--cpu-offload auto`: device memory kept free for activations "
+                "(passed to `ComponentsManager.enable_auto_cpu_offload` as `memory_reserve_margin`, "
+                "default 3GB). Raise it when a large canvas OOMs mid-forward."
+            ),
         )
         parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility.")
         parser.add_argument(
@@ -1175,8 +1278,6 @@ class RunCommand(BaseDiffusersCLICommand):
         self.args = args
 
     def run(self) -> None:
-        import diffusers
-
         _get_or_create_run_id()  # populate RUN_ID_ENV so local output dir + remote bucket prefix agree
 
         call_kwargs = _parse_pipeline_kwargs(self.args.pipeline_kwargs)
@@ -1191,7 +1292,9 @@ class RunCommand(BaseDiffusersCLICommand):
         is_modular = isinstance(pipeline, diffusers.ModularPipeline)
 
         if self.args.output_key is not None:
-            call_kwargs["output"] = self.args.output_key
+            # One key returns that value directly; several return a dict keyed by name.
+            keys = self.args.output_key
+            call_kwargs["output"] = keys[0] if len(keys) == 1 else keys
 
         device = pipeline.device.type if hasattr(pipeline, "device") else "cpu"
         generator = _get_generator(self.args.seed, device)
@@ -1205,9 +1308,17 @@ class RunCommand(BaseDiffusersCLICommand):
             # transformer compute but ranks reduce to the same final tensors). Save/push/print
             # from rank 0 only to avoid clobbering bucket files 4x and printing 4x.
             if os.environ.get("RANK", "0") == "0":
-                savable = result if is_modular else _unwrap_pipeline_output(result)
-                saved = _save_output(savable, self.args, self.task)
-                pushed = _push_outputs(self.args, saved, self.task)
+                if not is_modular:
+                    savables = _unwrap_pipeline_output(result)
+                elif isinstance(result, dict):
+                    # Several `--output-key`s: one payload per requested name.
+                    savables = list(result.values())
+                else:
+                    savables = [result]
+                saved = []
+                for savable in savables:
+                    saved.extend(_save_output(savable, self.args))
+                pushed = _push_outputs(self.args, saved)
 
                 out.result(
                     self.task,
@@ -1215,13 +1326,11 @@ class RunCommand(BaseDiffusersCLICommand):
                     device=device,
                     pipeline_class=type(pipeline).__name__,
                     modular=is_modular,
-                    outputs=saved,
+                    outputs=_collapse_frame_dirs(saved),
                     pushed=pushed,
                     seed=self.args.seed,
                     output_key=self.args.output_key,
                 )
         finally:
-            import torch
-
             if torch.distributed.is_available() and torch.distributed.is_initialized():
                 torch.distributed.destroy_process_group()

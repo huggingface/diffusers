@@ -23,6 +23,7 @@ from typing import Any
 import torch
 
 from ..hooks import ModelHook
+from ..hooks.group_offloading import _is_group_offload_enabled
 from ..utils import (
     is_accelerate_available,
     logging,
@@ -76,12 +77,20 @@ class CustomOffloadHook(ModelHook):
         self.other_hooks.append(hook)
 
     def init_hook(self, module):
+        # A group offloaded module holds one group at a time and refuses `.to()`. Moving it here would be a
+        # silent no-op that leaves this hook recording an offload that never happened.
+        if _is_group_offload_enabled(module):
+            return module
         return module.to("cpu")
 
     def pre_forward(self, module, *args, **kwargs):
         if module.device != self.execution_device:
             if self.other_hooks is not None:
-                hooks_to_offload = [hook for hook in self.other_hooks if hook.model.device == self.execution_device]
+                hooks_to_offload = [
+                    hook
+                    for hook in self.other_hooks
+                    if hook.model.device == self.execution_device and not _is_group_offload_enabled(hook.model)
+                ]
                 # offload all other hooks
                 start_time = time.perf_counter()
                 if self.offload_strategy is not None:
@@ -104,7 +113,10 @@ class CustomOffloadHook(ModelHook):
 
                 if hooks_to_offload:
                     clear_device_cache()
-            module.to(self.execution_device)
+            # The strategy still runs above, so a group offloaded model can make room for itself by moving other
+            # models — it just places itself.
+            if not _is_group_offload_enabled(module):
+                module.to(self.execution_device)
         return send_to_device(args, self.execution_device), send_to_device(kwargs, self.execution_device)
 
 
@@ -336,6 +348,7 @@ class ComponentsManager:
         self.collections = OrderedDict()  # collection_name -> set of component_names
         self.model_hooks = None
         self._auto_offload_enabled = False
+        self._offload_strategy = None
 
     def _lookup_ids(
         self,
@@ -692,7 +705,12 @@ class ComponentsManager:
 
         return get_return_dict(matches, return_dict_with_names)
 
-    def enable_auto_cpu_offload(self, device: str | int | torch.device = None, memory_reserve_margin="3GB"):
+    def enable_auto_cpu_offload(
+        self,
+        device: str | int | torch.device = None,
+        memory_reserve_margin="3GB",
+        offload_strategy=None,
+    ):
         """
         Enable automatic CPU offloading for all components.
 
@@ -703,11 +721,19 @@ class ComponentsManager:
         4. The system tries to offload the smallest combination of models that frees enough memory
         5. Models stay on the execution device until another model needs memory and forces them off
 
+        A group offloaded model takes part in this but places itself: it can still make room by moving other models
+        aside, and is never moved to make room for them. Either order works — group offload before or after enabling
+        this. `AutoOffloadStrategy` sizes its decisions from model memory footprints, which do not describe a model
+        holding one group at a time, so pass an `offload_strategy` that decides from the workflow instead.
+
         Args:
             device (str | int | torch.device): The execution device where models are moved for forward passes
             memory_reserve_margin (str): The memory reserve margin to use, default is 3GB. This is the amount of
                                         memory to keep free on the device to avoid running out of memory during model
                                         execution (e.g., for intermediate activations, gradients, etc.)
+            offload_strategy: Any callable with the signature `(hooks, model_id, model, execution_device) -> hooks`,
+                              returning which resident models to offload before the incoming one loads. Defaults to
+                              `AutoOffloadStrategy`, which frees the smallest sufficient combination.
         """
         if not is_accelerate_available():
             raise ImportError("Make sure to install accelerate to use auto_cpu_offload")
@@ -732,7 +758,17 @@ class ComponentsManager:
                 remove_hook_from_module(component, recurse=True)
 
         self.disable_auto_cpu_offload()
-        offload_strategy = AutoOffloadStrategy(memory_reserve_margin=memory_reserve_margin)
+        if offload_strategy is None:
+            offload_strategy = AutoOffloadStrategy(memory_reserve_margin=memory_reserve_margin)
+            if any(
+                isinstance(component, torch.nn.Module) and _is_group_offload_enabled(component)
+                for component in self.components.values()
+            ):
+                logger.warning(
+                    "`AutoOffloadStrategy` decides what to move from model memory footprints, which do not "
+                    "describe a group offloaded model: it holds one group at a time, not its whole weight. Pass "
+                    "an `offload_strategy` that decides from the workflow instead."
+                )
 
         all_hooks = []
         for name, component in self.components.items():
@@ -749,6 +785,23 @@ class ComponentsManager:
         self.model_hooks = all_hooks
         self._auto_offload_enabled = True
         self._auto_offload_device = device
+        self._offload_strategy = offload_strategy
+
+    def set_offload_strategy(self, offload_strategy):
+        """
+        Replace the offload strategy on all managed models. Only valid while auto CPU offloading is enabled.
+
+        Args:
+            offload_strategy:
+                Any callable with the signature `(hooks, model_id, model, execution_device) -> hooks`: it receives the
+                hooks of the models currently on the device and returns the ones to offload before the incoming model
+                loads. The default is `AutoOffloadStrategy`, which frees the smallest sufficient combination.
+        """
+        if not self._auto_offload_enabled:
+            raise ValueError("Auto CPU offloading is not enabled. Call `enable_auto_cpu_offload` first.")
+        for user_hook in self.model_hooks:
+            user_hook.hook.offload_strategy = offload_strategy
+        self._offload_strategy = offload_strategy
 
     def disable_auto_cpu_offload(self):
         """
@@ -765,6 +818,7 @@ class ComponentsManager:
             clear_device_cache()
         self.model_hooks = None
         self._auto_offload_enabled = False
+        self._offload_strategy = None
 
     def get_model_info(
         self,

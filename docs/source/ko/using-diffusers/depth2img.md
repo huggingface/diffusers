@@ -28,7 +28,7 @@ from diffusers import StableDiffusionDepth2ImgPipeline
 
 pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-depth",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 ```
 

@@ -23,6 +23,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -160,3 +161,7 @@ class TestHeliosTransformer3DCompile(HeliosTransformer3DTesterConfig, TorchCompi
     )
     def test_torch_compile_recompilation_and_graph_break(self):
         super().test_torch_compile_recompilation_and_graph_break()
+
+
+class TestHeliosTransformer3DLoRA(HeliosTransformer3DTesterConfig, LoraTesterMixin):
+    pass

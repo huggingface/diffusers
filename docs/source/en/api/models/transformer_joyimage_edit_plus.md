@@ -17,7 +17,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import JoyImageEditPlusTransformer3DModel
 
-transformer = JoyImageEditPlusTransformer3DModel.from_pretrained("jdopensource/JoyAI-Image-Edit-Plus-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = JoyImageEditPlusTransformer3DModel.from_pretrained("jdopensource/JoyAI-Image-Edit-Plus-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## JoyImageEditPlusTransformer3DModel

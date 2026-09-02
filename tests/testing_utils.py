@@ -28,7 +28,7 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
-from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT, USE_PEFT_BACKEND
 from diffusers.utils.import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
@@ -40,10 +40,9 @@ from diffusers.utils.import_utils import (
     is_kernels_available,
     is_note_seq_available,
     is_nvidia_modelopt_version,
-    is_onnx_available,
     is_opencv_available,
-    is_optimum_quanto_available,
     is_peft_available,
+    is_sdnq_available,
     is_timm_available,
     is_torch_available,
     is_torch_neuronx_available,
@@ -72,14 +71,6 @@ global_rng = random.Random()
 
 logger = get_logger(__name__)
 
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
-_required_transformers_version = is_transformers_available() and version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
@@ -436,14 +427,6 @@ def is_bitsandbytes(test_case):
     return pytest.mark.bitsandbytes(test_case)
 
 
-def is_quanto(test_case):
-    """
-    Decorator marking a test as a Quanto quantization test. These tests can be filtered using:
-        pytest -m "not quanto" to skip pytest -m quanto to run only these tests
-    """
-    return pytest.mark.quanto(test_case)
-
-
 def is_torchao(test_case):
     """
     Decorator marking a test as a TorchAO quantization test. These tests can be filtered using:
@@ -477,12 +460,28 @@ def is_modelopt(test_case):
     return pytest.mark.modelopt(test_case)
 
 
+def is_sdnq(test_case):
+    """
+    Decorator marking a test as an SDNQ quantization test. These tests can be filtered using:
+        pytest -m "not sdnq" to skip pytest -m sdnq to run only these tests
+    """
+    return pytest.mark.sdnq(test_case)
+
+
 def is_context_parallel(test_case):
     """
     Decorator marking a test as a context parallel inference test. These tests can be filtered using:
         pytest -m "not context_parallel" to skip pytest -m context_parallel to run only these tests
     """
     return pytest.mark.context_parallel(test_case)
+
+
+def is_tensor_parallel(test_case):
+    """
+    Decorator marking a test as a tensor parallel inference test. These tests can be filtered using:
+        pytest -m "not tensor_parallel" to skip pytest -m tensor_parallel to run only these tests
+    """
+    return pytest.mark.tensor_parallel(test_case)
 
 
 def is_cache(test_case):
@@ -659,6 +658,28 @@ def require_big_accelerator(test_case):
     )(test_case)
 
 
+def require_accelerator_memory(min_memory_gb: int):
+    """
+    Decorator marking a test that needs at least `min_memory_gb` GB of memory on the accelerator it runs on. Tests
+    running on CPU are not affected.
+    """
+
+    def decorator(test_case):
+        if torch_device == "cuda" and torch.cuda.is_available():
+            total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        elif torch_device == "xpu" and torch.xpu.is_available():
+            total_memory = torch.xpu.get_device_properties(0).total_memory / (1024**3)
+        else:
+            return test_case
+
+        return pytest.mark.skipif(
+            total_memory < min_memory_gb,
+            reason=f"test requires an accelerator with at least {min_memory_gb} GB memory",
+        )(test_case)
+
+    return decorator
+
+
 def require_torch_accelerator_with_training(test_case):
     """Decorator marking a test that requires an accelerator with support for training."""
     return pytest.mark.skipif(
@@ -678,13 +699,6 @@ def require_compel(test_case):
     the library is not installed.
     """
     return pytest.mark.skipif(not is_compel_available(), reason="test requires compel")(test_case)
-
-
-def require_onnxruntime(test_case):
-    """
-    Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
-    """
-    return pytest.mark.skipif(not is_onnx_available(), reason="test requires onnxruntime")(test_case)
 
 
 def require_note_seq(test_case):
@@ -731,11 +745,11 @@ def require_bitsandbytes(test_case):
     return pytest.mark.skipif(not is_bitsandbytes_available(), reason="test requires bitsandbytes")(test_case)
 
 
-def require_quanto(test_case):
+def require_sdnq(test_case):
     """
-    Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
+    Decorator marking a test that requires sdnq. These tests are skipped when sdnq isn't installed.
     """
-    return pytest.mark.skipif(not is_optimum_quanto_available(), reason="test requires quanto")(test_case)
+    return pytest.mark.skipif(not is_sdnq_available(), reason="test requires sdnq")(test_case)
 
 
 def require_accelerate(test_case):
@@ -810,6 +824,16 @@ def require_bitsandbytes_version_greater(bnb_version):
         )(test_case)
 
     return decorator
+
+
+def require_hf_token(test_case):
+    """
+    Decorator marking a test that requires a Hugging Face auth token (e.g. to access gated repos). The test is
+    skipped when no token is available.
+    """
+    from huggingface_hub import get_token
+
+    return pytest.mark.skipif(get_token() is None, reason="test requires a Hugging Face auth token")(test_case)
 
 
 def require_hf_hub_version_greater(hf_hub_version):
@@ -984,6 +1008,25 @@ def export_to_gif(image: list[PIL.Image.Image], output_gif_path: str = None) -> 
         loop=0,
     )
     return output_gif_path
+
+
+@contextmanager
+def skip_if_no_cudnn_engine():
+    """
+    Skip the enclosing test when cuDNN has no kernel for an op the pipeline runs.
+
+    cuDNN does not ship an engine for every (op, dtype, layout) combination, and the set it covers differs between
+    cuDNN builds and GPU architectures. When none applies it raises `RuntimeError: GET was unable to find an engine
+    to execute this computation` — for instance for Sana's depthwise `Conv2d` in bfloat16. That is a property of the
+    runner, not of the code under test, so tests that can hit it are skipped there rather than failed. Any other
+    `RuntimeError` propagates untouched.
+    """
+    try:
+        yield
+    except RuntimeError as e:
+        if "unable to find an engine" not in str(e):
+            raise
+        pytest.skip(f"cuDNN has no engine for this computation on {torch_device}: {e}")
 
 
 @contextmanager
@@ -1294,13 +1337,11 @@ def is_flaky(max_attempts: int = 5, wait_before_retry: float | None = None, desc
 
 
 # Taken from: https://github.com/huggingface/transformers/blob/3658488ff77ff8d45101293e749263acf437f4d5/src/transformers..testing_utils.py#L1787
-def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
+def run_test_in_subprocess(target_func, inputs=None, timeout=None):
     """
     To run a test in a subprocess. In particular, this can avoid (GPU) memory issue.
 
     Args:
-        test_case:
-            The test case object that will run `target_func`.
         target_func (`Callable`):
             The function implementing the actual testing logic.
         inputs (`dict`, *optional*, defaults to `None`):
@@ -1330,11 +1371,11 @@ def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
         output_queue.task_done()
     except Exception as e:
         process.terminate()
-        test_case.fail(e)
+        pytest.fail(str(e))
     process.join(timeout=timeout)
 
     if results["error"] is not None:
-        test_case.fail(f"{results['error']}")
+        pytest.fail(f"{results['error']}")
 
 
 class CaptureLogger:

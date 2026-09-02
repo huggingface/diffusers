@@ -1035,7 +1035,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
         # Final decoding step - convert latents to pixels
         if not output_type == "latent":
             if last_image is not None:
-                latents = latents[:, :, :-prefix_video_latents_frames, :, :].to(self.vae.dtype)
+                latents = latents[:, :, :-prefix_video_latents_frames, :, :]
+            latents = latents.to(self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)

@@ -224,7 +224,7 @@ torchrun --nproc_per_node 4 examples/cosmos3/inference_cosmos3.py \
 The CLI uses `Cosmos3OmniModularPipeline`, not the legacy task pipeline. Its distributed setup order is important:
 
 1. Construct it with `Cosmos3OmniModularPipeline.from_pretrained(...)` and call
-   `pipe.load_components(torch_dtype=torch.bfloat16)` while it is still on CPU. Do not use
+   `pipe.load_components(dtype=torch.bfloat16)` while it is still on CPU. Do not use
    `device_map`.
 2. Initialize the NCCL process group and call `torch.cuda.set_device(local_rank)` before building
    the device mesh or applying TP. If needed, replace the scheduler with

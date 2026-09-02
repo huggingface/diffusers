@@ -12,6 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # How to contribute to Diffusers 🧨
 
+> [!TIP]
+> If you use an AI agent to contribute, make sure you read the [AI-assisted and agentic contributions](#ai-assisted-and-agentic-contributions) section for our expectations and guidelines.
+
 We ❤️ contributions from the open-source community! Everyone is welcome, and all types of participation –not just code– are valued and appreciated. Answering questions, helping others, reaching out, and improving the documentation are all immensely valuable to the community, so don't be afraid and get involved if you're up for it!
 
 Everyone is encouraged to start by saying 👋 in our public Discord channel. We discuss the latest trends in diffusion models, ask questions, show off personal projects, help each other with contributions, or just hang out ☕. <a href="https://Discord.gg/G7tWnz98XR"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a>
@@ -200,7 +203,7 @@ Please have a look at [this page](https://github.com/huggingface/diffusers/tree/
 ### 6. Contribute a community pipeline
 
 > [!TIP]
-> Read the [Community pipelines](../using-diffusers/custom_pipeline_overview#community-pipelines) guide to learn more about the difference between a GitHub and Hugging Face Hub community pipeline. If you're interested in why we have community pipelines, take a look at GitHub Issue [#841](https://github.com/huggingface/diffusers/issues/841) (basically, we can't maintain all the possible ways diffusion models can be used for inference but we also don't want to prevent the community from building them).
+> Read the [Community pipelines](../using-diffusers/custom_pipeline_overview#community-pipelines-and-components) guide to learn more about the difference between a GitHub and Hugging Face Hub community pipeline. If you're interested in why we have community pipelines, take a look at GitHub Issue [#841](https://github.com/huggingface/diffusers/issues/841) (basically, we can't maintain all the possible ways diffusion models can be used for inference but we also don't want to prevent the community from building them).
 
 Contributing a community pipeline is a great way to share your creativity and work with the community. It lets you build on top of the [`DiffusionPipeline`] so that anyone can load and use it by setting the `custom_pipeline` parameter. This section will walk you through how to create a simple pipeline where the UNet only does a single forward pass and calls the scheduler once (a "one-step" pipeline).
 
@@ -328,6 +331,11 @@ If you are interested in tackling a good second issue, feel free to open a PR to
 Good second issues are usually more difficult to get merged compared to good first issues, so don't hesitate to ask for help from the core maintainers. If your PR is almost finished the core maintainers can also jump into your PR and commit to it in order to get it merged.
 
 ### 9. Adding pipelines, models, schedulers
+
+> [!TIP]
+> If you are the model's author, please get in touch so we can coordinate the integration with you: open a feature request, or drop a comment if one is already open.
+>
+> If you are a community contributor, please also let us know you're interested under the feature request, and start with a Hub repo at the same time. See the [Modular Diffusers](../modular_diffusers/overview) guide to get started, and [custom blocks](../modular_diffusers/custom_blocks) or [custom models](../using-diffusers/automodel) for publishing as remote code on the Hub.
 
 Pipelines, models, and schedulers are the most important pieces of the Diffusers library.
 They provide easy access to state-of-the-art diffusion technologies and thus allow the community to
@@ -570,32 +578,39 @@ For documentation strings, 🧨 Diffusers follows the [Google style](https://goo
 
 ## Coding with AI agents
 
-The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai). Run `make claude` / `make codex` to additionally wire up the on-demand task skills for your tool.
+The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai), which is also published as an agent plugin so the on-demand task skills install in one step.
 
-- **Read-only for contributors** — `.ai/` is maintained by the core maintainers. Please do not edit files under `.ai/` (or the root-level `AGENTS.md` / `CLAUDE.md` symlinks, or the generated `.agents/skills` / `.claude/skills`) in your PR. If you find something missing or wrong, open an issue or flag it on the PR and a maintainer will update it.
-- **Guidelines** (loaded into every agent session):
+- **Read-only for contributors** — `.ai/` is maintained by the core maintainers. Please do not edit files under `.ai/` (or the root-level `AGENTS.md` / `CLAUDE.md` symlinks, or the installed `.agents/skills` / `.claude/skills`) in your PR. If you find something missing or wrong, open an issue or flag it on the PR and a maintainer will update it.
+- **Guidelines** — `.ai/AGENTS.md` is loaded into every agent session through the root `AGENTS.md` / `CLAUDE.md`
+  symlinks; the reference guides under `.ai/references/` are read on demand when a link is followed:
   - [`.ai/AGENTS.md`](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) — top-level coding guidelines
-  - [`.ai/models.md`](https://github.com/huggingface/diffusers/blob/main/.ai/models.md) — attention pattern, model implementation rules, common conventions
-  - [`.ai/pipelines.md`](https://github.com/huggingface/diffusers/blob/main/.ai/pipelines.md) — pipeline conventions
-  - [`.ai/modular.md`](https://github.com/huggingface/diffusers/blob/main/.ai/modular.md) — modular pipeline conventions and conversion checklist
-  - [`.ai/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/review-rules.md) — what reviewers look for
+  - [`.ai/references/models.md`](https://github.com/huggingface/diffusers/blob/main/.ai/references/models.md) — attention pattern, model implementation rules, common conventions
+  - [`.ai/references/pipelines.md`](https://github.com/huggingface/diffusers/blob/main/.ai/references/pipelines.md) — pipeline conventions
+  - [`.ai/references/modular.md`](https://github.com/huggingface/diffusers/blob/main/.ai/references/modular.md) — modular pipeline conventions and conversion checklist
+  - [`.ai/references/testing.md`](https://github.com/huggingface/diffusers/blob/main/.ai/references/testing.md) — required test layers, tester mixins, dummy-component rules
+  - [`.ai/references/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/references/review-rules.md) — what reviewers look for
 - **Skills** (under [`.ai/skills/`](https://github.com/huggingface/diffusers/tree/main/.ai/skills), loaded on demand for specific tasks):
   - `model-integration` — adding a new model or pipeline to diffusers end-to-end (file structure, integration checklist, testing layout, weight conversion)
   - `self-review` — review your changes against the project rules before opening a PR
-- **Setup commands**:
-  - `make codex` — wire up skills for OpenAI Codex (under `.agents/`)
-  - `make claude` — wire up skills for Claude Code (under `.claude/`)
-  - `make clean-ai` — remove the generated skills symlinks
+  - `diffusers-cli` — running pipelines and inspecting schemas from the terminal
+  - `custom-blocks` — packaging a `ModularPipelineBlocks` subclass for the Hub
+
+Whichever route you take, ask your agent to confirm its own setup before you start — `python utils/check_ai.py`
+checks that the guides and skills are consistent, and `diffusers-cli skills list` shows which skills it actually has.
 
 ### AI-assisted and agentic contributions
+
+AI agents are welcome for contributing to Diffusers. We encourage you to set up your agent with the Diffusers [agent guide](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) and use the relevant task-specific skills, such as `model-integration` and `self-review`. Install the plugin (or the individual skills) as described above, then follow the guide to scope, implement, test, and review your contribution. You remain responsible for understanding, testing, and maintaining the changes in your PR.
 
 AI-assisted contributions are welcome, but they must be coordinated, scoped, and verified to keep review load manageable. PRs that do not follow these guidelines may be closed without detailed review.
 
 - **Coordinate before opening a PR.** Find or open an issue, review similar PRs (open and recently closed), and wait for an explicit acknowledgment from a maintainer on that issue before opening a PR. This gives us a chance to discuss scope, avoid duplicate work, and confirm the approach.
-- **Fix patterns, not one-offs.** If you spot an recurring issue, search the codebase for similar instances and open a *single* issue with a clear, systematic scope (e.g. "fix mutable defaults across all schedulers") rather than many issues or PRs for individual instances. 
-- **Self-review before opening.** Run the [`self-review`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/self-review/SKILL.md) skill — it reviews your diff against [`.ai/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/review-rules.md), the same rubric the `@claude` CI reviewer uses — and address what it reports — it's a helper, not authoritative, and can be wrong. Focus on the blocking issues that make sense to you, and clean up dead/unused code as much as possible. If you disagree with a suggestion, it's fine to leave it for the reviewer to discuss after the PR is opened — the notes you share (see below) tell the reviewer it was a deliberate call.
+- **Fix patterns, not one-offs.** If you spot an recurring issue, search the codebase for similar instances and open a *single* issue with a clear, systematic scope (e.g. "fix mutable defaults across all schedulers") rather than many issues or PRs for individual instances.
+- **Self-review before opening.** Run the [`self-review`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/self-review/SKILL.md) skill — it reviews your diff against [`.ai/references/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/references/review-rules.md), the same rubric the `@claude` CI reviewer uses — and address what it reports — it's a helper, not authoritative, and can be wrong. Focus on the blocking issues that make sense to you, and clean up dead/unused code as much as possible. If you disagree with a suggestion, it's fine to leave it for the reviewer to discuss after the PR is opened — the notes you share (see below) tell the reviewer it was a deliberate call.
 - **Share your self-review notes.** Please post the final self-review report — the round that reflects the diff you're submitting — on the PR, in the description or as a comment, including findings you intentionally did not fix and why. It helps the reviewer see what has already been checked and which calls were deliberate, and usually saves a few rounds of back-and-forth.
 - **Include in the PR description:**
   - A **coordination link** to the issue or discussion where a maintainer acknowledged the work.
   - The **test commands you ran** and their results (paste relevant output, not just "tests pass").
   - Your **self-review notes** (or a link to the PR comment containing them), as described above.
+
+If you are a model author or part of a team that officially maintains a model, we encourage you to use agents for a new model integration. Follow the repository's [recommended setup](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) and use the [`model-integration`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/model-integration/SKILL.md) skill. Coordinate the scope with maintainers before opening a PR — see [Adding pipelines, models, schedulers](#9-adding-pipelines-models-schedulers).

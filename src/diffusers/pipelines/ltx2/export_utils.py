@@ -13,10 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# `encode_video` moved to `diffusers.utils.export_utils` so other pipelines (Cosmos3)
-# can share it. This module remains as a deprecation shim for existing user code that
-# does `from diffusers.pipelines.ltx2.export_utils import encode_video`.
-
 from fractions import Fraction
 from pathlib import Path
 from typing import Callable
@@ -24,8 +20,7 @@ from typing import Callable
 import numpy as np
 import torch
 
-from ...utils import deprecate, is_av_available
-from ...utils.export_utils import encode_video as _encode_video
+from ...utils import is_av_available
 
 
 _CAN_USE_AV = is_av_available()
@@ -35,16 +30,6 @@ else:
     raise ImportError(
         "PyAV is required to use LTX 2.0 video export utilities. You can install it with `pip install av`"
     )
-
-
-def encode_video(*args, **kwargs):
-    deprecate(
-        "encode_video",
-        "0.40.0",
-        "`encode_video` has moved to `diffusers.utils`. Import it with "
-        "`from diffusers.utils import encode_video` instead.",
-    )
-    return _encode_video(*args, **kwargs)
 
 
 def encode_hdr_tensor_to_mp4(

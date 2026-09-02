@@ -36,7 +36,7 @@ from diffusers.modular_pipelines import (
 )
 from diffusers.utils import logging
 
-from ..testing_utils import CaptureLogger, nightly, require_torch, require_torch_accelerator, slow, torch_device
+from ..testing_utils import CaptureLogger, nightly, require_torch_accelerator, require_torch_gpu, slow, torch_device
 
 
 def _create_tiny_model_dir(model_dir):
@@ -229,6 +229,17 @@ class TestModularCustomBlocks:
 
         assert len(pipe.components) == 1
         assert pipe.component_names[0] == "transformer"
+
+    def test_custom_block_mellon_config_preserves_required_inputs(self):
+        from diffusers.modular_pipelines.mellon_node_utils import MellonPipelineConfig
+
+        custom_block = DummyCustomBlockSimple()
+
+        mellon_config = MellonPipelineConfig.from_custom_block(custom_block)
+        custom_node = mellon_config.node_params["custom"]
+
+        assert mellon_config.node_specs["custom"]["required_inputs"] == ["prompt"]
+        assert custom_node["params"]["prompt"]["label"].endswith(" *")
 
     def test_trust_remote_code_not_propagated_to_external_repo(self):
         """When a modular pipeline repo references a component from an external repo that has custom
@@ -711,7 +722,7 @@ class TestBlockKwargsTypeInputs:
 
 @slow
 @nightly
-@require_torch
+@require_torch_gpu
 class TestKreaCustomBlocksIntegration:
     repo_id = "krea/krea-realtime-video"
 

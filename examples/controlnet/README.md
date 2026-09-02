@@ -267,9 +267,9 @@ import torch
 base_model_path = "path to model"
 controlnet_path = "path to controlnet"
 
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, dtype=torch.float16)
 pipe = StableDiffusionControlNetPipeline.from_pretrained(
-    base_model_path, controlnet=controlnet, torch_dtype=torch.float16
+    base_model_path, controlnet=controlnet, dtype=torch.float16
 )
 
 # speed up diffusion process with faster scheduler and memory optimization

@@ -58,8 +58,8 @@ Pass the `pipeline_quant_config` to [`~DiffusionPipeline.from_pretrained`] to qu
 pipe = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
-).to("cuda")
+    dtype=torch.bfloat16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe("photo of a cute dog").images[0]
 ```
@@ -119,8 +119,8 @@ Pass the `pipeline_quant_config` to [`~DiffusionPipeline.from_pretrained`] to qu
 pipe = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
-).to("cuda")
+    dtype=torch.bfloat16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe("photo of a cute dog").images[0]
 ```
@@ -135,19 +135,21 @@ from diffusers import DiffusionPipeline
 
 pipe = DiffusionPipeline.from_pretrained(
     "rootonchair/ERNIE-Image-Turbo-nunchaku-lite-nvfp4",
-    torch_dtype=torch.bfloat16,
-).to("cuda")
+    dtype=torch.bfloat16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 The following backends support loading prequantized checkpoints out of the box.
 
 | Backend | Notes |
 |---|---|
-| [bitsandbytes](./bitsandbytes) | Config is saved in `config.json`; no extra arguments needed. |
+| [bitsandbytes](./bitsandbytes) | Config is saved in `config.json`; no extra arguments needed. Supports quantizing on the fly as well as loading prequantized checkpoints. |
+| [torchao](./torchao) | Same as above. |
 | [GGUF](./gguf) | Uses `from_single_file` with Model classes; pipeline-level loading is not supported. |
 | [AutoRound](./autoround) | Only loading is supported; quantize first with the AutoRound CLI or Python API. |
-| [Nunchaku Lite](./nunchaku) | Config is saved in `config.json`; requires the `kernels` package. |
-| [ModelOpt](./modelopt) | Supports both quantizing on the fly and loading prequantized models. |
+| [Nunchaku Lite](./nunchaku) | Config is saved in `config.json`; requires the `kernels` package. Only loading is supported. |
+| [ModelOpt](./modelopt) | Only loading prequantized models is supported. |
+| [SDNQ](./sdnq) | Supports both quantizing on the fly and loading prequantized models; requires the `sdnq` package. |
 
 ## Resources
 

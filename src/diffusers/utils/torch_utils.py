@@ -215,7 +215,7 @@ def randn_tensor(
     layout = layout or torch.strided
     device = device or torch.device("cpu")
 
-    # Neuron (XLA) does not support creating random tensors directly on device; always use CPU
+    # Neuron does not support creating random tensors directly on device; always use CPU
     if device.type == "neuron":
         rand_device = torch.device("cpu")
 
