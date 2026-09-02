@@ -115,7 +115,7 @@ When you create a [`~modular_pipelines.SequentialPipelineBlocks`], properties li
 
 ### Aggregated inputs and outputs
 
-Aggregation follows the order the sub-blocks run in. `inputs` walks the sub-blocks in order and collects each one's inputs, skipping any that an earlier sub-block already declares in its `intermediate_outputs` — that value is produced inside the assembled block, so it isn't asked of the caller. `intermediate_outputs` is the union of what the sub-blocks write.
+Aggregation follows the order the sub-blocks run in. `inputs` walks the sub-blocks in order and omits an input when an earlier sub-block declares an output with the same name, because the assembled block produces that value internally. `intermediate_outputs` is the union of what the sub-blocks write.
 
 This is what makes blocks composable: an assembled block has the same kind of input/output contract as a single [`~modular_pipelines.ModularPipelineBlocks`], so it can in turn be a sub-block of another one, at any depth. It is also why an input disappears from a pipeline's signature once some earlier block produces it — see [nesting loops](./iterative_pipeline_blocks#nesting-loops) for a case where you use that deliberately.
 
