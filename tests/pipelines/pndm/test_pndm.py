@@ -55,7 +55,8 @@ UNSUPPORTED_DTYPE = pytest.mark.xfail(
 )
 
 # The memory mixin trips over three separate `src/` gaps at once, so its tests carry one marker between them:
-#   - the numpy output above (`test_group_offloading_inference`, `test_pipeline_level_group_offloading_inference`,
+#   - the numpy output above (`test_group_offloading_inference_block_level`,
+#     `test_group_offloading_inference_leaf_level`, `test_pipeline_level_group_offloading_inference`,
 #     `test_pipeline_with_accelerator_device_map`),
 #   - the float32 noise above (`test_layerwise_casting_inference`),
 #   - `randn_tensor(..., device=self.device)` reading the *pipeline's* device rather than `self._execution_device`,
@@ -65,7 +66,7 @@ UNSUPPORTED_DTYPE = pytest.mark.xfail(
 #     (`test_model_cpu_offload_forward_pass`, `test_cpu_offload_forward_pass_twice`).
 # `strict=False` because `test_pipeline_level_group_offloading_sanity_checks` never runs the pipeline and so passes
 # — it reports XPASS. The class-level marker is what keeps `MemoryTesterMixin`'s own `@is_memory` /
-# `@require_accelerator` marks intact; overriding the eight failing tests individually would drop the
+# `@require_accelerator` marks intact; overriding the nine failing tests individually would drop the
 # `@require_accelerate_version_greater` gates they are declared with.
 UNSUPPORTED_MEMORY_OPTIMIZATIONS = pytest.mark.xfail(
     reason=(
