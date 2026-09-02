@@ -39,6 +39,9 @@ class SeaCacheConfig:
     r"""
     Configuration for [SeaCache](https://huggingface.co/papers/2602.18993).
 
+    SeaCache is disabled by default and only activates after this configuration is passed to
+    `transformer.enable_cache(config)`.
+
     SeaCache compares Spectral-Evolution-Aware (SEA) indicators between scheduler steps. If their accumulated relative
     change stays below `threshold`, the expensive language-model hidden transform is replaced with a cached residual.
     For Cosmos 3, the residual spans the decoder stack and final pathway normalization; input packing and modality
