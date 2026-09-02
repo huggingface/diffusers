@@ -417,7 +417,9 @@ pipeline.save_pretrained("local/path", repo_id="my-username/sdxl-modular", push_
 
 By default, [`~ModularPipeline.save_pretrained`] saves the components that are currently loaded, and points each saved component's loading spec in `modular_model_index.json` at the destination — the `repo_id` when pushing to the Hub, otherwise the save directory. A component that isn't loaded isn't saved and keeps its recorded spec, so it is still fetched from its original location later. This gives you two ways to save, depending on what you want:
 
-- **A self-contained copy** — load all the components, then save. Every spec points at the result, so it reloads entirely from one place, including offline. (A raw download like `hf download ... --local-dir` doesn't do this — the published specs still point at the Hub.)
+### Save a self-contained copy
+
+Load all the components, then save. Every spec points at the result, so it reloads entirely from one place, including offline. Downloading files with `hf download --local-dir` does not rewrite `modular_model_index.json`, so an existing index may still point to the Hub.
 
   ```py
   pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
