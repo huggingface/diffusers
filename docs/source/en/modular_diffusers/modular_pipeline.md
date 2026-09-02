@@ -425,7 +425,9 @@ By default, [`~ModularPipeline.save_pretrained`] saves the components that are c
   pipe.save_pretrained("path/to/local-copy")
   ```
 
-- **Reuse existing components without saving the weights again** — load only what's new (or nothing at all). Only loaded components are written; everything else stays a pointer to its original repository. For example, to share a single custom transformer while the other components keep loading from the base repo — the same shape as the quantized-transformer repository above:
+### Keep references to existing components
+
+Load only what's new (or nothing at all). Only loaded components are written; everything else stays a pointer to its original repository. Use this mode when you want to replace one component while continuing to load the others from their original repository. For example, save a custom transformer while the remaining components continue to load from the base repository.
 
   ```py
   pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.2-dev")
