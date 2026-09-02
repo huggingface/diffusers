@@ -21,7 +21,6 @@ through a tester config. The scoped tester mixins below carry the pipeline-famil
 does not restate them.
 """
 
-import pytest
 import torch
 from transformers import AutoTokenizer, Gemma3ForConditionalGeneration
 
@@ -283,6 +282,10 @@ class LTX2BaseTesterConfig(BasePipelineTesterConfig):
     # See `DEFAULT_UNSET_COMPONENTS`; each config narrows or widens this to the components its pipeline accepts.
     unset_components = DEFAULT_UNSET_COMPONENTS
 
+    # `audio_vae` fails at block level for the same reason the other VAEs do: its decode-time convolutions run
+    # without the group leader's `forward` having onloaded the group.
+    group_offloading_block_level_exclude_modules = ["vae", "audio_vae"]
+
     def get_dummy_components(self):
         return get_ltx2_dummy_components(unset_components=self.unset_components)
 
@@ -298,15 +301,6 @@ class LTX2BaseTesterConfig(BasePipelineTesterConfig):
 
 class LTX2MemoryTesterMixin(MemoryTesterMixin):
     """`MemoryTesterMixin` for the LTX2 pipelines in this directory."""
-
-    # The shared helper only group-offloads `text_encoder` / `transformer` and moves `vae`, leaving LTX2's extra
-    # module components (`connectors`, `audio_vae`, `vocoder`) on the CPU while they receive accelerator tensors
-    # from the offloaded text encoder, so the forward pass mixes devices. This is pre-existing for the whole LTX2
-    # family rather than specific to any one pipeline. Pipeline-level offloading, which walks every component, is
-    # exercised by `test_pipeline_level_group_offloading_inference`.
-    @pytest.mark.skip("Using test_pipeline_level_group_offloading_inference instead")
-    def test_group_offloading_inference(self):
-        pass
 
 
 class LTX2LoraTesterMixin(LoraTesterMixin):
