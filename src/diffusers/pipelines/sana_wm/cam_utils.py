@@ -28,6 +28,8 @@ import numpy as np
 import torch
 from PIL import Image
 
+from ...utils import is_pi3_available, is_torchvision_available
+
 
 TARGET_HEIGHT = 704
 TARGET_WIDTH = 1280
@@ -170,14 +172,15 @@ def estimate_intrinsics_with_pi3x(image: Image.Image, device: torch.device | str
     Optional helper — requires ``pip install pi3-vision``. The result is in the **original image** pixel grid (not the
     cropped one); pass it to [`SanaWMPipeline.__call__`] as ``intrinsics=...``.
     """
-    try:
-        from pi3.models.pi3x import Pi3X  # type: ignore
-        from pi3.utils.geometry import recover_intrinsic_from_rays_d  # type: ignore
-    except ImportError as e:  # pragma: no cover
-        raise RuntimeError(
-            "pi3 is required for intrinsics estimation. Pass `intrinsics` explicitly or `pip install pi3-vision`."
-        ) from e
+    if not is_pi3_available():
+        raise ImportError(
+            "`pi3` is required for intrinsics estimation. Pass `intrinsics` explicitly or `pip install pi3-vision`."
+        )
+    if not is_torchvision_available():
+        raise ImportError("`torchvision` is required for intrinsics estimation. Please `pip install torchvision`.")
 
+    from pi3.models.pi3x import Pi3X  # noqa: PLC0415
+    from pi3.utils.geometry import recover_intrinsic_from_rays_d  # noqa: PLC0415
     from torchvision import transforms as T  # noqa: PLC0415
 
     device_t = torch.device(device)

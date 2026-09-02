@@ -504,9 +504,10 @@ class GLUMBConvTemp(nn.Module):
 
 
 class MultiHeadCrossAttention(nn.Module):
-    def __init__(self, d_model, num_heads, attn_drop=0.0, proj_drop=0.0, qk_norm=False, **block_kwargs):
+    def __init__(self, d_model, num_heads, qk_norm=False, **block_kwargs):
         super().__init__()
-        assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
+        if not (d_model % num_heads == 0):
+            raise ValueError("d_model must be divisible by num_heads")
 
         self.d_model = d_model
         self.num_heads = num_heads
@@ -514,9 +515,7 @@ class MultiHeadCrossAttention(nn.Module):
 
         self.q_linear = nn.Linear(d_model, d_model)
         self.kv_linear = nn.Linear(d_model, d_model * 2)
-        self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(d_model, d_model)
-        self.proj_drop = nn.Dropout(proj_drop)
         if qk_norm:
             self.q_norm = RMSNorm(d_model, scale_factor=1.0, eps=1e-6)
             self.k_norm = RMSNorm(d_model, scale_factor=1.0, eps=1e-6)
@@ -543,14 +542,8 @@ class MultiHeadCrossAttention(nn.Module):
 
         x = x.view(B, -1, C)
         x = self.proj(x)
-        x = self.proj_drop(x)
 
         return x
-
-
-#################################################################################
-#   AMP attention with fp32 softmax to fix loss NaN problem during training     #
-#################################################################################
 
 
 class T2IFinalLayer(nn.Module):
@@ -712,9 +705,8 @@ class WanRotaryPosEmbed(nn.Module):
         self.max_seq_len = max_seq_len
 
         if fhw_dim is not None:
-            assert attention_head_dim == sum(fhw_dim), (
-                f"attention_head_dim {attention_head_dim} must match sum(fhw_dim) {sum(fhw_dim)}"
-            )
+            if not (attention_head_dim == sum(fhw_dim)):
+                raise ValueError(f"attention_head_dim {attention_head_dim} must match sum(fhw_dim) {sum(fhw_dim)}")
             t_dim, h_dim, w_dim = fhw_dim
         else:
             h_dim = w_dim = 2 * (attention_head_dim // 6)
@@ -866,9 +858,10 @@ def create_grid(
 ) -> torch.Tensor:
     """Create a pixel coordinate grid of shape ``(H, W, 3)`` or ``(B, H, W, 3)``."""
     if device.type == "cpu":
-        assert dtype in (torch.float32, torch.float64), (
-            f"ERR: {dtype} is not supported by {device.type}\nIf device is `cpu`, use float32 or float64"
-        )
+        if dtype not in (torch.float32, torch.float64):
+            raise ValueError(
+                f"ERR: {dtype} is not supported by {device.type}\nIf device is `cpu`, use float32 or float64"
+            )
     _xs = torch.linspace(0, width - 1, width, dtype=dtype, device=device)
     _ys = torch.linspace(0, height - 1, height, dtype=dtype, device=device)
     ys, xs = torch.meshgrid([_ys, _xs], indexing="ij")
@@ -1193,7 +1186,8 @@ def _apply_ucpe_transform(
 
 def _invert_SE3(transforms: torch.Tensor) -> torch.Tensor:
     """Closed-form inverse of a 4x4 SE(3) batch."""
-    assert transforms.shape[-2:] == (4, 4)
+    if not (transforms.shape[-2:] == (4, 4)):
+        raise ValueError(f"`transforms` must have shape (..., 4, 4), got {tuple(transforms.shape)}.")
     Rinv = transforms[..., :3, :3].transpose(-1, -2)
     out = torch.zeros_like(transforms)
     out[..., :3, :3] = Rinv
@@ -3775,7 +3769,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         self.chunk_size = chunk_size
         self.chunk_split_strategy = chunk_split_strategy
         self.patch_size = patch_size
-        self.h = self.w = 0
 
         def approx_gelu():
             return nn.GELU(approximate="tanh")
@@ -3786,10 +3779,11 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         self.attn_type = attn_type
 
         self.camctrl_type = camctrl_type
-        assert self.camctrl_type in [
+        if self.camctrl_type not in [
             "BidirectionalGDNUCPESinglePathLiteLABothTriton",
             "BidirectionalSoftmaxUCPESinglePathLiteLA",
-        ], f"Not supported camera control type: {self.camctrl_type}"
+        ]:
+            raise ValueError(f"Not supported camera control type: {self.camctrl_type}")
 
         self.camctrl_layers_num = camctrl_layers_num if camctrl_layers_num is not None else depth
         self.cam_attn_compress = cam_attn_compress
@@ -3900,7 +3894,8 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
     def _unpack_latents(latents, height, width, frame):
         batch_size, channels, frame, H, W = latents.shape
 
-        assert height % 2 == 0 and width % 2 == 0
+        if not (height % 2 == 0 and width % 2 == 0):
+            raise ValueError(f"Latent height and width must be divisible by 2, got {height}x{width}.")
         # latent height and width to be divisible by 2.
         latents = latents.view(batch_size, channels // 4, 2, 2, frame, height // 2, width // 2)
         latents = latents.permute(0, 1, 4, 5, 2, 6, 3)
@@ -3950,7 +3945,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         else:
             timestep = timestep.long().to(torch.float32)
         y = y.to(self.dtype)
-        self.f, self.h, self.w = (
+        post_patch_num_frames, post_patch_height, post_patch_width = (
             x.shape[-3] // self.patch_size[0],
             x.shape[-2] // self.patch_size[1],
             x.shape[-1] // self.patch_size[2],
@@ -3961,12 +3956,12 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             x = torch.cat([x, data_info["image_vae_embeds"].to(self.dtype)], dim=1)
         cam_embeds = kwargs.get("camera_conditions", None)
         if self.pack_latents:
-            x = self._pack_latents(x, bs, self.in_channels, self.h, self.w, self.f)
+            x = self._pack_latents(x, bs, self.in_channels, post_patch_height, post_patch_width, post_patch_num_frames)
             if cam_embeds is not None:
                 cam_embeds = cam_embeds.to(self.dtype)
 
-            self.h = self.h // 2
-            self.w = self.w // 2
+            post_patch_height = post_patch_height // 2
+            post_patch_width = post_patch_width // 2
 
         if self.x_embedder.patch_size != self.x_embedder.kernel_size and self.x_embedder.kernel_size == (1, 2, 2):
             x = F.pad(x, (0, 1, 0, 1, 0, 0))
@@ -3985,7 +3980,10 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                     kwargs["raymats"] = cam_pos_embeds["P"]
             else:
                 raymats, cam_embeds = _process_camera_conditions_ucpe(
-                    raw_cam_conditions, bs, (self.f, self.h, self.w), self.patch_size
+                    raw_cam_conditions,
+                    bs,
+                    (post_patch_num_frames, post_patch_height, post_patch_width),
+                    self.patch_size,
                 )
                 cam_embeds = cam_embeds.permute(0, 4, 1, 2, 3).to(self.dtype)
                 kwargs["raymats"] = raymats
@@ -4006,7 +4004,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
 
         image_pos_embed = kwargs.get("pos_embeds", None)
         if self.use_pe and image_pos_embed is None:
-            image_pos_embed = self.rope((self.f, self.h, self.w))
+            image_pos_embed = self.rope((post_patch_num_frames, post_patch_height, post_patch_width))
         elif image_pos_embed is not None:
             image_pos_embed = image_pos_embed.to(x.device)
             while image_pos_embed.ndim > 4:
@@ -4057,7 +4055,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             kwargs["ucpe_ray_transforms"] = _prepare_ucpe_ray_transforms(
                 head_dim=head_dim,
                 camera_conditions=kwargs["camera_conditions"],
-                HW=(self.f, self.h, self.w),
+                HW=(post_patch_num_frames, post_patch_height, post_patch_width),
                 patch_size=self.patch_size,
                 rotary_emb=image_pos_embed,
                 raymats=kwargs.get("raymats"),
@@ -4070,30 +4068,35 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                 y,
                 t0,
                 y_lens,
-                (self.f, self.h, self.w),
+                (post_patch_num_frames, post_patch_height, post_patch_width),
                 image_pos_embed,
                 block_mask=block_mask if i > 1 else None,
                 **kwargs,
             )  # (N, T, D)
 
         x = self.final_layer(x, t)  # (N, T, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)  # (N, out_channels, H, W)
+        x = self.unpatchify(x, post_patch_num_frames, post_patch_height, post_patch_width)  # (N, out_channels, H, W)
         if self.pack_latents:
-            x = self._unpack_latents(x, self.h * 2, self.w * 2, self.f)
+            x = self._unpack_latents(x, post_patch_height * 2, post_patch_width * 2, post_patch_num_frames)
 
         return Transformer2DModelOutput(sample=x) if return_dict else (x,)
 
-    def unpatchify(self, x):
+    def unpatchify(self, x, post_patch_num_frames, post_patch_height, post_patch_width):
         """
         x: (N, T, patch_size**2 * C) imgs: (N, H, W, C)
         """
         c = self.out_channels
         p_f, p_h, p_w = self.x_embedder.patch_size
-        h, w = self.h, self.w
-        assert self.f * self.h * self.w == x.shape[1]
+        if post_patch_num_frames * post_patch_height * post_patch_width != x.shape[1]:
+            raise ValueError(
+                f"Expected {post_patch_num_frames * post_patch_height * post_patch_width} tokens for a "
+                f"({post_patch_num_frames}, {post_patch_height}, {post_patch_width}) latent, but got {x.shape[1]}."
+            )
 
-        x = x.reshape(shape=(x.shape[0], self.f, h, w, p_f, p_h, p_w, c))
+        x = x.reshape(shape=(x.shape[0], post_patch_num_frames, post_patch_height, post_patch_width, p_f, p_h, p_w, c))
         x = torch.einsum("nfhwopqc->ncfohpwq", x)
-        imgs = x.reshape(shape=(x.shape[0], c, self.f * p_f, h * p_h, w * p_w))
+        imgs = x.reshape(
+            shape=(x.shape[0], c, post_patch_num_frames * p_f, post_patch_height * p_h, post_patch_width * p_w)
+        )
 
         return imgs

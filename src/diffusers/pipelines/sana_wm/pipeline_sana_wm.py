@@ -203,32 +203,6 @@ class SanaWMPipeline(DiffusionPipeline):
         # ``output_type`` conversion.
         self.image_processor = SanaWMImageProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
-        # The SANA DiT's ``y_embedder`` randomly null-replaces tokens when
-        # ``self.training=True``. Force eval mode at construction so inference
-        # is deterministic regardless of how the underlying modules were saved.
-        if transformer is not None:
-            transformer.eval()
-        if vae is not None:
-            vae.eval()
-        if text_encoder is not None:
-            text_encoder.eval()
-
-        # SANA was trained with right-padded prompts; Gemma's default is
-        # "left", and the saved tokenizer reverts to "left" on load. Pin it.
-        if tokenizer is not None:
-            tokenizer.padding_side = "right"
-
-        # SANA-WM trained on LTX-2 VAE in framewise mode with tiling enabled;
-        # without these flags the VAE encodes the full (B, C, T, H, W) input
-        # in one shot, which gives subtly different numerics.
-        if vae is not None:
-            if hasattr(vae, "enable_tiling"):
-                vae.enable_tiling()
-            if hasattr(vae, "use_framewise_encoding"):
-                vae.use_framewise_encoding = True
-                vae.use_framewise_decoding = True
-                vae.tile_sample_stride_num_frames = 64
-                vae.tile_sample_min_num_frames = 96
 
     def _model_cpu_offload_active(self) -> bool:
         """Whether `enable_model_cpu_offload` currently owns module placement.
@@ -269,10 +243,12 @@ class SanaWMPipeline(DiffusionPipeline):
             max_length_all = max_sequence_length
 
         def _encode(text: str, length: int) -> tuple[torch.Tensor, torch.Tensor]:
+            # SANA was trained with right-padded prompts; Gemma's tokenizer defaults to "left".
             tok = self.tokenizer(
                 [text],
                 max_length=length,
                 padding="max_length",
+                padding_side="right",
                 truncation=True,
                 return_tensors="pt",
             ).to(device)

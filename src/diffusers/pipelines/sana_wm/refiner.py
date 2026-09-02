@@ -29,9 +29,12 @@ from __future__ import annotations
 import torch
 from torch import nn
 from tqdm.auto import tqdm
+from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
 
+from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import empty_device_cache, randn_tensor
+from ..ltx2.connectors import LTX2TextConnectors
 from ..pipeline_utils import DiffusionPipeline
 
 
@@ -68,10 +71,10 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
 
     def __init__(
         self,
-        transformer,
-        connectors,
-        tokenizer,
-        text_encoder,
+        transformer: LTX2VideoTransformer3DModel,
+        connectors: LTX2TextConnectors,
+        tokenizer: GemmaTokenizer | GemmaTokenizerFast,
+        text_encoder: Gemma3ForConditionalGeneration,
         scheduler: FlowMatchEulerDiscreteScheduler,
         text_max_sequence_length: int = 1024,
     ) -> None:
@@ -158,62 +161,28 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         self.transformer.to(device)
         z = sana_latent.to(device=device, dtype=dtype)
 
-        return self._refine_latents_ar(
-            z=z,
-            prompt_embeds=prompt_embeds,
-            prompt_attention_mask=prompt_attention_mask,
-            fps=fps,
-            sigmas=sigmas_t,
-            source_sink_frames=int(sink_size),
-            block_size=int(block_size),
-            kv_max_frames=int(kv_max_frames),
-            seed=int(seed),
-            progress=bool(progress),
-            dtype=dtype,
-            device=device,
-        )
-
-    def _refine_latents_ar(
-        self,
-        *,
-        z: torch.Tensor,
-        prompt_embeds: torch.Tensor,
-        prompt_attention_mask: torch.Tensor,
-        fps: float,
-        sigmas: torch.Tensor,
-        source_sink_frames: int,
-        block_size: int,
-        kv_max_frames: int,
-        seed: int,
-        progress: bool,
-        dtype: torch.dtype,
-        device: torch.device,
-    ) -> torch.Tensor:
-        """Chunk-causal AR refinement — thin wrapper around ``_RefinerChunkRunner``.
-
-        Implements the canonical ``rf_shifted_sink`` KV-cache contract end-to-end:
-
-        1. Pre-capture **pre-RoPE** sink K/V from raw ``z_sana[:source_sink_frames]`` at σ=0. The sink frames
-           themselves are **never refined** — they sit unchanged in the output volume.
-        2. AR blocks cover frames ``[source_sink_frames, T_full)`` in ``block_size``-frame chunks. For each block:
-           - Initialize ``x_t = (1-σ₀)·z_sana_block + σ₀·ε`` (single eps per block).
-           - 3-step deterministic Euler. Each step injects the per-layer prefix ``{sink_k_pre, sink_v, sink_pe,
-             history_k, history_v}`` where ``sink_pe`` is rebuilt at ``sink_rope_offset = active_start - history_frames
-             - source_sink_frames`` so the sink slides to sit immediately before the bounded working cache.
-           - Capture **post-RoPE** K/V from the refined block under the same prefix; append to ``history_kv_post`` and
-             trim to ``kv_max_frames - source_sink_frames``.
-
-        The returned tensor has the same shape ``(B, C, T_full, H, W)`` as ``z``; the first ``source_sink_frames``
-        slots carry the raw sink latents unchanged, the rest carry the refined output.
-        """
+        # Chunk-causal AR refinement implementing the canonical `rf_shifted_sink` KV-cache contract:
+        #
+        # 1. Pre-capture **pre-RoPE** sink K/V from raw `z_sana[:sink_size]` at sigma=0. The sink frames themselves
+        #    are never refined — they sit unchanged in the output volume.
+        # 2. AR blocks cover frames `[sink_size, T_full)` in `block_size`-frame chunks. For each block:
+        #    - Initialize `x_t = (1-sigma_0) * z_sana_block + sigma_0 * eps` (single eps per block).
+        #    - 3-step deterministic Euler. Each step injects the per-layer prefix
+        #      `{sink_k_pre, sink_v, sink_pe, history_k, history_v}`, where `sink_pe` is rebuilt at
+        #      `sink_rope_offset = active_start - history_frames - sink_size` so the sink slides to sit immediately
+        #      before the bounded working cache.
+        #    - Capture **post-RoPE** K/V from the refined block under the same prefix, append to `history_kv_post`,
+        #      and trim to `kv_max_frames - sink_size`.
+        sink_size = int(sink_size)
+        block_size = int(block_size)
         runner = _RefinerChunkRunner(
             self,
             prompt_embeds=prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
             fps=fps,
-            sigmas=sigmas,
-            source_sink_frames=int(source_sink_frames),
-            block_size=int(block_size),
+            sigmas=sigmas_t,
+            source_sink_frames=sink_size,
+            block_size=block_size,
             kv_max_frames=int(kv_max_frames),
             seed=int(seed),
             spatial_shape=(int(z.shape[3]), int(z.shape[4])),
@@ -221,10 +190,8 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             device=device,
         )
 
+        # Output keeps the raw sink prefix verbatim; AR blocks fill frames [sink_size, T_full).
         T_full = z.shape[2]
-        sink_size = int(source_sink_frames)
-        # Output keeps the raw sink prefix verbatim; AR blocks fill frames
-        # [sink_size, T_full).
         output = z.clone()
         n_active = max(T_full - sink_size, 0)
         n_blocks = (n_active + block_size - 1) // block_size if n_active > 0 else 0

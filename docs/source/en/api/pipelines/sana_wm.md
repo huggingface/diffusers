@@ -53,6 +53,15 @@ pipe = SanaWMPipeline.from_pretrained(
 )
 pipe.enable_model_cpu_offload()  # ~45 GB of weights — offload between stages
 
+# SANA-WM was trained on the LTX-2 VAE in framewise mode with tiling enabled. Without these
+# settings the VAE encodes the whole (B, C, T, H, W) clip in one shot, which gives subtly
+# different numerics from the released checkpoint.
+pipe.vae.enable_tiling()
+pipe.vae.use_framewise_encoding = True
+pipe.vae.use_framewise_decoding = True
+pipe.vae.tile_sample_stride_num_frames = 64
+pipe.vae.tile_sample_min_num_frames = 96
+
 output = pipe(
     image=Image.open("input.png").convert("RGB"),
     prompt="A car driving across a vast desert plain at golden hour.",
@@ -82,7 +91,7 @@ intrinsics = estimate_intrinsics_with_pi3x(image)  # `pip install pi3-vision`
 If you have the source SANA-WM release (not the pre-converted diffusers snapshot), run the conversion script once:
 
 ```bash
-python scripts/sana_wm/convert_sana_wm_to_diffusers.py \
+python scripts/convert_sana_wm_to_diffusers.py \
     --src Efficient-Large-Model/SANA-WM_bidirectional \
     --dst ./SANA-WM_bidirectional-diffusers
 ```

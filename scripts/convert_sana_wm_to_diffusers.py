@@ -31,7 +31,7 @@ mirror) and writes a directory ready for ``SanaWMPipeline.from_pretrained(path)`
         └── tokenizer/
 
 Usage:
-    python scripts/sana_wm/convert_sana_wm_to_diffusers.py \\
+    python scripts/convert_sana_wm_to_diffusers.py \\
         --src Efficient-Large-Model/SANA-WM_bidirectional \\
         --dst /path/to/SANA-WM_bidirectional-diffusers \\
         [--no-refiner]
@@ -112,13 +112,17 @@ def main() -> None:
     sd.pop("pos_embed", None)  # unused at inference (wan_rope is computed on-the-fly)
     # The public release keys (``blocks.0...``) load directly into the merged
     # SanaWMTransformer3DModel — no ``_inner.`` prefix anymore.
+    # `.pos_embed` entries are non-persistent buffers rebuilt at construction, so they are
+    # expected to be absent from the converted state dict; anything else means the mapping
+    # is wrong and would silently produce a broken transformer.
     missing, unexpected = transformer.load_state_dict(sd, strict=False)
-    if missing:
-        missing_nontrivial = [k for k in missing if not k.endswith(".pos_embed")]
-        if missing_nontrivial:
-            print(f"  missing keys: {missing_nontrivial[:10]}{' …' if len(missing_nontrivial) > 10 else ''}")
-    if unexpected:
-        print(f"  unexpected keys: {unexpected[:10]}{' …' if len(unexpected) > 10 else ''}")
+    missing = [k for k in missing if not k.endswith(".pos_embed")]
+    if missing or unexpected:
+        raise RuntimeError(
+            "State dict does not match `SanaWMTransformer3DModel`.\n"
+            f"  missing keys ({len(missing)}): {missing[:10]}{' …' if len(missing) > 10 else ''}\n"
+            f"  unexpected keys ({len(unexpected)}): {unexpected[:10]}{' …' if len(unexpected) > 10 else ''}"
+        )
     transformer.save_pretrained(dst / "transformer")
     del transformer, sd
 
