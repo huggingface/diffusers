@@ -689,7 +689,14 @@ class PatchEmbedMS3D(nn.Module):
         return x
 
 
-class WanRotaryPosEmbed(nn.Module):
+class SanaWMRotaryPosEmbed(nn.Module):
+    """Rotary position embedding for SANA-WM.
+
+    Deliberately not shared with Wan's rotary embedding: the per-axis split is configurable through
+    `fhw_dim`, and the frequencies stay complex in a single `freqs` buffer rather than being split
+    into real cos/sin buffers.
+    """
+
     def __init__(
         self,
         attention_head_dim: int,
@@ -3825,7 +3832,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         if use_pe:
             if pos_embed_type != "wan_rope":
                 raise ValueError(f'`pos_embed_type` must be "wan_rope", got {pos_embed_type!r}.')
-            self.rope = WanRotaryPosEmbed(
+            self.rope = SanaWMRotaryPosEmbed(
                 attention_head_dim=attention_head_dim, patch_size=patch_size, max_seq_len=1024, fhw_dim=rope_fhw_dim
             )
         self.softmax_every_n = softmax_every_n
