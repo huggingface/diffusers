@@ -130,8 +130,8 @@ class Wan22VaceBlocks(SequentialPipelineBlocks):
     Modular pipeline for controllable video generation using Wan2.2 VACE.
 
       Components:
-          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) transformer
-          (`WanVACETransformer3DModel`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) scheduler
+          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) vae
+          (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer (`WanTransformer3DModel`) scheduler
           (`UniPCMultistepScheduler`) guider_2 (`ClassifierFreeGuidance`) transformer_2 (`WanVACETransformer3DModel`)
 
       Configs:
