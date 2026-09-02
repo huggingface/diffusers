@@ -1976,10 +1976,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             **kwargs: Additional keyword arguments:
                 - `overwrite_modular_index` (`bool`, *optional*, defaults to `True`):
                     Whether to update `modular_model_index.json` so each saved component's loading spec points to the
-                    destination: `repo_id` when pushing to the Hub, otherwise `save_directory`. Components that are
-                    not loaded are not saved and always keep their recorded loading specs. Pass `False` to also
-                    preserve the recorded specs of the components being saved (e.g. for an index that deliberately
-                    references other repositories); components without a load id (such as custom models added with
+                    destination: `repo_id` when pushing to the Hub, otherwise `save_directory`. Components that are not
+                    loaded are not saved and always keep their recorded loading specs. Pass `False` to also preserve
+                    the recorded specs of the components being saved (e.g. for an index that deliberately references
+                    other repositories); components without a load id (such as custom models added with
                     `update_components`) are still rewritten since they have no recorded source.
                 - `repo_id` (`str`, *optional*):
                     The repository ID to push the pipeline to. Defaults to the last component of `save_directory`.
