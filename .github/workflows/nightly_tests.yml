@@ -461,7 +461,6 @@ jobs:
       run_big_gpu_torch_tests,
       run_nightly_quantization_tests,
       run_nightly_pipeline_level_quantization_tests,
-      # run_nightly_onnx_tests,
       torch_minimum_version_cuda_tests,
     ]
     if: always()
