@@ -16,7 +16,6 @@ import copy
 import json
 import math
 from collections.abc import Iterable
-from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
@@ -41,11 +40,6 @@ from ..pipeline_utils import DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def _cache_context(transformer: torch.nn.Module, name: str):
-    cache_context = getattr(transformer, "cache_context", None)
-    return cache_context(name) if callable(cache_context) else nullcontext()
 
 
 if is_cosmos_guardrail_available():
@@ -1739,7 +1733,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 )
 
                 # --- Conditional pass ---
-                with _cache_context(self.transformer, "cond"):
+                with self.transformer.cache_context("cond"):
                     preds_vision, preds_sound, preds_action = self.transformer(
                         input_ids=cond_packed_static["input_ids"],
                         text_indexes=cond_packed_static["text_indexes"],
@@ -1780,7 +1774,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 # --- Unconditional pass (Skip if not using CFG) ---
                 uncond_v_vision = uncond_v_sound = uncond_v_action = None
                 if self.do_classifier_free_guidance:
-                    with _cache_context(self.transformer, "uncond"):
+                    with self.transformer.cache_context("uncond"):
                         preds_vision, preds_sound, preds_action = self.transformer(
                             input_ids=uncond_packed_static["input_ids"],
                             text_indexes=uncond_packed_static["text_indexes"],
