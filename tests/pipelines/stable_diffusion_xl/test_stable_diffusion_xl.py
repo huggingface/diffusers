@@ -62,9 +62,9 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..stable_diffusion.ip_adapter_tester import IPAdapterTesterMixin
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    IPAdapterTesterMixin,
     LoraMemoryTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
