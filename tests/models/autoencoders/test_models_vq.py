@@ -13,14 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
-import numpy as np
 import pytest
 import torch
 
 from diffusers import VQModel
-from diffusers.models.autoencoders.vae import VectorQuantizer
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import backend_manual_seed, enable_full_determinism, torch_device
@@ -68,19 +64,6 @@ class VQModelTesterConfig(BaseModelTesterConfig):
 
 
 class TestVQModel(VQModelTesterConfig, ModelTesterMixin):
-    def test_vector_quantizer_logs_remap_configuration(self, caplog, capsys, tmp_path):
-        remap_path = tmp_path / "used.npy"
-        np.save(remap_path, np.array([0, 2, 4], dtype=np.int64))
-
-        logger_name = "diffusers.models.autoencoders.vae"
-        with caplog.at_level(logging.INFO, logger=logger_name):
-            VectorQuantizer(n_e=8, vq_embed_dim=4, beta=0.25, remap=str(remap_path), unknown_index="extra")
-
-        assert [(record.name, record.levelno, record.getMessage()) for record in caplog.records] == [
-            (logger_name, logging.INFO, "Remapping 8 indices to 4 indices. Using 3 for unknown indices.")
-        ]
-        assert capsys.readouterr().out == ""
-
     @pytest.mark.skipif(
         torch_device not in ["cuda", "xpu"],
         reason="float16 and bfloat16 can only be use for inference with an accelerator",

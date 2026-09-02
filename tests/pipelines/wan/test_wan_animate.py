@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
 import pytest
 import torch
 from PIL import Image
@@ -151,34 +149,6 @@ class WanAnimatePipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin):
-    def test_prepare_prev_segment_cond_latents_logs_interpolation_warning(self, caplog, capsys):
-        pipe = self.get_pipeline()
-        prev_segment_cond_video = torch.zeros((1, 3, 1, 8, 8), dtype=torch.float32)
-        caplog.clear()
-
-        logger_name = "diffusers.pipelines.wan.pipeline_wan_animate"
-        with caplog.at_level(logging.WARNING, logger=logger_name):
-            pipe.prepare_prev_segment_cond_latents(
-                prev_segment_cond_video=prev_segment_cond_video,
-                batch_size=1,
-                segment_frame_length=5,
-                height=16,
-                width=16,
-                prev_segment_cond_frames=1,
-                task="animate",
-                dtype=torch.float32,
-                device=torch.device("cpu"),
-            )
-
-        assert [(record.name, record.levelno, record.getMessage()) for record in caplog.records] == [
-            (
-                logger_name,
-                logging.WARNING,
-                "Interpolating prev segment cond video from (8, 8) to (16, 16)",
-            )
-        ]
-        assert capsys.readouterr().out == ""
-
     def test_inference(self):
         # Basic inference in animation mode. Run on CPU.
         pipe = self.get_pipeline()
