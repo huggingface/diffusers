@@ -394,7 +394,7 @@ If pipeline stages share components (e.g., the same VAE used for encoding and de
 
 ## Streaming
 
-[`~ModularPipeline.stream`] runs the same pipeline as a generator. It yields a [`StreamEvent`] after every iteration of every loop block, e.g. each denoising step, each segment of a chunked video, with the live [`PipelineState`] attached, so you can show progress, decode a preview, or stop early. The generator's return value is the final state, exactly what `__call__` returns.
+[`~ModularPipeline.stream`] runs the same pipeline as a generator. It yields a [`StreamEvent`] after every iteration of every loop block, e.g. each denoising step, each segment of a chunked video, with the live [`PipelineState`] attached, so you can show progress, decode a preview, or stop early. When exhausted, the generator returns the final [`PipelineState`], the default return value of `__call__`. `stream()` does not support `output= selection`.
 
 ```py
 generator = pipeline.stream(prompt="a cat", num_inference_steps=20)
