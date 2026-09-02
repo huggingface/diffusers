@@ -1,5 +1,4 @@
 import inspect
-from contextlib import nullcontext
 
 import torch
 
@@ -13,11 +12,6 @@ from ..modular_pipeline import (
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
-
-
-def _cache_context(transformer: torch.nn.Module, name: str):
-    cache_context = getattr(transformer, "cache_context", None)
-    return cache_context(name) if callable(cache_context) else nullcontext()
 
 
 class Cosmos3VisionLoopPrepareStep(ModularPipelineBlocks):
@@ -227,7 +221,7 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
             transformer_kwargs = {
                 name: value for name, value in transformer_kwargs.items() if name in transformer_args
             }
-            with _cache_context(components.transformer, pass_name):
+            with components.transformer.cache_context(pass_name):
                 preds_vision, preds_sound, preds_action = components.transformer(
                     **transformer_kwargs, return_dict=False
                 )
@@ -754,7 +748,7 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
 
     @staticmethod
     def _forward(components, static, vision_tokens, vision_timesteps, context_name):
-        with _cache_context(components.transformer, context_name):
+        with components.transformer.cache_context(context_name):
             preds_vision, _, _ = components.transformer(
                 input_ids=static["input_ids"],
                 text_indexes=static["text_indexes"],

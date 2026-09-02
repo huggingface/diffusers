@@ -34,6 +34,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SeaCacheTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -373,6 +374,10 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         expected = (norm.weight.float() * expected).to(hidden_states.dtype)
 
         torch.testing.assert_close(norm(hidden_states), expected, rtol=0, atol=0)
+
+
+class TestCosmos3OmniTransformerSeaCache(Cosmos3OmniTransformerTesterConfig, SeaCacheTesterMixin):
+    cache_input_key = "vision_tokens"
 
 
 class TestCosmos3OmniTransformerMemory(Cosmos3OmniTransformerTesterConfig, MemoryTesterMixin):
