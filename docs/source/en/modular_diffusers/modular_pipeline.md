@@ -403,7 +403,7 @@ for event in generator:
     latents = event.state.get("latents")   # the live state — clone anything you keep
 ```
 
-`event.path` is the loop block's dotted name from the top of the pipeline, and `event.loop_kwargs` its loop variables for that iteration. When loops are nested (e.g. an autoregressive video that denoises one chunk at a time), you receive events from both loops: one after every denoising step of the inner loop (path `"denoise.denoise_inner"`), and one after each completed chunk of the outer loop (path `"denoise"`). Check `event.path` to tell them apart — for example, to react only when a chunk is finished:
+`event.path` is the loop block's dotted name from the top of the pipeline, and `event.loop_kwargs` its loop variables for that iteration. When loops are nested (an autoregressive video that denoises one chunk at a time), you receive events from both loops. One after every denoising step of the inner loop (path `"denoise.denoise_inner"`), and one after each completed chunk of the outer loop (path `"denoise"`). Check `event.path` to tell them apart, for example, to react only when a chunk is finished:
 
 ```py
 for event in pipeline.stream(...):
