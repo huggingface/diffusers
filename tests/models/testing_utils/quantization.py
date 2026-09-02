@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import re
 
 import pytest
 import safetensors.torch
@@ -796,6 +797,10 @@ class TorchAoConfigMixin:
 
     @staticmethod
     def _get_quant_config(config_name, modules_to_not_convert=None):
+        # Quant types that need constructor arguments (e.g. `FqnToConfig`) are passed in already built.
+        if not isinstance(config_name, str):
+            return TorchAoConfig(config_name, modules_to_not_convert=modules_to_not_convert)
+
         config_cls = getattr(_torchao_quantization, config_name)
         config_kwargs = {"version": 2}
         # version=2 int4 defaults to the "plain" packing format, which routes through the
@@ -1010,6 +1015,56 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
 
     def test_torchao_keep_modules_in_fp32(self):
         self._test_keep_modules_in_fp32(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
+
+    def test_torchao_fqn_to_config(self):
+        """An `FqnToConfig` quant type must reach `quantize_` instead of tripping its `filter_fn` guard.
+
+        See https://github.com/huggingface/diffusers/issues/14667.
+        """
+        quant_type = _torchao_quantization.FqnToConfig(
+            {"_default": _torchao_quantization.Int8WeightOnlyConfig(version=2)}
+        )
+        self._test_quantized_layers(quant_type)
+
+    def test_torchao_fqn_to_config_targets_named_layers(self):
+        """`FqnToConfig` keys are matched against the model's own fqns, so only the named layers get quantized."""
+        model_fp = self._load_unquantized_model()
+        keep_in_fp32 = getattr(self.model_class, "_keep_in_fp32_modules", None) or []
+        linear_fqns = [
+            name
+            for name, module in model_fp.named_modules()
+            if isinstance(module, torch.nn.Linear) and not any(fp32_name in name for fp32_name in keep_in_fp32)
+        ]
+        del model_fp
+        if len(linear_fqns) < 2:
+            pytest.skip("Model does not have enough linear layers to test selective fqn quantization")
+
+        # One layer selected by its exact fqn, a set of them by a wildcard regex over the model's own fqns
+        # (the shape from the issue https://github.com/huggingface/diffusers/issues/14667), everything else
+        # left alone by `_default: None`. On Flux2, this gives
+        # exact_fqn="time_guidance_embed.timestep_embedder.linear_1" and
+        # pattern=".*proj_out" (matching "proj_out").
+        exact_fqn = linear_fqns[0]
+        pattern = f".*{re.escape(linear_fqns[-1].split('.')[-1])}"
+        regex_fqns = {name for name in linear_fqns if re.fullmatch(pattern, name)}
+        quant_type = _torchao_quantization.FqnToConfig(
+            {
+                exact_fqn: _torchao_quantization.Int8WeightOnlyConfig(version=2),
+                f"re:{pattern}": _torchao_quantization.Int8WeightOnlyConfig(version=2),
+                "_default": None,
+            }
+        )
+        model = self._create_quantized_model(quant_type)
+
+        expected_quantized = {exact_fqn, *regex_fqns}
+        quantized = {
+            name
+            for name, module in model.named_modules()
+            if isinstance(module, torch.nn.Linear) and self._is_module_quantized(module)
+        }
+        assert quantized == expected_quantized, (
+            f"Expected only {sorted(expected_quantized)} to be quantized, got {sorted(quantized)}"
+        )
 
 
 @is_quantization
