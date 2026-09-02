@@ -394,7 +394,7 @@ If pipeline stages share components (e.g., the same VAE used for encoding and de
 
 ## Streaming
 
-[`~ModularPipeline.stream`] runs the same pipeline as a generator. It yields a [`StreamEvent`] after every iteration of every loop block, e.g. each denoising step, each segment of a chunked video, with the live [`PipelineState`] attached, so you can show progress, decode a preview, or stop early. When exhausted, the generator returns the final [`PipelineState`], the default return value of `__call__`. `stream()` does not support `output= selection`.
+[`~ModularPipeline.stream`] runs the same pipeline as a generator. It yields a [`StreamEvent`] after every iteration of every loop block, e.g. each denoising step, each segment of a chunked video, with the live [`PipelineState`] attached, so you can show progress, decode a preview, or stop early. Exactly one event is emitted per loop iteration — the loop steps inside an iteration don't emit their own events, and blocks without loops emit none. When exhausted, the generator returns the final [`PipelineState`], the default return value of `__call__`. `stream()` does not support `output=` selection.
 
 ```py
 generator = pipeline.stream(prompt="a cat", num_inference_steps=20)
@@ -411,7 +411,7 @@ for event in pipeline.stream(...):
         show(event.state.get("out_frames"))
 ```
 
-To stop early, stop iterating (or call `generator.close()`). Blocks without loops run to completion and yield nothing.
+To stop early, stop iterating (or call `generator.close()`).
 
 Streaming is opt-in per loop block. An [`IterativePipelineBlocks`] (see the [IterativePipelineBlocks](./iterative_pipeline_blocks) guide) implements its loop in `__call__` as usual and, to support streaming, also implements `stream`. This is the same loop written as a generator over `stream_step`, which runs one iteration like `loop_step` and additionally yields the event for it:
 

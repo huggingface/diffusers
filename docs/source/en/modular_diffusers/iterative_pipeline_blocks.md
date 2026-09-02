@@ -16,6 +16,20 @@ specific language governing permissions and limitations under the License.
 
 Use this block type when a pipeline must repeat a sequence of blocks while carrying state between iterations and, when implemented, streaming progress to the caller.
 
+Two classes are involved in building a loop.
+
+| Class | Role | State it works with |
+|---|---|---|
+| [`~modular_pipelines.ModularLoopPipelineBlocks`] | A *loop step*: a regular block that runs inside a loop, once per iteration | The full [`~modular_pipelines.PipelineState`], through its own `get_block_state` / `set_block_state`; also receives the loop variables as call arguments |
+| [`~modular_pipelines.IterativePipelineBlocks`] | The *loop* itself: holds the loop logic and runs its steps once per iteration; loops can nest and stream | Its block state holds only its own `loop_inputs`; all data flows between its steps through the [`~modular_pipelines.PipelineState`] |
+
+This guide uses a few closely related terms, so let's define them upfront.
+
+- **Pipeline state** is the shared [`~modular_pipelines.PipelineState`] every block reads and writes. It is the only place where data crosses blocks and survives an iteration.
+- **Block state** is one block's declared view of the pipeline state: what its `get_block_state` returns and its `set_block_state` writes back. For a loop wrapper, it holds only the loop's `loop_inputs`.
+- **Loop inputs** are the loop wrapper's own input declaration: what the loop logic itself reads to drive the iteration (the `timesteps` it iterates over, for example).
+- **Loop variables** are the per-iteration values the loop passes to its steps as call arguments (`i`, `t`). They are never written to the pipeline state.
+
 > [!TIP]
 > [`~modular_pipelines.IterativePipelineBlocks`] replaces [`~modular_pipelines.LoopSequentialPipelineBlocks`]; see the [LoopSequentialPipelineBlocks](#loopsequentialpipelineblocks) guide for the differences.
 
@@ -23,7 +37,7 @@ Use this block type when a pipeline must repeat a sequence of blocks while carry
 
 A loop step is a [`~modular_pipelines.ModularLoopPipelineBlocks`]. It is a regular [`~modular_pipelines.ModularPipelineBlocks`] — it declares `inputs` and `intermediate_outputs`, and reads and writes the [`~modular_pipelines.PipelineState`] through `get_block_state` / `set_block_state` — with one difference. Its `__call__` also receives the loop's *loop variables* as arguments. For example, a denoising loop can pass the step index `i` and the timestep `t`.
 
-Loop variables are local and acts as its own bookkeeping, not pipeline data. The loop hands them to each step as plain call arguments for that one iteration, and they are never written to the [`~modular_pipelines.PipelineState`]. Anything that has to outlive the iteration goes through the state instead, like `noise_pred` and `latents` below. A streaming consumer does see them, each [`~modular_pipelines.StreamEvent`] carries that iteration's values in `event.loop_kwargs`.
+Loop variables are local to the loop and act as its bookkeeping, not pipeline data. The loop hands them to each step as plain call arguments for that one iteration, and they are never written to the [`~modular_pipelines.PipelineState`]. Anything that has to outlive the iteration goes through the state instead, like `noise_pred` and `latents` below. A streaming consumer does see them, each [`~modular_pipelines.StreamEvent`] carries that iteration's values in `event.loop_kwargs`.
 
 ```py
 from diffusers.modular_pipelines import ModularLoopPipelineBlocks, InputParam, OutputParam
