@@ -161,7 +161,10 @@ class PRXAttnProcessor2_0:
             ones_img = torch.ones((bs, l_img), dtype=torch.bool, device=device)
             attention_mask = attention_mask.to(device=device, dtype=torch.bool)
             joint_mask = torch.cat([attention_mask, ones_img], dim=-1)
-            attn_mask_tensor = joint_mask[:, None, None, :].expand(-1, attn.heads, l_img, -1)
+            # Every attention backend broadcasts the mask itself, so materialising
+            # [B, heads, L_img, L_all] only costs bandwidth: at batch 32, 1024 image tokens
+            # and 28 heads that is a 1.1 GiB mask read per block. Keep it broadcastable.
+            attn_mask_tensor = joint_mask[:, None, None, :]
 
         # Apply attention using dispatch_attention_fn for backend support
         # Reshape to match dispatch_attention_fn expectations: [B, L, H, D]
