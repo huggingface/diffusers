@@ -309,22 +309,14 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
         )
         return exclude
 
-    def _split_group_offload_components(self, pipe, offload_type):
-        """Split the pipeline's module components into the ones to offload and the ones to keep on the accelerator.
-
-        Everything is offloaded unless the list for this level names it, so a component a pipeline adds under a
-        name this file has never heard of is covered by default rather than silently left on CPU.
-        """
-        module_names = [name for name, component in pipe.components.items() if isinstance(component, torch.nn.Module)]
-        onload_names = self._group_offload_exclude_modules(pipe, offload_type)
-        offload = [name for name in module_names if name not in onload_names]
-        onload = [name for name in module_names if name in onload_names]
-        return offload, onload
-
     def _enable_group_offload_on_components(self, pipe, **group_offloading_kwargs):
-        offload_names, onload_names = self._split_group_offload_components(
-            pipe, group_offloading_kwargs["offload_type"]
-        )
+        # Every module component is offloaded unless the list for this level names it, so a component a pipeline
+        # adds under a name this file has never heard of is covered by default rather than left on CPU.
+        module_names = [name for name, component in pipe.components.items() if isinstance(component, torch.nn.Module)]
+        onload_names = self._group_offload_exclude_modules(pipe, group_offloading_kwargs["offload_type"])
+        offload_names = [name for name in module_names if name not in onload_names]
+        onload_names = [name for name in module_names if name in onload_names]
+
         for component_name in offload_names:
             component = getattr(pipe, component_name)
             if hasattr(component, "enable_group_offload"):
@@ -344,17 +336,6 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
         if group_offloading_kwargs.get("use_stream"):
             self._assert_streams_took_effect(pipe, offload_names)
 
-    @staticmethod
-    def _count_streamed_groups(component):
-        """Distinct offload groups on `component` that carry a stream (several submodules share one group)."""
-        streamed = {}
-        for submodule in component.modules():
-            registry = getattr(submodule, "_diffusers_hook", None)
-            hook = registry.get_hook("group_offloading") if registry is not None else None
-            if hook is not None:
-                streamed[id(hook.group)] = hook.group.stream is not None
-        return sum(streamed.values())
-
     def _assert_streams_took_effect(self, pipe, offload_names):
         """Guard against `use_stream=True` silently becoming a no-op.
 
@@ -366,7 +347,15 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
         if `use_stream` ever stopped being honoured, every count would fall to zero, and a skip would turn the
         entire streaming suite green by omission instead of failing.
         """
-        streamed = sum(self._count_streamed_groups(getattr(pipe, name)) for name in offload_names)
+        # Several submodules share one `ModuleGroup`, so dedupe on group identity before counting.
+        has_stream = {}
+        for component_name in offload_names:
+            for submodule in getattr(pipe, component_name).modules():
+                registry = getattr(submodule, "_diffusers_hook", None)
+                hook = registry.get_hook("group_offloading") if registry is not None else None
+                if hook is not None:
+                    has_stream[id(hook.group)] = hook.group.stream is not None
+        streamed = sum(has_stream.values())
         assert streamed > 0, (
             f"`use_stream=True` produced no streamed offload group across {sorted(offload_names)} for "
             f"{self.pipeline_class.__name__}. Either the flag stopped taking effect, or none of these components "
