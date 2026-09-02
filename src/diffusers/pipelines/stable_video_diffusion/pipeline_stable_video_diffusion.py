@@ -243,8 +243,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
     ):
-        # The image comes out of `video_processor.preprocess()` in float32, so it has to follow the VAE dtype.
-        # `needs_upcasting` in `__call__` has already moved a float16 VAE to float32 by this point.
+        # The image comes out of `video_processor.preprocess()` in float32. When `needs_upcasting=False`, the VAE may not
+        # be in FP32 (for example, it could be in BF16) so we need to cast in this case.
         image = image.to(device=device, dtype=self.vae.dtype)
         image_latents = self.vae.encode(image).latent_dist.mode()
 
