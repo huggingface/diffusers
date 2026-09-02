@@ -243,7 +243,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
     ):
-        image = image.to(device=device)
+        # The image comes out of `video_processor.preprocess()` in float32, so it has to follow the VAE dtype.
+        # `needs_upcasting` in `__call__` has already moved a float16 VAE to float32 by this point.
+        image = image.to(device=device, dtype=self.vae.dtype)
         image_latents = self.vae.encode(image).latent_dist.mode()
 
         # duplicate image_latents for each generation per prompt, using mps friendly method
