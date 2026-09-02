@@ -437,7 +437,7 @@ Load only what's new (or nothing at all). Only loaded components are written; ev
   pipe.save_pretrained("local/path", repo_id="my-username/flux2-custom-transformer", push_to_hub=True)
   ```
 
-Pass `overwrite_modular_index=False` to also preserve the recorded loading specs of the components being saved.
+Pass `overwrite_modular_index=False` to preserve the recorded specs of saved components that already have a load ID. Components without a recorded source, such as models added with `update_components`, are still rewritten to point to the destination.
 
 A modular repository can also include custom pipeline blocks as Python code. This allows you to share specialized blocks that aren't native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
 
