@@ -74,34 +74,27 @@ pipeline.transformer.enable_cache(config)
 successive denoising steps. When the accumulated indicator change remains below a threshold, it skips the expensive
 transformer block stack and predicts its output from cached residuals.
 
-[`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and [`Cosmos3DistilledModularPipeline`] enable SeaCache
-automatically when inference starts. The default [`SeaCacheConfig`] filters raw vision latents, linearly extrapolates
-the cached residual, uses `threshold=0.25`, and allows at most two consecutive cached steps before forcing a full
-transformer execution.
-
-SeaCache is an approximate optimization and may change generated outputs. Disable it for full transformer execution,
-such as when measuring an uncached baseline:
+SeaCache is disabled by default. Enable it on the transformer and provide callbacks for the active scheduler step,
+sigma, and number of inference steps:
 
 ```python
-from diffusers import Cosmos3OmniPipeline
+from diffusers import Cosmos3OmniPipeline, SeaCacheConfig
 
 pipe = Cosmos3OmniPipeline.from_pretrained("nvidia/Cosmos3-Nano")
-pipe.disable_sea_cache()
-```
-
-Call [`~Cosmos3OmniPipeline.enable_sea_cache`] to reenable it or provide a custom configuration. The pipeline fills in
-the scheduler callbacks required by SeaCache.
-
-```python
-from diffusers import SeaCacheConfig
-
-pipe.enable_sea_cache(
+pipe.transformer.enable_cache(
     SeaCacheConfig(
         threshold=0.2,
         max_consecutive_cached=2,
+        current_step_callback=lambda: pipe.current_step_index,
+        current_sigma_callback=lambda: pipe.current_sigma,
+        num_inference_steps_callback=lambda: pipe.num_timesteps,
     )
 )
 ```
+
+This model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
+[`Cosmos3DistilledModularPipeline`]. SeaCache is an approximate optimization and may change generated outputs. Call
+`pipe.transformer.disable_cache()` when you need every denoising step to execute the full transformer.
 
 ## FirstBlockCache
 

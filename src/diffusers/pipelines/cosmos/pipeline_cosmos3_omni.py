@@ -27,7 +27,6 @@ from PIL import Image
 from transformers import AutoTokenizer, BatchEncoding
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...hooks import SeaCacheConfig
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.modeling_utils import get_parameter_device
@@ -473,56 +472,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         self.inverse_duration_template = "The video is not {duration:.1f} seconds long and is not of {fps:.0f} FPS."
         self.inverse_image_resolution_template = "This image is not of {height}x{width} resolution."
         self.inverse_video_resolution_template = "This video is not of {height}x{width} resolution."
-
-        # Recommended quality-control negative prompts are documented in the Cosmos3 docs
-        # page (text2video / image2video). When the caller passes None we fall back to "".
-        self._is_sea_cache_enabled = True
-
-    def _prepare_sea_cache_config(self, config: SeaCacheConfig | None = None) -> SeaCacheConfig:
-        config = SeaCacheConfig() if config is None else config
-        config.current_step_callback = lambda: self.current_step_index
-        config.current_sigma_callback = lambda: self.current_sigma
-        config.num_inference_steps_callback = lambda: self.num_timesteps
-        return config
-
-    def enable_sea_cache(self, config: SeaCacheConfig | None = None) -> None:
-        """Enable SeaCache for subsequent pipeline calls."""
-        transformer = getattr(self, "transformer", None)
-        if transformer is None:
-            raise ValueError("SeaCache requires a loaded transformer.")
-        current_config = getattr(transformer, "_cache_config", None)
-        if current_config is not None:
-            if isinstance(current_config, SeaCacheConfig):
-                if config is None or config is current_config:
-                    self._prepare_sea_cache_config(current_config)
-                    self._is_sea_cache_enabled = True
-                    return
-                transformer.disable_cache()
-            else:
-                raise ValueError(
-                    f"Caching is already enabled with {type(current_config).__name__}. Disable it before enabling SeaCache."
-                )
-
-        transformer.enable_cache(self._prepare_sea_cache_config(config))
-        self._is_sea_cache_enabled = True
-
-    def disable_sea_cache(self) -> None:
-        """Disable the default SeaCache optimization for subsequent pipeline calls."""
-        self._is_sea_cache_enabled = False
-        transformer = getattr(self, "transformer", None)
-        if isinstance(getattr(transformer, "_cache_config", None), SeaCacheConfig):
-            transformer.disable_cache()
-
-    def _maybe_enable_sea_cache(self) -> None:
-        transformer = getattr(self, "transformer", None)
-        if transformer is None or not getattr(self, "_is_sea_cache_enabled", True):
-            return
-        if isinstance(getattr(transformer, "_cache_config", None), SeaCacheConfig):
-            self._prepare_sea_cache_config(transformer._cache_config)
-            return
-        if transformer.is_cache_enabled:
-            return
-        self.enable_sea_cache()
 
     # TODO YiYi & Daniel: fix for this use case in the base class
     def _get_execution_device(self) -> torch.device:
@@ -1518,10 +1467,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 `sound` (`torch.Tensor` of shape `[C, N]`, or `None` when `enable_sound=False`). Otherwise a tuple
                 `(video, sound)` with the same fields.
         """
-        self._maybe_enable_sea_cache()
-        if hasattr(self.transformer, "_reset_stateful_cache"):
-            self.transformer._reset_stateful_cache()
-
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 

@@ -197,38 +197,6 @@ def numpy_cosine_similarity_distance(a, b):
     return distance
 
 
-@contextmanager
-def count_transformer_cache_reuse(transformer, block_cls):
-    """Count real block executions and total transformer calls while running under a cache.
-
-    ``block_cls.forward`` is patched to count real executions (skipped blocks reuse cached outputs and never run),
-    and a forward pre-hook counts every transformer call. On exit the yielded dict is populated with ``full_steps``
-    (transformer calls that recomputed the blocks) and ``cached_steps`` (calls served from the cache).
-
-    The patch must be active before the cache is enabled, so enable the cache inside the ``with`` block.
-    """
-    counts = {"block_calls": 0, "transformer_calls": 0, "full_steps": 0, "cached_steps": 0}
-    original_forward = block_cls.forward
-
-    def counting_forward(self, *args, **kwargs):
-        counts["block_calls"] += 1
-        return original_forward(self, *args, **kwargs)
-
-    def counting_pre_hook(module, args):
-        counts["transformer_calls"] += 1
-
-    block_cls.forward = counting_forward
-    handle = transformer.register_forward_pre_hook(counting_pre_hook)
-    try:
-        yield counts
-    finally:
-        handle.remove()
-        block_cls.forward = original_forward
-        num_blocks = sum(1 for module in transformer.modules() if isinstance(module, block_cls))
-        counts["full_steps"] = counts["block_calls"] // num_blocks if num_blocks else 0
-        counts["cached_steps"] = counts["transformer_calls"] - counts["full_steps"]
-
-
 def check_if_dicts_are_equal(dict1, dict2):
     dict1, dict2 = dict1.copy(), dict2.copy()
 

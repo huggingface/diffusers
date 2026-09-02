@@ -21,8 +21,7 @@ import pytest
 import torch
 from PIL import Image
 
-from diffusers import CosmosActionCondition, ModularPipeline, SeaCacheConfig, UniPCMultistepScheduler
-from diffusers.models.transformers.transformer_cosmos3 import Cosmos3VLTextMoTDecoderLayer
+from diffusers import CosmosActionCondition, ModularPipeline, UniPCMultistepScheduler
 from diffusers.modular_pipelines import (
     Cosmos3OmniBlocks,
     Cosmos3OmniModularPipeline,
@@ -42,7 +41,7 @@ from diffusers.modular_pipelines.cosmos.before_denoise import (
 from diffusers.modular_pipelines.cosmos.encoders import Cosmos3TextEncoderStep
 from diffusers.modular_pipelines.cosmos.modular_blocks_cosmos3 import Cosmos3TransferChunkDenoiseStep
 
-from ...testing_utils import count_transformer_cache_reuse, torch_device
+from ...testing_utils import torch_device
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
@@ -194,35 +193,6 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
             torch.testing.assert_close(sigma, pipe.scheduler.sigmas[expected_step])
         assert pipe.current_step_index is None
         assert pipe.current_sigma is None
-        assert isinstance(pipe.transformer._cache_config, SeaCacheConfig)
-
-    def test_default_sea_cache_can_be_disabled_and_reenabled(self):
-        pipe = self.get_pipeline()
-        pipe._maybe_enable_sea_cache()
-
-        assert isinstance(pipe.transformer._cache_config, SeaCacheConfig)
-        pipe.disable_sea_cache()
-        assert not pipe.transformer.is_cache_enabled
-
-        pipe._maybe_enable_sea_cache()
-        assert not pipe.transformer.is_cache_enabled
-
-        pipe.enable_sea_cache()
-        assert isinstance(pipe.transformer._cache_config, SeaCacheConfig)
-
-    def test_default_sea_cache_reuses_transformer_execution(self):
-        pipe = self.get_pipeline().to(torch_device)
-        scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, use_flow_sigmas=True)
-        pipe.update_components(scheduler=scheduler, use_native_flow_schedule=True)
-        inputs = self.get_dummy_inputs()
-        inputs["num_inference_steps"] = 4
-
-        with count_transformer_cache_reuse(pipe.transformer, Cosmos3VLTextMoTDecoderLayer) as counts:
-            pipe.enable_sea_cache(SeaCacheConfig(threshold=1e6))
-            pipe(**inputs, output=self.output_name)
-
-        assert counts["cached_steps"] > 0
-        assert counts["full_steps"] > 0
 
     def _get_sampling_state_block_pipe(self, block):
         pipe = block.init_pipeline(self.pretrained_model_name_or_path)

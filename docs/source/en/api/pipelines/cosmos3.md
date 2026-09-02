@@ -662,41 +662,28 @@ if result.action is not None:
 
 ## SeaCache
 
-Cosmos 3 inference uses [`SeaCacheConfig`] by default. SeaCache reuses transformer residuals when the
-Spectral-Evolution-Aware indicator changes slowly, reducing the number of full transformer executions. The default
-configuration filters raw vision latents, linearly extrapolates cached residuals, uses a `0.25` threshold, and forces a
-full execution after at most two consecutive cached steps.
-
-SeaCache is approximate and can change generated outputs. Disable it before inference when you need every denoising
-step to execute the full transformer, for example when producing an uncached baseline:
-
-```python
-pipe.disable_sea_cache()
-result = pipe(
-    prompt=prompt,
-    num_frames=189,
-    height=720,
-    width=1280,
-)
-```
-
-The same method works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
-[`Cosmos3DistilledModularPipeline`]. Reenable the default configuration with `pipe.enable_sea_cache()`, or pass a
-custom configuration:
+SeaCache is disabled by default. Cosmos 3 supports enabling it explicitly with [`SeaCacheConfig`]. SeaCache reuses
+transformer residuals when the Spectral-Evolution-Aware indicator changes slowly, reducing the number of full
+transformer executions. Enable it on the transformer with scheduler metadata callbacks from the pipeline:
 
 ```python
 from diffusers import SeaCacheConfig
 
-pipe.enable_sea_cache(
+pipe.transformer.enable_cache(
     SeaCacheConfig(
         threshold=0.2,
         max_consecutive_cached=2,
+        current_step_callback=lambda: pipe.current_step_index,
+        current_sigma_callback=lambda: pipe.current_sigma,
+        num_inference_steps_callback=lambda: pipe.num_timesteps,
     )
 )
 ```
 
-The pipeline supplies SeaCache with the active scheduler step, sigma, and number of inference steps. Cache state is
-reset for each pipeline call, and conditional and unconditional guidance branches keep independent histories.
+The same model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
+[`Cosmos3DistilledModularPipeline`]. SeaCache is approximate and can change generated outputs. Disable it with
+`pipe.transformer.disable_cache()` when you need every denoising step to execute the full transformer. Cache state is
+reset after each pipeline call, and conditional and unconditional guidance branches keep independent histories.
 
 ## Sampling precision
 

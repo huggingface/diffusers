@@ -17,13 +17,12 @@ import pytest
 import torch
 from PIL import Image
 
-from diffusers import ModularPipeline, SeaCacheConfig
-from diffusers.models.transformers.transformer_cosmos3 import Cosmos3VLTextMoTDecoderLayer
+from diffusers import ModularPipeline
 from diffusers.modular_pipelines import Cosmos3DistilledBlocks, Cosmos3DistilledModularPipeline
 from diffusers.modular_pipelines.cosmos.before_denoise import Cosmos3VisionPrepareLatentsStep
 from diffusers.modular_pipelines.cosmos.encoders import Cosmos3DistilledTextEncoderStep
 
-from ...testing_utils import count_transformer_cache_reuse, torch_device
+from ...testing_utils import torch_device
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
@@ -183,16 +182,6 @@ class TestCosmos3DistilledModularPipelineFast(Cosmos3DistilledModularPipelineTes
         latents = pipe(**inputs, output=self.output_name)
 
         assert latents.dtype == expected_dtype
-
-    def test_default_sea_cache_reuses_transformer_execution(self):
-        pipe = self.get_pipeline().to(torch_device)
-
-        with count_transformer_cache_reuse(pipe.transformer, Cosmos3VLTextMoTDecoderLayer) as counts:
-            pipe.enable_sea_cache(SeaCacheConfig(threshold=1e6))
-            pipe(**self.get_dummy_inputs(), output=self.output_name)
-
-        assert counts["cached_steps"] > 0
-        assert counts["full_steps"] > 0
 
     def test_vae_encoder_rejects_image_and_video_together(self):
         vae_encoder = Cosmos3DistilledBlocks().sub_blocks["vae_encoder"]
