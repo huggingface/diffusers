@@ -415,7 +415,7 @@ pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base
 pipeline.save_pretrained("local/path", repo_id="my-username/sdxl-modular", push_to_hub=True)
 ```
 
-By default, [`~ModularPipeline.save_pretrained`] saves the components that are currently loaded, and points each saved component's loading spec in `modular_model_index.json` at the destination — the `repo_id` when pushing to the Hub, otherwise the save directory. A component that isn't loaded isn't saved and keeps its recorded spec, so it is still fetched from its original location later. This gives you two ways to save, depending on what you want:
+By default, [`~ModularPipeline.save_pretrained`] writes each currently loaded component that Diffusers can serialize. Components that are not loaded, or cannot be serialized, are not written and keep their existing loading specifications. This gives you two ways to save, depending on what you want.
 
 ### Save a self-contained copy
 
