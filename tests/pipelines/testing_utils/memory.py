@@ -376,15 +376,8 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
         if not (torch.cuda.is_available() or (hasattr(torch, "xpu") and torch.xpu.is_available())):
             pytest.skip("Group offloading with streams requires a CUDA or Intel XPU device.")
 
-    # `use_stream=True` prefetches the next group on a side stream while the current one computes, which needs the
-    # group execution order: `LazyPrefetchGroupOffloadingHook` traces it on the first forward pass and wires each
-    # group to its successor. It is a parameter rather than a separate test because no pipeline has ever needed to
-    # skip or xfail one setting without the other, while the two *levels* fail on opposite hazards and are scoped
-    # separately all over the suite.
-    #
-    # NOTE: a subclass overriding either test must re-declare this `parametrize`. Marks do not carry through an
-    # override, and without it the override collapses to one un-parametrized test that errors on the missing
-    # `use_stream` argument — which an `xfail` would then report as green.
+    # NOTE: as marks do not carry through overrides, we can use `@GroupOffloadTesterMixin._USE_STREAM` or
+    # `@MemoryTestMixin._USE_STREAM` to parametrize overridden tests for streaming.
     _USE_STREAM = pytest.mark.parametrize("use_stream", [False, True], ids=["no_stream", "stream"])
 
     @require_torch_accelerator
