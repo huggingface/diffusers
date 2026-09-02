@@ -382,54 +382,47 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
 
         assert_tensors_close(self.run_pipe(pipe), base_pipe_output, atol=expected_max_difference, rtol=1e-5, msg=msg)
 
+    def _skip_if_streams_unsupported(self):
+        # `apply_group_offloading` raises rather than degrading when `use_stream=True` has nowhere to put a stream.
+        if not (torch.cuda.is_available() or (hasattr(torch, "xpu") and torch.xpu.is_available())):
+            pytest.skip("Group offloading with streams requires a CUDA or Intel XPU device.")
+
+    # `use_stream=True` prefetches the next group on a side stream while the current one computes, which needs the
+    # group execution order: `LazyPrefetchGroupOffloadingHook` traces it on the first forward pass and wires each
+    # group to its successor. It is a parameter rather than a separate test because no pipeline has ever needed to
+    # skip or xfail one setting without the other, while the two *levels* fail on opposite hazards and are scoped
+    # separately all over the suite.
+    #
+    # NOTE: a subclass overriding either test must re-declare this `parametrize`. Marks do not carry through an
+    # override, and without it the override collapses to one un-parametrized test that errors on the missing
+    # `use_stream` argument — which an `xfail` would then report as green.
+    _USE_STREAM = pytest.mark.parametrize("use_stream", [False, True], ids=["no_stream", "stream"])
+
     @require_torch_accelerator
-    def test_group_offloading_inference_block_level(self, base_pipe_output, expected_max_difference=1e-4):
+    @_USE_STREAM
+    def test_group_offloading_inference_block_level(self, base_pipe_output, use_stream, expected_max_difference=1e-4):
+        if use_stream:
+            self._skip_if_streams_unsupported()
         self._run_group_offload_inference(
             base_pipe_output,
             expected_max_difference,
             msg="block-level group offloading should not affect the inference results",
             offload_type="block_level",
             num_blocks_per_group=1,
+            use_stream=use_stream,
         )
 
     @require_torch_accelerator
-    def test_group_offloading_inference_leaf_level(self, base_pipe_output, expected_max_difference=1e-4):
+    @_USE_STREAM
+    def test_group_offloading_inference_leaf_level(self, base_pipe_output, use_stream, expected_max_difference=1e-4):
+        if use_stream:
+            self._skip_if_streams_unsupported()
         self._run_group_offload_inference(
             base_pipe_output,
             expected_max_difference,
             msg="leaf-level group offloading should not affect the inference results",
             offload_type="leaf_level",
-        )
-
-    def _skip_if_streams_unsupported(self):
-        # `apply_group_offloading` raises rather than degrading when `use_stream=True` has nowhere to put a stream.
-        if not (torch.cuda.is_available() or (hasattr(torch, "xpu") and torch.xpu.is_available())):
-            pytest.skip("Group offloading with streams requires a CUDA or Intel XPU device.")
-
-    @require_torch_accelerator
-    def test_group_offloading_inference_block_level_streaming(self, base_pipe_output, expected_max_difference=1e-4):
-        # `use_stream=True` prefetches the next group on a side stream while the current one computes, which needs
-        # the group execution order. `LazyPrefetchGroupOffloadingHook` traces it on the first forward pass and wires
-        # each group to its successor, so this covers a code path the non-streaming tests never reach.
-        self._skip_if_streams_unsupported()
-        self._run_group_offload_inference(
-            base_pipe_output,
-            expected_max_difference,
-            msg="block-level group offloading with streams should not affect the inference results",
-            offload_type="block_level",
-            num_blocks_per_group=1,
-            use_stream=True,
-        )
-
-    @require_torch_accelerator
-    def test_group_offloading_inference_leaf_level_streaming(self, base_pipe_output, expected_max_difference=1e-4):
-        self._skip_if_streams_unsupported()
-        self._run_group_offload_inference(
-            base_pipe_output,
-            expected_max_difference,
-            msg="leaf-level group offloading with streams should not affect the inference results",
-            offload_type="leaf_level",
-            use_stream=True,
+            use_stream=use_stream,
         )
 
     @require_torch_accelerator

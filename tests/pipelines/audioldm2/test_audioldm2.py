@@ -478,11 +478,8 @@ class TestAudioLDM2PipelineMemory(AudioLDM2PipelineTesterConfig, MemoryTesterMix
     )
 
     @CLAP_BLOCK_OFFLOAD_SKIP
-    def test_group_offloading_inference_block_level(self, base_pipe_output, expected_max_difference=1e-4):
-        pass
-
-    @CLAP_BLOCK_OFFLOAD_SKIP
-    def test_group_offloading_inference_block_level_streaming(self, base_pipe_output, expected_max_difference=1e-4):
+    @MemoryTesterMixin._USE_STREAM
+    def test_group_offloading_inference_block_level(self, base_pipe_output, use_stream, expected_max_difference=1e-4):
         pass
 
     @pytest.mark.skip("Not supported yet due to CLAPModel.")

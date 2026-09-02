@@ -216,27 +216,17 @@ class TestKandinskyPriorPipelineMemory(KandinskyPriorPipelineTesterConfig, Memor
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky prior pipeline."""
 
     @pytest.mark.xfail(condition=True, reason=COMPONENT_GROUP_OFFLOAD_XFAIL_REASON, strict=True)
-    def test_group_offloading_inference_block_level(self, base_pipe_output, expected_max_difference=1e-4):
+    @MemoryTesterMixin._USE_STREAM
+    def test_group_offloading_inference_block_level(self, base_pipe_output, use_stream, expected_max_difference=1e-4):
         super().test_group_offloading_inference_block_level(
-            base_pipe_output, expected_max_difference=expected_max_difference
+            base_pipe_output, use_stream, expected_max_difference=expected_max_difference
         )
 
     @pytest.mark.xfail(condition=True, reason=COMPONENT_GROUP_OFFLOAD_XFAIL_REASON, strict=True)
-    def test_group_offloading_inference_leaf_level(self, base_pipe_output, expected_max_difference=1e-4):
+    @MemoryTesterMixin._USE_STREAM
+    def test_group_offloading_inference_leaf_level(self, base_pipe_output, use_stream, expected_max_difference=1e-4):
         super().test_group_offloading_inference_leaf_level(
-            base_pipe_output, expected_max_difference=expected_max_difference
-        )
-
-    @pytest.mark.xfail(condition=True, reason=COMPONENT_GROUP_OFFLOAD_XFAIL_REASON, strict=True)
-    def test_group_offloading_inference_block_level_streaming(self, base_pipe_output, expected_max_difference=1e-4):
-        super().test_group_offloading_inference_block_level_streaming(
-            base_pipe_output, expected_max_difference=expected_max_difference
-        )
-
-    @pytest.mark.xfail(condition=True, reason=COMPONENT_GROUP_OFFLOAD_XFAIL_REASON, strict=True)
-    def test_group_offloading_inference_leaf_level_streaming(self, base_pipe_output, expected_max_difference=1e-4):
-        super().test_group_offloading_inference_leaf_level_streaming(
-            base_pipe_output, expected_max_difference=expected_max_difference
+            base_pipe_output, use_stream, expected_max_difference=expected_max_difference
         )
 
     @pytest.mark.xfail(condition=True, reason=PIPELINE_GROUP_OFFLOAD_XFAIL_REASON, strict=True)
