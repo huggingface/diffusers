@@ -411,9 +411,9 @@ for event in pipeline.stream(...):
         show(event.state.get("out_frames"))
 ```
 
-To stop early, stop iterating (or call `generator.close()`); nothing needs cleaning up. Blocks without loops run to completion and yield nothing.
+To stop early, stop iterating (or call `generator.close()`). Blocks without loops run to completion and yield nothing.
 
-Streaming is opt-in per loop block. An [`IterativePipelineBlocks`] (see the [IterativePipelineBlocks](./iterative_pipeline_blocks) guide) implements its loop in `__call__` as usual and, to support streaming, also implements `stream` — the same loop written as a generator over `stream_step`, which runs one iteration like `loop_step` and additionally yields the event for it:
+Streaming is opt-in per loop block. An [`IterativePipelineBlocks`] (see the [IterativePipelineBlocks](./iterative_pipeline_blocks) guide) implements its loop in `__call__` as usual and, to support streaming, also implements `stream`. This is the same loop written as a generator over `stream_step`, which runs one iteration like `loop_step` and additionally yields the event for it:
 
 ```py
 class DenoiseLoop(IterativePipelineBlocks):
@@ -439,7 +439,7 @@ class DenoiseLoop(IterativePipelineBlocks):
         return components, state
 ```
 
-`pipeline.stream(...)` raises `NotImplementedError` if a loop on its path doesn't implement `stream`. Check `pipeline.blocks.supports_streaming` to find out ahead of time — it is `True` unless the blocks contain a loop that can't yield per iteration (an `IterativePipelineBlocks` that doesn't implement `stream`, or a legacy `LoopSequentialPipelineBlocks`).
+`pipeline.stream(...)` raises `NotImplementedError` if a loop on its path doesn't implement `stream`. Check `pipeline.blocks.supports_streaming` to find out ahead of time. It is `True` unless the blocks contain a loop that can't yield per iteration (an `IterativePipelineBlocks` that doesn't implement `stream`, or a legacy `LoopSequentialPipelineBlocks`).
 
 ## Modular repository
 

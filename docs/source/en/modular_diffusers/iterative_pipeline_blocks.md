@@ -12,18 +12,18 @@ specific language governing permissions and limitations under the License.
 
 # IterativePipelineBlocks
 
-[`~modular_pipelines.IterativePipelineBlocks`] is a multi-block type that runs its sub-blocks multiple times. It is what we use to build a denoising loop: the sub-blocks predict the noise and step the scheduler, the loop runs them once per timestep. You can also nest one [`~modular_pipelines.IterativePipelineBlocks`] under another to build an autoregressive video pipeline that generates chunk after chunk. Every iteration can be [streamed](./modular_pipeline#streaming) to the caller as it completes.
+[`~modular_pipelines.IterativePipelineBlocks`] is a multi-block type that runs its sub-blocks multiple times. It is used to build a denoising loop where the sub-blocks predict the noise and step the scheduler, then the loop runs them once per timestep. You can also nest one [`~modular_pipelines.IterativePipelineBlocks`] under another to build an autoregressive video pipeline that generates chunk after chunk. A loop can stream each iteration to the caller when its `stream` method is implemented.
 
-This guide shows you how to write the loop steps, the loop itself, how to nest loops, and how values travel from one iteration to the next.
+Use this block type when a pipeline must repeat a sequence of blocks while carrying state between iterations and, when implemented, streaming progress to the caller.
 
 > [!TIP]
-> [`~modular_pipelines.IterativePipelineBlocks`] replaces [`~modular_pipelines.LoopSequentialPipelineBlocks`]; see [the last section](#loopsequentialpipelineblocks) for the differences.
+> [`~modular_pipelines.IterativePipelineBlocks`] replaces [`~modular_pipelines.LoopSequentialPipelineBlocks`]; see the [LoopSequentialPipelineBlocks](#loopsequentialpipelineblocks) guide for the differences.
 
 ## Loop steps
 
-A loop step is a [`~modular_pipelines.ModularLoopPipelineBlocks`]. It is a regular [`~modular_pipelines.ModularPipelineBlocks`] — it declares `inputs` and `intermediate_outputs`, and reads and writes the [`~modular_pipelines.PipelineState`] through `get_block_state` / `set_block_state` — with one difference: its `__call__` also receives the loop's *loop variables* as arguments. For example, a denoising loop can pass the step index `i` and the timestep `t`.
+A loop step is a [`~modular_pipelines.ModularLoopPipelineBlocks`]. It is a regular [`~modular_pipelines.ModularPipelineBlocks`] — it declares `inputs` and `intermediate_outputs`, and reads and writes the [`~modular_pipelines.PipelineState`] through `get_block_state` / `set_block_state` — with one difference. Its `__call__` also receives the loop's *loop variables* as arguments. For example, a denoising loop can pass the step index `i` and the timestep `t`.
 
-Loop variables are the loop's own bookkeeping, not pipeline data. They are local to the loop: the loop hands them to each step as plain call arguments for that one iteration, and they are never written to the [`~modular_pipelines.PipelineState`]. Anything that has to outlive the iteration goes through the state instead, like `noise_pred` and `latents` below. (A streaming consumer does see them: each [`~modular_pipelines.StreamEvent`] carries that iteration's values in `event.loop_kwargs`.)
+Loop variables are local and acts as its own bookkeeping, not pipeline data. The loop hands them to each step as plain call arguments for that one iteration, and they are never written to the [`~modular_pipelines.PipelineState`]. Anything that has to outlive the iteration goes through the state instead, like `noise_pred` and `latents` below. A streaming consumer does see them, each [`~modular_pipelines.StreamEvent`] carries that iteration's values in `event.loop_kwargs`.
 
 ```py
 from diffusers.modular_pipelines import ModularLoopPipelineBlocks, InputParam, OutputParam
@@ -72,17 +72,17 @@ class SchedulerStep(ModularLoopPipelineBlocks):
         return components, state
 ```
 
-Because each step works on the [`~modular_pipelines.PipelineState`], the values it writes (`noise_pred`, the updated `latents`) are visible to the next step in the same iteration and to the next iteration — `latents` is read at the start of every iteration and written at the end of it.
+Because each step works on the [`~modular_pipelines.PipelineState`], the values it writes (`noise_pred`, the updated `latents`) are visible to the next step in the same iteration and to the next iteration. `latents` is read at the start of every iteration and written at the end of it.
 
 ## Loop wrapper
 
 The loop itself is a subclass of [`~modular_pipelines.IterativePipelineBlocks`]. It declares:
 
-- `loop_variables`, the names of the variables it passes to its steps on every iteration (as keyword arguments). A step's `__call__` names the ones it uses after `(components, state)` and declares `**kwargs` for any it ignores — naming all of them works too. This is validated when the loop is constructed: a named parameter that isn't a loop variable, or a missing one without a `**kwargs` catch-all, raises.
+- `loop_variables`, the names of the variables passed to each step on every iteration. Steps receive loop variables as keyword arguments. A step can name only the variables it uses if its `__call__` accepts `**kwargs`. Otherwise, it must name every loop variable. The loop validates these signatures when it is constructed and raises for unknown or missing variables.
 - `loop_inputs`, the inputs the loop logic itself reads — here the `timesteps` it iterates. They join the inputs aggregated from the steps (see below), and they are what `get_block_state` returns for the loop block.
 - `__call__`, the loop logic: read the loop's block state, and call `loop_step` once per iteration with the loop variables. `loop_step` runs every step once.
 
-Note that the wrapper defines only the loop logic - which steps run inside it should be attached separately, in a subclass:
+The wrapper defines only the loop logic. Which steps run inside it should be attached separately, in a subclass:
 
 ```py
 import torch
@@ -116,13 +116,13 @@ class DenoiseLoop(DenoiseLoopWrapper):
     block_names = ["denoiser", "scheduler"]
 ```
 
-This separation means the same loop logic can work with different combination of loop steps: subclass the wrapper again with different `block_classes` (this is exactly how `Flux2DenoiseLoopWrapper` serves the base and klein denoise steps). Steps can also be attached to the loop with [`~modular_pipelines.IterativePipelineBlocks.from_blocks_dict`]:
+This separation means the same loop logic can work with different combinations of loop steps. For example, subclass the wrapper again with different `block_classes`. Steps can also be attached to the loop with [`~modular_pipelines.IterativePipelineBlocks.from_blocks_dict`]:
 
 ```py
 loop = DenoiseLoopWrapper.from_blocks_dict({"denoiser": DenoiserStep(), "scheduler": SchedulerStep()})
 ```
 
-You can also change what runs inside a loop you already have: add a step, reorder, swap one out. e.g. you can insert a logging step like this:
+You can also change what runs inside a loop you already have: add a step, reorder, swap one out. For example, you can insert a logging step like this:
 
 ```py
 loop = DenoiseLoopWrapper.from_blocks_dict(loop.sub_blocks.copy().insert("log", LogStep(), 1))
@@ -136,7 +136,7 @@ state = pipeline(latents=torch.tensor(0.0), timesteps=torch.tensor([1.0, 2.0, 3.
 state.get("latents")   # tensor(6.)  — 0 + 1 + 2 + 3
 ```
 
-The wrapper contains only the loop logic, i.e. how to iterate through its steps, so its `loop_inputs` should be just what that takes (the `timesteps` above). All data flows through the steps, which read and write the pipeline state directly: in the example above, `DenoiserStep` writes `noise_pred` to the state and `SchedulerStep` reads it back and writes the updated `latents`; the wrapper touches none of them. If the loop logic seems to need to do more than iterate: e.g. collect results, you should add a loop step for it instead: in `wan_animate_2`, a small collect step appends each segment's decoded frames to `segment_frames`, and the next segment's prep step reads it back to condition on; under [streaming](#streaming), the partial collection is visible after every iteration. What we don't want is the wrapper doing it inline:
+The wrapper contains only the loop logic, i.e. how to iterate through its steps, so its `loop_inputs` should be just what that takes (the `timesteps` above). All data flows through the steps, which read and write the pipeline state directly. In the example above, `DenoiserStep` writes `noise_pred` to the state and `SchedulerStep` reads it back and writes the updated `latents`. The wrapper touches none of them. If the loop logic seems to need to do more than iterate, for example, collect results, you should add a loop step for it instead. In `wan_animate_2`, a small collect step appends each segment's decoded frames to `segment_frames`, and the next segment's prep step reads it back to condition on. Under [streaming](#streaming), the partial collection is visible after every iteration. What we don't want is the wrapper doing it inline:
 
 ```py
 # don't: loop logic collecting results itself
@@ -151,9 +151,9 @@ def __call__(self, components, state):
 
 ## Nesting loops
 
-An [`~modular_pipelines.IterativePipelineBlocks`] can be a step of another one. An autoregressive video pipeline generates a chunk of frames at a time, so it is an outer loop over chunks: each of its iterations prepares the chunk's latents from the frames generated so far, runs a full denoising loop over them, and appends the result to the history.
+An [`~modular_pipelines.IterativePipelineBlocks`] can be a step of another one. An autoregressive video pipeline generates a chunk of frames at a time, so it is an outer loop over chunks. Each of its iterations prepares the chunk's latents from the frames generated so far, runs a full denoising loop over them, and appends the result to the history.
 
-The inner denoising loop is a step of the outer loop, so its `__call__` must accept the outer loop's variables (or take `**kwargs` if it ignores them), and it declares `loop_variables` of its own for its own steps. The two sets are independent: `k` arrives as a call argument and the inner loop is free to use it — the wan-animate-2 denoise loop puts the chunk index in its progress bar — but it is not forwarded to the steps, which are passed the inner loop's `i` and `t`.
+The inner denoising loop is a step of the outer loop, so its `__call__` must accept the outer loop's variables (or take `**kwargs` if it ignores them), and it declares `loop_variables` of its own for its own steps. The two sets are independent. `k` arrives as a call argument and the inner loop is free to use it — the wan-animate-2 denoise loop puts the chunk index in its progress bar — but it is not forwarded to the steps, which are passed the inner loop's `i` and `t`.
 
 This is the structure this section builds:
 
@@ -195,7 +195,7 @@ class ChunkDenoiseLoop(ChunkDenoiseLoopWrapper):
     block_names = ["denoiser", "scheduler"]
 ```
 
-`ChunkDenoiseLoop` is the *inner* loop: it denoises a single chunk. It becomes a step of the outer loop below, which iterates over the chunks — at each `k` it prepares the chunk's latents from the history, runs the full inner denoising loop over them, and records the result:
+`ChunkDenoiseLoop` is the *inner* loop that denoises a single chunk. It becomes a step of the outer loop below, which iterates over the chunks. At each `k`, it prepares the chunk's latents from the history, runs the full inner denoising loop over them, and records the result:
 
 ```py
 class PrepareChunkStep(ModularLoopPipelineBlocks):
@@ -278,11 +278,11 @@ state = pipeline(num_chunks=2, timesteps=torch.tensor([1.0, 2.0]), history=torch
 state.get("history")   # tensor(7.) — chunk 0: 0 + 0 + 3 = 3, chunk 1: 3 + 1 + 3 = 7
 ```
 
-`history` is carried from one iteration to the next: `UpdateHistoryStep` writes it at the end of one, `PrepareChunkStep` reads it at the start of the next. Because the reader comes before the writer, it is one of the loop's inputs — which is why `pipeline(history=...)` works above — and like any input it has to come from either the user or an earlier block. If seeding it isn't meaningful (a decoder cache, the previous chunk's frames), have the block that runs before the loop declare it as an output and set its initial value; it then drops out of the pipeline's signature.
+`history` is carried from one iteration to the next. `UpdateHistoryStep` writes it at the end of one, and `PrepareChunkStep` reads it at the start of the next. Because the reader comes before the writer, it is one of the loop's inputs — which is why `pipeline(history=...)` works above — and like any input it has to come from either the user or an earlier block. If seeding it isn't meaningful (a decoder cache, the previous chunk's frames), have the block that runs before the loop declare it as an output and set its initial value. It then drops out of the pipeline's signature.
 
 ## Streaming
 
-To let [`~ModularPipeline.stream`] hand back the live state after every iteration, also implement `stream` — the same loop, written as a generator over `stream_step`, which runs one iteration like `loop_step` and additionally yields a [`~modular_pipelines.StreamEvent`] for it (after the events of any nested loop):
+To let [`~ModularPipeline.stream`] hand back the live state after every iteration, also implement `stream`. This is the same loop written as a generator over `stream_step`, which runs one iteration like `loop_step` and additionally yields a [`~modular_pipelines.StreamEvent`] for it (after the events of any nested loop):
 
 ```py
 class DenoiseLoop(IterativePipelineBlocks):
@@ -295,8 +295,14 @@ class DenoiseLoop(IterativePipelineBlocks):
         return components, state
 ```
 
-A nested loop's `stream` takes the outer loop's variables exactly like its `__call__` does. Streaming is opt-in per loop: `pipeline.blocks.supports_streaming` tells you whether every loop on the path implements it. See [Streaming](./modular_pipeline#streaming) for the consumer side.
+A nested loop's `stream` takes the outer loop's variables exactly like its `__call__` does. Streaming is opt-in per loop.`pipeline.blocks.supports_streaming` tells you whether every loop on the path implements it. See [Streaming](./modular_pipeline#streaming) for the consumer side.
 
 ## LoopSequentialPipelineBlocks
 
-[`~modular_pipelines.LoopSequentialPipelineBlocks`] is the earlier loop type and is still used by existing pipelines. It differs in three ways: its steps share one flattened [`~modular_pipelines.BlockState`] that the wrapper extracts before the loop (instead of each step reading the [`~modular_pipelines.PipelineState`] itself), it cannot contain another loop, and it cannot stream. Use [`~modular_pipelines.IterativePipelineBlocks`] for new pipelines.
+[`~modular_pipelines.LoopSequentialPipelineBlocks`] is the earlier loop type and is still used by existing pipelines. It differs in three ways:
+
+1. Steps share one flattened [`~modular_pipelines.BlockState`] that the wrapper extracts before the loop (instead of each step reading the [`~modular_pipelines.PipelineState`] itself).
+2. It cannot contain another loop.
+3. It cannot stream.
+
+Use [`~modular_pipelines.IterativePipelineBlocks`] for new pipelines.

@@ -127,7 +127,9 @@ for i, t in enumerate(timesteps):
 
 The denoising loop is an `IterativePipelineBlocks` whose steps are `ModularLoopPipelineBlocks` (see `flux2/denoise.py` as example). Building one takes three parts: write the loop steps, write the wrapper, assemble.
 
-**1. Write the loop steps.** Regular blocks (own `inputs` / `intermediate_outputs`, `get_block_state` / `set_block_state` on the full `PipelineState`) whose `__call__` takes the loop variables as extra keyword arguments — name the ones the step uses, declare `**kwargs` for any it ignores (validated at construction: unknown names raise, and so does a missing variable without a `**kwargs` catch-all):
+**1. Write the loop steps.** Loop steps are regular blocks. They declare `inputs` and `intermediate_outputs` and use `get_block_state` / `set_block_state` with the full `PipelineState`.
+
+Their `__call__` also accepts the loop variables they use as keyword arguments. If a step ignores some loop variables, declare `**kwargs`. Otherwise, name every loop variable. The loop validates these signatures when it is constructed and raises for unknown or missing variables.
 
 ```python
 class MyModelLoopAfterDenoiser(ModularLoopPipelineBlocks):
