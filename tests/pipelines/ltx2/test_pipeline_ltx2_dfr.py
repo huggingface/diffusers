@@ -47,6 +47,10 @@ class LTX2DFRPipelineTesterConfig(BasePipelineTesterConfig):
             "return_dict",
         ]
     )
+    # This config subclasses `BasePipelineTesterConfig` rather than `LTX2BaseTesterConfig`, so it has to restate the
+    # family's `audio_vae` exclusion: its decode-time convolutions run without the group leader's `forward` having
+    # onloaded the group.
+    group_offloading_block_level_exclude_modules = ["vae", "audio_vae"]
 
     def get_dummy_components(self):
         return get_dfr_dummy_components()
