@@ -2074,6 +2074,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 component_spec_dict["pretrained_model_name_or_path"] = repo_id if push_to_hub else save_directory
                 component_spec_dict["subfolder"] = component_name
                 component_spec_dict["variant"] = variant if save_method_accept_variant else None
+                # a revision pinned for the original source doesn't exist at the destination
                 component_spec_dict["revision"] = None
                 self.register_to_config(**{component_name: (library, class_name, component_spec_dict)})
 
