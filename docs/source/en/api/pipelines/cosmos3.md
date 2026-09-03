@@ -667,7 +667,12 @@ transformer residuals when the Spectral-Evolution-Aware indicator changes slowly
 transformer executions. Enable it on the transformer with scheduler metadata callbacks from the pipeline:
 
 ```python
-from diffusers import SeaCacheConfig
+import torch
+from diffusers import Cosmos3OmniPipeline, SeaCacheConfig
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+)
 
 pipe.transformer.enable_cache(
     SeaCacheConfig(
