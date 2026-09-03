@@ -83,3 +83,48 @@ class TestGGUFCudaKernels:
             assert torch.allclose(output_native, output_cuda, 1e-2), (
                 f"GGUF CUDA Kernel Output is different from Native Output for {quant_type}"
             )
+
+
+@is_quantization
+@is_gguf
+@require_accelerate
+@require_gguf_version_greater_or_equal("0.10.0")
+class TestGGUFParameterRewrap:
+    """Offloading rebuilds parameters without forwarding `quant_type`."""
+
+    def _make_param(self):
+        from diffusers.quantizers.gguf.utils import GGML_QUANT_SIZES
+
+        quant_type = gguf.GGMLQuantizationType.Q8_0
+        _, type_size = GGML_QUANT_SIZES[quant_type]
+        data = torch.zeros((4, type_size), dtype=torch.uint8)
+
+        return GGUFParameter(data, quant_type=quant_type), quant_type
+
+    def test_rewrap_without_quant_type_inherits_it(self):
+        param, quant_type = self._make_param()
+        rewrapped = GGUFParameter(param, requires_grad=False)
+
+        assert rewrapped.quant_type == quant_type
+        assert rewrapped.quant_shape == param.quant_shape
+
+    def test_set_module_tensor_to_device_preserves_quant_type(self):
+        from accelerate.utils import set_module_tensor_to_device
+
+        from diffusers.quantizers.gguf.utils import GGUFLinear
+
+        param, quant_type = self._make_param()
+        out_features, in_features = param.quant_shape
+        module = GGUFLinear(in_features, out_features, bias=False, compute_dtype=torch.bfloat16)
+        module.weight = param
+
+        # Passing `value` (or moving across devices) is what makes `accelerate` rebuild the
+        # parameter through `param_cls(new_value, requires_grad=...)`. A same-device move with
+        # no value short-circuits before that branch and would not cover the regression.
+        set_module_tensor_to_device(module, "weight", torch.device("cpu"), value=param)
+
+        assert module.weight.quant_type == quant_type
+
+    def test_untyped_construction_raises(self):
+        with pytest.raises(ValueError):
+            GGUFParameter(torch.zeros((4, 32), dtype=torch.uint8))
