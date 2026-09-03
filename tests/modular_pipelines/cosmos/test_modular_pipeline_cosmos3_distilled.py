@@ -116,7 +116,6 @@ class TestCosmos3DistilledModularPipelineFast(Cosmos3DistilledModularPipelineTes
         assert pipe.config.is_distilled is True
         assert pipe.config.distilled_sigmas is None
         assert pipe.config.default_use_system_prompt is True
-        assert pipe.config.default_use_fp32_sampling_state is True
 
     def test_distilled_text_step_uses_system_prompt_config_fallback(self):
         text_pipe = Cosmos3DistilledTextEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
@@ -142,18 +141,9 @@ class TestCosmos3DistilledModularPipelineFast(Cosmos3DistilledModularPipelineTes
         assert explicit_without_system_prompt == default_without_system_prompt == updated_without_system_prompt
         assert len(default_with_system_prompt) > len(default_without_system_prompt)
 
-    @pytest.mark.parametrize(
-        ("config_enabled", "input_enabled", "expected_dtype"),
-        [
-            (False, None, torch.bfloat16),
-            (True, None, torch.float32),
-            (True, False, torch.bfloat16),
-        ],
-    )
-    def test_prepare_vision_latents_fp32_sampling_state(self, config_enabled, input_enabled, expected_dtype):
+    def test_prepare_vision_latents_uses_fp32(self):
         prepare_pipe = Cosmos3VisionPrepareLatentsStep().init_pipeline(self.pretrained_model_name_or_path)
         prepare_pipe.load_components(torch_dtype=torch.bfloat16)
-        prepare_pipe.update_components(default_use_fp32_sampling_state=config_enabled)
         prepare_pipe.to(torch_device)
 
         outputs = prepare_pipe(
@@ -162,26 +152,19 @@ class TestCosmos3DistilledModularPipelineFast(Cosmos3DistilledModularPipelineTes
             width=32,
             fps=24.0,
             generator=self.get_generator(0),
-            use_fp32_sampling_state=input_enabled,
-            output=["latents", "vision_condition_mask", "use_fp32_sampling_state"],
+            output=["latents", "vision_condition_mask"],
         )
 
-        assert outputs["latents"].dtype == expected_dtype
-        assert outputs["vision_condition_mask"].dtype == expected_dtype
-        assert outputs["use_fp32_sampling_state"] is (config_enabled if input_enabled is None else input_enabled)
+        assert outputs["latents"].dtype == torch.float32
+        assert outputs["vision_condition_mask"].dtype == torch.float32
 
-    @pytest.mark.parametrize(
-        ("use_fp32_sampling_state", "expected_dtype"),
-        [(False, torch.bfloat16), (True, torch.float32)],
-    )
-    def test_distilled_scheduler_fp32_state(self, use_fp32_sampling_state, expected_dtype):
+    def test_distilled_scheduler_uses_fp32_state(self):
         pipe = self.get_pipeline(torch_dtype=torch.bfloat16).to(torch_device)
         inputs = self.get_dummy_inputs()
-        inputs["use_fp32_sampling_state"] = use_fp32_sampling_state
 
         latents = pipe(**inputs, output=self.output_name)
 
-        assert latents.dtype == expected_dtype
+        assert latents.dtype == torch.float32
 
     def test_vae_encoder_rejects_image_and_video_together(self):
         vae_encoder = Cosmos3DistilledBlocks().sub_blocks["vae_encoder"]

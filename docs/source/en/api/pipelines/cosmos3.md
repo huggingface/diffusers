@@ -685,12 +685,6 @@ The same model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModula
 `pipe.transformer.disable_cache()` when you need every denoising step to execute the full transformer. Cache state is
 reset after each pipeline call, and conditional and unconditional guidance branches keep independent histories.
 
-## Sampling precision
-
-Cosmos 3 keeps denoising latents and classifier-free-guidance arithmetic in `torch.float32` by default while casting
-transformer inputs to the model dtype. Pass `use_fp32_sampling_state=False` to an inference call to keep the sampling
-state in the model dtype instead.
-
 ## Context parallelism
 
 For long videos or high resolutions, a single forward pass can exceed the memory and latency budget of one GPU. Cosmos 3 supports **context parallelism (CP)** to shard the sequence dimension across multiple GPUs, splitting the attention computation so each device holds only a slice of the tokens.
