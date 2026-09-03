@@ -19,9 +19,9 @@ import logging
 import pytest
 import torch
 
-from diffusers.models.attention import AttentionModuleMixin
+from diffusers.models.attention import AttentionMixin, AttentionModuleMixin
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry, attention_backend
-from diffusers.models.attention_processor import AttnProcessor
+from diffusers.models.attention_processor import Attention, AttnProcessor
 from diffusers.utils import is_kernels_available, is_torch_version
 
 from ...testing_utils import assert_tensors_close, backend_empty_cache, is_attention, is_torch_compile, torch_device
@@ -123,6 +123,24 @@ def _skip_if_backend_requires_nondeterminism(backend):
         )
 
 
+def _fused_module_cls(model):
+    """The attention base class this model's `fuse_qkv_projections()` actually walks.
+
+    The shared `AttentionMixin.fuse_qkv_projections()` only walks `AttentionModuleMixin` modules, whereas the
+    per-model implementations still on the legacy path (UNets, SD3, PixArt, AuraFlow, CogVideoX, ...) walk `Attention`
+    modules. A model whose attention modules are of the *other* kind fuses nothing at all, which is a bug in the model
+    rather than in this test - see `test_fuse_unfuse_qkv_projections`.
+    """
+    if type(model).fuse_qkv_projections is AttentionMixin.fuse_qkv_projections:
+        return AttentionModuleMixin
+    return Attention
+
+
+def _fused_layer_name(module):
+    """Name of the layer `fuse_projections()` creates: cross-attention fuses K/V only, self-attention fuses Q/K/V."""
+    return "to_kv" if getattr(module, "is_cross_attention", False) else "to_qkv"
+
+
 @is_attention
 class AttentionTesterMixin:
     """
@@ -152,7 +170,7 @@ class AttentionTesterMixin:
         backend_empty_cache(torch_device)
 
     @torch.no_grad()
-    def test_fuse_unfuse_qkv_projections(self, atol=1e-3, rtol=0):
+    def test_fuse_unfuse_qkv_projections(self, request, atol=1e-3, rtol=0):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict)
@@ -162,46 +180,103 @@ class AttentionTesterMixin:
         if not hasattr(model, "fuse_qkv_projections"):
             pytest.skip("Model does not support QKV projection fusion.")
 
+        module_cls = _fused_module_cls(model)
+        other_cls = Attention if module_cls is AttentionModuleMixin else AttentionModuleMixin
+        reachable = [module for module in model.modules() if isinstance(module, module_cls)]
+        unreachable = [
+            module
+            for module in model.modules()
+            if isinstance(module, other_cls) and not isinstance(module, module_cls)
+        ]
+
+        if not reachable and not unreachable:
+            pytest.skip("Model has no attention modules to fuse.")
+
+        if not reachable:
+            # `fuse_qkv_projections()` walks a different attention base class than the one this model is built on, so
+            # it silently fuses nothing. Marked xfail rather than skipped so that fixing the model shows up as an
+            # XPASS instead of staying quietly green.
+            request.node.add_marker(
+                pytest.mark.xfail(
+                    reason=(
+                        f"{type(model).__name__}.fuse_qkv_projections() walks `{module_cls.__name__}` modules, but "
+                        f"this model's attention is built on `{other_cls.__name__}`, so nothing is ever fused."
+                    ),
+                    strict=True,
+                )
+            )
+
+        assert reachable, (
+            f"{type(model).__name__}.fuse_qkv_projections() does not reach any of this model's attention modules."
+        )
+
+        fusable_modules = [module for module in reachable if getattr(module, "_supports_qkv_fusion", True)]
+        if not fusable_modules:
+            pytest.skip("Model's attention modules do not support QKV projection fusion.")
+
         output_before_fusion = model(**inputs_dict, return_dict=False)[0]
+        processors_before_fusion = model.attn_processors
 
         model.fuse_qkv_projections()
 
-        has_fused_projections = False
-        for module in model.modules():
-            if isinstance(module, AttentionModuleMixin):
-                if hasattr(module, "to_qkv") or hasattr(module, "to_kv"):
-                    has_fused_projections = True
-                    assert module.fused_projections, "fused_projections flag should be True"
-                    break
-
-        if has_fused_projections:
-            output_after_fusion = model(**inputs_dict, return_dict=False)[0]
-
-            assert_tensors_close(
-                output_before_fusion,
-                output_after_fusion,
-                atol=atol,
-                rtol=rtol,
-                msg="Output should not change after fusing projections",
+        for module in fusable_modules:
+            assert module.fused_projections, "fused_projections flag should be True"
+            layer_name = _fused_layer_name(module)
+            assert getattr(module, layer_name, None) is not None, (
+                f"{type(module).__name__} should expose a fused `{layer_name}` layer after fusing."
             )
 
-            model.unfuse_qkv_projections()
+        processors_after_fusion = model.attn_processors
+        assert len(processors_after_fusion) == len(processors_before_fusion), (
+            "Fusing projections should not change the number of attention processors."
+        )
+        # Models on the legacy `Attention` path swap in dedicated `Fused*` processors and remember the originals so
+        # that `unfuse_qkv_projections()` can put them back.
+        uses_fused_processors = getattr(model, "original_attn_processors", None) is not None
+        if uses_fused_processors:
+            for name, processor in processors_after_fusion.items():
+                assert type(processor).__name__.startswith("Fused"), (
+                    f"Processor {name} should be a fused processor after fusing, got {type(processor).__name__}."
+                )
 
-            for module in model.modules():
-                if isinstance(module, AttentionModuleMixin):
-                    assert not hasattr(module, "to_qkv"), "to_qkv should be removed after unfusing"
-                    assert not hasattr(module, "to_kv"), "to_kv should be removed after unfusing"
-                    assert not module.fused_projections, "fused_projections flag should be False"
+        output_after_fusion = model(**inputs_dict, return_dict=False)[0]
 
-            output_after_unfusion = model(**inputs_dict, return_dict=False)[0]
+        assert_tensors_close(
+            output_before_fusion,
+            output_after_fusion,
+            atol=atol,
+            rtol=rtol,
+            msg="Output should not change after fusing projections",
+        )
 
-            assert_tensors_close(
-                output_before_fusion,
-                output_after_unfusion,
-                atol=atol,
-                rtol=rtol,
-                msg="Output should match original after unfusing projections",
+        model.unfuse_qkv_projections()
+
+        if uses_fused_processors:
+            # The legacy path only restores the original processors; the fused layers themselves are left in place.
+            processors_after_unfusion = model.attn_processors
+            assert len(processors_after_unfusion) == len(processors_before_fusion), (
+                "Unfusing projections should not change the number of attention processors."
             )
+            for name, processor in processors_after_unfusion.items():
+                assert type(processor) is type(processors_before_fusion[name]), (
+                    f"Processor {name} should be restored to {type(processors_before_fusion[name]).__name__} "
+                    f"after unfusing, got {type(processor).__name__}."
+                )
+        else:
+            for module in fusable_modules:
+                assert not hasattr(module, "to_qkv"), "to_qkv should be removed after unfusing"
+                assert not hasattr(module, "to_kv"), "to_kv should be removed after unfusing"
+                assert not module.fused_projections, "fused_projections flag should be False"
+
+        output_after_unfusion = model(**inputs_dict, return_dict=False)[0]
+
+        assert_tensors_close(
+            output_before_fusion,
+            output_after_unfusion,
+            atol=atol,
+            rtol=rtol,
+            msg="Output should match original after unfusing projections",
+        )
 
     def test_get_set_processor(self):
         init_dict = self.get_init_dict()
