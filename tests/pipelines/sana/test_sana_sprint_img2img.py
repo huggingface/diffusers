@@ -19,7 +19,13 @@ from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 from diffusers import AutoencoderDC, SanaSprintImg2ImgPipeline, SanaTransformer2DModel, SCMScheduler
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, torch_device
+from ...testing_utils import (
+    IS_GITHUB_ACTIONS,
+    enable_full_determinism,
+    require_accelerator,
+    skip_if_no_cudnn_engine,
+    torch_device,
+)
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
@@ -212,6 +218,16 @@ class TestSanaSprintImg2ImgPipeline(SanaSprintImg2ImgPipelineTesterConfig, Pipel
     )
     def test_inference_batch_single_identical(self):
         pass
+
+    # Sana's multiscale linear attention runs a depthwise `Conv2d`, which some cuDNN builds have no bfloat16
+    # engine for. The decorators below repeat the ones the base method is declared with: overriding a test drops
+    # the marks it inherited.
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @require_accelerator
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        with skip_if_no_cudnn_engine():
+            super().test_half_precision_inference_no_nan(dtype)
 
 
 class TestSanaSprintImg2ImgPipelineMemory(SanaSprintImg2ImgPipelineTesterConfig, MemoryTesterMixin):
