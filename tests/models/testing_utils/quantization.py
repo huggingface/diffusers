@@ -1027,15 +1027,18 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         self._test_quantized_layers(quant_type)
 
     def test_torchao_fqn_to_config_targets_named_layers(self):
-        """`FqnToConfig` keys are matched against the model's own fqns, so only the named layers get quantized."""
-        model_fp = self._load_unquantized_model()
+        """Selective `FqnToConfig` targeting must land on the same layers as a plain `quantize_` call.
+
+        The quantizer resolves fqns one `nn.Linear` at a time, so `quantization_config=` is checked against
+        torchao's own whole-model pass. See https://github.com/huggingface/diffusers/issues/14667.
+        """
         keep_in_fp32 = getattr(self.model_class, "_keep_in_fp32_modules", None) or []
+        reference = self._load_unquantized_model().to(torch_device)
         linear_fqns = [
             name
-            for name, module in model_fp.named_modules()
+            for name, module in reference.named_modules()
             if isinstance(module, torch.nn.Linear) and not any(fp32_name in name for fp32_name in keep_in_fp32)
         ]
-        del model_fp
         if len(linear_fqns) < 2:
             pytest.skip("Model does not have enough linear layers to test selective fqn quantization")
 
@@ -1046,25 +1049,25 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         # pattern=".*proj_out" (matching "proj_out").
         exact_fqn = linear_fqns[0]
         pattern = f".*{re.escape(linear_fqns[-1].split('.')[-1])}"
-        regex_fqns = {name for name in linear_fqns if re.fullmatch(pattern, name)}
-        quant_type = _torchao_quantization.FqnToConfig(
-            {
-                exact_fqn: _torchao_quantization.Int8WeightOnlyConfig(version=2),
-                f"re:{pattern}": _torchao_quantization.Int8WeightOnlyConfig(version=2),
-                "_default": None,
-            }
-        )
-        model = self._create_quantized_model(quant_type)
-
-        expected_quantized = {exact_fqn, *regex_fqns}
-        quantized = {
-            name
-            for name, module in model.named_modules()
-            if isinstance(module, torch.nn.Linear) and self._is_module_quantized(module)
+        fqn_to_config = {
+            exact_fqn: _torchao_quantization.Int8WeightOnlyConfig(version=2),
+            f"re:{pattern}": _torchao_quantization.Int8WeightOnlyConfig(version=2),
+            "_default": None,
         }
-        assert quantized == expected_quantized, (
-            f"Expected only {sorted(expected_quantized)} to be quantized, got {sorted(quantized)}"
-        )
+
+        # `quantize_` on the whole model is the reference: `quantization_config=` must place the same tensors.
+        _torchao_quantization.quantize_(reference, _torchao_quantization.FqnToConfig(fqn_to_config), filter_fn=None)
+        expected = {name: type(reference.get_submodule(name).weight) for name in linear_fqns}
+        del reference
+        assert set(expected.values()) != {torch.nn.Parameter}, "`quantize_` did not quantize any of the named layers"
+
+        model = self._create_quantized_model(_torchao_quantization.FqnToConfig(fqn_to_config))
+        quantized = {name: type(model.get_submodule(name).weight) for name in linear_fqns}
+
+        mismatched = {
+            name: (quantized[name], expected[name]) for name in linear_fqns if quantized[name] != expected[name]
+        }
+        assert not mismatched, f"Layers quantized through `quantization_config=` differ from `quantize_`: {mismatched}"
 
 
 @is_quantization

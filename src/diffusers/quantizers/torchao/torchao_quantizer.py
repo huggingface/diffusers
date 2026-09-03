@@ -381,7 +381,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                 module.extra_repr = types.MethodType(_linear_extra_repr, module)
         else:
             # As we perform quantization here, the repr of linear layers is set by TorchAO, so we don't have to do it ourselves
-            module._parameters[tensor_name] = torch.nn.Parameter(param_value).to(device=target_device)
+            module._parameters[tensor_name] = torch.nn.Parameter(param_value.to(device=target_device))
 
             retrieved_config = self.quantization_config.get_apply_tensor_subclass()
             if isinstance(retrieved_config, FqnToConfig):
