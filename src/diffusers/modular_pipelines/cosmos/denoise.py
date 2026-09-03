@@ -166,12 +166,6 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
                 default=6.0,
                 description="Scale for classifier-free guidance.",
             ),
-            InputParam(
-                name="use_fp32_sampling_state",
-                type_hint=bool,
-                default=False,
-                description="Whether to keep velocity and guidance arithmetic in float32.",
-            ),
         ]
 
     @property
@@ -236,12 +230,14 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
             )
 
         cond_velocity_vision, cond_velocity_sound, cond_velocity_action = velocities["cond"]
-        if block_state.use_fp32_sampling_state:
-            cond_velocity_vision = cond_velocity_vision.float()
-            cond_velocity_sound = cond_velocity_sound.float() if cond_velocity_sound is not None else None
-            cond_velocity_action = cond_velocity_action.float() if cond_velocity_action is not None else None
+        cond_velocity_vision = cond_velocity_vision.float()
+        cond_velocity_sound = cond_velocity_sound.float() if cond_velocity_sound is not None else None
+        cond_velocity_action = cond_velocity_action.float() if cond_velocity_action is not None else None
         if do_cfg:
             uncond_velocity_vision, uncond_velocity_sound, uncond_velocity_action = velocities["uncond"]
+            uncond_velocity_vision = uncond_velocity_vision.float()
+            uncond_velocity_sound = uncond_velocity_sound.float() if uncond_velocity_sound is not None else None
+            uncond_velocity_action = uncond_velocity_action.float() if uncond_velocity_action is not None else None
             block_state.velocity_vision = uncond_velocity_vision + block_state.guidance_scale * (
                 cond_velocity_vision - uncond_velocity_vision
             )
@@ -332,12 +328,6 @@ class Cosmos3DistilledVisionLoopSchedulerStep(ModularPipelineBlocks):
                 description="Indexes of conditioned vision latent frames; non-empty for image-to-video.",
             ),
             InputParam.template("generator"),
-            InputParam(
-                name="use_fp32_sampling_state",
-                type_hint=bool,
-                default=False,
-                description="Whether to keep the distilled vision scheduler state in float32.",
-            ),
         ]
 
     @property
@@ -346,11 +336,8 @@ class Cosmos3DistilledVisionLoopSchedulerStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        velocity_vision = block_state.velocity_vision
-        latents = block_state.latents
-        if block_state.use_fp32_sampling_state:
-            velocity_vision = velocity_vision.float()
-            latents = latents.float()
+        velocity_vision = block_state.velocity_vision.float()
+        latents = block_state.latents.float()
 
         # Pass the generator so the scheduler's stochastic (SDE) re-noising is seedable/reproducible.
         block_state.latents = components.scheduler.step(
@@ -734,12 +721,6 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 default=None,
                 description="Timestep interval [lo, hi] over which control guidance is active (None = always).",
             ),
-            InputParam(
-                name="use_fp32_sampling_state",
-                type_hint=bool,
-                default=False,
-                description="Whether to keep velocity and guidance arithmetic in float32.",
-            ),
         ]
 
     @property
@@ -814,10 +795,9 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 "uncond",
             )
 
-        if block_state.use_fp32_sampling_state:
-            cond_full = cond_full.float()
-            cond_no_control = cond_no_control.float() if cond_no_control is not None else None
-            uncond_full = uncond_full.float() if uncond_full is not None else None
+        cond_full = cond_full.float()
+        cond_no_control = cond_no_control.float() if cond_no_control is not None else None
+        uncond_full = uncond_full.float() if uncond_full is not None else None
 
         if needs_control_cfg and needs_text_cfg:
             control_cond = cond_no_control + step_control * (cond_full - cond_no_control)
@@ -921,8 +901,6 @@ class Cosmos3TransferDenoiseStep(Cosmos3DenoiseLoopWrapper):
               Timestep interval [lo, hi] over which text guidance is active (None = always).
           control_guidance_interval (`tuple`, *optional*):
               Timestep interval [lo, hi] over which control guidance is active (None = always).
-          use_fp32_sampling_state (`bool`, *optional*, defaults to False):
-              Whether to keep velocity and guidance arithmetic in float32.
           latents (`Tensor`):
               Noisy target latents to update.
           condition_latents (`Tensor`):

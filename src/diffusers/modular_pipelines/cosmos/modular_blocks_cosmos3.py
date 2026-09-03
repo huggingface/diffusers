@@ -377,7 +377,6 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
           scheduler (`UniPCMultistepScheduler`)
 
       Configs:
-          default_use_fp32_sampling_state (default: True)
           use_native_flow_schedule (default: False)
 
       Inputs:
@@ -401,9 +400,6 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
               Pre-generated noisy vision latents.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          use_fp32_sampling_state (`bool | NoneType`, *optional*):
-              Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. If unset, uses the
-              pipeline's `default_use_fp32_sampling_state` config.
           num_inference_steps (`int`):
               The number of denoising steps.
           **denoiser_input_fields (`None`, *optional*):
@@ -453,7 +449,6 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
           scheduler (`UniPCMultistepScheduler`)
 
       Configs:
-          default_use_fp32_sampling_state (default: True)
           use_native_flow_schedule (default: False)
 
       Inputs:
@@ -477,9 +472,6 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
               Pre-generated noisy vision latents.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          use_fp32_sampling_state (`bool | NoneType`, *optional*):
-              Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. If unset, uses the
-              pipeline's `default_use_fp32_sampling_state` config.
           num_inference_steps (`int`):
               The number of denoising steps.
           sound_latents (`Tensor`, *optional*):
@@ -542,7 +534,6 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
           scheduler (`UniPCMultistepScheduler`)
 
       Configs:
-          default_use_fp32_sampling_state (default: True)
           use_native_flow_schedule (default: False)
 
       Inputs:
@@ -566,9 +557,6 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
               Pre-generated noisy vision latents.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          use_fp32_sampling_state (`bool | NoneType`, *optional*):
-              Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. If unset, uses the
-              pipeline's `default_use_fp32_sampling_state` config.
           num_inference_steps (`int`):
               The number of denoising steps.
           action (`CosmosActionCondition`):
@@ -635,7 +623,6 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
           scheduler (`UniPCMultistepScheduler`)
 
       Configs:
-          default_use_fp32_sampling_state (default: True)
           use_native_flow_schedule (default: False)
 
       Inputs:
@@ -659,9 +646,6 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
               Pre-generated noisy vision latents.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          use_fp32_sampling_state (`bool | NoneType`, *optional*):
-              Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. If unset, uses the
-              pipeline's `default_use_fp32_sampling_state` config.
           num_inference_steps (`int`):
               The number of denoising steps.
           sound_latents (`Tensor`, *optional*):
@@ -740,9 +724,6 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
           transformer (`Cosmos3OmniTransformer`)
           scheduler (`UniPCMultistepScheduler`)
 
-      Configs:
-          default_use_fp32_sampling_state (default: True)
-
       Inputs:
           chunk_id (`int`, *optional*, defaults to 0):
               Index of the current chunk.
@@ -768,9 +749,6 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
               Number of frames each later chunk reuses from the previous chunk's tail.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          use_fp32_sampling_state (`bool | NoneType`, *optional*):
-              Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. If unset, uses the
-              pipeline's `default_use_fp32_sampling_state` config.
           cond_text_segment (`dict`):
               Conditional text segment.
           uncond_text_segment (`dict`):
@@ -892,9 +870,6 @@ class Cosmos3TransferCoreDenoiseStep(SequentialPipelineBlocks):
           video_processor (`VideoProcessor`)
           scheduler (`UniPCMultistepScheduler`)
 
-      Configs:
-          default_use_fp32_sampling_state (default: True)
-
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
@@ -924,9 +899,6 @@ class Cosmos3TransferCoreDenoiseStep(SequentialPipelineBlocks):
               Number of frames each later chunk reuses from the previous chunk's tail.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          use_fp32_sampling_state (`bool | NoneType`, *optional*):
-              Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. If unset, uses the
-              pipeline's `default_use_fp32_sampling_state` config.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
           num_inference_steps (`int`):
@@ -1020,7 +992,6 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
           scheduler (`UniPCMultistepScheduler`)
 
       Configs:
-          default_use_fp32_sampling_state (default: True)
           use_native_flow_schedule (default: False)
 
       Inputs:
@@ -1052,9 +1023,6 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Number of frames each later chunk reuses from the previous chunk's tail.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          use_fp32_sampling_state (`bool | NoneType`, *optional*):
-              Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. If unset, uses the
-              pipeline's `default_use_fp32_sampling_state` config.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
           num_inference_steps (`int`):
@@ -1219,7 +1187,6 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
       Configs:
           default_use_system_prompt (default: True)
           enable_safety_checker (default: True)
-          default_use_fp32_sampling_state (default: True)
           use_native_flow_schedule (default: False)
 
       Inputs:
@@ -1265,9 +1232,6 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Number of frames the first chunk reuses from the input video.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          use_fp32_sampling_state (`bool | NoneType`, *optional*):
-              Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. If unset, uses the
-              pipeline's `default_use_fp32_sampling_state` config.
           num_inference_steps (`int`):
               The number of denoising steps.
           **denoiser_input_fields (`None`, *optional*):

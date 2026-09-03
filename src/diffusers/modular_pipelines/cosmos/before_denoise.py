@@ -12,15 +12,6 @@ from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, Outp
 from .modular_pipeline import Cosmos3OmniModularPipeline
 
 
-def _resolve_sampling_dtype(
-    components: Cosmos3OmniModularPipeline, use_fp32_sampling_state: bool | None
-) -> tuple[bool, torch.dtype]:
-    if use_fp32_sampling_state is None:
-        use_fp32_sampling_state = components.config.default_use_fp32_sampling_state
-    sampling_dtype = torch.float32 if use_fp32_sampling_state else components.transformer.dtype
-    return use_fp32_sampling_state, sampling_dtype
-
-
 class Cosmos3PrepareTextSegmentsStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
@@ -78,10 +69,6 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
         return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
 
     @property
-    def expected_configs(self) -> list[ConfigSpec]:
-        return [ConfigSpec(name="default_use_fp32_sampling_state", default=True)]
-
-    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(
@@ -111,16 +98,6 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
                 description="Pre-generated noisy vision latents.",
             ),
             InputParam.template("generator"),
-            InputParam(
-                name="use_fp32_sampling_state",
-                type_hint=bool | None,
-                default=None,
-                description=(
-                    "Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. "
-                    "If unset, uses the "
-                    "pipeline's `default_use_fp32_sampling_state` config."
-                ),
-            ),
         ]
 
     @property
@@ -144,20 +121,13 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Clean encoded vision latents used to re-anchor image conditioning each step.",
             ),
-            OutputParam(
-                "use_fp32_sampling_state",
-                type_hint=bool,
-                description="Whether vision sampling state is kept in float32.",
-            ),
         ]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        block_state.use_fp32_sampling_state, sampling_dtype = _resolve_sampling_dtype(
-            components, block_state.use_fp32_sampling_state
-        )
+        sampling_dtype = torch.float32
 
         x0_tokens_vision = block_state.x0_tokens_vision
         if x0_tokens_vision is None:
@@ -227,10 +197,6 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def expected_configs(self) -> list[ConfigSpec]:
-        return [ConfigSpec(name="default_use_fp32_sampling_state", default=True)]
-
-    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="num_frames", type_hint=int, required=True, description="Number of frames to generate."),
@@ -242,16 +208,6 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
                 description="Pre-generated noisy sound latents.",
             ),
             InputParam.template("generator"),
-            InputParam(
-                name="use_fp32_sampling_state",
-                type_hint=bool | None,
-                default=None,
-                description=(
-                    "Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. "
-                    "If unset, uses the "
-                    "pipeline's `default_use_fp32_sampling_state` config."
-                ),
-            ),
         ]
 
     @property
@@ -272,9 +228,7 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        block_state.use_fp32_sampling_state, sampling_dtype = _resolve_sampling_dtype(
-            components, block_state.use_fp32_sampling_state
-        )
+        sampling_dtype = torch.float32
 
         if not components.transformer.config.sound_gen:
             raise ValueError("Sound generation requires a transformer trained with sound_gen=True.")
@@ -321,10 +275,6 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def expected_configs(self) -> list[ConfigSpec]:
-        return [ConfigSpec(name="default_use_fp32_sampling_state", default=True)]
-
-    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(
@@ -346,16 +296,6 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
                 description="Pre-generated noisy action latents.",
             ),
             InputParam.template("generator"),
-            InputParam(
-                name="use_fp32_sampling_state",
-                type_hint=bool | None,
-                default=None,
-                description=(
-                    "Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. "
-                    "If unset, uses the "
-                    "pipeline's `default_use_fp32_sampling_state` config."
-                ),
-            ),
         ]
 
     @property
@@ -387,9 +327,7 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        block_state.use_fp32_sampling_state, sampling_dtype = _resolve_sampling_dtype(
-            components, block_state.use_fp32_sampling_state
-        )
+        sampling_dtype = torch.float32
         action = block_state.action
 
         if not components.transformer.config.action_gen:
@@ -1068,10 +1006,6 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
         return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
 
     @property
-    def expected_configs(self) -> list[ConfigSpec]:
-        return [ConfigSpec(name="default_use_fp32_sampling_state", default=True)]
-
-    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(
@@ -1087,16 +1021,6 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
                 description="Number of pixel frames used to seed this chunk's target.",
             ),
             InputParam.template("generator"),
-            InputParam(
-                name="use_fp32_sampling_state",
-                type_hint=bool | None,
-                default=None,
-                description=(
-                    "Whether to keep denoising latents, masks, guidance arithmetic, and scheduler state in float32. "
-                    "If unset, uses the "
-                    "pipeline's `default_use_fp32_sampling_state` config."
-                ),
-            ),
         ]
 
     @property
@@ -1124,9 +1048,7 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        block_state.use_fp32_sampling_state, sampling_dtype = _resolve_sampling_dtype(
-            components, block_state.use_fp32_sampling_state
-        )
+        sampling_dtype = torch.float32
         tcf = components.vae_scale_factor_temporal
 
         target_x0 = block_state.x0_tokens_vision.to(device=device, dtype=sampling_dtype)
