@@ -16,7 +16,7 @@
 # https://github.com/meituan-longcat/LongCat-AudioDiT
 
 import re
-from typing import Callable
+from typing import Any, Callable
 
 import torch
 import torch.nn.functional as F
@@ -31,6 +31,8 @@ from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)
+
+PipelineCallback = Callable[[Any, int, torch.Tensor, dict[str, torch.Tensor]], dict[str, torch.Tensor]]
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -148,8 +150,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         )
         input_ids = text_inputs.input_ids.to(device)
         attention_mask = text_inputs.attention_mask.to(device)
-        with torch.no_grad():
-            output = self.text_encoder(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
+        output = self.text_encoder(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
         prompt_embeds = output.last_hidden_state
         if self.text_norm_feat:
             prompt_embeds = F.layer_norm(prompt_embeds, (prompt_embeds.shape[-1],), eps=1e-6)
@@ -229,7 +230,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str = "np",
         return_dict: bool = True,
-        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end: PipelineCallback | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         r"""
@@ -296,9 +297,13 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 negative_prompt_embeds_len, length=negative_prompt_embeds.shape[1]
             )
 
-        latent_cond = torch.zeros(batch_size, duration, self.latent_dim, device=device, dtype=prompt_embeds.dtype)
+        transformer_dtype = self.transformer.dtype
+        prompt_embeds = prompt_embeds.to(dtype=transformer_dtype)
+        negative_prompt_embeds = negative_prompt_embeds.to(dtype=transformer_dtype)
+
+        latent_cond = torch.zeros(batch_size, duration, self.latent_dim, device=device, dtype=transformer_dtype)
         latents = self.prepare_latents(
-            batch_size, duration, device, prompt_embeds.dtype, generator=generator, latents=latents
+            batch_size, duration, device, transformer_dtype, generator=generator, latents=latents
         )
         if num_inference_steps < 1:
             raise ValueError("num_inference_steps must be a positive integer.")
@@ -311,9 +316,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                curr_t = (
-                    (t / self.scheduler.config.num_train_timesteps).expand(batch_size).to(dtype=prompt_embeds.dtype)
-                )
+                curr_t = (t / self.scheduler.config.num_train_timesteps).expand(batch_size).to(dtype=transformer_dtype)
                 pred = self.transformer(
                     hidden_states=latents,
                     encoder_hidden_states=prompt_embeds,
