@@ -205,6 +205,57 @@ class TestLTX2VideoDiffusionDecoderModelTiling(LTX2VideoDiffusionDecoderModelTes
         model.disable_tiling()
         assert torch.equal(self.decode(model, latent), untiled)
 
+    def test_tiled_decode_tiles_even_when_tiling_is_disabled(self):
+        """`tiled_decode` tiles on its own terms; `use_tiling` only gates whether `decode` routes to it.
+
+        `disable_tiling` flips the routing flag and leaves the configured tile sizes alone, so a direct
+        `tiled_decode` call still has a split schedule to honor. This counts stage-4 invocations rather than
+        comparing outputs because output comparison cannot see the failure: a `tiled_decode` that quietly
+        fell back to one full-grid tile would reproduce the untiled decode exactly and pass every other test
+        in this class.
+        """
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        latent = self.get_latent()
+        model.enable_tiling(
+            tile_sample_min_num_frames=8,
+            tile_sample_stride_num_frames=6,
+            tile_sample_min_height=32,
+            tile_sample_stride_height=24,
+            tile_sample_min_width=32,
+            tile_sample_stride_width=24,
+        )
+        model.disable_tiling()
+        assert not model.use_tiling
+
+        # Stage 4 runs once per tile, so its call count is the tile count.
+        stage_4_calls = []
+        original_stage_4 = model.decoder.encode_context_stage_4
+
+        def counting_stage_4(hidden_states, *args, **kwargs):
+            stage_4_calls.append(tuple(hidden_states.shape[1:4]))
+            return original_stage_4(hidden_states, *args, **kwargs)
+
+        model.decoder.encode_context_stage_4 = counting_stage_4
+        try:
+            generator = torch.Generator("cpu").manual_seed(0)
+            with torch.no_grad():
+                model.tiled_decode(latent, generator=generator)
+            tiled_call_count = len(stage_4_calls)
+
+            stage_4_calls.clear()
+            self.decode(model, latent)
+            untiled_call_count = len(stage_4_calls)
+        finally:
+            del model.decoder.encode_context_stage_4
+
+        assert tiled_call_count > 1, (
+            f"tiled_decode ran stage 4 {tiled_call_count} time(s) with use_tiling=False; it must tile "
+            "regardless of the flag"
+        )
+        assert untiled_call_count == 1, (
+            f"decode ran stage 4 {untiled_call_count} times with use_tiling=False; it must not tile"
+        )
+
 
 class TestLTX2VideoDiffusionDecoderModelMemory(LTX2VideoDiffusionDecoderModelTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for LTX2VideoDiffusionDecoderModel."""
