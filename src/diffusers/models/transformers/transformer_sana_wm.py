@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 from copy import deepcopy
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -142,225 +142,6 @@ class RMSNorm(torch.nn.Module):
         weight_shape[self.norm_dim] = -1
         weight = self.weight.view(*weight_shape)
         return (weight * self._norm(x.float())).type_as(x)
-
-
-def chunk_index_from_chunk_size(
-    T: int,
-    chunk_size: int,
-    strategy: str = "uniform",
-) -> List[int]:
-    """Convert chunk_size to chunk_index list with a split strategy.
-
-    Args:
-        T: Number of latent frames.
-        chunk_size: Base chunk size for the temporal dimension.
-        strategy: Chunk split strategy. Supported values:
-            - "uniform" (default): uniform chunks with optional remainder Example: T=21, chunk_size=4 →
-              [0,4,8,12,16,20] → sizes [4,4,4,4,4,1]
-            - "first_frame": first chunk is 1 frame, then uniform chunk_size Example: T=21, chunk_size=4 →
-              [0,1,5,9,13,17] → sizes [1,4,4,4,4,4]
-            - "first_plus_one": first chunk is chunk_size + 1, then uniform chunk_size Example: T=21, chunk_size=4 →
-              [0,5,9,13,17] → sizes [5,4,4,4,4]
-
-    Returns:
-        List of chunk start indices (not including the final T).
-
-    Raises:
-        ValueError: If chunk_size or T are invalid, or strategy is unknown.
-    """
-    if chunk_size <= 0:
-        raise ValueError(f"chunk_size must be > 0, got {chunk_size}.")
-    if T <= 0:
-        raise ValueError(f"T must be > 0, got {T}.")
-
-    if strategy is None:
-        strategy = "uniform"
-    strategy = str(strategy).lower()
-
-    if strategy in ("uniform", "default"):
-        indices = list(range(0, T, chunk_size))
-        # Absorb small remainder into last chunk to avoid degenerate chunks
-        # (e.g., causal_conv1d crashes on length=1 sequences).
-        if len(indices) > 1 and (T - indices[-1]) < chunk_size:
-            indices.pop()
-        return indices
-
-    if strategy in ("first_frame", "first_frame_alone", "first_frame_only"):
-        if T <= 1:
-            return [0]
-        indices = [0] + list(range(1, T, chunk_size))
-        if len(indices) > 2 and (T - indices[-1]) < chunk_size:
-            indices.pop()
-        return indices
-
-    if strategy in ("first_plus_one", "first_chunk_plus_one"):
-        if T <= chunk_size + 1:
-            return [0]
-        indices = [0] + list(range(chunk_size + 1, T, chunk_size))
-        # Absorb small remainder into last chunk to avoid degenerate chunks
-        # (e.g., T_latent=41 with chunk_size=3 → last chunk would be 1 frame,
-        # which crashes causal_conv1d). Merge it into the previous chunk instead.
-        if len(indices) > 1 and (T - indices[-1]) < chunk_size:
-            indices.pop()
-        return indices
-
-    raise ValueError(f"Unknown chunk_split_strategy '{strategy}'. Supported: uniform, first_frame, first_plus_one.")
-
-
-def compute_chunk_sizes(chunk_index: List[int], T: int) -> List[int]:
-    """Compute actual chunk sizes from chunk_index.
-
-    Args:
-        chunk_index: List of chunk start indices (e.g., [0, 4, 8, 12]).
-        T: Total number of frames.
-
-    Returns:
-        List of chunk sizes (e.g., [4, 4, 4, 1] if T=13).
-
-    Example:
-        >>> compute_chunk_sizes([0, 4, 8, 12], T=13) [4, 4, 4, 1] >>> compute_chunk_sizes([0, 1, 5, 9], T=13) [1, 4, 4,
-        4]
-    """
-    if not chunk_index:
-        return []
-
-    # Ensure chunk_index is clean
-    chunk_index = [idx for idx in chunk_index if 0 <= idx < T]
-    if not chunk_index:
-        return []
-
-    # Add T as the final boundary if not present
-    if chunk_index[-1] != T:
-        chunk_index = chunk_index + [T]
-
-    # Compute sizes
-    sizes = [chunk_index[i + 1] - chunk_index[i] for i in range(len(chunk_index) - 1)]
-    return sizes
-
-
-def is_uniform_chunking(
-    chunk_index: List[int],
-    T: int,
-    chunk_size: int,
-) -> bool:
-    """Check if chunk_index represents uniform chunking.
-
-    Returns True if all chunks are equal to chunk_size except possibly the last chunk which may be smaller (the
-    remainder). This is the pattern that allows safe vectorized padding with: pad_t = chunk_size - (T % chunk_size).
-
-    Uniform patterns (return True):
-        - [0,4,8,12,16,20] with T=21, chunk_size=4 → sizes [4,4,4,4,4,1] ✓
-        - [0,4,8,12,16] with T=20, chunk_size=4 → sizes [4,4,4,4,4] ✓
-        - [0,4,8] with T=10, chunk_size=4 → sizes [4,4,2] ✓
-
-    Non-uniform patterns (return False):
-        - [0,1,5,9,13,17] with T=21, chunk_size=4 → sizes [1,4,4,4,4,4] ✗
-        - [0,5,9,13,17] with T=21, chunk_size=4 → sizes [5,4,4,4,4] ✗
-
-    Args:
-        chunk_index: List of chunk start indices.
-        T: Total number of frames.
-        chunk_size: Expected uniform chunk size.
-
-    Returns:
-        True if chunking is uniform, False otherwise.
-    """
-    if chunk_size <= 0:
-        return False
-
-    # Compute actual chunk sizes
-    sizes = compute_chunk_sizes(chunk_index, T)
-
-    if not sizes:
-        return True  # Empty is trivially uniform
-
-    # Check that all chunks except possibly the last are equal to chunk_size
-    for i, size in enumerate(sizes):
-        is_last = i == len(sizes) - 1
-        if is_last:
-            # Last chunk can be <= chunk_size (remainder)
-            if size > chunk_size:
-                return False
-        else:
-            # All other chunks must be exactly chunk_size
-            if size != chunk_size:
-                return False
-
-    return True
-
-
-def normalize_chunk_index(
-    chunk_index: Optional[List[int]],
-    T: int,
-    chunk_size: Optional[int] = None,
-    chunk_split_strategy: str = "uniform",
-) -> Tuple[List[int], bool]:
-    """Normalize chunk_index and detect if uniform.
-
-    This function handles all the complex logic for:
-    1. Converting chunk_size + strategy → chunk_index (if needed)
-    2. Cleaning and validating chunk_index
-    3. Detecting if the result is uniform (safe for vectorized padding)
-
-    Args:
-        chunk_index: Optional pre-computed chunk indices.
-        T: Total number of frames.
-        chunk_size: Chunk size (required if chunk_index is None or for uniformity check).
-        chunk_split_strategy: Strategy to use if generating chunk_index from chunk_size.
-
-    Returns:
-        (normalized_chunk_index, is_uniform):
-            - normalized_chunk_index: Clean list of chunk start indices
-            - is_uniform: True if safe to use vectorized path with padding
-
-    Raises:
-        ValueError: If required parameters are missing or invalid.
-    """
-    # Case 1: chunk_index provided explicitly
-    if chunk_index is not None:
-        normalized_chunk_index = list(chunk_index)
-
-        # Clean up: ensure starts with 0 and ends with T
-        if not normalized_chunk_index or normalized_chunk_index[0] != 0:
-            normalized_chunk_index = [0] + [idx for idx in normalized_chunk_index if idx > 0]
-        normalized_chunk_index = [idx for idx in normalized_chunk_index if idx < T]
-        if not normalized_chunk_index:
-            normalized_chunk_index = [0]
-        if normalized_chunk_index[-1] != T:
-            normalized_chunk_index = normalized_chunk_index + [T]
-
-        # Check if uniform (requires chunk_size for comparison)
-        if chunk_size is None:
-            # Can't verify uniformity without chunk_size, assume non-uniform (safe)
-            is_uniform = False
-        else:
-            is_uniform = is_uniform_chunking(normalized_chunk_index, T, chunk_size)
-
-        return normalized_chunk_index, is_uniform
-
-    # Case 2: Generate chunk_index from chunk_size + strategy
-    if chunk_size is None:
-        raise ValueError("Either chunk_index or chunk_size must be provided.")
-
-    if chunk_size <= 0:
-        raise ValueError(f"chunk_size must be > 0, got {chunk_size}.")
-
-    # Normalize strategy
-    strategy = "uniform" if chunk_split_strategy is None else str(chunk_split_strategy).lower()
-
-    # Generate chunk_index
-    chunk_index_gen = chunk_index_from_chunk_size(T, chunk_size, strategy=strategy)
-
-    # Add T as final boundary
-    if not chunk_index_gen:
-        chunk_index_gen = [0]
-    if chunk_index_gen[-1] != T:
-        chunk_index_gen = chunk_index_gen + [T]
-
-    # Check if uniform
-    is_uniform = is_uniform_chunking(chunk_index_gen, T, chunk_size)
-
-    return chunk_index_gen, is_uniform
 
 
 # ============================================================================
@@ -1364,8 +1145,14 @@ def torch_chunk_sana_gdn(
     # 2. CHUNKING LOGIC
     # =========================================================================
 
-    valid_chunk_index, _ = normalize_chunk_index(None, T, chunk_size)
-    split_sizes = [valid_chunk_index[i + 1] - valid_chunk_index[i] for i in range(len(valid_chunk_index) - 1)]
+    # Uniform chunk boundaries over the temporal axis. A small trailing remainder is absorbed
+    # into the last chunk, since `causal_conv1d` crashes on length-1 sequences.
+    boundaries = list(range(0, T, chunk_size)) or [0]
+    if len(boundaries) > 1 and (T - boundaries[-1]) < chunk_size:
+        boundaries.pop()
+    if boundaries[-1] != T:
+        boundaries.append(T)
+    split_sizes = [boundaries[i + 1] - boundaries[i] for i in range(len(boundaries) - 1)]
 
     W_kv_c = W_kv.split(split_sizes, dim=2)
     U_kv_c = U_kv.split(split_sizes, dim=2)
@@ -2289,8 +2076,14 @@ def torch_chunk_cam_single_path_delta_rule(
     # =========================================================================
     # Phase 2: CHUNKED SCAN over D x D state space
     # =========================================================================
-    valid_chunk_index, _ = normalize_chunk_index(None, T, chunk_size)
-    split_sizes = [valid_chunk_index[i + 1] - valid_chunk_index[i] for i in range(len(valid_chunk_index) - 1)]
+    # Uniform chunk boundaries over the temporal axis. A small trailing remainder is absorbed
+    # into the last chunk, since `causal_conv1d` crashes on length-1 sequences.
+    boundaries = list(range(0, T, chunk_size)) or [0]
+    if len(boundaries) > 1 and (T - boundaries[-1]) < chunk_size:
+        boundaries.pop()
+    if boundaries[-1] != T:
+        boundaries.append(T)
+    split_sizes = [boundaries[i + 1] - boundaries[i] for i in range(len(boundaries) - 1)]
 
     W_kv_c = W_kv.split(split_sizes, dim=2)
     U_kv_c = U_kv.split(split_sizes, dim=2)
@@ -3381,14 +3174,12 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         patch_size=(1, 2, 2),
         cam_attn_compress=2,
         chunk_size=10,
-        chunk_split_strategy="uniform",
         use_chunk_plucker_post_attn=False,
         **block_kwargs,
     ):
         super().__init__()
         self.hidden_size = hidden_size
         self.chunk_size = chunk_size
-        self.chunk_split_strategy = chunk_split_strategy
 
         if use_chunk_plucker_post_attn:
             self.plucker_proj = nn.Linear(hidden_size, hidden_size, bias=True)
@@ -3658,7 +3449,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         y_norm_scale_factor (`float`, defaults to 0.01): Scale factor for ``attention_y_norm``.
         init_cam_from_base (`bool`, defaults to True): Unused; the camera branch is loaded from the checkpoint.
             Kept so released `config.json` files load.
-        chunk_split_strategy (`str`, defaults to ``"first_chunk_plus_one"``).
         use_chunk_plucker_post_attn (`bool`, defaults to True).
         chunk_plucker_channels (`int`, defaults to 48): ``6 dims * temporal_stride 8``.
         chunk_plucker_post_attn_blocks (`int`, defaults to 20): All blocks.
@@ -3704,7 +3494,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         y_norm_scale_factor: float = 0.01,
         cam_attn_compress: int = 1,
         init_cam_from_base: bool = True,
-        chunk_split_strategy: str = "first_chunk_plus_one",
         use_chunk_plucker_post_attn: bool = True,
         chunk_plucker_channels: int = 48,
         chunk_plucker_post_attn_blocks: int = 20,
@@ -3765,7 +3554,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
 
         # --- Video camera-controlled DiT modules (from SanaMSVideoCamCtrl.__init__) ---
         self.chunk_size = chunk_size
-        self.chunk_split_strategy = chunk_split_strategy
         self.patch_size = patch_size
 
         def approx_gelu():
@@ -3862,7 +3650,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                     patch_size=patch_size,
                     cam_attn_compress=self.cam_attn_compress,
                     chunk_size=chunk_size,
-                    chunk_split_strategy=chunk_split_strategy,
                     conv_kernel_size=conv_kernel_size,
                     k_conv_only=k_conv_only,
                     use_chunk_plucker_post_attn=(
