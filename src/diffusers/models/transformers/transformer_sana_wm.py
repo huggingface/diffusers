@@ -29,7 +29,7 @@ from ...utils import logging
 from ..activations import get_activation
 from ..embeddings import get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin, get_parameter_dtype
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -624,10 +624,9 @@ class TimestepEmbedder(nn.Module):
 
     @property
     def dtype(self):
-        try:
-            return next(self.parameters()).dtype
-        except StopIteration:
-            return torch.float32
+        # `get_parameter_dtype` is layerwise-casting aware: under layerwise casting the storage dtype
+        # (e.g. FP8) differs from the compute dtype, and `next(self.parameters()).dtype` returns the former.
+        return get_parameter_dtype(self)
 
 
 class CaptionEmbedder(nn.Module):
@@ -1425,29 +1424,6 @@ def torch_chunk_sana_gdn(
 # ---------------------------------------------------------------------------
 
 
-def _compute_frame_gates(
-    x: torch.Tensor,
-    T: int,
-    S: int,
-    heads: int,
-    beta_weight: torch.Tensor,
-    beta_bias: torch.Tensor,
-    gate_weight: torch.Tensor,
-    gate_bias: torch.Tensor,
-    dt_bias: torch.Tensor,
-    A_log: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Per-frame beta / decay gates."""
-    B, N, C = x.shape
-    beta = F.linear(x, beta_weight, beta_bias).sigmoid().reshape(B, T, S, heads).permute(0, 3, 1, 2)
-    x_frame = x.reshape(B, T, S, C).mean(dim=2)
-    a_out = F.linear(x_frame, gate_weight, gate_bias).float()
-    dt = dt_bias.float().view(1, 1, -1)
-    A_val = A_log.float().exp().view(1, 1, -1)
-    decay = (-A_val * F.softplus(a_out + dt)).exp().transpose(1, 2)
-    return beta, decay
-
-
 def _apply_rotary_emb(
     hidden_states: torch.Tensor,
     freqs: torch.Tensor,
@@ -1458,17 +1434,6 @@ def _apply_rotary_emb(
     )
     x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4).permute(0, 1, 3, 2)
     return x_out.type_as(hidden_states)
-
-
-def _apply_output_gate(
-    out: torch.Tensor,
-    gate_x: torch.Tensor,
-    gate_weight: torch.Tensor,
-    gate_bias: torch.Tensor,
-) -> torch.Tensor:
-    """Apply the SiLU output gate."""
-    gate = F.silu(F.linear(gate_x, gate_weight, gate_bias).to(torch.float32))
-    return out * gate
 
 
 class GDN(nn.Module):
@@ -1593,7 +1558,8 @@ class GDN(nn.Module):
     def _apply_output_gate(self, out: torch.Tensor, gate_x: torch.Tensor) -> torch.Tensor:
         if not (self.use_output_gate and self.output_gate is not None):
             return out
-        return _apply_output_gate(out, gate_x, self.output_gate.weight, self.output_gate.bias)
+        gate = F.silu(self.output_gate(gate_x).to(torch.float32))
+        return out * gate
 
     @staticmethod
     def _reshape_to_temporal(x: torch.Tensor, HW: tuple[int, int, int]) -> tuple[torch.Tensor, int, int, int]:
@@ -1716,24 +1682,17 @@ class GDN(nn.Module):
         x: torch.Tensor,
         hw: tuple[int, int, int],
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Compute per-frame gates shared across spatial positions.
-
-        Delegates to the module-level compiled ``_compute_frame_gates``.
-        """
+        """Per-frame beta / decay gates, shared across spatial positions."""
         T, H, W = hw
         S = H * W
-        return _compute_frame_gates(
-            x,
-            T,
-            S,
-            self.heads,
-            self.beta_proj.weight,
-            self.beta_proj.bias,
-            self.gate_proj.weight,
-            self.gate_proj.bias,
-            self.dt_bias,
-            self.A_log,
-        )
+        B, _, C = x.shape
+        beta = self.beta_proj(x).sigmoid().reshape(B, T, S, self.heads).permute(0, 3, 1, 2)
+        x_frame = x.reshape(B, T, S, C).mean(dim=2)
+        a_out = self.gate_proj(x_frame).float()
+        dt = self.dt_bias.float().view(1, 1, -1)
+        A_val = self.A_log.float().exp().view(1, 1, -1)
+        decay = (-A_val * F.softplus(a_out + dt)).exp().transpose(1, 2)
+        return beta, decay
 
     @staticmethod
     def _prepare_frame_valid_masks(
@@ -2520,11 +2479,7 @@ class _GDNUCPEBase(GDN):
         if token_valid_mask is not None:
             x = x * token_valid_mask.view(B, N, 1)
 
-        # Fused camera QKV projection (1 GEMM instead of 3 kernel launches).
-        qkv_w = torch.cat([self.q_proj_cam.weight, self.k_proj_cam.weight, self.v_proj_cam.weight])
-        qkv_b = torch.cat([self.q_proj_cam.bias, self.k_proj_cam.bias, self.v_proj_cam.bias])
-        qkv_cam = F.linear(x, qkv_w, qkv_b)
-        q_cam, k_cam, v_cam = qkv_cam.chunk(3, dim=-1)
+        q_cam, k_cam, v_cam = self.q_proj_cam(x), self.k_proj_cam(x), self.v_proj_cam(x)
 
         # Post-projection token masking (before conv, matching base branch).
         if token_valid_mask is not None:
@@ -3163,10 +3118,7 @@ def _prepare_cam_qkv_softmax(
     if token_valid_mask is not None:
         x = x * token_valid_mask.view(B, N, 1)
 
-    qkv_w = torch.cat([self.q_proj_cam.weight, self.k_proj_cam.weight, self.v_proj_cam.weight])
-    qkv_b = torch.cat([self.q_proj_cam.bias, self.k_proj_cam.bias, self.v_proj_cam.bias])
-    qkv_cam = F.linear(x, qkv_w, qkv_b)
-    q_cam, k_cam, v_cam = qkv_cam.chunk(3, dim=-1)
+    q_cam, k_cam, v_cam = self.q_proj_cam(x), self.k_proj_cam(x), self.v_proj_cam(x)
 
     if token_valid_mask is not None:
         m = token_valid_mask.view(B, N, 1)

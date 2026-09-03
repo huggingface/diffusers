@@ -24,6 +24,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -129,6 +130,13 @@ class TestSanaWMTransformer3D(SanaWMTransformer3DTesterConfig, ModelTesterMixin)
 
 class TestSanaWMTransformer3DMemory(SanaWMTransformer3DTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestSanaWMTransformer3DCompile(SanaWMTransformer3DTesterConfig, TorchCompileTesterMixin):
+    def test_torch_compile_repeated_blocks(self):
+        # The repeated `SanaVideoMSCamCtrlBlock` runs two attention variants (`softmax_every_n` swaps a
+        # softmax block in for the GDN one), so the shared block forward compiles once per variant.
+        super().test_torch_compile_repeated_blocks(recompile_limit=2)
 
 
 class TestSanaWMTransformer3DTraining(SanaWMTransformer3DTesterConfig, TrainingTesterMixin):

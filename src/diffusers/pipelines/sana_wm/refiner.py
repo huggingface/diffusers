@@ -337,13 +337,10 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         self, prompt: str, *, device: torch.device, dtype: torch.dtype
     ) -> tuple[torch.Tensor, torch.Tensor]:
         tokenizer = self.tokenizer
-        tokenizer.padding_side = "left"
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-
         text_inputs = tokenizer(
             [prompt.strip()],
             padding="max_length",
+            padding_side="left",
             max_length=self.text_max_sequence_length,
             truncation=True,
             add_special_tokens=True,
@@ -361,7 +358,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             hidden_states,
             sequence_lengths,
             device=device,
-            padding_side=tokenizer.padding_side,
+            padding_side="left",
         ).to(dtype=dtype)
 
         # Release the text encoder once we have the prompt embeds — otherwise it
