@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 from copy import deepcopy
-from typing import Any, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -482,7 +482,7 @@ class GLUMBConvTemp(nn.Module):
         )
         nn.init.zeros_(self.t_conv.weight)
 
-    def forward(self, hidden_states: torch.Tensor, HW: Tuple[int, int, int], **kwargs) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, HW: Tuple[int, int, int]) -> torch.Tensor:
         batch_size, seq_len, channels = hidden_states.shape
         num_frames, height, width = HW
         hidden_states = hidden_states.reshape(batch_size * num_frames, height, width, channels).permute(0, 3, 1, 2)
@@ -1654,7 +1654,6 @@ class GDN(nn.Module):
         x: torch.Tensor,
         conv: ShortConvolution,
         HW: tuple[int, int, int],
-        **kwargs: object,
     ) -> torch.Tensor:
         """Apply causal ShortConvolution along T, with S merged into batch.
 
@@ -1665,14 +1664,10 @@ class GDN(nn.Module):
             x: Input tensor of shape (B, N, C) where N = T * S.
             conv: FLA ``ShortConvolution`` module.
             HW: Tuple of (T, H, W) describing the token layout.
-            **kwargs: Extra keyword arguments (unused in base; subclasses
-                may consume ``chunk_size``, ``chunk_index``, etc.).
 
         Returns:
             Tensor of shape (B, N, C) after temporal convolution.
         """
-        del kwargs  # unused in base class
-
         x, B, S, T = self._reshape_to_temporal(x, HW)
         x = self._causal_conv_1d(x, conv)
         return self._reshape_from_temporal(x, B, S, T)
@@ -1738,7 +1733,9 @@ class GDN(nn.Module):
         rotary_emb: torch.Tensor | None = None,
         block_mask: torch.Tensor | None = None,
         apply_output_gate: bool = True,
-        **kwargs: object,
+        *,
+        frame_valid_mask: torch.Tensor | None = None,
+        precomputed_gates: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """Apply GDN attention to a token sequence.
 
@@ -1750,13 +1747,15 @@ class GDN(nn.Module):
             block_mask: Unused block mask (kept for API compatibility).
             apply_output_gate: When False, return raw attention output
                 before output gate and projection.
-            **kwargs: Unused extra arguments.
+            frame_valid_mask: Optional per-frame validity mask used to zero out
+                padded frames, shaped ``(B, 1, T, 1, 1)``, ``(B, 1, T)`` or ``(B, T)``.
+            precomputed_gates: Optional ``(beta, decay)`` gates computed by the
+                caller (dual-branch models share them between branches).
 
         Returns:
             Tensor of shape (B, N, C) after attention and projection.
         """
         del mask, block_mask
-        frame_valid_mask = kwargs.get("frame_valid_mask", None)
 
         if HW is None:
             raise ValueError("HW (T, H, W) must be provided for GDN attention.")
@@ -1833,7 +1832,6 @@ class GDN(nn.Module):
 
         # Gate computation (use pre-computed gates when available to avoid
         # redundant work in dual-branch CamCtrl models).
-        precomputed_gates = kwargs.get("precomputed_gates", None)
         if precomputed_gates is not None:
             beta, decay = precomputed_gates
         else:
@@ -1897,7 +1895,6 @@ class BidirectionalGDN(GDN):
         x: torch.Tensor,
         conv: ShortConvolution,
         HW: tuple[int, int, int],
-        **kwargs: object,
     ) -> torch.Tensor:
         """Apply bidirectional (non-causal) ShortConvolution along T.
 
@@ -1908,13 +1905,10 @@ class BidirectionalGDN(GDN):
             x: Input tensor of shape (B, N, C) where N = T * S.
             conv: FLA ``ShortConvolution`` module.
             HW: Tuple of (T, H, W) describing the token layout.
-            **kwargs: Unused.
 
         Returns:
             Tensor of shape (B, N, C) after bidirectional temporal conv.
         """
-        del kwargs
-
         x, B, S, T = self._reshape_to_temporal(x, HW)
         x = self._bidirectional_causal_conv_1d(x, conv)
         return self._reshape_from_temporal(x, B, S, T)
@@ -1927,7 +1921,9 @@ class BidirectionalGDN(GDN):
         rotary_emb: torch.Tensor | None = None,
         block_mask: torch.Tensor | None = None,
         apply_output_gate: bool = True,
-        **kwargs: object,
+        *,
+        frame_valid_mask: torch.Tensor | None = None,
+        precomputed_gates: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """Apply bidirectional GDN attention to a token sequence.
 
@@ -1937,13 +1933,17 @@ class BidirectionalGDN(GDN):
             HW: Tuple of (T, H, W) describing the token layout.
             rotary_emb: Optional rotary embeddings for q/k.
             block_mask: Unused block mask (kept for API compatibility).
-            **kwargs: Unused extra arguments.
+            apply_output_gate: When False, return raw attention output
+                before output gate and projection.
+            frame_valid_mask: Optional per-frame validity mask used to zero out
+                padded frames, shaped ``(B, 1, T, 1, 1)``, ``(B, 1, T)`` or ``(B, T)``.
+            precomputed_gates: Optional ``(beta, decay)`` gates computed by the
+                caller (dual-branch models share them between branches).
 
         Returns:
             Tensor of shape (B, N, C) after attention and projection.
         """
         del mask, block_mask
-        frame_valid_mask = kwargs.get("frame_valid_mask", None)
 
         if HW is None:
             raise ValueError("HW (T, H, W) must be provided for GDN attention.")
@@ -2019,7 +2019,6 @@ class BidirectionalGDN(GDN):
             k_rot = k_rot * token_mask_qkv
 
         # Gate computation (use pre-computed gates when available).
-        precomputed_gates = kwargs.get("precomputed_gates", None)
         if precomputed_gates is not None:
             beta, decay = precomputed_gates
         else:
@@ -2160,7 +2159,8 @@ def _forward_softmax_attn(
     rotary_emb: torch.Tensor | None,
     frame_causal: bool,
     apply_output_gate: bool = True,
-    **kwargs,
+    *,
+    frame_valid_mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Softmax attention (SDPA) reusing GDN parameters.
 
@@ -2173,7 +2173,6 @@ def _forward_softmax_attn(
     T, H, W = HW
     S = H * W
 
-    frame_valid_mask = kwargs.get("frame_valid_mask", None)
     token_valid_mask, _, _ = GDN._prepare_frame_valid_masks(
         frame_valid_mask,
         B=B,
@@ -2453,7 +2452,7 @@ class _GDNUCPEBase(GDN):
         rotary_emb: torch.Tensor | None,
         *,
         token_valid_mask: torch.Tensor | None = None,
-        **kwargs: object,
+        ucpe_ray_transforms: tuple | None = None,
     ) -> tuple:
         """Project camera QKV, apply short conv + QK norm + kernel + scaling + UCPE.
 
@@ -2463,6 +2462,8 @@ class _GDNUCPEBase(GDN):
         Args:
             token_valid_mask: Pre-computed mask of shape ``(B, N)`` from the
                 caller. Avoids redundant ``_prepare_frame_valid_masks`` calls.
+            ucpe_ray_transforms: Optional pre-computed ``(P, P_T, P_inv, rotary_emb_cam)``
+                UCPE transforms shared across blocks; recomputed here when ``None``.
 
         Returns:
             (q_cam, k_cam, v_cam_trans, q_cam_trans, k_cam_trans, out_transform, inflation_sq)
@@ -2490,11 +2491,11 @@ class _GDNUCPEBase(GDN):
 
         # Short convolution along T (before norm / kernel activation).
         if self.conv_q_cam is not None:
-            q_cam = self._apply_temporal_short_conv(q_cam, self.conv_q_cam, HW, **kwargs)
+            q_cam = self._apply_temporal_short_conv(q_cam, self.conv_q_cam, HW)
         if self.conv_k_cam is not None:
-            k_cam = self._apply_temporal_short_conv(k_cam, self.conv_k_cam, HW, **kwargs)
+            k_cam = self._apply_temporal_short_conv(k_cam, self.conv_k_cam, HW)
         if self.conv_v_cam is not None:
-            v_cam = self._apply_temporal_short_conv(v_cam, self.conv_v_cam, HW, **kwargs)
+            v_cam = self._apply_temporal_short_conv(v_cam, self.conv_v_cam, HW)
 
         # Camera-specific QK normalization.
         q_cam = self.q_norm_cam(q_cam).reshape(B, N, self.cam_heads, self.cam_head_dim)
@@ -2519,7 +2520,7 @@ class _GDNUCPEBase(GDN):
 
         # UCPE per-ray transforms — reuse model-level cache when available
         # to avoid recomputing _process_camera_conditions_ucpe per block.
-        ray_transforms = kwargs.get("ucpe_ray_transforms", None)
+        ray_transforms = ucpe_ray_transforms
         if ray_transforms is None:
             ray_transforms = _prepare_ucpe_ray_transforms(
                 head_dim=self.cam_head_dim,
@@ -2658,7 +2659,10 @@ class _GDNUCPEBase(GDN):
         HW: tuple[int, int, int],
         camera_conditions: torch.Tensor,
         rotary_emb: torch.Tensor | None,
-        **kwargs: object,
+        *,
+        frame_valid_mask: torch.Tensor | None = None,
+        precomputed_gates: tuple[torch.Tensor, torch.Tensor] | None = None,
+        ucpe_ray_transforms: tuple | None = None,
     ) -> torch.Tensor:
         """Forward-only causal GDN camera branch with UCPE transforms.
 
@@ -2675,7 +2679,7 @@ class _GDNUCPEBase(GDN):
         # Compute masks once; pass token_valid_mask to _prepare_cam_qkv for
         # pre-conv masking and reuse here for post-UCPE masking + gate masking.
         token_valid_mask, beta_valid_mask, decay_valid_mask = self._prepare_frame_valid_masks(
-            kwargs.get("frame_valid_mask", None),
+            frame_valid_mask,
             B=B,
             T=T,
             S=S,
@@ -2689,7 +2693,7 @@ class _GDNUCPEBase(GDN):
             camera_conditions,
             rotary_emb,
             token_valid_mask=token_valid_mask,
-            **kwargs,
+            ucpe_ray_transforms=ucpe_ray_transforms,
         )
 
         # Re-mask after UCPE transforms (which can reintroduce non-zero values).
@@ -2702,7 +2706,6 @@ class _GDNUCPEBase(GDN):
             k_cam_trans = k_cam_trans * token_mask_qkv
 
         # Shared GDN gates (use pre-computed when available).
-        precomputed_gates = kwargs.get("precomputed_gates", None)
         if precomputed_gates is not None:
             beta, decay = precomputed_gates
         else:
@@ -2761,7 +2764,9 @@ class _GDNUCPEBase(GDN):
         block_mask: torch.Tensor | None = None,
         camera_conditions: torch.Tensor | None = None,
         chunk_size: int | None = None,
-        **kwargs: object,
+        *,
+        frame_valid_mask: torch.Tensor | None = None,
+        ucpe_ray_transforms: tuple | None = None,
     ) -> torch.Tensor:
         """Dual-branch forward: GDN main + UCPE camera.
 
@@ -2770,7 +2775,16 @@ class _GDNUCPEBase(GDN):
             2. cam_raw = GDN+UCPE attention (no gate/proj)
             3. combined = main_raw + out_proj_cam(cam_raw) [zero at init]
             4. output = proj(output_gate(combined)) [shared, once]
+
+        Args:
+            camera_conditions: Raw ``(B, T, 20)`` camera conditions enabling the camera branch.
+            chunk_size: Chunk length for chunk-causal variants (unused by the bidirectional
+                variants shipped here; kept for API compatibility).
+            frame_valid_mask: Optional per-frame validity mask.
+            ucpe_ray_transforms: Optional pre-computed UCPE transforms shared across blocks.
         """
+        del chunk_size
+
         # Pre-compute shared gates once for both branches.
         if HW is not None:
             precomputed_gates = self._compute_frame_gates(x, HW)
@@ -2785,9 +2799,8 @@ class _GDNUCPEBase(GDN):
             rotary_emb=rotary_emb,
             block_mask=block_mask,
             apply_output_gate=False,
-            chunk_size=chunk_size,
+            frame_valid_mask=frame_valid_mask,
             precomputed_gates=precomputed_gates,
-            **kwargs,
         )
 
         # Camera branch.
@@ -2800,9 +2813,9 @@ class _GDNUCPEBase(GDN):
                 HW,
                 camera_conditions,
                 rotary_emb,
-                chunk_size=chunk_size,
+                frame_valid_mask=frame_valid_mask,
                 precomputed_gates=precomputed_gates,
-                **kwargs,
+                ucpe_ray_transforms=ucpe_ray_transforms,
             )
             cam_contrib = self.out_proj_cam(cam_raw)
 
@@ -2830,7 +2843,10 @@ class BidirectionalGDNUCPELiteLA(_GDNUCPEBase, BidirectionalGDN):
         HW: tuple[int, int, int],
         camera_conditions: torch.Tensor,
         rotary_emb: torch.Tensor | None,
-        **kwargs: object,
+        *,
+        frame_valid_mask: torch.Tensor | None = None,
+        precomputed_gates: tuple[torch.Tensor, torch.Tensor] | None = None,
+        ucpe_ray_transforms: tuple | None = None,
     ) -> torch.Tensor:
         B, N, C = x.shape
         T, H, W = HW
@@ -2838,7 +2854,7 @@ class BidirectionalGDNUCPELiteLA(_GDNUCPEBase, BidirectionalGDN):
         dtype_orig = x.dtype
 
         token_valid_mask, beta_valid_mask, decay_valid_mask = self._prepare_frame_valid_masks(
-            kwargs.get("frame_valid_mask", None),
+            frame_valid_mask,
             B=B,
             T=T,
             S=S,
@@ -2852,7 +2868,7 @@ class BidirectionalGDNUCPELiteLA(_GDNUCPEBase, BidirectionalGDN):
             camera_conditions,
             rotary_emb,
             token_valid_mask=token_valid_mask,
-            **kwargs,
+            ucpe_ray_transforms=ucpe_ray_transforms,
         )
         if token_valid_mask is not None:
             token_mask_qkv = token_valid_mask.view(B, 1, 1, N)
@@ -2863,7 +2879,6 @@ class BidirectionalGDNUCPELiteLA(_GDNUCPEBase, BidirectionalGDN):
             k_cam_trans = k_cam_trans * token_mask_qkv
 
         # Shared GDN gates (use pre-computed when available).
-        precomputed_gates = kwargs.get("precomputed_gates", None)
         if precomputed_gates is not None:
             beta, decay = precomputed_gates
         else:
@@ -2991,7 +3006,10 @@ class BidirectionalGDNUCPESinglePathLiteLA(BidirectionalGDNUCPELiteLAPostUCPERen
         HW: tuple[int, int, int],
         camera_conditions: torch.Tensor,
         rotary_emb: torch.Tensor | None,
-        **kwargs: object,
+        *,
+        frame_valid_mask: torch.Tensor | None = None,
+        precomputed_gates: tuple[torch.Tensor, torch.Tensor] | None = None,
+        ucpe_ray_transforms: tuple | None = None,
     ) -> torch.Tensor:
         B, N, _ = x.shape
         T, H, W = HW
@@ -2999,7 +3017,7 @@ class BidirectionalGDNUCPESinglePathLiteLA(BidirectionalGDNUCPELiteLAPostUCPERen
         dtype_orig = x.dtype
 
         token_valid_mask, beta_valid_mask, decay_valid_mask = self._prepare_frame_valid_masks(
-            kwargs.get("frame_valid_mask", None),
+            frame_valid_mask,
             B=B,
             T=T,
             S=S,
@@ -3013,7 +3031,7 @@ class BidirectionalGDNUCPESinglePathLiteLA(BidirectionalGDNUCPELiteLAPostUCPERen
             camera_conditions,
             rotary_emb,
             token_valid_mask=token_valid_mask,
-            **kwargs,
+            ucpe_ray_transforms=ucpe_ray_transforms,
         )
         if token_valid_mask is not None:
             token_mask_qkv = token_valid_mask.view(B, 1, 1, N)
@@ -3022,7 +3040,6 @@ class BidirectionalGDNUCPESinglePathLiteLA(BidirectionalGDNUCPELiteLAPostUCPERen
             q_cam_trans = q_cam_trans * token_mask_qkv
             k_cam_trans = k_cam_trans * token_mask_qkv
 
-        precomputed_gates = kwargs.get("precomputed_gates", None)
         if precomputed_gates is not None:
             beta, decay = precomputed_gates
         else:
@@ -3105,7 +3122,7 @@ def _prepare_cam_qkv_softmax(
     rotary_emb: torch.Tensor | None,
     *,
     token_valid_mask: torch.Tensor | None = None,
-    **kwargs,
+    ucpe_ray_transforms: tuple | None = None,
 ) -> tuple:
     """Camera branch Q/K/V for softmax attention.
 
@@ -3125,11 +3142,11 @@ def _prepare_cam_qkv_softmax(
         q_cam, k_cam, v_cam = q_cam * m, k_cam * m, v_cam * m
 
     if self.conv_q_cam is not None:
-        q_cam = self._apply_temporal_short_conv(q_cam, self.conv_q_cam, HW, **kwargs)
+        q_cam = self._apply_temporal_short_conv(q_cam, self.conv_q_cam, HW)
     if self.conv_k_cam is not None:
-        k_cam = self._apply_temporal_short_conv(k_cam, self.conv_k_cam, HW, **kwargs)
+        k_cam = self._apply_temporal_short_conv(k_cam, self.conv_k_cam, HW)
     if self.conv_v_cam is not None:
-        v_cam = self._apply_temporal_short_conv(v_cam, self.conv_v_cam, HW, **kwargs)
+        v_cam = self._apply_temporal_short_conv(v_cam, self.conv_v_cam, HW)
 
     q_cam = self.q_norm_cam(q_cam).reshape(B, N, self.cam_heads, self.cam_head_dim)
     k_cam = self.k_norm_cam(k_cam).reshape(B, N, self.cam_heads, self.cam_head_dim)
@@ -3139,7 +3156,7 @@ def _prepare_cam_qkv_softmax(
     k_cam = k_cam.permute(0, 2, 3, 1).contiguous()
     v_cam = v_cam.permute(0, 2, 3, 1).contiguous()
 
-    ray_transforms = kwargs.get("ucpe_ray_transforms", None)
+    ray_transforms = ucpe_ray_transforms
     if ray_transforms is None:
         ray_transforms = _prepare_ucpe_ray_transforms(
             head_dim=self.cam_head_dim,
@@ -3175,7 +3192,9 @@ def _forward_cam_branch_softmax(
     camera_conditions: torch.Tensor,
     rotary_emb: torch.Tensor | None,
     frame_causal: bool,
-    **kwargs,
+    *,
+    frame_valid_mask: torch.Tensor | None = None,
+    ucpe_ray_transforms: tuple | None = None,
 ) -> torch.Tensor:
     """Bidirectional softmax camera branch (with UCPE transforms).
 
@@ -3186,7 +3205,7 @@ def _forward_cam_branch_softmax(
     S = H * W
 
     token_valid_mask, _, _ = self._prepare_frame_valid_masks(
-        kwargs.get("frame_valid_mask", None),
+        frame_valid_mask,
         B=B,
         T=T,
         S=S,
@@ -3201,7 +3220,7 @@ def _forward_cam_branch_softmax(
         camera_conditions,
         rotary_emb,
         token_valid_mask=token_valid_mask,
-        **kwargs,
+        ucpe_ray_transforms=ucpe_ray_transforms,
     )
 
     if token_valid_mask is not None:
@@ -3280,8 +3299,12 @@ class _SoftmaxUCPESinglePathLiteLA(
         block_mask: torch.Tensor | None = None,
         camera_conditions: torch.Tensor | None = None,
         chunk_size: int | None = None,
-        **kwargs: object,
+        *,
+        frame_valid_mask: torch.Tensor | None = None,
+        ucpe_ray_transforms: tuple | None = None,
     ) -> torch.Tensor:
+        del mask, block_mask, chunk_size
+
         main_raw = _forward_softmax_attn(
             self,
             x,
@@ -3289,8 +3312,7 @@ class _SoftmaxUCPESinglePathLiteLA(
             rotary_emb,
             frame_causal=False,
             apply_output_gate=False,
-            chunk_size=chunk_size,
-            **kwargs,
+            frame_valid_mask=frame_valid_mask,
         )
 
         cam_contrib: torch.Tensor | int = 0
@@ -3304,8 +3326,8 @@ class _SoftmaxUCPESinglePathLiteLA(
                 camera_conditions,
                 rotary_emb,
                 frame_causal=False,
-                chunk_size=chunk_size,
-                **kwargs,
+                frame_valid_mask=frame_valid_mask,
+                ucpe_ray_transforms=ucpe_ray_transforms,
             )
             cam_contrib = self.out_proj_cam(cam_raw)
 
@@ -3475,10 +3497,40 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         S = N // T
         return m.to(device=device, dtype=dtype).view(B, T, 1).expand(B, T, S).reshape(B, N, 1)
 
-    def forward(self, x, y, t, mask=None, THW=None, rotary_emb=None, block_mask=None, chunk_index=None, **kwargs):
+    def forward(
+        self,
+        x,
+        y,
+        t,
+        mask=None,
+        THW=None,
+        rotary_emb=None,
+        block_mask=None,
+        *,
+        camera_conditions=None,
+        ucpe_ray_transforms=None,
+        plucker_emb=None,
+        frame_valid_mask=None,
+        chunk_size=None,
+    ):
+        """Run one adaLN-Zero block: self-attention -> cross-attention -> FFN.
+
+        Args:
+            x: ``(B, N, C)`` token sequence.
+            y: ``(B, 1, L, C)`` text embeddings for cross-attention.
+            t: ``(B, 1, T, 6 * C)`` adaLN modulation input.
+            mask: Text padding mask for cross-attention.
+            THW: ``(T, H, W)`` token layout.
+            rotary_emb: Rotary embeddings for the self-attention branch.
+            block_mask: Optional block mask forwarded to the attention.
+            camera_conditions: Raw camera conditions enabling the camera branch.
+            ucpe_ray_transforms: Pre-computed UCPE transforms shared across blocks.
+            plucker_emb: Optional post-attention Plucker embedding.
+            frame_valid_mask: Optional per-frame validity mask.
+            chunk_size: Chunk length override; falls back to ``self.chunk_size``.
+        """
         B, N, C = x.shape
         num_frames = t.shape[2]
-        frame_valid_mask = kwargs.get("frame_valid_mask", None)
         frame_token_mask = self._build_frame_token_mask(
             frame_valid_mask,
             B=B,
@@ -3495,32 +3547,35 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
             self.scale_shift_table[None, None, :, :] + t
         ).chunk(6, dim=-2)  # each chunk: B,F,1,D
-        self_attn_kwargs = {
-            "HW": THW,
-            "rotary_emb": rotary_emb,
-            "block_mask": block_mask,
-            "camera_conditions": kwargs.get("camera_conditions", None),
-            "ucpe_ray_transforms": kwargs.get("ucpe_ray_transforms", None),
-            "camera_embedding": kwargs.get("camera_embedding", None),
-            "frame_valid_mask": frame_valid_mask,
-        }
-        if chunk_index is not None:
-            self_attn_kwargs["chunk_index"] = chunk_index[:]  # NOTE: important, copy the list
-        if kwargs.get("chunk_index_global", None) is not None:
-            self_attn_kwargs["chunk_index_global"] = kwargs.get("chunk_index_global")
-        chunk_split_strategy = kwargs.get("chunk_split_strategy", self.chunk_split_strategy)
-        if chunk_split_strategy is not None:
-            self_attn_kwargs["chunk_split_strategy"] = chunk_split_strategy
-
-        chunk_size = kwargs.get("chunk_size", self.chunk_size)
-        if chunk_size is not None:
-            self_attn_kwargs["chunk_size"] = chunk_size
+        if chunk_size is None:
+            chunk_size = self.chunk_size
 
         x_norm1 = self.norm1(x).reshape(B, num_frames, -1, C)
         x_msa_in = (x_norm1 * (1 + scale_msa) + shift_msa).reshape(B, N, C)
         if frame_token_mask is not None:
             x_msa_in = x_msa_in * frame_token_mask
-        attn_out = self.attn(x_msa_in, **self_attn_kwargs).reshape(B, num_frames, -1, C)
+        if isinstance(self.attn, _GDNUCPEBase):
+            # Camera-conditioned (UCPE) attention: dual-branch (main + camera) forward.
+            attn_out = self.attn(
+                x_msa_in,
+                HW=THW,
+                rotary_emb=rotary_emb,
+                block_mask=block_mask,
+                camera_conditions=camera_conditions,
+                chunk_size=chunk_size,
+                frame_valid_mask=frame_valid_mask,
+                ucpe_ray_transforms=ucpe_ray_transforms,
+            )
+        else:
+            # Plain (camera-free) attention.
+            attn_out = self.attn(
+                x_msa_in,
+                HW=THW,
+                rotary_emb=rotary_emb,
+                block_mask=block_mask,
+                frame_valid_mask=frame_valid_mask,
+            )
+        attn_out = attn_out.reshape(B, num_frames, -1, C)
         attn_out = (gate_msa * attn_out).reshape(B, N, C)
         if frame_token_mask is not None:
             attn_out = attn_out * frame_token_mask
@@ -3528,7 +3583,6 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         if frame_token_mask is not None:
             x = x * frame_token_mask
 
-        plucker_emb = kwargs.get("plucker_emb", None)
         if plucker_emb is not None and hasattr(self, "plucker_proj"):
             x = x + self.plucker_proj(plucker_emb)
 
@@ -3536,26 +3590,11 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         if frame_token_mask is not None:
             x = x * frame_token_mask
 
-        mlp_kwargs = {
-            "HW": THW,
-            "frame_valid_mask": frame_valid_mask,
-        }
-        if chunk_index is not None:
-            mlp_kwargs["chunk_index"] = chunk_index[:]  # NOTE: important, copy the list
-        if kwargs.get("chunk_index_global", None) is not None:
-            mlp_kwargs["chunk_index_global"] = kwargs.get("chunk_index_global")
-        if chunk_split_strategy is not None:
-            mlp_kwargs["chunk_split_strategy"] = chunk_split_strategy
-
-        chunk_size = kwargs.get("chunk_size", self.chunk_size)
-        if chunk_size is not None:
-            mlp_kwargs["chunk_size"] = chunk_size
-
         x_norm2 = self.norm2(x).reshape(B, num_frames, -1, C)
         x_mlp_in = (x_norm2 * (1 + scale_mlp) + shift_mlp).reshape(B, N, C)
         if frame_token_mask is not None:
             x_mlp_in = x_mlp_in * frame_token_mask
-        mlp_out = self.mlp(x_mlp_in, **mlp_kwargs).reshape(B, num_frames, -1, C)
+        mlp_out = self.mlp(x_mlp_in, HW=THW).reshape(B, num_frames, -1, C)
         mlp_out = (gate_mlp * mlp_out).reshape(B, N, C)
         if frame_token_mask is not None:
             mlp_out = mlp_out * frame_token_mask
@@ -3870,7 +3909,14 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_attention_mask: torch.Tensor | None = None,
         mask: torch.Tensor | None = None,
         return_dict: bool = True,
-        **kwargs: Any,
+        data_info: Optional[dict] = None,
+        camera_conditions: torch.Tensor | None = None,
+        chunk_plucker: torch.Tensor | None = None,
+        cam_pos_embeds: Optional[dict] = None,
+        pos_embeds: torch.Tensor | None = None,
+        raymats: torch.Tensor | None = None,
+        frame_valid_mask: torch.Tensor | None = None,
+        chunk_size: int | None = None,
     ):
         """Run the SANA-WM DiT.
 
@@ -3883,8 +3929,23 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                 kwarg name. If both are passed, ``mask`` takes precedence.
             return_dict: If ``True`` (default), returns a :class:`Transformer2DModelOutput`;
                 otherwise returns a one-tuple ``(sample,)``.
-            **kwargs: SANA-WM-specific conditioning — at minimum
-                ``data_info``, ``camera_conditions``, ``chunk_plucker``.
+            data_info: Extra conditioning; ``data_info["image_vae_embeds"]`` is
+                concatenated to the latents along the channel axis when present.
+            camera_conditions: ``(B, T, 20)`` raw camera conditions driving the
+                camera-control (UCPE) branch.
+            chunk_plucker: Plucker ray embeddings ``(B, C, T, H, W)``, consumed when
+                the model is configured with ``use_chunk_plucker_input`` /
+                ``use_chunk_plucker_post_attn``.
+            cam_pos_embeds: Optional pre-computed camera positional embeddings
+                (``"absmap"`` / ``"P"`` entries) reused instead of recomputing them.
+            pos_embeds: Optional pre-computed rotary position embeddings; when ``None``
+                they are built from the latent shape.
+            raymats: Optional pre-computed UCPE ray matrices (used only when
+                ``cam_pos_embeds`` does not carry ``"P"``).
+            frame_valid_mask: Optional per-frame validity mask, shaped
+                ``(B, 1, T, 1, 1)``, ``(B, 1, T)`` or ``(B, T)``.
+            chunk_size: Chunk length override forwarded to the blocks; falls back
+                to each block's configured ``chunk_size``.
 
         Returns:
             :class:`Transformer2DModelOutput` with ``sample`` of shape ``(B, C, T, H, W)``.
@@ -3910,10 +3971,11 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             x.shape[-1] // self.patch_size[2],
         )
 
-        data_info = kwargs.get("data_info", {})
+        if data_info is None:
+            data_info = {}
         if data_info.get("image_vae_embeds", None) is not None:
             x = torch.cat([x, data_info["image_vae_embeds"].to(self.dtype)], dim=1)
-        cam_embeds = kwargs.get("camera_conditions", None)
+        cam_embeds = camera_conditions
         if self.pack_latents:
             x = self._pack_latents(x, bs, self.in_channels, post_patch_height, post_patch_width, post_patch_num_frames)
             if cam_embeds is not None:
@@ -3932,11 +3994,10 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             # Both surviving camctrl variants are UCPE-style: build raymats + 3-channel
             # absmap (up_map + lat_map) from the raw (B,F,20) camera conditions.
             raw_cam_conditions = cam_embeds
-            cam_pos_embeds = kwargs.get("cam_pos_embeds", None)
             if cam_pos_embeds is not None and "absmap" in cam_pos_embeds:
                 cam_embeds = cam_pos_embeds["absmap"]
                 if "P" in cam_pos_embeds:
-                    kwargs["raymats"] = cam_pos_embeds["P"]
+                    raymats = cam_pos_embeds["P"]
             else:
                 raymats, cam_embeds = _process_camera_conditions_ucpe(
                     raw_cam_conditions,
@@ -3945,23 +4006,22 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                     self.patch_size,
                 )
                 cam_embeds = cam_embeds.permute(0, 4, 1, 2, 3).to(self.dtype)
-                kwargs["raymats"] = raymats
             if not (self.use_chunk_plucker_input or self.use_chunk_plucker_post_attn):
                 cam_embeds = self.raymap_embedder(cam_embeds)
                 x = x + cam_embeds
-                kwargs["camera_embedding"] = cam_embeds
-                kwargs["camera_conditions"] = raw_cam_conditions
+                camera_conditions = raw_cam_conditions
 
-        if self.use_chunk_plucker_input and "chunk_plucker" in kwargs:
-            plucker_input = kwargs["chunk_plucker"].to(self.dtype)
+        post_attn_plucker_emb = None
+        if self.use_chunk_plucker_input and chunk_plucker is not None:
+            plucker_input = chunk_plucker.to(self.dtype)
             plucker_emb = self.plucker_embedder(plucker_input)
             x = x + plucker_emb
 
-        if self.use_chunk_plucker_post_attn and "chunk_plucker" in kwargs:
-            plucker_input = kwargs["chunk_plucker"].to(self.dtype)
-            kwargs["plucker_emb"] = self.plucker_embedder(plucker_input)
+        if self.use_chunk_plucker_post_attn and chunk_plucker is not None:
+            plucker_input = chunk_plucker.to(self.dtype)
+            post_attn_plucker_emb = self.plucker_embedder(plucker_input)
 
-        image_pos_embed = kwargs.get("pos_embeds", None)
+        image_pos_embed = pos_embeds
         if self.use_pe and image_pos_embed is None:
             image_pos_embed = self.rope((post_patch_num_frames, post_patch_height, post_patch_width))
         elif image_pos_embed is not None:
@@ -3990,7 +4050,8 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
 
         block_mask = None
 
-        if kwargs.get("camera_conditions") is not None:
+        ucpe_ray_transforms = None
+        if camera_conditions is not None:
             # Pre-compute the UCPE ray matrices once and share them across blocks
             # (both surviving camctrl variants are UCPE-style).
             if self.attn_type in ["flash", "FlexLinearAttention", "flex"]:
@@ -3998,7 +4059,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             else:
                 head_dim = self.linear_head_dim
 
-            cam_pos_embeds = kwargs.get("cam_pos_embeds", None)
             if cam_pos_embeds is not None:
                 for k, v in cam_pos_embeds.items():
                     if isinstance(v, torch.Tensor):
@@ -4011,13 +4071,13 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                                 v = v.squeeze(1)
                         cam_pos_embeds[k] = v
 
-            kwargs["ucpe_ray_transforms"] = _prepare_ucpe_ray_transforms(
+            ucpe_ray_transforms = _prepare_ucpe_ray_transforms(
                 head_dim=head_dim,
-                camera_conditions=kwargs["camera_conditions"],
+                camera_conditions=camera_conditions,
                 HW=(post_patch_num_frames, post_patch_height, post_patch_width),
                 patch_size=self.patch_size,
                 rotary_emb=image_pos_embed,
-                raymats=kwargs.get("raymats"),
+                raymats=raymats,
                 cam_pos_embeds=cam_pos_embeds,
             )
 
@@ -4030,7 +4090,11 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                 (post_patch_num_frames, post_patch_height, post_patch_width),
                 image_pos_embed,
                 block_mask=block_mask if i > 1 else None,
-                **kwargs,
+                camera_conditions=camera_conditions,
+                ucpe_ray_transforms=ucpe_ray_transforms,
+                plucker_emb=post_attn_plucker_emb,
+                frame_valid_mask=frame_valid_mask,
+                chunk_size=chunk_size,
             )  # (N, T, D)
 
         x = self.final_layer(x, t)  # (N, T, patch_size ** 2 * out_channels)

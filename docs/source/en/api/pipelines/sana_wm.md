@@ -70,7 +70,7 @@ output = pipe(
     num_frames=161,
     num_inference_steps=60,
     guidance_scale=5.0,
-    seed=42,
+    generator=torch.Generator(device="cuda").manual_seed(42),
 )
 export_to_video(list(output.frames), "sana_wm.mp4", fps=16)
 ```

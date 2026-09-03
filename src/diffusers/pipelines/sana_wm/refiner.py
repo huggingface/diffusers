@@ -101,7 +101,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         *,
         fps: float,
         sink_size: int = 1,
-        seed: int = 42,
+        generator: torch.Generator | None = None,
         progress: bool = True,
         block_size: int = 3,
         kv_max_frames: int = 11,
@@ -120,7 +120,8 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             fps: video frame rate (drives LTX-2 RoPE temporal scaling).
             sink_size: how many leading raw ``z_sana`` frames to anchor as the
                 attention sink (canonical: 1).
-            seed: noise seed for the FM endpoint.
+            generator: torch.Generator for the FM endpoint noise. Defaults to a generator seeded with 42
+                so results are reproducible out of the box.
             progress: show a tqdm bar.
             block_size: latent frames per AR block (canonical: 3).
             kv_max_frames: maximum context+active frames retained in the
@@ -184,7 +185,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             source_sink_frames=sink_size,
             block_size=block_size,
             kv_max_frames=int(kv_max_frames),
-            seed=int(seed),
+            generator=generator,
             spatial_shape=(int(z.shape[3]), int(z.shape[4])),
             dtype=dtype,
             device=device,
@@ -453,7 +454,7 @@ class _RefinerChunkRunner:
         source_sink_frames: int,
         block_size: int,
         kv_max_frames: int,
-        seed: int,
+        generator: torch.Generator | None,
         spatial_shape: tuple[int, int],
         dtype: torch.dtype,
         device: torch.device,
@@ -470,7 +471,7 @@ class _RefinerChunkRunner:
         self._max_history_frames = int(kv_max_frames) - int(source_sink_frames)
         self._device = device
         self._dtype = dtype
-        self._generator = torch.Generator(device=self._device).manual_seed(int(seed))
+        self._generator = generator if generator is not None else torch.Generator(device=self._device).manual_seed(42)
 
         transformer = refiner.transformer
         self._n_layers = len(transformer.transformer_blocks)

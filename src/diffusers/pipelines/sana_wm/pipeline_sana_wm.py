@@ -224,6 +224,10 @@ class SanaWMPipeline(DiffusionPipeline):
         device: torch.device,
         max_sequence_length: int = 300,
         chi_prompt: list[str] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Encode prompt + negative prompt through Gemma-2.
 
@@ -234,6 +238,13 @@ class SanaWMPipeline(DiffusionPipeline):
             ``(cond, cond_mask, neg, neg_mask)`` where ``cond`` and ``neg`` are ``(1, 1, L, D)``-shaped Gemma hidden
             states and the masks are ``(1, L)``.
         """
+        if (prompt_embeds is None) != (prompt_attention_mask is None):
+            raise ValueError("`prompt_embeds` and `prompt_attention_mask` must be passed together.")
+        if (negative_prompt_embeds is None) != (negative_prompt_attention_mask is None):
+            raise ValueError("`negative_prompt_embeds` and `negative_prompt_attention_mask` must be passed together.")
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
+
         chi = "\n".join(chi_prompt) if chi_prompt else ""
         if chi:
             full_prompt = chi + prompt
@@ -263,13 +274,17 @@ class SanaWMPipeline(DiffusionPipeline):
             )
             return out.hidden_states[-1], tok.attention_mask
 
-        cond, cond_mask = _encode(full_prompt, max_length_all)
-        select = [0] + list(range(-max_sequence_length + 1, 0))
-        cond = cond[:, None][:, :, select]
-        cond_mask = cond_mask[:, select]
+        if prompt_embeds is None:
+            cond, cond_mask = _encode(full_prompt, max_length_all)
+            select = [0] + list(range(-max_sequence_length + 1, 0))
+            prompt_embeds = cond[:, None][:, :, select]
+            prompt_attention_mask = cond_mask[:, select]
 
-        neg, neg_mask = _encode(negative_prompt, max_sequence_length)
-        return cond, cond_mask, neg[:, None], neg_mask
+        if negative_prompt_embeds is None:
+            neg, neg_mask = _encode(negative_prompt, max_sequence_length)
+            negative_prompt_embeds, negative_prompt_attention_mask = neg[:, None], neg_mask
+
+        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     # ------------------------------------------------------------------
     # First-frame VAE encode (deterministic — uses posterior mode)
@@ -437,10 +452,13 @@ class SanaWMPipeline(DiffusionPipeline):
         guidance_scale: float = 5.0,
         negative_prompt: str = "",
         generator: torch.Generator | list[torch.Generator] | None = None,
-        seed: int | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
         use_refiner: bool = True,
         sink_size: int = 1,
-        refiner_seed: int = 42,
+        refiner_generator: torch.Generator | None = None,
         max_sequence_length: int = 300,
         chi_prompt: list[str] | None = None,
         output_type: Literal["np", "pil", "latent"] = "np",
@@ -476,18 +494,25 @@ class SanaWMPipeline(DiffusionPipeline):
             negative_prompt (`str`, defaults to ""):
                 Optional negative prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
-                One or more torch generators to make the noise sampling deterministic. If both `generator` and `seed`
-                are provided, `generator` takes precedence.
-            seed (`int`, *optional*):
-                Convenience shortcut — used only when `generator` is `None`, in which case a fresh
-                ``torch.Generator(device=execution_device).manual_seed(seed)`` is created. If both are `None`, the
-                sampling is non-deterministic.
+                One or more torch generators to make the noise sampling deterministic. If `None`, sampling is
+                non-deterministic.
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-computed text embeddings, to skip the text encoder. Must be passed together with
+                `prompt_attention_mask`.
+            prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for `prompt_embeds`.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-computed negative text embeddings. Must be passed together with
+                `negative_prompt_attention_mask`.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for `negative_prompt_embeds`.
             use_refiner (`bool`, defaults to True):
                 Run the LTX-2 refiner (requires `self.refiner` to be set).
             sink_size (`int`, defaults to 1):
                 Refiner sink-anchor frame count.
-            refiner_seed (`int`, defaults to 42):
-                Refiner sampling seed.
+            refiner_generator (`torch.Generator`, *optional*):
+                Generator for the refiner's noise. Defaults to a generator seeded with 42, so stage 2 is
+                reproducible out of the box.
             max_sequence_length (`int`, defaults to 300):
                 Max prompt tokens.
             chi_prompt (`list[str]`, *optional*):
@@ -517,6 +542,10 @@ class SanaWMPipeline(DiffusionPipeline):
             device=device,
             max_sequence_length=max_sequence_length,
             chi_prompt=chi_prompt or DEFAULT_CHI_PROMPT,
+            prompt_embeds=prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
         )
 
         first_latent = self._encode_first_frame(pixel_values, device, dtype)
@@ -524,8 +553,6 @@ class SanaWMPipeline(DiffusionPipeline):
             c2w, intr, (height, width), device=device, dtype=dtype, do_cfg=guidance_scale > 1.0
         )
 
-        if generator is None and seed is not None:
-            generator = torch.Generator(device=device).manual_seed(seed)
         do_cfg = guidance_scale > 1.0
 
         # Stage-1 denoising — LTX-style flow-matching Euler with per-token
@@ -599,7 +626,7 @@ class SanaWMPipeline(DiffusionPipeline):
                 prompt,
                 fps=float(fps),
                 sink_size=sink_size,
-                seed=refiner_seed,
+                generator=refiner_generator,
                 device=device,
             )
             # Bring the VAE back for decode (moved to CPU above to free the GPU

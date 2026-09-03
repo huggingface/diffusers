@@ -166,7 +166,27 @@ class TestSanaWMRegistration:
         assert params["block_size"].default == 3
         assert params["kv_max_frames"].default == 11
 
-    @pytest.mark.parametrize("name", ["intrinsics", "c2w", "action", "use_refiner"])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "intrinsics",
+            "c2w",
+            "action",
+            "use_refiner",
+            # Standard diffusers pipeline arguments.
+            "generator",
+            "prompt_embeds",
+            "prompt_attention_mask",
+            "negative_prompt_embeds",
+            "negative_prompt_attention_mask",
+        ],
+    )
     def test_pipeline_call_intrinsics_signature(self, name):
         params = inspect.signature(SanaWMPipeline.__call__).parameters
         assert name in params
+
+    def test_pipeline_call_takes_generator_not_seed(self):
+        # Pipelines take a `generator`; `seed` shortcuts are not part of the diffusers interface.
+        params = inspect.signature(SanaWMPipeline.__call__).parameters
+        assert "seed" not in params
+        assert "refiner_seed" not in params
