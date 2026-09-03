@@ -124,13 +124,27 @@ class BasePipelineTesterConfig:
     # used for chat templating, for example.
     text_stack_component_names = ("text", "tokenizer")
 
-    # Components that cannot be offloaded at leaf level, e.g. a `transformers` model whose attention is a
-    # `torch.nn.MultiheadAttention` (it reads its projection weights directly instead of calling the submodules, so
-    # the leaf-level onload hooks never fire and the weights stay on the offload device). Such a component is often
-    # fine at block level, hence the level in the name. Listed components are kept on the accelerator by
-    # `test_pipeline_level_group_offloading_inference` so the remaining ones are still covered, instead of skipping
-    # the test outright.
+    # The group offload tests derive what they offload: every `torch.nn.Module` component of the pipeline is
+    # offloaded unless the list for that level names it, in which case it is kept on the accelerator. A component
+    # that is covered by default is the point — a pipeline that adds a second denoiser or an extra encoder gets it
+    # exercised without touching this file, and dropping something from the tests takes naming it next to a reason.
+    # The two levels fail on opposite hazards, so each gets its own list; a component that fails at both goes in
+    # both.
+
+    # Components that cannot be offloaded at leaf level. Leaf-level offloading onloads each supported leaf on its
+    # own `forward`, so any code that reads a leaf's `.weight` instead of calling the leaf bypasses that leaf's
+    # hook and computes against offloaded weights — `torch.nn.MultiheadAttention` being the usual instance. Such a
+    # component is normally fine at block level, where the whole group is onloaded at once, and stays covered
+    # there.
     group_offloading_leaf_level_exclude_modules = []
+
+    # Components that cannot be offloaded at block level. Block-level offloading onloads a group when the group's
+    # leader runs its `forward`, so a component whose compute re-enters submodules without going through that
+    # leader finds its weights still on the offload device. VAE decode paths are the usual instance: a pipeline
+    # calls `vae.decode()`, which never runs `vae.forward()`, so a VAE whose class does not declare
+    # `_group_offload_block_modules` keeps every weight in one group gated on a `forward` that is never entered.
+    # Leaf level is unaffected — it hooks each leaf on its own `forward` — which is why the exclusion is per level.
+    group_offloading_block_level_exclude_modules = ["vae", "image_encoder"]
 
     # ==================== Required interface ====================
 
