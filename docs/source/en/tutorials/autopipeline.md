@@ -23,7 +23,7 @@ import torch
 from diffusers import AutoPipelineForImage2Image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-  "RunDiffusion/Juggernaut-XL-v9", dtype=torch.bfloat16, device_map="cuda",
+  "RunDiffusion/Juggernaut-XL-v9", dtype=torch.bfloat16, device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 print(pipeline)
 "StableDiffusionXLImg2ImgPipeline {
@@ -39,7 +39,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "RunDiffusion/Juggernaut-XL-v9", dtype=torch.bfloat16, device_map="cuda",
+  "RunDiffusion/Juggernaut-XL-v9", dtype=torch.bfloat16, device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 print(pipeline)
 "StableDiffusionXLPipeline {

@@ -21,7 +21,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -107,7 +107,7 @@ class TestAutoencoderKLCogVideoXMemory(AutoencoderKLCogVideoXTesterConfig, Memor
     """Memory optimization tests for AutoencoderKLCogVideoX."""
 
 
-class TestAutoencoderKLCogVideoXSlicingTiling(AutoencoderKLCogVideoXTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLCogVideoXSlicingTiling(AutoencoderKLCogVideoXTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLCogVideoX."""
 
     # Overwritten because the base test's block_out_channels doesn't account for the length of down_block_types.

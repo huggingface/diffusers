@@ -31,7 +31,7 @@ from ...testing_utils import (
     torch_device,
 )
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -103,7 +103,7 @@ class TestConsistencyDecoderVAEMemory(ConsistencyDecoderVAETesterConfig, MemoryT
     """Memory optimization tests for ConsistencyDecoderVAE."""
 
 
-class TestConsistencyDecoderVAESlicingTiling(ConsistencyDecoderVAETesterConfig, NewAutoencoderTesterMixin):
+class TestConsistencyDecoderVAESlicingTiling(ConsistencyDecoderVAETesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for ConsistencyDecoderVAE."""
 
 

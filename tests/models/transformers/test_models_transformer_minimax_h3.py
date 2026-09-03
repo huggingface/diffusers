@@ -24,6 +24,7 @@ from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
     ContextParallelTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -184,3 +185,7 @@ class TestMiniMaxH3TransformerTorchCompile(MiniMaxH3TransformerTesterConfig, Tor
 
 class TestMiniMaxH3TransformerContextParallel(MiniMaxH3TransformerTesterConfig, ContextParallelTesterMixin):
     """Context parallel inference tests for the MiniMax-H3 transformer."""
+
+
+class TestMiniMaxH3TransformerLoRA(MiniMaxH3TransformerTesterConfig, LoraTesterMixin):
+    """LoRA tests for the MiniMax-H3 transformer."""

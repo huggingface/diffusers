@@ -29,7 +29,7 @@ pipeline = LongCatAudioDiTPipeline.from_pretrained(
     "ruixiangma/LongCat-AudioDiT-1B-Diffusers",
     dtype=torch.float16,
 )
-pipeline = pipeline.to("cuda")
+pipeline = pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A calm ocean wave ambience with soft wind in the background."
 audio = pipeline(

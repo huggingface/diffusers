@@ -33,6 +33,13 @@ logger = logging.get_logger(__name__)
 class QuantoQuantizer(DiffusersQuantizer):
     r"""
     Diffusers Quantizer for Optimum Quanto
+
+    <Tip warning={true}>
+
+    The Quanto backend is deprecated and will be removed in version 1.0.0. Consider switching to one of the other
+    supported quantization backends, such as `bitsandbytes` or `torchao`.
+
+    </Tip>
     """
 
     use_keep_in_fp32_modules = True

@@ -306,7 +306,7 @@ from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", dtype=torch.float16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.unet.load_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
 pipeline.load_textual_inversion("path-to-save-model", weight_name="<new1>.bin")
 
@@ -329,7 +329,7 @@ from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", dtype=torch.float16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 model_id = "sayakpaul/custom-diffusion-cat-wooden-pot"
 pipeline.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipeline.load_textual_inversion(model_id, weight_name="<new1>.bin")

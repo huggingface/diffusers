@@ -13,9 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import PIL.Image
+import pytest
 import torch
 
 from diffusers.utils import load_image
@@ -42,6 +41,15 @@ enable_full_determinism()
 
 IMAGE = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg?download=true"
 
+# The `ENCODE_ENDPOINT_*` Inference Endpoints these tests call have been undeployed and now answer every
+# request with `404 NOT_FOUND`, which `remote_encode` surfaces as a `RuntimeError`. Nothing in the repo can
+# bring them back, so the tests are marked `xfail` rather than deleted: if the endpoints are ever redeployed
+# the suite reports XPASS and the marker can be dropped.
+ENDPOINTS_GONE = pytest.mark.xfail(
+    reason="ENCODE_ENDPOINT_* are no longer deployed and return 404 NOT_FOUND.",
+    raises=RuntimeError,
+)
+
 
 class RemoteAutoencoderKLEncodeMixin:
     channels: int = None
@@ -63,11 +71,12 @@ class RemoteAutoencoderKLEncodeMixin:
         }
         return inputs
 
+    @ENDPOINTS_GONE
     def test_image_input(self):
         inputs = self.get_dummy_inputs()
         height, width = inputs["image"].height, inputs["image"].width
         output = remote_encode(**inputs)
-        self.assertEqual(list(output.shape), [1, self.channels, height // 8, width // 8])
+        assert list(output.shape) == [1, self.channels, height // 8, width // 8]
         decoded = remote_decode(
             tensor=output,
             endpoint=self.decode_endpoint,
@@ -75,17 +84,17 @@ class RemoteAutoencoderKLEncodeMixin:
             shift_factor=self.shift_factor,
             image_format="png",
         )
-        self.assertEqual(decoded.height, height)
-        self.assertEqual(decoded.width, width)
+        assert decoded.height == height
+        assert decoded.width == width
         # image_slice = torch.from_numpy(np.array(inputs["image"])[0, -3:, -3:].flatten())
         # decoded_slice = torch.from_numpy(np.array(decoded)[0, -3:, -3:].flatten())
         # TODO: how to test this? encode->decode is lossy. expected slice of encoded latent?
 
 
-class RemoteAutoencoderKLSDv1Tests(
-    RemoteAutoencoderKLEncodeMixin,
-    unittest.TestCase,
-):
+# The tests below hit live HF Inference Endpoints, which are not part of the fast CI contract, so they are
+# gated behind `RUN_SLOW` instead of running on every push.
+@slow
+class TestRemoteAutoencoderKLSDv1(RemoteAutoencoderKLEncodeMixin):
     channels = 4
     endpoint = ENCODE_ENDPOINT_SD_V1
     decode_endpoint = DECODE_ENDPOINT_SD_V1
@@ -94,10 +103,8 @@ class RemoteAutoencoderKLSDv1Tests(
     shift_factor = None
 
 
-class RemoteAutoencoderKLSDXLTests(
-    RemoteAutoencoderKLEncodeMixin,
-    unittest.TestCase,
-):
+@slow
+class TestRemoteAutoencoderKLSDXL(RemoteAutoencoderKLEncodeMixin):
     channels = 4
     endpoint = ENCODE_ENDPOINT_SD_XL
     decode_endpoint = DECODE_ENDPOINT_SD_XL
@@ -106,10 +113,8 @@ class RemoteAutoencoderKLSDXLTests(
     shift_factor = None
 
 
-class RemoteAutoencoderKLFluxTests(
-    RemoteAutoencoderKLEncodeMixin,
-    unittest.TestCase,
-):
+@slow
+class TestRemoteAutoencoderKLFlux(RemoteAutoencoderKLEncodeMixin):
     channels = 16
     endpoint = ENCODE_ENDPOINT_FLUX
     decode_endpoint = DECODE_ENDPOINT_FLUX
@@ -138,7 +143,8 @@ class RemoteAutoencoderKLEncodeSlowTestMixin:
         }
         return inputs
 
-    def test_multi_res(self):
+    @ENDPOINTS_GONE
+    def test_multi_res(self, tmp_path):
         inputs = self.get_dummy_inputs()
         for height in {
             320,
@@ -175,7 +181,7 @@ class RemoteAutoencoderKLEncodeSlowTestMixin:
                     )
                 )
                 output = remote_encode(**inputs)
-                self.assertEqual(list(output.shape), [1, self.channels, height // 8, width // 8])
+                assert list(output.shape) == [1, self.channels, height // 8, width // 8]
                 decoded = remote_decode(
                     tensor=output,
                     endpoint=self.decode_endpoint,
@@ -183,16 +189,13 @@ class RemoteAutoencoderKLEncodeSlowTestMixin:
                     shift_factor=self.shift_factor,
                     image_format="png",
                 )
-                self.assertEqual(decoded.height, height)
-                self.assertEqual(decoded.width, width)
-                decoded.save(f"test_multi_res_{height}_{width}.png")
+                assert decoded.height == height
+                assert decoded.width == width
+                decoded.save(tmp_path / f"test_multi_res_{height}_{width}.png")
 
 
 @slow
-class RemoteAutoencoderKLSDv1SlowTests(
-    RemoteAutoencoderKLEncodeSlowTestMixin,
-    unittest.TestCase,
-):
+class TestRemoteAutoencoderKLSDv1Slow(RemoteAutoencoderKLEncodeSlowTestMixin):
     endpoint = ENCODE_ENDPOINT_SD_V1
     decode_endpoint = DECODE_ENDPOINT_SD_V1
     dtype = torch.float16
@@ -201,10 +204,7 @@ class RemoteAutoencoderKLSDv1SlowTests(
 
 
 @slow
-class RemoteAutoencoderKLSDXLSlowTests(
-    RemoteAutoencoderKLEncodeSlowTestMixin,
-    unittest.TestCase,
-):
+class TestRemoteAutoencoderKLSDXLSlow(RemoteAutoencoderKLEncodeSlowTestMixin):
     endpoint = ENCODE_ENDPOINT_SD_XL
     decode_endpoint = DECODE_ENDPOINT_SD_XL
     dtype = torch.float16
@@ -213,10 +213,7 @@ class RemoteAutoencoderKLSDXLSlowTests(
 
 
 @slow
-class RemoteAutoencoderKLFluxSlowTests(
-    RemoteAutoencoderKLEncodeSlowTestMixin,
-    unittest.TestCase,
-):
+class TestRemoteAutoencoderKLFluxSlow(RemoteAutoencoderKLEncodeSlowTestMixin):
     channels = 16
     endpoint = ENCODE_ENDPOINT_FLUX
     decode_endpoint = DECODE_ENDPOINT_FLUX
