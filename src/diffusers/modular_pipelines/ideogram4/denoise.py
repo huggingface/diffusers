@@ -207,6 +207,48 @@ class Ideogram4LoopAfterDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
+class Ideogram4LoopAfterDenoiserInpaint(ModularPipelineBlocks):
+    model_name = "ideogram4"
+
+    @property
+    def description(self) -> str:
+        return "Within the denoising loop: preserve the unmasked source-image latents at the next noise level."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="mask", required=True, type_hint=torch.Tensor, description="Packed latent-space mask."),
+            InputParam.template("image_latents"),
+            InputParam(
+                name="initial_noise", required=True, type_hint=torch.Tensor, description="The initial random noise."
+            ),
+            InputParam(
+                name="timesteps",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The strength-adjusted denoising timesteps.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam(name="latents", type_hint=torch.Tensor, description="The blended inpaint latents.")]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        source_latents = block_state.image_latents
+        if i < len(block_state.timesteps) - 1:
+            next_timestep = block_state.timesteps[i + 1].reshape(1)
+            source_latents = components.scheduler.scale_noise(source_latents, next_timestep, block_state.initial_noise)
+
+        block_state.latents = (1.0 - block_state.mask) * source_latents + block_state.mask * block_state.latents
+        return components, block_state
+
+
 # auto_docstring
 class Ideogram4DenoiseStep(LoopSequentialPipelineBlocks):
     """
@@ -290,6 +332,71 @@ class Ideogram4DenoiseStep(LoopSequentialPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
+
+# auto_docstring
+class Ideogram4InpaintDenoiseStep(Ideogram4DenoiseStep):
+    """
+    Ideogram4 denoising loop with source-latent preservation outside the inpaint mask.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Ideogram4Transformer2DModel`)
+          unconditional_transformer (`Ideogram4Transformer2DModel`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              Denoising timesteps from set_timesteps.
+          num_inference_steps (`int`, *optional*, defaults to 48):
+              The number of denoising steps.
+          latents (`Tensor`):
+              Packed image latents.
+          position_ids (`Tensor`):
+              Conditional position ids.
+          batch_size (`int`):
+              Effective batch size.
+          prompt_embeds (`Tensor`):
+              Packed conditional encoder_hidden_states.
+          position_ids (`Tensor`):
+              Conditional 3-axis MRoPE position ids.
+          segment_ids (`Tensor`):
+              Conditional block-diagonal segment ids.
+          indicator (`Tensor`):
+              Conditional per-token text/image/pad role.
+          negative_prompt_embeds (`Tensor`):
+              Unconditional (zeroed) text features.
+          negative_position_ids (`Tensor`):
+              Unconditional position ids (image region).
+          negative_segment_ids (`Tensor`):
+              Unconditional segment ids (image region).
+          negative_indicator (`Tensor`):
+              Unconditional indicator (image region).
+          gw (`Tensor`):
+              Per-step guidance weights.
+          mask (`Tensor`):
+              Packed latent-space mask.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          initial_noise (`Tensor`):
+              The initial random noise.
+          timesteps (`Tensor`):
+              The strength-adjusted denoising timesteps.
+
+      Outputs:
+          latents (`Tensor`):
+              The blended inpaint latents.
+    """
+
+    block_classes = [
+        Ideogram4LoopBeforeDenoiser,
+        Ideogram4LoopDenoiser,
+        Ideogram4LoopAfterDenoiser,
+        Ideogram4LoopAfterDenoiserInpaint,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser", "after_denoiser_inpaint"]
+
+    @property
+    def description(self) -> str:
+        return "Ideogram4 denoising loop with source-latent preservation outside the inpaint mask."
 
 
 # auto_docstring
