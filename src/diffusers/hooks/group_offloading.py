@@ -1032,9 +1032,9 @@ def _get_group_offload_summary(module: torch.nn.Module, name: str = "") -> str:
     qualified names. Each group is reported against the module whose `forward` actually brings its weights over: a
     group with `onload_self=False` is onloaded by whichever group names it as `next_group`, not by its own leader.
 
-    The grouping is reported as of the moment this is called. With `use_stream=True` the prefetch chain is wired
-    only once a module's `forward` has completed once, so a module that has not run yet reports every group as
-    onloading itself, exactly as it would without a stream.
+    The grouping is reported as of the moment this is called. With `use_stream=True` the prefetch chain is wired only
+    once a module's `forward` has completed once, so a module that has not run yet reports every group as onloading
+    itself, exactly as it would without a stream.
 
     A group can span modules that are not under the one being walked — calling this on a submodule of an offloaded
     model reaches the group its siblings belong to — so those are reported as `<outside this module>`.
