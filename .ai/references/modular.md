@@ -317,6 +317,8 @@ ComponentSpec(
 
 10. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
 
+11. **Module-level helpers taking `components`.** Helper functions shared by blocks (prompt encoding, packing, latent retrieval) take explicit arguments for what they actually use — specific components and values, like `get_qwen_prompt_embeds(text_encoder, tokenizer, prompt, ...)` in `qwenimage/encoders.py` — not the whole `components` object. `components` is the block-call protocol; a helper that takes it hides its real dependencies and can only run with a fully assembled pipeline. (`ltx2/encoders.py`'s `_get_gemma_prompt_embeds(components, ...)` predates this rule — don't copy it.)
+
 ## Conversion checklist
 
 - [ ] Read original pipeline's `__call__` end-to-end, map stages
