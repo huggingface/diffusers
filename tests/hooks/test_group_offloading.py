@@ -20,7 +20,8 @@ import pytest
 import torch
 
 from diffusers import AutoencoderKL
-from diffusers.hooks import HookRegistry, ModelHook
+from diffusers.hooks import HookRegistry, ModelHook, apply_group_offloading
+from diffusers.hooks.group_offloading import _GROUP_OFFLOADING, _get_group_offload_summary
 from diffusers.models import ModelMixin
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils import logging as diffusers_logging
@@ -692,3 +693,104 @@ class TestConditionalModuleGroupOffload(TestGroupOffload):
             assert torch.allclose(out_ref_no_opt2, out_no_opt2, atol=1e-5), (
                 f"[{offload_type}] Outputs do not match on third pass (back to no optional_input)."
             )
+
+
+class TestGroupOffloadSummary:
+    """`_get_group_offload_summary` renders the installed grouping, for failure messages and manual inspection.
+
+    Its output is only read once something has already gone wrong, so a regression is invisible — a summary is
+    still produced, it is just wrong, and a reader is sent to the wrong module. These pin what it claims (how many
+    groups, and which module's `forward` brings each one over) and deliberately not how it formats them.
+    """
+
+    in_features = 64
+    hidden_features = 256
+    out_features = 64
+    num_layers = 4
+
+    def get_model(self):
+        torch.manual_seed(0)
+        return DummyModel(
+            in_features=self.in_features,
+            hidden_features=self.hidden_features,
+            out_features=self.out_features,
+            num_layers=self.num_layers,
+        )
+
+    @staticmethod
+    def installed_groups(module):
+        """Read the groups straight off the hooks, as an oracle for what the summary should describe."""
+        groups, seen = [], set()
+        for submodule in module.modules():
+            registry = getattr(submodule, "_diffusers_hook", None)
+            hook = registry.get_hook(_GROUP_OFFLOADING) if registry is not None else None
+            if hook is not None and id(hook.group) not in seen:
+                seen.add(id(hook.group))
+                groups.append(hook.group)
+        return groups
+
+    @staticmethod
+    def group_lines(summary):
+        return summary.splitlines()[1:]
+
+    @staticmethod
+    def reported_members(line):
+        """The members one summary line lists, so a test can check that none were dropped."""
+        return line[line.index("[") + 1 : line.rindex("]")].split(", ")
+
+    def test_reports_that_nothing_is_offloaded_when_offloading_is_not_applied(self):
+        assert "no group offloading applied" in _get_group_offload_summary(self.get_model())
+
+    def test_reports_one_line_per_installed_group(self):
+        model = self.get_model()
+        apply_group_offloading(
+            model,
+            onload_device=torch.device("cpu"),
+            offload_device=torch.device("cpu"),
+            offload_type="block_level",
+            num_blocks_per_group=1,
+        )
+        summary = _get_group_offload_summary(model)
+
+        assert len(self.group_lines(summary)) == len(self.installed_groups(model))
+        # Without a stream there is no prefetch chain, so every group onloads itself.
+        assert "prefetched by" not in summary
+
+    @pytest.mark.skipif(
+        torch.device(torch_device).type not in ["cuda", "xpu"],
+        reason="Test requires a CUDA or XPU device.",
+    )
+    def test_reports_prefetching_only_once_the_chain_is_wired(self):
+        model = self.get_model()
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+
+        # The chain is wired by the lazy prefetch hook at the end of the first forward, so until then the groups are
+        # indistinguishable from the streamless case.
+        assert "prefetched by" not in _get_group_offload_summary(model)
+
+        model(torch.randn((4, self.in_features)).to(torch_device))
+
+        prefetched = sum(1 for group in self.installed_groups(model) if not group.onload_self)
+        assert prefetched > 0, "the first forward should have wired a prefetch chain"
+        summary = _get_group_offload_summary(model)
+        assert sum(1 for line in self.group_lines(summary) if "prefetched by" in line) == prefetched
+
+    def test_summarizes_a_submodule_whose_group_reaches_outside_it(self):
+        # With more than one block per group, a block's group holds its siblings too. Summarizing that block alone
+        # cannot name them, and a user inspecting one component should still get a summary rather than a KeyError.
+        model = self.get_model()
+        apply_group_offloading(
+            model,
+            onload_device=torch.device("cpu"),
+            offload_device=torch.device("cpu"),
+            offload_type="block_level",
+            num_blocks_per_group=3,
+        )
+        summary = _get_group_offload_summary(model.blocks[1])
+
+        groups = self.installed_groups(model.blocks[1])
+        lines = self.group_lines(summary)
+        assert len(lines) == len(groups)
+        # The group spans blocks 0-2, so from blocks[1] two of the three cannot be named — but all three are still
+        # its members, and a summary that drops the two it cannot name understates the group.
+        assert len(self.reported_members(lines[0])) == len(groups[0].modules) == 3
