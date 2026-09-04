@@ -351,8 +351,10 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             raise ValueError(
                 "Provide either `image` or `prompt_embeds`. Cannot leave both `image` and `image_embeds` undefined."
             )
-        if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
-            raise ValueError(f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
+        if image is not None and not isinstance(image, (torch.Tensor, PIL.Image.Image, list, tuple)):
+            raise ValueError(
+                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image`, or a list of them but is {type(image)}"
+            )
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
@@ -453,7 +455,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latent_condition = torch.cat(latent_condition)
         else:
             latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
-            latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
+            latent_condition = latent_condition.repeat_interleave(batch_size // latent_condition.shape[0], dim=0)
 
         latent_condition = latent_condition.to(dtype)
         latent_condition = (latent_condition - latents_mean) * latents_std
@@ -698,7 +700,12 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     image_embeds = self.encode_image(image, device)
                 else:
                     image_embeds = self.encode_image([image, last_image], device)
-            image_embeds = image_embeds.repeat(batch_size, 1, 1)
+            if last_image is None:
+                image_embeds = image_embeds.repeat_interleave(
+                    batch_size * num_videos_per_prompt // image_embeds.shape[0], dim=0
+                )
+            else:
+                image_embeds = image_embeds.repeat(batch_size, 1, 1)
             image_embeds = image_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps

@@ -68,7 +68,17 @@ class WanAnimateImageProcessor(VaeImageProcessor):
         do_convert_grayscale: bool = False,
         fill_color: str | float | tuple[float, ...] | None = 0,
     ):
-        super().__init__()
+        super().__init__(
+            do_resize=do_resize,
+            vae_scale_factor=vae_scale_factor,
+            vae_latent_channels=vae_latent_channels,
+            resample=resample,
+            reducing_gap=reducing_gap,
+            do_normalize=do_normalize,
+            do_binarize=do_binarize,
+            do_convert_rgb=do_convert_rgb,
+            do_convert_grayscale=do_convert_grayscale,
+        )
         if do_convert_rgb and do_convert_grayscale:
             raise ValueError(
                 "`do_convert_rgb` and `do_convert_grayscale` can not both be set to `True`,"
