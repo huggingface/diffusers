@@ -539,13 +539,14 @@ class RMSNorm(nn.Module):
                 self.bias = nn.Parameter(torch.zeros(dim))
 
     def forward(self, hidden_states):
-        if is_torch_npu_available():
+        # `npu_rms_norm` requires a gamma tensor. When `elementwise_affine=False`,
+        # `self.weight` is `None`, so fall back to the pure PyTorch path.
+        if is_torch_npu_available() and self.weight is not None:
             import torch_npu
 
-            if self.weight is not None:
-                # convert into half-precision if necessary
-                if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                    hidden_states = hidden_states.to(self.weight.dtype)
+            # convert into half-precision if necessary
+            if self.weight.dtype in [torch.float16, torch.bfloat16]:
+                hidden_states = hidden_states.to(self.weight.dtype)
             hidden_states = torch_npu.npu_rms_norm(hidden_states, self.weight, epsilon=self.eps)[0]
             if self.bias is not None:
                 hidden_states = hidden_states + self.bias
