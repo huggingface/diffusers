@@ -27,6 +27,7 @@ from .autoencoder_oobleck import AutoencoderOobleck
 from .autoencoder_rae import AutoencoderRAE
 from .autoencoder_same import AutoencoderSAME
 from .autoencoder_tiny import AutoencoderTiny
+from .autoencoder_tiny_video import AutoencoderTinyVideo
 from .autoencoder_vidtok import AutoencoderVidTok
 from .consistency_decoder_vae import ConsistencyDecoderVAE
 from .ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel

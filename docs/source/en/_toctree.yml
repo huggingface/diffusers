@@ -489,6 +489,8 @@
         title: Oobleck AutoEncoder
       - local: api/models/autoencoder_tiny
         title: Tiny AutoEncoder
+      - local: api/models/autoencoder_tiny_video
+        title: Tiny Video AutoEncoder
       - local: api/models/vq
         title: VQModel
       title: VAEs
