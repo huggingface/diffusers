@@ -30,6 +30,7 @@ from ..activations import get_activation
 from ..embeddings import get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
+from ..normalization import RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -114,34 +115,6 @@ class ShortConvolution(nn.Module):
 # ============================================================================
 # Helpers (norms / chunk / weight utilities)
 # ============================================================================
-
-
-# NOTE: kept local instead of `..normalization.RMSNorm` because SANA-WM needs `scale_factor` (the released config
-# initializes `attention_y_norm` at `ones * 0.01`) and normalizes fully in fp32, which the shared class does not do.
-class RMSNorm(torch.nn.Module):
-    """Root-mean-square layer norm with a scaled weight initialization.
-
-    Args:
-        dim (`int`): Size of the normalized dimension.
-        scale_factor (`float`, defaults to 1.0): Initial value of every weight entry.
-        eps (`float`, defaults to 1e-6): Added to the mean square for numerical stability.
-        norm_dim (`int`, defaults to -1): Dimension to normalize over.
-    """
-
-    def __init__(self, dim: int, scale_factor: float = 1.0, eps: float = 1e-6, norm_dim: int = -1):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim) * scale_factor)
-        self.norm_dim = norm_dim
-
-    def _norm(self, x):
-        return x * torch.rsqrt(x.pow(2).mean(self.norm_dim, keepdim=True) + self.eps)
-
-    def forward(self, x):
-        weight_shape = [1] * x.dim()
-        weight_shape[self.norm_dim] = -1
-        weight = self.weight.view(*weight_shape)
-        return (weight * self._norm(x.float())).type_as(x)
 
 
 # ============================================================================
@@ -298,8 +271,8 @@ class MultiHeadCrossAttention(nn.Module):
         self.kv_linear = nn.Linear(d_model, d_model * 2)
         self.proj = nn.Linear(d_model, d_model)
         if qk_norm:
-            self.q_norm = RMSNorm(d_model, scale_factor=1.0, eps=1e-6)
-            self.k_norm = RMSNorm(d_model, scale_factor=1.0, eps=1e-6)
+            self.q_norm = RMSNorm(d_model, eps=1e-6)
+            self.k_norm = RMSNorm(d_model, eps=1e-6)
         else:
             self.q_norm = nn.Identity()
             self.k_norm = nn.Identity()
@@ -1271,8 +1244,8 @@ class GDN(nn.Module):
         self.kernel_func = nn.ReLU(inplace=False)
 
         if qk_norm:
-            self.q_norm = RMSNorm(self.in_dim, scale_factor=1.0, eps=norm_eps)
-            self.k_norm = RMSNorm(self.in_dim, scale_factor=1.0, eps=norm_eps)
+            self.q_norm = RMSNorm(self.in_dim, eps=norm_eps)
+            self.k_norm = RMSNorm(self.in_dim, eps=norm_eps)
         else:
             self.q_norm = nn.Identity()
             self.k_norm = nn.Identity()
@@ -3446,7 +3419,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         qk_norm (`bool`, defaults to True): RMSNorm on Q/K.
         cross_norm (`bool`, defaults to True): RMSNorm on cross-attention K.
         y_norm (`bool`, defaults to True): Apply ``attention_y_norm`` to text embeddings.
-        y_norm_scale_factor (`float`, defaults to 0.01): Scale factor for ``attention_y_norm``.
         init_cam_from_base (`bool`, defaults to True): Unused; the camera branch is loaded from the checkpoint.
             Kept so released `config.json` files load.
         use_chunk_plucker_post_attn (`bool`, defaults to True).
@@ -3491,7 +3463,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         qk_norm: bool = True,
         cross_norm: bool = True,
         y_norm: bool = True,
-        y_norm_scale_factor: float = 0.01,
         cam_attn_compress: int = 1,
         init_cam_from_base: bool = True,
         use_chunk_plucker_post_attn: bool = True,
@@ -3550,7 +3521,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             self.cfg_embedder = TimestepEmbedder(hidden_size)
 
         if self.y_norm:
-            self.attention_y_norm = RMSNorm(hidden_size, scale_factor=y_norm_scale_factor, eps=norm_eps)
+            self.attention_y_norm = RMSNorm(hidden_size, eps=norm_eps)
 
         # --- Video camera-controlled DiT modules (from SanaMSVideoCamCtrl.__init__) ---
         self.chunk_size = chunk_size
