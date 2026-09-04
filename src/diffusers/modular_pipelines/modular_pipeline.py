@@ -36,9 +36,9 @@ from ..pipelines.pipeline_loading_utils import (
     _unwrap_model,
     simple_get_class_obj,
 )
-from ..utils import PushToHubMixin, is_accelerate_available, logging
+from ..utils import PushToHubMixin, deprecate, is_accelerate_available, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
-from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import _resolve_revision, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache, is_compiled_module
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
@@ -438,6 +438,15 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
+
+        # Resolve the revision only once
+        hub_kwargs["revision"] = _resolve_revision(
+            pretrained_model_name_or_path,
+            revision=hub_kwargs.get("revision"),
+            cache_dir=hub_kwargs.get("cache_dir"),
+            local_files_only=hub_kwargs.get("local_files_only"),
+            token=hub_kwargs.get("token"),
+        )
 
         config = cls.load_config(pretrained_model_name_or_path, **hub_kwargs)
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
@@ -1872,6 +1881,15 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         """
         from ..pipelines.pipeline_loading_utils import _get_pipeline_class
 
+        # Resolve the revision only once
+        kwargs["revision"] = _resolve_revision(
+            pretrained_model_name_or_path,
+            revision=kwargs.get("revision"),
+            cache_dir=kwargs.get("cache_dir"),
+            local_files_only=kwargs.get("local_files_only"),
+            token=kwargs.get("token"),
+        )
+
         try:
             blocks = ModularPipelineBlocks.from_pretrained(
                 pretrained_model_name_or_path, trust_remote_code=trust_remote_code, **kwargs
@@ -1956,10 +1974,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             push_to_hub (`bool`, *optional*, defaults to `False`):
                 Whether to push the pipeline to the Hugging Face model hub after saving it.
             **kwargs: Additional keyword arguments:
-                - `overwrite_modular_index` (`bool`, *optional*, defaults to `False`):
-                    When saving a Modular Pipeline, its components in `modular_model_index.json` may reference repos
-                    different from the destination repo. Setting this to `True` updates all component references in
-                    `modular_model_index.json` so they point to the repo specified by `repo_id`.
+                - `overwrite_modular_index` (`bool`, *optional*, defaults to `True`):
+                    Whether to update `modular_model_index.json` so each saved component's loading spec points to the
+                    destination: `repo_id` when pushing to the Hub, otherwise `save_directory`. Components that are not
+                    loaded are not saved and always keep their recorded loading specs. Pass `False` to also preserve
+                    the recorded specs of the components being saved (e.g. for an index that deliberately references
+                    other repositories); components without a load id (such as custom models added with
+                    `update_components`) are still rewritten since they have no recorded source.
                 - `repo_id` (`str`, *optional*):
                     The repository ID to push the pipeline to. Defaults to the last component of `save_directory`.
                 - `commit_message` (`str`, *optional*):
@@ -1971,7 +1992,17 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 - `token` (`str`, *optional*):
                     The Hugging Face token to use for authentication.
         """
-        overwrite_modular_index = kwargs.pop("overwrite_modular_index", False)
+        if "overwrite_modular_index" not in kwargs:
+            deprecate(
+                "overwrite_modular_index",
+                "0.43.0",
+                "The default of `overwrite_modular_index` in `ModularPipeline.save_pretrained` changed from `False`"
+                " to `True`: the saved `modular_model_index.json` now points each saved component at the destination"
+                " (the save directory, or `repo_id` when pushing to the Hub). Pass `overwrite_modular_index=False`"
+                " to keep the previously recorded loading specs, or pass `True` explicitly to silence this warning.",
+                standard_warn=False,
+            )
+        overwrite_modular_index = kwargs.pop("overwrite_modular_index", True)
         repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
 
         if push_to_hub:
@@ -2042,6 +2073,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 library, class_name, component_spec_dict = self.config[component_name]
                 component_spec_dict["pretrained_model_name_or_path"] = repo_id if push_to_hub else save_directory
                 component_spec_dict["subfolder"] = component_name
+                component_spec_dict["variant"] = variant if save_method_accept_variant else None
+                # a revision pinned for the original source doesn't exist at the destination
+                component_spec_dict["revision"] = None
                 self.register_to_config(**{component_name: (library, class_name, component_spec_dict)})
 
         self.save_config(save_directory=save_directory)

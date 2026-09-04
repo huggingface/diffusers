@@ -1,7 +1,7 @@
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import FluxPipeline, FluxPriorReduxPipeline
@@ -19,19 +19,17 @@ from ...testing_utils import (
 
 @slow
 @require_big_accelerator
-class FluxReduxSlowTests(unittest.TestCase):
+class TestFluxReduxSlow:
     pipeline_class = FluxPriorReduxPipeline
     repo_id = "black-forest-labs/FLUX.1-Redux-dev"
     base_pipeline_class = FluxPipeline
     base_repo_id = "black-forest-labs/FLUX.1-schnell"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

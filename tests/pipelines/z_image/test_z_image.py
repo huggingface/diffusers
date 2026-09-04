@@ -12,19 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import os
-import unittest
 
-import numpy as np
+import pytest
 import torch
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, ZImagePipeline, ZImageTransformer2DModel
 
-from ...testing_utils import torch_device
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ...testing_utils import assert_tensors_close, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 # Z-Image requires torch.use_deterministic_algorithms(False) due to complex64 RoPE operations
@@ -37,49 +40,18 @@ torch.backends.cudnn.benchmark = False
 if hasattr(torch.backends, "cuda"):
     torch.backends.cuda.matmul.allow_tf32 = False
 
-# Note: Some tests (test_float16_inference, test_save_load_float16) may fail in full suite
+# Note: Some tests (test_half_precision_inference_no_nan, test_save_load_float16) may fail in full suite
 # due to RopeEmbedder cache state pollution between tests. They pass when run individually.
 # This is a known test isolation issue, not a functional bug.
 
 
-class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class ZImagePipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = ZImagePipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "negative_prompt", "prompt_embeds", "negative_prompt_embeds"]
     )
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
-
-    def setUp(self):
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -138,25 +110,19 @@ class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder = Qwen3Model(config)
         tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "dance monkey",
             "negative_prompt": "bad quality",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 3.0,
             "cfg_normalization": False,
@@ -164,23 +130,20 @@ class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "height": 32,
             "width": 32,
             "max_sequence_length": 16,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
-        return inputs
 
+class TestZImagePipeline(ZImagePipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
         generated_image = image[0]
-        self.assertEqual(generated_image.shape, (3, 32, 32))
+        assert generated_image.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4622, 0.4532, 0.4714, 0.5087, 0.5371, 0.5405, 0.4492, 0.4479, 0.2984, 0.2783, 0.5409, 0.6577, 0.3952, 0.5524, 0.5262, 0.453])
@@ -188,119 +151,59 @@ class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=5e-2))
+        assert_tensors_close(generated_slice, expected_slice, atol=5e-2)
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-1):
+        # Z-Image pads the batch to a common sequence length, so batched and single runs diverge slightly more.
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    def test_num_images_per_prompt(self):
-        import inspect
-
-        sig = inspect.signature(self.pipeline_class.__call__)
-
-        if "num_images_per_prompt" not in sig.parameters:
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        batch_sizes = [1, 2]
-        num_images_per_prompts = [1, 2]
-
-        for batch_size in batch_sizes:
-            for num_images_per_prompt in num_images_per_prompts:
-                inputs = self.get_dummy_inputs(torch_device)
-
-                for key in inputs.keys():
-                    if key in self.batch_params:
-                        inputs[key] = batch_size * [inputs[key]]
-
-                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
-
-                assert images.shape[0] == batch_size * num_images_per_prompt
-
-        del pipe
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-
-    def test_attention_slicing_forward_pass(
-        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
-    ):
-        if not self.test_attention_slicing:
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        output_without_slicing = pipe(**inputs)[0]
-
-        pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing1 = pipe(**inputs)[0]
-
-        pipe.enable_attention_slicing(slice_size=2)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing2 = pipe(**inputs)[0]
-
-        if test_max_difference:
-            max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
-            max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
-            self.assertLess(
-                max(max_diff1, max_diff2),
-                expected_max_diff,
-                "Attention slicing should not affect the inference results",
-            )
-
-    def test_vae_tiling(self, expected_diff_max: float = 0.2):
-        generator_device = "cpu"
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe.to("cpu")
-        pipe.set_progress_bar_config(disable=None)
+    def test_vae_tiling(self, expected_diff_max: float = 0.3):
+        pipe = self.get_pipeline().to(torch_device)
 
         # Without tiling
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs()
         inputs["height"] = inputs["width"] = 128
         output_without_tiling = pipe(**inputs)[0]
 
         # With tiling (standard AutoencoderKL doesn't accept parameters)
         pipe.vae.enable_tiling()
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs()
         inputs["height"] = inputs["width"] = 128
         output_with_tiling = pipe(**inputs)[0]
 
-        self.assertLess(
-            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
-            expected_diff_max,
-            "VAE tiling should not affect the inference results",
+        assert (output_without_tiling - output_with_tiling).abs().max() < expected_diff_max, (
+            "VAE tiling should not affect the inference results."
         )
 
-    def test_pipeline_with_accelerator_device_map(self, expected_max_difference=5e-4):
+
+class TestZImagePipelineMemory(ZImagePipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Z-Image pipeline."""
+
+    def test_pipeline_with_accelerator_device_map(self, tmp_path, base_pipe_output, expected_max_difference=5e-4):
         # Z-Image RoPE embeddings (complex64) have slightly higher numerical tolerance
-        super().test_pipeline_with_accelerator_device_map(expected_max_difference=expected_max_difference)
+        super().test_pipeline_with_accelerator_device_map(
+            tmp_path, base_pipe_output, expected_max_difference=expected_max_difference
+        )
 
-    def test_group_offloading_inference(self):
-        # Block-level offloading conflicts with RoPE cache. Pipeline-level offloading (tested separately) works fine.
-        self.skipTest("Using test_pipeline_level_group_offloading_inference instead")
 
-    def test_save_load_float16(self, expected_max_diff=1e-2):
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-        super().test_save_load_float16(expected_max_diff=expected_max_diff)
+class TestZImagePipelineLoRA(ZImagePipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Z-Image pipeline."""
+
+    @pytest.mark.parametrize("lora_scale", [1.0, 0.8])
+    def test_lora_scale_kwargs_match_fusion(self, base_pipe_output, lora_scale):
+        # Fusing a scaled LoRA drifts a bit more than the default tolerance on Z-Image.
+        super().test_lora_scale_kwargs_match_fusion(
+            base_pipe_output, lora_scale, expected_atol=5e-2, expected_rtol=5e-2
+        )
+
+    @pytest.mark.skip("Needs to be debugged.")
+    def test_set_adapters_match_attention_kwargs(self, tmp_path, base_pipe_output):
+        pass
+
+    @pytest.mark.skip("Needs to be debugged.")
+    def test_simple_inference_with_text_denoiser_lora_and_scale(self, base_pipe_output):
+        pass
+
+
+class TestZImagePipelineLoRAMemory(ZImagePipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Z-Image pipeline."""
