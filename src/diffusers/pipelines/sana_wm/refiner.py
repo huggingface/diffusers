@@ -14,9 +14,8 @@
 
 """LTX-2 chunk-causal AR refiner used as SANA-WM stage 2.
 
-Wraps diffusers' own ``LTX2VideoTransformer3DModel`` + ``LTX2TextConnectors`` plus a Gemma-3 text encoder. The
-transformer's public forward always runs the audio stream and does not expose the streaming sink/current self-attention
-mask this refiner was trained with, so we run a video-only forward in-place with a sink/current attention split.
+Wraps [`SanaWMLTX2RefinerTransformer3DModel`] (an LTX-2 DiT with a sliding-window KV cache and a video-only forward)
+plus ``LTX2TextConnectors`` and a Gemma-3 text encoder.
 
 Refinement is chunk-causal / autoregressive (``block_size=3``, ``kv_max_frames=11``): ``block_size`` latent frames are
 processed at a time over a sliding window of ``[source_sink + recent_history + active_block]`` K/V. The model was
@@ -27,11 +26,16 @@ length.
 from __future__ import annotations
 
 import torch
-from torch import nn
 from tqdm.auto import tqdm
 from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
 
-from ...models.transformers import LTX2VideoTransformer3DModel
+from ...models.transformers.transformer_sana_wm_refiner import (
+    KV_CACHE_MODE_CAPTURE_PRE_ROPE,
+    KV_CACHE_MODE_INJECT,
+    KV_CACHE_MODE_INJECT_AND_CAPTURE_POST_ROPE,
+    SanaWMLTX2RefinerTransformer3DModel,
+    SanaWMRefinerKVCache,
+)
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import empty_device_cache, randn_tensor
 from ..ltx2.connectors import LTX2TextConnectors
@@ -46,14 +50,14 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
     r"""
     LTX-2 sink-bidirectional Euler refiner — SANA-WM stage 2, as a standalone pipeline.
 
-    Wraps the diffusers LTX-2 components (transformer + text connectors + Gemma-3 text encoder + tokenizer) plus a
+    Wraps the LTX-2 components (refiner transformer + text connectors + Gemma-3 text encoder + tokenizer) plus a
     [`FlowMatchEulerDiscreteScheduler`] that carries the distilled sigma schedule and performs the Euler steps. It is
     registered as an optional component of [`SanaWMPipeline`] and can also be used on its own to refine stage-1
     latents.
 
     Args:
-        transformer ([`LTX2VideoTransformer3DModel`]):
-            The LTX-2 video DiT.
+        transformer ([`SanaWMLTX2RefinerTransformer3DModel`]):
+            The LTX-2 video DiT with the chunk-causal sliding-window KV cache.
         connectors ([`LTX2TextConnectors`]):
             LTX-2 text connectors.
         tokenizer:
@@ -71,7 +75,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
 
     def __init__(
         self,
-        transformer: LTX2VideoTransformer3DModel,
+        transformer: SanaWMLTX2RefinerTransformer3DModel,
         connectors: LTX2TextConnectors,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         text_encoder: Gemma3ForConditionalGeneration,
@@ -225,14 +229,14 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         prompt_embeds: torch.Tensor,
         prompt_attention_mask: torch.Tensor,
         fps: float,
-        kv_prefix_per_layer: list[dict[str, object]] | None,
+        kv_cache: SanaWMRefinerKVCache,
         dtype: torch.dtype,
         device: torch.device,
     ) -> torch.Tensor:
         """Forward through the transformer on the active block only and return x0.
 
-        The active block's Q attends to ``[prefix, current]`` K/V via the ``_tf_kv_prefix`` hook on every
-        self-attention block. All active tokens carry the same ``sigma_cur``.
+        The active block's Q attends to ``[sink, history, current]`` K/V supplied by ``kv_cache``. All active tokens
+        carry the same ``sigma_cur``.
         """
         latent_tokens = _pack_latents(
             active,
@@ -243,8 +247,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         timestep_scalar = float(sigma_cur) * float(self.transformer.config.timestep_scale_multiplier)
         model_timestep = torch.full((batch_size, seq_len), timestep_scalar, dtype=torch.float32, device=device)
 
-        video_rotary_emb = _build_rotary_emb_for_absolute_positions(
-            transformer=self.transformer,
+        video_rotary_emb = self.transformer.build_rotary_emb_for_absolute_positions(
             batch_size=batch_size,
             frame_positions=active_positions,
             height=int(active.shape[3]),
@@ -253,18 +256,16 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             fps=float(fps),
         )
 
-        _set_kv_prefix_on_blocks(self.transformer, kv_prefix_per_layer)
-        try:
-            velocity = self._forward_video_only_with_rope(
-                hidden_states=latent_tokens,
-                encoder_hidden_states=prompt_embeds,
-                timestep=model_timestep,
-                encoder_attention_mask=prompt_attention_mask,
-                video_rotary_emb=video_rotary_emb,
-                n_context_tokens=0,
-            )
-        finally:
-            _clear_kv_prefix_on_blocks(self.transformer)
+        velocity = self.transformer(
+            hidden_states=latent_tokens,
+            encoder_hidden_states=prompt_embeds,
+            timestep=model_timestep,
+            video_rotary_emb=video_rotary_emb,
+            encoder_attention_mask=prompt_attention_mask,
+            kv_cache=kv_cache,
+            kv_cache_mode=KV_CACHE_MODE_INJECT,
+            return_dict=False,
+        )[0]
 
         # FM x0 prediction: x_t - σ_cur · v.
         raw_sigma = torch.full((batch_size, seq_len, 1), float(sigma_cur), dtype=torch.float32, device=device)
@@ -286,14 +287,15 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         prompt_embeds: torch.Tensor,
         prompt_attention_mask: torch.Tensor,
         fps: float,
-        capture_mode: str,
-        kv_prefix_per_layer: list[dict[str, object]] | None,
+        kv_cache: SanaWMRefinerKVCache,
+        kv_cache_mode: str,
         device: torch.device,
-    ) -> list[tuple[torch.Tensor, torch.Tensor]]:
-        """Run one forward at σ=0 with capture hooks; return per-layer (K, V).
+    ) -> None:
+        """Run one forward at σ=0 in a capturing ``kv_cache_mode``; the K/V lands in ``kv_cache``.
 
-        ``capture_mode='pre_rope'`` saves PRE-RoPE K/V (so a future window can re-RoPE the sink to its shifted offset).
-        ``capture_mode='post_rope'`` saves POST-RoPE K/V (ready to concatenate directly into the next window's prefix).
+        ``'capture_pre_rope'`` saves PRE-RoPE K/V (so a future window can re-RoPE the sink to its shifted offset) and
+        injects no prefix. ``'inject_and_capture_post_rope'`` attends to the current window's prefix and saves the
+        block's POST-RoPE K/V, ready to be appended to the recent history.
         """
         latent_tokens = _pack_latents(
             clean_block,
@@ -303,8 +305,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         batch_size, seq_len, _ = latent_tokens.shape
         model_timestep = torch.zeros(batch_size, seq_len, dtype=torch.float32, device=device)
 
-        video_rotary_emb = _build_rotary_emb_for_absolute_positions(
-            transformer=self.transformer,
+        video_rotary_emb = self.transformer.build_rotary_emb_for_absolute_positions(
             batch_size=batch_size,
             frame_positions=frame_positions,
             height=int(clean_block.shape[3]),
@@ -313,22 +314,16 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             fps=float(fps),
         )
 
-        _set_kv_prefix_on_blocks(self.transformer, kv_prefix_per_layer)
-        _set_capture_flag_on_blocks(self.transformer, capture_mode, enable=True)
-        try:
-            _ = self._forward_video_only_with_rope(
-                hidden_states=latent_tokens,
-                encoder_hidden_states=prompt_embeds,
-                timestep=model_timestep,
-                encoder_attention_mask=prompt_attention_mask,
-                video_rotary_emb=video_rotary_emb,
-                n_context_tokens=0,
-            )
-        finally:
-            _set_capture_flag_on_blocks(self.transformer, capture_mode, enable=False)
-            _clear_kv_prefix_on_blocks(self.transformer)
-
-        return _collect_captured_kv_from_blocks(self.transformer, capture_mode)
+        self.transformer(
+            hidden_states=latent_tokens,
+            encoder_hidden_states=prompt_embeds,
+            timestep=model_timestep,
+            video_rotary_emb=video_rotary_emb,
+            encoder_attention_mask=prompt_attention_mask,
+            kv_cache=kv_cache,
+            kv_cache_mode=kv_cache_mode,
+            return_dict=False,
+        )
 
     # ------------------------------------------------------------------
     # internals
@@ -379,68 +374,17 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             connector_attention_mask.to(device=device),
         )
 
-    def _forward_video_only_with_rope(
-        self,
-        *,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        timestep: torch.Tensor,
-        encoder_attention_mask: torch.Tensor | None,
-        video_rotary_emb: tuple[torch.Tensor, torch.Tensor],
-        n_context_tokens: int,
-    ) -> torch.Tensor:
-        """Shared body of ``_forward_video_only`` that takes a pre-built RoPE.
-
-        Used by the AR refinement path where each block forward needs custom per-frame absolute positions in the source
-        video.
-        """
-        transformer = self.transformer
-        batch_size = hidden_states.size(0)
-
-        if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
-            encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
-            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
-
-        hidden_states = transformer.proj_in(hidden_states)
-        temb, embedded_timestep = transformer.time_embed(
-            timestep.flatten(),
-            batch_size=batch_size,
-            hidden_dtype=hidden_states.dtype,
-        )
-        temb = temb.view(batch_size, -1, temb.size(-1))
-        embedded_timestep = embedded_timestep.view(batch_size, -1, embedded_timestep.size(-1))
-
-        encoder_hidden_states = transformer.caption_projection(encoder_hidden_states)
-        encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.size(-1))
-
-        for block in transformer.transformer_blocks:
-            hidden_states = _forward_video_block(
-                block=block,
-                hidden_states=hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                temb=temb,
-                video_rotary_emb=video_rotary_emb,
-                encoder_attention_mask=encoder_attention_mask,
-                n_context_tokens=n_context_tokens,
-            )
-
-        scale_shift_values = transformer.scale_shift_table[None, None] + embedded_timestep[:, :, None]
-        shift, scale = scale_shift_values[:, :, 0], scale_shift_values[:, :, 1]
-        hidden_states = transformer.norm_out(hidden_states)
-        hidden_states = hidden_states * (1 + scale) + shift
-        return transformer.proj_out(hidden_states)
-
 
 class _RefinerChunkRunner:
     """Stateful per-AR-block driver for :class:`SanaWMLTX2Refiner`.
 
-    Owns the rolling KV state that the chunk-causal AR recipe accumulates as refiner blocks complete:
+    Owns the [`SanaWMRefinerKVCache`] that the chunk-causal AR recipe accumulates as refiner blocks complete:
 
-    * ``_sink_kv_pre``: per-layer pre-RoPE K/V captured from the first ``source_sink_frames`` raw stage-1 latents at
-      σ=0. Lazily filled on the first call to :meth:`refine_block`.
-    * ``_history_kv_post``: per-layer post-RoPE K/V of every refined block already produced, trimmed to ``kv_max_frames
-      - source_sink_frames`` frames so the sliding window stays bounded.
-    * ``_history_frames``: number of frames currently in ``_history_kv_post``.
+    * each layer cache's **sink** entry holds the pre-RoPE K/V captured from the first ``source_sink_frames`` raw
+      stage-1 latents at σ=0. Lazily filled on the first call to :meth:`refine_block`.
+    * each layer cache's **history** entry holds the post-RoPE K/V of every refined block already produced, trimmed to
+      ``kv_max_frames - source_sink_frames`` frames so the sliding window stays bounded.
+    * ``_history_frames``: number of frames currently held in the history.
     """
 
     def __init__(
@@ -486,8 +430,8 @@ class _RefinerChunkRunner:
             // int(transformer.config.patch_size_t)
         )
 
-        self._sink_kv_pre: list[tuple[torch.Tensor, torch.Tensor]] | None = None
-        self._history_kv_post: list[tuple[torch.Tensor, torch.Tensor] | None] = [None] * self._n_layers
+        self._kv_cache = SanaWMRefinerKVCache(self._n_layers)
+        self._sink_captured = False
         self._history_frames: int = 0
 
     def refine_block(
@@ -523,7 +467,7 @@ class _RefinerChunkRunner:
 
         # 1) On the first call: pre-capture PRE-RoPE sink K/V from the supplied
         # raw sink latents at sigma=0 with absolute positions [0, sink_size).
-        if self._sink_kv_pre is None:
+        if not self._sink_captured:
             if sink_seed_frames is None:
                 raise ValueError("First refine_block call requires sink_seed_frames (raw stage-1 sink latents).")
             if sink_seed_frames.shape[2] != self._source_sink_frames:
@@ -532,21 +476,24 @@ class _RefinerChunkRunner:
                     f"but source_sink_frames={self._source_sink_frames}."
                 )
             source_sink = sink_seed_frames.contiguous()
-            self._sink_kv_pre = refiner._capture_block_kv(
+            refiner._capture_block_kv(
                 clean_block=source_sink,
                 frame_positions=list(range(self._source_sink_frames)),
                 prompt_embeds=self._prompt_embeds,
                 prompt_attention_mask=self._prompt_attention_mask,
                 fps=self._fps,
-                capture_mode="pre_rope",
-                kv_prefix_per_layer=None,
+                kv_cache=self._kv_cache,
+                kv_cache_mode=KV_CACHE_MODE_CAPTURE_PRE_ROPE,
                 device=device,
             )
+            for layer_idx in range(self._n_layers):
+                layer_cache = self._kv_cache.get(layer_idx)
+                layer_cache.store_sink(*layer_cache.get_captured_pre_rope())
+            self._sink_captured = True
 
-        # 2) Build per-window kv_prefix dict per layer.
+        # 2) Slide the sink's RoPE so it sits immediately before the bounded working cache.
         sink_rope_offset = block_start - self._history_frames - self._source_sink_frames
-        sink_pe = _build_rotary_emb_for_absolute_positions(
-            transformer=refiner.transformer,
+        self._kv_cache.sink_pe = refiner.transformer.build_rotary_emb_for_absolute_positions(
             batch_size=B,
             frame_positions=list(range(sink_rope_offset, sink_rope_offset + self._source_sink_frames)),
             height=self._H,
@@ -554,19 +501,6 @@ class _RefinerChunkRunner:
             device=device,
             fps=self._fps,
         )
-        kv_prefix_per_layer: list[dict[str, object]] = []
-        for layer_idx in range(self._n_layers):
-            hk = self._history_kv_post[layer_idx]
-            kv_prefix_per_layer.append(
-                {
-                    "mode": "rf_shifted_sink",
-                    "sink_k_pre": self._sink_kv_pre[layer_idx][0],
-                    "sink_v": self._sink_kv_pre[layer_idx][1],
-                    "sink_pe": sink_pe,
-                    "history_k": (hk[0] if hk is not None else None),
-                    "history_v": (hk[1] if hk is not None else None),
-                }
-            )
 
         # 3) FM endpoint at sigma=sigma0: single epsilon per block.
         eps = randn_tensor(clean_block.shape, generator=self._generator, device=device, dtype=self._dtype)
@@ -588,7 +522,7 @@ class _RefinerChunkRunner:
                 prompt_embeds=self._prompt_embeds,
                 prompt_attention_mask=self._prompt_attention_mask,
                 fps=self._fps,
-                kv_prefix_per_layer=kv_prefix_per_layer,
+                kv_cache=self._kv_cache,
                 dtype=self._dtype,
                 device=device,
             )
@@ -600,23 +534,24 @@ class _RefinerChunkRunner:
                 x_t = scheduler.step(velocity, t, x_t.float(), return_dict=False)[0].to(self._dtype)
 
         # 4) Capture POST-RoPE K/V for this refined block under the same prefix.
-        block_kv_post = refiner._capture_block_kv(
+        refiner._capture_block_kv(
             clean_block=x_t,
             frame_positions=active_positions,
             prompt_embeds=self._prompt_embeds,
             prompt_attention_mask=self._prompt_attention_mask,
             fps=self._fps,
-            capture_mode="post_rope",
-            kv_prefix_per_layer=kv_prefix_per_layer,
+            kv_cache=self._kv_cache,
+            kv_cache_mode=KV_CACHE_MODE_INJECT_AND_CAPTURE_POST_ROPE,
             device=device,
         )
         for layer_idx in range(self._n_layers):
-            new_k, new_v = block_kv_post[layer_idx]
-            old = self._history_kv_post[layer_idx]
+            layer_cache = self._kv_cache.get(layer_idx)
+            new_k, new_v = layer_cache.get_captured_post_rope()
+            old = layer_cache.get_history()
             if old is None:
-                self._history_kv_post[layer_idx] = (new_k, new_v)
+                layer_cache.store_history(new_k, new_v)
             else:
-                self._history_kv_post[layer_idx] = (
+                layer_cache.store_history(
                     torch.cat([old[0], new_k], dim=1),
                     torch.cat([old[1], new_v], dim=1),
                 )
@@ -625,296 +560,18 @@ class _RefinerChunkRunner:
         if self._max_history_frames > 0 and self._history_frames > self._max_history_frames:
             keep_tokens = self._max_history_frames * self._tokens_per_frame
             for layer_idx in range(self._n_layers):
-                hk = self._history_kv_post[layer_idx]
+                layer_cache = self._kv_cache.get(layer_idx)
+                hk = layer_cache.get_history()
                 if hk is not None:
-                    self._history_kv_post[layer_idx] = (hk[0][:, -keep_tokens:], hk[1][:, -keep_tokens:])
+                    layer_cache.store_history(hk[0][:, -keep_tokens:], hk[1][:, -keep_tokens:])
             self._history_frames = self._max_history_frames
 
         return x_t
 
 
 # -------------------------------------------------------------------------
-# private helpers (block + attention + packing)
+# private helpers (text embedding + latent packing)
 # -------------------------------------------------------------------------
-
-
-def _build_rotary_emb_for_absolute_positions(
-    *,
-    transformer: nn.Module,
-    batch_size: int,
-    frame_positions: list[int],
-    height: int,
-    width: int,
-    device: torch.device,
-    fps: float,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Reimplement ``LTX2VideoRotaryPosEmbed.prepare_video_coords`` with explicit per-frame positions.
-
-    The default helper assumes contiguous ``torch.arange(num_frames)`` which is fine for bidirectional inference; the
-    sliding-window AR refiner needs to keep each frame's absolute index in the source video so RoPE captures the
-    correct temporal phase across the sink + recent + active window.
-    """
-    rope = transformer.rope
-    patch_size_t = int(rope.patch_size_t)
-    patch_size = int(rope.patch_size)
-    f_positions = torch.tensor(frame_positions, dtype=torch.float32, device=device)
-    if patch_size_t > 1:
-        # Each patch covers ``patch_size_t`` latent frames; pick the start of each patch.
-        f_positions = f_positions[::patch_size_t]
-    grid_h = torch.arange(start=0, end=height, step=patch_size, dtype=torch.float32, device=device)
-    grid_w = torch.arange(start=0, end=width, step=patch_size, dtype=torch.float32, device=device)
-    grid = torch.meshgrid(f_positions, grid_h, grid_w, indexing="ij")
-    grid = torch.stack(grid, dim=0)
-
-    patch_size_delta = torch.tensor((patch_size_t, patch_size, patch_size), dtype=grid.dtype, device=device)
-    patch_ends = grid + patch_size_delta.view(3, 1, 1, 1)
-    latent_coords = torch.stack([grid, patch_ends], dim=-1)
-    latent_coords = latent_coords.flatten(1, 3).unsqueeze(0).repeat(batch_size, 1, 1, 1)
-
-    scale_tensor = torch.tensor(rope.scale_factors, device=device)
-    broadcast_shape = [1] * latent_coords.ndim
-    broadcast_shape[1] = -1
-    pixel_coords = latent_coords * scale_tensor.view(*broadcast_shape)
-    pixel_coords[:, 0, ...] = (pixel_coords[:, 0, ...] + rope.causal_offset - rope.scale_factors[0]).clamp(min=0)
-    pixel_coords[:, 0, ...] = pixel_coords[:, 0, ...] / float(fps)
-    return rope(pixel_coords, device=device)
-
-
-def _forward_video_block(
-    *,
-    block: nn.Module,
-    hidden_states: torch.Tensor,
-    encoder_hidden_states: torch.Tensor,
-    temb: torch.Tensor,
-    video_rotary_emb: tuple[torch.Tensor, torch.Tensor],
-    encoder_attention_mask: torch.Tensor | None,
-    n_context_tokens: int,
-) -> torch.Tensor:
-    batch_size = hidden_states.size(0)
-
-    norm_hidden_states = block.norm1(hidden_states)
-    num_ada_params = block.scale_shift_table.shape[0]
-    ada_values = block.scale_shift_table[None, None].to(temb.device) + temb.reshape(
-        batch_size, temb.size(1), num_ada_params, -1
-    )
-    shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = ada_values.unbind(dim=2)
-    norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
-
-    attn_hidden_states = _streaming_self_attention(
-        attn=block.attn1,
-        hidden_states=norm_hidden_states,
-        query_rotary_emb=video_rotary_emb,
-        n_context_tokens=n_context_tokens,
-    )
-    hidden_states = hidden_states + attn_hidden_states * gate_msa
-
-    norm_hidden_states = block.norm2(hidden_states)
-    attn_hidden_states = block.attn2(
-        norm_hidden_states,
-        encoder_hidden_states=encoder_hidden_states,
-        query_rotary_emb=None,
-        attention_mask=encoder_attention_mask,
-    )
-    hidden_states = hidden_states + attn_hidden_states
-
-    norm_hidden_states = block.norm3(hidden_states) * (1 + scale_mlp) + shift_mlp
-    hidden_states = hidden_states + block.ff(norm_hidden_states) * gate_mlp
-    return hidden_states
-
-
-def _streaming_self_attention(
-    *,
-    attn: nn.Module,
-    hidden_states: torch.Tensor,
-    query_rotary_emb: tuple[torch.Tensor, torch.Tensor],
-    n_context_tokens: int,
-) -> torch.Tensor:
-    """LTX-2 self-attention with sink/current streaming mask + AR KV-cache hooks.
-
-    Two modes layered on top of vanilla diffusers self-attention, selected by ``n_context_tokens`` and per-block hook
-    attributes (set by the AR refiner):
-
-    * ``n_context_tokens > 0`` (legacy single-shot path): sink queries attend sink only, current queries attend ``[sink
-      + current]`` via two SDPA calls.
-
-    * ``n_context_tokens == 0`` (AR mode): Q comes from the active block only; the per-block ``_tf_kv_prefix`` dict
-      (``rf_shifted_sink``) supplies the pre-RoPE sink K/V (re-RoPE'd here with its sliding offset PE) and the
-      post-RoPE recent-history K/V, concatenated before SDPA. The ``_kv_cache_capture`` and ``_tf_capture_kv`` hooks
-      record K/V into the module for the AR orchestrator to read back.
-    """
-    from ...models.attention_dispatch import dispatch_attention_fn  # noqa: PLC0415
-    from ...models.transformers.transformer_ltx2 import (  # noqa: PLC0415
-        apply_interleaved_rotary_emb,
-        apply_split_rotary_emb,
-    )
-
-    gate_logits = attn.to_gate_logits(hidden_states) if attn.to_gate_logits is not None else None
-
-    query = attn.to_q(hidden_states)
-    key = attn.to_k(hidden_states)
-    value = attn.to_v(hidden_states)
-
-    query = attn.norm_q(query)
-    key = attn.norm_k(key)
-
-    # KV-cache capture / inject hooks for ``rf_shifted_sink`` AR refinement:
-    # - ``_kv_cache_capture`` saves PRE-RoPE (post-norm) K/V so a future window
-    #   can re-apply RoPE at its shifted sink offset.
-    # - ``_tf_capture_kv`` saves POST-RoPE K/V so the next window can directly
-    #   concatenate the recent history.
-    # - ``_tf_kv_prefix`` (a dict with ``mode='rf_shifted_sink'``) prepends a
-    #   re-RoPE'd sink + already-post-RoPE recent history before SDPA.
-    if getattr(attn, "_kv_cache_capture", False):
-        attn._cached_kv_pre = (key.detach().clone(), value.detach().clone())
-
-    if attn.rope_type == "interleaved":
-        query = apply_interleaved_rotary_emb(query, query_rotary_emb)
-        key = apply_interleaved_rotary_emb(key, query_rotary_emb)
-    elif attn.rope_type == "split":
-        query = apply_split_rotary_emb(query, query_rotary_emb)
-        key = apply_split_rotary_emb(key, query_rotary_emb)
-    else:
-        raise ValueError(f"Unsupported LTX-2 RoPE type: {attn.rope_type}")
-
-    if getattr(attn, "_tf_capture_kv", False):
-        attn._cached_kv_post = (key.detach().clone(), value.detach().clone())
-
-    tf_prefix = getattr(attn, "_tf_kv_prefix", None)
-    if isinstance(tf_prefix, dict) and tf_prefix.get("mode") == "rf_shifted_sink":
-        prefix_k_parts: list[torch.Tensor] = []
-        prefix_v_parts: list[torch.Tensor] = []
-        sink_k_pre = tf_prefix.get("sink_k_pre")
-        sink_v = tf_prefix.get("sink_v")
-        if sink_k_pre is not None and sink_v is not None and sink_k_pre.shape[1] > 0:
-            sink_pe = tf_prefix.get("sink_pe")
-            if sink_pe is None:
-                raise RuntimeError("rf_shifted_sink prefix requires a sink_pe RoPE tuple.")
-            sink_k_pre_dt = sink_k_pre.to(key.dtype)
-            if attn.rope_type == "interleaved":
-                sink_k = apply_interleaved_rotary_emb(sink_k_pre_dt, sink_pe)
-            else:
-                sink_k = apply_split_rotary_emb(sink_k_pre_dt, sink_pe)
-            prefix_k_parts.append(sink_k)
-            prefix_v_parts.append(sink_v.to(value.dtype))
-        history_k = tf_prefix.get("history_k")
-        history_v = tf_prefix.get("history_v")
-        if history_k is not None and history_v is not None and history_k.shape[1] > 0:
-            prefix_k_parts.append(history_k.to(key.dtype))
-            prefix_v_parts.append(history_v.to(value.dtype))
-        if prefix_k_parts:
-            key = torch.cat([*prefix_k_parts, key], dim=1)
-            value = torch.cat([*prefix_v_parts, value], dim=1)
-
-    query = query.unflatten(2, (attn.heads, -1))
-    key = key.unflatten(2, (attn.heads, -1))
-    value = value.unflatten(2, (attn.heads, -1))
-
-    processor = attn.processor
-    backend = getattr(processor, "_attention_backend", None)
-    parallel_config = getattr(processor, "_parallel_config", None)
-
-    # AR mode (n_context_tokens == 0): Q from active block attends to the
-    # injected prefix + current K/V in one SDPA call. Legacy single-shot
-    # mode keeps the sink-self / current-cross split.
-    if n_context_tokens <= 0 or n_context_tokens >= query.shape[1]:
-        hidden_states = dispatch_attention_fn(
-            query,
-            key,
-            value,
-            attn_mask=None,
-            dropout_p=0.0,
-            is_causal=False,
-            backend=backend,
-            parallel_config=parallel_config,
-        )
-    else:
-        context_hidden_states = dispatch_attention_fn(
-            query[:, :n_context_tokens],
-            key[:, :n_context_tokens],
-            value[:, :n_context_tokens],
-            attn_mask=None,
-            dropout_p=0.0,
-            is_causal=False,
-            backend=backend,
-            parallel_config=parallel_config,
-        )
-        current_hidden_states = dispatch_attention_fn(
-            query[:, n_context_tokens:],
-            key,
-            value,
-            attn_mask=None,
-            dropout_p=0.0,
-            is_causal=False,
-            backend=backend,
-            parallel_config=parallel_config,
-        )
-        hidden_states = torch.cat([context_hidden_states, current_hidden_states], dim=1)
-
-    hidden_states = hidden_states.flatten(2, 3).to(query.dtype)
-
-    if gate_logits is not None:
-        hidden_states = hidden_states.unflatten(2, (attn.heads, -1))
-        gates = 2.0 * torch.sigmoid(gate_logits)
-        hidden_states = hidden_states * gates.unsqueeze(-1)
-        hidden_states = hidden_states.flatten(2, 3)
-
-    hidden_states = attn.to_out[0](hidden_states)
-    hidden_states = attn.to_out[1](hidden_states)
-    return hidden_states
-
-
-def _set_kv_prefix_on_blocks(
-    transformer: nn.Module,
-    kv_prefix_per_layer: list[dict[str, object]] | None,
-) -> None:
-    """Attach a per-layer KV-prefix dict to each ``attn1`` for the AR refiner."""
-    blocks = transformer.transformer_blocks
-    if kv_prefix_per_layer is None:
-        _clear_kv_prefix_on_blocks(transformer)
-        return
-    if len(kv_prefix_per_layer) != len(blocks):
-        raise RuntimeError(
-            f"kv_prefix_per_layer has {len(kv_prefix_per_layer)} entries but transformer has {len(blocks)} blocks."
-        )
-    for block, prefix in zip(blocks, kv_prefix_per_layer):
-        block.attn1._tf_kv_prefix = prefix
-
-
-def _clear_kv_prefix_on_blocks(transformer: nn.Module) -> None:
-    for block in transformer.transformer_blocks:
-        block.attn1._tf_kv_prefix = None
-
-
-def _set_capture_flag_on_blocks(transformer: nn.Module, mode: str, *, enable: bool) -> None:
-    """Toggle ``_kv_cache_capture`` (pre-RoPE) or ``_tf_capture_kv`` (post-RoPE) per block."""
-    if mode == "pre_rope":
-        attr = "_kv_cache_capture"
-        clear_attr = "_cached_kv_pre"
-    elif mode == "post_rope":
-        attr = "_tf_capture_kv"
-        clear_attr = "_cached_kv_post"
-    else:
-        raise ValueError(f"capture_mode must be 'pre_rope' or 'post_rope', got {mode!r}")
-    for block in transformer.transformer_blocks:
-        setattr(block.attn1, attr, bool(enable))
-        if enable and hasattr(block.attn1, clear_attr):
-            setattr(block.attn1, clear_attr, None)
-
-
-def _collect_captured_kv_from_blocks(
-    transformer: nn.Module,
-    mode: str,
-) -> list[tuple[torch.Tensor, torch.Tensor]]:
-    attr = "_cached_kv_pre" if mode == "pre_rope" else "_cached_kv_post"
-    out: list[tuple[torch.Tensor, torch.Tensor]] = []
-    for block in transformer.transformer_blocks:
-        cached = getattr(block.attn1, attr, None)
-        if cached is None:
-            raise RuntimeError(f"Expected {attr!r} on attn1 after capture forward, but found None.")
-        out.append(cached)
-        # Release the reference so the orchestrator owns the only handle.
-        setattr(block.attn1, attr, None)
-    return out
 
 
 def _pack_text_embeds(

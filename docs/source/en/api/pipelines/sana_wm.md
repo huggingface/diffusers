@@ -21,7 +21,7 @@ Inference runs in two stages:
    camera-control branch. Sampling uses an LTX-style flow-matching Euler scheduler with per-token timesteps; the
    first latent frame is the conditioning anchor.
 2. **Stage 2 — LTX-2 refiner (optional).** A sink-bidirectional Euler refiner ([`SanaWMLTX2Refiner`]) that wraps
-   diffusers' own `LTX2VideoTransformer3DModel` + `LTX2TextConnectors` and a Gemma-3 text encoder, run for 3
+   [`SanaWMLTX2RefinerTransformer3DModel`] + `LTX2TextConnectors` and a Gemma-3 text encoder, run for 3
    distilled sigma steps.
 
 Both stages decode through the [`AutoencoderKLLTX2Video`] VAE.
@@ -105,8 +105,8 @@ Then load from the local path as usual.
 - `vae` — [`AutoencoderKLLTX2Video`] (LTX-2, spatial ×32 / temporal ×8)
 - `transformer` — [`SanaWMTransformer3DModel`], 1.6B-parameter bidirectional DiT
 - `scheduler` — [`FlowMatchEulerDiscreteScheduler`]
-- `refiner` (optional) — [`SanaWMLTX2Refiner`], wraps `LTX2VideoTransformer3DModel`, `LTX2TextConnectors`, and a
-  Gemma-3 text encoder
+- `refiner` (optional) — [`SanaWMLTX2Refiner`], wraps [`SanaWMLTX2RefinerTransformer3DModel`],
+  `LTX2TextConnectors`, and a Gemma-3 text encoder
 
 ## SanaWMPipeline
 
