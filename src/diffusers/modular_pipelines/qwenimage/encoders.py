@@ -520,7 +520,10 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
         resized_images = []
         resized_cond_images = []
         for image in images:
-            image_width, image_height = image.size
+            if isinstance(image, torch.Tensor):
+                image_width, image_height = image.shape[-1], image.shape[-2]
+            else:
+                image_width, image_height = image.size
 
             # For VAE encoder (1024x1024 target area)
             vae_width, vae_height, _ = calculate_dimensions(1024 * 1024, image_width / image_height)
