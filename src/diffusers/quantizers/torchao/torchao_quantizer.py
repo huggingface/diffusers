@@ -97,7 +97,13 @@ def _update_torch_safe_globals():
     ]
     try:
         from torchao.dtypes import NF4Tensor
-        from torchao.dtypes.uintx.uintx_layout import UintxAQTTensorImpl, UintxTensor
+
+        # note: is_torchao_version(">=", "0.17.0") does not work correctly
+        # with torchao nightly, so using a ">" check which does work correctly
+        if is_torchao_version(">", "0.16.0"):
+            from torchao.prototype.dtypes.uintx.uintx_utils import UintxAQTTensorImpl, UintxTensor
+        else:
+            from torchao.dtypes.uintx.uintx_layout import UintxAQTTensorImpl, UintxTensor
 
         safe_globals.extend([UintxTensor, UintxAQTTensorImpl, NF4Tensor])
 
