@@ -871,7 +871,7 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
         mapping: the tile containing t=0 drops the temporal upsample's duplicate leading frame and only the tile
         containing the video end carries the NATTEN border padding.
 
-        This tiles whatever `use_tiling` says — [`_decode`] is the entry point that honors it.
+        This tiles whatever `use_tiling` says — [`decode`] is the entry point that honors it.
         """
         decoder = self.decoder
         num_inference_steps = num_inference_steps or decoder.default_num_inference_steps
