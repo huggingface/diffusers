@@ -15,6 +15,7 @@
 
 import gc
 import logging
+from typing import NamedTuple
 
 import pytest
 import torch
@@ -123,17 +124,33 @@ def _skip_if_backend_requires_nondeterminism(backend):
         )
 
 
-def _fused_module_cls(model):
-    """The attention base class this model's `fuse_qkv_projections()` actually walks.
+class _FusionPath(NamedTuple):
+    """How one of the two `fuse_qkv_projections()` implementations behaves.
 
-    The shared `AttentionMixin.fuse_qkv_projections()` only walks `AttentionModuleMixin` modules, whereas the
-    per-model implementations still on the legacy path (UNets, SD3, PixArt, AuraFlow, CogVideoX, ...) walk `Attention`
-    modules. A model whose attention modules are of the *other* kind fuses nothing at all, which is a bug in the model
-    rather than in this test - see `test_fuse_unfuse_qkv_projections`.
+    `attention_cls` is the attention base class that implementation walks: a model built on the *other* base class
+    gets fused right past, which is why `test_fuse_unfuse_qkv_projections` checks it before anything else.
+    `swaps_in_fused_processors` says what unfusing is expected to undo.
     """
+
+    attention_cls: type
+    swaps_in_fused_processors: bool
+
+
+# `AttentionMixin.fuse_qkv_projections()`, inherited by Flux, Flux2, Chroma, Wan, ... It walks `AttentionModuleMixin`
+# modules and leaves the processors alone, so `unfuse_qkv_projections()` deletes the fused layers again.
+_SHARED_FUSION = _FusionPath(attention_cls=AttentionModuleMixin, swaps_in_fused_processors=False)
+
+# The per-model implementations on UNets, SD3, PixArt, AuraFlow, CogVideoX, AutoencoderKL, ... They walk `Attention`
+# modules, swap in a dedicated `Fused*` processor and stash the originals in `original_attn_processors`, so
+# `unfuse_qkv_projections()` only puts those processors back - the fused layers stay on the modules.
+_LEGACY_FUSION = _FusionPath(attention_cls=Attention, swaps_in_fused_processors=True)
+
+
+def _fusion_path(model):
+    """Which of the two `fuse_qkv_projections()` implementations this model inherits."""
     if type(model).fuse_qkv_projections is AttentionMixin.fuse_qkv_projections:
-        return AttentionModuleMixin
-    return Attention
+        return _SHARED_FUSION
+    return _LEGACY_FUSION
 
 
 def _fused_layer_name(module):
@@ -180,37 +197,37 @@ class AttentionTesterMixin:
         if not hasattr(model, "fuse_qkv_projections"):
             pytest.skip("Model does not support QKV projection fusion.")
 
-        module_cls = _fused_module_cls(model)
-        other_cls = Attention if module_cls is AttentionModuleMixin else AttentionModuleMixin
-        reachable = [module for module in model.modules() if isinstance(module, module_cls)]
-        unreachable = [
-            module
-            for module in model.modules()
-            if isinstance(module, other_cls) and not isinstance(module, module_cls)
-        ]
+        fusion = _fusion_path(model)
 
-        if not reachable and not unreachable:
+        attention_modules = [
+            module for module in model.modules() if isinstance(module, (AttentionModuleMixin, Attention))
+        ]
+        if not attention_modules:
             pytest.skip("Model has no attention modules to fuse.")
 
-        if not reachable:
-            # `fuse_qkv_projections()` walks a different attention base class than the one this model is built on, so
-            # it silently fuses nothing. Marked xfail rather than skipped so that fixing the model shows up as an
-            # XPASS instead of staying quietly green.
+        walked_modules = [module for module in attention_modules if isinstance(module, fusion.attention_cls)]
+        stranded_modules = [module for module in attention_modules if not isinstance(module, fusion.attention_cls)]
+
+        if not walked_modules:
+            # Every attention module in this model is of the base class the model's `fuse_qkv_projections()` does not
+            # walk, so fusing silently does nothing. Marked xfail rather than skipped so that fixing the model shows
+            # up as an XPASS instead of staying quietly green.
             request.node.add_marker(
                 pytest.mark.xfail(
                     reason=(
-                        f"{type(model).__name__}.fuse_qkv_projections() walks `{module_cls.__name__}` modules, but "
-                        f"this model's attention is built on `{other_cls.__name__}`, so nothing is ever fused."
+                        f"{type(model).__name__}.fuse_qkv_projections() only walks "
+                        f"`{fusion.attention_cls.__name__}` modules, but every attention module in this model is "
+                        f"a `{type(stranded_modules[0]).__name__}` instance, so nothing is ever fused."
                     ),
                     strict=True,
                 )
             )
 
-        assert reachable, (
+        assert walked_modules, (
             f"{type(model).__name__}.fuse_qkv_projections() does not reach any of this model's attention modules."
         )
 
-        fusable_modules = [module for module in reachable if getattr(module, "_supports_qkv_fusion", True)]
+        fusable_modules = [module for module in walked_modules if getattr(module, "_supports_qkv_fusion", True)]
         if not fusable_modules:
             pytest.skip("Model's attention modules do not support QKV projection fusion.")
 
@@ -230,10 +247,7 @@ class AttentionTesterMixin:
         assert len(processors_after_fusion) == len(processors_before_fusion), (
             "Fusing projections should not change the number of attention processors."
         )
-        # Models on the legacy `Attention` path swap in dedicated `Fused*` processors and remember the originals so
-        # that `unfuse_qkv_projections()` can put them back.
-        uses_fused_processors = getattr(model, "original_attn_processors", None) is not None
-        if uses_fused_processors:
+        if fusion.swaps_in_fused_processors:
             for name, processor in processors_after_fusion.items():
                 assert type(processor).__name__.startswith("Fused"), (
                     f"Processor {name} should be a fused processor after fusing, got {type(processor).__name__}."
@@ -251,8 +265,8 @@ class AttentionTesterMixin:
 
         model.unfuse_qkv_projections()
 
-        if uses_fused_processors:
-            # The legacy path only restores the original processors; the fused layers themselves are left in place.
+        if fusion.swaps_in_fused_processors:
+            # This path only restores the original processors; the fused layers themselves are left in place.
             processors_after_unfusion = model.attn_processors
             assert len(processors_after_unfusion) == len(processors_before_fusion), (
                 "Unfusing projections should not change the number of attention processors."
