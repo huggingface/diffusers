@@ -21,6 +21,7 @@ if is_torch_available():
     from .first_block_cache import FirstBlockCacheConfig, apply_first_block_cache
     from .group_offloading import apply_group_offloading
     from .hooks import HookRegistry, ModelHook
+    from .joyvideoedit_kv_cache import JoyVideoEditKVCacheConfig, apply_joyvideoedit_kv_cache
     from .layer_skip import LayerSkipConfig, apply_layer_skip
     from .layerwise_casting import apply_layerwise_casting, apply_layerwise_casting_hook
     from .mag_cache import MagCacheConfig, apply_mag_cache

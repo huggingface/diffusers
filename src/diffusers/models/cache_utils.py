@@ -41,12 +41,13 @@ class CacheMixin:
         Enable caching techniques on the model.
 
         Args:
-            config (`PyramidAttentionBroadcastConfig | FasterCacheConfig | FirstBlockCacheConfig | TextKVCacheConfig`):
+            config (`PyramidAttentionBroadcastConfig | FasterCacheConfig | FirstBlockCacheConfig | TextKVCacheConfig | JoyVideoEditKVCacheConfig`):
                 The configuration for applying the caching technique. Currently supported caching techniques are:
                     - [`~hooks.PyramidAttentionBroadcastConfig`]
                     - [`~hooks.FasterCacheConfig`]
                     - [`~hooks.FirstBlockCacheConfig`]
                     - [`~hooks.TextKVCacheConfig`]
+                    - [`~hooks.JoyVideoEditKVCacheConfig`]
 
         Example:
 
@@ -69,12 +70,14 @@ class CacheMixin:
         from ..hooks import (
             FasterCacheConfig,
             FirstBlockCacheConfig,
+            JoyVideoEditKVCacheConfig,
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
             TaylorSeerCacheConfig,
             TextKVCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
+            apply_joyvideoedit_kv_cache,
             apply_mag_cache,
             apply_pyramid_attention_broadcast,
             apply_taylorseer_cache,
@@ -94,6 +97,8 @@ class CacheMixin:
             apply_mag_cache(self, config)
         elif isinstance(config, TextKVCacheConfig):
             apply_text_kv_cache(self, config)
+        elif isinstance(config, JoyVideoEditKVCacheConfig):
+            apply_joyvideoedit_kv_cache(self, config)
         elif isinstance(config, PyramidAttentionBroadcastConfig):
             apply_pyramid_attention_broadcast(self, config)
         elif isinstance(config, TaylorSeerCacheConfig):
@@ -108,6 +113,7 @@ class CacheMixin:
             FasterCacheConfig,
             FirstBlockCacheConfig,
             HookRegistry,
+            JoyVideoEditKVCacheConfig,
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
             TaylorSeerCacheConfig,
@@ -115,6 +121,7 @@ class CacheMixin:
         )
         from ..hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
         from ..hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
+        from ..hooks.joyvideoedit_kv_cache import _JOYVIDEOEDIT_KV_CACHE_HOOK
         from ..hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
         from ..hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
@@ -139,6 +146,8 @@ class CacheMixin:
         elif isinstance(self._cache_config, TextKVCacheConfig):
             registry.remove_hook(_TEXT_KV_CACHE_TRANSFORMER_HOOK, recurse=True)
             registry.remove_hook(_TEXT_KV_CACHE_BLOCK_HOOK, recurse=True)
+        elif isinstance(self._cache_config, JoyVideoEditKVCacheConfig):
+            registry.remove_hook(_JOYVIDEOEDIT_KV_CACHE_HOOK, recurse=True)
         elif isinstance(self._cache_config, TaylorSeerCacheConfig):
             registry.remove_hook(_TAYLORSEER_CACHE_HOOK, recurse=True)
         else:

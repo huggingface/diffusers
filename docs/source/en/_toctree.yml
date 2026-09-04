@@ -359,6 +359,8 @@
         title: JoyImageEditPlusTransformer3DModel
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
+      - local: api/models/transformer_joyvideoedit
+        title: JoyVideoEditTransformer3DModel
       - local: api/models/krea2_transformer2d
         title: Krea2Transformer2DModel
       - local: api/models/latte_transformer3d
@@ -453,6 +455,8 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoder_kl_hunyuan_video15
         title: AutoencoderKLHunyuanVideo15
+      - local: api/models/autoencoder_kl_joyvideoedit
+        title: AutoencoderKLJoyVideoEdit
       - local: api/models/autoencoder_kl_kvae
         title: AutoencoderKLKVAE
       - local: api/models/autoencoder_kl_kvae_video
@@ -579,6 +583,8 @@
         title: JoyImage Edit
       - local: api/pipelines/joyimage_edit_plus
         title: JoyImage Edit Plus
+      - local: api/pipelines/joyvideoedit
+        title: JoyVideo Edit
       - local: api/pipelines/kandinsky
         title: Kandinsky 2.1
       - local: api/pipelines/kandinsky_v22
