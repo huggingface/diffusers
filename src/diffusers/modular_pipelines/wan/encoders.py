@@ -619,9 +619,16 @@ class WanVaceEncoderStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
-                "vace_conditioning_latents",
+                "control_hidden_states",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="The concatenated video and mask conditioning latents fed into the VACE control branch of the transformer",
+            ),
+            OutputParam(
+                "control_hidden_states_scale",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="The per-layer conditioning scale tensor applied to the VACE control branch",
             ),
             OutputParam(
                 "num_reference_images",
@@ -847,7 +854,7 @@ class WanVaceEncoderStep(ModularPipelineBlocks):
             components, video, mask, reference_images, block_state.generator, device
         )
         mask = self.prepare_masks(components, mask, reference_images)
-        block_state.vace_conditioning_latents = torch.cat([conditioning_latents, mask], dim=1)
+        block_state.control_hidden_states = torch.cat([conditioning_latents, mask], dim=1)
 
         conditioning_scale = block_state.conditioning_scale
         if isinstance(conditioning_scale, (int, float)):
@@ -864,7 +871,7 @@ class WanVaceEncoderStep(ModularPipelineBlocks):
                     f"Length of `conditioning_scale` {conditioning_scale.size(0)} does not match number of layers {components.num_vace_layers}."
                 )
             conditioning_scale = conditioning_scale.to(device=device)
-        block_state.conditioning_scale = conditioning_scale
+        block_state.control_hidden_states_scale = conditioning_scale
 
         self.set_block_state(state, block_state)
         return components, state

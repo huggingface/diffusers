@@ -82,12 +82,8 @@ class Wan22VaceCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           attention_kwargs (`None`, *optional*):
               TODO: Add description.
-          vace_conditioning_latents (`Tensor`):
-              The conditioning latents fed into the VACE control branch of the transformer. Can be generated in
-              vace_encoder step.
-          conditioning_scale (`Tensor`):
-              The per-layer conditioning scale tensor applied to the VACE control branch. Can be generated in
-              vace_encoder step.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
           latents (`Tensor`):
@@ -175,6 +171,8 @@ class Wan22VaceBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           attention_kwargs (`None`, *optional*):
               TODO: Add description.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           output_type (`str`, *optional*, defaults to np):
               The output type of the decoded videos
 
