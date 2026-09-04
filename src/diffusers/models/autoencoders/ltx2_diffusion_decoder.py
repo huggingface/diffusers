@@ -477,13 +477,7 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
     """The LTX-2.5 diffusion video decoder.
 
     Stages 1-4 deterministically upsample the latent into a context volume with neighborhood-attention blocks; that
-    volume conditions stage 5, which is an ordinary diffusion transformer over patchified pixels. [`forward`] is one
-    stage-5 step, so this module is the network alone — the timestep schedule, the noise and the reverse Euler updates
-    live on [`LTX2VideoDiffusionDecoderModel`], which drives it.
-
-    The context is not cross-attended the way a prompt embedding would be: it is projected into the residual stream of
-    every block and shares the token grid with the pixels, which is what lets a tile of context stand in for a tile of
-    output during tiled decoding.
+    volume conditions stage 5, which is an ordinary diffusion transformer over patchified pixels.
     """
 
     def __init__(
