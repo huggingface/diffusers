@@ -17,6 +17,7 @@ import pytest
 import torch
 
 from diffusers import AutoencoderKLCogVideoX
+from diffusers.models.upsampling import CogVideoXUpsample3D
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -131,3 +132,25 @@ class TestAutoencoderKLCogVideoXSlicingTiling(AutoencoderKLCogVideoXTesterConfig
         assert output is not None
         expected_shape = inputs_dict["sample"].shape
         assert output.shape == expected_shape, "Input and output shapes do not match"
+
+
+@pytest.mark.parametrize("latent_frames", [2, 3, 4, 5])
+def test_cogvideox_upsample_preserves_first_latent_frame(latent_frames):
+    """Temporal upsampling keeps the uncompressed anchor for every latent length."""
+    upsample = CogVideoXUpsample3D(
+        in_channels=1,
+        out_channels=1,
+        kernel_size=1,
+        padding=0,
+        compress_time=True,
+    )
+    with torch.no_grad():
+        upsample.conv.weight.fill_(1)
+        upsample.conv.bias.zero_()
+
+    inputs = torch.arange(latent_frames, dtype=torch.float32).reshape(1, 1, latent_frames, 1, 1)
+    output = upsample(inputs)
+
+    expected = torch.cat([inputs[:, :, :1], inputs[:, :, 1:].repeat_interleave(2, dim=2)], dim=2)
+    assert output.shape == (1, 1, 1 + 2 * (latent_frames - 1), 2, 2)
+    assert torch.equal(output[..., 0, 0], expected.squeeze(-1).squeeze(-1))

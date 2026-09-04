@@ -389,19 +389,19 @@ class CogVideoXUpsample3D(nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         if self.compress_time:
-            if inputs.shape[2] > 1 and inputs.shape[2] % 2 == 1:
-                # split first frame
+            if inputs.shape[2] > 1:
+                # The first latent frame is not temporally compressed.  Keep it
+                # as the anchor and only expand the remaining compressed frames;
+                # this layout is independent of the latent sequence parity.
                 x_first, x_rest = inputs[:, :, 0], inputs[:, :, 1:]
 
-                x_first = F.interpolate(x_first, scale_factor=2.0)
-                x_rest = F.interpolate(x_rest, scale_factor=2.0)
+                x_first = F.interpolate(x_first, scale_factor=2.0, mode="nearest")
+                x_rest = F.interpolate(x_rest, scale_factor=2.0, mode="nearest")
                 x_first = x_first[:, :, None, :, :]
                 inputs = torch.cat([x_first, x_rest], dim=2)
-            elif inputs.shape[2] > 1:
-                inputs = F.interpolate(inputs, scale_factor=2.0)
             else:
                 inputs = inputs.squeeze(2)
-                inputs = F.interpolate(inputs, scale_factor=2.0)
+                inputs = F.interpolate(inputs, scale_factor=2.0, mode="nearest")
                 inputs = inputs[:, :, None, :, :]
         else:
             # only interpolate 2D
