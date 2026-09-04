@@ -107,3 +107,23 @@ class TestAutoencoderKLLTX2VideoMemory(AutoencoderKLLTX2VideoTesterConfig, Memor
 
 class TestAutoencoderKLLTX2VideoSlicingTiling(AutoencoderKLLTX2VideoTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLLTX2Video."""
+
+    @pytest.mark.parametrize("height,width,tile_height,tile_width", [(22, 40, 9, 16), (40, 22, 16, 9)])
+    def test_tiled_decode_skips_overlap_only_tail(self, height, width, tile_height, tile_width):
+        config = self.get_init_dict()
+        config.update(spatial_compression_ratio=8, decoder_spatial_padding_mode="reflect")
+        torch.manual_seed(0)
+        model = self.model_class(**config).to(torch_device).eval()
+        model.enable_tiling(
+            tile_sample_min_height=tile_height * 8,
+            tile_sample_min_width=tile_width * 8,
+            tile_sample_stride_height=(tile_height - 2) * 8,
+            tile_sample_stride_width=(tile_width - 2) * 8,
+        )
+        latents = randn_tensor(
+            (1, config["latent_channels"], 1, height, width), generator=self.generator, device=torch_device
+        )
+        with torch.no_grad():
+            video = model.decode(latents).sample
+        assert video.shape == (1, 3, 1, height * 8, width * 8)
+        assert torch.isfinite(video).all()

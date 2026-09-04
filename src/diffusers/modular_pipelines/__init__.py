@@ -121,6 +121,12 @@ else:
         "LTXAutoBlocks",
         "LTXModularPipeline",
     ]
+    _import_structure["echo_wm"] = [
+        "EchoWMBlocks",
+        "EchoWMFlashBlocks",
+        "EchoWMFlashModularPipeline",
+        "EchoWMModularPipeline",
+    ]
     _import_structure["ltx2"] = [
         "LTX2AutoBlocks",
         "LTX25AutoBlocks",
@@ -156,6 +162,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos3OmniBlocks,
             Cosmos3OmniModularPipeline,
         )
+        from .echo_wm import EchoWMBlocks, EchoWMFlashBlocks, EchoWMFlashModularPipeline, EchoWMModularPipeline
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .flux2 import (
@@ -189,7 +196,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Krea2TurboModularPipeline,
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
-        from .ltx2 import LTX2AutoBlocks, LTX2ModularPipeline, LTX25AutoBlocks, LTX25ModularPipeline
+        from .ltx2 import (
+            LTX2AutoBlocks,
+            LTX2ModularPipeline,
+            LTX25AutoBlocks,
+            LTX25ModularPipeline,
+        )
         from .minimax_h3 import (
             MiniMaxH3Blocks,
             MiniMaxH3ModularPipeline,

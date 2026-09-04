@@ -691,6 +691,8 @@
         title: Cosmos
       - local: api/pipelines/cosmos3
         title: Cosmos3
+      - local: api/pipelines/echo_wm
+        title: Echo-WM
       - local: api/pipelines/framepack
         title: Framepack
       - local: api/pipelines/helios

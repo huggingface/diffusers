@@ -157,6 +157,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
         ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
+        ("echo-wm", _create_default_map_fn("EchoWMModularPipeline")),
+        ("echo-wm-flash", _create_default_map_fn("EchoWMFlashModularPipeline")),
     ]
 )
 
