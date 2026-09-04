@@ -27,6 +27,8 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ..activations import get_activation
+from ..attention import AttentionModuleMixin
+from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
@@ -257,15 +259,57 @@ class GLUMBConvTemp(nn.Module):
         return hidden_states.permute(0, 2, 3, 1).reshape(batch_size, seq_len, channels)
 
 
-class MultiHeadCrossAttention(nn.Module):
-    def __init__(self, d_model, num_heads, qk_norm=False, **block_kwargs):
+class SanaWMCrossAttnProcessor:
+    """Cross-attention from image queries to the text condition."""
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(
+        self,
+        attn: "MultiHeadCrossAttention",
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        batch_size, _, channels = hidden_states.shape
+
+        query = attn.q_linear(hidden_states)
+        key, value = attn.kv_linear(encoder_hidden_states).view(batch_size, -1, 2, channels).unbind(2)
+
+        query = attn.q_norm(query).view(batch_size, -1, attn.heads, attn.head_dim)
+        key = attn.k_norm(key).view(batch_size, -1, attn.heads, attn.head_dim)
+        value = value.view(batch_size, -1, attn.heads, attn.head_dim)
+
+        # A boolean mask (rather than an additive float one) keeps the varlen backends usable.
+        if attention_mask is not None and attention_mask.ndim == 2:
+            attention_mask = attention_mask.bool()[:, None, None, :]
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.reshape(batch_size, -1, channels).type_as(query)
+        return attn.proj(hidden_states)
+
+
+class MultiHeadCrossAttention(torch.nn.Module, AttentionModuleMixin):
+    _default_processor_cls = SanaWMCrossAttnProcessor
+    _available_processors = [SanaWMCrossAttnProcessor]
+
+    def __init__(self, d_model, num_heads, qk_norm=False, processor=None, **block_kwargs):
         super().__init__()
         if not (d_model % num_heads == 0):
             raise ValueError("d_model must be divisible by num_heads")
 
         self.d_model = d_model
-        self.num_heads = num_heads
+        self.heads = num_heads
         self.head_dim = d_model // num_heads
+        self.inner_dim = d_model
 
         self.q_linear = nn.Linear(d_model, d_model)
         self.kv_linear = nn.Linear(d_model, d_model * 2)
@@ -277,27 +321,10 @@ class MultiHeadCrossAttention(nn.Module):
             self.q_norm = nn.Identity()
             self.k_norm = nn.Identity()
 
+        self.set_processor(processor if processor is not None else self._default_processor_cls())
+
     def forward(self, x, cond, mask=None):
-        # query: img tokens; key/value: condition; mask: if padding tokens
-        B, N, C = x.shape
-        q = self.q_linear(x)
-        kv = self.kv_linear(cond).view(B, -1, 2, C)
-        k, v = kv.unbind(2)
-        q = self.q_norm(q).view(B, -1, self.num_heads, self.head_dim)
-        k = self.k_norm(k).view(B, -1, self.num_heads, self.head_dim)
-        v = v.view(B, -1, self.num_heads, self.head_dim)
-
-        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-        if mask is not None and mask.ndim == 2:
-            mask = (1 - mask.to(q.dtype)) * -10000.0
-            mask = mask[:, None, None].repeat(1, self.num_heads, 1, 1)
-        x = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False)
-        x = x.transpose(1, 2)
-
-        x = x.view(B, -1, C)
-        x = self.proj(x)
-
-        return x
+        return self.processor(self, x, cond, attention_mask=mask)
 
 
 class T2IFinalLayer(nn.Module):
