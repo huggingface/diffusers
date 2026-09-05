@@ -59,7 +59,7 @@ from pruna import PrunaModel, SmashConfig, smash
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # define the configuration
 smash_config = SmashConfig()

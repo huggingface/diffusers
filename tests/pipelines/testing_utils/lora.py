@@ -62,6 +62,7 @@ POSSIBLE_ATTENTION_KWARGS_NAMES = ["cross_attention_kwargs", "joint_attention_kw
 # Keyed by `config.model_type` — both `CLIPTextModel` and `CLIPTextModelWithProjection` report `clip_text_model`.
 TEXT_ENCODER_TARGET_MODULES = {
     "clip_text_model": ["q_proj", "k_proj", "v_proj", "out_proj"],
+    "smollm3": ["q_proj", "k_proj", "v_proj", "o_proj"],
 }
 
 
@@ -107,14 +108,24 @@ class BaseLoraTesterMixin(BasePipelineOutputMixin):
             pytest.skip(f"LoRA is not supported for this pipeline ({self.pipeline_class.__name__}).")
 
     @property
+    def lora_loadable_components(self):
+        """Pipeline components these tests attach adapters to.
+
+        Defaults to everything the pipeline advertises as LoRA-loadable. Override with a plain list on a test
+        class to narrow it — e.g. when a component is loadable but `save_lora_weights` cannot round-trip it yet,
+        so the save/load tests here could never pass for it.
+        """
+        return self.pipeline_class._lora_loadable_modules
+
+    @property
     def text_encoder_components(self):
         """Names of the pipeline's LoRA-loadable text encoders, e.g. `["text_encoder", "text_encoder_2"]`."""
-        return [name for name in self.pipeline_class._lora_loadable_modules if name.startswith("text_encoder")]
+        return [name for name in self.lora_loadable_components if name.startswith("text_encoder")]
 
     @property
     def denoiser_components(self):
         """Names of the pipeline's LoRA-loadable denoisers, e.g. `["unet"]` or `["transformer"]`."""
-        return [name for name in self.pipeline_class._lora_loadable_modules if not name.startswith("text_encoder")]
+        return [name for name in self.lora_loadable_components if not name.startswith("text_encoder")]
 
     def get_denoiser(self, pipe):
         return pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
@@ -144,7 +155,7 @@ class BaseLoraTesterMixin(BasePipelineOutputMixin):
         Returns {component_name: module} for everything adapted, e.g. for passing to
         `save_lora_weights` via `_get_lora_state_dicts`.
         """
-        components = components if components is not None else self.pipeline_class._lora_loadable_modules
+        components = components if components is not None else self.lora_loadable_components
         adapted = {}
         for name in components:
             module = getattr(pipe, name, None)
@@ -437,9 +448,16 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Lora + 0 scale should lead to same result as no LoRA",
         )
 
-        if self.text_encoder_components:
-            text_encoder_root = getattr(pipe.text_encoder, "text_model", pipe.text_encoder)
-            assert text_encoder_root.encoder.layers[0].self_attn.q_proj.scaling["default"] == 1.0, (
+        for name in self.text_encoder_components:
+            # Walk the modules rather than indexing a fixed path: text encoder architectures nest their attention
+            # layers differently (CLIP under `text_model.encoder.layers`, decoder-only ones under `model.layers`).
+            scalings = [
+                module.scaling["default"]
+                for module in getattr(pipe, name).modules()
+                if hasattr(module, "lora_A") and "default" in module.scaling
+            ]
+            assert scalings, f"No LoRA layers found on {name}"
+            assert all(scaling == 1.0 for scaling in scalings), (
                 "The scaling parameter has not been correctly restored!"
             )
 
@@ -752,7 +770,9 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         assert pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
 
     @pytest.mark.parametrize("lora_scale", [1.0, 0.8])
-    def test_lora_scale_kwargs_match_fusion(self, base_pipe_output, lora_scale):
+    def test_lora_scale_kwargs_match_fusion(
+        self, base_pipe_output, lora_scale, expected_atol=1e-3, expected_rtol=1e-3
+    ):
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
 
         pipe = self.get_pipeline().to(torch_device)
@@ -772,8 +792,8 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         assert_tensors_close(
             outputs_lora_1_fused,
             outputs_lora_1,
-            atol=1e-3,
-            rtol=1e-3,
+            atol=expected_atol,
+            rtol=expected_rtol,
             msg="Fused lora should not change the output",
         )
         assert not torch.allclose(base_pipe_output, outputs_lora_1, atol=1e-3, rtol=1e-3), (

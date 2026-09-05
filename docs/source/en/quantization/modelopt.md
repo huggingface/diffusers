@@ -42,7 +42,7 @@ pipe = SanaPipeline.from_pretrained(
     transformer=transformer,
     dtype=dtype,
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 print(f"Pipeline memory usage: {torch.cuda.max_memory_reserved() / 1024**3:.3f} GB")
 
@@ -132,7 +132,7 @@ pipe = SanaPipeline.from_pretrained(
     transformer=transformer,
     dtype=torch.bfloat16,
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 prompt = "A cat holding a sign that says hello world"
 image = pipe(
     prompt, num_inference_steps=50, guidance_scale=4.5, max_sequence_length=512

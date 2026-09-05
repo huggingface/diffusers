@@ -19,7 +19,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
 from ..models.controlnets import ControlNetUnionModel
-from ..utils import is_sentencepiece_available
+from ..utils import _resolve_revision, is_sentencepiece_available
 from .anyflow import AnyFlowFARPipeline, AnyFlowPipeline
 from .audioldm2 import AudioLDM2Pipeline
 from .aura_flow import AuraFlowPipeline
@@ -511,6 +511,15 @@ class AutoPipelineForText2Image(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
 
+        # Resolve the revision only once
+        revision = _resolve_revision(
+            pretrained_model_or_path,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
+
         load_config_kwargs = {
             "cache_dir": cache_dir,
             "force_download": force_download,
@@ -800,6 +809,15 @@ class AutoPipelineForImage2Image(ConfigMixin):
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
+
+        # Resolve the revision only once
+        revision = _resolve_revision(
+            pretrained_model_or_path,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
 
         load_config_kwargs = {
             "cache_dir": cache_dir,
@@ -1105,6 +1123,15 @@ class AutoPipelineForInpainting(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
 
+        # Resolve the revision only once
+        revision = _resolve_revision(
+            pretrained_model_or_path,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
+
         load_config_kwargs = {
             "cache_dir": cache_dir,
             "force_download": force_download,
@@ -1405,6 +1432,15 @@ class AutoPipelineForText2Audio(ConfigMixin):
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
+
+        # Resolve the revision only once
+        revision = _resolve_revision(
+            pretrained_model_or_path,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
 
         load_config_kwargs = {
             "cache_dir": cache_dir,

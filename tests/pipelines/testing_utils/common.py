@@ -37,6 +37,48 @@ from ...testing_utils import (
 )
 
 
+def cast_module_to_dtype(module, dtype):
+    """Cast `module` to `dtype` in place, keeping its `_keep_in_fp32_modules` submodules in float32.
+
+    `Module.to(dtype)` ignores the declaration: it casts every floating point tensor and only logs a warning, so a
+    component that declares `_keep_in_fp32_modules` ends up feeding half-precision weights to a forward pass that
+    expects float32 ones and dies on a dtype mismatch. `from_pretrained(torch_dtype=...)` is the path that honours
+    the declaration, and `enable_layerwise_casting` folds it into its skip patterns.
+
+    Each tensor is cast at most once, straight from its current dtype to its target. Casting the whole module and
+    restoring the kept submodules afterwards would round-trip them through the low-precision dtype and lose the
+    precision the declaration exists to preserve.
+
+    Modules that declare nothing take the plain `.to()` path.
+    """
+    keep_in_fp32_modules = getattr(module, "_keep_in_fp32_modules", None)
+    if not keep_in_fp32_modules:
+        return module.to(dtype=dtype)
+    if isinstance(keep_in_fp32_modules, str):
+        # `from_pretrained` accepts a bare string as well as a list.
+        keep_in_fp32_modules = [keep_in_fp32_modules]
+
+    def target_dtype(name):
+        return torch.float32 if any(part in name.split(".") for part in keep_in_fp32_modules) else dtype
+
+    for name, param in module.named_parameters():
+        if param.is_floating_point():
+            param.data = param.data.to(dtype=target_dtype(name))
+    for name, buffer in module.named_buffers():
+        if buffer.is_floating_point():
+            buffer.data = buffer.data.to(dtype=target_dtype(name))
+
+    return module
+
+
+def cast_pipeline_to_dtype(pipe, dtype):
+    """`cast_module_to_dtype` for every `torch.nn.Module` component of `pipe`, leaving the rest untouched."""
+    for component in pipe.components.values():
+        if isinstance(component, torch.nn.Module):
+            cast_module_to_dtype(component, dtype)
+    return pipe
+
+
 class BasePipelineTesterConfig:
     """
     Base class defining the configuration interface for pipeline testing.
@@ -64,6 +106,34 @@ class BasePipelineTesterConfig:
             "return_dict",
         ]
     )
+
+    # Component names that make up the text stack, i.e. the ones `test_encode_prompt_works_in_isolation` keeps when
+    # it builds a text-encoder-only pipeline (matched as substrings of the component name). Extend this on the config
+    # class when `encode_prompt` reads a component whose name says neither "text" nor "tokenizer" — a `processor`
+    # used for chat templating, for example.
+    text_stack_component_names = ("text", "tokenizer")
+
+    # The group offload tests derive what they offload: every `torch.nn.Module` component of the pipeline is
+    # offloaded unless the list for that level names it, in which case it is kept on the accelerator. A component
+    # that is covered by default is the point — a pipeline that adds a second denoiser or an extra encoder gets it
+    # exercised without touching this file, and dropping something from the tests takes naming it next to a reason.
+    # The two levels fail on opposite hazards, so each gets its own list; a component that fails at both goes in
+    # both.
+
+    # Components that cannot be offloaded at leaf level. Leaf-level offloading onloads each supported leaf on its
+    # own `forward`, so any code that reads a leaf's `.weight` instead of calling the leaf bypasses that leaf's
+    # hook and computes against offloaded weights — `torch.nn.MultiheadAttention` being the usual instance. Such a
+    # component is normally fine at block level, where the whole group is onloaded at once, and stays covered
+    # there.
+    group_offloading_leaf_level_exclude_modules = []
+
+    # Components that cannot be offloaded at block level. Block-level offloading onloads a group when the group's
+    # leader runs its `forward`, so a component whose compute re-enters submodules without going through that
+    # leader finds its weights still on the offload device. VAE decode paths are the usual instance: a pipeline
+    # calls `vae.decode()`, which never runs `vae.forward()`, so a VAE whose class does not declare
+    # `_group_offload_block_modules` keeps every weight in one group gated on a `forward` that is never entered.
+    # Leaf level is unaffected — it hooks each leaf on its own `forward` — which is why the exclusion is per level.
+    group_offloading_block_level_exclude_modules = ["vae", "image_encoder"]
 
     # ==================== Required interface ====================
 
@@ -123,6 +193,9 @@ class BasePipelineTesterConfig:
         )
 
     # ==================== Shared helpers ====================
+
+    def is_text_stack_component(self, name: str) -> bool:
+        return any(key in name for key in self.text_stack_component_names)
 
     def get_generator(self, seed=0):
         # Always build the generator on CPU: a CPU generator works with a pipeline placed on any device (the tensor
@@ -390,7 +463,10 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
     def test_half_precision_inference_no_nan(self, dtype):
         # Models are usually run in half precision (fp16/bf16), so rather than comparing against an fp32 reference
         # (which carries little signal) we just run half-precision inference and check the output has no NaNs.
-        pipe = self.get_pipeline().to(torch_device, dtype)
+        # Move with the pipeline (so its device-placement guards still run) but cast per component: a plain
+        # `.to(dtype)` would cast `_keep_in_fp32_modules` submodules too, and the forward pass would then fail on a
+        # dtype mismatch before it could tell us anything about NaNs.
+        pipe = cast_pipeline_to_dtype(self.get_pipeline().to(torch_device), dtype)
 
         inputs = self.get_dummy_inputs()
         if "generator" in inputs:
@@ -405,30 +481,11 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
     @require_accelerator
     def test_save_load_float16(self, tmp_path, expected_max_diff=1e-2):
         components = self.get_dummy_components()
-        for name, module in components.items():
-            # Account for components with _keep_in_fp32_modules
-            if hasattr(module, "_keep_in_fp32_modules") and module._keep_in_fp32_modules is not None:
-                for name, param in module.named_parameters():
-                    if any(
-                        module_to_keep_in_fp32 in name.split(".")
-                        for module_to_keep_in_fp32 in module._keep_in_fp32_modules
-                    ):
-                        param.data = param.data.to(torch_device).to(torch.float32)
-                    else:
-                        param.data = param.data.to(torch_device).to(torch.float16)
-                for name, buf in module.named_buffers():
-                    if not buf.is_floating_point():
-                        buf.data = buf.data.to(torch_device)
-                    elif any(
-                        module_to_keep_in_fp32 in name.split(".")
-                        for module_to_keep_in_fp32 in module._keep_in_fp32_modules
-                    ):
-                        buf.data = buf.data.to(torch_device).to(torch.float32)
-                    else:
-                        buf.data = buf.data.to(torch_device).to(torch.float16)
-
-            elif hasattr(module, "half"):
-                components[name] = module.to(torch_device).half()
+        for module in components.values():
+            if isinstance(module, nn.Module):
+                # Keeps `_keep_in_fp32_modules` submodules in float32, matching what the reloaded pipeline below
+                # gets from `from_pretrained(torch_dtype=torch.float16)`.
+                cast_module_to_dtype(module.to(torch_device), torch.float16)
 
         pipe = self.get_pipeline(**components).to(torch_device)
 
@@ -436,7 +493,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         output = pipe(**inputs)[0]
 
         pipe.save_pretrained(tmp_path)
-        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path, torch_dtype=torch.float16)
+        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path, dtype=torch.float16)
         pipe_loaded.to(torch_device)
         pipe_loaded.set_progress_bar_config(disable=None)
 
@@ -746,7 +803,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         # We initialize the pipeline with only text encoders and tokenizers, mimicking a real-world scenario.
         components_with_text_encoders = {}
         for k in components:
-            if "text" in k or "tokenizer" in k:
+            if self.is_text_stack_component(k):
                 components_with_text_encoders[k] = components[k]
             else:
                 components_with_text_encoders[k] = None
@@ -809,7 +866,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         # and other relevant inputs.
         components_with_text_encoders = {}
         for k in components:
-            if "text" in k or "tokenizer" in k:
+            if self.is_text_stack_component(k):
                 components_with_text_encoders[k] = None
             else:
                 components_with_text_encoders[k] = components[k]

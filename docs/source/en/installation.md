@@ -77,6 +77,23 @@ uv pip install git+https://github.com/huggingface/diffusers
 </hfoption>
 </hfoptions>
 
+## Devices
+
+Diffusers runs on any accelerator supported by PyTorch. The examples throughout the docs use `"cuda"` because it is the most common setup, but nothing is CUDA-specific. Swap in the device string for your hardware, such as `"xpu"` for Intel GPUs, `"mps"` for Apple silicon, or `"cpu"`.
+
+```py
+device = "cuda"  # or "mps", "xpu", "cpu"
+pipeline.to(device)
+```
+
+To pick the device at runtime instead of hardcoding it, use [torch.accelerator](https://docs.pytorch.org/docs/stable/accelerator.html).
+
+```py
+import torch
+
+device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+```
+
 ## Editable install
 
 An editable install is recommended for development workflows or if you're using the `main` version of the source code. A special link is created between the cloned repository and the Python library paths. This avoids reinstalling a package after every change.

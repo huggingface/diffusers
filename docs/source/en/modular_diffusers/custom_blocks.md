@@ -239,7 +239,7 @@ Use the block to generate a mask:
 
 ```python
 image_annotator.load_components(dtype=torch.bfloat16)
-image_annotator.to("cuda")
+image_annotator.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg")
 image = image.resize((1024, 1024))
@@ -269,7 +269,7 @@ inpaint_blocks.sub_blocks.insert("image_annotator", annotator_block, 0)
 
 # Initialize the combined pipeline
 pipe = inpaint_blocks.init_pipeline()
-pipe.load_components(dtype=torch.float16, device="cuda")
+pipe.load_components(dtype=torch.float16, device="cuda")  # or "mps", "xpu", "cpu"
 
 # Now the pipeline automatically generates masks from prompts
 output = pipe(
