@@ -31,6 +31,11 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           LABELS: ${{ steps.get-labels.outputs.labels }}
         run: |
+          existing=$(gh label list --limit 100 --json name | python -c "import json,sys; print('\n'.join(l['name'] for l in json.load(sys.stdin)))")
           for label in $(echo "$LABELS" | python -c "import json,sys; print('\n'.join(json.load(sys.stdin)))"); do
-            gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+            if echo "$existing" | grep -Fqx "$label"; then
+              gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+            else
+              echo "::warning::Issue labeler produced '$label', which does not exist in this repo; skipping."
+            fi
           done
