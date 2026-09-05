@@ -1024,6 +1024,67 @@ def _get_group_onload_device(module: torch.nn.Module) -> torch.device:
     raise ValueError("Group offloading is not enabled for the provided module.")
 
 
+def _get_group_offload_summary(module: torch.nn.Module, name: str = "") -> str:
+    """Render the offload grouping of a module as a short block, for assertion messages and manual inspection.
+
+    Each group is reported against the module whose `forward` brings its weights over — its own onload leader, or, for
+    a group that streaming has wired into a prefetch chain, the group ahead of it:
+
+    ```
+    transformer: 4 offload group(s)
+      onloaded by '<root>' forward: [proj_in, proj_out] (+4 params, +0 buffers)
+      prefetched by '<root>' forward: [transformer_blocks.0] (+0 params, +0 buffers)
+      prefetched by 'transformer_blocks.0' forward: [transformer_blocks.1] (+0 params, +0 buffers)
+      prefetched by 'transformer_blocks.1' forward: [transformer_blocks.2] (+0 params, +0 buffers)
+    ```
+
+    Because the grouping is reported at the moment this is called, and streaming prefetches groups lazily, the prefetch
+    chain will only exist and be reported if a module's `forward` has completed once, until which point a streamed
+    module reads exactly like an unstreamed one.
+
+    This function is also designed to work when called on submodules of an offloaded model. In this case, group members
+    outside the submodule — and its onload leader, if that is outside too — read as `<outside this module>`.
+    """
+    name_of = {id(submodule): submodule_name or "<root>" for submodule_name, submodule in module.named_modules()}
+    outside = "<outside this module>"
+    hooks, groups, seen = [], [], set()
+
+    for submodule in module.modules():
+        registry = getattr(submodule, "_diffusers_hook", None)
+        hook = registry.get_hook(_GROUP_OFFLOADING) if registry is not None else None
+        if hook is None:
+            continue
+        # The prefetch chain is wired onto individual hooks, while the modules of one group share a group object.
+        # Keep every hook for the chain, and let only the first hook of a group contribute a line.
+        hooks.append(hook)
+        if id(hook.group) not in seen:
+            seen.add(id(hook.group))
+            groups.append(hook.group)
+
+    if not groups:
+        return f"{name or type(module).__name__}: no group offloading applied."
+
+    prefetched_by = {
+        id(hook.next_group): name_of.get(id(hook.group.onload_leader), outside)
+        for hook in hooks
+        if hook.next_group is not None
+    }
+
+    lines = [f"{name or type(module).__name__}: {len(groups)} offload group(s)"]
+    for group in groups:
+        members = ", ".join(name_of.get(id(member), outside) for member in group.modules) or "<no modules>"
+        prefetcher = None if group.onload_self else prefetched_by.get(id(group))
+        onloaded_by = (
+            f"prefetched by {prefetcher!r}"
+            if prefetcher
+            else f"onloaded by {name_of.get(id(group.onload_leader), outside)!r}"
+        )
+        lines.append(
+            f"  {onloaded_by} forward: [{members}] (+{len(group.parameters)} params, +{len(group.buffers)} buffers)"
+        )
+    return "\n".join(lines)
+
+
 def _compute_group_hash(group_id):
     hashed_id = hashlib.sha256(group_id.encode("utf-8")).hexdigest()
     # first 16 characters for a reasonably short but unique name

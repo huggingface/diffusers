@@ -18,6 +18,7 @@ import torch
 
 from diffusers import DiffusionPipeline
 from diffusers.hooks import apply_group_offloading
+from diffusers.hooks.group_offloading import _get_group_offload_summary
 
 from ...testing_utils import (
     assert_tensors_close,
@@ -336,6 +337,8 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
         if group_offloading_kwargs.get("use_stream"):
             self._assert_streams_took_effect(pipe, offload_names)
 
+        return offload_names
+
     def _assert_streams_took_effect(self, pipe, offload_names):
         """Guard against `use_stream=True` silently becoming a no-op.
 
@@ -367,9 +370,18 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
         # difference under test. It stays on CPU here — the components are placed as they are hooked.
         pipe = self.create_pipe()
         self._skip_if_group_offloading_unsupported(pipe)
-        self._enable_group_offload_on_components(pipe, **group_offloading_kwargs)
+        offload_names = self._enable_group_offload_on_components(pipe, **group_offloading_kwargs)
 
-        assert_tensors_close(self.run_pipe(pipe), base_pipe_output, atol=expected_max_difference, rtol=1e-5, msg=msg)
+        try:
+            output = self.run_pipe(pipe)
+        except RuntimeError as error:
+            # A device mismatch here means some group's weights were never onloaded, and the bare error names only
+            # the layer that tripped over it. Say which module's `forward` brings each group over — for a
+            # prefetched group that is the group ahead of it in the chain, not its own leader.
+            summaries = "\n".join(_get_group_offload_summary(getattr(pipe, name), name) for name in offload_names)
+            raise RuntimeError(f"{error}\n\nOffload grouping under test:\n{summaries}") from error
+
+        assert_tensors_close(output, base_pipe_output, atol=expected_max_difference, rtol=1e-5, msg=msg)
 
     def _skip_if_streams_unsupported(self):
         # `apply_group_offloading` raises rather than degrading when `use_stream=True` has nowhere to put a stream.
