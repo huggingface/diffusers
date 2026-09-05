@@ -741,11 +741,15 @@ class TestGroupOffloadSummary:
     def test_reports_that_nothing_is_offloaded_when_offloading_is_not_applied(self):
         assert "no group offloading applied" in _get_group_offload_summary(self.get_model())
 
+    @pytest.mark.skipif(
+        torch.device(torch_device).type not in ["cuda", "xpu"],
+        reason="Test requires a CUDA or XPU device.",
+    )
     def test_reports_one_line_per_installed_group(self):
         model = self.get_model()
         apply_group_offloading(
             model,
-            onload_device=torch.device("cpu"),
+            onload_device=torch.device(torch_device),
             offload_device=torch.device("cpu"),
             offload_type="block_level",
             num_blocks_per_group=1,
@@ -775,13 +779,17 @@ class TestGroupOffloadSummary:
         summary = _get_group_offload_summary(model)
         assert sum(1 for line in self.group_lines(summary) if "prefetched by" in line) == prefetched
 
+    @pytest.mark.skipif(
+        torch.device(torch_device).type not in ["cuda", "xpu"],
+        reason="Test requires a CUDA or XPU device.",
+    )
     def test_summarizes_a_submodule_whose_group_reaches_outside_it(self):
         # With more than one block per group, a block's group holds its siblings too. Summarizing that block alone
         # cannot name them, and a user inspecting one component should still get a summary rather than a KeyError.
         model = self.get_model()
         apply_group_offloading(
             model,
-            onload_device=torch.device("cpu"),
+            onload_device=torch.device(torch_device),
             offload_device=torch.device("cpu"),
             offload_type="block_level",
             num_blocks_per_group=3,
