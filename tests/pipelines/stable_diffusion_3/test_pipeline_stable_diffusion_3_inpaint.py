@@ -146,10 +146,38 @@ class TestStableDiffusion3InpaintPipeline(StableDiffusion3InpaintPipelineTesterC
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
 
         # fmt: off
-        expected_slice = torch.tensor([0.5076, 0.4238, 0.7243, 0.4664, 0.3933, 0.5421, 0.4952, 0.5001, 0.5716, 0.5092, 0.5091, 0.7205, 0.5442, 0.7069, 0.6149, 0.6009])
+        expected_slice = torch.tensor([0.5066, 0.4189, 0.7212, 0.4641, 0.3917, 0.5386, 0.4909, 0.5002, 0.5655, 0.4970, 0.4891, 0.7210, 0.5366, 0.6935, 0.6176, 0.5953])
         # fmt: on
 
         assert_tensors_close(generated_slice, expected_slice, atol=1e-3, msg="Output does not match expected slice.")
+
+    def test_vae_shift_factor_applied_on_decode(self):
+        # Regression: this pipeline decoded with `latents / scaling_factor` only, dropping
+        # `+ shift_factor`, so it decoded from a different latent distribution than the one its
+        # own `_encode_vae_image` encodes into (and than the other SD3 pipelines decode from).
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        inputs["output_type"] = "latent"
+        latents = pipe(**inputs).images
+
+        image = pipe(**self.get_dummy_inputs()).images
+
+        def decode(scaled_latents):
+            decoded = pipe.vae.decode(scaled_latents, return_dict=False)[0]
+            return pipe.image_processor.postprocess(
+                decoded, output_type="pt", do_denormalize=[True] * decoded.shape[0]
+            )
+
+        with_shift = decode((latents / pipe.vae.config.scaling_factor) + pipe.vae.config.shift_factor)
+        without_shift = decode(latents / pipe.vae.config.scaling_factor)
+
+        assert not torch.allclose(with_shift, without_shift), (
+            "The dummy VAE needs a nonzero `shift_factor` for this regression test to be meaningful."
+        )
+        assert_tensors_close(
+            image, with_shift, atol=1e-4, msg="Decoded output should have the VAE shift factor applied."
+        )
 
 
 class TestStableDiffusion3InpaintPipelineMemory(StableDiffusion3InpaintPipelineTesterConfig, MemoryTesterMixin):
