@@ -171,7 +171,7 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
         tensor.
 
         Args:
-            latent (`torch.Tensor`):
+            latents (`torch.Tensor`):
                 Input latents to normalize
             reference_latents (`torch.Tensor`):
                 The reference latents providing style statistics.
