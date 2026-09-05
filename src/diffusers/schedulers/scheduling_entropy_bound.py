@@ -110,7 +110,12 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
             token = flat_logits.argmax(dim=-1, keepdim=True)
         else:
             scaled_probs = torch.softmax(flat_logits.float() / temperature, dim=-1)
-            token = torch.multinomial(scaled_probs, num_samples=1, generator=generator)
+            # `torch.multinomial` requires the generator and the sampled tensor's device to match, so (as with
+            # `randn_tensor`) a CPU generator samples on CPU and the result is moved back to `scaled_probs`'s device.
+            rand_device = generator.device if generator is not None else scaled_probs.device
+            token = torch.multinomial(scaled_probs.to(rand_device), num_samples=1, generator=generator).to(
+                scaled_probs.device
+            )
 
         token_prob = torch.gather(probs, -1, token)
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
@@ -166,9 +171,10 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
             input=torch.zeros_like(sorted_accepted), dim=-1, index=sorted_indices, src=sorted_accepted
         )
 
+        rand_device = generator.device if generator is not None else sample.device
         random_tokens = torch.randint(
-            low=0, high=model_output.shape[-1], size=sample.shape, device=sample.device, generator=generator
-        )
+            low=0, high=model_output.shape[-1], size=sample.shape, device=rand_device, generator=generator
+        ).to(sample.device)
         prev_sample = torch.where(accepted_index, sampled_tokens, random_tokens)
 
         if not return_dict:
