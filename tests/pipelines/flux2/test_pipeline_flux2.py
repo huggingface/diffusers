@@ -116,8 +116,6 @@ class Flux2PipelineTesterConfig(BasePipelineTesterConfig):
             "height": 8,
             "width": 8,
             "max_sequence_length": 8,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
-            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
             "output_type": "pt",
             "text_encoder_out_layers": (1,),
         }

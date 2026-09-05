@@ -60,7 +60,6 @@ class LTX2PipelineTesterConfig(LTX2BaseTesterConfig):
             "num_frames": 5,
             "frame_rate": 25.0,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
