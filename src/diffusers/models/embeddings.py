@@ -85,7 +85,7 @@ def get_3d_sincos_pos_embed(
     spatial_interpolation_scale: float = 1.0,
     temporal_interpolation_scale: float = 1.0,
     device: torch.device | None = None,
-    output_type: str = "np",
+    output_type: str = "pt",
 ) -> torch.Tensor:
     r"""
     Creates 3D sinusoidal positional embeddings.
@@ -226,7 +226,7 @@ def get_2d_sincos_pos_embed(
     interpolation_scale=1.0,
     base_size=16,
     device: torch.device | None = None,
-    output_type: str = "np",
+    output_type: str = "pt",
 ):
     """
     Creates 2D sinusoidal positional embeddings.
@@ -286,7 +286,7 @@ def get_2d_sincos_pos_embed(
     return pos_embed
 
 
-def get_2d_sincos_pos_embed_from_grid(embed_dim, grid, output_type="np"):
+def get_2d_sincos_pos_embed_from_grid(embed_dim, grid, output_type="pt"):
     r"""
     This function generates 2D sinusoidal positional embeddings from a grid.
 
@@ -319,7 +319,7 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid, output_type="np"):
     return emb
 
 
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np", flip_sin_to_cos=False, dtype=None):
+def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="pt", flip_sin_to_cos=False, dtype=None):
     """
     This function generates 1D positional embeddings from a grid.
 
@@ -973,7 +973,7 @@ def get_3d_rotary_pos_embed_allegro(
 
 
 def get_2d_rotary_pos_embed(
-    embed_dim, crops_coords, grid_size, use_real=True, device: torch.device | None = None, output_type: str = "np"
+    embed_dim, crops_coords, grid_size, use_real=True, device: torch.device | None = None, output_type: str = "pt"
 ):
     """
     RoPE for image tokens with 2d structure.
