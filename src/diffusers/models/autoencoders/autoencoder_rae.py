@@ -41,7 +41,7 @@ from ..activations import get_activation
 from ..attention import AttentionMixin
 from ..attention_processor import Attention
 from ..embeddings import get_2d_sincos_pos_embed
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin, _preserve_init_return_tensors
 from .vae import AutoencoderMixin, DecoderOutput, EncoderOutput
 
 
@@ -512,13 +512,15 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         if decoder_patch_size <= 0:
             raise ValueError("patch_size must be a positive integer (this is decoder_patch_size).")
 
-        # Frozen representation encoder (built from config, no downloads)
-        self.encoder: nn.Module = _build_encoder(
-            encoder_type=encoder_type,
-            hidden_size=encoder_hidden_size,
-            patch_size=encoder_patch_size,
-            num_hidden_layers=encoder_num_hidden_layers,
-        )
+        # Frozen representation encoder (built from config, no downloads).
+        # Wrap so nested encoders relying on torch.nn.init return values survive no_init_weights.
+        with _preserve_init_return_tensors():
+            self.encoder: nn.Module = _build_encoder(
+                encoder_type=encoder_type,
+                hidden_size=encoder_hidden_size,
+                patch_size=encoder_patch_size,
+                num_hidden_layers=encoder_num_hidden_layers,
+            )
         self._encoder_forward_fn = _ENCODER_FORWARD_FNS[encoder_type]
         num_patches = (self.encoder_input_size // encoder_patch_size) ** 2
 
