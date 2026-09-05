@@ -254,7 +254,7 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 
 ### 模型卸载
 
-模型卸载将整个模型移动到 GPU，而不是选择性地移动某些层或模型组件。一个主要管道模型，通常是文本编码器、UNet 和 VAE，被放置在 GPU 上，而其他组件保持在 CPU 上。像 UNet 这样运行多次的组件会一直留在 GPU 上，直到完全完成且不再需要。这消除了 [CPU 卸载](#cpu-offloading) 的通信开销，使模型卸载成为一个更快的替代方案。权衡是内存节省不会那么大。
+模型卸载将整个模型移动到 GPU，而不是选择性地移动某些层或模型组件。一个主要管道模型，通常是文本编码器、UNet 和 VAE，被放置在 GPU 上，而其他组件保持在 CPU 上。像 UNet 这样运行多次的组件会一直留在 GPU 上，直到完全完成且不再需要。这消除了 [CPU 卸载](#cpu-卸载) 的通信开销，使模型卸载成为一个更快的替代方案。权衡是内存节省不会那么大。
 
 > [!WARNING]
 > 请注意，如果在安装钩子后模型在管道外部被重用（更多细节请参考 [移除钩子](https://huggingface.co/docs/accelerate/en/package_reference/big_modeling#accelerate.hooks.remove_hook_from_module)），您需要按预期顺序运行整个管道和模型以正确卸载它们。这是一个状态操作，会在模型上安装钩子。
@@ -285,7 +285,7 @@ print(f"最大内存保留: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB
 
 ### 组卸载
 
-组卸载将内部层组（[torch.nn.ModuleList](https://pytorch.org/docs/stable/generated/torch.nn.ModuleList.html) 或 [torch.nn.Sequential](https://pytorch.org/docs/stable/generated/torch.nn.Sequential.html)）移动到 CPU。它比[模型卸载](#model-offloading)使用更少的内存，并且比[CPU 卸载](#cpu-offloading)更快，因为它减少了通信开销。
+组卸载将内部层组（[torch.nn.ModuleList](https://pytorch.org/docs/stable/generated/torch.nn.ModuleList.html) 或 [torch.nn.Sequential](https://pytorch.org/docs/stable/generated/torch.nn.Sequential.html)）移动到 CPU。它比[模型卸载](#模型卸载)使用更少的内存，并且比[CPU 卸载](#cpu-卸载)更快，因为它减少了通信开销。
 
 > [!WARNING]
 > 如果前向实现包含权重相关的输入设备转换，组卸载可能不适用于所有模型，因为它可能与组卸载的设备转换机制冲突。
@@ -295,7 +295,7 @@ print(f"最大内存保留: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB
 `offload_type` 参数可以设置为 `block_level` 或 `leaf_level`。
 
 - `block_level` 基于 `num_blocks_per_group` 参数卸载层组。例如，如果 `num_blocks_per_group=2` 在一个有 40 层的模型上，每次加载和卸载 2 层（总共 20 次加载/卸载）。这大大减少了内存需求。
-- `leaf_level` 在最低级别卸载单个层，等同于[CPU 卸载](#cpu-offloading)。但如果您使用流而不放弃推理速度，它可以更快。
+- `leaf_level` 在最低级别卸载单个层，等同于[CPU 卸载](#cpu-卸载)。但如果您使用流而不放弃推理速度，它可以更快。
 
 ```py
 import torch
@@ -328,7 +328,7 @@ export_to_video(video, "output.mp4", fps=8)
 ```
 
 #### CUDA 流
-`use_stream` 参数可以激活支持异步数据传输流的 CUDA 设备，以减少整体执行时间，与 [CPU 卸载](#cpu-offloading) 相比。它通过使用层预取重叠数据传输和计算。下一个要执行的层在当前层仍在执行时加载到 GPU 上。这会显著增加 CPU 内存，因此请确保您有模型大小的 2 倍内存。
+`use_stream` 参数可以激活支持异步数据传输流的 CUDA 设备，以减少整体执行时间，与 [CPU 卸载](#cpu-卸载) 相比。它通过使用层预取重叠数据传输和计算。下一个要执行的层在当前层仍在执行时加载到 GPU 上。这会显著增加 CPU 内存，因此请确保您有模型大小的 2 倍内存。
 
 设置 `record_stream=True` 以获得更多速度提升，代价是内存使用量略有增加。请参阅 [torch.Tensor.record_stream](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) 文档了解更多信息。
 
@@ -359,7 +359,7 @@ apply_group_offloading(pipeline.text_encoder, onload_device=onload_device, offlo
 ## 分层类型转换
 
 > [!TIP]
-> 将分层类型转换与[组卸载](#group-offloading)结合使用，以获得更多内存节省。
+> 将分层类型转换与[组卸载](#组卸载)结合使用，以获得更多内存节省。
 
 分层类型转换将权重存储在较小的数据格式中（例如 `torch.float8_e4m3fn` 和 `torch.float8_e5m2`），以使用更少的内存，并在计算时将那些权重上转换为更高精度如 `torch.float16` 或 `torch.bfloat16`。某些层（归一化和调制相关权重）被跳过，因为将它们存储在 fp8 中可能会降低生成质量。
 
