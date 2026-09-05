@@ -126,6 +126,8 @@ class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           attention_kwargs (`None`, *optional*):
               TODO: Add description.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
           latents (`Tensor`):
@@ -205,6 +207,8 @@ class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           attention_kwargs (`None`, *optional*):
               TODO: Add description.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           output_type (`str`, *optional*, defaults to np):
               The output type of the decoded videos
 
