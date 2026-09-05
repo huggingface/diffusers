@@ -175,8 +175,9 @@ class ModuleGroup:
     @staticmethod
     def _to_cpu(tensor, low_cpu_mem_usage):
         # For TorchAO tensors, `.data` returns an incomplete wrapper without internal attributes
-        # (e.g. `.qdata`, `.scale`), so we must call `.cpu()` on the tensor directly.
-        t = tensor.cpu() if _is_torchao_tensor(tensor) else tensor.data.cpu()
+        # (e.g. `.qdata`, `.scale`), so we must call `.to(..., copy=True)` on the tensor directly. `tensor.cpu()` can
+        # return `tensor` itself when it is already on CPU, which would alias the cached CPU copy with the live parameter.
+        t = tensor.to("cpu", copy=True) if _is_torchao_tensor(tensor) else tensor.data.cpu()
         return t if low_cpu_mem_usage else t.pin_memory()
 
     def _init_cpu_param_dict(self):
