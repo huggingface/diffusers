@@ -129,6 +129,7 @@ def _helios_pyramid_map_fn(config_dict=None):
 
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
+        ("chroma", _create_default_map_fn("ChromaModularPipeline")),
         ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
         ("stable-diffusion-3", _create_default_map_fn("StableDiffusion3ModularPipeline")),
         ("wan", _wan_map_fn),
