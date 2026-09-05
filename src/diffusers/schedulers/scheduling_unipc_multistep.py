@@ -521,6 +521,10 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         one_minus_z = 1 - t
         scale_factor = one_minus_z[-1] / (1 - self.config.shift_terminal)
+        if scale_factor == 0:
+            # The schedule already ends at 1.0 (e.g. a single-step schedule), so there is nothing to
+            # stretch and dividing by `scale_factor` would produce NaN/Inf.
+            return t
         stretched_t = 1 - (one_minus_z / scale_factor)
         return stretched_t
 
