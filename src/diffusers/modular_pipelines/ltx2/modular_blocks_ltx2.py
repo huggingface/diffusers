@@ -16,9 +16,8 @@ import torch
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import OutputParam
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .before_denoise import (
-    LTX2BuildVideoSelfAttentionMaskStep,
     LTX2ConditionPrepareAudioLatentsStep,
     LTX2ConditionPrepareCoordsStep,
     LTX2ConditionPrepareLatentsStep,
@@ -34,6 +33,7 @@ from .before_denoise import (
 from .decoders import (
     LTX2AudioDecoderStep,
     LTX2TrimConditionTokensStep,
+    LTX2UnpackLatentsStep,
     LTX2VaeDecoderStep,
 )
 from .denoise import LTX2ConditionDenoiseStep, LTX2DenoiseStep, LTX2Image2VideoDenoiseStep
@@ -73,8 +73,6 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the
               generated video.
-          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
-              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           system_prompt (`str`, *optional*):
               System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` when a `PIL.Image.Image`
               condition frame is available, else `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT`.
@@ -89,6 +87,8 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
               Torch generator for deterministic generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
+          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
+              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
 
       Outputs:
           prompt (`list`):
@@ -99,6 +99,20 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
     block_classes = [LTX2ConditionPromptEnhancerStep, LTX2ImageToVideoPromptEnhancerStep, LTX2PromptEnhancerStep]
     block_names = ["condition", "image2video", "text2video"]
     block_trigger_inputs = ["conditions", "image", "enable_prompt_enhancement"]
+
+    @property
+    def inputs(self):
+        # The trigger belongs to this wrapper, not to the enhancer steps: each of them always enhances.
+        inputs = super().inputs
+        inputs.append(
+            InputParam(
+                "enable_prompt_enhancement",
+                type_hint=bool,
+                default=False,
+                description="Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.",
+            )
+        )
+        return inputs
 
     def select_block(self, conditions=None, image=None, enable_prompt_enhancement=False) -> str | None:
         # `conditions` is checked before `image`: the condition and in-context workflows place their reference
@@ -146,13 +160,9 @@ class LTX2TextConditioningStep(SequentialPipelineBlocks):
           prompt_attention_mask (`Tensor`):
               Binary attention mask for `prompt_embeds`.
           negative_prompt_embeds (`Tensor`):
-              Packed per-layer Gemma hidden states for the negative prompt.
+              Packed per-layer Gemma hidden states for the negative prompt, `None` when not encoded.
           negative_prompt_attention_mask (`Tensor`):
-              Binary attention mask for `negative_prompt_embeds`.
-          batch_size (`int`):
-              The number of prompts being denoised (before per-prompt expansion).
-          dtype (`dtype`):
-              The dtype of the prompt embeddings.
+              Binary attention mask for `negative_prompt_embeds`, `None` when not encoded.
           connector_prompt_embeds (`Tensor`):
               Video-branch text conditioning (cond).
           connector_audio_prompt_embeds (`Tensor`):
@@ -160,11 +170,11 @@ class LTX2TextConditioningStep(SequentialPipelineBlocks):
           connector_attention_mask (`Tensor`):
               Binary text attention mask (cond).
           negative_connector_prompt_embeds (`Tensor`):
-              Video-branch text conditioning (uncond).
+              Video-branch text conditioning (uncond), `None` when no negative prompt was encoded.
           negative_connector_audio_prompt_embeds (`Tensor`):
-              Audio-branch text conditioning (uncond).
+              Audio-branch text conditioning (uncond), `None` when no negative prompt was encoded.
           negative_connector_attention_mask (`Tensor`):
-              Binary text attention mask (uncond).
+              Binary text attention mask (uncond), `None` when no negative prompt was encoded.
     """
 
     model_name = "ltx2"
@@ -192,6 +202,9 @@ class LTX2AutoDurationStep(ConditionalPipelineBlocks):
           duration_head (`LTX2DurationHead`)
 
       Inputs:
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to have this step predict it with the `duration_head`;
+              the denoise blocks then take the predicted count.
           min_seconds (`float`, *optional*, defaults to 1.0):
               Lower bound on the auto-predicted duration.
           max_seconds (`float`, *optional*, defaults to 20.0):
@@ -202,8 +215,6 @@ class LTX2AutoDurationStep(ConditionalPipelineBlocks):
               Video-branch text conditioning from the connector (positive prompt).
           connector_audio_prompt_embeds (`Tensor`, *optional*):
               Audio-branch text conditioning from the connector (positive prompt).
-          batch_size (`int`, *optional*):
-              The number of prompts being denoised, used to expand conditioning per prompt.
 
       Outputs:
           num_frames (`int`):
@@ -235,7 +246,7 @@ class LTX2AutoVaeEncoderStep(AutoPipelineBlocks):
        - Skipped otherwise.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) text_encoder (`PreTrainedModel`) video_processor (`VideoProcessor`)
+          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -246,15 +257,15 @@ class LTX2AutoVaeEncoderStep(AutoPipelineBlocks):
               The width in pixels of the generated image.
           image_crf (`int`, *optional*):
               H.264 CRF used to re-compress the conditioning `image` before VAE encode, matching the compression the
-              model was trained against. `None` (default) resolves from the text-encoder generation (33 through
-              LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when
-              re-compression runs.
+              model was trained against. `None` (default) uses the pipeline's `default_image_crf` (33 through LTX-2.3,
+              18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when re-compression runs.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
       Outputs:
           image_latents (`Tensor`):
-              Normalized image latents (a single latent frame) for image-to-video conditioning.
+              Image latents for image-to-video conditioning: a single latent frame of shape [B, C, 1, H, W]
+              (normalized, not packed).
     """
 
     model_name = "ltx2"
@@ -278,8 +289,8 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
     latents and runs the joint denoising loop.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
-          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) guider
+          (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -290,12 +301,12 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
               Audio-branch text conditioning (cond).
           connector_attention_mask (`Tensor`):
               Binary text attention mask (cond).
-          negative_connector_prompt_embeds (`Tensor`):
-              Video-branch text conditioning (uncond).
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Audio-branch text conditioning (uncond).
-          negative_connector_attention_mask (`Tensor`):
-              Binary text attention mask (uncond).
+          negative_connector_prompt_embeds (`Tensor`, *optional*):
+              Video-branch text conditioning (uncond), `None` without classifier-free guidance.
+          negative_connector_audio_prompt_embeds (`Tensor`, *optional*):
+              Audio-branch text conditioning (uncond), `None` without classifier-free guidance.
+          negative_connector_attention_mask (`Tensor`, *optional*):
+              Binary text attention mask (uncond), `None` without classifier-free guidance.
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -306,28 +317,14 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
-          noise_scale (`float`, *optional*):
-              Interpolation factor between random noise and any provided latents. `None` (default) resolves to 0.0,
-              which keeps the provided latents.
+          num_frames (`int`):
+              The number of frames in the generated video.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          batch_size (`int`):
-              The number of prompts being denoised, used to expand conditioning per prompt.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
-          audio_latents (`Tensor`, *optional*):
-              Optional pre-encoded audio latents; random noise is used when not provided.
-          dtype (`dtype`):
-              The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to True):
-              Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
 
@@ -346,6 +343,7 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
         LTX2PrepareAudioLatentsStep,
         LTX2PrepareCoordsStep,
         LTX2DenoiseStep,
+        LTX2UnpackLatentsStep,
     ]
     block_names = [
         "input",
@@ -354,6 +352,7 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
         "prepare_audio_latents",
         "prepare_coords",
         "denoise",
+        "unpack",
     ]
 
     @property
@@ -378,8 +377,8 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     conditioning and runs the joint denoising loop.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
-          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) guider
+          (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -390,12 +389,12 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               Audio-branch text conditioning (cond).
           connector_attention_mask (`Tensor`):
               Binary text attention mask (cond).
-          negative_connector_prompt_embeds (`Tensor`):
-              Video-branch text conditioning (uncond).
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Audio-branch text conditioning (uncond).
-          negative_connector_attention_mask (`Tensor`):
-              Binary text attention mask (uncond).
+          negative_connector_prompt_embeds (`Tensor`, *optional*):
+              Video-branch text conditioning (uncond), `None` without classifier-free guidance.
+          negative_connector_audio_prompt_embeds (`Tensor`, *optional*):
+              Audio-branch text conditioning (uncond), `None` without classifier-free guidance.
+          negative_connector_attention_mask (`Tensor`, *optional*):
+              Binary text attention mask (uncond), `None` without classifier-free guidance.
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -406,30 +405,16 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
-          noise_scale (`float`, *optional*):
-              Interpolation factor between random noise and any provided latents. `None` (default) resolves to 0.0,
-              which keeps the provided latents.
+          num_frames (`int`):
+              The number of frames in the generated video.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          batch_size (`int`):
-              The number of prompts being denoised, used to expand conditioning per prompt.
           image_latents (`Tensor`):
               VAE-encoded reference-image latents used for image-to-video conditioning.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
-          audio_latents (`Tensor`, *optional*):
-              Optional pre-encoded audio latents; random noise is used when not provided.
-          dtype (`dtype`):
-              The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to True):
-              Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
 
@@ -449,6 +434,7 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
         LTX2PrepareAudioLatentsStep,
         LTX2PrepareCoordsStep,
         LTX2Image2VideoDenoiseStep,
+        LTX2UnpackLatentsStep,
     ]
     block_names = [
         "input",
@@ -458,6 +444,7 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
         "prepare_audio_latents",
         "prepare_coords",
         "denoise",
+        "unpack",
     ]
 
     @property
@@ -482,9 +469,8 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
     conditions to the video latents and runs the joint denoising loop.
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`)
+          transformer (`LTX2VideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -495,29 +481,26 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
               Audio-branch text conditioning (cond).
           connector_attention_mask (`Tensor`):
               Binary text attention mask (cond).
-          negative_connector_prompt_embeds (`Tensor`):
-              Video-branch text conditioning (uncond).
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Audio-branch text conditioning (uncond).
-          negative_connector_attention_mask (`Tensor`):
-              Binary text attention mask (uncond).
+          negative_connector_prompt_embeds (`Tensor`, *optional*):
+              Video-branch text conditioning (uncond), `None` without classifier-free guidance.
+          negative_connector_audio_prompt_embeds (`Tensor`, *optional*):
+              Audio-branch text conditioning (uncond), `None` without classifier-free guidance.
+          negative_connector_attention_mask (`Tensor`, *optional*):
+              Binary text attention mask (uncond), `None` without classifier-free guidance.
           condition_latents (`list`):
-              Per-condition normalized VAE latents of shape [1, C, F, H, W].
+              Per-condition VAE latents of shape [1, C, F, H, W] (normalized, not packed).
           condition_strengths (`list`):
               Per-condition conditioning strengths.
           condition_indices (`list`):
               Per-condition latent frame index at which the condition is applied.
           condition_pixel_frames (`list`):
               Per-condition trimmed pixel frame count, used to clamp single-frame keyframe coords.
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
+          num_frames (`int`):
+              The number of frames in the generated video.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
           noise_scale (`float`, *optional*):
@@ -525,22 +508,14 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          batch_size (`int`):
-              The number of prompts being denoised, used to expand conditioning per prompt.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
-          audio_latents (`Tensor`, *optional*):
-              Optional pre-encoded audio latents; random noise is used when not provided.
-          dtype (`dtype`):
-              The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to True):
-              Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
 
@@ -563,8 +538,19 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
         LTX2ConditionPrepareAudioLatentsStep,
         LTX2ConditionPrepareCoordsStep,
         LTX2ConditionDenoiseStep,
+        LTX2TrimConditionTokensStep,
+        LTX2UnpackLatentsStep,
     ]
-    block_names = ["input", "prepare_latents", "set_timesteps", "prepare_audio_latents", "prepare_coords", "denoise"]
+    block_names = [
+        "input",
+        "prepare_latents",
+        "set_timesteps",
+        "prepare_audio_latents",
+        "prepare_coords",
+        "denoise",
+        "trim_condition_tokens",
+        "unpack",
+    ]
 
     @property
     def description(self):
@@ -591,7 +577,7 @@ class LTX2AutoConditionEncoderStep(ConditionalPipelineBlocks):
        - Skipped for text-to-video and image-to-video.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) text_encoder (`PreTrainedModel`)
+          vae (`AutoencoderKLLTX2Video`)
 
       Inputs:
           conditions (`list`, *optional*):
@@ -602,14 +588,13 @@ class LTX2AutoConditionEncoderStep(ConditionalPipelineBlocks):
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
           num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
+              The number of frames in the generated video.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
       Outputs:
           condition_latents (`list`):
-              Per-condition normalized VAE latents of shape [1, C, F, H, W].
+              Per-condition VAE latents of shape [1, C, F, H, W] (normalized, not packed).
           condition_strengths (`list`):
               Per-condition conditioning strengths.
           condition_indices (`list`):
@@ -650,7 +635,7 @@ class LTX2AutoReferenceEncoderStep(ConditionalPipelineBlocks):
        - Skipped otherwise, for IC-LoRAs that take no reference video.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) transformer (`LTX2VideoTransformer3DModel`) video_processor (`VideoProcessor`)
+          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`)
 
       Inputs:
           reference_conditions (`list`, *optional*):
@@ -658,37 +643,20 @@ class LTX2AutoReferenceEncoderStep(ConditionalPipelineBlocks):
               adapter attends to.
           reference_downscale_factor (`int`, *optional*, defaults to 1):
               Ratio between the target and reference resolutions; 2 means the reference is preprocessed at half the
-              target resolution. Spatial coordinates are scaled by this factor so the reference tokens land in the
-              target coordinate space. Must match the factor the IC-LoRA was trained with.
-          conditioning_attention_strength (`float`, *optional*, defaults to 1.0):
-              Scalar in [0, 1] controlling how strongly the noisy tokens and reference tokens attend to each other. 1.0
-              (default) leaves attention unmasked.
-          conditioning_attention_mask (`Tensor`, *optional*):
-              Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
-              attention strength. Downsampled to the reference's latent grid and multiplied by
-              `conditioning_attention_strength`.
+              target resolution. Must match the factor the IC-LoRA was trained with.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
           num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
-          frame_rate (`float`, *optional*, defaults to 24.0):
-              Frames per second of the generated video.
+              The number of frames in the generated video.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
       Outputs:
-          reference_latents (`Tensor`):
-              Packed reference tokens of shape [1, total_reference_tokens, C].
-          reference_coords (`Tensor`):
-              RoPE coordinates for the reference tokens, of shape [1, 3, total_reference_tokens, 2].
-          reference_token_counts (`list`):
-              Per-reference token counts, in `reference_conditions` order.
-          reference_cross_mask (`Tensor`):
-              Per-reference-token noisy<->reference attention strengths of shape [1, total_reference_tokens], or `None`
-              when attention is left unmasked.
+          reference_latents (`list`):
+              Per-reference VAE latents of shape [1, C, F, H, W] (normalized, not packed), in `reference_conditions`
+              order.
     """
 
     model_name = "ltx2"
@@ -712,69 +680,6 @@ class LTX2AutoReferenceEncoderStep(ConditionalPipelineBlocks):
 
 
 # auto_docstring
-class LTX2AutoBuildVideoSelfAttentionMaskStep(ConditionalPipelineBlocks):
-    """
-    Conditional video self-attention mask step, run only when the reference tokens carry a per-token attention
-    strength.
-       - `LTX2BuildVideoSelfAttentionMaskStep` when `conditioning_attention_strength < 1.0` or a
-         `conditioning_attention_mask` is supplied.
-       - Skipped otherwise, leaving attention unmasked.
-
-      Inputs:
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
-          base_token_count (`int`, *optional*):
-              Number of generated-video tokens, i.e. the sequence length before appended tokens.
-          num_ref_tokens (`int`, *optional*):
-              Number of reference tokens, which sit at the very end of the sequence.
-          reference_cross_mask (`Tensor`, *optional*):
-              Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
-          reference_token_counts (`list`, *optional*):
-              Per-reference token counts, used to split `reference_cross_mask` into attention groups.
-
-      Outputs:
-          video_self_attention_mask (`Tensor`):
-              Multiplicative self-attention mask of shape [B, S, S] with values in [0, 1].
-    """
-
-    model_name = "ltx2"
-    block_classes = [LTX2BuildVideoSelfAttentionMaskStep]
-    block_names = ["attention_mask"]
-    block_trigger_inputs = [
-        "reference_conditions",
-        "conditioning_attention_strength",
-        "conditioning_attention_mask",
-    ]
-
-    def select_block(
-        self, reference_conditions=None, conditioning_attention_strength=None, conditioning_attention_mask=None
-    ) -> str | None:
-        # The mask only ever governs noisy<->reference attention, so it is meaningless without reference tokens.
-        # Beyond that, an all-ones mask at full strength is the same as no mask, so only build one when it can
-        # actually bite -- the same `mask_needed` test `LTX2ReferenceEncoderStep` uses to decide whether to emit
-        # `reference_cross_mask` at all. `conditioning_attention_strength` defaults to `None` rather than its
-        # input default of 1.0 because `get_execution_blocks` passes every unset trigger input as an explicit
-        # `None`; `None` and 1.0 both mean "leave attention unmasked".
-        if not reference_conditions:
-            return None
-        if conditioning_attention_mask is not None:
-            return "attention_mask"
-        if conditioning_attention_strength is not None and conditioning_attention_strength < 1.0:
-            return "attention_mask"
-        return None
-
-    @property
-    def description(self):
-        return (
-            "Conditional video self-attention mask step, run only when the reference tokens carry a per-token "
-            "attention strength.\n"
-            " - `LTX2BuildVideoSelfAttentionMaskStep` when `conditioning_attention_strength < 1.0` or a "
-            "`conditioning_attention_mask` is supplied.\n"
-            " - Skipped otherwise, leaving attention unmasked."
-        )
-
-
-# auto_docstring
 class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
     """
     Denoise block (in-context) that expands the text conditioning by `num_videos_per_prompt`, folds the frame
@@ -783,9 +688,8 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
     the reference implementation's uniform treatment of both.
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`)
+          transformer (`LTX2VideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -796,14 +700,14 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
               Audio-branch text conditioning (cond).
           connector_attention_mask (`Tensor`):
               Binary text attention mask (cond).
-          negative_connector_prompt_embeds (`Tensor`):
-              Video-branch text conditioning (uncond).
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Audio-branch text conditioning (uncond).
-          negative_connector_attention_mask (`Tensor`):
-              Binary text attention mask (uncond).
+          negative_connector_prompt_embeds (`Tensor`, *optional*):
+              Video-branch text conditioning (uncond), `None` without classifier-free guidance.
+          negative_connector_audio_prompt_embeds (`Tensor`, *optional*):
+              Audio-branch text conditioning (uncond), `None` without classifier-free guidance.
+          negative_connector_attention_mask (`Tensor`, *optional*):
+              Binary text attention mask (uncond), `None` without classifier-free guidance.
           condition_latents (`list`):
-              Per-condition normalized VAE latents of shape [1, C, F, H, W].
+              Per-condition VAE latents of shape [1, C, F, H, W] (normalized, not packed).
           condition_strengths (`list`):
               Per-condition conditioning strengths.
           condition_indices (`list`):
@@ -813,22 +717,20 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
           reference_conditions (`list`, *optional*):
               `LTX2ReferenceCondition` (or list of them); only their `strength` is read here. Omit for IC-LoRAs that
               carry their behavior in the adapter weights and take no reference video.
-          reference_latents (`Tensor`, *optional*):
-              Packed reference tokens of shape [1, total_reference_tokens, C], or `None` when no reference conditions
-              were supplied (`LTX2AutoReferenceEncoderStep` is skipped).
-          reference_coords (`Tensor`, *optional*):
-              RoPE coordinates for the reference tokens.
-          reference_token_counts (`list`, *optional*):
-              Per-reference token counts, in `reference_conditions` order.
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
+          reference_latents (`list`, *optional*):
+              Per-reference VAE latents of shape [1, C, F, H, W] (normalized, not packed) from
+              `LTX2ReferenceEncoderStep`, or `None` when no reference conditions were supplied
+              (`LTX2AutoReferenceEncoderStep` is skipped).
+          reference_downscale_factor (`int`, *optional*, defaults to 1):
+              Ratio between the target and reference resolutions. The reference tokens' spatial coordinates are scaled
+              by it so they land in the target coordinate space, preserving the positional relationship the IC-LoRA was
+              trained on.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
+          num_frames (`int`):
+              The number of frames in the generated video.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
           noise_scale (`float`, *optional*):
@@ -836,24 +738,21 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          batch_size (`int`):
-              The number of prompts being denoised, used to expand conditioning per prompt.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          reference_cross_mask (`Tensor`, *optional*):
-              Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
+          conditioning_attention_strength (`float`, *optional*, defaults to 1.0):
+              Scalar in [0, 1] controlling how strongly the noisy tokens and reference tokens attend to each other. 1.0
+              (default) leaves attention unmasked.
+          conditioning_attention_mask (`Tensor`, *optional*):
+              Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
+              attention strength. Downsampled to each reference's latent grid and multiplied by
+              `conditioning_attention_strength`.
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
-          audio_latents (`Tensor`, *optional*):
-              Optional pre-encoded audio latents; random noise is used when not provided.
-          dtype (`dtype`):
-              The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to True):
-              Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
 
@@ -870,20 +769,22 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         LTX2TextInputStep,
         LTX2InContextPrepareLatentsStep,
-        LTX2AutoBuildVideoSelfAttentionMaskStep,
         LTX2ConditionSetTimestepsStep,
         LTX2ConditionPrepareAudioLatentsStep,
         LTX2ConditionPrepareCoordsStep,
         LTX2ConditionDenoiseStep,
+        LTX2TrimConditionTokensStep,
+        LTX2UnpackLatentsStep,
     ]
     block_names = [
         "input",
         "prepare_latents",
-        "attention_mask",
         "set_timesteps",
         "prepare_audio_latents",
         "prepare_coords",
         "denoise",
+        "trim_condition_tokens",
+        "unpack",
     ]
 
     @property
@@ -914,9 +815,8 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
        - `LTX2CoreDenoiseStep` otherwise (text-to-video).
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`)
+          transformer (`LTX2VideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -927,14 +827,14 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Audio-branch text conditioning (cond).
           connector_attention_mask (`Tensor`):
               Binary text attention mask (cond).
-          negative_connector_prompt_embeds (`Tensor`):
-              Video-branch text conditioning (uncond).
-          negative_connector_audio_prompt_embeds (`Tensor`):
-              Audio-branch text conditioning (uncond).
-          negative_connector_attention_mask (`Tensor`):
-              Binary text attention mask (uncond).
+          negative_connector_prompt_embeds (`Tensor`, *optional*):
+              Video-branch text conditioning (uncond), `None` without classifier-free guidance.
+          negative_connector_audio_prompt_embeds (`Tensor`, *optional*):
+              Audio-branch text conditioning (uncond), `None` without classifier-free guidance.
+          negative_connector_attention_mask (`Tensor`, *optional*):
+              Binary text attention mask (uncond), `None` without classifier-free guidance.
           condition_latents (`list`, *optional*):
-              Per-condition normalized VAE latents of shape [1, C, F, H, W].
+              Per-condition VAE latents of shape [1, C, F, H, W] (normalized, not packed).
           condition_strengths (`list`, *optional*):
               Per-condition conditioning strengths.
           condition_indices (`list`, *optional*):
@@ -944,22 +844,20 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
           reference_conditions (`list`, *optional*):
               `LTX2ReferenceCondition` (or list of them); only their `strength` is read here. Omit for IC-LoRAs that
               carry their behavior in the adapter weights and take no reference video.
-          reference_latents (`Tensor`, *optional*):
-              Packed reference tokens of shape [1, total_reference_tokens, C], or `None` when no reference conditions
-              were supplied (`LTX2AutoReferenceEncoderStep` is skipped).
-          reference_coords (`Tensor`, *optional*):
-              RoPE coordinates for the reference tokens.
-          reference_token_counts (`list`, *optional*):
-              Per-reference token counts, in `reference_conditions` order.
-          latents (`Tensor`):
-              Pre-generated noisy latents for image generation.
+          reference_latents (`list`, *optional*):
+              Per-reference VAE latents of shape [1, C, F, H, W] (normalized, not packed) from
+              `LTX2ReferenceEncoderStep`, or `None` when no reference conditions were supplied
+              (`LTX2AutoReferenceEncoderStep` is skipped).
+          reference_downscale_factor (`int`, *optional*, defaults to 1):
+              Ratio between the target and reference resolutions. The reference tokens' spatial coordinates are scaled
+              by it so they land in the target coordinate space, preserving the positional relationship the IC-LoRA was
+              trained on.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
+          num_frames (`int`):
+              The number of frames in the generated video.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
           noise_scale (`float`, *optional*):
@@ -967,24 +865,21 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          batch_size (`int`):
-              The number of prompts being denoised, used to expand conditioning per prompt.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          reference_cross_mask (`Tensor`, *optional*):
-              Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
+          conditioning_attention_strength (`float`, *optional*, defaults to 1.0):
+              Scalar in [0, 1] controlling how strongly the noisy tokens and reference tokens attend to each other. 1.0
+              (default) leaves attention unmasked.
+          conditioning_attention_mask (`Tensor`, *optional*):
+              Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
+              attention strength. Downsampled to each reference's latent grid and multiplied by
+              `conditioning_attention_strength`.
           num_inference_steps (`int`):
               The number of denoising steps.
           timesteps (`Tensor`):
               Timesteps for the denoising process.
-          audio_latents (`Tensor`):
-              Optional pre-encoded audio latents; random noise is used when not provided.
-          dtype (`dtype`):
-              The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to True):
-              Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           image_latents (`Tensor`, *optional*):
@@ -1035,7 +930,7 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
 # auto_docstring
 class LTX2DecoderStep(SequentialPipelineBlocks):
     """
-    Decode stage: VAE-decodes the video latents and vocodes the audio latents (or returns latents).
+    Decode stage: VAE-decodes the video latents and vocodes the audio latents.
 
       Components:
           vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
@@ -1043,16 +938,9 @@ class LTX2DecoderStep(SequentialPipelineBlocks):
 
       Inputs:
           latents (`Tensor`):
-              Pre-generated noisy latents for image generation.
+              Video latents of shape [B, C, F, H, W] (normalized, not packed).
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          height (`int`, *optional*, defaults to 512):
-              The height in pixels of the generated image.
-          width (`int`, *optional*, defaults to 704):
-              The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
           decode_timestep (`None`, *optional*, defaults to 0.0):
               The timestep at which the VAE decodes the final latents.
           decode_noise_scale (`None`, *optional*):
@@ -1065,9 +953,7 @@ class LTX2DecoderStep(SequentialPipelineBlocks):
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
           audio_latents (`Tensor`):
-              Denoised audio latents.
-          audio_num_frames (`int`):
-              Number of audio latent frames, used to unpack the audio latent sequence.
+              Audio latents of shape [B, C, L, M] (normalized, not packed).
 
       Outputs:
           videos (`list`):
@@ -1082,146 +968,7 @@ class LTX2DecoderStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return "Decode stage: VAE-decodes the video latents and vocodes the audio latents (or returns latents)."
-
-    @property
-    def outputs(self):
-        return [
-            OutputParam.template("videos"),
-            OutputParam("audio", type_hint=torch.Tensor, description="The generated audio waveform."),
-        ]
-
-
-# auto_docstring
-class LTX2ConditionDecoderStep(SequentialPipelineBlocks):
-    """
-    Decode stage for condition workflows: drops the appended keyframe-condition tokens, then VAE-decodes the video
-    latents and vocodes the audio latents (or returns latents).
-
-      Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
-          vocoder (`LTX2Vocoder`)
-
-      Inputs:
-          latents (`Tensor`):
-              Pre-generated noisy latents for image generation.
-          base_token_count (`int`):
-              Number of generated-video tokens, i.e. the sequence length before appended tokens.
-          output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt'.
-          height (`int`, *optional*, defaults to 512):
-              The height in pixels of the generated image.
-          width (`int`, *optional*, defaults to 704):
-              The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
-          decode_timestep (`None`, *optional*, defaults to 0.0):
-              The timestep at which the VAE decodes the final latents.
-          decode_noise_scale (`None`, *optional*):
-              Noise interpolation factor applied to the latents at the decode timestep.
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
-          batch_size (`int`, *optional*, defaults to 1):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
-              be generated in input step.
-          dtype (`dtype`):
-              The dtype of the model inputs, can be generated in input step.
-          audio_latents (`Tensor`):
-              Denoised audio latents.
-          audio_num_frames (`int`):
-              Number of audio latent frames, used to unpack the audio latent sequence.
-
-      Outputs:
-          videos (`list`):
-              The generated videos.
-          audio (`Tensor`):
-              The generated audio waveform.
-    """
-
-    model_name = "ltx2"
-    block_classes = [LTX2TrimConditionTokensStep, LTX2VaeDecoderStep, LTX2AudioDecoderStep]
-    block_names = ["trim_condition_tokens", "video_decode", "audio_decode"]
-
-    @property
-    def description(self):
-        return (
-            "Decode stage for condition workflows: drops the appended keyframe-condition tokens, then VAE-decodes "
-            "the video latents and vocodes the audio latents (or returns latents)."
-        )
-
-    @property
-    def outputs(self):
-        return [
-            OutputParam.template("videos"),
-            OutputParam("audio", type_hint=torch.Tensor, description="The generated audio waveform."),
-        ]
-
-
-# auto_docstring
-class LTX2AutoDecoderStep(AutoPipelineBlocks):
-    """
-    Auto decode block that selects the decoder based on inputs.
-       - `LTX2ConditionDecoderStep` when `base_token_count` is present, i.e. the denoised sequence carries appended
-         keyframe / reference tokens (condition, in-context).
-       - `LTX2DecoderStep` otherwise (text-to-video, image-to-video).
-
-      Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
-          vocoder (`LTX2Vocoder`)
-
-      Inputs:
-          latents (`Tensor`):
-              Pre-generated noisy latents for image generation.
-          base_token_count (`int`, *optional*):
-              Number of generated-video tokens, i.e. the sequence length before appended tokens.
-          output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt'.
-          height (`int`, *optional*, defaults to 512):
-              The height in pixels of the generated image.
-          width (`int`, *optional*, defaults to 704):
-              The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
-          decode_timestep (`None`, *optional*, defaults to 0.0):
-              The timestep at which the VAE decodes the final latents.
-          decode_noise_scale (`None`, *optional*):
-              Noise interpolation factor applied to the latents at the decode timestep.
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
-          batch_size (`int`, *optional*, defaults to 1):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
-              be generated in input step.
-          dtype (`dtype`):
-              The dtype of the model inputs, can be generated in input step.
-          audio_latents (`Tensor`):
-              Denoised audio latents.
-          audio_num_frames (`int`):
-              Number of audio latent frames, used to unpack the audio latent sequence.
-
-      Outputs:
-          videos (`list`):
-              The generated videos.
-          audio (`Tensor`):
-              The generated audio waveform.
-    """
-
-    model_name = "ltx2"
-    # `base_token_count` is emitted only by the condition / in-context prepare-latents steps, so it is exactly the
-    # signal for "the sequence carries appended tokens that have to come off before decoding".
-    block_classes = [LTX2ConditionDecoderStep, LTX2DecoderStep]
-    block_names = ["condition", "default"]
-    block_trigger_inputs = ["base_token_count", None]
-
-    @property
-    def description(self):
-        return (
-            "Auto decode block that selects the decoder based on inputs.\n"
-            " - `LTX2ConditionDecoderStep` when `base_token_count` is present, i.e. the denoised sequence carries "
-            "appended keyframe / reference tokens (condition, in-context).\n"
-            " - `LTX2DecoderStep` otherwise (text-to-video, image-to-video)."
-        )
+        return "Decode stage: VAE-decodes the video latents and vocodes the audio latents."
 
     @property
     def outputs(self):
@@ -1239,9 +986,9 @@ class LTX2Blocks(SequentialPipelineBlocks):
       Components:
           prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
           (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
-          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`) vae
-          (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
+          (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) guider (`LTX2Guidance`)
+          audio_guider (`LTX2Guidance`) vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae
+          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1249,8 +996,6 @@ class LTX2Blocks(SequentialPipelineBlocks):
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the
               generated video.
-          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
-              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           system_prompt (`str`, *optional*):
               System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` when a `PIL.Image.Image`
               condition frame is available, else `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT`.
@@ -1265,10 +1010,15 @@ class LTX2Blocks(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
+          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
+              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
               Maximum sequence length for prompt encoding.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to have this step predict it with the `duration_head`;
+              the denoise blocks then take the predicted count.
           min_seconds (`float`, *optional*, defaults to 1.0):
               Lower bound on the auto-predicted duration.
           max_seconds (`float`, *optional*, defaults to 20.0):
@@ -1287,20 +1037,8 @@ class LTX2Blocks(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
-          noise_scale (`float`, *optional*):
-              Interpolation factor between random noise and any provided latents. `None` (default) resolves to 0.0,
-              which keeps the provided latents.
-          audio_latents (`Tensor`, *optional*):
-              Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to True):
-              Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to pil):
@@ -1348,8 +1086,8 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
           prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
           (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
           (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          transformer (`LTX2VideoTransformer3DModel`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`)
-          audio_guider (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
+          transformer (`LTX2VideoTransformer3DModel`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`) audio_vae
+          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1357,8 +1095,6 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the
               generated video.
-          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
-              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           system_prompt (`str`, *optional*):
               System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` when a `PIL.Image.Image`
               condition frame is available, else `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT`.
@@ -1373,10 +1109,15 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
+          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
+              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
               Maximum sequence length for prompt encoding.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to have this step predict it with the `duration_head`;
+              the denoise blocks then take the predicted count.
           min_seconds (`float`, *optional*, defaults to 1.0):
               Lower bound on the auto-predicted duration.
           max_seconds (`float`, *optional*, defaults to 20.0):
@@ -1389,9 +1130,8 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               The width in pixels of the generated image.
           image_crf (`int`, *optional*):
               H.264 CRF used to re-compress the conditioning `image` before VAE encode, matching the compression the
-              model was trained against. `None` (default) resolves from the text-encoder generation (33 through
-              LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when
-              re-compression runs.
+              model was trained against. `None` (default) uses the pipeline's `default_image_crf` (33 through LTX-2.3,
+              18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when re-compression runs.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           num_inference_steps (`int`, *optional*, defaults to 30):
@@ -1400,22 +1140,10 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
-          noise_scale (`float`, *optional*):
-              Interpolation factor between random noise and any provided latents. `None` (default) resolves to 0.0,
-              which keeps the provided latents.
           image_latents (`Tensor`):
               VAE-encoded reference-image latents used for image-to-video conditioning.
-          audio_latents (`Tensor`, *optional*):
-              Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to True):
-              Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to pil):
@@ -1465,8 +1193,8 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
           prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
           (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
           (`AutoencoderKLLTX2Video`) transformer (`LTX2VideoTransformer3DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
+          (`FlowMatchEulerDiscreteScheduler`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`) video_processor
+          (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1474,8 +1202,6 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the
               generated video.
-          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
-              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           system_prompt (`str`, *optional*):
               System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` when a `PIL.Image.Image`
               condition frame is available, else `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT`.
@@ -1490,10 +1216,15 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
+          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
+              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
               Maximum sequence length for prompt encoding.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to have this step predict it with the `duration_head`;
+              the denoise blocks then take the predicted count.
           min_seconds (`float`, *optional*, defaults to 1.0):
               Lower bound on the auto-predicted duration.
           max_seconds (`float`, *optional*, defaults to 20.0):
@@ -1504,13 +1235,8 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
@@ -1520,12 +1246,8 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
-          audio_latents (`Tensor`, *optional*):
-              Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to True):
-              Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to pil):
@@ -1549,7 +1271,7 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
         LTX2AutoDurationStep,
         LTX2ConditionEncoderStep,
         LTX2ConditionCoreDenoiseStep,
-        LTX2ConditionDecoderStep,
+        LTX2DecoderStep,
     ]
     block_names = ["prompt_enhancer", "text_encoder", "duration", "condition_encoder", "denoise", "decode"]
 
@@ -1579,10 +1301,10 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
 
       Components:
           prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) vae (`AutoencoderKLLTX2Video`) transformer
-          (`LTX2VideoTransformer3DModel`) video_processor (`VideoProcessor`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
+          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) vae (`AutoencoderKLLTX2Video`) video_processor
+          (`VideoProcessor`) transformer (`LTX2VideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`) audio_vae (`AutoencoderKLLTX2Audio`) vocoder
+          (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1590,8 +1312,6 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the
               generated video.
-          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
-              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           system_prompt (`str`, *optional*):
               System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` when a `PIL.Image.Image`
               condition frame is available, else `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT`.
@@ -1606,6 +1326,8 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
+          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
+              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
@@ -1614,53 +1336,40 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
+          num_frames (`int`):
+              The number of frames in the generated video.
           reference_conditions (`list`, *optional*):
               `LTX2ReferenceCondition` (or list of them) whose videos are encoded into extra latent tokens the IC-LoRA
               adapter attends to.
           reference_downscale_factor (`int`, *optional*, defaults to 1):
               Ratio between the target and reference resolutions; 2 means the reference is preprocessed at half the
-              target resolution. Spatial coordinates are scaled by this factor so the reference tokens land in the
-              target coordinate space. Must match the factor the IC-LoRA was trained with.
-          conditioning_attention_strength (`float`, *optional*, defaults to 1.0):
-              Scalar in [0, 1] controlling how strongly the noisy tokens and reference tokens attend to each other. 1.0
-              (default) leaves attention unmasked.
-          conditioning_attention_mask (`Tensor`, *optional*):
-              Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
-              attention strength. Downsampled to the reference's latent grid and multiplied by
-              `conditioning_attention_strength`.
-          frame_rate (`float`, *optional*, defaults to 24.0):
-              Frames per second of the generated video.
+              target resolution. Must match the factor the IC-LoRA was trained with.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          reference_latents (`Tensor`, *optional*):
-              Packed reference tokens of shape [1, total_reference_tokens, C], or `None` when no reference conditions
-              were supplied (`LTX2AutoReferenceEncoderStep` is skipped).
-          reference_coords (`Tensor`, *optional*):
-              RoPE coordinates for the reference tokens.
-          reference_token_counts (`list`, *optional*):
-              Per-reference token counts, in `reference_conditions` order.
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
+          reference_latents (`list`, *optional*):
+              Per-reference VAE latents of shape [1, C, F, H, W] (normalized, not packed) from
+              `LTX2ReferenceEncoderStep`, or `None` when no reference conditions were supplied
+              (`LTX2AutoReferenceEncoderStep` is skipped).
+          frame_rate (`float`, *optional*, defaults to 24.0):
+              Frames per second of the generated video.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          reference_cross_mask (`Tensor`, *optional*):
-              Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
+          conditioning_attention_strength (`float`, *optional*, defaults to 1.0):
+              Scalar in [0, 1] controlling how strongly the noisy tokens and reference tokens attend to each other. 1.0
+              (default) leaves attention unmasked.
+          conditioning_attention_mask (`Tensor`, *optional*):
+              Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
+              attention strength. Downsampled to each reference's latent grid and multiplied by
+              `conditioning_attention_strength`.
           num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
-          audio_latents (`Tensor`, *optional*):
-              Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to True):
-              Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to pil):
@@ -1688,7 +1397,7 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
         LTX2ConditionEncoderStep,
         LTX2AutoReferenceEncoderStep,
         LTX2InContextCoreDenoiseStep,
-        LTX2ConditionDecoderStep,
+        LTX2DecoderStep,
     ]
     block_names = [
         "prompt_enhancer",
@@ -1733,8 +1442,8 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
           prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
           (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
           (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) transformer (`LTX2VideoTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`)
-          audio_guider (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`) audio_vae
+          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1742,8 +1451,6 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the
               generated video.
-          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
-              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           system_prompt (`str`, *optional*):
               System prompt for enhancement. Defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` when a `PIL.Image.Image`
               condition frame is available, else `LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT`.
@@ -1758,10 +1465,15 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
+          enable_prompt_enhancement (`bool`, *optional*, defaults to False):
+              Whether to run the prompt enhancer. Opt-in, matching the Lightricks reference pipelines.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
               Maximum sequence length for prompt encoding.
+          num_frames (`int`, *optional*):
+              The number of frames in the generated video. Omit to have this step predict it with the `duration_head`;
+              the denoise blocks then take the predicted count.
           min_seconds (`float`, *optional*, defaults to 1.0):
               Lower bound on the auto-predicted duration.
           max_seconds (`float`, *optional*, defaults to 20.0):
@@ -1774,62 +1486,46 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               The width in pixels of the generated image.
           image_crf (`int`, *optional*):
               H.264 CRF used to re-compress the conditioning `image` before VAE encode, matching the compression the
-              model was trained against. `None` (default) resolves from the text-encoder generation (33 through
-              LTX-2.3, 18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when
-              re-compression runs.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video. Omit to auto-predict via the `duration_head` (see
-              `LTX2AutoDurationStep`).
+              model was trained against. `None` (default) uses the pipeline's `default_image_crf` (33 through LTX-2.3,
+              18 for LTX-2.5). Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when re-compression runs.
           reference_conditions (`list`, *optional*):
               `LTX2ReferenceCondition` (or list of them) whose videos are encoded into extra latent tokens the IC-LoRA
               adapter attends to.
           reference_downscale_factor (`int`, *optional*, defaults to 1):
               Ratio between the target and reference resolutions; 2 means the reference is preprocessed at half the
-              target resolution. Spatial coordinates are scaled by this factor so the reference tokens land in the
-              target coordinate space. Must match the factor the IC-LoRA was trained with.
-          conditioning_attention_strength (`float`, *optional*, defaults to 1.0):
-              Scalar in [0, 1] controlling how strongly the noisy tokens and reference tokens attend to each other. 1.0
-              (default) leaves attention unmasked.
-          conditioning_attention_mask (`Tensor`, *optional*):
-              Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
-              attention strength. Downsampled to the reference's latent grid and multiplied by
-              `conditioning_attention_strength`.
+              target resolution. Must match the factor the IC-LoRA was trained with.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           condition_latents (`list`, *optional*):
-              Per-condition normalized VAE latents of shape [1, C, F, H, W].
+              Per-condition VAE latents of shape [1, C, F, H, W] (normalized, not packed).
           condition_strengths (`list`, *optional*):
               Per-condition conditioning strengths.
           condition_indices (`list`, *optional*):
               Per-condition latent frame index at which the condition is applied.
           condition_pixel_frames (`list`, *optional*):
               Per-condition trimmed pixel frame count, used to clamp single-frame keyframe coords.
-          reference_latents (`Tensor`, *optional*):
-              Packed reference tokens of shape [1, total_reference_tokens, C], or `None` when no reference conditions
-              were supplied (`LTX2AutoReferenceEncoderStep` is skipped).
-          reference_coords (`Tensor`, *optional*):
-              RoPE coordinates for the reference tokens.
-          reference_token_counts (`list`, *optional*):
-              Per-reference token counts, in `reference_conditions` order.
-          latents (`Tensor`):
-              Pre-generated noisy latents for image generation.
+          reference_latents (`list`, *optional*):
+              Per-reference VAE latents of shape [1, C, F, H, W] (normalized, not packed) from
+              `LTX2ReferenceEncoderStep`, or `None` when no reference conditions were supplied
+              (`LTX2AutoReferenceEncoderStep` is skipped).
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          reference_cross_mask (`Tensor`, *optional*):
-              Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
+          conditioning_attention_strength (`float`, *optional*, defaults to 1.0):
+              Scalar in [0, 1] controlling how strongly the noisy tokens and reference tokens attend to each other. 1.0
+              (default) leaves attention unmasked.
+          conditioning_attention_mask (`Tensor`, *optional*):
+              Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
+              attention strength. Downsampled to each reference's latent grid and multiplied by
+              `conditioning_attention_strength`.
           num_inference_steps (`int`):
               The number of denoising steps.
           timesteps (`Tensor`):
               Timesteps for the denoising process.
-          audio_latents (`Tensor`):
-              Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          use_cross_timestep (`bool`, *optional*, defaults to True):
-              Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           image_latents (`Tensor`, *optional*):
@@ -1857,7 +1553,7 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
         LTX2AutoConditionEncoderStep,
         LTX2AutoReferenceEncoderStep,
         LTX2AutoCoreDenoiseStep,
-        LTX2AutoDecoderStep,
+        LTX2DecoderStep,
     ]
     block_names = [
         "prompt_enhancer",

@@ -18,18 +18,20 @@ import inspect
 import numpy as np
 import torch
 
-from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2VideoTransformer3DModel
+from ...models import LTX2VideoTransformer3DModel
 
 # NOTE (modular.md gotcha #1): `LTX2ReferenceCondition` is a plain dataclass under `diffusers.pipelines.ltx2.*`, and
 # modular blocks must not import from `diffusers.pipelines.*`. It belongs in the same neutral-module relocation as
 # the other shared LTX-2 data/utilities enumerated in `encoders.py`. Imported from the pipelines path here only so
 # the draft is runnable.
+from ...pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from ...pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .decoders import _denormalize_latents
 
 
 logger = logging.get_logger(__name__)
@@ -165,19 +167,97 @@ def _normalize_latents(
     return latents
 
 
-def _normalize_audio_latents(
-    latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor
-) -> torch.Tensor:
-    latents_mean = latents_mean.to(latents.device, latents.dtype)
-    latents_std = latents_std.to(latents.device, latents.dtype)
-    return (latents - latents_mean) / latents_std
-
-
 def _create_noised_state(
     latents: torch.Tensor, noise_scale: float | torch.Tensor, generator: torch.Generator | None = None
 ) -> torch.Tensor:
     noise = randn_tensor(latents.shape, generator=generator, device=latents.device, dtype=latents.dtype)
     return noise_scale * noise + (1 - noise_scale) * latents
+
+
+def _downsample_mask_to_latent(
+    mask: torch.Tensor, latent_num_frames: int, latent_height: int, latent_width: int
+) -> torch.Tensor:
+    """
+    Downsample a pixel-space attention mask of shape `(B, 1, F, H, W)` (values in `[0, 1]`) to a flattened per-token
+    latent-space mask of shape `(B, latent_num_frames * latent_height * latent_width)`. Spatial downsampling is area
+    interpolation per frame; temporal downsampling is causal (the first frame is kept as-is).
+    """
+    if mask.ndim != 5 or mask.shape[1] != 1:
+        raise ValueError(f"Expected `conditioning_attention_mask` of shape (B, 1, F, H, W), got {tuple(mask.shape)}.")
+    b, _, f_pix, _, _ = mask.shape
+
+    mask_2d = mask.reshape(b * f_pix, 1, mask.shape[-2], mask.shape[-1])
+    spatial_down = torch.nn.functional.interpolate(mask_2d, size=(latent_height, latent_width), mode="area")
+    spatial_down = spatial_down.reshape(b, 1, f_pix, latent_height, latent_width)
+
+    first_frame = spatial_down[:, :, :1, :, :]
+    if f_pix > 1 and latent_num_frames > 1:
+        t = (f_pix - 1) // (latent_num_frames - 1)
+        if (f_pix - 1) % (latent_num_frames - 1) != 0:
+            raise ValueError(
+                f"Pixel frames ({f_pix}) not compatible with latent frames ({latent_num_frames}): "
+                f"(f_pix - 1) must be divisible by (latent_num_frames - 1)."
+            )
+        rest = spatial_down[:, :, 1:, :, :]
+        rest = rest.reshape(b, 1, latent_num_frames - 1, t, latent_height, latent_width).mean(dim=3)
+        latent_mask = torch.cat([first_frame, rest], dim=2)
+    else:
+        latent_mask = first_frame
+
+    return latent_mask.reshape(b, latent_num_frames * latent_height * latent_width)
+
+
+def _build_video_self_attention_mask(
+    latents: torch.Tensor,
+    num_base_tokens: int,
+    num_ref_tokens: int,
+    reference_latents: list[torch.Tensor],
+    reference_token_counts: list[int],
+    conditioning_attention_strength: float,
+    conditioning_attention_mask: torch.Tensor | None,
+) -> torch.Tensor:
+    """
+    Builds the multiplicative video self-attention mask `[B, S, S]` over the `[base | keyframe | reference]` token
+    sequence of in-context generation, mirroring `build_attention_mask` in the reference implementation. Each reference
+    is its own attention group:
+
+      - base <-> base, base <-> keyframe, keyframe <-> keyframe: 1.0 (full attention)
+      - base <-> reference group: that group's per-token strengths (`conditioning_attention_mask` downsampled to the
+        reference's latent grid, or ones, times `conditioning_attention_strength`), broadcast symmetrically
+      - reference group <-> itself: 1.0; reference group <-> any other appended group: 0.0
+
+    The cross blocks span only the *base* tokens: keyframe tokens are appended conditioning like the references, so the
+    two are masked off from each other.
+    """
+    device = latents.device
+    batch_size, total_tokens, _ = latents.shape
+    num_prefix_tokens = total_tokens - num_ref_tokens
+
+    cross = []
+    for ref_latent, num_tokens in zip(reference_latents, reference_token_counts):
+        if conditioning_attention_mask is not None:
+            _, _, ref_latent_frames, ref_latent_height, ref_latent_width = ref_latent.shape
+            ref_cross = _downsample_mask_to_latent(
+                conditioning_attention_mask, ref_latent_frames, ref_latent_height, ref_latent_width
+            ).to(device=device, dtype=torch.float32)
+        else:
+            ref_cross = torch.ones((1, num_tokens), device=device, dtype=torch.float32)
+        cross.append(ref_cross * conditioning_attention_strength)
+    cross = torch.cat(cross, dim=1)
+
+    # Start from zeros so the keyframe<->reference and reference<->reference blocks stay masked without explicit
+    # assignment. Each guidance pass is its own single-batch forward, so this is built at the generation batch size.
+    attn_mask = torch.zeros((batch_size, total_tokens, total_tokens), device=device, dtype=torch.float32)
+    attn_mask[:, :num_prefix_tokens, :num_prefix_tokens] = 1.0
+
+    offset = num_prefix_tokens
+    for group_cross in torch.split(cross, reference_token_counts, dim=1):
+        n = group_cross.shape[1]
+        attn_mask[:, :num_base_tokens, offset : offset + n] = group_cross.unsqueeze(1)
+        attn_mask[:, offset : offset + n, :num_base_tokens] = group_cross.unsqueeze(2)
+        attn_mask[:, offset : offset + n, offset : offset + n] = 1.0
+        offset += n
+    return attn_mask
 
 
 def _prepare_keyframe_coords(
@@ -234,10 +314,11 @@ class LTX2TextInputStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Input processing step that expands the connector text conditioning (cond and uncond) by "
-            "`num_videos_per_prompt`, so it matches the `batch_size * num_videos_per_prompt` batch of the video and "
-            "audio latents. Runs at the head of the denoise stage, which keeps the text-conditioning stage's outputs "
-            "reusable across denoise runs with different `num_videos_per_prompt`."
+            "Input processing step that reports the prompt count (`batch_size`) and embedding `dtype`, and expands "
+            "the connector text conditioning (cond and uncond) by `num_videos_per_prompt`, so it matches the "
+            "`batch_size * num_videos_per_prompt` batch of the video and audio latents. Runs at the head of the "
+            "denoise stage, which keeps the text-conditioning stage's outputs reusable across denoise runs with "
+            "different `num_videos_per_prompt`."
         )
 
     @property
@@ -265,20 +346,17 @@ class LTX2TextInputStep(ModularPipelineBlocks):
             InputParam(
                 "negative_connector_prompt_embeds",
                 type_hint=torch.Tensor,
-                required=True,
-                description="Video-branch text conditioning (uncond).",
+                description="Video-branch text conditioning (uncond), `None` without classifier-free guidance.",
             ),
             InputParam(
                 "negative_connector_audio_prompt_embeds",
                 type_hint=torch.Tensor,
-                required=True,
-                description="Audio-branch text conditioning (uncond).",
+                description="Audio-branch text conditioning (uncond), `None` without classifier-free guidance.",
             ),
             InputParam(
                 "negative_connector_attention_mask",
                 type_hint=torch.Tensor,
-                required=True,
-                description="Binary text attention mask (uncond).",
+                description="Binary text attention mask (uncond), `None` without classifier-free guidance.",
             ),
         ]
 
@@ -315,17 +393,35 @@ class LTX2TextInputStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Binary text attention mask (uncond), expanded per prompt.",
             ),
+            OutputParam(
+                "batch_size",
+                type_hint=int,
+                description="The number of prompts being denoised (before per-prompt expansion).",
+            ),
+            OutputParam("dtype", type_hint=torch.dtype, description="The dtype of the text conditioning."),
         ]
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
+        block_state.batch_size = block_state.connector_prompt_embeds.shape[0]
+        block_state.dtype = block_state.connector_prompt_embeds.dtype
+
         # `repeat_interleave` keeps each prompt's copies contiguous, matching how the latents are laid out
         # (`batch_size * num_videos_per_prompt`, prompt-major) and how `image_latents` are expanded downstream.
         num_videos = block_state.num_videos_per_prompt
-        for name in self.intermediate_output_names:
-            setattr(block_state, name, getattr(block_state, name).repeat_interleave(num_videos, dim=0))
+        for name in (
+            "connector_prompt_embeds",
+            "connector_audio_prompt_embeds",
+            "connector_attention_mask",
+            "negative_connector_prompt_embeds",
+            "negative_connector_audio_prompt_embeds",
+            "negative_connector_attention_mask",
+        ):
+            value = getattr(block_state, name)
+            if value is not None:  # the negative-prompt tensors are `None` without classifier-free guidance
+                setattr(block_state, name, value.repeat_interleave(num_videos, dim=0))
 
         self.set_block_state(state, block_state)
         return components, state
@@ -333,6 +429,26 @@ class LTX2TextInputStep(ModularPipelineBlocks):
 
 class LTX2SetTimestepsStep(ModularPipelineBlocks):
     model_name = "ltx2"
+
+    def __init__(
+        self, sigmas_name: str = "sigmas", timesteps_name: str = "timesteps", sigmas_default: list[float] | None = None
+    ):
+        """
+        Args:
+            sigmas_name (`str`, defaults to `"sigmas"`):
+                Name of the input that holds this pass's sigma schedule. Lets a first-pass and a second-pass copy of
+                the block sit in one pipeline that takes both `sigmas` and `stage_2_sigmas`.
+            timesteps_name (`str`, defaults to `"timesteps"`):
+                Name of the input that holds this pass's custom timesteps, for the same reason.
+            sigmas_default (`list[float]`, *optional*):
+                Default sigma schedule of the pass. Set where a blockset assembles the block for a checkpoint that runs
+                a fixed schedule (the LTX-2.5 distilled recipe); the block then exposes no `num_inference_steps`.
+                `None` leaves the schedule to `num_inference_steps`.
+        """
+        self._sigmas_name = sigmas_name
+        self._timesteps_name = timesteps_name
+        self._sigmas_default = sigmas_default
+        super().__init__()
 
     @property
     def description(self) -> str:
@@ -347,22 +463,22 @@ class LTX2SetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [
-            InputParam.template("num_inference_steps", default=30),
-            InputParam.template("timesteps"),
-            InputParam.template("sigmas"),
+        inputs = [
+            InputParam.template("timesteps", name=self._timesteps_name),
+            InputParam.template("sigmas", name=self._sigmas_name, default=self._sigmas_default),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
         ]
+        # A block assembled with a fixed schedule has no step count to choose.
+        if self._sigmas_default is None:
+            inputs.insert(0, InputParam.template("num_inference_steps", default=30))
+        return inputs
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
@@ -380,8 +496,9 @@ class LTX2SetTimestepsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        num_inference_steps = block_state.num_inference_steps
-        sigmas = block_state.sigmas
+        num_inference_steps = getattr(block_state, "num_inference_steps", None)
+        timesteps = getattr(block_state, self._timesteps_name)
+        sigmas = getattr(block_state, self._sigmas_name)
         if sigmas is None:
             sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
@@ -406,11 +523,9 @@ class LTX2SetTimestepsStep(ModularPipelineBlocks):
         )
 
         block_state.audio_scheduler = copy.deepcopy(components.scheduler)
-        retrieve_timesteps(
-            block_state.audio_scheduler, num_inference_steps, device, block_state.timesteps, sigmas=sigmas, mu=mu
-        )
+        retrieve_timesteps(block_state.audio_scheduler, num_inference_steps, device, timesteps, sigmas=sigmas, mu=mu)
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
-            components.scheduler, num_inference_steps, device, block_state.timesteps, sigmas=sigmas, mu=mu
+            components.scheduler, num_inference_steps, device, timesteps, sigmas=sigmas, mu=mu
         )
 
         # Set begin index to skip the nonzero().item() call in scheduler init, which triggers a GPU sync.
@@ -427,16 +542,15 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Prepares the packed video noise latents for text-to-video generation. `noise_scale` is declared with a "
-            "`None` default and resolved to 0.0 here rather than declared as 0.0: a blockset keeps the first "
-            "non-`None` default across its blocks, so a literal 0.0 would shadow the condition workflow's "
-            "`None -> sigmas[0] or 1.0` resolution wherever the two share a blockset (`LTX2AutoBlocks`). The "
-            "resolved value is written back to state for `LTX2PrepareAudioLatentsStep`."
+            "Samples the packed video noise latents for a first pass of text-to-video generation. Refining "
+            "existing latents is `LTX2Stage2PrepareLatentsStep`."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", LTX2VideoTransformer3DModel)]
+        return [
+            ComponentSpec("transformer", LTX2VideoTransformer3DModel),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -446,23 +560,10 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
-            InputParam.template("latents"),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam(
-                "noise_scale",
-                type_hint=float,
-                default=None,
-                description=(
-                    "Interpolation factor between random noise and any provided latents. `None` (default) resolves "
-                    "to 0.0, which keeps the provided latents."
-                ),
-            ),
             InputParam.template("generator"),
             InputParam(
                 "batch_size",
@@ -474,14 +575,7 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam("latents", type_hint=torch.Tensor, description="Packed noisy video latents."),
-            OutputParam(
-                "noise_scale",
-                type_hint=float,
-                description="The resolved interpolation factor, forwarded to the audio latents step.",
-            ),
-        ]
+        return [OutputParam("latents", type_hint=torch.Tensor, description="Packed noisy video latents.")]
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
@@ -490,32 +584,116 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
 
         batch_size = block_state.batch_size * block_state.num_videos_per_prompt
         num_channels_latents = components.transformer.config.in_channels
-        spatial_patch = components.transformer_spatial_patch_size
-        temporal_patch = components.transformer_temporal_patch_size
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
 
-        if block_state.noise_scale is None:
-            block_state.noise_scale = 0.0
+        shape = (batch_size, num_channels_latents, latent_num_frames, latent_height, latent_width)
+        latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=torch.float32)
+        block_state.latents = _pack_latents(
+            latents, components.transformer_spatial_patch_size, components.transformer_temporal_patch_size
+        )
 
-        if block_state.latents is not None:
-            latents = block_state.latents
-            if latents.ndim == 5:
-                latents = _normalize_latents(
-                    latents,
-                    components.latents_mean,
-                    components.latents_std,
-                    components.vae_scaling_factor,
-                )
-                latents = _pack_latents(latents, spatial_patch, temporal_patch)
-            latents = _create_noised_state(latents, block_state.noise_scale, block_state.generator)
-            block_state.latents = latents.to(device=device, dtype=torch.float32)
-        else:
-            latent_height = block_state.height // components.vae_spatial_compression_ratio
-            latent_width = block_state.width // components.vae_spatial_compression_ratio
-            latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        self.set_block_state(state, block_state)
+        return components, state
 
-            shape = (batch_size, num_channels_latents, latent_num_frames, latent_height, latent_width)
-            latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=torch.float32)
-            block_state.latents = _pack_latents(latents, spatial_patch, temporal_patch)
+
+class LTX2Stage2PrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    def __init__(self, sigmas_name: str = "sigmas", sigmas_default: list[float] | None = None):
+        """
+        Args:
+            sigmas_name (`str`, defaults to `"sigmas"`):
+                Name of the input that holds this pass's sigma schedule. Lets a first-pass and a second-pass copy of
+                the block sit in one pipeline that takes both `sigmas` and `stage_2_sigmas`.
+            sigmas_default (`list[float]`, *optional*):
+                Default sigma schedule of the pass, set where a blockset assembles the block for a checkpoint that runs
+                a fixed schedule (the LTX-2.5 distilled recipe). Read for the `noise_scale` default.
+        """
+        self._sigmas_name = sigmas_name
+        self._sigmas_default = sigmas_default
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return (
+            "Prepares the packed video latents for a second pass that refines existing latents: packs the normalized "
+            "`[B, C, F, H, W]` latents a first pass or `LTX2LatentUpsampleStep` leaves in state, then re-noises them "
+            "to `noise_scale` -- by default the first sigma of the pass, as in the reference two-stage recipe. The "
+            "resolved `noise_scale` is written back to state for `LTX2Stage2PrepareAudioLatentsStep`, and `height` / `width` / `num_frames` "
+            "are read off the latents for the blocks that follow."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", LTX2VideoTransformer3DModel),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Video latents to refine, of shape [B, C, F, H, W] (normalized, not packed).",
+            ),
+            InputParam(
+                "noise_scale",
+                type_hint=float,
+                default=None,
+                description=(
+                    "Noise level the latents are re-noised to before the pass. `None` (default) resolves to "
+                    "`sigmas[0]` when custom `sigmas` are supplied, else 1.0."
+                ),
+            ),
+            InputParam.template("sigmas", name=self._sigmas_name, default=self._sigmas_default),
+            InputParam.template("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("latents", type_hint=torch.Tensor, description="Packed re-noised video latents."),
+            OutputParam("height", type_hint=int, description="Height of the pass in pixels, read off the latents."),
+            OutputParam("width", type_hint=int, description="Width of the pass in pixels, read off the latents."),
+            OutputParam(
+                "num_frames",
+                type_hint=int,
+                description="Frame count of the pass, read off the latents (grid-aligned).",
+            ),
+            OutputParam(
+                "noise_scale",
+                type_hint=float,
+                description="The resolved noise level, forwarded to the audio latents step.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        # The supplied latents fix the geometry of the pass; the blocks after this one read it from state.
+        _, _, latent_num_frames, latent_height, latent_width = block_state.latents.shape
+        block_state.height = latent_height * components.vae_spatial_compression_ratio
+        block_state.width = latent_width * components.vae_spatial_compression_ratio
+        block_state.num_frames = (latent_num_frames - 1) * components.vae_temporal_compression_ratio + 1
+
+        noise_scale = block_state.noise_scale
+        if noise_scale is None:
+            sigmas = getattr(block_state, self._sigmas_name)
+            noise_scale = sigmas[0] if sigmas is not None else 1.0
+
+        latents = _pack_latents(
+            block_state.latents, components.transformer_spatial_patch_size, components.transformer_temporal_patch_size
+        )
+        # Re-noise in the latents' own dtype and cast afterwards, the order `LTX2Pipeline.prepare_latents` uses.
+        latents = _create_noised_state(latents.to(device), noise_scale, block_state.generator)
+        block_state.latents = latents.to(dtype=torch.float32)
+        block_state.noise_scale = noise_scale
 
         self.set_block_state(state, block_state)
         return components, state
@@ -551,11 +729,8 @@ class LTX2Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam(
@@ -619,15 +794,7 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return (
-            "Prepares the packed audio noise latents and derives the audio latent frame count. `noise_scale` is "
-            "declared with a `None` default for the reason given on `LTX2PrepareLatentsStep`, which runs first and "
-            "writes the resolved value back to state."
-        )
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("audio_vae", AutoencoderKLLTX2Audio)]
+        return "create the initial audio noise latents (packed) and derives the audio latent frame count.stage1 only"
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -635,29 +802,11 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
-            ),
-            InputParam(
-                "audio_latents",
-                type_hint=torch.Tensor,
-                default=None,
-                description="Optional pre-encoded audio latents; random noise is used when not provided.",
-            ),
-            InputParam(
-                "noise_scale",
-                type_hint=float,
-                default=None,
-                description=(
-                    "Interpolation factor between random noise and any provided `audio_latents`. Resolved upstream "
-                    "by `LTX2PrepareLatentsStep` (0.0, which keeps the provided latents)."
-                ),
             ),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("generator"),
@@ -687,8 +836,8 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
         device = components._execution_device
 
         batch_size = block_state.batch_size * block_state.num_videos_per_prompt
-        num_channels_latents = components.audio_vae.config.latent_channels
-        num_mel_bins = components.audio_vae.config.mel_bins
+        num_channels_latents = components.audio_latent_channels
+        latent_mel_bins = components.audio_latent_mel_bins
 
         duration_s = block_state.num_frames / block_state.frame_rate
         audio_latents_per_second = (
@@ -698,22 +847,88 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
         )
         audio_num_frames = round(duration_s * audio_latents_per_second)
 
-        if block_state.audio_latents is not None:
-            audio_latents = block_state.audio_latents
-            if audio_latents.ndim == 4:
-                audio_num_frames = audio_latents.shape[2]
-                audio_latents = _pack_audio_latents(audio_latents)
-            audio_latents = _normalize_audio_latents(
-                audio_latents, components.audio_latents_mean, components.audio_latents_std
-            )
-            audio_latents = _create_noised_state(audio_latents, block_state.noise_scale, block_state.generator)
-            block_state.audio_latents = audio_latents.to(device=device, dtype=torch.float32)
-        else:
-            latent_mel_bins = num_mel_bins // components.audio_vae_mel_compression_ratio
-            shape = (batch_size, num_channels_latents, audio_num_frames, latent_mel_bins)
-            audio_latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=torch.float32)
-            block_state.audio_latents = _pack_audio_latents(audio_latents)
+        shape = (batch_size, num_channels_latents, audio_num_frames, latent_mel_bins)
+        audio_latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=torch.float32)
+        block_state.audio_latents = _pack_audio_latents(audio_latents)
+        block_state.audio_num_frames = audio_num_frames
 
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class LTX2Stage2PrepareAudioLatentsStep(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    def __init__(self, sigmas_name: str = "sigmas", sigmas_default: list[float] | None = None):
+        """
+        Args:
+            sigmas_name (`str`, defaults to `"sigmas"`):
+                Name of the input that holds this pass's sigma schedule. Lets a first-pass and a second-pass copy of
+                the block sit in one pipeline that takes both `sigmas` and `stage_2_sigmas`.
+            sigmas_default (`list[float]`, *optional*):
+                Default sigma schedule of the pass, set where a blockset assembles the block for a checkpoint that runs
+                a fixed schedule (the LTX-2.5 distilled recipe). Read for the `noise_scale` default.
+        """
+        self._sigmas_name = sigmas_name
+        self._sigmas_default = sigmas_default
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return (
+            "Prepares the audio latents for stage2 that refines existing audio latents: packs the "
+            "normalized `[B, C, L, M]` latents from stage1, derives the audio latent frame count "
+            "from their shape, and re-noises them to `noise_scale`."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Audio latents to refine, of shape [B, C, L, M] (normalized, not packed).",
+            ),
+            InputParam(
+                "noise_scale",
+                type_hint=float,
+                default=None,
+                description=(
+                    "Noise level the audio latents are re-noised to before the pass. `None` (default) resolves to "
+                    "`sigmas[0]` when custom `sigmas` are supplied, else 1.0."
+                ),
+            ),
+            InputParam.template("sigmas", name=self._sigmas_name, default=self._sigmas_default),
+            InputParam.template("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("audio_latents", type_hint=torch.Tensor, description="Packed re-noised audio latents."),
+            OutputParam(
+                "audio_num_frames",
+                type_hint=int,
+                kwargs_type="denoiser_input_fields",
+                description="Number of audio latent frames.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        noise_scale = block_state.noise_scale
+        if noise_scale is None:
+            sigmas = getattr(block_state, self._sigmas_name)
+            noise_scale = sigmas[0] if sigmas is not None else 1.0
+
+        audio_num_frames = block_state.audio_latents.shape[2]
+        audio_latents = _pack_audio_latents(block_state.audio_latents)
+        audio_latents = _create_noised_state(audio_latents.to(device), noise_scale, block_state.generator)
+        block_state.audio_latents = audio_latents.to(dtype=torch.float32)
         block_state.audio_num_frames = audio_num_frames
 
         self.set_block_state(state, block_state)
@@ -742,11 +957,8 @@ class LTX2PrepareCoordsStep(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
@@ -799,8 +1011,116 @@ class LTX2PrepareCoordsStep(ModularPipelineBlocks):
         return components, state
 
 
+def _apply_frame_conditions(components, block_state, latents: torch.Tensor, noise_scale: float):
+    """
+    Shared tail of the condition prepare-latents blocks: packs the base `[B, C, F, H, W]` latents, overwrites the
+    first-frame positions with latent-index-0 conditions, appends the other conditions as keyframe tokens with their
+    own RoPE coordinates, and samples the noise last, once the conditioning mask is known.
+
+    Returns the packed noisy `latents`, `conditioning_mask`, `clean_latents`, `appended_coords` and `base_token_count`.
+    """
+    device = components._execution_device
+    batch_size = block_state.batch_size * block_state.num_videos_per_prompt
+    spatial_patch = components.transformer_spatial_patch_size
+    temporal_patch = components.transformer_temporal_patch_size
+    frame_scale_factor = components.vae_temporal_compression_ratio
+    _, _, latent_num_frames, latent_height, latent_width = latents.shape
+
+    conditioning_mask = latents.new_zeros((batch_size, 1, latent_num_frames, latent_height, latent_width))
+    latents = _pack_latents(latents, spatial_patch, temporal_patch)
+    conditioning_mask = _pack_latents(conditioning_mask, spatial_patch, temporal_patch)  # [B, S, 1]
+
+    base_token_count = latents.shape[1]
+    condition_latents_packed = [
+        _pack_latents(cond, spatial_patch, temporal_patch) for cond in block_state.condition_latents
+    ]
+
+    # First-frame conditions (latent index 0): overwrite the tokens at the first-frame positions. Condition
+    # tensors carry batch 1 and broadcast across the generation batch.
+    clean_latents = torch.zeros_like(latents)
+    for cond, strength, latent_idx in zip(
+        condition_latents_packed, block_state.condition_strengths, block_state.condition_indices
+    ):
+        if latent_idx != 0:
+            continue
+        num_cond_tokens = cond.size(1)
+        latents[:, :num_cond_tokens] = cond
+        conditioning_mask[:, :num_cond_tokens] = strength
+        clean_latents[:, :num_cond_tokens] = cond
+
+    # Non-first-frame ("keyframe") conditions (latent index > 0): append as extra tokens with an all-`strength`
+    # conditioning mask and their own coords. At denoising step i they see an effective noise level of
+    # (1 - strength) * sigma_i.
+    scale_factors = (
+        frame_scale_factor,
+        components.vae_spatial_compression_ratio,
+        components.vae_spatial_compression_ratio,
+    )
+    keyframe_tokens, keyframe_masks, keyframe_coords = [], [], []
+    for cond_5d, cond_packed, strength, latent_idx, num_pixel_frames in zip(
+        block_state.condition_latents,
+        condition_latents_packed,
+        block_state.condition_strengths,
+        block_state.condition_indices,
+        block_state.condition_pixel_frames,
+    ):
+        if latent_idx == 0:
+            continue
+
+        _, _, kf_latent_frames, kf_latent_height, kf_latent_width = cond_5d.shape
+        coords = _prepare_keyframe_coords(
+            keyframe_latent_num_frames=kf_latent_frames,
+            keyframe_latent_height=kf_latent_height,
+            keyframe_latent_width=kf_latent_width,
+            pixel_frame_idx=(latent_idx - 1) * frame_scale_factor + 1,
+            num_pixel_frames=num_pixel_frames,
+            fps=block_state.frame_rate,
+            patch_size=spatial_patch,
+            patch_size_t=temporal_patch,
+            scale_factors=scale_factors,
+            device=device,
+        )
+
+        keyframe_tokens.append(cond_packed.expand(batch_size, -1, -1))
+        keyframe_masks.append(
+            torch.full(
+                (batch_size, cond_packed.shape[1], 1),
+                float(strength),
+                device=device,
+                dtype=conditioning_mask.dtype,
+            )
+        )
+        keyframe_coords.append(coords.expand(batch_size, -1, -1, -1))
+
+    if keyframe_tokens:
+        keyframe_tokens = torch.cat(keyframe_tokens, dim=1)
+        latents = torch.cat([latents, keyframe_tokens], dim=1)
+        clean_latents = torch.cat([clean_latents, keyframe_tokens], dim=1)
+        conditioning_mask = torch.cat([conditioning_mask, torch.cat(keyframe_masks, dim=1)], dim=1)
+        appended_coords = torch.cat(keyframe_coords, dim=2)
+    else:
+        appended_coords = torch.zeros((batch_size, 3, 0, 2), device=device, dtype=torch.float32)
+
+    # Mask semantics: 0 -> fully noised, 1 -> kept clean, in between -> noise level (1 - mask) * noise_scale.
+    noise = randn_tensor(latents.shape, generator=block_state.generator, device=latents.device, dtype=latents.dtype)
+    scaled_mask = (1.0 - conditioning_mask) * noise_scale
+    latents = noise * scaled_mask + latents * (1 - scaled_mask)
+
+    return latents, conditioning_mask, clean_latents, appended_coords, base_token_count
+
+
 class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "ltx2"
+
+    def __init__(self, sigmas_default: list[float] | None = None):
+        """
+        Args:
+            sigmas_default (`list[float]`, *optional*):
+                Default sigma schedule of the pass, set where a blockset assembles the block for a checkpoint that runs
+                a fixed schedule (the LTX-2.5 distilled recipe). Read for the `noise_scale` default.
+        """
+        self._sigmas_default = sigmas_default
+        super().__init__()
 
     @property
     def description(self) -> str:
@@ -817,7 +1137,6 @@ class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("transformer", LTX2VideoTransformer3DModel),
-            ComponentSpec("vae", AutoencoderKLLTX2Video),
         ]
 
     @property
@@ -827,7 +1146,7 @@ class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
                 "condition_latents",
                 type_hint=list,
                 required=True,
-                description="Per-condition normalized VAE latents of shape [1, C, F, H, W].",
+                description="Per-condition VAE latents of shape [1, C, F, H, W] (normalized, not packed).",
             ),
             InputParam(
                 "condition_strengths",
@@ -847,17 +1166,13 @@ class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
                 required=True,
                 description="Per-condition trimmed pixel frame count, used to clamp single-frame keyframe coords.",
             ),
-            InputParam.template("latents"),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
@@ -871,7 +1186,7 @@ class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
                     "when custom `sigmas` are supplied, else 1.0."
                 ),
             ),
-            InputParam.template("sigmas"),
+            InputParam.template("sigmas", default=self._sigmas_default),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam(
                 "batch_size",
@@ -929,13 +1244,9 @@ class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
         device = components._execution_device
 
         batch_size = block_state.batch_size * block_state.num_videos_per_prompt
-        spatial_patch = components.transformer_spatial_patch_size
-        temporal_patch = components.transformer_temporal_patch_size
-        frame_scale_factor = components.vae_temporal_compression_ratio
-
         latent_height = block_state.height // components.vae_spatial_compression_ratio
         latent_width = block_state.width // components.vae_spatial_compression_ratio
-        latent_num_frames = (block_state.num_frames - 1) // frame_scale_factor + 1
+        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
 
         # Noise level the un-conditioned tokens start at: the first (largest) sigma when custom sigmas are supplied,
         # else 1.0. Matches `LTX2ConditionPipeline.__call__`.
@@ -949,141 +1260,54 @@ class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
                 f" list will be used for all (pseudo-)random operations."
             )
 
-        if block_state.latents is not None:
-            latents = _normalize_latents(
-                block_state.latents,
-                components.latents_mean,
-                components.latents_std,
-                components.vae_scaling_factor,
-            )
-        else:
-            # Zeros rather than a Gaussian sample: the noise is mixed in at the end, once the mask is known.
-            shape = (
-                batch_size,
-                components.transformer.config.in_channels,
-                latent_num_frames,
-                latent_height,
-                latent_width,
-            )
-            latents = torch.zeros(shape, device=device, dtype=torch.float32)
+        # Zeros rather than a Gaussian sample: the noise is mixed in at the end, once the mask is known.
+        shape = (batch_size, components.transformer.config.in_channels, latent_num_frames, latent_height, latent_width)
+        latents = torch.zeros(shape, device=device, dtype=torch.float32)
 
-        conditioning_mask = latents.new_zeros((batch_size, 1, latent_num_frames, latent_height, latent_width))
-        latents = _pack_latents(latents, spatial_patch, temporal_patch)
-        conditioning_mask = _pack_latents(conditioning_mask, spatial_patch, temporal_patch)  # [B, S, 1]
-
-        if latents.ndim != 3 or latents.shape[:2] != conditioning_mask.shape[:2]:
-            raise ValueError(
-                f"Provided `latents` tensor packs to shape {latents.shape}, but the expected packed shape is "
-                f"{conditioning_mask.shape[:2] + (components.transformer.config.in_channels,)}."
-            )
-
-        base_token_count = latents.shape[1]
-        condition_latents_packed = [
-            _pack_latents(cond, spatial_patch, temporal_patch) for cond in block_state.condition_latents
-        ]
-
-        # First-frame conditions (latent index 0): overwrite the tokens at the first-frame positions. Condition
-        # tensors carry batch 1 and broadcast across the generation batch.
-        clean_latents = torch.zeros_like(latents)
-        for cond, strength, latent_idx in zip(
-            condition_latents_packed, block_state.condition_strengths, block_state.condition_indices
-        ):
-            if latent_idx != 0:
-                continue
-            num_cond_tokens = cond.size(1)
-            latents[:, :num_cond_tokens] = cond
-            conditioning_mask[:, :num_cond_tokens] = strength
-            clean_latents[:, :num_cond_tokens] = cond
-
-        # Non-first-frame ("keyframe") conditions (latent index > 0): append as extra tokens with an all-`strength`
-        # conditioning mask and their own coords. At denoising step i they see an effective noise level of
-        # (1 - strength) * sigma_i.
-        scale_factors = (
-            frame_scale_factor,
-            components.vae_spatial_compression_ratio,
-            components.vae_spatial_compression_ratio,
-        )
-        keyframe_tokens, keyframe_masks, keyframe_coords = [], [], []
-        for cond_5d, cond_packed, strength, latent_idx, num_pixel_frames in zip(
-            block_state.condition_latents,
-            condition_latents_packed,
-            block_state.condition_strengths,
-            block_state.condition_indices,
-            block_state.condition_pixel_frames,
-        ):
-            if latent_idx == 0:
-                continue
-
-            _, _, kf_latent_frames, kf_latent_height, kf_latent_width = cond_5d.shape
-            coords = _prepare_keyframe_coords(
-                keyframe_latent_num_frames=kf_latent_frames,
-                keyframe_latent_height=kf_latent_height,
-                keyframe_latent_width=kf_latent_width,
-                pixel_frame_idx=(latent_idx - 1) * frame_scale_factor + 1,
-                num_pixel_frames=num_pixel_frames,
-                fps=block_state.frame_rate,
-                patch_size=spatial_patch,
-                patch_size_t=temporal_patch,
-                scale_factors=scale_factors,
-                device=device,
-            )
-
-            keyframe_tokens.append(cond_packed.expand(batch_size, -1, -1))
-            keyframe_masks.append(
-                torch.full(
-                    (batch_size, cond_packed.shape[1], 1),
-                    float(strength),
-                    device=device,
-                    dtype=conditioning_mask.dtype,
-                )
-            )
-            keyframe_coords.append(coords.expand(batch_size, -1, -1, -1))
-
-        if keyframe_tokens:
-            keyframe_tokens = torch.cat(keyframe_tokens, dim=1)
-            latents = torch.cat([latents, keyframe_tokens], dim=1)
-            clean_latents = torch.cat([clean_latents, keyframe_tokens], dim=1)
-            conditioning_mask = torch.cat([conditioning_mask, torch.cat(keyframe_masks, dim=1)], dim=1)
-            appended_coords = torch.cat(keyframe_coords, dim=2)
-        else:
-            appended_coords = torch.zeros((batch_size, 3, 0, 2), device=device, dtype=torch.float32)
-
-        # Mask semantics: 0 -> fully noised, 1 -> kept clean, in between -> noise level (1 - mask) * noise_scale.
-        noise = randn_tensor(
-            latents.shape, generator=block_state.generator, device=latents.device, dtype=latents.dtype
-        )
-        scaled_mask = (1.0 - conditioning_mask) * noise_scale
-        block_state.latents = noise * scaled_mask + latents * (1 - scaled_mask)
-
-        block_state.conditioning_mask = conditioning_mask
-        block_state.clean_latents = clean_latents
-        block_state.appended_coords = appended_coords
-        block_state.base_token_count = base_token_count
+        (
+            block_state.latents,
+            block_state.conditioning_mask,
+            block_state.clean_latents,
+            block_state.appended_coords,
+            block_state.base_token_count,
+        ) = _apply_frame_conditions(components, block_state, latents, noise_scale)
         block_state.noise_scale = noise_scale
 
         self.set_block_state(state, block_state)
         return components, state
 
 
-class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
+class LTX2ConditionStage2PrepareLatentsStep(ModularPipelineBlocks):
     model_name = "ltx2"
+
+    def __init__(self, sigmas_name: str = "sigmas", sigmas_default: list[float] | None = None):
+        """
+        Args:
+            sigmas_name (`str`, defaults to `"sigmas"`):
+                Name of the input that holds this pass's sigma schedule. Lets a first-pass and a second-pass copy of
+                the block sit in one pipeline that takes both `sigmas` and `stage_2_sigmas`.
+            sigmas_default (`list[float]`, *optional*):
+                Default sigma schedule of the pass, set where a blockset assembles the block for a checkpoint that runs
+                a fixed schedule (the LTX-2.5 distilled recipe). Read for the `noise_scale` default.
+        """
+        self._sigmas_name = sigmas_name
+        self._sigmas_default = sigmas_default
+        super().__init__()
 
     @property
     def description(self) -> str:
         return (
-            "Prepares the packed video latents for in-context (IC-LoRA) generation. Same frame-condition handling as "
-            "`LTX2ConditionPrepareLatentsStep` (first-frame overwrite, keyframe token append), then appends the "
-            "encoded reference tokens after the keyframes with a per-token `conditioning_mask` of their own "
-            "strength, giving a single `[base | keyframe | reference]` sequence. Mirrors "
-            "`LTX2InContextPipeline.prepare_latents`, which likewise re-implements the condition version rather "
-            "than extending it -- the two are kept side by side so each reads top to bottom."
+            "Prepares the packed video latents for a second pass that refines existing latents under frame "
+            "conditions: the supplied normalized `[B, C, F, H, W]` latents (packed here) take the "
+            "place of the zeros `LTX2ConditionPrepareLatentsStep` starts from, then the same first-frame overwrite, "
+            "keyframe token append and mask-driven noising apply, with `noise_scale` -- by default the first sigma "
+            "of the pass -- as the level the un-conditioned tokens are re-noised to."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("transformer", LTX2VideoTransformer3DModel),
-            ComponentSpec("vae", AutoencoderKLLTX2Video),
         ]
 
     @property
@@ -1093,7 +1317,183 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
                 "condition_latents",
                 type_hint=list,
                 required=True,
-                description="Per-condition normalized VAE latents of shape [1, C, F, H, W].",
+                description="Per-condition VAE latents of shape [1, C, F, H, W] (normalized, not packed).",
+            ),
+            InputParam(
+                "condition_strengths",
+                type_hint=list,
+                required=True,
+                description="Per-condition conditioning strengths.",
+            ),
+            InputParam(
+                "condition_indices",
+                type_hint=list,
+                required=True,
+                description="Per-condition latent frame index at which the condition is applied.",
+            ),
+            InputParam(
+                "condition_pixel_frames",
+                type_hint=list,
+                required=True,
+                description="Per-condition trimmed pixel frame count, used to clamp single-frame keyframe coords.",
+            ),
+            InputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description=(
+                    "Video latents to refine, of shape [B, C, F, H, W] (normalized, not packed) "
+                    "of the generated video only (no appended condition tokens)."
+                ),
+            ),
+            InputParam(
+                "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
+            ),
+            InputParam(
+                "noise_scale",
+                type_hint=float,
+                default=None,
+                description=(
+                    "Noise level the un-conditioned tokens are re-noised to. `None` (default) resolves to "
+                    "`sigmas[0]` when custom `sigmas` are supplied, else 1.0."
+                ),
+            ),
+            InputParam.template("sigmas", name=self._sigmas_name, default=self._sigmas_default),
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
+            InputParam(
+                "batch_size",
+                type_hint=int,
+                required=True,
+                description="The number of prompts being denoised, used to expand conditioning per prompt.",
+            ),
+            InputParam.template("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="Packed noisy video latents, with any keyframe condition tokens appended.",
+            ),
+            OutputParam(
+                "conditioning_mask",
+                type_hint=torch.Tensor,
+                description=(
+                    "Packed per-token conditioning strengths of shape [B, S, 1] in [0, 1]: 1 at fully-conditioned "
+                    "positions, 0 at free positions."
+                ),
+            ),
+            OutputParam(
+                "clean_latents",
+                type_hint=torch.Tensor,
+                description="Clean condition latents at conditioned positions, zeros elsewhere; same shape as `latents`.",
+            ),
+            OutputParam(
+                "appended_coords",
+                type_hint=torch.Tensor,
+                description=(
+                    "RoPE coordinates of shape [B, 3, num_keyframe_tokens, 2] for the appended keyframe tokens, "
+                    "zero-width when there are none."
+                ),
+            ),
+            OutputParam(
+                "base_token_count",
+                type_hint=int,
+                description="Number of generated-video tokens, i.e. the sequence length before appended tokens.",
+            ),
+            OutputParam("height", type_hint=int, description="Height of the pass in pixels, read off the latents."),
+            OutputParam("width", type_hint=int, description="Width of the pass in pixels, read off the latents."),
+            OutputParam(
+                "num_frames",
+                type_hint=int,
+                description="Frame count of the pass, read off the latents (grid-aligned).",
+            ),
+            OutputParam(
+                "noise_scale",
+                type_hint=float,
+                description="The resolved initial noise level, forwarded to the audio latents step.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        # The supplied latents fix the geometry of the pass; the blocks after this one read it from state.
+        _, _, latent_num_frames, latent_height, latent_width = block_state.latents.shape
+        block_state.height = latent_height * components.vae_spatial_compression_ratio
+        block_state.width = latent_width * components.vae_spatial_compression_ratio
+        block_state.num_frames = (latent_num_frames - 1) * components.vae_temporal_compression_ratio + 1
+
+        noise_scale = block_state.noise_scale
+        if noise_scale is None:
+            sigmas = getattr(block_state, self._sigmas_name)
+            noise_scale = sigmas[0] if sigmas is not None else 1.0
+
+        if isinstance(block_state.generator, list):
+            logger.warning(
+                f"{self.__class__.__name__} does not support using a list of generators. The first generator in the"
+                f" list will be used for all (pseudo-)random operations."
+            )
+
+        latents = block_state.latents.to(device=device, dtype=torch.float32)
+
+        (
+            block_state.latents,
+            block_state.conditioning_mask,
+            block_state.clean_latents,
+            block_state.appended_coords,
+            block_state.base_token_count,
+        ) = _apply_frame_conditions(components, block_state, latents, noise_scale)
+        block_state.noise_scale = noise_scale
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    def __init__(self, sigmas_default: list[float] | None = None):
+        """
+        Args:
+            sigmas_default (`list[float]`, *optional*):
+                Default sigma schedule of the pass, set where a blockset assembles the block for a checkpoint that runs
+                a fixed schedule (the LTX-2.5 distilled recipe). Read for the `noise_scale` default.
+        """
+        self._sigmas_default = sigmas_default
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return (
+            "Prepares the packed video latents for in-context (IC-LoRA) generation. Same frame-condition handling as "
+            "`LTX2ConditionPrepareLatentsStep` (first-frame overwrite, keyframe token append), then appends the "
+            "encoded reference tokens after the keyframes with a per-token `conditioning_mask` of their own "
+            "strength, giving a single `[base | keyframe | reference]` sequence. Mirrors "
+            "`LTX2InContextPipeline.prepare_latents`, which likewise re-implements the condition version rather "
+            "than extending it -- the two are kept side by side so each reads top to bottom. First pass only: the "
+            "second pass of an in-context run needs no reference tokens and uses "
+            "`LTX2ConditionStage2PrepareLatentsStep` or `LTX2Stage2PrepareLatentsStep`."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", LTX2VideoTransformer3DModel),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "condition_latents",
+                type_hint=list,
+                required=True,
+                description="Per-condition VAE latents of shape [1, C, F, H, W] (normalized, not packed).",
             ),
             InputParam(
                 "condition_strengths",
@@ -1124,36 +1524,31 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
             ),
             InputParam(
                 "reference_latents",
-                type_hint=torch.Tensor,
+                type_hint=list,
                 default=None,
                 description=(
-                    "Packed reference tokens of shape [1, total_reference_tokens, C], or `None` when no reference "
-                    "conditions were supplied (`LTX2AutoReferenceEncoderStep` is skipped)."
+                    "Per-reference VAE latents of shape [1, C, F, H, W] (normalized, not packed) from `LTX2ReferenceEncoderStep`, "
+                    "or `None` when no reference conditions were supplied (`LTX2AutoReferenceEncoderStep` is "
+                    "skipped)."
                 ),
             ),
             InputParam(
-                "reference_coords",
-                type_hint=torch.Tensor,
-                default=None,
-                description="RoPE coordinates for the reference tokens.",
+                "reference_downscale_factor",
+                type_hint=int,
+                default=1,
+                description=(
+                    "Ratio between the target and reference resolutions. The reference tokens' spatial coordinates "
+                    "are scaled by it so they land in the target coordinate space, preserving the positional "
+                    "relationship the IC-LoRA was trained on."
+                ),
             ),
-            InputParam(
-                "reference_token_counts",
-                type_hint=list,
-                default=None,
-                description="Per-reference token counts, in `reference_conditions` order.",
-            ),
-            InputParam.template("latents"),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
@@ -1167,7 +1562,7 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
                     "when custom `sigmas` are supplied, else 1.0."
                 ),
             ),
-            InputParam.template("sigmas"),
+            InputParam.template("sigmas", default=self._sigmas_default),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam(
                 "batch_size",
@@ -1176,6 +1571,25 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
                 description="The number of prompts being denoised, used to expand conditioning per prompt.",
             ),
             InputParam.template("generator"),
+            InputParam(
+                "conditioning_attention_strength",
+                type_hint=float,
+                default=1.0,
+                description=(
+                    "Scalar in [0, 1] controlling how strongly the noisy tokens and reference tokens attend to each "
+                    "other. 1.0 (default) leaves attention unmasked."
+                ),
+            ),
+            InputParam(
+                "conditioning_attention_mask",
+                type_hint=torch.Tensor,
+                default=None,
+                description=(
+                    "Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially "
+                    "varying attention strength. Downsampled to each reference's latent grid and multiplied by "
+                    "`conditioning_attention_strength`."
+                ),
+            ),
         ]
 
     @property
@@ -1213,9 +1627,23 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
                 description="Number of generated-video tokens, i.e. the sequence length before appended tokens.",
             ),
             OutputParam(
+                "video_self_attention_mask",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description=(
+                    "Multiplicative self-attention mask of shape [B, S, S] with values in [0, 1] over the "
+                    "`[base | keyframe | reference]` tokens; `None` without reference tokens (full attention)."
+                ),
+            ),
+            OutputParam(
                 "num_ref_tokens",
                 type_hint=int,
                 description="Number of reference tokens, which sit at the very end of the sequence.",
+            ),
+            OutputParam(
+                "reference_token_counts",
+                type_hint=list,
+                description="Per-reference token counts, in `reference_conditions` order, for the attention mask.",
             ),
             OutputParam(
                 "noise_scale",
@@ -1248,32 +1676,13 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
                 f" list will be used for all (pseudo-)random operations."
             )
 
-        if block_state.latents is not None:
-            latents = _normalize_latents(
-                block_state.latents,
-                components.latents_mean,
-                components.latents_std,
-                components.vae_scaling_factor,
-            )
-        else:
-            shape = (
-                batch_size,
-                components.transformer.config.in_channels,
-                latent_num_frames,
-                latent_height,
-                latent_width,
-            )
-            latents = torch.zeros(shape, device=device, dtype=torch.float32)
+        # Zeros rather than a Gaussian sample: the noise is mixed in at the end, once the mask is known.
+        shape = (batch_size, components.transformer.config.in_channels, latent_num_frames, latent_height, latent_width)
+        latents = torch.zeros(shape, device=device, dtype=torch.float32)
 
         conditioning_mask = latents.new_zeros((batch_size, 1, latent_num_frames, latent_height, latent_width))
         latents = _pack_latents(latents, spatial_patch, temporal_patch)
         conditioning_mask = _pack_latents(conditioning_mask, spatial_patch, temporal_patch)  # [B, S, 1]
-
-        if latents.ndim != 3 or latents.shape[:2] != conditioning_mask.shape[:2]:
-            raise ValueError(
-                f"Provided `latents` tensor packs to shape {latents.shape}, but the expected packed shape is "
-                f"{conditioning_mask.shape[:2] + (components.transformer.config.in_channels,)}."
-            )
 
         base_token_count = latents.shape[1]
         condition_latents_packed = [
@@ -1349,27 +1758,44 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
         # reference implementation. Absent for IC-LoRAs that take no reference video (camera control, style, ...),
         # which `LTX2InContextPipeline` supports too -- `LTX2AutoReferenceEncoderStep` is then skipped.
         num_ref_tokens = 0
+        reference_token_counts = []
         if block_state.reference_latents is not None:
             reference_conditions = block_state.reference_conditions
             if isinstance(reference_conditions, LTX2ReferenceCondition):
                 reference_conditions = [reference_conditions]
-            reference_tokens = block_state.reference_latents.expand(batch_size, -1, -1)
-            num_ref_tokens = reference_tokens.shape[1]
-            # Per-reference token counts come from the encoder rather than an equal split of the total, so
-            # references of differing lengths (a reference video shorter than `num_frames`) get the right strengths.
-            reference_masks = [
-                torch.full(
-                    (batch_size, num_tokens, 1),
-                    float(ref_cond.strength),
+            reference_tokens, reference_masks, reference_coords = [], [], []
+            for ref_latent, ref_cond in zip(block_state.reference_latents, reference_conditions):
+                _, _, ref_latent_frames, ref_latent_height, ref_latent_width = ref_latent.shape
+                tokens = _pack_latents(ref_latent, spatial_patch, temporal_patch)
+                # Coordinates on the reference's own latent grid, scaled spatially so the tokens map into the
+                # target's coordinate space.
+                coords = components.transformer.rope.prepare_video_coords(
+                    batch_size=1,
+                    num_frames=ref_latent_frames,
+                    height=ref_latent_height,
+                    width=ref_latent_width,
                     device=device,
-                    dtype=conditioning_mask.dtype,
+                    fps=block_state.frame_rate,
                 )
-                for ref_cond, num_tokens in zip(reference_conditions, block_state.reference_token_counts)
-            ]
+                if block_state.reference_downscale_factor != 1:
+                    coords[:, 1:, :, :] = coords[:, 1:, :, :] * block_state.reference_downscale_factor
+                reference_tokens.append(tokens.expand(batch_size, -1, -1))
+                reference_masks.append(
+                    torch.full(
+                        (batch_size, tokens.shape[1], 1),
+                        float(ref_cond.strength),
+                        device=device,
+                        dtype=conditioning_mask.dtype,
+                    )
+                )
+                reference_coords.append(coords.expand(batch_size, -1, -1, -1))
+                reference_token_counts.append(tokens.shape[1])
+            reference_tokens = torch.cat(reference_tokens, dim=1)
+            num_ref_tokens = reference_tokens.shape[1]
             latents = torch.cat([latents, reference_tokens], dim=1)
             clean_latents = torch.cat([clean_latents, reference_tokens], dim=1)
             conditioning_mask = torch.cat([conditioning_mask, torch.cat(reference_masks, dim=1)], dim=1)
-            appended_coords.append(block_state.reference_coords.expand(batch_size, -1, -1, -1))
+            appended_coords.append(torch.cat(reference_coords, dim=2))
 
         # Mask semantics: 0 -> fully noised, 1 -> kept clean, in between -> noise level (1 - mask) * noise_scale.
         noise = randn_tensor(
@@ -1383,103 +1809,22 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
         block_state.appended_coords = torch.cat(appended_coords, dim=2)
         block_state.base_token_count = base_token_count
         block_state.num_ref_tokens = num_ref_tokens
-        block_state.noise_scale = noise_scale
-
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class LTX2BuildVideoSelfAttentionMaskStep(ModularPipelineBlocks):
-    model_name = "ltx2"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Builds the video self-attention mask over the `[base | keyframe | reference]` token sequence for "
-            "in-context generation, mirroring `build_attention_mask` in the reference implementation. Each "
-            "`LTX2ReferenceCondition` is its own attention group:\n"
-            "  - base <-> base, base <-> keyframe, keyframe <-> keyframe: 1.0 (full attention)\n"
-            "  - base <-> reference group: that group's slice of `reference_cross_mask`, broadcast symmetrically "
-            "across the base-token axis\n"
-            "  - reference group <-> itself: 1.0 (a group fully attends to itself)\n"
-            "  - reference group <-> any other appended group (keyframes, other references): 0.0\n"
-            "Note the cross blocks span only the *base* tokens: keyframe tokens are appended conditioning like the "
-            "references are, and the two are masked off from each other. Emitted tagged `denoiser_input_fields`, so "
-            "it reaches the transformer's `video_self_attention_mask` argument without any change to "
-            "`LTX2LoopDenoiser`. Only run when the references carry a per-token strength (see "
-            "`LTX2AutoBuildVideoSelfAttentionMaskStep`); attention is otherwise left unmasked."
+        block_state.reference_token_counts = reference_token_counts
+        # Without reference tokens there is nothing to mask: leave the attention unmasked rather than pass all ones.
+        block_state.video_self_attention_mask = (
+            _build_video_self_attention_mask(
+                block_state.latents,
+                base_token_count,
+                num_ref_tokens,
+                block_state.reference_latents,
+                reference_token_counts,
+                block_state.conditioning_attention_strength,
+                block_state.conditioning_attention_mask,
+            )
+            if num_ref_tokens > 0
+            else None
         )
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam.template("latents", required=True),
-            InputParam(
-                "base_token_count",
-                type_hint=int,
-                required=True,
-                description="Number of generated-video tokens, i.e. the sequence length before appended tokens.",
-            ),
-            InputParam(
-                "num_ref_tokens",
-                type_hint=int,
-                required=True,
-                description="Number of reference tokens, which sit at the very end of the sequence.",
-            ),
-            InputParam(
-                "reference_cross_mask",
-                type_hint=torch.Tensor,
-                required=True,
-                description="Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].",
-            ),
-            InputParam(
-                "reference_token_counts",
-                type_hint=list,
-                required=True,
-                description="Per-reference token counts, used to split `reference_cross_mask` into attention groups.",
-            ),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                "video_self_attention_mask",
-                type_hint=torch.Tensor,
-                kwargs_type="denoiser_input_fields",
-                description="Multiplicative self-attention mask of shape [B, S, S] with values in [0, 1].",
-            ),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-        device = components._execution_device
-
-        batch_size, total_tokens, _ = block_state.latents.shape
-        # Cross-attention partners are the base tokens only. The prefix (base + keyframe tokens) attends fully to
-        # itself, but keyframe tokens are appended conditioning just like the references, so the two groups are
-        # masked off from each other.
-        num_base_tokens = block_state.base_token_count
-        num_prefix_tokens = total_tokens - block_state.num_ref_tokens
-        cross = block_state.reference_cross_mask.to(device=device, dtype=torch.float32)
-
-        # Start from zeros so the keyframe<->reference and reference<->reference blocks stay masked without explicit
-        # assignment. Each guidance pass is its own single-batch forward, so this is built at the generation batch
-        # size -- the standard pipeline's expand to 2B for the CFG batch has no counterpart here.
-        attn_mask = torch.zeros((batch_size, total_tokens, total_tokens), device=device, dtype=torch.float32)
-        attn_mask[:, :num_prefix_tokens, :num_prefix_tokens] = 1.0
-
-        # One attention group per reference condition, in the order the encoder emitted their tokens.
-        offset = num_prefix_tokens
-        for group_cross in torch.split(cross, block_state.reference_token_counts, dim=1):
-            n = group_cross.shape[1]
-            attn_mask[:, :num_base_tokens, offset : offset + n] = group_cross.unsqueeze(1)
-            attn_mask[:, offset : offset + n, :num_base_tokens] = group_cross.unsqueeze(2)
-            attn_mask[:, offset : offset + n, offset : offset + n] = 1.0
-            offset += n
-
-        block_state.video_self_attention_mask = attn_mask
+        block_state.noise_scale = noise_scale
 
         self.set_block_state(state, block_state)
         return components, state
@@ -1487,6 +1832,26 @@ class LTX2BuildVideoSelfAttentionMaskStep(ModularPipelineBlocks):
 
 class LTX2ConditionSetTimestepsStep(ModularPipelineBlocks):
     model_name = "ltx2"
+
+    def __init__(
+        self, sigmas_name: str = "sigmas", timesteps_name: str = "timesteps", sigmas_default: list[float] | None = None
+    ):
+        """
+        Args:
+            sigmas_name (`str`, defaults to `"sigmas"`):
+                Name of the input that holds this pass's sigma schedule. Lets a first-pass and a second-pass copy of
+                the block sit in one pipeline that takes both `sigmas` and `stage_2_sigmas`.
+            timesteps_name (`str`, defaults to `"timesteps"`):
+                Name of the input that holds this pass's custom timesteps, for the same reason.
+            sigmas_default (`list[float]`, *optional*):
+                Default sigma schedule of the pass. Set where a blockset assembles the block for a checkpoint that runs
+                a fixed schedule (the LTX-2.5 distilled recipe); the block then exposes no `num_inference_steps`.
+                `None` leaves the schedule to `num_inference_steps`.
+        """
+        self._sigmas_name = sigmas_name
+        self._timesteps_name = timesteps_name
+        self._sigmas_default = sigmas_default
+        super().__init__()
 
     @property
     def description(self) -> str:
@@ -1504,12 +1869,15 @@ class LTX2ConditionSetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [
-            InputParam.template("num_inference_steps", default=30),
-            InputParam.template("timesteps"),
-            InputParam.template("sigmas"),
+        inputs = [
+            InputParam.template("timesteps", name=self._timesteps_name),
+            InputParam.template("sigmas", name=self._sigmas_name, default=self._sigmas_default),
             InputParam.template("latents", required=True),
         ]
+        # A block assembled with a fixed schedule has no step count to choose.
+        if self._sigmas_default is None:
+            inputs.insert(0, InputParam.template("num_inference_steps", default=30))
+        return inputs
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
@@ -1527,8 +1895,9 @@ class LTX2ConditionSetTimestepsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        num_inference_steps = block_state.num_inference_steps
-        sigmas = block_state.sigmas
+        num_inference_steps = getattr(block_state, "num_inference_steps", None)
+        timesteps = getattr(block_state, self._timesteps_name)
+        sigmas = getattr(block_state, self._sigmas_name)
         if sigmas is None:
             sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
@@ -1541,11 +1910,9 @@ class LTX2ConditionSetTimestepsStep(ModularPipelineBlocks):
         )
 
         block_state.audio_scheduler = copy.deepcopy(components.scheduler)
-        retrieve_timesteps(
-            block_state.audio_scheduler, num_inference_steps, device, block_state.timesteps, sigmas=sigmas, mu=mu
-        )
+        retrieve_timesteps(block_state.audio_scheduler, num_inference_steps, device, timesteps, sigmas=sigmas, mu=mu)
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
-            components.scheduler, num_inference_steps, device, block_state.timesteps, sigmas=sigmas, mu=mu
+            components.scheduler, num_inference_steps, device, timesteps, sigmas=sigmas, mu=mu
         )
 
         # Set begin index to skip the nonzero().item() call in scheduler init, which triggers a GPU sync.
@@ -1562,22 +1929,15 @@ class LTX2ConditionPrepareAudioLatentsStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Prepares the packed audio noise latents and derives the audio latent frame count, for condition-based "
-            "generation. Two deliberate differences from `LTX2PrepareAudioLatentsStep`:\n"
-            "  1. the noise is sampled directly in the packed shape [B, L, C * M], matching "
-            "`LTX2ConditionPipeline.prepare_audio_latents`. The text-to-video/image-to-video pipelines sample "
-            "unpacked [B, C, L, M] and pack afterwards; both draw the same number of values from the generator but "
-            "lay them out differently, so sampling the wrong way silently desynchronizes the audio noise (and, "
-            "through the joint attention, the video too).\n"
-            "  2. `noise_scale` is declared with a `None` default: a blockset keeps the first non-`None` default "
-            "across its blocks, so the text-to-video default of 0.0 would otherwise shadow the condition workflow's "
-            "`None -> sigmas[0] or 1.0` resolution. `LTX2ConditionPrepareLatentsStep` runs first and writes the "
-            "resolved value back to state."
+            "Samples the packed audio noise latents for a first pass of condition-based generation and derives the "
+            "audio latent frame count. One deliberate difference from `LTX2PrepareAudioLatentsStep`: the noise is "
+            "sampled directly in the packed shape [B, L, C * M], matching `LTX2ConditionPipeline."
+            "prepare_audio_latents`. The text-to-video/image-to-video pipelines sample unpacked [B, C, L, M] and "
+            "pack afterwards; both draw the same number of values from the generator but lay them out differently, "
+            "so sampling the wrong way silently desynchronizes the audio noise (and, through the joint attention, "
+            "the video too). Refining existing audio latents is `LTX2Stage2PrepareAudioLatentsStep`, which the "
+            "condition workflow shares with text-to-video."
         )
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("audio_vae", AutoencoderKLLTX2Audio)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -1585,29 +1945,11 @@ class LTX2ConditionPrepareAudioLatentsStep(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
-            ),
-            InputParam(
-                "audio_latents",
-                type_hint=torch.Tensor,
-                default=None,
-                description="Optional pre-encoded audio latents; random noise is used when not provided.",
-            ),
-            InputParam(
-                "noise_scale",
-                type_hint=float,
-                default=None,
-                description=(
-                    "Initial noise level applied to any provided `audio_latents`. Resolved upstream by "
-                    "`LTX2ConditionPrepareLatentsStep` (`sigmas[0]` when custom sigmas are supplied, else 1.0)."
-                ),
             ),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("generator"),
@@ -1637,8 +1979,8 @@ class LTX2ConditionPrepareAudioLatentsStep(ModularPipelineBlocks):
         device = components._execution_device
 
         batch_size = block_state.batch_size * block_state.num_videos_per_prompt
-        num_channels_latents = components.audio_vae.config.latent_channels
-        latent_mel_bins = components.audio_vae.config.mel_bins // components.audio_vae_mel_compression_ratio
+        num_channels_latents = components.audio_latent_channels
+        latent_mel_bins = components.audio_latent_mel_bins
 
         duration_s = block_state.num_frames / block_state.frame_rate
         audio_latents_per_second = (
@@ -1648,24 +1990,12 @@ class LTX2ConditionPrepareAudioLatentsStep(ModularPipelineBlocks):
         )
         audio_num_frames = round(duration_s * audio_latents_per_second)
 
-        if block_state.audio_latents is not None:
-            audio_latents = block_state.audio_latents
-            if audio_latents.ndim == 4:
-                audio_num_frames = audio_latents.shape[2]
-                audio_latents = _pack_audio_latents(audio_latents)
-            audio_latents = _normalize_audio_latents(
-                audio_latents, components.audio_latents_mean, components.audio_latents_std
-            )
-            audio_latents = _create_noised_state(audio_latents, block_state.noise_scale, block_state.generator)
-            block_state.audio_latents = audio_latents.to(device=device, dtype=torch.float32)
-        else:
-            # Sample directly in packed shape, following `LTX2ConditionPipeline.prepare_audio_latents` -- see the
-            # block description for why the unpacked-then-pack order used by text-to-video is not interchangeable.
-            packed_shape = (batch_size, audio_num_frames, num_channels_latents * latent_mel_bins)
-            block_state.audio_latents = randn_tensor(
-                packed_shape, generator=block_state.generator, device=device, dtype=torch.float32
-            )
-
+        # Sample directly in packed shape, following `LTX2ConditionPipeline.prepare_audio_latents` -- see the block
+        # description for why the unpacked-then-pack order used by text-to-video is not interchangeable.
+        packed_shape = (batch_size, audio_num_frames, num_channels_latents * latent_mel_bins)
+        block_state.audio_latents = randn_tensor(
+            packed_shape, generator=block_state.generator, device=device, dtype=torch.float32
+        )
         block_state.audio_num_frames = audio_num_frames
 
         self.set_block_state(state, block_state)
@@ -1696,11 +2026,8 @@ class LTX2ConditionPrepareCoordsStep(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
@@ -1755,6 +2082,73 @@ class LTX2ConditionPrepareCoordsStep(ModularPipelineBlocks):
         block_state.audio_coords = components.transformer.audio_rope.prepare_audio_coords(
             batch_size, block_state.audio_num_frames, device
         )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class LTX2LatentUpsampleStep(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Spatially upsamples video latents by 2x with the `latent_upsampler`: the bridge between the two passes of "
+            "the two-stage recipe. Takes the normalized `[B, C, F, H, W]` latents a denoise pass leaves in state, "
+            "denormalizes them for the upsampler (which works on raw VAE latents) and re-normalizes the result, "
+            "handing back the same form at twice the resolution with `height` / `width` doubled to match. Matches "
+            '`LTX2LatentUpsamplePipeline` with `latents_normalized=True`, `output_type="latent"` and no AdaIN or '
+            "tone mapping."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("latent_upsampler", LTX2LatentUpsamplerModel),
+            ComponentSpec("transformer", LTX2VideoTransformer3DModel),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Video latents to upsample, of shape [B, C, F, H, W] (normalized, not packed).",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="Upsampled video latents of shape [B, C, F, 2H, 2W] (normalized, not packed).",
+            ),
+            OutputParam("height", type_hint=int, description="Height of the upsampled latents, in pixels."),
+            OutputParam("width", type_hint=int, description="Width of the upsampled latents, in pixels."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        upsampler = components.latent_upsampler
+
+        # The upsampler works on raw VAE latents: denormalize, upsample, re-normalize.
+        latents = _denormalize_latents(
+            block_state.latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
+        )
+        latents = upsampler(latents.to(device=upsampler.device, dtype=upsampler.dtype))
+        latents = _normalize_latents(
+            latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
+        )
+
+        block_state.latents = latents
+        # The second pass and any re-encoding ahead of it read the upsampled resolution from state.
+        block_state.height = latents.shape[-2] * components.vae_spatial_compression_ratio
+        block_state.width = latents.shape[-1] * components.vae_spatial_compression_ratio
 
         self.set_block_state(state, block_state)
         return components, state
