@@ -326,7 +326,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Args:
             prompt (str | list[str]): Input prompt or list of prompts
             device (torch.device): Device to run encoding on
-            num_videos_per_prompt (int): Number of videos to generate per prompt
             max_sequence_length (int): Maximum sequence length for tokenization
             dtype (torch.dtype): Data type for embeddings
 
@@ -395,7 +394,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Args:
             prompt (str | list[str]): Input prompt or list of prompts
             device (torch.device): Device to run encoding on
-            num_videos_per_prompt (int): Number of videos to generate per prompt
             dtype (torch.dtype): Data type for embeddings
 
         Returns:
