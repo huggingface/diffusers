@@ -16,11 +16,15 @@
 import pytest
 import torch
 
-from diffusers import Cosmos3OmniTransformer
+from diffusers import Cosmos3OmniTransformer, SeaCacheConfig
+from diffusers.hooks._helpers import TransformerBlockRegistry
+from diffusers.hooks.sea_cache import _SEA_CACHE_ROOT_HOOK
+from diffusers.models.cache_utils import CacheMixin
 from diffusers.models.transformers.transformer_cosmos3 import (
     Cosmos3NemotronRMSNorm,
     Cosmos3OmniTransformerOutput,
     Cosmos3PackedMoTAttention,
+    Cosmos3VLTextMoTDecoderLayer,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -30,6 +34,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SeaCacheTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -103,6 +108,134 @@ class Cosmos3OmniTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelTesterMixin):
+    @pytest.mark.parametrize("indicator_source", ["first_block", "raw_vision_latents"])
+    def test_cosmos3_supports_sea_cache_without_changing_state_dict_keys(self, indicator_source):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        state_dict_keys = set(model.state_dict())
+        norm_calls = {"und": 0, "gen": 0}
+        original_und_norm_forward = model.norm.forward
+        original_gen_norm_forward = model.norm_moe_gen.forward
+
+        def counted_und_norm_forward(*args, **kwargs):
+            norm_calls["und"] += 1
+            return original_und_norm_forward(*args, **kwargs)
+
+        def counted_gen_norm_forward(*args, **kwargs):
+            norm_calls["gen"] += 1
+            return original_gen_norm_forward(*args, **kwargs)
+
+        model.norm.forward = counted_und_norm_forward
+        model.norm_moe_gen.forward = counted_gen_norm_forward
+        runtime = {"step": 0, "sigma": 0.9, "num_steps": 3}
+        config = SeaCacheConfig(
+            threshold=100.0,
+            cache_end_steps=0,
+            indicator_source=indicator_source,
+            current_step_callback=lambda: runtime["step"],
+            current_sigma_callback=lambda: runtime["sigma"],
+            num_inference_steps_callback=lambda: runtime["num_steps"],
+        )
+
+        assert isinstance(model, CacheMixin)
+        model.enable_cache(config)
+        assert set(model.state_dict()) == state_dict_keys
+
+        inputs = self.get_dummy_inputs()
+        with torch.no_grad(), model.cache_context("cond"):
+            model(**inputs)
+        assert norm_calls == {"und": 1, "gen": 1}
+
+        runtime.update(step=1, sigma=0.6)
+        cached_inputs = self.get_dummy_inputs()
+        cached_inputs["vision_tokens"] = [cached_inputs["vision_tokens"][0] + 0.1]
+        with torch.no_grad(), model.cache_context("cond"):
+            output = model(**cached_inputs)
+
+        # A hit bypasses both final pathway normalizations but still runs the prediction heads.
+        assert norm_calls == {"und": 1, "gen": 1}
+        assert output.sample[0].shape == self.output_shape
+
+        model.disable_cache()
+        assert set(model.state_dict()) == state_dict_keys
+        with torch.no_grad():
+            model(**self.get_dummy_inputs())
+        assert norm_calls == {"und": 2, "gen": 2}
+
+    def test_cosmos3_sea_cache_post_norm_boundary_numeric_semantics(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        runtime = {"step": 0, "sigma": 0.9, "num_steps": 3}
+        config = SeaCacheConfig(
+            threshold=100.0,
+            cache_end_steps=0,
+            current_step_callback=lambda: runtime["step"],
+            current_sigma_callback=lambda: runtime["sigma"],
+            num_inference_steps_callback=lambda: runtime["num_steps"],
+        )
+        first_block_gen_inputs = []
+        returned_und_outputs = []
+        returned_gen_outputs = []
+        projection_head_inputs = []
+        projection_head_calls = 0
+
+        def capture_first_block_gen_input(module, args):
+            first_block_gen_inputs.append(args[1].detach().clone())
+
+        def capture_und_output(module, args, output):
+            returned_und_outputs.append(output.detach().clone())
+
+        def capture_gen_output(module, args, output):
+            returned_gen_outputs.append(output.detach().clone())
+
+        original_projection_forward = model.proj_out.forward
+
+        def counted_projection_forward(hidden_states):
+            nonlocal projection_head_calls
+            projection_head_calls += 1
+            projection_head_inputs.append(hidden_states.detach().clone())
+            return original_projection_forward(hidden_states)
+
+        model.layers[0].register_forward_pre_hook(capture_first_block_gen_input)
+        model.norm.register_forward_hook(capture_und_output)
+        model.norm_moe_gen.register_forward_hook(capture_gen_output)
+        model.proj_out.forward = counted_projection_forward
+        model.enable_cache(config)
+
+        with torch.no_grad(), model.cache_context("cond"):
+            model(**self.get_dummy_inputs())
+
+        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+        state = root_hook.state_manager._state_cache["cond"]
+        cached_step, cached_und_output, cached_gen_residual = state.history[-1]
+        assert cached_step == 0
+        torch.testing.assert_close(cached_und_output, returned_und_outputs[0])
+        torch.testing.assert_close(
+            cached_gen_residual,
+            returned_gen_outputs[0] - first_block_gen_inputs[0],
+        )
+
+        runtime.update(step=1, sigma=0.6)
+        cached_inputs = self.get_dummy_inputs()
+        cached_inputs["vision_tokens"] = [cached_inputs["vision_tokens"][0] + 0.1]
+        with torch.no_grad(), model.cache_context("cond"):
+            model(**cached_inputs)
+
+        torch.testing.assert_close(returned_und_outputs[1], cached_und_output)
+        torch.testing.assert_close(
+            returned_gen_outputs[1],
+            first_block_gen_inputs[-1] + cached_gen_residual,
+        )
+        torch.testing.assert_close(projection_head_inputs[1], returned_gen_outputs[1])
+        assert projection_head_calls == 2
+
+    def test_cosmos3_decoder_layer_cache_metadata_tracks_generation_stream(self):
+        metadata = TransformerBlockRegistry.get(Cosmos3VLTextMoTDecoderLayer)
+
+        assert metadata.return_hidden_states_index == 1
+        assert metadata.return_encoder_hidden_states_index == 0
+        assert metadata.hidden_states_argument_name == "gen_seq"
+        assert metadata.encoder_hidden_states_argument_name == "und_seq"
+        assert metadata.hidden_states_norm_module_name == "input_layernorm_moe_gen"
+
     def test_output_format(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
 
@@ -241,6 +374,10 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         expected = (norm.weight.float() * expected).to(hidden_states.dtype)
 
         torch.testing.assert_close(norm(hidden_states), expected, rtol=0, atol=0)
+
+
+class TestCosmos3OmniTransformerSeaCache(Cosmos3OmniTransformerTesterConfig, SeaCacheTesterMixin):
+    cache_input_key = "vision_tokens"
 
 
 class TestCosmos3OmniTransformerMemory(Cosmos3OmniTransformerTesterConfig, MemoryTesterMixin):

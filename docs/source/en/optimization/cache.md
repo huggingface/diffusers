@@ -68,6 +68,34 @@ config = FasterCacheConfig(
 pipeline.transformer.enable_cache(config)
 ```
 
+## SeaCache
+
+[SeaCache](https://huggingface.co/papers/2602.18993) compares Spectral-Evolution-Aware (SEA) indicators between
+successive denoising steps. When the accumulated indicator change remains below a threshold, it skips the expensive
+transformer block stack and predicts its output from cached residuals.
+
+SeaCache is disabled by default. Enable it on the transformer and provide callbacks for the active scheduler step,
+sigma, and number of inference steps:
+
+```python
+from diffusers import Cosmos3OmniPipeline, SeaCacheConfig
+
+pipe = Cosmos3OmniPipeline.from_pretrained("nvidia/Cosmos3-Nano")
+pipe.transformer.enable_cache(
+    SeaCacheConfig(
+        threshold=0.2,
+        max_consecutive_cached=2,
+        current_step_callback=lambda: pipe.current_step_index,
+        current_sigma_callback=lambda: pipe.current_sigma,
+        num_inference_steps_callback=lambda: pipe.num_timesteps,
+    )
+)
+```
+
+This model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
+[`Cosmos3DistilledModularPipeline`]. SeaCache is an approximate optimization and may change generated outputs. Call
+`pipe.transformer.disable_cache()` when you need every denoising step to execute the full transformer.
+
 ## FirstBlockCache
 
 [FirstBlock Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) checks how much the early layers of the denoiser changes from one timestep to the next. If the change is small, the model skips the expensive later layers and reuses the previous output.

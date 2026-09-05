@@ -28,6 +28,7 @@ class CacheMixin:
         - [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588)
         - [FasterCache](https://huggingface.co/papers/2410.19355)
         - [FirstBlockCache](https://github.com/chengzeyi/ParaAttention/blob/7a266123671b55e7e5a2fe9af3121f07a36afc78/README.md#first-block-cache-our-dynamic-caching)
+        - [SeaCache](https://huggingface.co/papers/2602.18993)
     """
 
     _cache_config = None
@@ -41,11 +42,12 @@ class CacheMixin:
         Enable caching techniques on the model.
 
         Args:
-            config (`PyramidAttentionBroadcastConfig | FasterCacheConfig | FirstBlockCacheConfig | TextKVCacheConfig`):
+            config (`PyramidAttentionBroadcastConfig | FasterCacheConfig | FirstBlockCacheConfig | SeaCacheConfig | TextKVCacheConfig`):
                 The configuration for applying the caching technique. Currently supported caching techniques are:
                     - [`~hooks.PyramidAttentionBroadcastConfig`]
                     - [`~hooks.FasterCacheConfig`]
                     - [`~hooks.FirstBlockCacheConfig`]
+                    - [`~hooks.SeaCacheConfig`]
                     - [`~hooks.TextKVCacheConfig`]
 
         Example:
@@ -72,12 +74,14 @@ class CacheMixin:
             HookRegistry,
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
+            SeaCacheConfig,
             TaylorSeerCacheConfig,
             TextKVCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_mag_cache,
             apply_pyramid_attention_broadcast,
+            apply_sea_cache,
             apply_taylorseer_cache,
             apply_text_kv_cache,
         )
@@ -97,6 +101,8 @@ class CacheMixin:
             apply_text_kv_cache(self, config)
         elif isinstance(config, PyramidAttentionBroadcastConfig):
             apply_pyramid_attention_broadcast(self, config)
+        elif isinstance(config, SeaCacheConfig):
+            apply_sea_cache(self, config)
         elif isinstance(config, TaylorSeerCacheConfig):
             apply_taylorseer_cache(self, config)
         else:
@@ -116,6 +122,7 @@ class CacheMixin:
             HookRegistry,
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
+            SeaCacheConfig,
             TaylorSeerCacheConfig,
             TextKVCacheConfig,
         )
@@ -123,6 +130,12 @@ class CacheMixin:
         from ..hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
         from ..hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
+        from ..hooks.sea_cache import (
+            _SEA_CACHE_BLOCK_HOOK,
+            _SEA_CACHE_LEADER_BLOCK_HOOK,
+            _SEA_CACHE_POST_NORM_HOOK,
+            _SEA_CACHE_ROOT_HOOK,
+        )
         from ..hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
         from ..hooks.text_kv_cache import _TEXT_KV_CACHE_BLOCK_HOOK, _TEXT_KV_CACHE_TRANSFORMER_HOOK
 
@@ -145,6 +158,11 @@ class CacheMixin:
         elif isinstance(self._cache_config, TextKVCacheConfig):
             registry.remove_hook(_TEXT_KV_CACHE_TRANSFORMER_HOOK, recurse=True)
             registry.remove_hook(_TEXT_KV_CACHE_BLOCK_HOOK, recurse=True)
+        elif isinstance(self._cache_config, SeaCacheConfig):
+            registry.remove_hook(_SEA_CACHE_POST_NORM_HOOK, recurse=True)
+            registry.remove_hook(_SEA_CACHE_BLOCK_HOOK, recurse=True)
+            registry.remove_hook(_SEA_CACHE_LEADER_BLOCK_HOOK, recurse=True)
+            registry.remove_hook(_SEA_CACHE_ROOT_HOOK, recurse=True)
         elif isinstance(self._cache_config, TaylorSeerCacheConfig):
             registry.remove_hook(_TAYLORSEER_CACHE_HOOK, recurse=True)
         else:
@@ -168,6 +186,7 @@ class CacheMixin:
         registry = HookRegistry.check_if_exists_or_initialize(self)
         registry._set_context(name)
 
-        yield
-
-        registry._set_context(None)
+        try:
+            yield
+        finally:
+            registry._set_context(None)

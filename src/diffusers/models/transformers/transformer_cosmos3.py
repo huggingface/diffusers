@@ -23,6 +23,7 @@ from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
+from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
@@ -370,7 +371,7 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         return residual_und + mlp_out_und, residual_gen + mlp_out_gen
 
 
-class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, AttentionMixin):
+class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, AttentionMixin, CacheMixin):
     _supports_gradient_checkpointing = True
     _no_split_modules = ["Cosmos3VLTextMoTDecoderLayer"]
     _repeated_blocks = ["Cosmos3VLTextMoTDecoderLayer"]

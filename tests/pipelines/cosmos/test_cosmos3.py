@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import contextmanager
 from unittest import mock
 
 import numpy as np
@@ -20,7 +21,12 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer
 
-from diffusers import AutoencoderKLWan, Cosmos3OmniPipeline, Cosmos3OmniTransformer, UniPCMultistepScheduler
+from diffusers import (
+    AutoencoderKLWan,
+    Cosmos3OmniPipeline,
+    Cosmos3OmniTransformer,
+    UniPCMultistepScheduler,
+)
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import _preprocess_conditioning_image
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -109,6 +115,60 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
         video = pipe(**self.get_dummy_inputs()).video
 
         assert video[0].shape == self.output_shape
+
+    def test_fp32_sampling_state_keeps_transformer_inputs_in_model_dtype(self):
+        pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipeline.transformer.to(dtype=torch.float16)
+        pipeline.set_progress_bar_config(disable=None)
+        transformer_input_dtypes = []
+        callback_latent_dtypes = []
+
+        def transformer_forward(**kwargs):
+            vision_tokens = kwargs["vision_tokens"][0]
+            transformer_input_dtypes.append(vision_tokens.dtype)
+            return ([torch.zeros_like(vision_tokens)], None, None)
+
+        def callback_on_step_end(_pipeline, _step_index, _timestep, callback_kwargs):
+            callback_latent_dtypes.append(callback_kwargs["latents"].dtype)
+            return {"latents": callback_kwargs["latents"].to(torch.float16)}
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.update(
+            output_type="latent",
+            enable_safety_check=False,
+            callback_on_step_end=callback_on_step_end,
+        )
+        with mock.patch.object(pipeline.transformer, "forward", side_effect=transformer_forward):
+            latents = pipeline(**inputs).video
+
+        assert transformer_input_dtypes
+        assert all(dtype == torch.float16 for dtype in transformer_input_dtypes)
+        assert callback_latent_dtypes
+        assert all(dtype == torch.float32 for dtype in callback_latent_dtypes)
+        assert latents.dtype == torch.float32
+
+    def test_transformer_cache_contexts_receive_exact_scheduler_metadata(self):
+        pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
+        observed = []
+
+        @contextmanager
+        def record_context(name):
+            observed.append((name, pipeline.current_step_index, pipeline.current_sigma))
+            yield
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["guidance_scale"] = 2.0
+        with mock.patch.object(pipeline.transformer, "cache_context", side_effect=record_context):
+            pipeline(**inputs)
+
+        assert [name for name, _, _ in observed] == ["cond", "uncond", "cond", "uncond"]
+        for call_index, (_, step_index, sigma) in enumerate(observed):
+            expected_step = call_index // 2
+            assert step_index == expected_step
+            torch.testing.assert_close(sigma, pipeline.scheduler.sigmas[expected_step])
+        assert pipeline.current_step_index is None
+        assert pipeline.current_sigma is None
 
     def test_cosmos3_tokenize_prompt_uses_checkpoint_system_prompt_default(self):
         components = self.get_dummy_components()

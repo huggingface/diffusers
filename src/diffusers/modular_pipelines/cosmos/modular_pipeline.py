@@ -19,6 +19,28 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
     inverse_video_resolution_template = "This video is not of {height}x{width} resolution."
 
     @property
+    def current_step_index(self):
+        return getattr(self, "_current_step_index", None)
+
+    @property
+    def current_sigma(self):
+        return getattr(self, "_current_sigma", None)
+
+    @property
+    def num_timesteps(self):
+        return getattr(self, "_num_timesteps", None)
+
+    def __call__(self, *args, **kwargs):
+        transformer = getattr(self, "transformer", None)
+        try:
+            return super().__call__(*args, **kwargs)
+        finally:
+            self._current_step_index = None
+            self._current_sigma = None
+            if hasattr(transformer, "_reset_stateful_cache"):
+                transformer._reset_stateful_cache()
+
+    @property
     def vae_scale_factor_spatial(self):
         if getattr(self, "vae", None) is not None:
             return int(self.vae.config.scale_factor_spatial)
