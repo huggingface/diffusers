@@ -85,7 +85,7 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
         </tr>
         <tr>
             <td class="px-4 py-2 text-gray-700">
-            <a href="./stable_diffusion_safe">StableDiffusionPipelineSafe</a>
+            StableDiffusionPipelineSafe (deprecated; no doc page)
             </td>
             <td class="px-4 py-2 text-gray-700">filtered text-to-image</td>
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/AIML-TUDA/unsafe-vs-safe-stable-diffusion"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
