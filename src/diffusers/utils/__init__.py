@@ -101,6 +101,7 @@ from .import_utils import (
     is_outlines_available,
     is_peft_available,
     is_peft_version,
+    is_pi3_available,
     is_pytorch_retinaface_available,
     is_safetensors_available,
     is_sageattention_available,

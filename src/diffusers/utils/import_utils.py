@@ -196,6 +196,7 @@ _peft_available, _peft_version = _is_package_available("peft")
 _torchvision_available, _torchvision_version = _is_package_available("torchvision")
 _matplotlib_available, _matplotlib_version = _is_package_available("matplotlib")
 _timm_available, _timm_version = _is_package_available("timm")
+_pi3_available, _pi3_version = _is_package_available("pi3")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
 _imageio_available, _imageio_version = _is_package_available("imageio")
 _ftfy_available, _ftfy_version = _is_package_available("ftfy")
@@ -320,6 +321,10 @@ def is_peft_available():
 
 def is_torchvision_available():
     return _torchvision_available
+
+
+def is_pi3_available():
+    return _pi3_available
 
 
 def is_matplotlib_available():
