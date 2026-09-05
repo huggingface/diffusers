@@ -158,6 +158,13 @@ def custom_offload_with_hook(
     return user_hook
 
 
+# search_best_candidate tries every combination of models to find the smallest one
+# that frees enough memory, so it's O(2^n). fine for a few models, but ComponentsManager
+# is meant to hold components from multiple pipelines at once so n can get big. past
+# this many candidates just do a greedy pick instead of grinding through all of them.
+_MAX_EXHAUSTIVE_OFFLOAD_CANDIDATES = 20
+
+
 # this is the class that user can customize to implement their own offload strategy
 class AutoOffloadStrategy:
     """
@@ -210,6 +217,26 @@ class AutoOffloadStrategy:
             larger than `min_memory_offload`
             """
             model_ids = list(module_sizes.keys())
+
+            if len(model_ids) > _MAX_EXHAUSTIVE_OFFLOAD_CANDIDATES:
+                # too many to brute-force all combinations, so fall back to a greedy
+                # pick instead. module_sizes is sorted largest-to-smallest (for the
+                # exhaustive path below), but per the TODO above we want to keep
+                # bigger models on GPU when we can, so walk it smallest-to-largest
+                # here and evict small models first.
+                logger.warning(
+                    f"{len(model_ids)} candidate models to offload exceeds "
+                    f"{_MAX_EXHAUSTIVE_OFFLOAD_CANDIDATES}, using a greedy search instead of an exhaustive one"
+                )
+                greedy_candidate = []
+                greedy_size = 0
+                for model_id in reversed(model_ids):
+                    if greedy_size >= min_memory_offload:
+                        break
+                    greedy_candidate.append(model_id)
+                    greedy_size += module_sizes[model_id]
+                return tuple(greedy_candidate) if greedy_size >= min_memory_offload else None
+
             best_candidate = None
             best_size = float("inf")
             for r in range(1, len(model_ids) + 1):
