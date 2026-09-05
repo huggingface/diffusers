@@ -114,7 +114,6 @@ class CacheMixin:
         HookRegistry.check_if_exists_or_initialize(self).invalidate_child_registries_cache()
 
         self._cache_config = config
-        HookRegistry.check_if_exists_or_initialize(self)._child_registries_cache = None
 
     def disable_cache(self) -> None:
         from ..hooks import (
@@ -173,7 +172,6 @@ class CacheMixin:
         registry.invalidate_child_registries_cache()
 
         self._cache_config = None
-        registry._child_registries_cache = None
 
     def _reset_stateful_cache(self, recurse: bool = True) -> None:
         from ..hooks import HookRegistry
