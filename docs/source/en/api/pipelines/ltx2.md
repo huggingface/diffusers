@@ -67,6 +67,8 @@ video_latent, audio_latent = pipe(
     num_inference_steps=30,
     sigmas=None,
     guidance_scale=3.0,
+    modality_scale=3.0,
+    audio_modality_scale=3.0,
     output_type="latent",
     return_dict=False,
 )
@@ -341,6 +343,8 @@ video, audio = pipe(
     frame_rate=frame_rate,
     num_inference_steps=30,
     guidance_scale=3.0,
+    modality_scale=3.0,
+    audio_modality_scale=3.0,
     generator=generator,
     output_type="np",
     return_dict=False,
