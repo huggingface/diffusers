@@ -38,7 +38,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # 1. DENOISE
 # ====================
 
-# inputs (text + vace_conditioning_latents) -> additional_inputs -> set_timesteps -> prepare_latents -> denoise
+# inputs (text + control_hidden_states) -> additional_inputs -> set_timesteps -> prepare_latents -> denoise -> trim_latents
 
 
 # auto_docstring
@@ -97,6 +97,7 @@ class Wan22VaceCoreDenoiseStep(SequentialPipelineBlocks):
         WanSetTimestepsStep,
         WanPrepareLatentsStep,
         Wan22VaceDenoiseStep,
+        WanVaceTrimReferenceLatentsStep,
     ]
     block_names = [
         "input",
@@ -104,6 +105,7 @@ class Wan22VaceCoreDenoiseStep(SequentialPipelineBlocks):
         "set_timesteps",
         "prepare_latents",
         "denoise",
+        "trim_latents",
     ]
 
     @property
@@ -186,14 +188,12 @@ class Wan22VaceBlocks(SequentialPipelineBlocks):
         WanTextEncoderStep,
         WanVaceEncoderStep,
         Wan22VaceCoreDenoiseStep,
-        WanVaceTrimReferenceLatentsStep,
         WanVaeDecoderStep,
     ]
     block_names = [
         "text_encoder",
         "vace_encoder",
         "denoise",
-        "trim_latents",
         "decode",
     ]
 
