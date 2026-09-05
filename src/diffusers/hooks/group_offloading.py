@@ -1025,19 +1025,25 @@ def _get_group_onload_device(module: torch.nn.Module) -> torch.device:
 
 
 def _get_group_offload_summary(module: torch.nn.Module, name: str = "") -> str:
-    """Render the offload grouping of a module as a short block, for use in assertion messages.
+    """Render the offload grouping of a module as a short block, for assertion messages and manual inspection.
 
-    The grouping lives on the `GroupOffloadingHook` in each participating submodule's `_diffusers_hook` registry, and
-    several submodules share one `ModuleGroup`, so this dedupes the groups and resolves the module objects back to
-    qualified names. Each group is reported against the module whose `forward` actually brings its weights over: a
-    group with `onload_self=False` is onloaded by whichever group names it as `next_group`, not by its own leader.
+    Each group is reported against the module whose `forward` brings its weights over — its own onload leader, or, for
+    a group that streaming has wired into a prefetch chain, the group ahead of it:
 
-    The grouping is reported as of the moment this is called. With `use_stream=True` the prefetch chain is wired only
-    once a module's `forward` has completed once, so a module that has not run yet reports every group as onloading
-    itself, exactly as it would without a stream.
+    ```
+    transformer: 4 offload group(s)
+      onloaded by '<root>' forward: [proj_in, proj_out] (+4 params, +0 buffers)
+      prefetched by '<root>' forward: [transformer_blocks.0] (+0 params, +0 buffers)
+      prefetched by 'transformer_blocks.0' forward: [transformer_blocks.1] (+0 params, +0 buffers)
+      prefetched by 'transformer_blocks.1' forward: [transformer_blocks.2] (+0 params, +0 buffers)
+    ```
 
-    A group can span modules that are not under the one being walked — calling this on a submodule of an offloaded
-    model reaches the group its siblings belong to — so those are reported as `<outside this module>`.
+    Because the grouping is reported at the moment this is called, and streaming prefetches groups lazily, the prefetch
+    chain will only exist and be reported if a module's `forward` has completed once, until which point a streamed
+    module reads exactly like an unstreamed one.
+
+    This function is also designed to work when called on submodules of an offloaded model. In this case, group members
+    outside the submodule — and its onload leader, if that is outside too — read as `<outside this module>`.
     """
     name_of = {id(submodule): submodule_name or "<root>" for submodule_name, submodule in module.named_modules()}
     outside = "<outside this module>"
