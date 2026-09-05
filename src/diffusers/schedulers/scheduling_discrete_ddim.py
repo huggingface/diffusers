@@ -76,6 +76,10 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
             or `"random"`.
         corrector_selection_tau (`float`, defaults to 1.0):
             Temperature of the Gumbel-top-k position selection (lower is greedier).
+        remasking_max_cap (`float`, defaults to 0.0):
+            Max-capped remasking rate of ReMDM (https://huggingface.co/papers/2503.00307). `0.0` recovers plain DDIM;
+            when positive, each step re-noises a would-stay position with probability `min((1 - alpha_s) / alpha_t,
+            remasking_max_cap)`, letting the sampler revise already-committed tokens. The final step is unaffected.
     """
 
     order = 1
@@ -88,6 +92,7 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         corrector_k: int = 1,
         corrector_selection: str = "lowest_log_margin",
         corrector_selection_tau: float = 1.0,
+        remasking_max_cap: float = 0.0,
     ):
         self.num_inference_steps = num_inference_steps
         self.timesteps = torch.arange(num_inference_steps, dtype=torch.long)
@@ -197,6 +202,15 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         clean_mass = alpha_s * (1 - survival) / vocab_size + survival * alpha_s * same
         stay_mass = survival * (1 - alpha_s) / vocab_size * torch.ones_like(same)
         noise_mass = (1 - survival) * (1 - alpha_s) / vocab_size * torch.ones_like(same)
+
+        # ReMDM remasking (https://huggingface.co/papers/2503.00307): move `p_st` of the stay mass onto the noise
+        # route so an already-committed token can be re-corrupted and revised on a later step. `p_st` vanishes on the
+        # final step (alpha_s = 1), so the deterministic commit is preserved.
+        remasking_max_cap = self.config.remasking_max_cap
+        if remasking_max_cap > 0.0 and alpha_t > 0.0:
+            p_st = min((1 - alpha_s) / alpha_t, remasking_max_cap)
+            noise_mass = noise_mass + p_st * stay_mass
+            stay_mass = (1 - p_st) * stay_mass
 
         route_probs = torch.stack([clean_mass, stay_mass, noise_mass], dim=-1)
         route_probs = route_probs / route_probs.sum(dim=-1, keepdim=True)
