@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import ChronoEditTransformer3DModel
@@ -92,7 +93,16 @@ class ChronoEditTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestChronoEditTransformer(ChronoEditTransformerTesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.skipif(
+        torch_device not in ["cuda", "xpu"],
+        reason="float16 and bfloat16 can only be use for inference with an accelerator",
+    )
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # Modules kept in fp32 diverge from the fully-cast reference, so relax the low-precision tolerance.
+        super().test_from_save_pretrained_dtype_inference(
+            tmp_path, dtype, atol=3e-2 if dtype == torch.bfloat16 else 1e-2
+        )
 
 
 class TestChronoEditTransformerTraining(ChronoEditTransformerTesterConfig, TrainingTesterMixin):

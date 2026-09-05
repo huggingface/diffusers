@@ -33,7 +33,7 @@ SDXL Turbo는 adversarial time-distilled(적대적 시간 전이) [Stable Diffus
 from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", torch_dtype=torch.float16, variant="fp16")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", dtype=torch.float16, variant="fp16")
 pipeline = pipeline.to("cuda")
 ```
 
@@ -44,7 +44,7 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 pipeline = StableDiffusionXLPipeline.from_single_file(
-    "https://huggingface.co/stabilityai/sdxl-turbo/blob/main/sd_xl_turbo_1.0_fp16.safetensors", torch_dtype=torch.float16)
+    "https://huggingface.co/stabilityai/sdxl-turbo/blob/main/sd_xl_turbo_1.0_fp16.safetensors", dtype=torch.float16)
 pipeline = pipeline.to("cuda")
 ```
 
@@ -59,7 +59,7 @@ Text-to-image의 경우 텍스트 프롬프트를 전달합니다. 기본적으�
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline_text2image = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", torch_dtype=torch.float16, variant="fp16")
+pipeline_text2image = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", dtype=torch.float16, variant="fp16")
 pipeline_text2image = pipeline_text2image.to("cuda")
 
 prompt = "A cinematic shot of a baby racoon wearing an intricate italian priest robe."

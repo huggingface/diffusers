@@ -64,7 +64,6 @@ def _get_qkv_projections(attn: "BriaFiboAttention", hidden_states, encoder_hidde
     return _get_projections(attn, hidden_states, encoder_hidden_states)
 
 
-# Copied from diffusers.models.transformers.transformer_flux.FluxAttnProcessor with FluxAttnProcessor->BriaFiboAttnProcessor, FluxAttention->BriaFiboAttention
 class BriaFiboAttnProcessor:
     _attention_backend = None
     _parallel_config = None
@@ -443,6 +442,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
 
     _no_split_modules = ["BriaFiboTransformerBlock", "BriaFiboSingleTransformerBlock"]
     _supports_gradient_checkpointing = True
+    _repeated_blocks = ["BriaFiboTransformerBlock", "BriaFiboSingleTransformerBlock"]
 
     @register_to_config
     def __init__(
@@ -470,7 +470,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         self.time_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim, time_theta=time_theta)
 
         if guidance_embeds:
-            self.guidance_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim)
+            self.guidance_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim, time_theta=time_theta)
 
         self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.inner_dim)
         self.x_embedder = torch.nn.Linear(self.config.in_channels, self.inner_dim)
@@ -563,7 +563,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
 
         temb = self.time_embed(timestep, dtype=hidden_states.dtype)
 
-        if guidance:
+        if guidance is not None:
             temb += self.guidance_embed(guidance, dtype=hidden_states.dtype)
 
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)

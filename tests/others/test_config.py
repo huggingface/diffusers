@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import json
-import tempfile
-import unittest
 from pathlib import Path
+
+import pytest
 
 from diffusers import (
     DDIMScheduler,
@@ -102,9 +102,9 @@ class SampleObjectPaths(ConfigMixin):
         pass
 
 
-class ConfigTester(unittest.TestCase):
+class TestConfig:
     def test_load_not_from_mixin(self):
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             ConfigMixin.load_config("dummy_path")
 
     def test_register_to_config(self):
@@ -143,7 +143,7 @@ class ConfigTester(unittest.TestCase):
         assert config["d"] == "for diffusion"
         assert config["e"] == [1, 3]
 
-    def test_save_load(self):
+    def test_save_load(self, tmp_path):
         obj = SampleObject()
         config = obj.config
 
@@ -153,10 +153,9 @@ class ConfigTester(unittest.TestCase):
         assert config["d"] == "for diffusion"
         assert config["e"] == [1, 3]
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            obj.save_config(tmpdirname)
-            new_obj = SampleObject.from_config(SampleObject.load_config(tmpdirname))
-            new_config = new_obj.config
+        obj.save_config(tmp_path)
+        new_obj = SampleObject.from_config(SampleObject.load_config(tmp_path))
+        new_config = new_obj.config
 
         # unfreeze configs
         config = dict(config)
@@ -262,7 +261,7 @@ class ConfigTester(unittest.TestCase):
         # no warning should be thrown
         assert cap_logger.out == ""
 
-    def test_use_default_values(self):
+    def test_use_default_values(self, tmp_path):
         # let's first save a config that should be in the form
         #    a=2,
         #    b=5,
@@ -277,14 +276,13 @@ class ConfigTester(unittest.TestCase):
         # make sure that default config has all keys in `_use_default_values`
         assert set(config_dict.keys()) == set(config.config._use_default_values)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            config.save_config(tmpdirname)
+        config.save_config(tmp_path)
 
-            # now loading it with SampleObject2 should put f into `_use_default_values`
-            config = SampleObject2.from_config(SampleObject2.load_config(tmpdirname))
+        # now loading it with SampleObject2 should put f into `_use_default_values`
+        config = SampleObject2.from_config(SampleObject2.load_config(tmp_path))
 
-            assert "f" in config.config._use_default_values
-            assert config.config.f == [1, 3]
+        assert "f" in config.config._use_default_values
+        assert config.config.f == [1, 3]
 
         # now loading the config, should **NOT** use [1, 3] for `f`, but the default [1, 4] value
         # **BECAUSE** it is part of `config.config._use_default_values`

@@ -17,6 +17,8 @@ from transformers import Qwen2Tokenizer, Qwen3Model, T5TokenizerFast
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
+from ...image_processor import VaeImageProcessor
+from ...models import AutoencoderKLQwenImage
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import AnimaModularPipeline
@@ -248,6 +250,155 @@ class AnimaTextEncoderStep(ModularPipelineBlocks):
         )
         for name, value in prompt_outputs.items():
             setattr(block_state, name, value)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# Copied from diffusers.modular_pipelines.qwenimage.encoders.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
+# Copied from diffusers.modular_pipelines.qwenimage.encoders.encode_vae_image
+def encode_vae_image(
+    image: torch.Tensor,
+    vae: AutoencoderKLQwenImage,
+    generator: torch.Generator,
+    device: torch.device,
+    dtype: torch.dtype,
+    latent_channels: int = 16,
+    sample_mode: str = "argmax",
+):
+    if not isinstance(image, torch.Tensor):
+        raise ValueError(f"Expected image to be a tensor, got {type(image)}.")
+
+    # preprocessed image should be a 4D tensor: batch_size, num_channels, height, width
+    if image.dim() == 4:
+        image = image.unsqueeze(2)
+    elif image.dim() != 5:
+        raise ValueError(f"Expected image dims 4 or 5, got {image.dim()}.")
+
+    image = image.to(device=device, dtype=dtype)
+
+    if isinstance(generator, list):
+        image_latents = [
+            retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i], sample_mode=sample_mode)
+            for i in range(image.shape[0])
+        ]
+        image_latents = torch.cat(image_latents, dim=0)
+    else:
+        image_latents = retrieve_latents(vae.encode(image), generator=generator, sample_mode=sample_mode)
+    latents_mean = (
+        torch.tensor(vae.config.latents_mean)
+        .view(1, latent_channels, 1, 1, 1)
+        .to(image_latents.device, image_latents.dtype)
+    )
+    latents_std = (
+        torch.tensor(vae.config.latents_std)
+        .view(1, latent_channels, 1, 1, 1)
+        .to(image_latents.device, image_latents.dtype)
+    )
+    image_latents = (image_latents - latents_mean) / latents_std
+
+    return image_latents
+
+
+class AnimaImg2ImgVaeEncoderStep(ModularPipelineBlocks):
+    """VAE Encoder step for Anima image-to-image generation.
+
+    Preprocesses the input image and encodes it with the VAE, producing ``image_latents``. Timestep slicing is handled
+    downstream by ``AnimaImg2ImgSetTimestepsStep`` and noise addition by ``AnimaImg2ImgPrepareLatentsStep``.
+
+    Components:
+        vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+
+    Inputs:
+        image (`PIL.Image.Image`):
+            Input image to encode.
+        height (`int`, *optional*):
+            Height of the output image. Defaults to pipeline default.
+        width (`int`, *optional*):
+            Width of the output image. Defaults to pipeline default.
+        generator (`Generator`, *optional*):
+            Torch generator for deterministic generation.
+
+    Outputs:
+        image_latents (`Tensor`):
+            Encoded image latents.
+        height (`int`):
+            Output image height.
+        width (`int`):
+            Output image width.
+    """
+
+    model_name = "anima"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLQwenImage),
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 8}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def description(self) -> str:
+        return (
+            "VAE Encoder step for Anima image-to-image generation. Encodes the input image to produce image_latents."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("image"),
+            InputParam.template("height"),
+            InputParam.template("width"),
+            InputParam.template("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("image_latents", type_hint=torch.Tensor, description="Encoded image latents."),
+            OutputParam("height", type_hint=int, description="Image height used for generation."),
+            OutputParam("width", type_hint=int, description="Image width used for generation."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+
+        block_state.height = block_state.height or components.default_height
+        block_state.width = block_state.width or components.default_width
+
+        processed_image = components.image_processor.preprocess(
+            image=block_state.image, height=block_state.height, width=block_state.width
+        )
+
+        block_state.image_latents = encode_vae_image(
+            image=processed_image,
+            vae=components.vae,
+            generator=block_state.generator,
+            device=device,
+            dtype=components.vae.dtype,
+            latent_channels=components.num_channels_latents,
+        )
 
         self.set_block_state(state, block_state)
         return components, state

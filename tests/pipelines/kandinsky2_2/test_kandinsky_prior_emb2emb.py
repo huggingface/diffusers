@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import random
-import unittest
 
 import numpy as np
 import torch
@@ -32,34 +31,30 @@ from transformers import (
 from diffusers import KandinskyV22PriorEmb2EmbPipeline, PriorTransformer, UnCLIPScheduler
 
 from ...testing_utils import (
+    assert_tensors_close,
     enable_full_determinism,
     floats_tensor,
-    skip_mps,
-    torch_device,
 )
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class KandinskyV22PriorEmb2EmbPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = KandinskyV22PriorEmb2EmbPipeline
-    params = ["prompt", "image"]
-    batch_params = ["prompt", "image"]
-    required_optional_params = [
-        "num_images_per_prompt",
-        "strength",
-        "generator",
-        "num_inference_steps",
-        "negative_prompt",
-        "guidance_scale",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
-
-    supports_dduf = False
+    required_input_params_in_call_signature = frozenset(["prompt", "image"])
+    batch_input_params = frozenset(["prompt", "image"])
+    # The pipeline starts from the embeddings of `image`, so it takes no `latents` argument.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_images_per_prompt", "generator", "output_type", "return_dict"]
+    )
+    # The prior outputs image embeddings, not images.
+    output_shape = (32,)
 
     @property
     def text_embedder_hidden_size(self):
@@ -177,68 +172,44 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
 
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
+    def get_dummy_inputs(self):
+        image = floats_tensor((1, 3, 64, 64), rng=random.Random(0))
         image = image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((256, 256))
 
-        inputs = {
+        return {
             "prompt": "horse",
             "image": init_image,
             "strength": 0.5,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "guidance_scale": 4.0,
             "num_inference_steps": 2,
-            "output_type": "np",
+            # The prior returns embeddings, so `output_type` only selects the type of the returned tensors; request
+            # torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestKandinskyV22PriorEmb2EmbPipeline(KandinskyV22PriorEmb2EmbPipelineTesterConfig, PipelineTesterMixin):
     def test_kandinsky_prior_emb2emb(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
+        image = pipe(**self.get_dummy_inputs()).image_embeds
+        image_from_tuple = pipe(**self.get_dummy_inputs(), return_dict=False)[0]
 
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
+        assert image.shape == (1, *self.output_shape)
 
-        pipe.set_progress_bar_config(disable=None)
+        # fmt: off
+        expected_slice = torch.tensor([0.0117, 0.8621, -0.7459, 0.5970, -0.8612, -0.2034, -1.5705, -0.6786, 0.2857, -0.1696])
+        # fmt: on
+        assert_tensors_close(image[0, -10:], expected_slice, atol=1e-2)
+        assert_tensors_close(image_from_tuple[0, -10:], expected_slice, atol=1e-2)
 
-        output = pipe(**self.get_dummy_inputs(device))
-        image = output.image_embeds
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-2):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-        image_from_tuple = pipe(
-            **self.get_dummy_inputs(device),
-            return_dict=False,
-        )[0]
 
-        image_slice = image[0, -10:]
-
-        image_from_tuple_slice = image_from_tuple[0, -10:]
-
-        assert image.shape == (1, 32)
-
-        expected_slice = np.array(
-            [-0.8947, 0.7225, -0.2400, -1.4224, -1.9268, -1.1454, -1.8220, -0.7972, 1.0465, -0.5207]
-        )
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
-
-    @skip_mps
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=1e-2)
-
-    @skip_mps
-    def test_attention_slicing_forward_pass(self):
-        test_max_difference = torch_device == "cpu"
-        test_mean_pixel_difference = False
-
-        self._test_attention_slicing_forward_pass(
-            test_max_difference=test_max_difference,
-            test_mean_pixel_difference=test_mean_pixel_difference,
-        )
+class TestKandinskyV22PriorEmb2EmbPipelineMemory(KandinskyV22PriorEmb2EmbPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky 2.2 prior
+    emb2emb pipeline."""

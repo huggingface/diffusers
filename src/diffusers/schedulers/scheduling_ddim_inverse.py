@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -275,6 +275,8 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
 
         if num_inference_steps > self.config.num_train_timesteps:

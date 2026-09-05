@@ -70,9 +70,14 @@ class Ideogram4MRoPE(nn.Module):
             raise ValueError(f"`position_ids` must have shape (B, L, 3), got {tuple(position_ids.shape)}.")
         batch_size, seq_len, _ = position_ids.shape
 
+        # Ideogram4's image position ids start at IMAGE_POSITION_OFFSET (65536). If an ambient autocast downcasts the
+        # matmul to bfloat16, the image positions will collapse to only a few distinct values because bfloat16 cannot
+        # represent consecutive integers at this value (after pos 65536 each 512-integer block will collapse to the
+        # same value), which causes the image to become essentially flat. Therefore, we need to disable autocast here.
         pos = position_ids.permute(2, 0, 1).to(dtype=torch.float32)
         inv_freq = self.inv_freq.to(dtype=torch.float32)[None, None, :, None].expand(3, batch_size, -1, 1)
-        freqs = inv_freq @ pos.unsqueeze(2)
+        with torch.autocast(device_type=position_ids.device.type, enabled=False):
+            freqs = inv_freq @ pos.unsqueeze(2)
         freqs = freqs.transpose(2, 3)  # (3, B, L, inv_freq_size)
 
         # Interleaved mrope: pull H freqs into idx 1 mod 3, W freqs into idx 2 mod 3.
@@ -83,7 +88,7 @@ class Ideogram4MRoPE(nn.Module):
             freqs_t[..., idx] = freqs[axis][..., idx]
 
         emb = torch.cat((freqs_t, freqs_t), dim=-1)
-        return emb.cos(), emb.sin()
+        return emb.cos().float(), emb.sin().float()
 
 
 class Ideogram4AttnProcessor:

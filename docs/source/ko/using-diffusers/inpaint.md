@@ -28,7 +28,7 @@ from diffusers import StableDiffusionInpaintPipeline
 
 pipeline = StableDiffusionInpaintPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 pipeline = pipeline.to("cuda")
 ```

@@ -1340,10 +1340,27 @@ class DreamLiteUpBlock2D(nn.Module):
 # Local block dispatch (DreamLite-only)
 #
 # The string ``down_block_type`` / ``up_block_type`` / ``mid_block_type`` keys
-# persisted in saved checkpoints' ``config.json`` mirror the Python class names
-# defined above. The ``carlofkl/DreamLite-{base,mobile}`` Hub repos
-# (``diffusers`` branch) ship configs that use these exact keys.
+# persisted in saved checkpoints' ``config.json`` usually mirror the Python class
+# names defined above. Some configs use upstream UNet block names instead.
 # ---------------------------------------------------------------------------
+_DREAMLITE_DOWN_BLOCK_ALIASES = {
+    "CrossAttnDownRemoveSelfAttnBlock2D": "DreamLiteCrossAttnNoSelfAttnDownBlock2D",
+    "CrossAttnDownBlock2D": "DreamLiteCrossAttnDownBlock2D",
+    "DownBlock2D": "DreamLiteDownBlock2D",
+}
+
+_DREAMLITE_MID_BLOCK_ALIASES = {
+    "UNetMidBlock2DCrossAttn": "DreamLiteUNetMidBlock2DCrossAttn",
+}
+
+_DREAMLITE_UP_BLOCK_ALIASES = {
+    "CrossAttnUpRemoveSelfAttnBlock2D": "DreamLiteCrossAttnNoSelfAttnUpBlock2D",
+    "CrossAttnUpRemoveSelfAttnBlock2DV1": "DreamLiteCrossAttnNoSelfAttnUpBlock2D",
+    "CrossAttnUpBlock2D": "DreamLiteCrossAttnUpBlock2D",
+    "UpBlock2D": "DreamLiteUpBlock2D",
+}
+
+
 def _get_down_block_dreamlite(
     down_block_type: str,
     *,
@@ -1371,6 +1388,8 @@ def _get_down_block_dreamlite(
     ff_mult,
     num_kv_heads,
 ):
+    down_block_type = _DREAMLITE_DOWN_BLOCK_ALIASES.get(down_block_type, down_block_type)
+
     if down_block_type == "DreamLiteDownBlock2D":
         return DreamLiteDownBlock2D(
             num_layers=num_layers,
@@ -1447,6 +1466,8 @@ def _get_mid_block_dreamlite(
 ):
     if mid_block_type is None:
         return None
+    mid_block_type = _DREAMLITE_MID_BLOCK_ALIASES.get(mid_block_type, mid_block_type)
+
     if mid_block_type == "DreamLiteUNetMidBlock2DCrossAttn":
         return DreamLiteUNetMidBlock2DCrossAttn(
             transformer_layers_per_block=transformer_layers_per_block,
@@ -1501,6 +1522,8 @@ def _get_up_block_dreamlite(
     ff_mult,
     num_kv_heads,
 ):
+    up_block_type = _DREAMLITE_UP_BLOCK_ALIASES.get(up_block_type, up_block_type)
+
     if up_block_type == "DreamLiteUpBlock2D":
         return DreamLiteUpBlock2D(
             num_layers=num_layers,

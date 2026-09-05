@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@ class WanModularPipeline(
     """
     A ModularPipeline for Wan2.1 text2video.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "WanBlocks"
@@ -115,7 +114,6 @@ class WanImage2VideoModularPipeline(WanModularPipeline):
     """
     A ModularPipeline for Wan2.1 image2video (both I2V and FLF2V).
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "WanImage2VideoAutoBlocks"
@@ -125,7 +123,6 @@ class Wan22ModularPipeline(WanModularPipeline):
     """
     A ModularPipeline for Wan2.2 text2video.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "Wan22Blocks"
@@ -135,7 +132,6 @@ class Wan22Image2VideoModularPipeline(Wan22ModularPipeline):
     """
     A ModularPipeline for Wan2.2 image2video.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "Wan22Image2VideoBlocks"

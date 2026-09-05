@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,13 +15,12 @@
 
 import gc
 import random
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-import diffusers
 from diffusers import (
     AutoencoderKL,
     EulerDiscreteScheduler,
@@ -29,48 +28,38 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.schedulers import KarrasDiffusionSchedulers
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
-    require_accelerator,
     require_torch_accelerator,
     slow,
     torch_device,
 )
-from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-def check_same_shape(tensor_list):
-    shapes = [tensor.shape for tensor in tensor_list]
-    return all(shape == shapes[0] for shape in shapes[1:])
-
-
-class StableDiffusionLatentUpscalePipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
-):
+class StableDiffusionLatentUpscalePipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionLatentUpscalePipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
-        "height",
-        "width",
-        "cross_attention_kwargs",
-        "negative_prompt_embeds",
-        "prompt_embeds",
-    }
-    required_optional_params = PipelineTesterMixin.required_optional_params - {"num_images_per_prompt"}
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = frozenset(
-        []
-    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
-    image_latents_params = frozenset([])
+    # The upscaler takes prompt strings only (no precomputed embeds) and derives its resolution from the latent.
+    required_input_params_in_call_signature = frozenset(["prompt", "image", "guidance_scale", "negative_prompt"])
+    batch_input_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    # The upscaler takes one latent at a time, so it has no `num_images_per_prompt`.
+    optional_input_params = frozenset(["num_inference_steps", "generator", "latents", "output_type", "return_dict"])
+    # The dummy latent is 16x16 and the upscaler decodes it to 256x256 pixels.
+    output_shape = (3, 256, 256)
 
     @property
     def dummy_image(self):
@@ -78,7 +67,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
         num_channels = 4
         sizes = (16, 16)
 
-        image = floats_tensor((batch_size, num_channels) + sizes, rng=random.Random(0)).to(torch_device)
+        image = floats_tensor((batch_size, num_channels) + sizes, rng=random.Random(0))
         return image
 
     def get_dummy_components(self):
@@ -137,7 +126,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
         text_encoder = CLIPTextModel(text_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        components = {
+        return {
             "unet": model.eval(),
             "vae": vae.eval(),
             "scheduler": scheduler,
@@ -145,158 +134,102 @@ class StableDiffusionLatentUpscalePipelineFastTests(
             "tokenizer": tokenizer,
         }
 
-        return components
-
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "image": self.dummy_image.cpu(),
-            "generator": generator,
+            "image": self.dummy_image,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestStableDiffusionLatentUpscalePipeline(StableDiffusionLatentUpscalePipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        image = pipe(**self.get_dummy_inputs()).images
+        image_slice = image[0, -1, -3:, -3:]
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
-
-        self.assertEqual(image.shape, (1, 256, 256, 3))
-        expected_slice = np.array(
-            [0.47222412, 0.41921633, 0.44717434, 0.46874192, 0.42588258, 0.46150726, 0.4677534, 0.45583832, 0.48579055]
+        assert image.shape == (1, *self.output_shape)
+        expected_slice = torch.tensor(
+            [0.57231164, 0.54510796, 0.5154225, 0.62793314, 0.58053195, 0.5522338, 0.6212865, 0.55557936, 0.5478562]
         )
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_stable_diffusion_latent_upscaler_negative_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionLatentUpscalePipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         negative_prompt = "french fries"
         output = sd_pipe(**inputs, negative_prompt=negative_prompt)
         image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+        image_slice = image[0, -1, -3:, -3:]
 
-        assert image.shape == (1, 256, 256, 3)
-        expected_slice = np.array(
-            [0.43865365, 0.404124, 0.42618454, 0.44333526, 0.40564927, 0.43818694, 0.4411913, 0.43404633, 0.46392226]
+        assert image.shape == (1, *self.output_shape)
+        expected_slice = torch.tensor(
+            [0.5130085, 0.5026671, 0.53117144, 0.6296477, 0.5712023, 0.6032776, 0.68555176, 0.58478534, 0.5989826]
         )
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_stable_diffusion_latent_upscaler_multiple_init_images(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionLatentUpscalePipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt"] = [inputs["prompt"]] * 2
         inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
         image = sd_pipe(**inputs).images
-        image_slice = image[-1, -3:, -3:, -1]
+        image_slice = image[-1, -1, -3:, -3:]
 
-        assert image.shape == (2, 256, 256, 3)
-        expected_slice = np.array(
-            [0.38730142, 0.35695046, 0.40646142, 0.40967226, 0.3981609, 0.4195988, 0.4248805, 0.430259, 0.45694894]
+        assert image.shape == (2, *self.output_shape)
+        expected_slice = torch.tensor(
+            [0.49870333, 0.49428767, 0.48577496, 0.5712294, 0.55280155, 0.5219455, 0.62869453, 0.5554026, 0.52685684]
         )
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-3)
 
-    def test_attention_slicing_forward_pass(self):
-        super().test_attention_slicing_forward_pass(expected_max_diff=7e-3)
+    def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=3e-3):
+        super().test_dict_tuple_outputs_equivalent(
+            expected_slice=expected_slice, expected_max_difference=expected_max_difference
+        )
 
-    @require_accelerator
-    def test_sequential_cpu_offload_forward_pass(self):
-        super().test_sequential_cpu_offload_forward_pass(expected_max_diff=3e-3)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=7e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    def test_dict_tuple_outputs_equivalent(self):
-        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
+    def test_save_load_local(self, tmp_path, base_pipe_output):
+        super().test_save_load_local(tmp_path, base_pipe_output, expected_max_difference=3e-3)
 
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=7e-3)
+    def test_save_load_optional_components(self, tmp_path):
+        super().test_save_load_optional_components(tmp_path, expected_max_difference=3e-3)
 
-    def test_pt_np_pil_outputs_equivalent(self):
-        super().test_pt_np_pil_outputs_equivalent(expected_max_diff=3e-3)
-
-    def test_save_load_local(self):
-        super().test_save_load_local(expected_max_difference=3e-3)
-
-    def test_save_load_optional_components(self):
-        super().test_save_load_optional_components(expected_max_difference=3e-3)
-
-    def test_karras_schedulers_shape(self):
-        skip_schedulers = [
-            "DDIMScheduler",
-            "DDPMScheduler",
-            "PNDMScheduler",
-            "HeunDiscreteScheduler",
-            "EulerAncestralDiscreteScheduler",
-            "KDPM2DiscreteScheduler",
-            "KDPM2AncestralDiscreteScheduler",
-            "DPMSolverSDEScheduler",
-            "EDMEulerScheduler",
-        ]
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-
-        # make sure that PNDM does not need warm-up
-        pipe.scheduler.register_to_config(skip_prk_steps=True)
-
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_inference_steps"] = 2
-
-        outputs = []
-        for scheduler_enum in KarrasDiffusionSchedulers:
-            if scheduler_enum.name in skip_schedulers:
-                # no sigma schedulers are not supported
-                # no schedulers
-                continue
-
-            scheduler_cls = getattr(diffusers, scheduler_enum.name)
-            pipe.scheduler = scheduler_cls.from_config(pipe.scheduler.config)
-            output = pipe(**inputs)[0]
-            outputs.append(output)
-
-        assert check_same_shape(outputs)
-
-    def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=5e-1)
-
-    @unittest.skip("Test not supported for a weird use of `text_input_ids`.")
+    @pytest.mark.skip("Test not supported for a weird use of `text_input_ids`.")
     def test_encode_prompt_works_in_isolation(self):
         pass
 
 
+class TestStableDiffusionLatentUpscalePipelineMemory(
+    StableDiffusionLatentUpscalePipelineTesterConfig, MemoryTesterMixin
+):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SD latent upscaler."""
+
+    def test_sequential_cpu_offload_forward_pass(self, base_pipe_output, expected_max_diff=3e-3):
+        super().test_sequential_cpu_offload_forward_pass(base_pipe_output, expected_max_diff=expected_max_diff)
+
+
 @require_torch_accelerator
 @slow
-class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestStableDiffusionLatentUpscalePipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

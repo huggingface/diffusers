@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@
 
 
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoConfig, T5EncoderModel, T5Tokenizer
 
@@ -28,7 +28,6 @@ from diffusers import (
     StableAudioPipeline,
     StableAudioProjectionModel,
 )
-from diffusers.utils import is_xformers_available
 
 from ...testing_utils import (
     Expectations,
@@ -39,15 +38,19 @@ from ...testing_utils import (
     torch_device,
 )
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableAudioPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableAudioPipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
             "prompt",
             "audio_end_in_s",
@@ -59,8 +62,9 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "initial_audio_waveforms",
         ]
     )
-    batch_params = TEXT_TO_AUDIO_BATCH_PARAMS
-    required_optional_params = frozenset(
+    batch_input_params = TEXT_TO_AUDIO_BATCH_PARAMS
+    # An audio pipeline: it exposes `num_waveforms_per_prompt`, not the base default `num_images_per_prompt`.
+    optional_input_params = frozenset(
         [
             "num_inference_steps",
             "num_waveforms_per_prompt",
@@ -72,9 +76,8 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "callback_steps",
         ]
     )
-    # There is not xformers version of the StableAudioPipeline custom attention processor
-    test_xformers_attention = False
-    supports_dduf = False
+    # `(audio_channels, samples)` for the dummy inputs.
+    output_shape = (2, 7)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -120,7 +123,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             max_value=32,
         )
 
-        components = {
+        return {
             "transformer": transformer,
             "scheduler": scheduler,
             "vae": vae,
@@ -128,59 +131,49 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "projection_model": projection_model,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A hammer hitting a wooden surface",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
         }
-        return inputs
 
-    def test_save_load_local(self):
-        # increase tolerance from 1e-4 -> 7e-3 to account for large composite model
-        super().test_save_load_local(expected_max_difference=7e-3)
 
-    def test_save_load_optional_components(self):
+class TestStableAudioPipeline(StableAudioPipelineTesterConfig, PipelineTesterMixin):
+    def test_save_load_local(self, tmp_path, base_pipe_output):
         # increase tolerance from 1e-4 -> 7e-3 to account for large composite model
-        super().test_save_load_optional_components(expected_max_difference=7e-3)
+        super().test_save_load_local(tmp_path, base_pipe_output, expected_max_difference=7e-3)
+
+    def test_save_load_optional_components(self, tmp_path):
+        # increase tolerance from 1e-4 -> 7e-3 to account for large composite model
+        super().test_save_load_optional_components(tmp_path, expected_max_difference=7e-3)
+
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=5e-4):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def test_stable_audio_ddim(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        stable_audio_pipe = self.get_pipeline().to(torch_device)
 
-        components = self.get_dummy_components()
-        stable_audio_pipe = StableAudioPipeline(**components)
-        stable_audio_pipe = stable_audio_pipe.to(torch_device)
-        stable_audio_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         output = stable_audio_pipe(**inputs)
         audio = output.audios[0]
 
         assert audio.ndim == 2
-        assert audio.shape == (2, 7)
+        assert audio.shape == self.output_shape
 
     def test_stable_audio_without_prompts(self):
-        components = self.get_dummy_components()
-        stable_audio_pipe = StableAudioPipeline(**components)
-        stable_audio_pipe = stable_audio_pipe.to(torch_device)
-        stable_audio_pipe = stable_audio_pipe.to(torch_device)
-        stable_audio_pipe.set_progress_bar_config(disable=None)
+        stable_audio_pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt"] = 3 * [inputs["prompt"]]
 
         # forward
         output = stable_audio_pipe(**inputs)
         audio_1 = output.audios[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         prompt = 3 * [inputs.pop("prompt")]
 
         text_inputs = stable_audio_pipe.tokenizer(
@@ -208,12 +201,9 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert (audio_1 - audio_2).abs().max() < 1e-2
 
     def test_stable_audio_negative_without_prompts(self):
-        components = self.get_dummy_components()
-        stable_audio_pipe = StableAudioPipeline(**components)
-        stable_audio_pipe = stable_audio_pipe.to(torch_device)
-        stable_audio_pipe.set_progress_bar_config(disable=None)
+        stable_audio_pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         negative_prompt = 3 * ["this is a negative prompt"]
         inputs["negative_prompt"] = negative_prompt
         inputs["prompt"] = 3 * [inputs["prompt"]]
@@ -222,7 +212,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output = stable_audio_pipe(**inputs)
         audio_1 = output.audios[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         prompt = 3 * [inputs.pop("prompt")]
 
         text_inputs = stable_audio_pipe.tokenizer(
@@ -268,26 +258,18 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert (audio_1 - audio_2).abs().max() < 1e-2
 
     def test_stable_audio_negative_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        stable_audio_pipe = StableAudioPipeline(**components)
-        stable_audio_pipe = stable_audio_pipe.to(device)
-        stable_audio_pipe.set_progress_bar_config(disable=None)
+        stable_audio_pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         negative_prompt = "egg cracking"
         output = stable_audio_pipe(**inputs, negative_prompt=negative_prompt)
         audio = output.audios[0]
 
         assert audio.ndim == 2
-        assert audio.shape == (2, 7)
+        assert audio.shape == self.output_shape
 
     def test_stable_audio_num_waveforms_per_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        stable_audio_pipe = StableAudioPipeline(**components)
-        stable_audio_pipe = stable_audio_pipe.to(device)
-        stable_audio_pipe.set_progress_bar_config(disable=None)
+        stable_audio_pipe = self.get_pipeline().to(torch_device)
 
         prompt = "A hammer hitting a wooden surface"
 
@@ -319,13 +301,9 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert audios.shape == (batch_size * num_waveforms_per_prompt, 2, 7)
 
     def test_stable_audio_audio_end_in_s(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        stable_audio_pipe = StableAudioPipeline(**components)
-        stable_audio_pipe = stable_audio_pipe.to(torch_device)
-        stable_audio_pipe.set_progress_bar_config(disable=None)
+        stable_audio_pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         output = stable_audio_pipe(audio_end_in_s=1.5, **inputs)
         audio = output.audios[0]
 
@@ -338,38 +316,22 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert audio.ndim == 2
         assert audio.shape[1] / stable_audio_pipe.vae.sampling_rate == 1.0
 
-    def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
-
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=5e-4)
-
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
-
     def test_stable_audio_input_waveform(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        stable_audio_pipe = StableAudioPipeline(**components)
-        stable_audio_pipe = stable_audio_pipe.to(device)
-        stable_audio_pipe.set_progress_bar_config(disable=None)
+        stable_audio_pipe = self.get_pipeline().to(torch_device)
 
         prompt = "A hammer hitting a wooden surface"
 
-        initial_audio_waveforms = torch.ones((1, 5))
+        # The pipeline builds its latents from this tensor without moving it, so it has to be on `torch_device`.
+        initial_audio_waveforms = torch.ones((1, 5), device=torch_device)
 
         # test raises error when no sampling rate
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             audios = stable_audio_pipe(
                 prompt, num_inference_steps=2, initial_audio_waveforms=initial_audio_waveforms
             ).audios
 
         # test raises error when wrong sampling rate
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             audios = stable_audio_pipe(
                 prompt,
                 num_inference_steps=2,
@@ -399,7 +361,7 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # test num_waveforms_per_prompt for batch of prompts and input audio (two channels)
         batch_size = 2
-        initial_audio_waveforms = torch.ones((batch_size, 2, 5))
+        initial_audio_waveforms = torch.ones((batch_size, 2, 5), device=torch_device)
         audios = stable_audio_pipe(
             [prompt] * batch_size,
             num_inference_steps=2,
@@ -410,29 +372,31 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert audios.shape == (batch_size * num_waveforms_per_prompt, 2, 7)
 
-    @unittest.skip("Not supported yet")
+    @pytest.mark.skip("Test not supported because `rotary_embed_dim` doesn't have any sensible default.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
+
+class TestStableAudioPipelineMemory(StableAudioPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Stable Audio pipeline."""
+
+    @pytest.mark.skip("Not supported yet")
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
-    @unittest.skip("Not supported yet")
+    @pytest.mark.skip("Not supported yet")
     def test_sequential_offload_forward_pass_twice(self):
-        pass
-
-    @unittest.skip("Test not supported because `rotary_embed_dim` doesn't have any sensible default.")
-    def test_encode_prompt_works_in_isolation(self):
         pass
 
 
 @nightly
 @require_torch_accelerator
-class StableAudioPipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestStableAudioPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

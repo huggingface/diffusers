@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,13 @@ import pytest
 
 from diffusers.modular_pipelines import LTXAutoBlocks, LTXModularPipeline
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 LTX_WORKFLOWS = {
@@ -42,11 +48,10 @@ LTX_WORKFLOWS = {
 }
 
 
-class TestLTXModularPipelineFast(ModularPipelineTesterMixin):
+class LTXModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = LTXModularPipeline
     pipeline_blocks_class = LTXAutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-ltx-modular-pipe"
-
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
@@ -67,6 +72,20 @@ class TestLTXModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestLTXModularPipelineFast(LTXModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
+
+
+class TestLTXModularPipelineLoading(LTXModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestLTXModularPipelineWorkflow(LTXModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestLTXModularPipelineMemory(LTXModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

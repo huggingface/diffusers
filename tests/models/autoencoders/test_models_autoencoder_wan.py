@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,8 +20,14 @@ from diffusers import AutoencoderKLWan
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    SingleFileTesterMixin,
+    TrainingTesterMixin,
+)
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -84,5 +90,19 @@ class TestAutoencoderKLWanMemory(AutoencoderKLWanTesterConfig, MemoryTesterMixin
         pass
 
 
-class TestAutoencoderKLWanSlicingTiling(AutoencoderKLWanTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLWanSlicingTiling(AutoencoderKLWanTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLWan."""
+
+
+class TestAutoencoderKLWanSingleFile(AutoencoderKLWanTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "vae"}

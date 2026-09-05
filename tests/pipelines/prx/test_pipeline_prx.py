@@ -1,6 +1,4 @@
-import unittest
-
-import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer
 from transformers.models.t5gemma.configuration_t5gemma import T5GemmaConfig, T5GemmaModuleConfig
@@ -11,26 +9,32 @@ from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
 from diffusers.pipelines.prx.pipeline_prx import PRXPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 
+from ...testing_utils import assert_tensors_close
 from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
-class PRXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+# `T5GemmaEncoder` is instantiated here from a hand-built config rather than loaded from a repo, and transformers v5
+# cannot round-trip that through `save_pretrained`/`from_pretrained`, so every test that reloads the pipeline from
+# disk is skipped.
+T5GEMMA_SERIALIZATION_SKIP_REASON = "Custom T5GemmaEncoder not compatible with transformers v5."
+
+# Both PRX pipelines read `callback_on_step_end`'s inputs out of `locals()` but throw away what the callback
+# returns, so a callback that rewrites `latents` (or `prompt_embeds`) has no effect on the denoising loop. Every
+# other diffusers pipeline pops those keys back off the returned dict. Fixing it is a `src/` change and out of
+# scope for this test migration, so the one shared test that exercises the write-back is marked `xfail`: whoever
+# adds the pop-back will see it XPASS and can drop this marker.
+CALLBACK_OUTPUTS_IGNORED = pytest.mark.xfail(
+    reason="`PRX` pipelines discard the dict `callback_on_step_end` returns, so callback edits to `latents` are lost.",
+    strict=True,
+)
+
+
+class PRXPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = PRXPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = frozenset(["prompt", "negative_prompt", "num_images_per_prompt"])
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
-
-    @classmethod
-    def setUpClass(cls):
-        # Ensure PRXPipeline has an _execution_device property expected by __call__
-        if not isinstance(getattr(PRXPipeline, "_execution_device", None), property):
-            try:
-                setattr(PRXPipeline, "_execution_device", property(lambda self: torch.device("cpu")))
-            except Exception:
-                pass
+    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    batch_input_params = frozenset(["prompt", "negative_prompt", "num_images_per_prompt"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -102,116 +106,54 @@ class PRXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+    def get_dummy_inputs(self):
         return {
             "prompt": "",
             "negative_prompt": "",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
             "height": 32,
             "width": 32,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
             "output_type": "pt",
             "use_resolution_binning": False,
         }
 
-    def test_inference(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = PRXPipeline(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-        try:
-            pipe.register_to_config(_execution_device="cpu")
-        except Exception:
-            pass
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs)[0]
-        generated_image = image[0]
-
-        self.assertEqual(generated_image.shape, (3, 32, 32))
-        expected_image = torch.zeros(3, 32, 32)
-        max_diff = np.abs(generated_image - expected_image).max()
-        self.assertLessEqual(max_diff, 1e10)
-
+class TestPRXPipeline(PRXPipelineTesterConfig, PipelineTesterMixin):
+    @CALLBACK_OUTPUTS_IGNORED
     def test_callback_inputs(self):
-        components = self.get_dummy_components()
-        pipe = PRXPipeline(**components)
-        pipe = pipe.to("cpu")
-        pipe.set_progress_bar_config(disable=None)
-        try:
-            pipe.register_to_config(_execution_device="cpu")
-        except Exception:
-            pass
-        self.assertTrue(
-            hasattr(pipe, "_callback_tensor_inputs"),
-            f" {PRXPipeline} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
-        )
-
-        def callback_inputs_subset(pipe, i, t, callback_kwargs):
-            for tensor_name in callback_kwargs.keys():
-                assert tensor_name in pipe._callback_tensor_inputs
-            return callback_kwargs
-
-        def callback_inputs_all(pipe, i, t, callback_kwargs):
-            for tensor_name in pipe._callback_tensor_inputs:
-                assert tensor_name in callback_kwargs
-            for tensor_name in callback_kwargs.keys():
-                assert tensor_name in pipe._callback_tensor_inputs
-            return callback_kwargs
-
-        inputs = self.get_dummy_inputs("cpu")
-
-        inputs["callback_on_step_end"] = callback_inputs_subset
-        inputs["callback_on_step_end_tensor_inputs"] = ["latents"]
-        _ = pipe(**inputs)[0]
-
-        inputs["callback_on_step_end"] = callback_inputs_all
-        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
-        _ = pipe(**inputs)[0]
+        super().test_callback_inputs()
 
     def test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):
-        if not self.test_attention_slicing:
-            return
+        # Run on CPU: sliced attention is compared against a full-attention run of the same pipeline.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to("cpu")
-        pipe.set_progress_bar_config(disable=None)
-
-        def to_np_local(tensor):
-            if isinstance(tensor, torch.Tensor):
-                return tensor.detach().cpu().numpy()
-            return tensor
-
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        output_without_slicing = pipe(**inputs)[0]
+        output_without_slicing = self.run_pipe(pipe)
 
         pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing1 = pipe(**inputs)[0]
+        output_with_slicing_1 = self.run_pipe(pipe)
 
         pipe.enable_attention_slicing(slice_size=2)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing2 = pipe(**inputs)[0]
+        output_with_slicing_2 = self.run_pipe(pipe)
 
-        max_diff1 = np.abs(to_np_local(output_with_slicing1) - to_np_local(output_without_slicing)).max()
-        max_diff2 = np.abs(to_np_local(output_with_slicing2) - to_np_local(output_without_slicing)).max()
-        self.assertLess(max(max_diff1, max_diff2), expected_max_diff)
+        assert_tensors_close(
+            output_with_slicing_1,
+            output_without_slicing,
+            atol=expected_max_diff,
+            msg="Attention slicing (slice_size=1) changed the output.",
+        )
+        assert_tensors_close(
+            output_with_slicing_2,
+            output_without_slicing,
+            atol=expected_max_diff,
+            msg="Attention slicing (slice_size=2) changed the output.",
+        )
 
     def test_inference_with_autoencoder_dc(self):
-        """Test PRXPipeline with AutoencoderDC (DCAE) instead of AutoencoderKL."""
-        device = "cpu"
-
+        """PRXPipeline should also work with an `AutoencoderDC` (DCAE) in place of the `AutoencoderKL`."""
         components = self.get_dummy_components()
 
         torch.manual_seed(0)
@@ -240,43 +182,38 @@ class PRXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ).eval()
 
         components["vae"] = vae_dc
+        pipe = self.get_pipeline(**components)
 
-        pipe = PRXPipeline(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        assert pipe.vae_scale_factor == vae_dc.spatial_compression_ratio
 
-        expected_scale_factor = vae_dc.spatial_compression_ratio
-        self.assertEqual(pipe.vae_scale_factor, expected_scale_factor)
+        output = self.run_pipe(pipe)
+        assert output[0].shape == self.output_shape
+        assert torch.isfinite(output).all()
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs)[0]
-        generated_image = image[0]
-
-        self.assertEqual(generated_image.shape, (3, 32, 32))
-        expected_image = torch.zeros(3, 32, 32)
-        max_diff = np.abs(generated_image - expected_image).max()
-        self.assertLessEqual(max_diff, 1e10)
-
-    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
-    def test_save_load_dduf(self):
-        pass
-
-    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    @pytest.mark.skip(T5GEMMA_SERIALIZATION_SKIP_REASON)
     def test_loading_with_variants(self):
         pass
 
-    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
-    def test_pipeline_with_accelerator_device_map(self):
-        pass
-
-    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    @pytest.mark.skip(T5GEMMA_SERIALIZATION_SKIP_REASON)
     def test_save_load_local(self):
         pass
 
-    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    @pytest.mark.skip(T5GEMMA_SERIALIZATION_SKIP_REASON)
+    def test_save_load_float16(self):
+        pass
+
+    @pytest.mark.skip(T5GEMMA_SERIALIZATION_SKIP_REASON)
     def test_save_load_optional_components(self):
         pass
 
-    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    @pytest.mark.skip(T5GEMMA_SERIALIZATION_SKIP_REASON)
     def test_torch_dtype_dict(self):
+        pass
+
+
+class TestPRXPipelineMemory(PRXPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the PRX pipeline."""
+
+    @pytest.mark.skip(T5GEMMA_SERIALIZATION_SKIP_REASON)
+    def test_pipeline_with_accelerator_device_map(self):
         pass

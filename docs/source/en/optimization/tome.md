@@ -28,8 +28,8 @@ You can use ToMe from the [`tomesd`](https://github.com/dbolya/tomesd) library w
   import tomesd
 
   pipeline = StableDiffusionPipeline.from_pretrained(
-        "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True,
-  ).to("cuda")
+        "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True,
+  ).to("cuda")  # or "mps", "xpu", "cpu"
 + tomesd.apply_patch(pipeline, ratio=0.5)
 
   image = pipeline("a photo of an astronaut riding a horse on mars").images[0]

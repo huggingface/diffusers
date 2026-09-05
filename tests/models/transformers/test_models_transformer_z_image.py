@@ -1,4 +1,4 @@
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -131,99 +132,18 @@ class TestZImageTransformer(ZImageTransformerTesterConfig, ModelTesterMixin):
             first[mask], second[mask], atol=atol, rtol=rtol, msg="Model outputs are not deterministic"
         )
 
-    def test_from_save_pretrained(self, tmp_path, atol=5e-5, rtol=5e-5):
-        torch.manual_seed(0)
-        model = self.model_class(**self.get_init_dict())
-        model.to(torch_device)
-        model.eval()
-
-        model.save_pretrained(tmp_path)
-        new_model = self.model_class.from_pretrained(tmp_path)
-        new_model.to(torch_device)
-
-        for param_name in model.state_dict().keys():
-            param_1 = model.state_dict()[param_name]
-            param_2 = new_model.state_dict()[param_name]
-            assert param_1.shape == param_2.shape
-
-        inputs_dict = self.get_dummy_inputs()
-        image = _concat_list_output(model(**inputs_dict, return_dict=False)[0])
-        new_image = _concat_list_output(new_model(**inputs_dict, return_dict=False)[0])
-
-        assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
-
-    @torch.no_grad()
-    def test_from_save_pretrained_variant(self, tmp_path, atol=5e-5, rtol=0):
-        model = self.model_class(**self.get_init_dict())
-        model.to(torch_device)
-        model.eval()
-
-        model.save_pretrained(tmp_path, variant="fp16")
-        new_model = self.model_class.from_pretrained(tmp_path, variant="fp16")
-
-        with pytest.raises(OSError) as exc_info:
-            self.model_class.from_pretrained(tmp_path)
-
-        assert "Error no file named diffusion_pytorch_model.bin found in directory" in str(exc_info.value)
-
-        new_model.to(torch_device)
-
-        inputs_dict = self.get_dummy_inputs()
-        image = _concat_list_output(model(**inputs_dict, return_dict=False)[0])
-        new_image = _concat_list_output(new_model(**inputs_dict, return_dict=False)[0])
-
-        assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
-
     @pytest.mark.skip("Model output `sample` is a list of tensors, not a single tensor.")
     def test_outputs_equivalence(self, atol=1e-5, rtol=0):
         pass
 
-    def test_sharded_checkpoints_with_parallel_loading(self, tmp_path, atol=1e-5, rtol=0):
-        from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, constants
-
-        from ..testing_utils.common import calculate_expected_num_shards, compute_module_persistent_sizes
-
-        torch.manual_seed(0)
-        config = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
-        model = self.model_class(**config).eval()
-        model = model.to(torch_device)
-
-        base_output = _concat_list_output(model(**inputs_dict, return_dict=False)[0])
-
-        model_size = compute_module_persistent_sizes(model)[""]
-        max_shard_size = int((model_size * 0.75) / (2**10))
-
-        original_parallel_loading = constants.HF_ENABLE_PARALLEL_LOADING
-        original_parallel_workers = getattr(constants, "HF_PARALLEL_WORKERS", None)
-
-        try:
-            model.cpu().save_pretrained(tmp_path, max_shard_size=f"{max_shard_size}KB")
-            assert os.path.exists(os.path.join(tmp_path, SAFE_WEIGHTS_INDEX_NAME))
-
-            expected_num_shards = calculate_expected_num_shards(os.path.join(tmp_path, SAFE_WEIGHTS_INDEX_NAME))
-            actual_num_shards = len([file for file in os.listdir(tmp_path) if file.endswith(".safetensors")])
-            assert actual_num_shards == expected_num_shards
-
-            constants.HF_ENABLE_PARALLEL_LOADING = False
-            self.model_class.from_pretrained(tmp_path).eval().to(torch_device)
-
-            constants.HF_ENABLE_PARALLEL_LOADING = True
-            constants.DEFAULT_HF_PARALLEL_LOADING_WORKERS = 2
-
-            torch.manual_seed(0)
-            model_parallel = self.model_class.from_pretrained(tmp_path).eval()
-            model_parallel = model_parallel.to(torch_device)
-
-            output_parallel = _concat_list_output(model_parallel(**inputs_dict, return_dict=False)[0])
-
-            assert_tensors_close(
-                base_output, output_parallel, atol=atol, rtol=rtol, msg="Output should match with parallel loading"
-            )
-        finally:
-            constants.HF_ENABLE_PARALLEL_LOADING = original_parallel_loading
-            if original_parallel_workers is not None:
-                constants.HF_PARALLEL_WORKERS = original_parallel_workers
+    @pytest.mark.skip(
+        "`t_embedder.mlp.0` is a single 256x1024 Linear — `TimestepEmbedder` hardcodes `mid_size=1024`, so it is 1.0 MB "
+        "of this 1.1 MB test model. `get_balanced_memory` hands device 0 about half the model, the Linear does not fit "
+        "there, and so `device_map='auto'` puts the whole model on one device and the map never spans both GPUs. "
+        "`test_cpu_offload` covers split placement instead."
+    )
+    def test_model_parallelism(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
+        pass
 
 
 class TestZImageTransformerMemory(ZImageTransformerTesterConfig, MemoryTesterMixin):
@@ -250,6 +170,10 @@ class TestZImageTransformerTraining(ZImageTransformerTesterConfig, TrainingTeste
     def test_training_with_ema(self):
         pass
 
+    @pytest.mark.skip("Model output `sample` is a list of tensors; mixed-precision training computes MSE loss on it.")
+    def test_mixed_precision_training(self):
+        pass
+
     @pytest.mark.skip("Test is not supported for handling main inputs that are lists.")
     def test_gradient_checkpointing_equivalence(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip=None):
         pass
@@ -257,10 +181,6 @@ class TestZImageTransformerTraining(ZImageTransformerTesterConfig, TrainingTeste
 
 class TestZImageTransformerLoRA(ZImageTransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for Z-Image Transformer."""
-
-    @pytest.mark.skip("Model output `sample` is a list of tensors, not a single tensor.")
-    def test_save_load_lora_adapter(self, tmp_path, rank=4, lora_alpha=4, use_dora=False, atol=1e-4, rtol=1e-4):
-        pass
 
 
 # TODO: Add pretrained_model_name_or_path once a tiny Z-Image model is available on the Hub
@@ -303,6 +223,11 @@ class TestZImageTransformerCompile(ZImageTransformerTesterConfig, TorchCompileTe
     )
     def test_torch_compile_recompilation_and_graph_break(self):
         pass
+
+    def test_torch_compile_repeated_blocks(self):
+        # ZImageTransformerBlock is reused by noise_refiner (modulated), context_refiner (unmodulated), and the
+        # main layers (modulated, different sequence length), so the shared block forward compiles three times.
+        super().test_torch_compile_repeated_blocks(recompile_limit=3)
 
     @pytest.mark.skip("Fullgraph AoT is broken")
     def test_compile_works_with_aot(self, tmp_path):
@@ -430,3 +355,17 @@ class TestZImageTransformerAutoRoundCompile(ZImageTransformerAutoRoundTesterConf
         output = output[0] if isinstance(output, (list, tuple)) else output
         assert output is not None, "Model output is None"
         assert not torch.isnan(output).any(), "Model output contains NaN"
+
+
+class TestZImageTransformer2DSingleFile(ZImageTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Tongyi-MAI/Z-Image-Turbo"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

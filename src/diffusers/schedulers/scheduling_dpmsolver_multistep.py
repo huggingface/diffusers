@@ -379,6 +379,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+            mu (`float`, *optional*):
+                Exponent for the dynamic time shift. Requires `use_dynamic_shifting` and a `time_shift_type` of
+                `"exponential"`; when passed, `flow_shift` is set to `exp(mu)`.
             timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary timesteps schedule. If `None`, timesteps will be generated
                 based on the `timestep_spacing` attribute. If `timesteps` is passed, `num_inference_steps` and `sigmas`
@@ -931,6 +934,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             sample (`torch.Tensor`, *optional*):
                 A current instance of a sample created by the diffusion process.
+            noise (`torch.Tensor`, *optional*):
+                Random noise used by the stochastic (`sde-*`) solver variants. Required when `algorithm_type` is set to
+                one of them, and unused otherwise.
 
         Returns:
             `torch.Tensor`:

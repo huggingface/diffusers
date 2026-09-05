@@ -33,7 +33,7 @@ import torch
 from diffusers import PixArtAlphaPipeline
 from tgate import TgatePixArtLoader
 
-pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
+pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", dtype=torch.float16)
 
 gate_step = 8
 inference_step = 25
@@ -62,7 +62,7 @@ from tgate import TgateSDXLLoader
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
             variant="fp16",
             use_safetensors=True,
 )
@@ -96,7 +96,7 @@ from tgate import TgateSDXLDeepCacheLoader
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
             variant="fp16",
             use_safetensors=True,
 )
@@ -130,13 +130,13 @@ from tgate import TgateSDXLLoader
 
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 )
 pipe = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     unet=unet,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 )
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
