@@ -130,6 +130,8 @@ jobs:
       run: |
         printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
+        # TODO (sayakpaul, DN6): revisit `--no-deps`
+        uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
