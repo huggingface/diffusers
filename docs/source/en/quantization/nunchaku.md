@@ -122,6 +122,61 @@ List each module you want to quantize under `svdq_w4a4` or `awq_w4a16`. A module
 }
 ```
 
+## Data-free quantization on load
+
+Pass `pre_quantized=False` to quantize an *unquantized* checkpoint at load time with data-free SVDQuant — no calibration data is needed. Each targeted linear gets weight-span smoothing, a rank-`r` SVD low-rank branch, and int4 or nvfp4 group quantization of the residual, packed directly into the kernel layout. Only `svdq_w4a4` targets are supported in this mode, and each target's `in_features`/`out_features` must be multiples of 128 (with `rank` a multiple of 16, or 0 to disable the low-rank branch).
+
+When `targets` is omitted, eligible targets are inferred automatically from the model's structure: quantization is restricted to the repeated transformer-block stacks (so embedders, final projections, and modulation heads outside the stacks stay unquantized), adaLN-style linears are skipped via the default `("norm", "modulation")` name patterns, and every remaining `nn.Linear` satisfying the packing constraints is selected. The model's `_keep_in_fp32_modules` is always honored. No configuration is needed for typical DiTs:
+
+```python
+import torch
+from diffusers import Flux2Transformer2DModel, NunchakuLiteQuantizationConfig
+
+transformer = Flux2Transformer2DModel.from_pretrained(
+    "black-forest-labs/FLUX.2-klein-9B",
+    subfolder="transformer",
+    quantization_config=NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
+        pre_quantized=False,
+    ),
+    torch_dtype=torch.bfloat16,
+    device_map="cuda",
+)
+```
+
+Pass `exclude_targets` (substring match; it replaces the default name patterns) to exclude further modules, or an explicit `targets` list for full control. Quantization happens per weight as the checkpoint streams in, so peak memory stays near the quantized model size. The result is identical to loading a checkpoint produced offline by a data-free SVDQuant exporter.
+
+Two quality knobs are worth tuning per model. `rank` sets the size of the bf16 low-rank branch that absorbs the largest singular components before 4-bit coding — larger ranks trade a modest size increase for fidelity, and the gain can be substantial (on a 19B video DiT, int4 at `rank=128` recovered ~2.7 dB over `rank=32` for ~16% more transformer memory). `smooth_exponent` (default `0.5`) sets the weight-span smoothing strength; it interacts with `rank` — larger low-rank branches tend to prefer weaker smoothing (e.g. `0.25` at `rank=128`) — so when raising `rank`, sweep the exponent rather than assuming the default.
+
+Quantize-on-load runs one SVD per target at load time (minutes for large models on a fast GPU). For repeated loads of the same configuration, prefer a pre-quantized checkpoint produced by an offline exporter — loading packed weights takes seconds, and the packed format is identical.
+
+### Quantize on a CPU-only machine, then save
+
+Data-free quantization is pure PyTorch (weight-span smoothing, SVD, group quantization) and never calls a CUDA kernel, so it also runs on a machine with no GPU and no `kernels` package installed. Quantize the transformer once, `save_pretrained` the whole pipeline, and load the result anywhere with the usual (fast, kernel-free) `pre_quantized` path — [`~DiffusionPipeline.save_pretrained`] saves every component to its own subfolder (each by calling that component's own `save_pretrained`), so this produces the same self-contained, directly loadable layout as [Load a quantized pipeline](#load-a-quantized-pipeline) above:
+
+```python
+import torch
+from diffusers import Flux2Pipeline, Flux2Transformer2DModel, NunchakuLiteQuantizationConfig
+
+model_id = "black-forest-labs/FLUX.2-klein-9B"
+
+# Runs on CPU - no GPU or `kernels` package required for this step.
+transformer = Flux2Transformer2DModel.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    quantization_config=NunchakuLiteQuantizationConfig(
+        svdq_w4a4={"precision": "nvfp4", "group_size": 16, "rank": 32},
+        pre_quantized=False,
+    ),
+    torch_dtype=torch.bfloat16,
+)
+pipe = Flux2Pipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.bfloat16)
+pipe.save_pretrained("flux2-klein-9b-nvfp4")
+
+# Later, on a GPU machine, loads through the ordinary pre-quantized path.
+pipe = Flux2Pipeline.from_pretrained("flux2-klein-9b-nvfp4", torch_dtype=torch.bfloat16).to("cuda")
+```
+
 ## Fused kernels
 
 The original [Nunchaku](https://github.com/nunchaku-ai/nunchaku) engine gets much of its speed from model-specific fused execution paths. It combines the Q, K, and V projections with RMSNorm and RoPE, and uses a fused GELU kernel for the MLP. Nunchaku Lite instead uses the standard Diffusers model with generic quantized linear layers, so it does not include these fusions.
