@@ -6,9 +6,9 @@ from .cache import (
     PyramidAttentionBroadcastTesterMixin,
     TaylorSeerCacheTesterMixin,
 )
-from .common import BasePipelineTesterConfig, PipelineTesterMixin
+from .common import BasePipelineTesterConfig, PipelineTesterMixin, assert_mean_pixel_difference
 from .from_pipe import FromPipeTesterMixin
-from .ip_adapter import IPAdapterTesterMixin
+from .ip_adapter import FluxIPAdapterTesterMixin, IPAdapterTesterMixin
 from .lora import LoraMemoryTesterMixin, LoraTesterMixin, UNetLoraTesterMixin
 from .memory import (
     GroupOffloadTesterMixin,
@@ -29,6 +29,7 @@ __all__ = [
     "PipelineTesterMixin",
     "FromPipeTesterMixin",
     "IPAdapterTesterMixin",
+    "FluxIPAdapterTesterMixin",
     "LoraTesterMixin",
     "LoraMemoryTesterMixin",
     "UNetLoraTesterMixin",
@@ -42,6 +43,7 @@ __all__ = [
     "FirstBlockCacheTesterMixin",
     "TaylorSeerCacheTesterMixin",
     "MagCacheTesterMixin",
+    "assert_mean_pixel_difference",
     "check_qkv_fused_layers_exist",
     "check_qkv_fusion_matches_attn_procs_length",
     "check_qkv_fusion_processors_exist",
