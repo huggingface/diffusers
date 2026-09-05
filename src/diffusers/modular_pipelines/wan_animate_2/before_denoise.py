@@ -79,6 +79,13 @@ class WanAnimate2PrepareSegmentsStep(ModularPipelineBlocks):
                 type_hint=int,
                 description="Packed sequence length of the reference tokens",
             ),
+            OutputParam(
+                "segment_frames",
+                type_hint=list,
+                description="The decoded frames collected by the segment loop, carried across iterations (the "
+                "next segment conditions on the last entry's tail); starts as `None` (nothing has been "
+                "collected yet, and the first segment has no previous segment to condition on)",
+            ),
         ]
 
     @torch.no_grad()
@@ -107,6 +114,7 @@ class WanAnimate2PrepareSegmentsStep(ModularPipelineBlocks):
         latent_noise_frames = latent_segment_frames + 1
         block_state.max_seq_len = int(math.ceil(np.prod([latent_noise_frames, latent_height // 2, latent_width // 2])))
         block_state.max_seq_len_ref = int(math.ceil(np.prod(ref_shape) // 4))
+        block_state.segment_frames = None
 
         self.set_block_state(state, block_state)
         return components, state

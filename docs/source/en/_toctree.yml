@@ -104,6 +104,8 @@
     title: ModularPipelineBlocks
   - local: modular_diffusers/sequential_pipeline_blocks
     title: SequentialPipelineBlocks
+  - local: modular_diffusers/iterative_pipeline_blocks
+    title: IterativePipelineBlocks
   - local: modular_diffusers/loop_sequential_pipeline_blocks
     title: LoopSequentialPipelineBlocks
   - local: modular_diffusers/auto_pipeline_blocks

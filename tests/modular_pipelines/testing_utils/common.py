@@ -361,3 +361,29 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt, output=self.output_name)
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
+
+    def test_stream_matches_call(self, expected_max_diff=1e-4):
+        pipe = self.get_pipeline().to(torch_device)
+
+        if not pipe.blocks.supports_streaming:
+            pytest.skip("Skipping test as blocks do not support streaming.")
+
+        inputs = self.get_dummy_inputs()
+        inputs["generator"] = self.get_generator(0)
+        output = pipe(**inputs, output=self.output_name)
+
+        inputs = self.get_dummy_inputs()
+        inputs["generator"] = self.get_generator(0)
+        num_events = 0
+        generator = pipe.stream(**inputs)
+        while True:
+            try:
+                next(generator)
+            except StopIteration as e:
+                state = e.value
+                break
+            num_events += 1
+
+        assert num_events > 0, "stream() yielded no events"
+        max_diff = torch.abs(state.get(self.output_name) - output).max()
+        assert max_diff < expected_max_diff, "stream() results different from __call__ results"

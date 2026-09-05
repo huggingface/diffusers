@@ -113,6 +113,12 @@ class ImageProcessingStep(SequentialPipelineBlocks):
 
 When you create a [`~modular_pipelines.SequentialPipelineBlocks`], properties like `inputs`, `intermediate_outputs`, and `expected_components` are automatically aggregated from the sub-blocks, so there is no need to define them again.
 
+### Aggregated inputs and outputs
+
+Aggregation follows the order the sub-blocks run in. `inputs` walks the sub-blocks in order and omits an input when an earlier sub-block declares an output with the same name, because the assembled block produces that value internally. `intermediate_outputs` is the union of what the sub-blocks write.
+
+This is what makes blocks composable: an assembled block has the same kind of input/output contract as a single [`~modular_pipelines.ModularPipelineBlocks`], so it can in turn be a sub-block of another one, at any depth. It is also why an input disappears from a pipeline's signature once some earlier block produces it — see [nesting loops](./iterative_pipeline_blocks#nesting-loops) for a case where you use that deliberately.
+
 There are a few properties you should set:
 
 - `description`: We recommend adding a description for the assembled block to explain what the combined step does.
