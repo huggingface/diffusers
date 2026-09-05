@@ -476,10 +476,8 @@ class LTX2VideoVaePixelShuffleUpsampler(nn.Module):
 class LTX2VideoDiffusionDecoder3d(nn.Module):
     """The LTX-2.5 diffusion video decoder.
 
-    Stages 1-4 deterministically upsample the latent into a context volume with neighborhood-attention blocks. Stage 5
-    then denoises patchified pixels, conditioned on that context through AdaLN-Zero scale/shift. With
-    `model_output_type="x0"` and a single step — how LTX-2.5 ships — stage 5 runs once and its prediction *is* the
-    output; more steps add reverse Euler updates.
+    Stages 1-4 deterministically upsample the latent into a context volume with neighborhood-attention blocks; that
+    volume conditions stage 5, which is an ordinary diffusion transformer over patchified pixels.
     """
 
     def __init__(
@@ -573,13 +571,13 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         self.norm_out = nn.RMSNorm(stage5_channels, eps=1e-6)
         self.conv_out = nn.Linear(stage5_channels, noised_pixel_channels, bias=True)
 
-    def forward_stages_1_to_3(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """All deterministic stages but the last: latent `(B, C, T, H, W)` to a channels-last feature volume.
+    def encode_context_stages_1_to_3(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """All deterministic context stages but the last: latent `(B, C, T, H, W)` to a channels-last feature volume.
 
-        The trailing ghost frames added for NATTEN's border shift stay in the output; [`forward_stage_4`] crops them.
-        The split at this point exists for tiled decoding: these stages are cheap enough to run on the full volume,
-        while stage 4 and the diffusion stage — where the grid and the channel-hidden products get large — run per
-        tile.
+        The trailing ghost frames added for NATTEN's border shift stay in the output; [`encode_context_stage_4`] crops
+        them. The split at this point exists for tiled decoding: these stages are cheap enough to run on the full
+        volume, while stage 4 and the diffusion stage — where the grid and the channel-hidden products get large — run
+        per tile.
         """
         num_pad = self.trailing_pad_latent_frames
         if num_pad > 0:
@@ -596,10 +594,10 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
             hidden_states = upsample(hidden_states)
         return hidden_states
 
-    def forward_stage_4(
+    def encode_context_stage_4(
         self, hidden_states: torch.Tensor, drop_leading_frame: bool = True, crop_trailing_ghost: bool = True
     ) -> torch.Tensor:
-        """Last deterministic stage: [`forward_stages_1_to_3`] output to context `(B, T_5, H_5, W_5, C_5)`.
+        """Last deterministic stage: [`encode_context_stages_1_to_3`] output to context `(B, T_5, H_5, W_5, C_5)`.
 
         The defaults describe the untiled decode. A tiled decode overrides them per temporal tile: only the tile
         containing t=0 drops the upsample's duplicate leading frame, and only the tile containing the video end carries
@@ -616,10 +614,25 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
             hidden_states = hidden_states[:, : -num_pad * self.temporal_compression_ratio]
         return hidden_states
 
-    def forward_diffusion_step(
-        self, latent_context: torch.Tensor, x_t: torch.Tensor, timestep: torch.Tensor
+    def forward(
+        self, hidden_states: torch.Tensor, latent_context: torch.Tensor, timestep: torch.Tensor
     ) -> torch.Tensor:
-        """One stage-5 step. Returns the model's prediction in pixel space, `(B, C, F, H, W)`."""
+        r"""
+        One stage-5 denoising step.
+
+        Args:
+            hidden_states (`torch.Tensor`):
+                Noised pixels of shape `(B, C, F, H, W)`.
+            latent_context (`torch.Tensor`):
+                The conditioning volume from [`encode_context_stage_4`], of shape `(B, F, H // patch_size, W //
+                patch_size, C_5)`. It is projected into the residual stream of every block rather than cross-attended,
+                and shares the token grid with `hidden_states`.
+            timestep (`torch.Tensor`):
+                Noise level in `[0, 1]`, of shape `(B,)`.
+
+        Returns:
+            `torch.Tensor`: the model's prediction in pixel space, `(B, C, F, H, W)`.
+        """
         t_emb = self.t_embedder(
             self.timestep_scale_multiplier * timestep,
             resolution=None,
@@ -629,7 +642,7 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         )
         modulation = self.shared_adaln(t_emb)
 
-        hidden_states = _patchify(x_t, self.patch_size).permute(0, 2, 3, 4, 1)
+        hidden_states = _patchify(hidden_states, self.patch_size).permute(0, 2, 3, 4, 1)
         hidden_states = self.conv_in_x_t(hidden_states)
         block_mask = self.diff_blocks[0].attn.build_block_mask(hidden_states)
         for block in self.diff_blocks:
@@ -639,48 +652,6 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         hidden_states = self.conv_out(hidden_states)
         hidden_states = hidden_states.permute(0, 4, 1, 2, 3).contiguous()
         return _unpatchify(hidden_states, self.patch_size)
-
-    def denoise(self, latent_context: torch.Tensor, x_t: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
-        """Denoise `x_t` `(B, C, F, H, W)` through the stage-5 diffusion loop, conditioned on `latent_context`."""
-        batch_size = latent_context.shape[0]
-        timesteps = torch.linspace(
-            1.0, 1.0 / num_inference_steps, num_inference_steps, device=latent_context.device, dtype=torch.float32
-        )
-
-        if num_inference_steps == 1 and self.model_output_type == "x0":
-            return self.forward_diffusion_step(latent_context, x_t, timesteps[:1].expand(batch_size))
-
-        for step_idx in range(num_inference_steps):
-            t_now = timesteps[step_idx].expand(batch_size)
-            t_next = timesteps[step_idx + 1] if step_idx + 1 < num_inference_steps else torch.zeros_like(t_now)
-            model_out = self.forward_diffusion_step(latent_context, x_t, t_now).float()
-            x_t_fp32 = x_t.float()
-            if self.model_output_type == "x0":
-                sigma = t_now.view(-1, *([1] * (x_t.ndim - 1)))
-                model_out = (x_t_fp32 - model_out) / sigma
-            dt = (t_now - t_next).view(-1, *([1] * (x_t.ndim - 1)))
-            x_t = (x_t_fp32 - dt * model_out).to(x_t.dtype)
-        return x_t
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        generator: torch.Generator | None = None,
-        num_inference_steps: int | None = None,
-    ) -> torch.Tensor:
-        num_inference_steps = num_inference_steps or self.default_num_inference_steps
-        latent_context = self.forward_stage_4(self.forward_stages_1_to_3(hidden_states))
-        # The context grid is the stage-5 token grid, so the pixel canvas is its shape times the patch size —
-        # temporally that is the causal (T - 1) * ratio + 1 mapping of the LTX-2 latent space.
-        pixel_shape = (
-            hidden_states.shape[0],
-            self.out_channels,
-            latent_context.shape[1],
-            latent_context.shape[2] * self.patch_size,
-            latent_context.shape[3] * self.patch_size,
-        )
-        x_t = randn_tensor(pixel_shape, generator=generator, device=hidden_states.device, dtype=hidden_states.dtype)
-        return self.denoise(latent_context, x_t, num_inference_steps)
 
 
 def _tile_intervals(length: int, tile_size: int, stride: int, min_size: int) -> list[tuple[int, int]]:
@@ -761,9 +732,6 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             model_output_type=decoder_model_output_type,
             default_num_inference_steps=decoder_num_inference_steps,
         )
-
-        self.spatial_compression_ratio = spatial_compression_ratio
-        self.temporal_compression_ratio = temporal_compression_ratio
 
         # When decoding a large enough video, the memory-dominant stages (the last deterministic stage and the
         # stage-5 diffusion blocks) can run on overlapping tiles that are blended back together. The earlier
@@ -852,6 +820,37 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             )
         return b
 
+    def _denoise(self, latent_context: torch.Tensor, x_t: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
+        """Denoise `x_t` `(B, C, F, H, W)` through the stage-5 diffusion loop, conditioned on `latent_context`.
+
+        Flow-matching reverse Euler over `linspace(1, 1 / num_inference_steps, num_inference_steps)`; the decoder's
+        `model_output_type` decides whether a step predicts the sample or the velocity.
+        """
+        decoder = self.decoder
+        model_output_type = decoder.model_output_type
+        batch_size = latent_context.shape[0]
+        timesteps = torch.linspace(
+            1.0, 1.0 / num_inference_steps, num_inference_steps, device=latent_context.device, dtype=torch.float32
+        )
+
+        for step_idx in range(num_inference_steps):
+            t_now = timesteps[step_idx].expand(batch_size)
+            model_out = decoder(x_t, latent_context, t_now)
+            # An x0 prediction at the last step *is* the sample: the Euler update to t=0 reduces to
+            # `x_t - t * (x_t - prediction) / t`. Returning it skips a full-canvas float32 round trip.
+            if model_output_type == "x0" and step_idx == num_inference_steps - 1:
+                return model_out
+
+            t_next = timesteps[step_idx + 1] if step_idx + 1 < num_inference_steps else torch.zeros_like(t_now)
+            model_out = model_out.float()
+            x_t_fp32 = x_t.float()
+            if model_output_type == "x0":
+                sigma = t_now.view(-1, *([1] * (x_t.ndim - 1)))
+                model_out = (x_t_fp32 - model_out) / sigma
+            dt = (t_now - t_next).view(-1, *([1] * (x_t.ndim - 1)))
+            x_t = (x_t_fp32 - dt * model_out).to(x_t.dtype)
+        return x_t
+
     def tiled_decode(
         self,
         z: torch.Tensor,
@@ -865,6 +864,8 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
         px spatially and 2 frames temporally for the production config). Temporal tiles follow the causal frame
         mapping: the tile containing t=0 drops the temporal upsample's duplicate leading frame and only the tile
         containing the video end carries the NATTEN border padding.
+
+        This tiles whatever `use_tiling` says — [`decode`] is the entry point that honors it.
         """
         decoder = self.decoder
         num_inference_steps = num_inference_steps or decoder.default_num_inference_steps
@@ -878,9 +879,6 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             upsample_stride[1] * patch_size,
             upsample_stride[2] * patch_size,
         )
-        tile_t, stride_t = self.tile_sample_min_num_frames // scale_t, self.tile_sample_stride_num_frames // scale_t
-        tile_h, stride_h = self.tile_sample_min_height // scale_h, self.tile_sample_stride_height // scale_h
-        tile_w, stride_w = self.tile_sample_min_width // scale_w, self.tile_sample_stride_width // scale_w
         # Every tile must satisfy both remaining neighborhood-attention kernels: the last deterministic stage
         # sees the tile as-is, stage 5 sees it scaled by the upsample stride.
         min_sizes = [
@@ -890,12 +888,16 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             )
         ]
 
-        features = decoder.forward_stages_1_to_3(z)
+        features = decoder.encode_context_stages_1_to_3(z)
         # The trailing ghost frames replicate through the earlier stages' temporal upsamples, whose composed
         # mapping is affine with slope equal to the product of their strides.
         ghost_frames = decoder.trailing_pad_latent_frames * math.prod(up.stride[0] for up in decoder.upsamples[:-1])
         num_frames = features.shape[1] - ghost_frames
         height, width = features.shape[2], features.shape[3]
+
+        tile_t, stride_t = self.tile_sample_min_num_frames // scale_t, self.tile_sample_stride_num_frames // scale_t
+        tile_h, stride_h = self.tile_sample_min_height // scale_h, self.tile_sample_stride_height // scale_h
+        tile_w, stride_w = self.tile_sample_min_width // scale_w, self.tile_sample_stride_width // scale_w
 
         temporal_tiles = _tile_intervals(num_frames, tile_t, stride_t, min_sizes[0])
         height_tiles = _tile_intervals(height, tile_h, stride_h, min_sizes[1])
@@ -927,7 +929,7 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             for h0, h1 in height_tiles:
                 row = []
                 for w0, w1 in width_tiles:
-                    context = decoder.forward_stage_4(
+                    context = decoder.encode_context_stage_4(
                         features[:, t0:feature_t1, h0:h1, w0:w1],
                         drop_leading_frame=is_origin,
                         crop_trailing_ghost=is_trailing,
@@ -952,7 +954,7 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
                             h0 * scale_h : h0 * scale_h + tile_pixel_shape[3],
                             w0 * scale_w : w0 * scale_w + tile_pixel_shape[4],
                         ]
-                    row.append(decoder.denoise(context, x_t, num_inference_steps))
+                    row.append(self._denoise(context, x_t, num_inference_steps))
                 rows.append(row)
 
             result_rows = []
@@ -985,6 +987,38 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             result.append(group)
         return torch.cat(result, dim=2)
 
+    def _decode(
+        self,
+        z: torch.Tensor,
+        generator: torch.Generator | None = None,
+        num_inference_steps: int | None = None,
+    ) -> torch.Tensor:
+        """Decode a batch of latents, routing to [`tiled_decode`] when tiling is on and the video needs it."""
+        tile_latent_min_height = self.tile_sample_min_height // self.config.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.config.spatial_compression_ratio
+        tile_latent_min_num_frames = self.tile_sample_min_num_frames // self.config.temporal_compression_ratio
+        if self.use_tiling and (
+            z.shape[2] > tile_latent_min_num_frames
+            or z.shape[3] > tile_latent_min_height
+            or z.shape[4] > tile_latent_min_width
+        ):
+            return self.tiled_decode(z, generator=generator, num_inference_steps=num_inference_steps)
+
+        decoder = self.decoder
+        num_inference_steps = num_inference_steps or decoder.default_num_inference_steps
+        latent_context = decoder.encode_context_stage_4(decoder.encode_context_stages_1_to_3(z))
+        # The context grid is the stage-5 token grid, so the pixel canvas is its shape times the patch size —
+        # temporally that is the causal (T - 1) * ratio + 1 mapping of the LTX-2 latent space.
+        pixel_shape = (
+            z.shape[0],
+            decoder.out_channels,
+            latent_context.shape[1],
+            latent_context.shape[2] * decoder.patch_size,
+            latent_context.shape[3] * decoder.patch_size,
+        )
+        x_t = randn_tensor(pixel_shape, generator=generator, device=z.device, dtype=z.dtype)
+        return self._denoise(latent_context, x_t, num_inference_steps)
+
     @apply_forward_hook
     def decode(
         self,
@@ -998,17 +1032,7 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
         `z` is expected to be denormalized already (the pipeline applies `latents_mean` / `latents_std`), matching
         [`AutoencoderKLLTX2Video`]. This decoder denoises, so pass `generator` for reproducibility.
         """
-        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-        tile_latent_min_num_frames = self.tile_sample_min_num_frames // self.temporal_compression_ratio
-        if self.use_tiling and (
-            z.shape[2] > tile_latent_min_num_frames
-            or z.shape[3] > tile_latent_min_height
-            or z.shape[4] > tile_latent_min_width
-        ):
-            decoded = self.tiled_decode(z, generator=generator, num_inference_steps=num_inference_steps)
-        else:
-            decoded = self.decoder(z, generator=generator, num_inference_steps=num_inference_steps)
+        decoded = self._decode(z, generator=generator, num_inference_steps=num_inference_steps)
 
         if not return_dict:
             return (decoded,)

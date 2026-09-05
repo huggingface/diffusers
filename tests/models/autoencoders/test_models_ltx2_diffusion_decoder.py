@@ -205,6 +205,102 @@ class TestLTX2VideoDiffusionDecoderModelTiling(LTX2VideoDiffusionDecoderModelTes
         model.disable_tiling()
         assert torch.equal(self.decode(model, latent), untiled)
 
+    def test_tiled_decode_tiles_even_when_tiling_is_disabled(self):
+        """`tiled_decode` tiles on its own terms; `use_tiling` only gates whether `decode` routes to it.
+
+        `disable_tiling` flips the routing flag and leaves the configured tile sizes alone, so a direct
+        `tiled_decode` call still has a split schedule to honor. This counts stage-4 invocations rather than
+        comparing outputs because output comparison cannot see the failure: a `tiled_decode` that quietly
+        fell back to one full-grid tile would reproduce the untiled decode exactly and pass every other test
+        in this class.
+        """
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        latent = self.get_latent()
+        model.enable_tiling(
+            tile_sample_min_num_frames=8,
+            tile_sample_stride_num_frames=6,
+            tile_sample_min_height=32,
+            tile_sample_stride_height=24,
+            tile_sample_min_width=32,
+            tile_sample_stride_width=24,
+        )
+        model.disable_tiling()
+        assert not model.use_tiling
+
+        # Stage 4 runs once per tile, so its call count is the tile count.
+        stage_4_calls = []
+        original_stage_4 = model.decoder.encode_context_stage_4
+
+        def counting_stage_4(hidden_states, *args, **kwargs):
+            stage_4_calls.append(tuple(hidden_states.shape[1:4]))
+            return original_stage_4(hidden_states, *args, **kwargs)
+
+        model.decoder.encode_context_stage_4 = counting_stage_4
+        try:
+            generator = torch.Generator("cpu").manual_seed(0)
+            with torch.no_grad():
+                model.tiled_decode(latent, generator=generator)
+            tiled_call_count = len(stage_4_calls)
+
+            stage_4_calls.clear()
+            self.decode(model, latent)
+            untiled_call_count = len(stage_4_calls)
+        finally:
+            del model.decoder.encode_context_stage_4
+
+        assert tiled_call_count > 1, (
+            f"tiled_decode ran stage 4 {tiled_call_count} time(s) with use_tiling=False; it must tile "
+            "regardless of the flag"
+        )
+        assert untiled_call_count == 1, (
+            f"decode ran stage 4 {untiled_call_count} times with use_tiling=False; it must not tile"
+        )
+
+    def test_decode_skips_tiling_for_a_video_that_fits_in_one_tile(self):
+        """`decode` sizes the latent up before routing, so tiling only engages when it would split.
+
+        The two outcomes are indistinguishable from the output alone: a video below the tile size that
+        reaches `tiled_decode` anyway gets a single-tile schedule, which decodes to the same pixels. So
+        this asserts the routing directly -- `tiled_decode` is never reached -- and separately pins the
+        contract that matters to callers, that turning tiling on cannot change a small video's output.
+        """
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        latent = self.get_latent()
+        untiled = self.decode(model, latent)
+
+        calls = []
+        original_tiled_decode = model.tiled_decode
+
+        def counting_tiled_decode(*args, **kwargs):
+            calls.append(1)
+            return original_tiled_decode(*args, **kwargs)
+
+        model.tiled_decode = counting_tiled_decode
+        try:
+            # Default tile sizes are far larger than this 17x64x80 video, so the gate declines to tile.
+            model.enable_tiling()
+            fits_in_one_tile = self.decode(model, latent)
+            assert not calls, "decode routed to tiled_decode for a video that fits in a single tile"
+            assert torch.equal(fits_in_one_tile, untiled), (
+                "enabling tiling changed the output of a video below the tile size by "
+                f"{(fits_in_one_tile - untiled).abs().max().item():.3e}"
+            )
+
+            # Shrink the tiles below the video and the same latent must now route.
+            model.enable_tiling(
+                tile_sample_min_num_frames=8,
+                tile_sample_stride_num_frames=6,
+                tile_sample_min_height=32,
+                tile_sample_stride_height=24,
+                tile_sample_min_width=32,
+                tile_sample_stride_width=24,
+            )
+            self.decode(model, latent)
+            assert calls, "decode did not route to tiled_decode for a video larger than the tile size"
+        finally:
+            del model.tiled_decode
+            model.disable_tiling()
+
 
 class TestLTX2VideoDiffusionDecoderModelMemory(LTX2VideoDiffusionDecoderModelTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for LTX2VideoDiffusionDecoderModel."""
