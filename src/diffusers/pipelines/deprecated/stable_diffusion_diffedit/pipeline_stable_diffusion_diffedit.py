@@ -94,7 +94,7 @@ EXAMPLE_DOC_STRING = """
         >>> init_image = download_image(img_url).resize((768, 768))
 
         >>> pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
+        ...     "stabilityai/stable-diffusion-2-1", dtype=torch.float16
         ... )
 
         >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
@@ -130,7 +130,7 @@ EXAMPLE_INVERT_DOC_STRING = """
         >>> init_image = download_image(img_url).resize((768, 768))
 
         >>> pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
+        ...     "stabilityai/stable-diffusion-2-1", dtype=torch.float16
         ... )
 
         >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)

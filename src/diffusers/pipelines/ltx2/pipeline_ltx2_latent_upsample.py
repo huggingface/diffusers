@@ -37,7 +37,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
         >>> from diffusers.utils import load_image
 
-        >>> pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
+        >>> pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-2", dtype=torch.bfloat16)
         >>> pipe.enable_model_cpu_offload()
 
         >>> image = load_image(
@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         ... )
 
         >>> latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
-        ...     "Lightricks/LTX-2", subfolder="latent_upsampler", torch_dtype=torch.bfloat16
+        ...     "Lightricks/LTX-2", subfolder="latent_upsampler", dtype=torch.bfloat16
         ... )
         >>> upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=latent_upsampler)
         >>> upsample_pipe.vae.enable_tiling()

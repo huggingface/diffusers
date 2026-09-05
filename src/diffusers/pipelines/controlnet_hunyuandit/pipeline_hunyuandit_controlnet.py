@@ -49,11 +49,11 @@ EXAMPLE_DOC_STRING = """
         import torch
 
         controlnet = HunyuanDiT2DControlNetModel.from_pretrained(
-            "Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny", torch_dtype=torch.float16
+            "Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Canny", dtype=torch.float16
         )
 
         pipe = HunyuanDiTControlNetPipeline.from_pretrained(
-            "Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, torch_dtype=torch.float16
+            "Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, dtype=torch.float16
         )
         pipe.to("cuda")
 

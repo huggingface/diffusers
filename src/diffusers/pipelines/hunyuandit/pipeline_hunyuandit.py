@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import HunyuanDiTPipeline
 
         >>> pipe = HunyuanDiTPipeline.from_pretrained(
-        ...     "Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
+        ...     "Tencent-Hunyuan/HunyuanDiT-Diffusers", dtype=torch.float16
         ... )
         >>> pipe.to("cuda")
 

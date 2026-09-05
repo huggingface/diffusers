@@ -38,7 +38,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
 
         >>> pipe = AutoPipelineForImage2Image.from_pretrained(
-        ...     "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-3", variant="fp16", dtype=torch.float16
         ... )
         >>> pipe.enable_model_cpu_offload()
 

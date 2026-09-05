@@ -65,9 +65,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> base_model = "black-forest-labs/FLUX.1-dev"
         >>> controlnet_model = "InstantX/FLUX.1-dev-controlnet-canny"
-        >>> controlnet = FluxControlNetModel.from_pretrained(controlnet_model, torch_dtype=torch.bfloat16)
+        >>> controlnet = FluxControlNetModel.from_pretrained(controlnet_model, dtype=torch.bfloat16)
         >>> pipe = FluxControlNetPipeline.from_pretrained(
-        ...     base_model, controlnet=controlnet, torch_dtype=torch.bfloat16
+        ...     base_model, controlnet=controlnet, dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
         >>> control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")

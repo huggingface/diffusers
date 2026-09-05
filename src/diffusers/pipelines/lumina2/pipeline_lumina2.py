@@ -50,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import Lumina2Pipeline
 
-        >>> pipe = Lumina2Pipeline.from_pretrained("Alpha-VLLM/Lumina-Image-2.0", torch_dtype=torch.bfloat16)
+        >>> pipe = Lumina2Pipeline.from_pretrained("Alpha-VLLM/Lumina-Image-2.0", dtype=torch.bfloat16)
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 

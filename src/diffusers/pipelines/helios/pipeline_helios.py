@@ -54,8 +54,8 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Available models: BestWishYsh/Helios-Base, BestWishYsh/Helios-Mid, BestWishYsh/Helios-Distilled
         >>> model_id = "BestWishYsh/Helios-Base"
-        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = HeliosPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+        >>> pipe = HeliosPipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."

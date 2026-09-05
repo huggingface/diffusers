@@ -48,11 +48,11 @@ EXAMPLE_DOC_STRING = """
         >>> device = "cuda" if torch.cuda.is_available() else "cpu"
 
         >>> controlnet = FluxControlNetModel.from_pretrained(
-        ...     "InstantX/FLUX.1-dev-Controlnet-Canny-alpha", torch_dtype=torch.bfloat16
+        ...     "InstantX/FLUX.1-dev-Controlnet-Canny-alpha", dtype=torch.bfloat16
         ... )
 
         >>> pipe = FluxControlNetImg2ImgPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.1-schnell", controlnet=controlnet, torch_dtype=torch.float16
+        ...     "black-forest-labs/FLUX.1-schnell", controlnet=controlnet, dtype=torch.float16
         ... )
 
         >>> pipe.text_encoder.to(torch.float16)

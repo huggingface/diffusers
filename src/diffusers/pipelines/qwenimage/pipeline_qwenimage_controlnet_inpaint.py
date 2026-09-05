@@ -49,9 +49,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> base_model_path = "Qwen/Qwen-Image"
         >>> controlnet_model_path = "InstantX/Qwen-Image-ControlNet-Inpainting"
-        >>> controlnet = QwenImageControlNetModel.from_pretrained(controlnet_model_path, torch_dtype=torch.bfloat16)
+        >>> controlnet = QwenImageControlNetModel.from_pretrained(controlnet_model_path, dtype=torch.bfloat16)
         >>> pipe = QwenImageControlNetInpaintPipeline.from_pretrained(
-        ...     base_model_path, controlnet=controlnet, torch_dtype=torch.bfloat16
+        ...     base_model_path, controlnet=controlnet, dtype=torch.bfloat16
         ... ).to("cuda")
         >>> image = load_image(
         ...     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/images/image1.png"

@@ -72,7 +72,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = SanaPAGPipeline.from_pretrained(
         ...     "Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers",
         ...     pag_applied_layers=["transformer_blocks.8"],
-        ...     torch_dtype=torch.float32,
+        ...     dtype=torch.float32,
         ... )
         >>> pipe.to("cuda")
         >>> pipe.text_encoder.to(torch.bfloat16)

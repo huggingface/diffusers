@@ -43,7 +43,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
         import torch
 
         pipe = AutoPipelineForText2Image.from_pretrained(
-            "kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16
+            "kandinsky-community/kandinsky-2-1", dtype=torch.float16
         )
         pipe.enable_model_cpu_offload()
 
@@ -64,7 +64,7 @@ IMAGE2IMAGE_EXAMPLE_DOC_STRING = """
         import os
 
         pipe = AutoPipelineForImage2Image.from_pretrained(
-            "kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16
+            "kandinsky-community/kandinsky-2-1", dtype=torch.float16
         )
         pipe.enable_model_cpu_offload()
 
@@ -90,7 +90,7 @@ INPAINT_EXAMPLE_DOC_STRING = """
         import numpy as np
 
         pipe = AutoPipelineForInpainting.from_pretrained(
-            "kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16
+            "kandinsky-community/kandinsky-2-1-inpaint", dtype=torch.float16
         )
         pipe.enable_model_cpu_offload()
 

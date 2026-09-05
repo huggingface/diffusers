@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video
 
         >>> pipe = TextToVideoSDPipeline.from_pretrained(
-        ...     "damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16"
+        ...     "damo-vilab/text-to-video-ms-1.7b", dtype=torch.float16, variant="fp16"
         ... )
         >>> pipe.enable_model_cpu_offload()
 

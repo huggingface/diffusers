@@ -61,7 +61,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
         ...     "stabilityai/stable-diffusion-3-medium-diffusers",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     enable_pag=True,
         ...     pag_applied_layers=["blocks.13"],
         ... )
