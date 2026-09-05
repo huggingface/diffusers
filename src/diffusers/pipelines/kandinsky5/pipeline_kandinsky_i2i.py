@@ -174,7 +174,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             tokenizer_2=tokenizer_2,
             scheduler=scheduler,
         )
-        self.prompt_template = "<|im_start|>system\nYou are a promt engineer. Based on the provided source image (first image) and target image (second image), create an interesting text prompt that can be used together with the source image to create the target image:<|im_end|><|im_start|>user{}<|vision_start|><|image_pad|><|vision_end|><|im_end|>"
+        self.prompt_template = "<|im_start|>system\nYou are a prompt engineer. Based on the provided source image (first image) and target image (second image), create an interesting text prompt that can be used together with the source image to create the target image:<|im_end|><|im_start|>user{}<|vision_start|><|image_pad|><|vision_end|><|im_end|>"
         self.prompt_template_encode_start_idx = 55
 
         self.vae_scale_factor_spatial = 8
