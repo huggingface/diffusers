@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from typing import Any
 
 import torch
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
-from ...models import WanTransformer3DModel
+from ...models import WanTransformer3DModel, WanVACETransformer3DModel
 from ...schedulers import UniPCMultistepScheduler
 from ...utils import logging
 from ..modular_pipeline import (
@@ -226,8 +227,13 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
     def __init__(
         self,
         guider_input_fields: dict[str, Any] = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")},
+        transformer_cls: type = WanTransformer3DModel,
     ):
         """Initialize a denoiser block that calls the denoiser model. This block is used in Wan2.2.
+
+        Args:
+            transformer_cls: The class of the two denoiser models, e.g. `WanVACETransformer3DModel` for the
+                VACE variant.
 
         Args:
             guider_input_fields: A dictionary that maps each argument expected by the denoiser model
@@ -243,6 +249,7 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
         if not isinstance(guider_input_fields, dict):
             raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
         self._guider_input_fields = guider_input_fields
+        self._transformer_cls = transformer_cls
         super().__init__()
 
     @property
@@ -260,8 +267,8 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
                 config=FrozenDict({"guidance_scale": 3.0}),
                 default_creation_method="from_config",
             ),
-            ComponentSpec("transformer", WanTransformer3DModel),
-            ComponentSpec("transformer_2", WanTransformer3DModel),
+            ComponentSpec("transformer", self._transformer_cls),
+            ComponentSpec("transformer_2", self._transformer_cls),
         ]
 
     @property
@@ -292,6 +299,7 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
                 type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
+            InputParam.template("denoiser_input_fields"),
         ]
         guider_input_names = []
         for value in self._guider_input_fields.values():
@@ -328,6 +336,15 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
         # Other guidance methods may return 1 batch (no guidance) or 3+ batches (e.g., PAG, APG).
         guider_state = block_state.guider.prepare_inputs_from_block_state(block_state, self._guider_input_fields)
 
+        # Tagged conditioning fields the denoiser accepts (e.g. the VACE control_hidden_states) are shared
+        # across the conditional/unconditional batches.
+        transformer_args = set(inspect.signature(block_state.current_model.forward).parameters.keys())
+        additional_cond_kwargs = {
+            name: value.to(block_state.dtype) if isinstance(value, torch.Tensor) else value
+            for name, value in block_state.denoiser_input_fields.items()
+            if name in transformer_args and name not in self._guider_input_fields
+        }
+
         # run the denoiser for each guidance batch
         for guider_state_batch in guider_state:
             block_state.guider.prepare_models(block_state.current_model)
@@ -346,6 +363,7 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
                 attention_kwargs=block_state.attention_kwargs,
                 return_dict=False,
                 **cond_kwargs,
+                **additional_cond_kwargs,
             )[0]
             block_state.guider.cleanup_models(block_state.current_model)
 
@@ -516,6 +534,33 @@ class WanImage2VideoDenoiseStep(WanDenoiseLoopWrapper):
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
             "This block supports image-to-video tasks for wan2.1."
+        )
+
+
+class Wan22VaceDenoiseStep(WanDenoiseLoopWrapper):
+    model_name = "wan-vace"
+    block_classes = [
+        WanLoopBeforeDenoiser,
+        Wan22LoopDenoiser(
+            transformer_cls=WanVACETransformer3DModel,
+            guider_input_fields={
+                "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+            },
+        ),
+        WanLoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. \n"
+            "Its loop logic is defined in `WanDenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
+            " - `WanLoopBeforeDenoiser`\n"
+            " - `Wan22LoopDenoiser`\n"
+            " - `WanLoopAfterDenoiser`\n"
+            "This block supports controllable video generation tasks for Wan2.2 VACE."
         )
 
 
