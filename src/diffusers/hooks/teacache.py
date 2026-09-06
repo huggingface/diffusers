@@ -153,11 +153,14 @@ def _compute_rel_l1_distance_tensor(current: torch.Tensor, previous: torch.Tenso
     return rel_distance.squeeze()
 
 
+@torch.compiler.disable
 def _should_compute(state, modulated_inp, coefficients, rel_l1_thresh):
     """Determine if full computation is needed (single residual models).
 
-    Uses tensor-only operations for torch.compile compatibility. One .item() call remains for the final branching
-    decision since Python control flow requires a boolean.
+    The distance accumulation stays in tensor form, but the final skip/compute decision is data-dependent and must
+    become a Python bool for control flow. This function is marked with `torch.compiler.disable` so the graph break is
+    contained here and the surrounding forward still compiles. This matches `first_block_cache.py`,
+    `taylorseer_cache.py` and `mag_cache.py`, which make the same data-dependent decision the same way.
     """
     is_first_step = state.cnt == 0
     is_last_step = state.num_steps > 0 and state.cnt == state.num_steps - 1
@@ -175,7 +178,7 @@ def _should_compute(state, modulated_inp, coefficients, rel_l1_thresh):
     rescaled = _rescale_distance_tensor(coefficients, rel_distance)
     state.accumulated_rel_l1_distance = state.accumulated_rel_l1_distance + rescaled
 
-    # Single .item() for branching (unavoidable for Python control flow)
+    # Data-dependent branch: contained by the `torch.compiler.disable` above.
     should_compute = (state.accumulated_rel_l1_distance >= rel_l1_thresh).item()
 
     if should_compute:
@@ -184,6 +187,7 @@ def _should_compute(state, modulated_inp, coefficients, rel_l1_thresh):
     return should_compute
 
 
+@torch.compiler.disable
 def _should_compute_dual(state, modulated_inp, coefficients, rel_l1_thresh):
     """Determine if full computation is needed (dual residual models like CogVideoX)."""
     if state.previous_residual is None or state.previous_residual_encoder is None:
