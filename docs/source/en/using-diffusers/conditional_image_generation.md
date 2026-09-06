@@ -30,8 +30,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 2. Pass a prompt to the pipeline to generate an image:
@@ -60,8 +60,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
 image
@@ -76,8 +76,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
 image
@@ -94,8 +94,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
-).to("cuda")
+	"kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
 image
@@ -113,8 +113,8 @@ from diffusers.utils import load_image
 import torch
 
 controlnet = ControlNetModel.from_pretrained(
-	"lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+	"lllyasviel/control_v11p_sd15_openpose", dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 pose_image = load_image("https://huggingface.co/lllyasviel/control_v11p_sd15_openpose/resolve/main/images/control.png")
 ```
 
@@ -122,8 +122,8 @@ Pass the `controlnet` to the [`AutoPipelineForText2Image`], and provide the prom
 
 ```py
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", image=pose_image, generator=generator).images[0]
 image
@@ -161,8 +161,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", height=768, width=512
 ).images[0]
@@ -185,8 +185,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", guidance_scale=3.5
 ).images[0]
@@ -217,8 +217,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 image = pipeline(
 	prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
 	negative_prompt="ugly, deformed, disfigured, poor details, bad anatomy",
@@ -248,8 +248,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 generator = torch.Generator(device="cuda").manual_seed(30)
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
@@ -276,8 +276,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 image = pipeline(
 	prompt_embeds=prompt_embeds, # generated from Compel
 	negative_prompt_embeds=negative_prompt_embeds, # generated from Compel
@@ -286,7 +286,7 @@ image = pipeline(
 
 ### ControlNet
 
-As you saw in the [ControlNet](#controlnet) section, these models offer a more flexible and accurate way to generate images by incorporating an additional conditioning image input. Each ControlNet model is pretrained on a particular type of conditioning image to generate new images that resemble it. For example, if you take a ControlNet model pretrained on depth maps, you can give the model a depth map as a conditioning input and it'll generate an image that preserves the spatial information in it. This is quicker and easier than specifying the depth information in a prompt. You can even combine multiple conditioning inputs with a [MultiControlNet](controlnet#multicontrolnet)!
+As you saw in the [ControlNet](#controlnet) section, these models offer a more flexible and accurate way to generate images by incorporating an additional conditioning image input. Each ControlNet model is pretrained on a particular type of conditioning image to generate new images that resemble it. For example, if you take a ControlNet model pretrained on depth maps, you can give the model a depth map as a conditioning input and it'll generate an image that preserves the spatial information in it. This is quicker and easier than specifying the depth information in a prompt. You can even combine multiple conditioning inputs with a [Multi-ControlNet](controlnet#multi-controlnet)!
 
 There are many types of conditioning inputs you can use, and 🤗 Diffusers supports ControlNet for Stable Diffusion and SDXL models. Take a look at the more comprehensive [ControlNet](controlnet) guide to learn how you can use these models.
 
@@ -300,7 +300,7 @@ PyTorch 2.0 also supports a more memory-efficient attention mechanism called [*s
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16").to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16").to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 

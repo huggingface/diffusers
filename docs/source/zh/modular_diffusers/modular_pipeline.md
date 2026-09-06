@@ -28,7 +28,7 @@ blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
 modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 pipeline = blocks.init_pipeline(modular_repo_id)
 
-pipeline.load_components(torch_dtype=torch.float16)
+pipeline.load_components(dtype=torch.float16)
 pipeline.to("cuda")
 
 image = pipeline(prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", output="images")[0]
@@ -48,7 +48,7 @@ blocks = SequentialPipelineBlocks.from_blocks_dict(IMAGE2IMAGE_BLOCKS)
 modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 pipeline = blocks.init_pipeline(modular_repo_id)
 
-pipeline.load_components(torch_dtype=torch.float16)
+pipeline.load_components(dtype=torch.float16)
 pipeline.to("cuda")
 
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
@@ -72,7 +72,7 @@ blocks = SequentialPipelineBlocks.from_blocks_dict(INPAINT_BLOCKS)
 modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
 pipeline = blocks.init_pipeline(modular_repo_id)
 
-pipeline.load_components(torch_dtype=torch.float16)
+pipeline.load_components(dtype=torch.float16)
 pipeline.to("cuda")
 
 img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
@@ -184,7 +184,7 @@ diffdiff_pipeline = ModularPipeline.from_pretrained(modular_repo_id, trust_remot
 ```py
 import torch
 
-t2i_pipeline.load_components(torch_dtype=torch.float16)
+t2i_pipeline.load_components(dtype=torch.float16)
 t2i_pipeline.to("cuda")
 ```
 
@@ -196,7 +196,7 @@ t2i_pipeline.to("cuda")
 ```py
 import torch
 
-t2i_pipeline.load_components(names=["unet", "vae"], torch_dtype=torch.float16)
+t2i_pipeline.load_components(names=["unet", "vae"], dtype=torch.float16)
 ```
 
 </hfoption>
@@ -283,7 +283,7 @@ t2i_pipeline.config_component_names
 from diffusers import ComponentSpec, UNet2DConditionModel
 
 unet_spec = ComponentSpec(name="unet",type_hint=UNet2DConditionModel, repo="stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", variant="fp16")
-unet = unet_spec.load(torch_dtype=torch.float16)
+unet = unet_spec.load(dtype=torch.float16)
 ```
 
 [`~ModularPipeline.update_components`] 方法用一个新的组件替换原来的组件。
@@ -302,7 +302,7 @@ t2i_pipeline.update_components(unet=unet2)
 spec = ComponentSpec.from_component("unet", unet2)
 spec
 ComponentSpec(name='unet', type_hint=<class 'diffusers.models.unets.unet_2d_condition.UNet2DConditionModel'>, description=None, config=None, repo='stabilityai/stable-diffusion-xl-base-1.0', subfolder='unet', variant='fp16', revision=None, default_creation_method='from_pretrained')
-unet2_recreated = spec.load(torch_dtype=torch.float16)
+unet2_recreated = spec.load(dtype=torch.float16)
 ```
 
 [`~ModularPipeline.get_component_spec`] 方法获取当前组件规范的副本以进行修改或更新。
@@ -323,7 +323,7 @@ ComponentSpec(
 unet_spec.pretrained_model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
 
 # 使用修改后的规范加载组件
-unet = unet_spec.load(torch_dtype=torch.float16)
+unet = unet_spec.load(dtype=torch.float16)
 ```
 
 ## 模块化仓库

@@ -162,6 +162,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
     requires_calibration = False
     required_packages = ["torchao"]
+    use_keep_in_fp32_modules = True
 
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
@@ -301,9 +302,19 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             return state_dict
 
         merged_state_dict = {**self._pending_flattened_state_dict, **state_dict}
+        # Tensors at the model root (e.g. Wan's `scale_shift_table`) have no module prefix and are never
+        # flattened tensor-subclass parts; torchao's unflatten helper cannot parse their names, so route
+        # them (and their metadata entries) around the reconstruction.
+        root_tensors = {k: v for k, v in merged_state_dict.items() if "." not in k}
+        merged_state_dict = {k: v for k, v in merged_state_dict.items() if "." in k}
+        metadata = self._metadata
+        tensor_names = json.loads(metadata["tensor_names"])
+        if any("." not in name for name in tensor_names):
+            metadata = {**metadata, "tensor_names": json.dumps([name for name in tensor_names if "." in name])}
         reconstructed_state_dict, self._pending_flattened_state_dict = unflatten_tensor_state_dict(
-            merged_state_dict, self._metadata
+            merged_state_dict, metadata
         )
+        reconstructed_state_dict.update(root_tensors)
 
         return reconstructed_state_dict
 

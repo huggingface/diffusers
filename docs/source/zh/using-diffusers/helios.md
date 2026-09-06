@@ -30,17 +30,17 @@ from huggingface_hub import snapshot_download
 
 # For Best Quality
 snapshot_download(repo_id="BestWishYsh/Helios-Base", local_dir="BestWishYsh/Helios-Base")
-pipe = HeliosPipeline.from_pretrained("BestWishYsh/Helios-Base", torch_dtype=torch.bfloat16)
+pipe = HeliosPipeline.from_pretrained("BestWishYsh/Helios-Base", dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # Intermediate Weight
 snapshot_download(repo_id="BestWishYsh/Helios-Mid", local_dir="BestWishYsh/Helios-Mid")
-pipe = HeliosPyramidPipeline.from_pretrained("BestWishYsh/Helios-Mid", torch_dtype=torch.bfloat16)
+pipe = HeliosPyramidPipeline.from_pretrained("BestWishYsh/Helios-Mid", dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # For Best Efficiency
 snapshot_download(repo_id="BestWishYsh/Helios-Distilled", local_dir="BestWishYsh/Helios-Distilled")
-pipe = HeliosPyramidPipeline.from_pretrained("BestWishYsh/Helios-Distilled", torch_dtype=torch.bfloat16)
+pipe = HeliosPyramidPipeline.from_pretrained("BestWishYsh/Helios-Distilled", dtype=torch.bfloat16)
 pipe.to("cuda")
 ```
 

@@ -106,7 +106,7 @@ import torch
 from diffusers import StableDiffusionPipeline
 
 model_path = "path_to_saved_model"
-pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(model_path, dtype=torch.float16)
 pipe.to("cuda")
 
 image = pipe(prompt="yoda").images[0]
@@ -120,9 +120,9 @@ import torch
 from diffusers import StableDiffusionPipeline, UNet2DConditionModel
 
 model_path = "path_to_saved_model"
-unet = UNet2DConditionModel.from_pretrained(model_path + "/checkpoint-<N>/unet", torch_dtype=torch.float16)
+unet = UNet2DConditionModel.from_pretrained(model_path + "/checkpoint-<N>/unet", dtype=torch.float16)
 
-pipe = StableDiffusionPipeline.from_pretrained("<initial model>", unet=unet, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained("<initial model>", unet=unet, dtype=torch.float16)
 pipe.to("cuda")
 
 image = pipe(prompt="yoda").images[0]
@@ -251,7 +251,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_path = "sayakpaul/sd-model-finetuned-lora-t4"
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", dtype=torch.float16)
 pipe.unet.load_attn_procs(model_path)
 pipe.to("cuda")
 
@@ -271,11 +271,14 @@ lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16)
 ...
 ```
 
 ## Training with Flax/JAX
+
+> [!WARNING]
+> JAX/Flax support was removed from the `diffusers` library in v0.40.0. These scripts require `diffusers<=0.39.x` to run.
 
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
 

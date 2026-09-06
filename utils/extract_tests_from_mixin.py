@@ -30,32 +30,46 @@ def generate_pytest_pattern(test_methods: List[str]) -> str:
     return " or ".join(test_methods)
 
 
-def generate_pattern_for_mixin(mixin_class: Type) -> str:
+def generate_pattern_for_mixins(mixin_classes: List[Type]) -> str:
     """
-    Generate pytest pattern for a specific mixin class.
+    Generate a pytest pattern covering the test methods of all the given mixin classes.
     """
-    if mixin_cls is None:
-        return ""
-    test_methods = get_test_methods_from_class(mixin_class)
-    return generate_pytest_pattern(test_methods)
+    test_methods = set()
+    for mixin_class in mixin_classes:
+        test_methods.update(get_test_methods_from_class(mixin_class))
+    return generate_pytest_pattern(sorted(test_methods))
 
 
 if __name__ == "__main__":
-    mixin_cls = None
+    mixin_classes = []
     if args.type == "pipeline":
         from tests.pipelines.test_pipelines_common import PipelineTesterMixin
 
-        mixin_cls = PipelineTesterMixin
+        mixin_classes = [PipelineTesterMixin]
 
     elif args.type == "models":
-        from tests.models.test_modeling_common import ModelTesterMixin
+        # The model tester suite is split across several mixins under `tests/models/testing_utils`,
+        # so aggregate their test methods to reconstruct the full coverage.
+        from tests.models.testing_utils import (
+            AttentionTesterMixin,
+            LoraTesterMixin,
+            MemoryTesterMixin,
+            ModelTesterMixin,
+            TrainingTesterMixin,
+        )
 
-        mixin_cls = ModelTesterMixin
+        mixin_classes = [
+            ModelTesterMixin,
+            MemoryTesterMixin,
+            TrainingTesterMixin,
+            AttentionTesterMixin,
+            LoraTesterMixin,
+        ]
 
     elif args.type == "lora":
         from tests.lora.utils import PeftLoraLoaderMixinTests
 
-        mixin_cls = PeftLoraLoaderMixinTests
+        mixin_classes = [PeftLoraLoaderMixinTests]
 
-    pattern = generate_pattern_for_mixin(mixin_cls)
+    pattern = generate_pattern_for_mixins(mixin_classes)
     print(pattern)

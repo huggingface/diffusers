@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -243,7 +243,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
     ):
-        image = image.to(device=device)
+        # The image comes out of `video_processor.preprocess()` in float32. When `needs_upcasting=False`, the VAE may not
+        # be in FP32 (for example, it could be in BF16) so we need to cast in this case.
+        image = image.to(device=device, dtype=self.vae.dtype)
         image_latents = self.vae.encode(image).latent_dist.mode()
 
         # duplicate image_latents for each generation per prompt, using mps friendly method

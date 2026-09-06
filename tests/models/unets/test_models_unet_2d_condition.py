@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import tempfile
 import unittest
 from collections import OrderedDict
 
-import pytest
 import torch
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
@@ -35,6 +34,7 @@ from diffusers.models.attention_processor import (
 from diffusers.models.embeddings import ImageProjection, IPAdapterFaceIDImageProjection, IPAdapterPlusImageProjection
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -43,9 +43,7 @@ from ...testing_utils import (
     backend_reset_peak_memory_stats,
     enable_full_determinism,
     floats_tensor,
-    is_peft_available,
     load_hf_numpy,
-    require_peft_backend,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
     skip_mps,
@@ -62,32 +60,15 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
 
-if is_peft_available():
-    from peft import LoraConfig
-
-    from ..testing_utils.lora import check_if_lora_correctly_set
-
-
 logger = logging.get_logger(__name__)
 
 enable_full_determinism()
-
-
-def get_unet_lora_config():
-    rank = 4
-    unet_lora_config = LoraConfig(
-        r=rank,
-        lora_alpha=rank,
-        target_modules=["to_q", "to_k", "to_v", "to_out.0"],
-        init_lora_weights=False,
-        use_dora=False,
-    )
-    return unet_lora_config
 
 
 def create_ip_adapter_state_dict(model):
@@ -391,11 +372,13 @@ class UNet2DConditionTesterConfig(BaseModelTesterConfig):
         batch_size = 4
         num_channels = 4
         sizes = (16, 16)
+        # Seed locally so repeated calls (e.g. one per forward pass in the mixins) yield identical inputs.
+        generator = torch.Generator("cpu").manual_seed(0)
 
         return {
-            "sample": floats_tensor((batch_size, num_channels) + sizes).to(torch_device),
+            "sample": randn_tensor((batch_size, num_channels) + sizes, generator=generator, device=torch_device),
             "timestep": torch.tensor([10]).to(torch_device),
-            "encoder_hidden_states": floats_tensor((batch_size, 4, 8)).to(torch_device),
+            "encoder_hidden_states": randn_tensor((batch_size, 4, 8), generator=generator, device=torch_device),
         }
 
 
@@ -690,63 +673,6 @@ class TestUNet2DConditionHubLoading(UNet2DConditionTesterConfig):
 
 class TestUNet2DConditionLoRA(UNet2DConditionTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for UNet2DConditionModel."""
-
-    @require_peft_backend
-    def test_load_attn_procs_raise_warning(self):
-        """Test that deprecated load_attn_procs method raises FutureWarning."""
-        init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        # forward pass without LoRA
-        with torch.no_grad():
-            non_lora_sample = model(**inputs_dict).sample
-
-        unet_lora_config = get_unet_lora_config()
-        model.add_adapter(unet_lora_config)
-
-        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
-
-        # forward pass with LoRA
-        with torch.no_grad():
-            lora_sample_1 = model(**inputs_dict).sample
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname)
-            model.unload_lora()
-
-            with pytest.warns(FutureWarning, match="Using the `load_attn_procs\\(\\)` method has been deprecated"):
-                model.load_attn_procs(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
-
-            # import to still check for the rest of the stuff.
-            assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
-
-            with torch.no_grad():
-                lora_sample_2 = model(**inputs_dict).sample
-
-        assert not torch.allclose(non_lora_sample, lora_sample_1, atol=1e-4, rtol=1e-4), (
-            "LoRA injected UNet should produce different results."
-        )
-        assert torch.allclose(lora_sample_1, lora_sample_2, atol=1e-4, rtol=1e-4), (
-            "Loading from a saved checkpoint should produce identical results."
-        )
-
-    @require_peft_backend
-    def test_save_attn_procs_raise_warning(self):
-        """Test that deprecated save_attn_procs method raises FutureWarning."""
-        init_dict = self.get_init_dict()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        unet_lora_config = get_unet_lora_config()
-        model.add_adapter(unet_lora_config)
-
-        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            with pytest.warns(FutureWarning, match="Using the `save_attn_procs\\(\\)` method has been deprecated"):
-                model.save_attn_procs(os.path.join(tmpdirname))
 
 
 class TestUNet2DConditionMemory(UNet2DConditionTesterConfig, MemoryTesterMixin):
@@ -1518,3 +1444,17 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         expected_output_slice = torch.tensor(expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
+
+
+class TestUNet2DConditionSingleFile(UNet2DConditionTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "stable-diffusion-v1-5/stable-diffusion-v1-5"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "unet"}

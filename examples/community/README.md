@@ -120,7 +120,7 @@ from pipeline_stg_mochi import MochiSTGPipeline
 from diffusers.utils import export_to_video
 
 # Load the pipeline
-pipe = MochiSTGPipeline.from_pretrained("genmo/mochi-1-preview", variant="bf16", torch_dtype=torch.bfloat16)
+pipe = MochiSTGPipeline.from_pretrained("genmo/mochi-1-preview", variant="bf16", dtype=torch.bfloat16)
 
 # Enable memory savings
 pipe = pipe.to("cuda")
@@ -257,7 +257,7 @@ if __name__ == "__main__":
     pipeline = AdaptiveMaskInpaintPipeline.from_pretrained(
         "Uminosachi/realisticVisionV51_v51VAE-inpainting", 
         scheduler=scheduler, 
-        torch_dtype=torch.float16, 
+        dtype=torch.float16,
         requires_safety_checker=False
     ).to(device)
 
@@ -318,7 +318,7 @@ negative_prompt = "pink"
 # Load the diffusion pipeline
 pipeline = DiffusionPipeline.from_pretrained(
     model_name,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     custom_pipeline="pipeline_flux_with_cfg"
 )
 pipeline.enable_model_cpu_offload()
@@ -363,7 +363,7 @@ from examples.community.pipeline_stable_diffusion_xl_differential_img2img import
 
 
 pipeline = StableDiffusionXLDifferentialImg2ImgPipeline.from_pretrained(
-    "SG161222/RealVisXL_V4.0", torch_dtype=torch.float16, variant="fp16"
+    "SG161222/RealVisXL_V4.0", dtype=torch.float16, variant="fp16"
 ).to("cuda")
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, use_karras_sigmas=True)
 
@@ -474,16 +474,16 @@ from diffusers.utils import load_image
 pipe = DiffusionPipeline.from_pretrained(
     "prs-eth/marigold-v1-0",
     custom_pipeline="marigold_depth_estimation"
-    # torch_dtype=torch.float16,                # (optional) Run with half-precision (16-bit float).
-    # variant="fp16",                           # (optional) Use with `torch_dtype=torch.float16`, to directly load fp16 checkpoint
+    # dtype=torch.float16,                # (optional) Run with half-precision (16-bit float).
+    # variant="fp16",                           # (optional) Use with `dtype=torch.float16`, to directly load fp16 checkpoint
 )
 
 # (New) LCM version (faster speed)
 pipe = DiffusionPipeline.from_pretrained(
     "prs-eth/marigold-depth-lcm-v1-0",
     custom_pipeline="marigold_depth_estimation"
-    # torch_dtype=torch.float16,                # (optional) Run with half-precision (16-bit float).
-    # variant="fp16",                           # (optional) Use with `torch_dtype=torch.float16`, to directly load fp16 checkpoint
+    # dtype=torch.float16,                # (optional) Run with half-precision (16-bit float).
+    # variant="fp16",                           # (optional) Use with `dtype=torch.float16`, to directly load fp16 checkpoint
 )
 
 pipe.to("cuda")
@@ -543,7 +543,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "longlian/lmd_plus",
     custom_pipeline="llm_grounded_diffusion",
     custom_revision="main",
-    variant="fp16", torch_dtype=torch.float16
+    variant="fp16", dtype=torch.float16
 )
 pipe.enable_model_cpu_offload()
 
@@ -578,7 +578,7 @@ from diffusers import DiffusionPipeline
 pipe = DiffusionPipeline.from_pretrained(
     "longlian/lmd_plus",
     custom_pipeline="llm_grounded_diffusion",
-    variant="fp16", torch_dtype=torch.float16
+    variant="fp16", dtype=torch.float16
 )
 pipe.enable_model_cpu_offload()
 
@@ -615,7 +615,7 @@ import torch
 
 
 feature_extractor = CLIPImageProcessor.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K")
-clip_model = CLIPModel.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16)
+clip_model = CLIPModel.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K", dtype=torch.float16)
 
 
 guided_pipeline = DiffusionPipeline.from_pretrained(
@@ -623,7 +623,7 @@ guided_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="clip_guided_stable_diffusion",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 guided_pipeline.enable_attention_slicing()
 guided_pipeline = guided_pipeline.to("cuda")
@@ -678,7 +678,7 @@ import torch
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     variant='fp16',
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     safety_checker=None,  # Very important for videos...lots of false positives while interpolating
     custom_pipeline="interpolate_stable_diffusion",
 ).to('cuda')
@@ -718,7 +718,7 @@ def download_image(url):
     response = requests.get(url)
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
-pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_mega", torch_dtype=torch.float16, variant="fp16")
+pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_mega", dtype=torch.float16, variant="fp16")
 pipe.to("cuda")
 pipe.enable_attention_slicing()
 
@@ -773,7 +773,7 @@ import torch
 pipe = DiffusionPipeline.from_pretrained(
     'hakurei/waifu-diffusion',
     custom_pipeline="lpw_stable_diffusion",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 pipe = pipe.to("cuda")
 
@@ -837,7 +837,7 @@ diffuser_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="speech_to_image_diffusion",
     speech_model=model,
     speech_processor=processor,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 diffuser_pipeline.enable_attention_slicing()
@@ -896,7 +896,7 @@ import torch
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     custom_pipeline="wildcard_stable_diffusion",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 prompt = "__animal__ sitting on a __object__ wearing a __clothing__"
 out = pipe(
@@ -1135,7 +1135,7 @@ diffuser_pipeline = DiffusionPipeline.from_pretrained(
     detection_pipeline=language_detection_pipeline,
     translation_model=trans_model,
     translation_tokenizer=trans_tokenizer,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 diffuser_pipeline.enable_attention_slicing()
@@ -1298,7 +1298,7 @@ mask_image = load_image(mask_url, mode="RGB")
 pipe = DiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting",
     custom_pipeline="img2img_inpainting",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 pipe = pipe.to("cuda")
 
@@ -1587,7 +1587,7 @@ device = torch.device("cpu" if not torch.cuda.is_available() else "cuda")
 
 pipeline = DiffusionPipeline.from_pretrained(
     "kakaobrain/karlo-v1-alpha",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     custom_pipeline="stable_unclip",
     decoder_pipe_kwargs=dict(
         image_encoder=None,
@@ -1671,7 +1671,7 @@ device = torch.device("cpu" if not torch.cuda.is_available() else "cuda")
 
 pipe = DiffusionPipeline.from_pretrained(
     "kakaobrain/karlo-v1-alpha",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     custom_pipeline="unclip_text_interpolation"
 )
 pipe.to(device)
@@ -1712,7 +1712,7 @@ dtype = torch.float16 if torch.cuda.is_available() else torch.bfloat16
 
 pipe = DiffusionPipeline.from_pretrained(
     "kakaobrain/karlo-v1-alpha-image-variations",
-    torch_dtype=dtype,
+    dtype=dtype,
     custom_pipeline="unclip_image_interpolation"
 )
 pipe.to(device)
@@ -1817,7 +1817,7 @@ feature_extractor = CLIPImageProcessor.from_pretrained(
     "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 )
 clip_model = CLIPModel.from_pretrained(
-    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16
+    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K", dtype=torch.float16
 )
 
 # Load guided pipeline
@@ -1826,7 +1826,7 @@ guided_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="clip_guided_stable_diffusion_img2img",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 guided_pipeline.enable_attention_slicing()
 guided_pipeline = guided_pipeline.to("cuda")
@@ -1884,7 +1884,7 @@ scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1", su
 pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
     custom_pipeline="stable_diffusion_tensorrt_txt2img",
     variant='fp16',
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     scheduler=scheduler,)
 
 # re-use cached folder to save ONNX models and TensorRT Engines
@@ -1923,7 +1923,7 @@ def center_crop_and_resize(im):
 
     return im.crop((left, upper, right, lower)).resize((512, 512))
 
-torch_dtype = torch.float16
+dtype = torch.float16
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # scheduler and text_encoder param values as in the paper
@@ -1938,7 +1938,7 @@ scheduler = DDIMScheduler(
 
 text_encoder = CLIPTextModel.from_pretrained(
     pretrained_model_name_or_path="openai/clip-vit-large-patch14",
-    torch_dtype=torch_dtype,
+    dtype=dtype,
 )
 
 # initialize pipeline
@@ -1949,7 +1949,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     scheduler=scheduler,
     text_encoder=text_encoder,
     leapfrog_steps=True,
-    torch_dtype=torch_dtype,
+    dtype=dtype,
 ).to(device)
 
 # download image
@@ -2009,7 +2009,7 @@ init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 mask_image = PIL.ImageOps.invert(mask_image)
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16, custom_pipeline="stable_diffusion_repaint",
+    "CompVis/stable-diffusion-v1-4", dtype=torch.float16, custom_pipeline="stable_diffusion_repaint",
 )
 pipe.scheduler = RePaintScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
@@ -2038,7 +2038,7 @@ scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
 pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
                                             custom_pipeline="stable_diffusion_tensorrt_img2img",
                                             variant='fp16',
-                                            torch_dtype=torch.float16,
+                                            dtype=torch.float16,
                                             scheduler=scheduler,)
 
 # re-use cached folder to save ONNX models and TensorRT Engines
@@ -2076,7 +2076,7 @@ def draw_box_with_text(img, boxes, names):
 
 pipe = StableDiffusionBoxDiffPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1-base",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 pipe.to("cuda")
 
@@ -2134,7 +2134,7 @@ input_image = load_image("https://hf.co/datasets/huggingface/documentation-image
 pipe = StableDiffusionReferencePipeline.from_pretrained(
        "stable-diffusion-v1-5/stable-diffusion-v1-5",
        safety_checker=None,
-       torch_dtype=torch.float16
+       dtype=torch.float16
        ).to('cuda:0')
 
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
@@ -2187,12 +2187,12 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image)
 
-controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", dtype=torch.float16)
 pipe = StableDiffusionControlNetReferencePipeline.from_pretrained(
        "stable-diffusion-v1-5/stable-diffusion-v1-5",
        controlnet=controlnet,
        safety_checker=None,
-       torch_dtype=torch.float16
+       dtype=torch.float16
        ).to('cuda:0')
 
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
@@ -2455,7 +2455,7 @@ feature_extractor = CLIPImageProcessor.from_pretrained(
     "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 )
 clip_model = CLIPModel.from_pretrained(
-    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16
+    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K", dtype=torch.float16
 )
 coca_model = open_clip.create_model('coca_ViT-L-14', pretrained='laion2B-s13B-b90k').to('cuda')
 coca_model.dtype = torch.float16
@@ -2476,7 +2476,7 @@ mixing_pipeline = DiffusionPipeline.from_pretrained(
     coca_model=coca_model,
     coca_tokenizer=coca_tokenizer,
     coca_transform=coca_transform,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 mixing_pipeline.enable_attention_slicing()
 mixing_pipeline = mixing_pipeline.to("cuda")
@@ -2525,7 +2525,7 @@ import torch
 
 pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0"
-    , torch_dtype       = torch.float16
+    , dtype       = torch.float16
     , use_safetensors   = True
     , variant           = "fp16"
     , custom_pipeline   = "lpw_stable_diffusion_xl",
@@ -2655,7 +2655,7 @@ device="cuda"
 
 # Load fixed vae (optional)
 vae = AutoencoderKL.from_pretrained(
-    "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
+    "madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16
 ).to(device)
 
 # Create scheduler and model (similar to StableDiffusionPipeline)
@@ -2663,7 +2663,7 @@ model_id="stablediffusionapi/yamermix-v8-vae"
 scheduler = DPMSolverMultistepScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
 pipe = DiffusionPipeline.from_pretrained(
     model_id,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     vae=vae,
     custom_pipeline="mixture_tiling_sdxl",
     scheduler=scheduler,
@@ -2713,14 +2713,14 @@ device = "cuda"
 
 # Initialize the models and pipeline
 controlnet = ControlNetUnionModel.from_pretrained(
-    "brad-twinkl/controlnet-union-sdxl-1.0-promax", torch_dtype=torch.float16
+    "brad-twinkl/controlnet-union-sdxl-1.0-promax", dtype=torch.float16
 ).to(device=device)
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16).to(device=device)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16).to(device=device)
 
 model_id = "SG161222/RealVisXL_V5.0"
 pipe = DiffusionPipeline.from_pretrained(
     model_id,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     vae=vae,
     controlnet=controlnet,
     custom_pipeline="mod_controlnet_tile_sr_sdxl",    
@@ -2814,7 +2814,7 @@ scheduler = PNDMScheduler.from_pretrained("stabilityai/stable-diffusion-2-inpain
 pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
     custom_pipeline="stable_diffusion_tensorrt_inpaint",
     variant='fp16',
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     scheduler=scheduler,
     )
 
@@ -2904,7 +2904,7 @@ from diffusers.utils import load_image
 
 model_id = "kxic/zero123-165000"  # zero123-105000, zero123-165000, zero123-xl
 
-pipe = Zero1to3StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+pipe = Zero1to3StableDiffusionPipeline.from_pretrained(model_id, dtype=torch.float16)
 
 pipe.enable_xformers_memory_efficient_attention()
 pipe.enable_vae_tiling()
@@ -2984,13 +2984,13 @@ input_image = load_image("https://huggingface.co/datasets/huggingface/documentat
 # pipe = DiffusionPipeline.from_pretrained(
 #     "stabilityai/stable-diffusion-xl-base-1.0",
 #     custom_pipeline="stable_diffusion_xl_reference",
-#     torch_dtype=torch.float16,
+#     dtype=torch.float16,
 #     use_safetensors=True,
 #     variant="fp16").to('cuda:0')
 
 pipe = StableDiffusionXLReferencePipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
     variant="fp16").to('cuda:0')
 
@@ -3062,11 +3062,11 @@ ref_image = load_image(
 # initialize the models and pipeline
 controlnet_conditioning_scale = 0.5  # recommended for good generalization
 controlnet = ControlNetModel.from_pretrained(
-    "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
+    "diffusers/controlnet-canny-sdxl-1.0", dtype=torch.float16
 )
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
 pipe = StableDiffusionXLControlNetReferencePipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, vae=vae, torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, vae=vae, dtype=torch.float16
 ).to("cuda:0")
 
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
@@ -3134,7 +3134,7 @@ from diffusers import DiffusionPipeline
 # make sure you're logged in with `hf auth login`
 model_id_or_path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 # can also be used with dreamlike-art/dreamlike-photoreal-2.0
-pipe = DiffusionPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16, custom_pipeline="pipeline_fabric").to("cuda")
+pipe = DiffusionPipeline.from_pretrained(model_id_or_path, dtype=torch.float16, custom_pipeline="pipeline_fabric").to("cuda")
 
 # let's specify a prompt
 prompt = "An astronaut riding an elephant"
@@ -3376,7 +3376,7 @@ import torch
 pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", custom_pipeline="latent_consistency_txt2img", custom_revision="main")
 
 # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
-pipe.to(torch_device="cuda", torch_dtype=torch.float32)
+pipe.to(torch_device="cuda", dtype=torch.float32)
 ```
 
 - 2. Run inference with as little as 4 steps:
@@ -3405,7 +3405,7 @@ import torch
 pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", custom_pipeline="latent_consistency_img2img")
 
 # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
-pipe.to(torch_device="cuda", torch_dtype=torch.float32)
+pipe.to(torch_device="cuda", dtype=torch.float32)
 ```
 
 - 2. Run inference with as little as 4 steps:
@@ -3437,7 +3437,7 @@ from diffusers import DiffusionPipeline
 pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", custom_pipeline="latent_consistency_interpolate")
 
 # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
-pipe.to(torch_device="cuda", torch_dtype=torch.float32)
+pipe.to(torch_device="cuda", dtype=torch.float32)
 
 prompts = [
     "Self-portrait oil painting, a beautiful cyborg with golden hair, Margot Robbie, 8k",
@@ -3534,14 +3534,14 @@ from examples.community.pipeline_stable_diffusion_xl_controlnet_adapter import (
 
 controlnet_depth = ControlNetModel.from_pretrained(
     "diffusers/controlnet-depth-sdxl-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
     use_safetensors=True
 )
 adapter_depth = T2IAdapter.from_pretrained(
-  "TencentARC/t2i-adapter-depth-midas-sdxl-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+  "TencentARC/t2i-adapter-depth-midas-sdxl-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16, use_safetensors=True)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16, use_safetensors=True)
 
 pipe = StableDiffusionXLControlNetAdapterPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
@@ -3550,7 +3550,7 @@ pipe = StableDiffusionXLControlNetAdapterPipeline.from_pretrained(
     vae=vae,
     variant="fp16",
     use_safetensors=True,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
 pipe.enable_xformers_memory_efficient_attention()
@@ -3599,14 +3599,14 @@ from examples.community.pipeline_stable_diffusion_xl_controlnet_adapter_inpaint 
 
 controlnet_depth = ControlNetModel.from_pretrained(
     "diffusers/controlnet-depth-sdxl-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
     use_safetensors=True
 )
 adapter_depth = T2IAdapter.from_pretrained(
-  "TencentARC/t2i-adapter-depth-midas-sdxl-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+  "TencentARC/t2i-adapter-depth-midas-sdxl-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16, use_safetensors=True)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16, use_safetensors=True)
 
 pipe = StableDiffusionXLControlNetAdapterInpaintPipeline.from_pretrained(
     "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
@@ -3615,7 +3615,7 @@ pipe = StableDiffusionXLControlNetAdapterInpaintPipeline.from_pretrained(
     vae=vae,
     variant="fp16",
     use_safetensors=True,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
 pipe.enable_xformers_memory_efficient_attention()
@@ -4042,8 +4042,8 @@ from PIL import Image
 
 motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
 adapter = MotionAdapter.from_pretrained(motion_id)
-controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
-vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", dtype=torch.float16)
 
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 pipe = DiffusionPipeline.from_pretrained(
@@ -4052,7 +4052,7 @@ pipe = DiffusionPipeline.from_pretrained(
     controlnet=controlnet,
     vae=vae,
     custom_pipeline="pipeline_animatediff_controlnet",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to(device="cuda")
 pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
     model_id, subfolder="scheduler", beta_schedule="linear", clip_sample=False, timestep_spacing="linspace", steps_offset=1
@@ -4104,9 +4104,9 @@ from PIL import Image
 
 motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
 adapter = MotionAdapter.from_pretrained(motion_id)
-controlnet1 = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
-controlnet2 = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
-vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+controlnet1 = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", dtype=torch.float16)
+controlnet2 = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", dtype=torch.float16)
 
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 pipe = DiffusionPipeline.from_pretrained(
@@ -4115,7 +4115,7 @@ pipe = DiffusionPipeline.from_pretrained(
     controlnet=[controlnet1, controlnet2],
     vae=vae,
     custom_pipeline="pipeline_animatediff_controlnet",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to(device="cuda")
 pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
     model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1, beta_schedule="linear",
@@ -4203,7 +4203,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     custom_pipeline="pipeline_demofusion_sdxl",
     custom_revision="main",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
 
@@ -4359,7 +4359,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 
-pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float16, custom_pipeline="instaflow_one_step")
+pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", dtype=torch.float16, custom_pipeline="instaflow_one_step")
 pipe.to("cuda")  ### if GPU is not available, comment this line
 prompt = "A hyper-realistic photo of a cute cat."
 
@@ -4379,7 +4379,7 @@ import torch
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float16, custom_pipeline="instaflow_one_step")
+pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", dtype=torch.float16, custom_pipeline="instaflow_one_step")
 pipe.to(device)  ### if GPU is not available, comment this line
 pipe.load_lora_weights("artificialguybr/logo-redmond-1-5v-logo-lora-for-liberteredmond-sd-1-5")
 prompt = "logo, A logo for a fitness app, dynamic running figure, energetic colors (red, orange) ),LogoRedAF ,"
@@ -4424,7 +4424,7 @@ prompt = "A lying dog"
 # Float32 is essential to a well optimization
 model_path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 scheduler = DDIMScheduler(num_train_timesteps=1000, beta_start=0.00085, beta_end=0.0120, beta_schedule="scaled_linear")
-pipeline = NullTextPipeline.from_pretrained(model_path, scheduler=scheduler, torch_dtype=torch.float32).to(device)
+pipeline = NullTextPipeline.from_pretrained(model_path, scheduler=scheduler, dtype=torch.float32).to(device)
 
 # Saves the inverted_latent to save time
 inverted_latent, uncond = pipeline.invert(input_image, invert_prompt, num_inner_steps=10, early_stop_epsilon=1e-5, num_inference_steps=steps)
@@ -4530,7 +4530,7 @@ from diffusers import DiffusionPipeline
 from PIL import Image
 
 model_id = "a-r-r-o-w/dreamshaper-xl-turbo"
-pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, variant="fp16", custom_pipeline="pipeline_sdxl_style_aligned")
+pipe = DiffusionPipeline.from_pretrained(model_id, dtype=torch.float16, variant="fp16", custom_pipeline="pipeline_sdxl_style_aligned")
 pipe = pipe.to("cuda")
 
 # Enable memory saving techniques
@@ -4629,7 +4629,7 @@ noise_scheduler = DDIMScheduler(
 vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(dtype=torch.float16)
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/Realistic_Vision_V4.0_noVAE",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     scheduler=noise_scheduler,
     vae=vae,
     custom_pipeline="ip_adapter_face_id"
@@ -4694,13 +4694,13 @@ face_adapter = './checkpoints/ip-adapter.bin'
 controlnet_path = './checkpoints/ControlNetModel'
 
 # load IdentityNet
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, dtype=torch.float16)
 
 base_model = 'wangqixun/YamerMIX_v8'
 pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
     base_model,
     controlnet=controlnet,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 pipe.to("cuda")
 
@@ -4744,7 +4744,7 @@ from scheduling_ufogen import UFOGenScheduler
 ufogen_model_id_or_path = "/path/to/ufogen/model"
 pipe = StableDiffusionPipeline(
     ufogen_model_id_or_path,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 # You can initialize a UFOGenScheduler as follows:
@@ -4871,7 +4871,7 @@ python -m pip install intel_extension_for_pytorch==<version_name> -f https://dev
 2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX acceleration. Supported inference datatypes are Float32 and BFloat16.
 
 ```python
-pipe = AnimateDiffPipelineIpex.from_pretrained(base, motion_adapter=adapter, torch_dtype=dtype).to(device)
+pipe = AnimateDiffPipelineIpex.from_pretrained(base, motion_adapter=adapter, dtype=dtype).to(device)
 # For Float32
 pipe.prepare_for_ipex(torch.float32, prompt="A girl smiling")
 # For BFloat16
@@ -4924,12 +4924,12 @@ def elapsed_time(pipeline, nb_pass=3, num_inference_steps=1):
 ##############     bf16 inference performance    ###############
 
 # 1. IPEX Pipeline initialization
-pipe = AnimateDiffPipelineIpex.from_pretrained(base, motion_adapter=adapter, torch_dtype=dtype).to(device)
+pipe = AnimateDiffPipelineIpex.from_pretrained(base, motion_adapter=adapter, dtype=dtype).to(device)
 pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing", beta_schedule="linear")
 pipe.prepare_for_ipex(torch.bfloat16, prompt = prompt)
 
 # 2. Original Pipeline initialization
-pipe2 = AnimateDiffPipeline.from_pretrained(base, motion_adapter=adapter, torch_dtype=dtype).to(device)
+pipe2 = AnimateDiffPipeline.from_pretrained(base, motion_adapter=adapter, dtype=dtype).to(device)
 pipe2.scheduler = EulerDiscreteScheduler.from_config(pipe2.scheduler.config, timestep_spacing="trailing", beta_schedule="linear")
 
 # 3. Compare performance between Original Pipeline and IPEX Pipeline
@@ -4942,12 +4942,12 @@ with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
 ##############     fp32 inference performance    ###############
 
 # 1. IPEX Pipeline initialization
-pipe3 = AnimateDiffPipelineIpex.from_pretrained(base, motion_adapter=adapter, torch_dtype=dtype).to(device)
+pipe3 = AnimateDiffPipelineIpex.from_pretrained(base, motion_adapter=adapter, dtype=dtype).to(device)
 pipe3.scheduler = EulerDiscreteScheduler.from_config(pipe3.scheduler.config, timestep_spacing="trailing", beta_schedule="linear")
 pipe3.prepare_for_ipex(torch.float32, prompt = prompt)
 
 # 2. Original Pipeline initialization
-pipe4 = AnimateDiffPipeline.from_pretrained(base, motion_adapter=adapter, torch_dtype=dtype).to(device)
+pipe4 = AnimateDiffPipeline.from_pretrained(base, motion_adapter=adapter, dtype=dtype).to(device)
 pipe4.scheduler = EulerDiscreteScheduler.from_config(pipe4.scheduler.config, timestep_spacing="trailing", beta_schedule="linear")
 
 # 3. Compare performance between Original Pipeline and IPEX Pipeline
@@ -4973,7 +4973,7 @@ from pipeline_hunyuandit_differential_img2img import (
 
 
 pipe = HunyuanDiTDifferentialImg2ImgPipeline.from_pretrained(
-    "Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
+    "Tencent-Hunyuan/HunyuanDiT-Diffusers", dtype=torch.float16
 ).to("cuda")
 
 
@@ -5077,7 +5077,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     scheduler=scheduler,
     variant="fp16",
     use_safetensors=True,
-    torch_dtype=dtype,
+    dtype=dtype,
 ).to(device)
 
 
@@ -5155,7 +5155,7 @@ from diffusers.utils.torch_utils import randn_tensor
 pipe = StableDiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     custom_pipeline="hyoungwoncho/sd_perturbed_attention_guidance",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 
 device = "cuda"
@@ -5250,14 +5250,14 @@ torch.manual_seed(0)
 # load controlnet
 controlnet = PixArtControlNetAdapterModel.from_pretrained(
     controlnet_repo_id,
-    torch_dtype=weight_dtype,
+    dtype=weight_dtype,
     use_safetensors=True,
 ).to(device)
 
 pipe = PixArtAlphaControlnetPipeline.from_pretrained(
     "PixArt-alpha/PixArt-XL-2-1024-MS",
     controlnet=controlnet,
-    torch_dtype=weight_dtype,
+    dtype=weight_dtype,
     use_safetensors=True,
 ).to(device)
 
@@ -5317,7 +5317,7 @@ from examples.community.cogvideox_ddim_inversion import CogVideoXPipelineForDDIM
 # Load pretrained pipeline
 pipeline = CogVideoXPipelineForDDIMInversion.from_pretrained(
     "THUDM/CogVideoX1.5-5B",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 ).to("cuda")
 
 # Run DDIM inversion, and the videos will be generated in the output_path
@@ -5369,12 +5369,12 @@ model_file = hf_hub_download(
 )
 
 # Initialize the models and pipeline
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=dtype)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=dtype)
 
 model_id = "SG161222/RealVisXL_V4.0"
 pipe = DiffusionPipeline.from_pretrained(
     model_id,
-    torch_dtype=dtype,
+    dtype=dtype,
     vae=vae,
     unet=None, #<- Do not load with original model.
     custom_pipeline="pipeline_faithdiff_stable_diffusion_xl",    
@@ -5459,9 +5459,9 @@ edit_instruction = "Turn sky into a sunny one"
 
 
 pipe = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-3-medium-diffusers", custom_pipeline="pipeline_stable_diffusion_3_instruct_pix2pix", torch_dtype=torch.float16).to('cuda')
+    "stabilityai/stable-diffusion-3-medium-diffusers", custom_pipeline="pipeline_stable_diffusion_3_instruct_pix2pix", dtype=torch.float16).to('cuda')
 
-pipe.transformer = SD3Transformer2DModel.from_pretrained("CaptainZZZ/sd3-instructpix2pix",torch_dtype=torch.float16).to('cuda')
+pipe.transformer = SD3Transformer2DModel.from_pretrained("CaptainZZZ/sd3-instructpix2pix",dtype=torch.float16).to('cuda')
 
 edited_image = pipe(
     prompt=edit_instruction,
@@ -5503,7 +5503,7 @@ from diffusers.utils import load_image
 
 pipe = FluxKontextPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-Kontext-dev",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     custom_pipeline="pipeline_flux_kontext_multiple_images",
 )
 pipe.to("cuda")
@@ -5559,14 +5559,14 @@ prior_model = "black-forest-labs/FLUX.1-Redux-dev"
 # Load ControlNet
 controlnet = FluxControlNetModel.from_pretrained(
     controlnet_model,
-    torch_dtype=dtype,
+    dtype=dtype,
 )
 
 # Load Fill + ControlNet Pipeline
 fill_pipe = FluxControlNetFillInpaintPipeline.from_pretrained(
     base_model,
     controlnet=controlnet,
-    torch_dtype=dtype,
+    dtype=dtype,
 ).to(device)
 
 # OPTIONAL FP8
@@ -5578,7 +5578,7 @@ fill_pipe = FluxControlNetFillInpaintPipeline.from_pretrained(
 #  OPTIONAL Prior Redux
 #pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(
 #    prior_model,
-#    torch_dtype=dtype,
+#    dtype=dtype,
 #).to(device)
 
 # Inputs
@@ -5629,4 +5629,3 @@ from datetime import datetime
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 result.images[0].save(f"flux_fill_controlnet_inpaint_depth{timestamp}.jpg")
 ```
-

@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import CosmosTransformer3DModel
 
-transformer = CosmosTransformer3DModel.from_pretrained("nvidia/Cosmos-1.0-Diffusion-7B-Text2World", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = CosmosTransformer3DModel.from_pretrained("nvidia/Cosmos-1.0-Diffusion-7B-Text2World", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## CosmosTransformer3DModel

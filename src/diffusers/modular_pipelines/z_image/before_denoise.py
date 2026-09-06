@@ -80,9 +80,7 @@ def repeat_tensor_to_batch_size(
     elif input_tensor.shape[0] == batch_size:
         repeat_by = num_images_per_prompt
     else:
-        raise ValueError(
-            f"`{input_name}` must have have batch size 1 or {batch_size}, but got {input_tensor.shape[0]}"
-        )
+        raise ValueError(f"`{input_name}` must have batch size 1 or {batch_size}, but got {input_tensor.shape[0]}")
 
     # expand the tensor to match the batch_size * num_images_per_prompt
     input_tensor = input_tensor.repeat_interleave(repeat_by, dim=0)

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import ConsistencyDecoderVAE, StableDiffusionPipeline
@@ -31,7 +31,7 @@ from ...testing_utils import (
     torch_device,
 )
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -87,7 +87,12 @@ class ConsistencyDecoderVAETesterConfig(BaseModelTesterConfig):
 
 
 class TestConsistencyDecoderVAE(ConsistencyDecoderVAETesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.skip(
+        reason="The consistency decoder samples noise (`randn_tensor`) during `decode`, so two forward passes "
+        "diverge regardless of dtype. This makes a save/load output comparison non-deterministic."
+    )
+    def test_from_save_pretrained_dtype_inference(self, *args, **kwargs):
+        pass
 
 
 class TestConsistencyDecoderVAETraining(ConsistencyDecoderVAETesterConfig, TrainingTesterMixin):
@@ -98,19 +103,17 @@ class TestConsistencyDecoderVAEMemory(ConsistencyDecoderVAETesterConfig, MemoryT
     """Memory optimization tests for ConsistencyDecoderVAE."""
 
 
-class TestConsistencyDecoderVAESlicingTiling(ConsistencyDecoderVAETesterConfig, NewAutoencoderTesterMixin):
+class TestConsistencyDecoderVAESlicingTiling(ConsistencyDecoderVAETesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for ConsistencyDecoderVAE."""
 
 
 @slow
-class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestConsistencyDecoderVAEIntegration:
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -215,7 +218,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             generator=torch.Generator("cpu").manual_seed(0),
         ).images[0]
 
-        pipe.enable_vae_tiling()
+        pipe.vae.enable_tiling()
         out_2 = pipe(
             "horse",
             num_inference_steps=2,

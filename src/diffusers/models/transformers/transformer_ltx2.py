@@ -450,6 +450,8 @@ class LTX2VideoTransformerBlock(nn.Module):
         elementwise_affine: bool = False,
         rope_type: str = "interleaved",
         perturbed_attn: bool = False,
+        ff_bias: bool = True,
+        audio_ff_bias: bool = True,
     ):
         super().__init__()
 
@@ -556,10 +558,10 @@ class LTX2VideoTransformerBlock(nn.Module):
 
         # 4. Feedforward layers
         self.norm3 = RMSNorm(dim, eps=eps, elementwise_affine=elementwise_affine)
-        self.ff = FeedForward(dim, activation_fn=activation_fn)
+        self.ff = FeedForward(dim, activation_fn=activation_fn, bias=ff_bias)
 
         self.audio_norm3 = RMSNorm(audio_dim, eps=eps, elementwise_affine=elementwise_affine)
-        self.audio_ff = FeedForward(audio_dim, activation_fn=activation_fn)
+        self.audio_ff = FeedForward(audio_dim, activation_fn=activation_fn, bias=audio_ff_bias)
 
         # 5. Per-Layer Modulation Parameters
         # Self-Attention (attn1) / Feedforward AdaLayerNorm-Zero mod params
@@ -672,13 +674,30 @@ class LTX2VideoTransformerBlock(nn.Module):
 
         # 2. Video and Audio Cross-Attention with the text embeddings (Q: Video or Audio; K,V: Text)
         if self.cross_attn_adaln:
-            video_prompt_ada_params = self.get_mod_params(self.prompt_scale_shift_table, temb_prompt, batch_size)
-            shift_text_kv, scale_text_kv = video_prompt_ada_params
+            # `temb_prompt`/`temb_prompt_audio` are `None` when `use_prompt_adaln_single=False` (KV-cacheable
+            # cross-attention): the prompt-side scale/shift is then timestep-independent, so only the static
+            # per-layer table is used.
+            if temb_prompt is not None:
+                shift_text_kv, scale_text_kv = self.get_mod_params(
+                    self.prompt_scale_shift_table, temb_prompt, batch_size
+                )
+            else:
+                shift_text_kv, scale_text_kv = (
+                    self.prompt_scale_shift_table[None, None]
+                    .to(device=hidden_states.device, dtype=hidden_states.dtype)
+                    .unbind(dim=2)
+                )
 
-            audio_prompt_ada_params = self.get_mod_params(
-                self.audio_prompt_scale_shift_table, temb_prompt_audio, batch_size
-            )
-            audio_shift_text_kv, audio_scale_text_kv = audio_prompt_ada_params
+            if temb_prompt_audio is not None:
+                audio_shift_text_kv, audio_scale_text_kv = self.get_mod_params(
+                    self.audio_prompt_scale_shift_table, temb_prompt_audio, batch_size
+                )
+            else:
+                audio_shift_text_kv, audio_scale_text_kv = (
+                    self.audio_prompt_scale_shift_table[None, None]
+                    .to(device=audio_hidden_states.device, dtype=audio_hidden_states.dtype)
+                    .unbind(dim=2)
+                )
 
         # 2.1. Video-Text Cross-Attention (Q: Video; K,V: Text)
         norm_hidden_states = self.norm2(hidden_states)
@@ -956,7 +975,7 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
             start=shift, end=num_frames + shift, step=self.patch_size_t, dtype=torch.float32, device=device
         )
 
-        # 2. Calculate start timstamps in seconds with respect to the original spectrogram grid
+        # 2. Calculate start timestamps in seconds with respect to the original spectrogram grid
         audio_scale_factor = self.scale_factors[0]
         # Scale back to mel spectrogram space
         grid_start_mel = grid_f * audio_scale_factor
@@ -965,7 +984,7 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         # Convert mel bins back into seconds
         grid_start_s = grid_start_mel * self.hop_length / self.sampling_rate
 
-        # 3. Calculate start timstamps in seconds with respect to the original spectrogram grid
+        # 3. Calculate start timestamps in seconds with respect to the original spectrogram grid
         grid_end_mel = (grid_f + self.patch_size_t) * audio_scale_factor
         grid_end_mel = (grid_end_mel + self.causal_offset - audio_scale_factor).clip(min=0)
         grid_end_s = grid_end_mel * self.hop_length / self.sampling_rate
@@ -1086,6 +1105,18 @@ class LTX2VideoTransformer3DModel(
             Activation function to use in feed-forward.
         qk_norm (`str`, defaults to `"rms_norm_across_heads"`):
             The normalization layer to use.
+        ff_bias (`bool`, defaults to `True`):
+            Whether the video feed-forward layer's linear layers include a bias term. `False` for LTX-2.5.
+        audio_ff_bias (`bool`, defaults to `True`):
+            Whether the audio feed-forward layer's linear layers include a bias term.
+        use_prompt_adaln_single (`bool`, defaults to `True`):
+            Whether the prompt's cross-attention Key/Value modulation is timestep-dependent. When `False`, it uses a
+            fixed per-layer table instead, making the cross-attention Key/Value values cacheable across denoising steps
+            for a given prompt.
+        use_keyframes_abs_pos_embedding (`bool`, defaults to `False`):
+            Whether to store a learned `(1, inner_dim)` absolute-position embedding for generated-keyframe tokens
+            (LTX-2.5). When `True`, tokens selected by `video_keyframes_mask` receive this embedding. The argument is
+            optional; omitting it leaves the distilled forward path unchanged.
     """
 
     _supports_gradient_checkpointing = True
@@ -1149,6 +1180,10 @@ class LTX2VideoTransformer3DModel(
         rope_type: str = "interleaved",
         use_prompt_embeddings=True,
         perturbed_attn: bool = False,
+        ff_bias: bool = True,
+        audio_ff_bias: bool = True,
+        use_prompt_adaln_single: bool = True,
+        use_keyframes_abs_pos_embedding: bool = False,
     ) -> None:
         super().__init__()
 
@@ -1160,6 +1195,11 @@ class LTX2VideoTransformer3DModel(
         # 1. Patchification input projections
         self.proj_in = nn.Linear(in_channels, inner_dim)
         self.audio_proj_in = nn.Linear(audio_in_channels, audio_inner_dim)
+
+        # Marks single-pixel-frame keyframe tokens. Zero-initialized in the reference; unused by the regular
+        # distilled forward until a dedicated keyframes pipeline applies it after `proj_in`.
+        if use_keyframes_abs_pos_embedding:
+            self.keyframes_abs_pos_embedding = nn.Parameter(torch.zeros(1, inner_dim))
 
         # 2. Prompt embeddings
         if use_prompt_embeddings:
@@ -1210,7 +1250,9 @@ class LTX2VideoTransformer3DModel(
         self.audio_scale_shift_table = nn.Parameter(torch.randn(2, audio_inner_dim) / audio_inner_dim**0.5)
 
         # 3.4. Prompt Scale/Shift Modulation parameters (LTX-2.3)
-        if self.prompt_modulation:
+        # When `use_prompt_adaln_single=False` (LTX-2.5 KV-cacheable cross-attention), this MLP is dropped so the
+        # cross-attention K/V modulation becomes timestep-independent (static per-layer table only).
+        if self.prompt_modulation and use_prompt_adaln_single:
             self.prompt_adaln = LTX2AdaLayerNormSingle(inner_dim, num_mod_params=2, use_additional_conditions=False)
             self.audio_prompt_adaln = LTX2AdaLayerNormSingle(
                 audio_inner_dim, num_mod_params=2, use_additional_conditions=False
@@ -1304,6 +1346,8 @@ class LTX2VideoTransformer3DModel(
                     elementwise_affine=norm_elementwise_affine,
                     rope_type=rope_type,
                     perturbed_attn=perturbed_attn,
+                    ff_bias=ff_bias,
+                    audio_ff_bias=audio_ff_bias,
                 )
                 for _ in range(num_layers)
             ]
@@ -1344,6 +1388,7 @@ class LTX2VideoTransformer3DModel(
         use_cross_timestep: bool = False,
         attention_kwargs: dict[str, Any] | None = None,
         video_self_attention_mask: torch.Tensor | None = None,
+        video_keyframes_mask: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         """
@@ -1414,6 +1459,10 @@ class LTX2VideoTransformer3DModel(
                 applied to the video self-attention in each transformer block. Values in `[0, 1]` where `1` means full
                 attention and `0` means masked. Used e.g. by the IC-LoRA pipeline to control attention strength between
                 noisy tokens and appended reference tokens. Audio self-attention is not affected.
+            video_keyframes_mask (`torch.Tensor`, *optional*):
+                Optional per-token marker of shape `(batch_size, num_video_tokens, 1)`, non-zero on video tokens whose
+                latent frame encodes a single pixel frame. Those tokens receive `keyframes_abs_pos_embedding`. Ignored
+                when the model was built without `use_keyframes_abs_pos_embedding`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a dict-like structured output of type `AudioVisualModelOutput` or a tuple.
 
@@ -1465,6 +1514,11 @@ class LTX2VideoTransformer3DModel(
         hidden_states = self.proj_in(hidden_states)
         audio_hidden_states = self.audio_proj_in(audio_hidden_states)
 
+        # 2.1. Mark tokens whose latent encodes a single pixel frame (causal first frame, generated keyframe slots).
+        if self.config.use_keyframes_abs_pos_embedding and video_keyframes_mask is not None:
+            marker = (video_keyframes_mask > 0).to(dtype=hidden_states.dtype)
+            hidden_states = hidden_states + marker * self.keyframes_abs_pos_embedding.to(dtype=hidden_states.dtype)
+
         # 3. Prepare timestep embeddings and modulation parameters
         timestep_cross_attn_gate_scale_factor = (
             self.config.cross_attn_timestep_scale_multiplier / self.config.timestep_scale_multiplier
@@ -1489,7 +1543,7 @@ class LTX2VideoTransformer3DModel(
         temb_audio = temb_audio.view(batch_size, -1, temb_audio.size(-1))
         audio_embedded_timestep = audio_embedded_timestep.view(batch_size, -1, audio_embedded_timestep.size(-1))
 
-        if self.prompt_modulation:
+        if self.prompt_modulation and self.config.use_prompt_adaln_single:
             # LTX-2.3
             temb_prompt, _ = self.prompt_adaln(
                 sigma.flatten(), batch_size=batch_size, hidden_dtype=hidden_states.dtype

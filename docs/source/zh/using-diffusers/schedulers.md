@@ -23,7 +23,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 ```
 
@@ -63,7 +63,7 @@ ddim = DDIMScheduler.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-
 
 ```python
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", scheduler=ddim, torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", scheduler=ddim, dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 ```
 
@@ -78,7 +78,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 
 prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
@@ -165,53 +165,6 @@ image
 
 多数生成图像质量相近，实际选择需根据具体场景测试多种调度器进行比较。
 
-### Flax调度器
-
-对比Flax调度器时，需额外将调度器状态加载到模型参数中。例如将[`FlaxStableDiffusionPipeline`]的默认调度器切换为超高效的[`FlaxDPMSolverMultistepScheduler`]：
-
-> [!警告]
-> [`FlaxLMSDiscreteScheduler`]和[`FlaxDDPMScheduler`]目前暂不兼容[`FlaxStableDiffusionPipeline`]。
-
-```python
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline, FlaxDPMSolverMultistepScheduler
-
-scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    subfolder="scheduler"
-)
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    scheduler=scheduler,
-    variant="bf16",
-    dtype=jax.numpy.bfloat16,
-)
-params["scheduler"] = scheduler_state
-```
-
-利用Flax对TPU的兼容性实现并行图像生成。需为每个设备复制模型参数，并分配输入数据：
-
-```python
-# 每个并行设备生成1张图像（TPUv2-8/TPUv3-8支持8设备并行）
-prompt = "一张宇航员在火星上骑马的高清照片，高分辨率，高画质。"
-num_samples = jax.device_count()
-prompt_ids = pipeline.prepare_inputs([prompt] * num_samples)
-
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 25
-
-# 分配输入和随机种子
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-```
-
 ## 模型加载
 
 通过[`ModelMixin.from_pretrained`]方法加载模型，该方法会下载并缓存模型权重和配置的最新版本。若本地缓存已存在最新文件，则直接复用缓存而非重复下载。
@@ -243,14 +196,14 @@ unet = UNet2DConditionModel.from_pretrained(
 unet.save_pretrained("./local-unet", variant="non_ema")
 ```
 
-使用[`~ModelMixin.from_pretrained`]的`torch_dtype`参数指定模型加载精度：
+使用[`~ModelMixin.from_pretrained`]的`dtype`参数指定模型加载精度：
 
 ```python
 from diffusers import AutoModel
 
 unet = AutoModel.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", dtype=torch.float16
 )
 ```
 
-也可使用[torch.Tensor.to](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.to.html)方法即时转换精度，但会转换所有权重（不同于`torch_dtype`参数会保留`_keep_in_fp32_modules`中的层）。这对某些必须保持fp32精度的层尤为重要（参见[示例](https://github.com/huggingface/diffusers/blob/f864a9a352fa4a220d860bfdd1782e3e5af96382/src/diffusers/models/transformers/transformer_wan.py#L374)）。
+也可使用[torch.Tensor.to](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.to.html)方法即时转换精度，但会转换所有权重（不同于`dtype`参数会保留`_keep_in_fp32_modules`中的层）。这对某些必须保持fp32精度的层尤为重要（参见[示例](https://github.com/huggingface/diffusers/blob/f864a9a352fa4a220d860bfdd1782e3e5af96382/src/diffusers/models/transformers/transformer_wan.py#L374)）。

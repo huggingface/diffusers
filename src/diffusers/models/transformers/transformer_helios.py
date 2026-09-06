@@ -337,7 +337,11 @@ class HeliosRotaryPosEmbed(nn.Module):
 
     @torch.no_grad()
     def get_frequency_batched(self, freqs_base, pos):
-        freqs = torch.einsum("d,bthw->dbthw", freqs_base, pos)
+        # Disable autocast so the position-grid einsum runs in float32: under an ambient autocast it would run
+        # in bfloat16, which cannot represent consecutive integers past 256, so positions beyond that point
+        # would collapse onto the same frequency and degrade the rotary embedding.
+        with torch.autocast(device_type=pos.device.type, enabled=False):
+            freqs = torch.einsum("d,bthw->dbthw", freqs_base, pos)
         freqs = freqs.repeat_interleave(2, dim=0)
         return freqs.cos(), freqs.sin()
 

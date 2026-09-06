@@ -30,8 +30,8 @@ Set up and pass a [`PyramidAttentionBroadcastConfig`] to a pipeline's transforme
 import torch
 from diffusers import CogVideoXPipeline, PyramidAttentionBroadcastConfig
 
-pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
-pipeline.to("cuda")
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 config = PyramidAttentionBroadcastConfig(
     spatial_attention_block_skip_range=2,
@@ -53,8 +53,8 @@ Set up and pass a [`FasterCacheConfig`] to a pipeline's transformer to enable it
 import torch
 from diffusers import CogVideoXPipeline, FasterCacheConfig
 
-pipe line= CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
-pipeline.to("cuda")
+pipe line= CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 config = FasterCacheConfig(
     spatial_attention_block_skip_range=2,
@@ -78,7 +78,7 @@ from diffusers import DiffusionPipeline
 from diffusers.hooks import apply_first_block_cache, FirstBlockCacheConfig
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "Qwen/Qwen-Image", torch_dtype=torch.bfloat16
+    "Qwen/Qwen-Image", dtype=torch.bfloat16
 )
 apply_first_block_cache(pipeline.transformer, FirstBlockCacheConfig(threshold=0.2))
 ```
@@ -100,8 +100,8 @@ from diffusers import FluxPipeline, TaylorSeerCacheConfig
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
-).to("cuda")
+    dtype=torch.bfloat16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 config = TaylorSeerCacheConfig(
     cache_interval=5,
@@ -129,8 +129,8 @@ from diffusers import FluxPipeline, MagCacheConfig
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-schnell",
-    torch_dtype=torch.bfloat16
-).to("cuda")
+    dtype=torch.bfloat16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # 1. Calibration Step
 # Run full inference to measure model behavior.

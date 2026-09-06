@@ -219,7 +219,6 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         "add_text_embeds",
         "add_time_ids",
         "mask",
-        "masked_image_latents",
         "control_image",
     ]
 

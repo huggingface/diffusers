@@ -13,17 +13,37 @@
 # limitations under the License.
 
 import math
+from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
+from ...utils import BaseOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
+
+
+@dataclass
+class Cosmos3OmniTransformerOutput(BaseOutput):
+    """Output of [`Cosmos3OmniTransformer`].
+
+    Args:
+        sample (`list[torch.Tensor]`):
+            Per-item vision velocity predictions.
+        sound (`list[torch.Tensor]`, *optional*):
+            Per-item sound velocity predictions when sound generation is enabled.
+        action (`list[torch.Tensor]`, *optional*):
+            Per-item action velocity predictions when action generation is enabled.
+    """
+
+    sample: list[torch.Tensor]
+    sound: list[torch.Tensor] | None = None
+    action: list[torch.Tensor] | None = None
 
 
 class Cosmos3AttnProcessor:
@@ -53,6 +73,7 @@ class Cosmos3AttnProcessor:
 
         q_und = attn.norm_q(q_und)
         k_und = attn.norm_k(k_und)
+        k_und_for_gen = attn.k_norm_und_for_gen(k_und) if attn.k_norm_und_for_gen is not None else k_und
         q_gen = attn.norm_added_q(q_gen)
         k_gen = attn.norm_added_k(k_gen)
 
@@ -62,6 +83,7 @@ class Cosmos3AttnProcessor:
         sin_und = sin_und.unsqueeze(1)
         q_und = q_und * cos_und + _rotate_half(q_und) * sin_und
         k_und = k_und * cos_und + _rotate_half(k_und) * sin_und
+        k_und_for_gen = k_und_for_gen * cos_und + _rotate_half(k_und_for_gen) * sin_und
         cos_gen = cos_gen.unsqueeze(1)
         sin_gen = sin_gen.unsqueeze(1)
         q_gen = q_gen * cos_gen + _rotate_half(q_gen) * sin_gen
@@ -80,7 +102,7 @@ class Cosmos3AttnProcessor:
         causal_out = causal_out.squeeze(0).flatten(-2, -1)
 
         # Full pathway (generation): gen tokens cross-attend to all (und + gen) keys/values.
-        all_k = torch.cat([k_und, k_gen], dim=0)
+        all_k = torch.cat([k_und_for_gen, k_gen], dim=0)
         all_v = torch.cat([v_und, v_gen], dim=0)
         full_out = dispatch_attention_fn(
             q_gen.unsqueeze(0),
@@ -128,21 +150,46 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
             self.inv_freq[None, None, :, None].float().expand(3, position_ids.shape[1], -1, 1).to(device)
         )  # [3,B,head_dim//2,1]
         position_ids_expanded = position_ids[:, :, None, :].float()  # [3,B,1,N]
-        freqs = (inv_freq_expanded @ position_ids_expanded).transpose(2, 3)  # [3,B,N,head_dim//2]
+        # Disable autocast so the position-id matmul runs in float32: under an ambient autocast it would run in
+        # bfloat16, which cannot represent consecutive integers past 256, collapsing positions onto the same
+        # frequency and degrading the rotary embedding.
+        with torch.autocast(device_type=position_ids.device.type, enabled=False):
+            freqs = inv_freq_expanded @ position_ids_expanded
+        freqs = freqs.transpose(2, 3)  # [3,B,N,head_dim//2]
         freqs = self.apply_interleaved_mrope(freqs, self.rope_axes_dim)  # [B,N,head_dim//2]
         emb = torch.cat((freqs, freqs), dim=-1)  # [B,N,head_dim]
         return emb.cos().to(dtype=dtype), emb.sin().to(dtype=dtype)  # each: [B,N,head_dim]
 
 
-class Cosmos3VLTextMLP(nn.Module):
-    def __init__(self, hidden_size: int, intermediate_size: int):
+class Cosmos3NemotronRMSNorm(nn.Module):
+    def __init__(self, dim: int, eps: float):
         super().__init__()
-        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.float()
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+        return (self.weight.float() * hidden_states).to(input_dtype)
+
+
+class Cosmos3VLTextMLP(nn.Module):
+    def __init__(self, hidden_size: int, intermediate_size: int, hidden_act: str = "silu"):
+        super().__init__()
+        if hidden_act not in ("relu2", "silu"):
+            raise ValueError(f"Cosmos3 only supports `hidden_act` values 'relu2' and 'silu', got {hidden_act!r}.")
+        self.hidden_act = hidden_act
+        if hidden_act == "silu":
+            self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
         self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
         self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
-        self.act_fn = nn.SiLU()
+        self.act_fn = nn.SiLU() if hidden_act == "silu" else None
 
     def forward(self, x):
+        if self.hidden_act == "relu2":
+            return self.down_proj(torch.relu(self.up_proj(x)).square())
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
@@ -178,11 +225,11 @@ class DomainAwareLinear(nn.Module):
 
 
 class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
-    """Dual-pathway packed attention for Qwen3VL MoT — separate projections for
-    understanding (causal) and generation (full) token streams."""
+    """Dual-pathway packed attention with separate projections for the understanding and generation token streams."""
 
     _default_processor_cls = Cosmos3AttnProcessor
     _available_processors = [Cosmos3AttnProcessor]
+    _supports_qkv_fusion = False
 
     def __init__(
         self,
@@ -192,6 +239,9 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         num_key_value_heads: int,
         attention_bias: bool,
         rms_norm_eps: float,
+        qk_norm_for_text: bool = True,
+        use_und_k_norm_for_gen: bool = False,
+        norm_type: str = "rms_norm",
         processor=None,
     ):
         super().__init__()
@@ -207,16 +257,35 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         self.to_k = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_v = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_out = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.norm_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.norm_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        if not qk_norm_for_text:
+            self.norm_q = nn.Identity()
+            self.norm_k = nn.Identity()
+        elif norm_type == "nemotron_rms_norm":
+            self.norm_q = Cosmos3NemotronRMSNorm(head_dim, eps=rms_norm_eps)
+            self.norm_k = Cosmos3NemotronRMSNorm(head_dim, eps=rms_norm_eps)
+        else:
+            self.norm_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.norm_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+
+        if use_und_k_norm_for_gen and not qk_norm_for_text:
+            if norm_type == "nemotron_rms_norm":
+                self.k_norm_und_for_gen = Cosmos3NemotronRMSNorm(head_dim, eps=rms_norm_eps)
+            else:
+                self.k_norm_und_for_gen = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        else:
+            self.k_norm_und_for_gen = None
 
         # Generation pathway
         self.add_q_proj = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
         self.add_k_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.add_v_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_add_out = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.norm_added_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.norm_added_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        if norm_type == "nemotron_rms_norm":
+            self.norm_added_q = Cosmos3NemotronRMSNorm(head_dim, eps=rms_norm_eps)
+            self.norm_added_k = Cosmos3NemotronRMSNorm(head_dim, eps=rms_norm_eps)
+        else:
+            self.norm_added_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.norm_added_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
 
         if processor is None:
             processor = self._default_processor_cls()
@@ -232,12 +301,7 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
 
 
 class Cosmos3VLTextMoTDecoderLayer(nn.Module):
-    """
-    Qwen3VL text MoT (Mixture of Tokens) decoder layer. Features dual-pathway attention for understanding vs
-    generation.
-
-    This is used for both Dense and MoE models.
-    """
+    """Cosmos3 text MoT decoder layer for the Qwen3 and Nemotron dense backbones."""
 
     def __init__(
         self,
@@ -248,9 +312,13 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         intermediate_size: int,
         attention_bias: bool,
         rms_norm_eps: float,
+        hidden_act: str = "silu",
+        qk_norm_for_text: bool = True,
+        use_und_k_norm_for_gen: bool = False,
     ):
         super().__init__()
         self.hidden_size = hidden_size
+        norm_type = "nemotron_rms_norm" if hidden_act == "relu2" else "rms_norm"
         self.self_attn = Cosmos3PackedMoTAttention(
             hidden_size=hidden_size,
             head_dim=head_dim,
@@ -258,17 +326,30 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
             num_key_value_heads=num_key_value_heads,
             attention_bias=attention_bias,
             rms_norm_eps=rms_norm_eps,
+            qk_norm_for_text=qk_norm_for_text,
+            use_und_k_norm_for_gen=use_und_k_norm_for_gen,
+            norm_type=norm_type,
         )
 
-        self.mlp = Cosmos3VLTextMLP(hidden_size=hidden_size, intermediate_size=intermediate_size)
-        self.mlp_moe_gen = Cosmos3VLTextMLP(hidden_size=hidden_size, intermediate_size=intermediate_size)
-
-        self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.input_layernorm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.post_attention_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.post_attention_layernorm_moe_gen = RMSNorm(
-            hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False
+        self.mlp = Cosmos3VLTextMLP(
+            hidden_size=hidden_size, intermediate_size=intermediate_size, hidden_act=hidden_act
         )
+        self.mlp_moe_gen = Cosmos3VLTextMLP(
+            hidden_size=hidden_size, intermediate_size=intermediate_size, hidden_act=hidden_act
+        )
+
+        if norm_type == "nemotron_rms_norm":
+            self.input_layernorm = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+            self.input_layernorm_moe_gen = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+            self.post_attention_layernorm = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+            self.post_attention_layernorm_moe_gen = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+        else:
+            self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.input_layernorm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.post_attention_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.post_attention_layernorm_moe_gen = RMSNorm(
+                hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False
+            )
 
     def forward(
         self,
@@ -295,6 +376,16 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     _repeated_blocks = ["Cosmos3VLTextMoTDecoderLayer"]
     _skip_layerwise_casting_patterns = ["embed_tokens", "time_embedder", "norm"]
     _keep_in_fp32_modules = ["time_embedder"]
+    # Optional context-parallelism seams. They default to ``None`` (no-op) so the
+    # model itself carries no CP logic. `forward` applies `_cp_shard_fn` to the
+    # per-pathway hidden states + rotary embeddings before the decoder layers, and
+    # `_cp_gather_fn` to the per-pathway outputs after the final norm. An external
+    # helper (see `examples/cosmos3/cosmos_parallel.py`) sets these to
+    # shard/gather across a device mesh and installs a context-parallel attention
+    # processor — the packed dual-pathway + GQA + ragged-length structure cannot be
+    # expressed as diffusers' declarative `_cp_plan`, so CP lives outside the model.
+    _cp_shard_fn = None
+    _cp_gather_fn = None
     # `dtype` is injected into init_dict by ModelMixin.from_pretrained (configuration_utils.py:289),
     # so __init__ must accept it. Excluding it here keeps save_pretrained from writing it into
     # config.json — the value is a load-time runtime hint, not part of the model architecture.
@@ -330,10 +421,17 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         sound_latent_fps: float = 25.0,
         timestep_scale: float = 0.001,
         vocab_size: int = 151936,
+        hidden_act: str = "silu",
+        qk_norm_for_text: bool = True,
+        use_und_k_norm_for_gen: bool = False,
+        rope_axes_dim: tuple[int, int, int] | list[int] | None = None,
     ):
         super().__init__()
 
-        rope_axes_dim = rope_scaling.get("mrope_section", [24, 20, 20]) if rope_scaling is not None else [24, 20, 20]
+        if rope_axes_dim is None:
+            rope_axes_dim = (
+                rope_scaling.get("mrope_section", [24, 20, 20]) if rope_scaling is not None else [24, 20, 20]
+            )
         self.register_to_config(rope_axes_dim=rope_axes_dim)
 
         # Text-model layers live directly on the transformer (flat layout). The published
@@ -350,12 +448,19 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                     intermediate_size=intermediate_size,
                     attention_bias=attention_bias,
                     rms_norm_eps=rms_norm_eps,
+                    hidden_act=hidden_act,
+                    qk_norm_for_text=qk_norm_for_text,
+                    use_und_k_norm_for_gen=use_und_k_norm_for_gen,
                 )
                 for _ in range(num_hidden_layers)
             ]
         )
-        self.norm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.norm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        if hidden_act == "relu2":
+            self.norm = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+            self.norm_moe_gen = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+        else:
+            self.norm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.norm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
         self.rotary_emb = Cosmos3VLTextRotaryEmbedding(
             head_dim=head_dim, rope_theta=rope_theta, rope_axes_dim=rope_axes_dim
         )
@@ -572,7 +677,10 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         action_timesteps: torch.Tensor | None = None,
         action_noisy_frame_indexes: list[torch.Tensor] | None = None,
         action_domain_ids: list[torch.Tensor] | None = None,
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor] | None, list[torch.Tensor] | None]:
+        return_dict: bool = True,
+    ) -> (
+        Cosmos3OmniTransformerOutput | tuple[list[torch.Tensor], list[torch.Tensor] | None, list[torch.Tensor] | None]
+    ):
         """Run a full denoising-step forward pass.
 
         Args:
@@ -600,10 +708,11 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             action_timesteps: Optional per-token diffusion timesteps for action tokens.
             action_noisy_frame_indexes: Optional noisy frame indices per action item.
             action_domain_ids: Optional per-item domain IDs selecting the action head weights.
+            return_dict: Whether to return a [`Cosmos3OmniTransformerOutput`] instead of a tuple.
 
         Returns:
-            ``(preds_vision, preds_sound, preds_action)`` — lists of per-modality predictions. Optional modalities
-            return ``None`` when their inputs are omitted.
+            A [`Cosmos3OmniTransformerOutput`] or a tuple of per-modality prediction lists. Optional modalities return
+            ``None`` when their inputs are omitted.
         """
         has_sound = sound_tokens is not None and sound_sequence_indexes is not None
         has_action = action_tokens is not None and action_sequence_indexes is not None
@@ -618,7 +727,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         packed_tokens_vision, original_latent_shapes = self._patchify_and_pack_latents(vision_tokens)
         packed_tokens_vision = self.proj_in(packed_tokens_vision)
         timesteps_vision = vision_timesteps * self.config.timestep_scale
-        packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
+        time_embedder_dtype = next(self.time_embedder.parameters()).dtype
+        packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision).to(time_embedder_dtype))
         packed_timestep_embeds_vision = packed_timestep_embeds_vision.to(target_dtype)
         packed_tokens_vision = self._apply_timestep_embeds_to_noisy_tokens(
             packed_tokens=packed_tokens_vision,
@@ -633,7 +743,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             packed_tokens_sound = self._pack_sound_latents(sound_tokens, sound_token_shapes).to(target_dtype)
             packed_tokens_sound = self.audio_proj_in(packed_tokens_sound) + self.audio_modality_embed
             timesteps_sound = sound_timesteps * self.config.timestep_scale
-            packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound))
+            packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound).to(time_embedder_dtype))
             packed_timestep_embeds_sound = packed_timestep_embeds_sound.to(target_dtype)
             packed_tokens_sound = self._apply_timestep_embeds_to_noisy_tokens(
                 packed_tokens=packed_tokens_sound,
@@ -654,7 +764,9 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             packed_tokens_action = packed_tokens_action + self.action_modality_embed
             if action_mse_loss_indexes.numel() > 0:
                 timesteps_action = action_timesteps * self.config.timestep_scale
-                packed_timestep_embeds_action = self.time_embedder(self.time_proj(timesteps_action))
+                packed_timestep_embeds_action = self.time_embedder(
+                    self.time_proj(timesteps_action).to(time_embedder_dtype)
+                )
                 packed_timestep_embeds_action = packed_timestep_embeds_action.to(target_dtype)
                 packed_tokens_action = self._apply_timestep_embeds_to_noisy_tokens(
                     packed_tokens=packed_tokens_action,
@@ -678,6 +790,14 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         und_seq = hidden_states[:und_len]
         gen_seq = hidden_states[und_len:]
         rotary_emb = (cos[:und_len], sin[:und_len], cos[und_len:], sin[und_len:])
+
+        # Optional context-parallelism shard seam (no-op unless set by an external
+        # helper, e.g. `examples/cosmos3/cosmos_parallel.py`). When set, it
+        # shards each pathway's sequence and rotary embeddings across a device mesh, so
+        # the decoder layers below run on local sequence shards.
+        if self._cp_shard_fn is not None:
+            und_seq, gen_seq, rotary_emb = self._cp_shard_fn(und_seq, gen_seq, rotary_emb)
+
         for decoder_layer in self.layers:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 und_seq, gen_seq = self._gradient_checkpointing_func(
@@ -687,6 +807,14 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                 und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb)
         und_out = self.norm(und_seq)
         gen_out = self.norm_moe_gen(gen_seq)
+
+        # Optional context-parallelism gather seam: re-gather the full per-pathway
+        # sequence on every rank (and drop the padding) before the global-index decode
+        # below, since the downstream indexes address positions in the unpadded joint
+        # sequence. No-op unless `_cp_shard_fn`'s counterpart is set.
+        if self._cp_gather_fn is not None:
+            und_out, gen_out = self._cp_gather_fn(und_out, gen_out)
+
         last_hidden_state = torch.cat([und_out, gen_out], dim=0)
 
         # Decode vision predictions from the joint hidden state.
@@ -717,4 +845,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                 preds_action_packed, action_token_shapes, action_noisy_frame_indexes
             )
 
-        return preds_vision, preds_sound, preds_action
+        if not return_dict:
+            return preds_vision, preds_sound, preds_action
+
+        return Cosmos3OmniTransformerOutput(sample=preds_vision, sound=preds_sound, action=preds_action)

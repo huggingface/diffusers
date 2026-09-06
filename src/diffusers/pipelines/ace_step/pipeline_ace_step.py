@@ -20,6 +20,7 @@ import torch
 from transformers import PreTrainedModel, PreTrainedTokenizerFast
 
 from ...guiders.adaptive_projected_guidance import MomentumBuffer, normalized_guidance
+from ...loaders import AceStepLoraLoaderMixin
 from ...models import AutoencoderOobleck
 from ...models.transformers.ace_step_transformer import AceStepTransformer1DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -129,7 +130,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class AceStepPipeline(DiffusionPipeline):
+class AceStepPipeline(DiffusionPipeline, AceStepLoraLoaderMixin):
     r"""
     Pipeline for text-to-music generation using ACE-Step 1.5.
 
@@ -223,6 +224,10 @@ class AceStepPipeline(DiffusionPipeline):
     @property
     def num_timesteps(self) -> int:
         return self._num_timesteps
+
+    @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
 
     def check_inputs(
         self,
@@ -825,6 +830,7 @@ class AceStepPipeline(DiffusionPipeline):
         cfg_interval_start: float = 0.0,
         cfg_interval_end: float = 1.0,
         timesteps: Optional[List[float]] = None,
+        attention_kwargs: Optional[dict] = None,
     ):
         r"""
         The call function to the pipeline for music generation.
@@ -908,6 +914,9 @@ class AceStepPipeline(DiffusionPipeline):
                 End ratio (0.0-1.0) of the timestep range where CFG is applied.
             timesteps (`List[float]`, *optional*):
                 Custom timestep schedule. If provided, overrides `num_inference_steps` and `shift`.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary passed along to the `AttentionProcessor`. Used to pass the LoRA scale via
+                `{"scale": float}`.
 
         Examples:
 
@@ -983,6 +992,7 @@ class AceStepPipeline(DiffusionPipeline):
         # step-end callback can read them without the full arg bundle.
         self._guidance_scale = guidance_scale
         self._num_timesteps = num_inference_steps
+        self._attention_kwargs = attention_kwargs
         self._interrupt = False
 
         # Auto-generate instruction based on task_type if not provided
@@ -1176,6 +1186,7 @@ class AceStepPipeline(DiffusionPipeline):
                         timestep_r=torch.cat([t_curr_tensor, t_curr_tensor], dim=0),
                         encoder_hidden_states=torch.cat([encoder_hidden_states, null_encoder_hidden_states], dim=0),
                         context_latents=torch.cat([context_latents, context_latents], dim=0),
+                        attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )
                     vt_cond, vt_uncond = model_output[0].chunk(2, dim=0)
@@ -1199,6 +1210,7 @@ class AceStepPipeline(DiffusionPipeline):
                         timestep_r=t_curr_tensor,
                         encoder_hidden_states=encoder_hidden_states,
                         context_latents=context_latents,
+                        attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )
                     vt = model_output[0]
@@ -1211,6 +1223,7 @@ class AceStepPipeline(DiffusionPipeline):
                         timestep_r=t_curr_tensor,
                         encoder_hidden_states=non_cover_encoder_hidden_states,
                         context_latents=context_latents,
+                        attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )
                     vt_nc = nc_output[0]

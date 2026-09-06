@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -521,7 +521,7 @@ class FluxKontextAutoBlocks(SequentialPipelineBlocks):
 
       Components:
           text_encoder (`CLIPTextModel`) tokenizer (`CLIPTokenizer`) text_encoder_2 (`T5EncoderModel`) tokenizer_2
-          (`T5TokenizerFast`) image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`) scheduler
+          (`T5Tokenizer`) image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`) scheduler
           (`FlowMatchEulerDiscreteScheduler`) transformer (`FluxTransformer2DModel`)
 
       Inputs:

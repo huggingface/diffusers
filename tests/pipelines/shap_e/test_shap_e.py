@@ -1,4 +1,4 @@
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,9 +13,9 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -29,24 +29,33 @@ from ...testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import assert_mean_pixel_difference
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
-class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class ShapEPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = ShapEPipeline
-    params = ["prompt"]
-    batch_params = ["prompt"]
-    required_optional_params = [
-        "num_images_per_prompt",
-        "num_inference_steps",
-        "generator",
-        "latents",
-        "guidance_scale",
-        "frame_size",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
+    required_input_params_in_call_signature = frozenset(["prompt"])
+    batch_input_params = frozenset(["prompt"])
+    # Shap-E renders a 3D asset, so `guidance_scale` and `frame_size` join the canonical optional parameters.
+    optional_input_params = frozenset(
+        [
+            "num_inference_steps",
+            "num_images_per_prompt",
+            "generator",
+            "latents",
+            "guidance_scale",
+            "frame_size",
+            "output_type",
+            "return_dict",
+        ]
+    )
+    # The dummy inputs request latents, so a sample is the flattened latent grid rather than an image.
+    output_shape = (32, 16)
 
     @property
     def text_embedder_hidden_size(self):
@@ -146,7 +155,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             clip_sample=True,
             clip_sample_range=1.0,
         )
-        components = {
+        return {
             "prior": prior,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
@@ -154,91 +163,75 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "scheduler": scheduler,
         }
 
-        return components
-
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "horse",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 1,
             "frame_size": 32,
             "output_type": "latent",
         }
-        return inputs
 
+
+class TestShapEPipeline(ShapEPipelineTesterConfig, PipelineTesterMixin):
     def test_shap_e(self):
-        device = "cpu"
+        pipe = self.get_pipeline().to(torch_device)
 
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-
-        pipe.set_progress_bar_config(disable=None)
-
-        output = pipe(**self.get_dummy_inputs(device))
+        output = pipe(**self.get_dummy_inputs())
         image = output.images[0]
         image = image.cpu().numpy()
         image_slice = image[-3:, -3:]
 
-        assert image.shape == (32, 16)
+        assert image.shape == self.output_shape
 
-        expected_slice = np.array([-1.0000, -0.6559, 1.0000, -0.9096, -0.7252, 0.8211, -0.7647, -0.3308, 0.6462])
+        expected_slice = np.array([-1.0000, -0.6097, 1.0000, -0.9113, -0.6667, 0.8234, -0.7639, -0.2809, 0.6456])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_inference_batch_consistent(self):
         # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
-        self._test_inference_batch_consistent(batch_sizes=[1, 2])
+        super().test_inference_batch_consistent(batch_sizes=[1, 2])
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=2, expected_max_diff=6e-3)
+        super().test_inference_batch_single_identical(batch_size=2, expected_max_diff=6e-3)
 
     def test_num_images_per_prompt(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        # The base test sweeps batch size x images-per-prompt; rendering makes that too slow here, so check the
+        # single interesting combination.
+        pipe = self.get_pipeline().to(torch_device)
 
         batch_size = 1
         num_images_per_prompt = 2
 
-        inputs = self.get_dummy_inputs(torch_device)
-
+        inputs = self.get_dummy_inputs()
         for key in inputs.keys():
-            if key in self.batch_params:
+            if key in self.batch_input_params:
                 inputs[key] = batch_size * [inputs[key]]
 
         images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
 
         assert images.shape[0] == batch_size * num_images_per_prompt
 
-    def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=5e-1)
+    def test_save_load_local(self, tmp_path, base_pipe_output):
+        super().test_save_load_local(tmp_path, base_pipe_output, expected_max_difference=5e-3)
 
-    def test_save_load_local(self):
-        super().test_save_load_local(expected_max_difference=5e-3)
 
-    @unittest.skip("Key error is raised with accelerate")
+class TestShapEPipelineMemory(ShapEPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Shap-E pipeline."""
+
+    @pytest.mark.skip("Key error is raised with accelerate")
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
 
 @nightly
 @require_torch_accelerator
-class ShapEPipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
+class TestShapEPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        # clean up the VRAM before and after each test
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

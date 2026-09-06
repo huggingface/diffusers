@@ -659,8 +659,7 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
             if needs_upcasting:
                 self.upcast_vae()
-                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.vae.decode(latents.to(self.vae.dtype) / self.vae.config.scaling_factor, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models

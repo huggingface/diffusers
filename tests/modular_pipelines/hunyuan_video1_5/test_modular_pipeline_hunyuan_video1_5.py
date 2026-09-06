@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,13 @@ import pytest
 
 from diffusers.modular_pipelines import HunyuanVideo15AutoBlocks, HunyuanVideo15ModularPipeline
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 HUNYUANVIDEO15_WORKFLOWS = {
@@ -43,11 +49,10 @@ HUNYUANVIDEO15_WORKFLOWS = {
 }
 
 
-class TestHunyuanVideo15ModularPipelineFast(ModularPipelineTesterMixin):
+class HunyuanVideo15ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = HunyuanVideo15ModularPipeline
     pipeline_blocks_class = HunyuanVideo15AutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-hunyuanvideo1_5-modular-pipe"
-
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
@@ -67,6 +72,8 @@ class TestHunyuanVideo15ModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestHunyuanVideo15ModularPipelineFast(HunyuanVideo15ModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
@@ -81,3 +88,15 @@ class TestHunyuanVideo15ModularPipelineFast(ModularPipelineTesterMixin):
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=0.1)
+
+
+class TestHunyuanVideo15ModularPipelineLoading(HunyuanVideo15ModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestHunyuanVideo15ModularPipelineWorkflow(HunyuanVideo15ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestHunyuanVideo15ModularPipelineMemory(HunyuanVideo15ModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

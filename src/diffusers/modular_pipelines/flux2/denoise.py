@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -373,14 +373,6 @@ class Flux2LoopAfterDenoiser(ModularPipelineBlocks):
             "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
             "object (e.g. `Flux2DenoiseLoopWrapper`)"
         )
-
-    @property
-    def inputs(self) -> list[tuple[str, Any]]:
-        return []
-
-    @property
-    def intermediate_inputs(self) -> list[str]:
-        return [InputParam("generator")]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:

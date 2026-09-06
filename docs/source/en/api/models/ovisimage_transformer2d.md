@@ -16,7 +16,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import OvisImageTransformer2DModel
 
-transformer = OvisImageTransformer2DModel.from_pretrained("AIDC-AI/Ovis-Image-7B", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = OvisImageTransformer2DModel.from_pretrained("AIDC-AI/Ovis-Image-7B", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## OvisImageTransformer2DModel

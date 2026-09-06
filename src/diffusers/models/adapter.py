@@ -166,7 +166,7 @@ class MultiAdapter(ModelMixin):
             pretrained_model_path (`os.PathLike`):
                 A path to a *directory* containing model weights saved using
                 [`~diffusers.models.adapter.MultiAdapter.save_pretrained`], e.g., `./my_model_directory/adapter`.
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model under this dtype.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
@@ -187,8 +187,7 @@ class MultiAdapter(ModelMixin):
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
             variant (`str`, *optional*):
-                If specified, load weights from a `variant` file (*e.g.* pytorch_model.<variant>.bin). `variant` will
-                be ignored when using `from_flax`.
+                If specified, load weights from a `variant` file (*e.g.* pytorch_model.<variant>.bin).
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If `None`, the `safetensors` weights will be downloaded if available **and** if`safetensors` library is
                 installed. If `True`, the model will be forcibly loaded from`safetensors` weights. If `False`,

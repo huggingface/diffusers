@@ -1,4 +1,4 @@
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,12 +22,10 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
-    BitsAndBytesTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
-    TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -212,9 +210,11 @@ class TestNucleusMoEImageTransformerCompile(NucleusMoEImageTransformerTesterConf
         }
 
 
-class TestNucleusMoEImageTransformerBitsAndBytes(NucleusMoEImageTransformerTesterConfig, BitsAndBytesTesterMixin):
-    """BitsAndBytes quantization tests for NucleusMoE Image Transformer."""
+# TODO: Add pretrained_model_name_or_path once a tiny NucleusMoE model is available on the Hub
+# class TestNucleusMoEImageTransformerBitsAndBytes(NucleusMoEImageTransformerTesterConfig, BitsAndBytesTesterMixin):
+#     """BitsAndBytes quantization tests for NucleusMoE Image Transformer."""
 
 
-class TestNucleusMoEImageTransformerTorchAo(NucleusMoEImageTransformerTesterConfig, TorchAoTesterMixin):
-    """TorchAO quantization tests for NucleusMoE Image Transformer."""
+# TODO: Add pretrained_model_name_or_path once a tiny NucleusMoE model is available on the Hub
+# class TestNucleusMoEImageTransformerTorchAo(NucleusMoEImageTransformerTesterConfig, TorchAoTesterMixin):
+#     """TorchAO quantization tests for NucleusMoE Image Transformer."""

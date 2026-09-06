@@ -1,5 +1,8 @@
 # Stable Diffusion XL for JAX + TPUv5e
 
+> [!WARNING]
+> JAX/Flax support was removed from the `diffusers` library in v0.40.0. This project requires `diffusers<=0.39.x` to run.
+
 [TPU v5e](https://cloud.google.com/blog/products/compute/how-cloud-tpu-v5e-accelerates-large-scale-ai-inference) is a new generation of TPUs from Google Cloud. It is the most cost-effective, versatile, and scalable Cloud TPU to date. This makes them ideal for serving and scaling large diffusion models.
 
 [JAX](https://github.com/google/jax) is a high-performance numerical computation library that is well-suited to develop and deploy diffusion models:

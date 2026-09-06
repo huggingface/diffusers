@@ -342,6 +342,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+            mu (`float`, *optional*):
+                Exponent for the dynamic time shift. Requires `use_dynamic_shifting` and a `time_shift_type` of
+                `"exponential"`; when passed, `flow_shift` is set to `exp(mu)`.
             timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps schedule is used. If `timesteps` is
@@ -776,6 +779,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 The previous discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
+            noise (`torch.Tensor`, *optional*):
+                Random noise used by the stochastic (`sde-*`) solver variants. Required when `algorithm_type` is set to
+                one of them, and unused otherwise.
 
         Returns:
             `torch.Tensor`:
@@ -841,6 +847,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 The previous discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
+            noise (`torch.Tensor`, *optional*):
+                Random noise used by the stochastic (`sde-*`) solver variants. Required when `algorithm_type` is set to
+                one of them, and unused otherwise.
 
         Returns:
             `torch.Tensor`:
@@ -952,6 +961,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 The previous discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by diffusion process.
+            noise (`torch.Tensor`, *optional*):
+                Random noise used by the stochastic (`sde-*`) solver variants. Required when `algorithm_type` is set to
+                one of them, and unused otherwise.
 
         Returns:
             `torch.Tensor`:
@@ -1076,6 +1088,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 A current instance of a sample created by diffusion process.
             order (`int`):
                 The solver order at this step.
+            noise (`torch.Tensor`, *optional*):
+                Random noise used by the stochastic (`sde-*`) solver variants. Required when `algorithm_type` is set to
+                one of them, and unused otherwise.
 
         Returns:
             `torch.Tensor`:

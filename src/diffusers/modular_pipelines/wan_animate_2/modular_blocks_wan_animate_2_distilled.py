@@ -1,0 +1,318 @@
+# Copyright 2026 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import torch
+
+from ...utils import logging
+from ..modular_pipeline import SequentialPipelineBlocks
+from ..modular_pipeline_utils import InputParam, InsertableDict, OutputParam
+from .before_denoise import WanAnimate2PrepareSegmentsStep
+from .decoders import WanAnimate2DecodeStep
+from .denoise import WanAnimate2DistilledDenoiseStep
+from .encoders import (
+    WanAnimate2ImageClipEncoderStep,
+    WanAnimate2ImageVaeEncoderStep,
+    WanAnimate2ProcessImagesInputStep,
+    WanAnimate2ProcessVideosInputStep,
+    WanAnimate2TextEncoderStep,
+    WanAnimate2VideoClipEncoderStep,
+)
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# ====================
+# 1. Encoder groups
+# ====================
+
+
+WanAnimate2DistilledImageEncoderBlocks = InsertableDict(
+    [
+        ("preprocess", WanAnimate2ProcessImagesInputStep()),
+        ("encode", WanAnimate2ImageClipEncoderStep()),
+    ]
+)
+
+
+# auto_docstring
+class WanAnimate2DistilledImageEncodeStep(SequentialPipelineBlocks):
+    """
+    Image encoder step that letterboxes the reference character image to the resolved resolution and CLIP-encodes it
+    into `encoder_hidden_states_image`.
+
+      Components:
+          image_processor (`WanAnimate2VideoProcessor`) image_encoder (`CLIPVisionModel`)
+
+      Inputs:
+          image (`Image | list`):
+              The reference image holding the character to animate.
+          height (`int`, *optional*, defaults to 800):
+              Together with `width`, the target *area* of the generated video; the aspect ratio comes from `image`.
+              Overwritten with the resolved frame height.
+          width (`int`, *optional*, defaults to 640):
+              See `height`. Overwritten with the resolved frame width.
+
+      Outputs:
+          image_pixels (`Tensor`):
+              The letterboxed reference image as a `[1, 3, H, W]` tensor in `[-1, 1]`
+          crop_region (`tuple`):
+              `(top, left, height, width)` of the reference image content inside the letterboxed frame
+          encoder_hidden_states_image (`Tensor`):
+              CLIP vision features of the reference image, conditioning every denoising forward
+    """
+
+    model_name = "wan-animate-2-distilled"
+    block_classes = WanAnimate2DistilledImageEncoderBlocks.values()
+    block_names = WanAnimate2DistilledImageEncoderBlocks.keys()
+
+    @property
+    def description(self):
+        return (
+            "Image encoder step that letterboxes the reference character image to the resolved resolution and "
+            "CLIP-encodes it into `encoder_hidden_states_image`."
+        )
+
+
+WanAnimate2DistilledVideoEncoderBlocks = InsertableDict(
+    [
+        ("preprocess", WanAnimate2ProcessVideosInputStep()),
+        ("encode", WanAnimate2VideoClipEncoderStep()),
+    ]
+)
+
+
+# auto_docstring
+class WanAnimate2DistilledVideoEncodeStep(SequentialPipelineBlocks):
+    """
+    Video encoder step that preprocesses the driving video (fps resample, letterbox, zigzag padding to a whole number
+    of segments) and CLIP-encodes its first frame into `condition_clip_context`.
+
+      Components:
+          video_processor (`WanAnimate2VideoProcessor`) image_encoder (`CLIPVisionModel`)
+
+      Inputs:
+          driving_video (`list`):
+              The driving video that provides the motion, in any format accepted by `VideoProcessor.preprocess_video`.
+          driving_video_fps (`float`, *optional*):
+              The frame rate `driving_video` was captured at — `load_video(..., return_fps=True)` reports it. When set,
+              the driving frames are resampled from it to `fps`; when `None` they are used as-is.
+          fps (`int`, *optional*, defaults to 24):
+              The frame rate the model generates at
+          segment_frame_length (`int`, *optional*, defaults to 81):
+              The number of frames in each inference segment
+          prev_segment_conditioning_frames (`int`, *optional*, defaults to 1):
+              The number of conditioning frames carried over from the previous segment
+          height (`int`, *optional*, defaults to 800):
+              The height the driving frames are letterboxed to; must match the reference image's resolved height. In
+              the assembled pipeline the image preprocess step supplies the resolved value.
+          width (`int`, *optional*, defaults to 640):
+              See `height`.
+
+      Outputs:
+          driving_video_pixels (`Tensor`):
+              The resampled, letterboxed, and zigzag-padded driving video, `[1, 3, T, height, width]` in `[-1, 1]`
+          real_frame_len (`int`):
+              Number of driving frames before zigzag padding; the output is trimmed to it
+          num_segments (`int`):
+              Number of inference segments
+          effective_segment (`int`):
+              Frames each segment advances by (`segment_frame_length - prev_segment_conditioning_frames`)
+          condition_clip_context (`Tensor`):
+              CLIP vision features of the driving video's first frame
+    """
+
+    model_name = "wan-animate-2-distilled"
+    block_classes = WanAnimate2DistilledVideoEncoderBlocks.values()
+    block_names = WanAnimate2DistilledVideoEncoderBlocks.keys()
+
+    @property
+    def description(self):
+        return (
+            "Video encoder step that preprocesses the driving video (fps resample, letterbox, zigzag padding to a "
+            "whole number of segments) and CLIP-encodes its first frame into `condition_clip_context`."
+        )
+
+
+# ====================
+# 2. Core denoise
+# ====================
+
+
+WanAnimate2DistilledCoreDenoiseBlocks = InsertableDict(
+    [
+        ("prepare_segments", WanAnimate2PrepareSegmentsStep()),
+        ("denoise", WanAnimate2DistilledDenoiseStep()),
+    ]
+)
+
+
+# auto_docstring
+class WanAnimate2DistilledCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    Core denoise step for the distilled Wan-Animate-2 checkpoint: computes the segment-invariant geometry and runs the
+    segment-by-segment denoising loop in few steps without classifier-free guidance.
+
+      Components:
+          vae (`AutoencoderKLWan`) transformer (`WanAnimate2Transformer3DModel`) scheduler (`SchedulerMixin`) guider
+          (`ClassifierFreeGuidance`)
+
+      Inputs:
+          segment_frame_length (`int`, *optional*, defaults to 81):
+              The number of frames in each inference segment
+          reference_image_latents (`Tensor`):
+              The reference conditioning tensor `[20, 1, latent_height, latent_width]`; provides the latent grid
+          driving_video_pixels (`Tensor`):
+              The preprocessed driving video `[1, 3, T, H, W]`, from the video preprocess step
+          num_segments (`int`):
+              Total number of segments in the driving video, from the video preprocess step
+          effective_segment (`int`):
+              Frames each segment advances: `segment_frame_length - prev_segment_conditioning_frames`, from the video
+              preprocess step
+          prev_segment_conditioning_frames (`int`, *optional*, defaults to 1):
+              The number of conditioning frames carried over from the previous segment
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          num_inference_steps (`int`, *optional*, defaults to 10):
+              The number of denoising steps.
+          condition_clip_context (`Tensor`):
+              CLIP vision features of the driving video's first frame
+          prompt_ref_embeds (`Tensor`):
+              Text embeddings of the reference prompt, guiding the reference-extraction pass
+          height (`int`):
+              The resolved frame height in pixels
+          width (`int`):
+              The resolved frame width in pixels
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+
+      Outputs:
+          segment_frames (`list`):
+              Per-segment decoded frames on CPU, each `[1, 3, T, H, W]`; the decode step concatenates, trims, and crops
+              them into the final video
+    """
+
+    model_name = "wan-animate-2-distilled"
+    block_classes = WanAnimate2DistilledCoreDenoiseBlocks.values()
+    block_names = WanAnimate2DistilledCoreDenoiseBlocks.keys()
+
+    @property
+    def description(self):
+        return (
+            "Core denoise step for the distilled Wan-Animate-2 checkpoint: computes the segment-invariant geometry "
+            "and runs the segment-by-segment denoising loop in few steps without classifier-free guidance."
+        )
+
+    @property
+    def inputs(self):
+        # The distilled checkpoint samples in few steps.
+        return [
+            InputParam.template("num_inference_steps", default=10) if param.name == "num_inference_steps" else param
+            for param in super().inputs
+        ]
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                "segment_frames",
+                type_hint=list[torch.Tensor],
+                description="Per-segment decoded frames on CPU, each `[1, 3, T, H, W]`; the decode step "
+                "concatenates, trims, and crops them into the final video",
+            ),
+        ]
+
+
+DISTILLED_BLOCKS = InsertableDict(
+    [
+        ("text_encoder", WanAnimate2TextEncoderStep()),
+        ("image_encoder", WanAnimate2DistilledImageEncodeStep()),
+        ("video_encoder", WanAnimate2DistilledVideoEncodeStep()),
+        ("vae_encoder", WanAnimate2ImageVaeEncoderStep()),
+        ("denoise", WanAnimate2DistilledCoreDenoiseStep()),
+        ("decode", WanAnimate2DecodeStep()),
+    ]
+)
+
+
+# auto_docstring
+class WanAnimate2DistilledBlocks(SequentialPipelineBlocks):
+    """
+    Modular pipeline blocks for distilled Wan-Animate-2 character animation, sampling in few steps without
+    classifier-free guidance.
+
+      Components:
+          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) image_processor (`WanAnimate2VideoProcessor`)
+          image_encoder (`CLIPVisionModel`) video_processor (`WanAnimate2VideoProcessor`) vae (`AutoencoderKLWan`)
+          transformer (`WanAnimate2Transformer3DModel`) scheduler (`SchedulerMixin`) guider (`ClassifierFreeGuidance`)
+
+      Inputs:
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
+          prompt_ref (`str`, *optional*, defaults to 人物动作的参考视频):
+              The reference prompt for the driving video context
+          max_sequence_length (`int`, *optional*, defaults to 512):
+              Maximum sequence length for prompt encoding.
+          image (`Image | list`):
+              The reference image holding the character to animate.
+          height (`int`, *optional*, defaults to 800):
+              Together with `width`, the target *area* of the generated video; the aspect ratio comes from `image`.
+              Overwritten with the resolved frame height.
+          width (`int`, *optional*, defaults to 640):
+              See `height`. Overwritten with the resolved frame width.
+          driving_video (`list`):
+              The driving video that provides the motion, in any format accepted by `VideoProcessor.preprocess_video`.
+          driving_video_fps (`float`, *optional*):
+              The frame rate `driving_video` was captured at — `load_video(..., return_fps=True)` reports it. When set,
+              the driving frames are resampled from it to `fps`; when `None` they are used as-is.
+          fps (`int`, *optional*, defaults to 24):
+              The frame rate the model generates at
+          segment_frame_length (`int`, *optional*, defaults to 81):
+              The number of frames in each inference segment
+          prev_segment_conditioning_frames (`int`, *optional*, defaults to 1):
+              The number of conditioning frames carried over from the previous segment
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          num_inference_steps (`int`, *optional*, defaults to 10):
+              The number of denoising steps.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          output_type (`str`, *optional*, defaults to np):
+              The output type of the decoded videos
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+    """
+
+    model_name = "wan-animate-2-distilled"
+    block_classes = DISTILLED_BLOCKS.values()
+    block_names = DISTILLED_BLOCKS.keys()
+
+    @property
+    def description(self):
+        return (
+            "Modular pipeline blocks for distilled Wan-Animate-2 character animation, sampling in few steps "
+            "without classifier-free guidance."
+        )
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("videos")]
