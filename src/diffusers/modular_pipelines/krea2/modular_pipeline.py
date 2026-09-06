@@ -20,7 +20,6 @@ class Krea2ModularPipeline(ModularPipeline, Krea2LoraLoaderMixin):
     """
     A ModularPipeline for Krea 2.
 
-    > [!WARNING] > This is an experimental feature!
     """
 
     default_blocks_name = "Krea2AutoBlocks"
@@ -57,7 +56,6 @@ class Krea2TurboModularPipeline(Krea2ModularPipeline):
     A ModularPipeline for the distilled Krea 2 turbo (TDM) checkpoint. It runs without classifier-free guidance, so it
     takes no negative prompt and has no guider.
 
-    > [!WARNING] > This is an experimental feature!
     """
 
     default_blocks_name = "Krea2TurboAutoBlocks"

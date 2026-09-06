@@ -23,7 +23,6 @@ class MiniMaxMusic3ModularPipeline(ModularPipeline):
     """
     A ModularPipeline for lyrics- and caption-conditioned music generation with MiniMax Music 3.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "MiniMaxMusic3Blocks"

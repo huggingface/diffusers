@@ -17,6 +17,9 @@ Exercises the install / discovery / agent-detection logic. The GitHub Contents A
 (``_fetch_json`` / ``_download_skill_bundle``) is left out — it needs the network.
 """
 
+import json
+from argparse import ArgumentParser
+
 import pytest
 
 from diffusers.commands.skills import (
@@ -25,10 +28,19 @@ from diffusers.commands.skills import (
     _ALL_INSTALL_DIRS,
     _CLAUDE_SKILLS_DIR,
     _MANAGED_MARKER_FILE,
+    _PLUGIN_NAME,
+    SkillsCommand,
     _detect_install_dirs,
     _discover_installed,
     _install_skill,
+    _skill_description,
 )
+
+
+def _parse_skills_args(argv):
+    parser = ArgumentParser()
+    SkillsCommand.register_subcommand(parser.add_subparsers())
+    return parser.parse_args(argv)
 
 
 SAMPLE_BUNDLE = {
@@ -41,12 +53,22 @@ SAMPLE_BUNDLE = {
 class TestInstallSkill:
     def test_writes_bundle_and_marker(self, tmp_path):
         location = _install_skill("example-skill", SAMPLE_BUNDLE, tmp_path, _CLAUDE_SKILLS_DIR, force=False)
-        skill_dir = tmp_path / _CLAUDE_SKILLS_DIR / "example-skill"
+        skill_dir = tmp_path / _CLAUDE_SKILLS_DIR / _PLUGIN_NAME / "skills" / "example-skill"
         assert location == skill_dir
         assert (skill_dir / "SKILL.md").read_bytes() == SAMPLE_BUNDLE["SKILL.md"]
         assert (skill_dir / "extra.md").read_bytes() == SAMPLE_BUNDLE["extra.md"]
         assert (skill_dir / "reference" / "script.py").read_bytes() == SAMPLE_BUNDLE["reference/script.py"]
         assert (skill_dir / _MANAGED_MARKER_FILE).exists()
+
+    def test_claude_install_writes_plugin_manifest(self, tmp_path):
+        _install_skill("example-skill", SAMPLE_BUNDLE, tmp_path, _CLAUDE_SKILLS_DIR, force=False)
+        manifest = tmp_path / _CLAUDE_SKILLS_DIR / _PLUGIN_NAME / ".claude-plugin" / "plugin.json"
+        assert json.loads(manifest.read_text())["name"] == _PLUGIN_NAME
+
+    def test_agents_install_stays_flat(self, tmp_path):
+        location = _install_skill("example-skill", SAMPLE_BUNDLE, tmp_path, _AGENTS_SKILLS_DIR, force=False)
+        assert location == tmp_path / _AGENTS_SKILLS_DIR / "example-skill"
+        assert not (tmp_path / _AGENTS_SKILLS_DIR / _PLUGIN_NAME).exists()
 
     def test_errors_without_force_on_existing_dir(self, tmp_path):
         _install_skill("example-skill", SAMPLE_BUNDLE, tmp_path, _CLAUDE_SKILLS_DIR, force=False)
@@ -57,7 +79,7 @@ class TestInstallSkill:
         _install_skill("example-skill", SAMPLE_BUNDLE, tmp_path, _CLAUDE_SKILLS_DIR, force=False)
         new_bundle = {"SKILL.md": b"different content"}
         _install_skill("example-skill", new_bundle, tmp_path, _CLAUDE_SKILLS_DIR, force=True)
-        skill_dir = tmp_path / _CLAUDE_SKILLS_DIR / "example-skill"
+        skill_dir = tmp_path / _CLAUDE_SKILLS_DIR / _PLUGIN_NAME / "skills" / "example-skill"
         assert (skill_dir / "SKILL.md").read_bytes() == b"different content"
         assert not (skill_dir / "extra.md").exists()
         assert (skill_dir / _MANAGED_MARKER_FILE).exists()
@@ -85,12 +107,45 @@ class TestDetectInstallDirs:
         assert _detect_install_dirs() == (expected,)
 
 
+class TestSkillDescription:
+    def test_reads_folded_block(self):
+        skill_md = "---\nname: demo\ndescription: >\n  First line\n  second line.\n---\n\n# Body\n"
+        assert _skill_description(skill_md) == "First line second line."
+
+    def test_reads_single_line(self):
+        assert _skill_description("---\nname: demo\ndescription: Does a thing.\n---\n") == "Does a thing."
+
+    def test_returns_empty_without_frontmatter(self):
+        assert _skill_description("# Just a heading\n") == ""
+
+
+class TestTargetFlags:
+    @pytest.mark.parametrize(
+        ("flag", "expected"),
+        [
+            ("--claude", (_CLAUDE_SKILLS_DIR,)),
+            ("--codex", (_AGENTS_SKILLS_DIR,)),
+            ("--cursor", (_AGENTS_SKILLS_DIR,)),
+        ],
+    )
+    def test_flag_pins_install_dirs(self, flag, expected):
+        args = _parse_skills_args(["skills", "add", "self-review", flag])
+        assert args.install_dirs == expected
+
+    def test_no_flag_defers_to_detection(self):
+        assert _parse_skills_args(["skills", "add", "self-review"]).install_dirs is None
+
+    def test_flags_are_mutually_exclusive(self):
+        with pytest.raises(SystemExit):
+            _parse_skills_args(["skills", "add", "self-review", "--claude", "--codex"])
+
+
 class TestDiscoverInstalled:
     def test_returns_managed_installs_from_all_paths(self, tmp_path):
         _install_skill("skill-a", SAMPLE_BUNDLE, tmp_path, _CLAUDE_SKILLS_DIR, force=False)
         _install_skill("skill-b", SAMPLE_BUNDLE, tmp_path, _AGENTS_SKILLS_DIR, force=False)
         # User-placed skill without our marker — should be ignored.
-        unmanaged = tmp_path / _CLAUDE_SKILLS_DIR / "user-placed"
+        unmanaged = tmp_path / _CLAUDE_SKILLS_DIR / _PLUGIN_NAME / "skills" / "user-placed"
         unmanaged.mkdir(parents=True)
         (unmanaged / "SKILL.md").write_bytes(b"user content")
 

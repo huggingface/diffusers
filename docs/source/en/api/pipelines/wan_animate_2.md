@@ -35,7 +35,7 @@ pipe.transformer.enable_group_offload(
     offload_type="block_level",
     use_stream=True,
 )
-pipe.text_encoder.to("cuda")
+pipe.text_encoder.to("cuda")  # or "mps", "xpu", "cpu"
 pipe.image_encoder.to("cuda")
 pipe.vae.to("cuda")
 pipe.transformer.compile_repeated_blocks(fullgraph=False)

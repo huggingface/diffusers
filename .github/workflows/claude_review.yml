@@ -62,8 +62,8 @@ jobs:
           EOF_DELIMITER="GITHUB_ENV_$(openssl rand -hex 8)"
           {
             echo "REVIEW_RULES<<${EOF_DELIMITER}"
-            git show "origin/${DEFAULT_BRANCH}:.ai/review-rules.md" 2>/dev/null \
-              || echo "No .ai/review-rules.md found. Apply Python correctness standards."
+            git show "origin/${DEFAULT_BRANCH}:.ai/references/review-rules.md" 2>/dev/null \
+              || echo "No .ai/references/review-rules.md found. Apply Python correctness standards."
             echo "${EOF_DELIMITER}"
           } >> "$GITHUB_ENV"
 

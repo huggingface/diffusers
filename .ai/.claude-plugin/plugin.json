@@ -1,0 +1,15 @@
+{
+  "name": "diffusers",
+  "description": "Conventions and task skills for contributing to diffusers",
+  "author": {
+    "name": "The Hugging Face team"
+  },
+  "homepage": "https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents",
+  "repository": "https://github.com/huggingface/diffusers",
+  "license": "Apache-2.0",
+  "keywords": [
+    "diffusers",
+    "diffusion-models",
+    "contributing"
+  ]
+}

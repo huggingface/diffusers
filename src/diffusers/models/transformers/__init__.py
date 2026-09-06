@@ -63,6 +63,7 @@ if is_torch_available():
     from .transformer_sana_video import SanaVideoTransformer3DModel
     from .transformer_sd3 import SD3Transformer2DModel
     from .transformer_skyreels_v2 import SkyReelsV2Transformer3DModel
+    from .transformer_stable_audio3 import StableAudio3DiTModel
     from .transformer_temporal import TransformerTemporalModel
     from .transformer_wan import WanTransformer3DModel
     from .transformer_wan_animate import WanAnimateTransformer3DModel

@@ -106,8 +106,6 @@
       title: Text-to-image
     - local: training/kandinsky
       title: Kandinsky 2.2
-    - local: training/wuerstchen
-      title: Wuerstchen
     - local: training/controlnet
       title: ControlNet
     - local: training/instructpix2pix

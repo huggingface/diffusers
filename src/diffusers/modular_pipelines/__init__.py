@@ -7,14 +7,8 @@ from ..utils import (
     get_objects_from_module,
     is_torch_available,
     is_transformers_available,
-    logging,
 )
 
-
-logger = logging.get_logger(__name__)
-logger.warning(
-    "Modular Diffusers is currently an experimental feature under active development. The API is subject to breaking changes in future releases."
-)
 
 # These modules contain pipelines from multiple libraries/frameworks
 _dummy_objects = {}
@@ -59,11 +53,13 @@ else:
         "WanImage2VideoAutoBlocks",
         "WanVideoToVideoBlocks",
         "Wan22Image2VideoBlocks",
+        "Wan22VaceBlocks",
         "WanModularPipeline",
         "Wan22ModularPipeline",
         "WanImage2VideoModularPipeline",
         "WanVideoToVideoModularPipeline",
         "Wan22Image2VideoModularPipeline",
+        "Wan22VaceModularPipeline",
     ]
     _import_structure["helios"] = [
         "HeliosAutoBlocks",
@@ -234,6 +230,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Wan22Image2VideoBlocks,
             Wan22Image2VideoModularPipeline,
             Wan22ModularPipeline,
+            Wan22VaceBlocks,
+            Wan22VaceModularPipeline,
             WanBlocks,
             WanImage2VideoAutoBlocks,
             WanImage2VideoModularPipeline,

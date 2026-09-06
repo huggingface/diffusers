@@ -16,13 +16,13 @@
 import torch
 
 from diffusers import (
-    AutoencoderKLLTX2Video,
     FlowMatchEulerDiscreteScheduler,
     LTX2VideoDiffusionDecodePipeline,
     LTX2VideoDiffusionDecoderModel,
 )
 
 from ...testing_utils import enable_full_determinism, torch_device
+from .testing_utils import get_dummy_vae
 
 
 enable_full_determinism()
@@ -56,25 +56,10 @@ def _build(with_vae: bool = False):
     vae = None
     if with_vae:
         torch.manual_seed(0)
+        # Wider latents than the shared default, to match the decoder, and the causal decoder this pipeline
+        # is exercised with.
         vae = (
-            AutoencoderKLLTX2Video(
-                in_channels=3,
-                out_channels=3,
-                latent_channels=DECODER_CONFIG["latent_channels"],
-                block_out_channels=(8,),
-                decoder_block_out_channels=(8,),
-                layers_per_block=(1,),
-                decoder_layers_per_block=(1, 1),
-                spatio_temporal_scaling=(True,),
-                decoder_spatio_temporal_scaling=(True,),
-                decoder_inject_noise=(False, False),
-                downsample_type=("spatial",),
-                upsample_residual=(False,),
-                upsample_factor=(1,),
-                timestep_conditioning=False,
-                patch_size=1,
-                patch_size_t=1,
-            )
+            get_dummy_vae(latent_channels=DECODER_CONFIG["latent_channels"], decoder_causal=True)
             .to(torch_device)
             .eval()
         )

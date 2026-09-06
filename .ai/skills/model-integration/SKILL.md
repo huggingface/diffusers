@@ -1,5 +1,5 @@
 ---
-name: integrating-models
+name: model-integration
 description: >
   Use when adding a new model or pipeline to diffusers, setting up file
   structure for a new model, converting a pipeline to modular format, or
@@ -16,7 +16,7 @@ Before writing any code, gather info in this order:
 
 1. **Reference repo** — ask for the github link. If they've already set it up locally, ask for the path. Otherwise, ask what setup steps are needed (install deps, download checkpoints, set env vars, etc.) and run through them before proceeding.
 2. **Inference script** — ask for a runnable end-to-end script for a basic workflow first (e.g. T2V). Then ask what other workflows they want to support (I2V, V2V, etc.) and agree on the full implementation order together.
-3. **Standard vs modular** — **default to modular.** [Modular Diffusers](../../modular.md) is the preferred implementation for new pipelines; the standard `DiffusionPipeline` is still supported but no longer the default. We prefer modular especially for models that don't fit a fixed task-based structure (modality baked into the checkpoint) or that are actively evolving.
+3. **Standard vs modular** — **default to modular.** [Modular Diffusers](references/modular.md) is the preferred implementation for new pipelines; the standard `DiffusionPipeline` is still supported but no longer the default. We prefer modular especially for models that don't fit a fixed task-based structure (modality baked into the checkpoint) or that are actively evolving.
 
 Ask step 3 as an `AskUserQuestion`, with modular marked as the recommended default.
 
@@ -29,7 +29,7 @@ Then work through the **Integration checklist** below
 A pipeline in Diffusers (be it standard or modular) will have multiple components. These components can be models, schedulers, processors, etc.
 
 - [ ] **Transformer model**
-  - [ ] Implement the model with `from_pretrained` support (conventions: [models.md](../../models.md))
+  - [ ] Implement the model with `from_pretrained` support (conventions: [models.md](references/models.md))
   - [ ] Convert weights (see **Weight / Checkpoint Conversion**)
   - [ ] Parity test against the reference (internal, not shipped — see **Model parity test**)
   - [ ] Register in the relevant `__init__.py` files (lazy imports)
@@ -37,7 +37,7 @@ A pipeline in Diffusers (be it standard or modular) will have multiple component
 - [ ] **VAE** (if applicable) — reuse an existing `AutoencoderKL*` if possible; if a new one is needed, follow the same sub-steps as the transformer
 - [ ] **Scheduler** — reuse an existing scheduler, or add a custom one
 - [ ] **Pipeline**
-  - [ ] Implement the pipeline — see [modular.md](../../modular.md) for modular pipeline, or [pipelines.md](../../pipelines.md) for standard pipeline
+  - [ ] Implement the pipeline — see [modular.md](references/modular.md) for modular pipeline, or [pipelines.md](references/pipelines.md) for standard pipeline
   - [ ] Add a LoRA mixin if applicable
   - [ ] Register in the relevant `__init__.py` files (lazy imports)
   - [ ] Pipeline-level tests (see **Testing**)
@@ -66,7 +66,7 @@ docs/source/en/
 
 ## Model integration specific rules
 
-**Match the reference's numerical logic.** Restructuring code to fit diffusers APIs (`ModelMixin`, `ConfigMixin`, blocks for modular, etc.) is expected, and required diffusers conventions (e.g. the attention pattern in [models.md](../../models.md)) take precedence. Beyond those, keep the actual computation as close to the reference as possible — don't reorder operations, change the math, or rename internals for aesthetics, even if it looks unclean. Small deviations make output mismatches very hard to track down.
+**Match the reference's numerical logic.** Restructuring code to fit diffusers APIs (`ModelMixin`, `ConfigMixin`, blocks for modular, etc.) is expected, and required diffusers conventions (e.g. the attention pattern in [models.md](references/models.md)) take precedence. Beyond those, keep the actual computation as close to the reference as possible — don't reorder operations, change the math, or rename internals for aesthetics, even if it looks unclean. Small deviations make output mismatches very hard to track down.
 
 ## Weight / Checkpoint Conversion
 
@@ -76,7 +76,7 @@ Convert the original checkpoint into diffusers format with a standalone script u
 2. Instantiate the diffusers model from its config and load the converted state dict.
 3. `save_pretrained(...)` to a local path, then load it back with `from_pretrained` to confirm it round-trips.
 
-All weights load through the standard paths — `from_pretrained`, or `from_single_file` (add `FromSingleFileMixin` + a weight-mapping) for an original-format single checkpoint. No custom `from_pretrained`, no manual runtime loading. See the loading rule in [models.md](../../models.md).
+All weights load through the standard paths — `from_pretrained`, or `from_single_file` (add `FromSingleFileMixin` + a weight-mapping) for an original-format single checkpoint. No custom `from_pretrained`, no manual runtime loading. See the loading rule in [models.md](references/models.md).
 
 Common conversion patterns to watch for model-level components:
 - Fused QKV weights that need splitting into separate Q, K, V
@@ -87,13 +87,13 @@ Common conversion patterns to watch for model-level components:
 
 ## Testing
 
-Two test layers must be added for any new pipeline: pipeline-level tests, and (if a new model is introduced) model-level tests. Conventions for both layers — file locations, tester mixins, dummy-component rules — live in [testing.md](../../testing.md); follow it when writing the tests.
+Two test layers must be added for any new pipeline: pipeline-level tests, and (if a new model is introduced) model-level tests. Conventions for both layers — file locations, tester mixins, dummy-component rules — live in [testing.md](references/testing.md); follow it when writing the tests.
 
 ## Model parity test
 
-Confirm the diffusers implementation matches the reference. Test each component on **CPU/float32** with a strict tolerance (`max_diff < 1e-3`), comparing the **freshly converted** weights against the reference in a single script — both sides side by side, nothing saved to disk in between. See [pitfalls.md](pitfalls.md) for the common sources of numerical discrepancy.
+Confirm the diffusers implementation matches the reference. Test each component on **CPU/float32** with a strict tolerance (`max_diff < 1e-3`), comparing the **freshly converted** weights against the reference in a single script — both sides side by side, nothing saved to disk in between. See [pitfalls.md](references/pitfalls.md) for the common sources of numerical discrepancy.
 
-This is an **internal verification tool for integration — it should not be shipped in the PR** (it imports the reference repo). The tests that ship with the PR are the model-level and pipeline-level tests in [testing.md](../../testing.md).
+This is an **internal verification tool for integration — it should not be shipped in the PR** (it imports the reference repo). The tests that ship with the PR are the model-level and pipeline-level tests in [testing.md](references/testing.md).
 
 The example below is schematic (placeholder names). `ReferenceModel` is the component **imported from the original repo**, and `convert_my_component` is **the same conversion function you wrote for the conversion script for the component**. You should make sure both load the *same* checkpoint weights and run the *same* input, so any difference is a conversion or implementation bug — not a difference in inputs.
 

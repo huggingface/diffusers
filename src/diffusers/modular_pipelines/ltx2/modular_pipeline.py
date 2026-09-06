@@ -30,7 +30,6 @@ class LTX2ModularPipeline(
     """
     A ModularPipeline for LTX-2 (joint video + audio generation).
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "LTX2AutoBlocks"
@@ -130,7 +129,6 @@ class LTX25ModularPipeline(LTX2ModularPipeline):
     Identical to [`LTX2ModularPipeline`] except that its default blocks decode with the diffusion video decoder, which
     is the native default from LTX-2.5 on. A checkpoint routes here through `modular_model_index.json`.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "LTX25AutoBlocks"

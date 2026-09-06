@@ -31,7 +31,6 @@ http://www.apache.org/licenses/LICENSE-2.0
 | [Custom Diffusion](https://github.com/huggingface/diffusers/tree/main/examples/custom_diffusion) |  |  |
 | [T2I-Adapters](https://github.com/huggingface/diffusers/tree/main/examples/t2i_adapter) | 👍 |  |
 | [Kandinsky 2.2](https://github.com/huggingface/diffusers/tree/main/examples/kandinsky2_2/text_to_image) |  | 👍 |
-| [Wuerstchen](https://github.com/huggingface/diffusers/tree/main/examples/wuerstchen/text_to_image) |  | 👍 |
 
 这些示例处于**积极维护**状态，如果遇到问题请随时提交issue。如果您认为应该添加其他训练示例，欢迎创建[功能请求](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=)与我们讨论，我们将评估其是否符合独立完整、易于调整、新手友好和单一用途的标准。
 

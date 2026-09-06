@@ -28,6 +28,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TrainingTesterMixin,
@@ -173,3 +174,7 @@ def test_ideogram4_mrope_is_autocast_invariant():
     assert not torch.equal(cos_ac[0, 0], cos_ac[0, 1])
     assert torch.equal(cos_ac, cos_ref)
     assert torch.equal(sin_ac, sin_ref)
+
+
+class TestIdeogram4TransformerLoRA(Ideogram4TransformerTesterConfig, LoraTesterMixin):
+    pass

@@ -10,11 +10,14 @@ RUN apt-get -y update \
     && add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update
 
-# cuda-cudart-dev provides the CUDA headers (cuda.h etc.) AOT-inductor compilation needs;
-# the runtime base image only ships the libraries.
+# The runtime base image only ships the CUDA libraries, but AOT-inductor compiles a C++
+# wrapper against the CUDA headers. cuda-cudart-dev provides cuda.h/cuda_runtime_api.h, and
+# cuda-nvcc pulls in the crt/ headers (crt/host_defines.h etc.) that cuda_runtime_api.h
+# includes in turn -- both are needed or the AOT tests fail with a CppCompileError.
 RUN apt install -y bash \
     build-essential \
     cuda-cudart-dev-12-9 \
+    cuda-nvcc-12-9 \
     git \
     git-lfs \
     curl \

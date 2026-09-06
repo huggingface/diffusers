@@ -1,7 +1,7 @@
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer
 
@@ -15,15 +15,14 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
-class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class OmniGenPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = OmniGenPipeline
-    params = frozenset(["prompt", "guidance_scale"])
-    batch_params = frozenset(["prompt"])
-    test_xformers_attention = False
-    test_layerwise_casting = True
+    required_input_params_in_call_signature = frozenset(["prompt", "guidance_scale"])
+    batch_input_params = frozenset(["prompt"])
+    output_shape = (3, 16, 16)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -54,53 +53,47 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         scheduler = FlowMatchEulerDiscreteScheduler(invert_sigmas=True, num_train_timesteps=1)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "tokenizer": tokenizer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 1,
             "guidance_scale": 3.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "height": 16,
             "width": 16,
         }
-        return inputs
 
-    def test_inference(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
-        generated_image = pipe(**inputs).images[0]
+class TestOmniGenPipeline(OmniGenPipelineTesterConfig, PipelineTesterMixin):
+    """Core pipeline tests for OmniGen. The old `test_inference` only asserted the output shape, which
+    `PipelineTesterMixin.test_output` now covers against `output_shape`."""
 
-        self.assertEqual(generated_image.shape, (16, 16, 3))
+
+class TestOmniGenPipelineMemory(OmniGenPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the OmniGen pipeline."""
 
 
 @slow
 @require_torch_accelerator
-class OmniGenPipelineSlowTests(unittest.TestCase):
+class TestOmniGenPipelineIntegration:
     pipeline_class = OmniGenPipeline
     repo_id = "shitao/OmniGen-v1-diffusers"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

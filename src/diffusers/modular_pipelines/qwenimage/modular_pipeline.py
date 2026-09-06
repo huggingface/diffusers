@@ -176,7 +176,6 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     """
     A ModularPipeline for QwenImage.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "QwenImageAutoBlocks"
@@ -228,7 +227,6 @@ class QwenImageEditModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     """
     A ModularPipeline for QwenImage-Edit.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "QwenImageEditAutoBlocks"
@@ -281,7 +279,6 @@ class QwenImageEditPlusModularPipeline(QwenImageEditModularPipeline):
     """
     A ModularPipeline for QwenImage-Edit Plus.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "QwenImageEditPlusAutoBlocks"
@@ -291,7 +288,6 @@ class QwenImageLayeredModularPipeline(QwenImageModularPipeline):
     """
     A ModularPipeline for QwenImage-Layered.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "QwenImageLayeredAutoBlocks"
