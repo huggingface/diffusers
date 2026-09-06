@@ -335,8 +335,7 @@ class SanaWMLTX2RefinerTransformer3DModel(
       sink plus recent refined history, so refinement cost is bounded per AR block and scales linearly with video
       length,
     * the caller supplies the video RoPE, which lets each AR window keep every frame's absolute index in the source
-      video (see
-      [`~SanaWMLTX2RefinerTransformer3DModel.build_rotary_emb_for_absolute_positions`]).
+      video (see [`~SanaWMLTX2RefinerTransformer3DModel.build_rotary_emb_for_absolute_positions`]).
 
     Args:
         in_channels (`int`, defaults to `128`):
@@ -596,8 +595,8 @@ class SanaWMLTX2RefinerTransformer3DModel(
 
         [`LTX2AudioVideoRotaryPosEmbed.prepare_video_coords`] assumes a contiguous `torch.arange(num_frames)`, which is
         fine for bidirectional inference. The sliding-window AR refiner instead needs to keep each frame's absolute
-        index in the source video, so RoPE captures the correct temporal phase across the
-        `[sink + recent + active]` window.
+        index in the source video, so RoPE captures the correct temporal phase across the `[sink + recent + active]`
+        window.
 
         Args:
             batch_size (`int`):

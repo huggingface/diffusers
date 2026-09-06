@@ -29,6 +29,7 @@ import torch
 from tqdm.auto import tqdm
 from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
 
+from ...models.autoencoders import AutoencoderKLLTX2Video
 from ...models.transformers.transformer_sana_wm_refiner import (
     KV_CACHE_MODE_CAPTURE_PRE_ROPE,
     KV_CACHE_MODE_INJECT,
@@ -38,6 +39,7 @@ from ...models.transformers.transformer_sana_wm_refiner import (
 )
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import empty_device_cache, randn_tensor
+from ...video_processor import VideoProcessor
 from ..ltx2.connectors import LTX2TextConnectors
 from ..pipeline_utils import DiffusionPipeline
 
@@ -67,11 +69,15 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             Flow-matching Euler scheduler. Constructed with ``shift=1.0`` so the distilled sigmas pass through
             unmodified.
+        vae ([`AutoencoderKLLTX2Video`], *optional*):
+            The same VAE used by [`SanaWMPipeline`]; pass `vae=pipe.vae` to share the weights. When given, the refiner
+            decodes to video, otherwise it returns refined latents.
         text_max_sequence_length (`int`, defaults to 1024):
             Maximum tokens passed to the Gemma-3 tokenizer.
     """
 
-    model_cpu_offload_seq = "text_encoder->connectors->transformer"
+    model_cpu_offload_seq = "text_encoder->connectors->transformer->vae"
+    _optional_components = ["vae"]
 
     def __init__(
         self,
@@ -80,6 +86,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         text_encoder: Gemma3ForConditionalGeneration,
         scheduler: FlowMatchEulerDiscreteScheduler,
+        vae: AutoencoderKLLTX2Video | None = None,
         text_max_sequence_length: int = 1024,
     ) -> None:
         super().__init__()
@@ -89,6 +96,10 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             tokenizer=tokenizer,
             text_encoder=text_encoder,
             scheduler=scheduler,
+            vae=vae,
+        )
+        self.video_processor = VideoProcessor(
+            vae_scale_factor=self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 32
         )
         self.register_to_config(text_max_sequence_length=int(text_max_sequence_length))
         self.text_max_sequence_length = int(text_max_sequence_length)
@@ -110,6 +121,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
         block_size: int = 3,
         kv_max_frames: int = 11,
         sigmas: tuple[float, ...] = STAGE_2_DISTILLED_SIGMA_VALUES,
+        output_type: str = "np",
         device: str | torch.device | None = None,
     ) -> torch.Tensor:
         """Run the LTX-2 refiner and return refined VAE latents.
@@ -218,7 +230,20 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             )
             output[:, :, block_start:block_end] = refined
 
-        return output
+        if self.vae is None or output_type == "latent":
+            return output
+
+        # The sink frames are carried through unrefined, so drop the anchor before decoding.
+        decoded = self._decode_latents(output)[:, :, sink_size:]
+        return self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
+
+    def _decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
+        """Decode latents to a `(B, C, F, H, W)` tensor in `[-1, 1]` (the VAE's native output range)."""
+        latents = latents.to(self.vae.device, dtype=self.vae.dtype)
+        latents_mean = self.vae.latents_mean.view(1, -1, 1, 1, 1).to(latents)
+        latents_std = self.vae.latents_std.view(1, -1, 1, 1, 1).to(latents)
+        latents = latents / self.vae.config.scaling_factor * latents_std + latents_mean
+        return self.vae.decode(latents, return_dict=False)[0]
 
     def _predict_x0_active_block(
         self,

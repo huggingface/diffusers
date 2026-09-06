@@ -62,6 +62,12 @@ def main() -> None:
     parser.add_argument("--dst", required=True, type=Path, help="Output directory")
     parser.add_argument("--no-refiner", action="store_true", help="Skip refiner export")
     parser.add_argument(
+        "--dst-refiner",
+        type=Path,
+        default=None,
+        help="Output directory for the stage-2 refiner pipeline (default: `<dst>-refiner`)",
+    )
+    parser.add_argument(
         "--torch-dtype", default="bfloat16", choices=["bfloat16", "float16", "float32"], help="Weight dtype"
     )
     args = parser.parse_args()
@@ -132,20 +138,31 @@ def main() -> None:
 
     FlowMatchEulerDiscreteScheduler(shift=9.8).save_pretrained(dst / "scheduler")
 
-    # 5. Refiner (LTX-2): now a standalone DiffusionPipeline saved in the
-    #    ``refiner/`` subfolder with its own ``model_index.json``. Copy the
-    #    LTX-2 sub-model folders as-is, split out a ``tokenizer/`` folder, add a
-    #    ``scheduler/`` (FlowMatchEulerDiscreteScheduler), and write the manifest.
+    # 5. Refiner (LTX-2): a standalone DiffusionPipeline written to its own output
+    #    directory, the way SDXL ships base and refiner as separate repos.
+    #    `DiffusionPipeline.from_pretrained` has no `subfolder` argument, so a nested
+    #    folder would silently load the *base* pipeline's components instead. Copy the LTX-2 sub-model folders as-is, split out a ``tokenizer/``
+    #    folder, add a ``scheduler/`` (FlowMatchEulerDiscreteScheduler), and write the
+    #    manifest. The transformer weights are LTX-2's, but the refiner drives them
+    #    through its own model class, so the manifest names that class.
     if not args.no_refiner:
         print("[convert] refiner …")
         from transformers import AutoTokenizer
 
         refiner_src = src_path / "refiner"
-        refiner_dst = dst / "refiner"
-        refiner_dst.mkdir(exist_ok=True)
+        refiner_dst = args.dst_refiner or dst.with_name(dst.name + "-refiner")
+        refiner_dst = Path(refiner_dst)
+        refiner_dst.mkdir(parents=True, exist_ok=True)
         for sub in ("transformer", "connectors", "text_encoder"):
             if (refiner_src / sub).is_dir():
                 _copy_subdir(refiner_src / sub, refiner_dst / sub)
+
+        # The weights are LTX-2's, but they are driven by `SanaWMLTX2RefinerTransformer3DModel`
+        # (same submodule layout, streaming-attention forward), so point the config at that class.
+        transformer_config_path = refiner_dst / "transformer" / "config.json"
+        transformer_config = json.loads(transformer_config_path.read_text())
+        transformer_config["_class_name"] = "SanaWMLTX2RefinerTransformer3DModel"
+        transformer_config_path.write_text(json.dumps(transformer_config, indent=2))
 
         # Tokenizer lives co-located with the Gemma-3 text encoder in the release;
         # re-save it into its own subfolder so it registers as a pipeline component.
@@ -159,7 +176,7 @@ def main() -> None:
         refiner_index = {
             "_class_name": "SanaWMLTX2Refiner",
             "_diffusers_version": "0.38.0",
-            "transformer": ["diffusers", "LTX2VideoTransformer3DModel"],
+            "transformer": ["diffusers", "SanaWMLTX2RefinerTransformer3DModel"],
             # LTX2TextConnectors lives in diffusers.pipelines.ltx2 (not top-level),
             # so the loader resolves it via the pipeline-module path ("ltx2", ...).
             "connectors": ["ltx2", "LTX2TextConnectors"],
@@ -181,11 +198,11 @@ def main() -> None:
         "transformer": ["diffusers", "SanaWMTransformer3DModel"],
         "scheduler": ["diffusers", "FlowMatchEulerDiscreteScheduler"],
     }
-    if not args.no_refiner:
-        index["refiner"] = ["diffusers", "SanaWMLTX2Refiner"]
     (dst / "model_index.json").write_text(json.dumps(index, indent=2))
 
     print(f"[convert] done — wrote {dst}")
+    if not args.no_refiner:
+        print(f"[convert] done — wrote {refiner_dst}")
 
 
 if __name__ == "__main__":

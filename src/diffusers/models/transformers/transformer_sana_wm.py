@@ -472,9 +472,8 @@ class PatchEmbedMS3D(nn.Module):
 class SanaWMRotaryPosEmbed(nn.Module):
     """Rotary position embedding for SANA-WM.
 
-    Deliberately not shared with Wan's rotary embedding: the per-axis split is configurable through
-    `fhw_dim`, and the frequencies stay complex in a single `freqs` buffer rather than being split
-    into real cos/sin buffers.
+    Deliberately not shared with Wan's rotary embedding: the per-axis split is configurable through `fhw_dim`, and the
+    frequencies stay complex in a single `freqs` buffer rather than being split into real cos/sin buffers.
     """
 
     def __init__(
@@ -3719,8 +3718,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             camera_conditions: ``(B, T, 20)`` raw camera conditions driving the
                 camera-control (UCPE) branch.
             chunk_plucker: Plucker ray embeddings ``(B, C, T, H, W)``, consumed when
-                the model is configured with ``use_chunk_plucker_input`` /
-                ``use_chunk_plucker_post_attn``.
+                the model is configured with ``use_chunk_plucker_input`` / ``use_chunk_plucker_post_attn``.
             cam_pos_embeds: Optional pre-computed camera positional embeddings
                 (``"absmap"`` / ``"P"`` entries) reused instead of recomputing them.
             pos_embeds: Optional pre-computed rotary position embeddings; when ``None``

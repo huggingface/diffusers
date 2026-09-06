@@ -172,7 +172,6 @@ class TestSanaWMRegistration:
             "intrinsics",
             "c2w",
             "action",
-            "use_refiner",
             # Standard diffusers pipeline arguments.
             "generator",
             "prompt_embeds",
@@ -190,3 +189,16 @@ class TestSanaWMRegistration:
         params = inspect.signature(SanaWMPipeline.__call__).parameters
         assert "seed" not in params
         assert "refiner_seed" not in params
+
+    def test_refiner_is_not_a_component_of_the_base_pipeline(self):
+        # The two stages run as separate pipelines, so the base one neither holds a
+        # refiner nor exposes a switch for it.
+        assert "refiner" not in inspect.signature(SanaWMPipeline.__init__).parameters
+        assert "use_refiner" not in inspect.signature(SanaWMPipeline.__call__).parameters
+
+    def test_refiner_takes_an_optional_vae_for_decoding(self):
+        # With a `vae` the refiner returns video; without one, refined latents.
+        params = inspect.signature(SanaWMLTX2Refiner.__init__).parameters
+        assert "vae" in params
+        assert params["vae"].default is None
+        assert "output_type" in inspect.signature(SanaWMLTX2Refiner.__call__).parameters

@@ -26,7 +26,7 @@ from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFa
 from ...models import AutoencoderKLLTX2Video, SanaWMTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
-from ...utils.torch_utils import empty_device_cache, randn_tensor
+from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .cam_utils import (
@@ -38,7 +38,6 @@ from .cam_utils import (
 )
 from .image_processor import SanaWMImageProcessor
 from .pipeline_output import SanaWMPipelineOutput
-from .refiner import SanaWMLTX2Refiner
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -159,16 +158,11 @@ class SanaWMPipeline(DiffusionPipeline):
         transformer ([`SanaWMTransformer3DModel`]):
             The 1600M bidirectional SANA-WM DiT.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
-            Flow-matching Euler scheduler (LTX-style per-token timesteps).
-        refiner ([`SanaWMLTX2Refiner`], *optional*):
-            LTX-2 refiner; if provided, runs 3-step distilled refinement before decoding. If `None`, decode stage-1
-            latents directly.
+            Flow-matching Euler scheduler (LTX-style per-token timesteps). latents directly.
     """
 
-    # ``refiner`` is a nested pipeline (not an nn.Module) so it's excluded from
     # the offload sequence; it manages its own sub-module device placement.
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-    _optional_components = ["refiner"]
 
     def __init__(
         self,
@@ -177,7 +171,6 @@ class SanaWMPipeline(DiffusionPipeline):
         vae: AutoencoderKLLTX2Video,
         transformer: SanaWMTransformer3DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        refiner: SanaWMLTX2Refiner | None = None,
     ) -> None:
         super().__init__()
         self.register_modules(
@@ -186,7 +179,6 @@ class SanaWMPipeline(DiffusionPipeline):
             vae=vae,
             transformer=transformer,
             scheduler=scheduler,
-            refiner=refiner,
         )
         # Read VAE strides from the registered component (LTX2Pipeline pattern).
         # Fall back to the LTX-2 defaults (32 spatial / 8 temporal) if the VAE
@@ -456,9 +448,6 @@ class SanaWMPipeline(DiffusionPipeline):
         prompt_attention_mask: torch.Tensor | None = None,
         negative_prompt_embeds: torch.Tensor | None = None,
         negative_prompt_attention_mask: torch.Tensor | None = None,
-        use_refiner: bool = True,
-        sink_size: int = 1,
-        refiner_generator: torch.Generator | None = None,
         max_sequence_length: int = 300,
         chi_prompt: list[str] | None = None,
         output_type: Literal["np", "pil", "latent"] = "np",
@@ -502,17 +491,9 @@ class SanaWMPipeline(DiffusionPipeline):
             prompt_attention_mask (`torch.Tensor`, *optional*):
                 Attention mask for `prompt_embeds`.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-computed negative text embeddings. Must be passed together with
-                `negative_prompt_attention_mask`.
+                Pre-computed negative text embeddings. Must be passed together with `negative_prompt_attention_mask`.
             negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Attention mask for `negative_prompt_embeds`.
-            use_refiner (`bool`, defaults to True):
-                Run the LTX-2 refiner (requires `self.refiner` to be set).
-            sink_size (`int`, defaults to 1):
-                Refiner sink-anchor frame count.
-            refiner_generator (`torch.Generator`, *optional*):
-                Generator for the refiner's noise. Defaults to a generator seeded with 42, so stage 2 is
-                reproducible out of the box.
             max_sequence_length (`int`, defaults to 300):
                 Max prompt tokens.
             chi_prompt (`list[str]`, *optional*):
@@ -607,39 +588,8 @@ class SanaWMPipeline(DiffusionPipeline):
         if output_type == "latent":
             return SanaWMPipelineOutput(frames=latents, c2w=c2w, latent=latents) if return_dict else (latents,)
 
-        if use_refiner and self.refiner is not None:
-            # Stage-1 is done; free the parent's GPU-resident weights so the
-            # refiner (nested pipeline, manages its own placement) has the device
-            # to itself. Skip when accelerate offload is active — it owns
-            # placement then. The VAE is moved back for decode below.
-            if not self._model_cpu_offload_active():
-                self.text_encoder.to("cpu")
-                self.transformer.to("cpu")
-                self.vae.to("cpu")
-                empty_device_cache(device.type)
-            # The refiner is a nested pipeline, so it doesn't follow the parent's
-            # ``.to(device)`` / offload hooks. Rather than bulk-moving its (~87 GB)
-            # weights up front, pass the execution device and let it move its own
-            # sub-modules on/off GPU as it runs (peak VRAM ~= largest sub-model).
-            refined = self.refiner(
-                latents,
-                prompt,
-                fps=float(fps),
-                sink_size=sink_size,
-                generator=refiner_generator,
-                device=device,
-            )
-            # Bring the VAE back for decode (moved to CPU above to free the GPU
-            # for the refiner). No-op under accelerate offload.
-            if not self._model_cpu_offload_active():
-                self.vae.to(device)
-                empty_device_cache(device.type)
-            decoded = self._decode_latents(refined)  # (B=1, C=3, F, H, W) in [-1, 1]
-            decoded = decoded[:, :, 1:]  # refiner drops the sink anchor frame
-            video_c2w = c2w[1:num_frames]
-        else:
-            decoded = self._decode_latents(latents)
-            video_c2w = c2w[:num_frames]
+        decoded = self._decode_latents(latents)  # (B=1, C=3, F, H, W) in [-1, 1]
+        video_c2w = c2w[:num_frames]
 
         # ``VideoProcessor.postprocess_video`` handles the standard [-1, 1] ->
         # requested output_type conversion (uint8 PIL frames, float np.ndarray
