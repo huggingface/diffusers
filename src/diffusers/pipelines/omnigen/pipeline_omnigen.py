@@ -116,9 +116,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class OmniGenPipeline(
-    DiffusionPipeline,
-):
+class OmniGenPipeline(DiffusionPipeline):
     r"""
     The OmniGen pipeline for multimodal-to-image generation.
 

@@ -40,9 +40,7 @@ from diffusers.utils.import_utils import (
     is_kernels_available,
     is_note_seq_available,
     is_nvidia_modelopt_version,
-    is_onnx_available,
     is_opencv_available,
-    is_optimum_quanto_available,
     is_peft_available,
     is_sdnq_available,
     is_timm_available,
@@ -429,14 +427,6 @@ def is_bitsandbytes(test_case):
     return pytest.mark.bitsandbytes(test_case)
 
 
-def is_quanto(test_case):
-    """
-    Decorator marking a test as a Quanto quantization test. These tests can be filtered using:
-        pytest -m "not quanto" to skip pytest -m quanto to run only these tests
-    """
-    return pytest.mark.quanto(test_case)
-
-
 def is_torchao(test_case):
     """
     Decorator marking a test as a TorchAO quantization test. These tests can be filtered using:
@@ -711,13 +701,6 @@ def require_compel(test_case):
     return pytest.mark.skipif(not is_compel_available(), reason="test requires compel")(test_case)
 
 
-def require_onnxruntime(test_case):
-    """
-    Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
-    """
-    return pytest.mark.skipif(not is_onnx_available(), reason="test requires onnxruntime")(test_case)
-
-
 def require_note_seq(test_case):
     """
     Decorator marking a test that requires note_seq. These tests are skipped when note_seq isn't installed.
@@ -760,13 +743,6 @@ def require_bitsandbytes(test_case):
     Decorator marking a test that requires bitsandbytes. These tests are skipped when bitsandbytes isn't installed.
     """
     return pytest.mark.skipif(not is_bitsandbytes_available(), reason="test requires bitsandbytes")(test_case)
-
-
-def require_quanto(test_case):
-    """
-    Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
-    """
-    return pytest.mark.skipif(not is_optimum_quanto_available(), reason="test requires quanto")(test_case)
 
 
 def require_sdnq(test_case):
@@ -1032,6 +1008,25 @@ def export_to_gif(image: list[PIL.Image.Image], output_gif_path: str = None) -> 
         loop=0,
     )
     return output_gif_path
+
+
+@contextmanager
+def skip_if_no_cudnn_engine():
+    """
+    Skip the enclosing test when cuDNN has no kernel for an op the pipeline runs.
+
+    cuDNN does not ship an engine for every (op, dtype, layout) combination, and the set it covers differs between
+    cuDNN builds and GPU architectures. When none applies it raises `RuntimeError: GET was unable to find an engine
+    to execute this computation` — for instance for Sana's depthwise `Conv2d` in bfloat16. That is a property of the
+    runner, not of the code under test, so tests that can hit it are skipped there rather than failed. Any other
+    `RuntimeError` propagates untouched.
+    """
+    try:
+        yield
+    except RuntimeError as e:
+        if "unable to find an engine" not in str(e):
+            raise
+        pytest.skip(f"cuDNN has no engine for this computation on {torch_device}: {e}")
 
 
 @contextmanager
