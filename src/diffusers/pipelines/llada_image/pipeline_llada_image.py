@@ -17,6 +17,7 @@ from collections.abc import Callable
 import torch
 import torch.nn.functional as F
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import (
@@ -27,13 +28,28 @@ from ...models import (
     LLaDAImageTransformer2DModel,
 )
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import logging
+from ...utils import is_transformers_version, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import LLaDAImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)
+
+
+def _default_rope_parameters(config, device=None, seq_len=None, layer_type=None):
+    del seq_len, layer_type
+    device = device if device is not None else torch.device("cpu")
+    head_dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
+    dim = int(head_dim * getattr(config, "partial_rotary_factor", 1.0))
+    inv_freq = 1.0 / (config.rope_theta ** (torch.arange(0, dim, 2, dtype=torch.int64, device=device).float() / dim))
+    return inv_freq, 1.0
+
+
+# The official LLaDA2 remote model uses this Transformers 4 compatibility entry. Transformers 5 no longer
+# registers it, so make it available before DiffusionPipeline loads the custom text encoder.
+if "default" not in ROPE_INIT_FUNCTIONS:
+    ROPE_INIT_FUNCTIONS["default"] = _default_rope_parameters
 
 
 class LLaDAImagePipeline(DiffusionPipeline):
@@ -90,6 +106,19 @@ class LLaDAImagePipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if self.vae is not None else 8
         self.latent_scale_factor = self.vae_scale_factor * 2
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.latent_scale_factor)
+
+        text_encoder_model = getattr(self.text_encoder, "model", None)
+        language_model = getattr(text_encoder_model, "language_model", None)
+        if is_transformers_version(">=", "5.0.0") and language_model is not None:
+            # Transformers 5 constructs sharded models on the meta device. The remote model's RoPE buffer is
+            # non-persistent and is therefore not restored from the checkpoint, so materialize it after loading.
+            rotary_emb = language_model.rotary_emb
+            rotary_device = self.text_encoder.get_input_embeddings().weight.device
+            default_rope_init = ROPE_INIT_FUNCTIONS["default"]
+            inv_freq, attention_scaling = default_rope_init(rotary_emb.config, device=rotary_device)
+            rotary_emb.register_buffer("inv_freq", inv_freq, persistent=False)
+            rotary_emb.original_inv_freq = inv_freq
+            rotary_emb.attention_scaling = attention_scaling
 
     @property
     def guidance_scale(self) -> float:
@@ -221,6 +250,12 @@ class LLaDAImagePipeline(DiffusionPipeline):
         height: int,
         width: int,
     ) -> torch.Tensor:
+        text_encoder_device = self.text_encoder.get_input_embeddings().weight.device
+        execution_device = self._execution_device
+        restore_text_encoder_device = text_encoder_device != execution_device
+        if restore_text_encoder_device:
+            self.text_encoder.to(execution_device)
+
         prompts = [prompt] if isinstance(prompt, str) else prompt
         image_token_offset = 157184
         frontend_scale = max(max(height, width) / 512, 1.0)
@@ -232,36 +267,40 @@ class LLaDAImagePipeline(DiffusionPipeline):
         system_prompt = "You are a text-to-image generation assistant."
         generated_tokens = []
 
-        for prompt in prompts:
-            text_prompt = f"<role>SYSTEM</role> {system_prompt} <role>HUMAN</role>{prompt}<role>ASSISTANT</role>"
-            text_ids = self.tokenizer(text_prompt).input_ids
-            image_info_ids = self.tokenizer(
-                f"<|image|><|reserved_token_{vq_height}|><|reserved_token_{vq_width}|><boi><|/image|>"
-            ).input_ids
-            input_ids = text_ids + image_info_ids[:-1]
+        try:
+            for prompt in prompts:
+                text_prompt = f"<role>SYSTEM</role> {system_prompt} <role>HUMAN</role>{prompt}<role>ASSISTANT</role>"
+                text_ids = self.tokenizer(text_prompt).input_ids
+                image_info_ids = self.tokenizer(
+                    f"<|image|><|reserved_token_{vq_height}|><|reserved_token_{vq_width}|><boi><|/image|>"
+                ).input_ids
+                input_ids = text_ids + image_info_ids[:-1]
 
-            uncond_prompt = (
-                f"<role>SYSTEM</role> {system_prompt} <role>HUMAN</role><uncondition><role>ASSISTANT</role>"
-            )
-            uncond_ids = self.tokenizer(uncond_prompt).input_ids + image_info_ids[:-1]
-            output_ids = self.text_encoder.generate_bd_image_logic(
-                data={
-                    "input_ids": torch.tensor(
-                        input_ids, device=self.text_encoder.get_input_embeddings().weight.device
-                    ).unsqueeze(0),
-                    "uncond_ids": uncond_ids,
-                },
-                block_length=32,
-                steps=8,
-                gen_length=image_token_count,
-                cfg_scale=2.0,
-            )
-            token_ids = output_ids[0, len(input_ids) : len(input_ids) + image_token_count] - image_token_offset
-            if len(token_ids) != image_token_count:
-                raise ValueError(f"The MLLM generated {len(token_ids)} VQ tokens, expected {image_token_count}.")
-            if torch.any((token_ids < 0) | (token_ids >= self.sigvq.config.codebook_size)):
-                raise ValueError("The MLLM generated token IDs outside the SigVQ codebook.")
-            generated_tokens.append(token_ids)
+                uncond_prompt = (
+                    f"<role>SYSTEM</role> {system_prompt} <role>HUMAN</role><uncondition><role>ASSISTANT</role>"
+                )
+                uncond_ids = self.tokenizer(uncond_prompt).input_ids + image_info_ids[:-1]
+                output_ids = self.text_encoder.generate_bd_image_logic(
+                    data={
+                        "input_ids": torch.tensor(
+                            input_ids, device=self.text_encoder.get_input_embeddings().weight.device
+                        ).unsqueeze(0),
+                        "uncond_ids": uncond_ids,
+                    },
+                    block_length=32,
+                    steps=8,
+                    gen_length=image_token_count,
+                    cfg_scale=2.0,
+                )
+                token_ids = output_ids[0, len(input_ids) : len(input_ids) + image_token_count] - image_token_offset
+                if len(token_ids) != image_token_count:
+                    raise ValueError(f"The MLLM generated {len(token_ids)} VQ tokens, expected {image_token_count}.")
+                if torch.any((token_ids < 0) | (token_ids >= self.sigvq.config.codebook_size)):
+                    raise ValueError("The MLLM generated token IDs outside the SigVQ codebook.")
+                generated_tokens.append(token_ids)
+        finally:
+            if restore_text_encoder_device:
+                self.text_encoder.to(text_encoder_device)
 
         return torch.stack(generated_tokens)
 

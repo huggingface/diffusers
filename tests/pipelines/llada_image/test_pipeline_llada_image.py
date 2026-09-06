@@ -27,6 +27,7 @@ from diffusers import (
     LLaDAImageTextProjectionModel,
     LLaDAImageTransformer2DModel,
 )
+from diffusers.utils import is_transformers_version
 
 from ...testing_utils import torch_device
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
@@ -140,6 +141,31 @@ class LLaDAImagePipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestLLaDAImagePipeline(LLaDAImagePipelineTesterConfig, PipelineTesterMixin):
+    def test_transformers_5_default_rope_is_materialized(self):
+        if not is_transformers_version(">=", "5.0.0"):
+            pytest.skip("This regression only affects Transformers 5 and later.")
+
+        components = self.get_dummy_components()
+        rotary_emb = torch.nn.Module()
+        rotary_emb.config = types.SimpleNamespace(
+            head_dim=8,
+            hidden_size=16,
+            num_attention_heads=2,
+            partial_rotary_factor=1.0,
+            rope_theta=10000.0,
+        )
+        rotary_emb.rope_type = "default"
+        rotary_emb.register_buffer("inv_freq", torch.zeros(4), persistent=False)
+        language_model = torch.nn.Module()
+        language_model.rotary_emb = rotary_emb
+        components["text_encoder"].model.language_model = language_model
+
+        self.pipeline_class(**components)
+
+        expected = torch.tensor([1.0, 0.1, 0.01, 0.001])
+        torch.testing.assert_close(rotary_emb.inv_freq, expected)
+        torch.testing.assert_close(rotary_emb.original_inv_freq, expected)
+
     def test_vq_conditioned(self):
         pipe = self.get_pipeline().to(torch_device)
 
