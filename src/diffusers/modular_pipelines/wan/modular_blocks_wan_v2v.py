@@ -30,9 +30,7 @@ class WanVideoToVideoCoreDenoiseStep(SequentialPipelineBlocks):
     Denoise the noisy input video latents for video-to-video generation.
 
       Components:
-          transformer (`WanTransformer3DModel`)
-          scheduler (`UniPCMultistepScheduler`)
-          guider (`ClassifierFreeGuidance`)
+          transformer (`WanTransformer3DModel`) scheduler (`UniPCMultistepScheduler`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
@@ -87,13 +85,9 @@ class WanVideoToVideoBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for Wan video-to-video generation.
 
       Components:
-          text_encoder (`UMT5EncoderModel`)
-          tokenizer (`AutoTokenizer`)
-          guider (`ClassifierFreeGuidance`)
-          vae (`AutoencoderKLWan`)
-          video_processor (`VideoProcessor`)
-          transformer (`WanTransformer3DModel`)
-          scheduler (`UniPCMultistepScheduler`)
+          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) vae
+          (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer (`WanTransformer3DModel`) scheduler
+          (`UniPCMultistepScheduler`)
 
       Inputs:
           prompt (`None`, *optional*):
@@ -108,6 +102,8 @@ class WanVideoToVideoBlocks(SequentialPipelineBlocks):
               The height in pixels of the generated video.
           width (`int`, *optional*):
               The width in pixels of the generated video.
+          generator (`None`, *optional*):
+              Torch generator for deterministic latent generation.
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
               The number of videos to generate per prompt.
           num_inference_steps (`None`, *optional*, defaults to 50):
@@ -120,8 +116,6 @@ class WanVideoToVideoBlocks(SequentialPipelineBlocks):
               The amount of noise added to the input video latents.
           latents (`Tensor | NoneType`, *optional*):
               Pre-generated noisy video latents to use instead of adding noise to the input video.
-          generator (`None`, *optional*):
-              Torch generator for deterministic noise generation.
           attention_kwargs (`None`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):

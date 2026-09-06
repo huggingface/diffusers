@@ -588,6 +588,7 @@ class WanVideoVaeEncoderStep(ModularPipelineBlocks):
             InputParam("video", required=True, description="The input video to transform."),
             InputParam("height", type_hint=int, description="The height in pixels of the generated video."),
             InputParam("width", type_hint=int, description="The width in pixels of the generated video."),
+            InputParam("generator", description="Torch generator for deterministic latent generation."),
         ]
 
     @property
@@ -600,12 +601,18 @@ class WanVideoVaeEncoderStep(ModularPipelineBlocks):
             )
         ]
 
+    @staticmethod
+    def check_inputs(height: int, width: int):
+        if height % 16 != 0 or width % 16 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
+
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.height = block_state.height or components.default_height
         block_state.width = block_state.width or components.default_width
+        self.check_inputs(block_state.height, block_state.width)
 
         device = components._execution_device
         video = components.video_processor.preprocess_video(
@@ -614,7 +621,7 @@ class WanVideoVaeEncoderStep(ModularPipelineBlocks):
         block_state.video_latents = encode_vae_image(
             video_tensor=video,
             vae=components.vae,
-            generator=None,
+            generator=block_state.generator,
             device=device,
             dtype=components.vae.dtype,
             latent_channels=components.num_channels_latents,

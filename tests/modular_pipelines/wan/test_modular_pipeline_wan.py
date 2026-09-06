@@ -101,6 +101,18 @@ class WanVideoToVideoModularPipelineTesterConfig(BaseModularPipelineTesterConfig
 
 
 class TestWanVideoToVideoModularPipelineFast(WanVideoToVideoModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_inference_batch_single_identical(self, batch_size=2, expected_max_diff=2e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
+
+    @pytest.mark.parametrize(("height", "width"), [(24, 16), (16, 24)])
+    def test_height_and_width_must_be_divisible_by_16(self, height, width):
+        pipeline = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs.update(height=height, width=width)
+
+        with pytest.raises(ValueError, match="height.*width.*divisible by 16"):
+            pipeline(**inputs, output="videos")
+
     def test_standard_pipeline_parity(self):
         modular_pipeline = self.get_pipeline()
         native_pipeline = WanVideoToVideoPipeline(
