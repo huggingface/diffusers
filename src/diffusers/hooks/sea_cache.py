@@ -155,6 +155,7 @@ class SeaCacheContextState(BaseState):
         self.und_output: torch.Tensor | None = None
         self.cached_und_output: torch.Tensor | None = None
         self.cached_gen_residual: torch.Tensor | None = None
+        self.gen_output: torch.Tensor | None = None
 
     def reset_forward(self):
         self.skip_remaining = False
@@ -165,6 +166,7 @@ class SeaCacheContextState(BaseState):
         self.und_output = None
         self.cached_und_output = None
         self.cached_gen_residual = None
+        self.gen_output = None
 
     def reset_trajectory(self):
         self.history = []
@@ -392,6 +394,22 @@ def _apply_sea_filter(
     return torch.fft.ifftn(spectrum * gain, dim=dimensions).real.to(hidden_states_dtype)
 
 
+def _build_indicator(
+    config: SeaCacheConfig,
+    forward_metadata: _SeaCacheForwardMetadata,
+) -> list[torch.Tensor] | None:
+    if not forward_metadata.raw_vision:
+        return None
+    return [
+        _apply_sea_filter(
+            latent.movedim(0, -1),
+            sigma=forward_metadata.sigma,
+            power_exp=config.power_exp,
+        ).detach()
+        for latent in forward_metadata.raw_vision
+    ]
+
+
 def _is_parameter_sharded(module: torch.nn.Module) -> bool:
     """Whether a block is managed by a parameter-sharding runtime that SeaCache cannot safely bypass."""
 
@@ -425,15 +443,38 @@ class SeaCacheRootHook(ModelHook):
         state_manager: StateManager,
         shared_state: SeaCacheSharedState,
         raw_vision_callback: Callable,
+        use_stack_boundary: bool = False,
     ):
         super().__init__()
         self.config = config
         self.state_manager = state_manager
         self.shared_state = shared_state
         self.raw_vision_callback = raw_vision_callback
+        self.use_stack_boundary = use_stack_boundary
+
+    def initialize_hook(self, module: torch.nn.Module):
+        if not self.use_stack_boundary:
+            return module
+
+        unwrapped_module = unwrap_module(module)
+        if not hasattr(unwrapped_module, "layers") or not unwrapped_module.layers:
+            raise ValueError("SeaCache requires Cosmos 3 to expose a non-empty decoder stack.")
+        unwrapped_module._sea_cache_prepare_decoder_stack = self.prepare_decoder_stack
+        unwrapped_module._sea_cache_record_decoder_stack = self.record_decoder_stack
+        return module
+
+    def deinitalize_hook(self, module: torch.nn.Module):
+        if self.use_stack_boundary:
+            unwrapped_module = unwrap_module(module)
+            for name in ("_sea_cache_prepare_decoder_stack", "_sea_cache_record_decoder_stack"):
+                if hasattr(unwrapped_module, name):
+                    delattr(unwrapped_module, name)
+        return module
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
         self.shared_state.forward_metadata = None
+        if self.state_manager._current_context is not None:
+            self.state_manager.get_state().reset_forward()
         if torch.is_grad_enabled():
             self.shared_state.mark_fail_open(
                 "SeaCache is inference-only; calls with autograd enabled run in fail-open mode."
@@ -511,10 +552,126 @@ class SeaCacheRootHook(ModelHook):
         )
         return args, kwargs
 
+    def prepare_decoder_stack(
+        self,
+        module: torch.nn.Module,
+        und_seq: torch.Tensor,
+        gen_seq: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, bool]:
+        """Resolve the Cosmos 3 gate eagerly before entering compiled decoder blocks."""
+        forward_metadata = self.shared_state.forward_metadata
+        if self.state_manager._current_context is None or forward_metadata is None:
+            return und_seq, gen_seq, True
+
+        state: SeaCacheContextState = self.state_manager.get_state()
+        state.full_execution_pending = True
+        state.cacheable_execution = True
+        state.step_index = forward_metadata.step_index
+        state.gen_input = gen_seq
+
+        indicator_error_reported = False
+        unwrapped_module = unwrap_module(module)
+        layers = getattr(unwrapped_module, "layers", None)
+        if getattr(unwrapped_module, "_cp_shard_fn", None) is not None:
+            self.shared_state.mark_fail_open(
+                "SeaCache cannot safely bypass the Cosmos 3 decoder stack with context parallelism; "
+                "running in fail-open mode."
+            )
+            indicator = None
+            indicator_error_reported = True
+        elif not layers or _is_parameter_sharded(layers):
+            self.shared_state.mark_fail_open(
+                "SeaCache cannot safely bypass parameter-sharded transformer blocks; running in fail-open mode."
+            )
+            indicator = None
+            indicator_error_reported = True
+        else:
+            try:
+                indicator = _build_indicator(self.config, forward_metadata)
+            except (TypeError, ValueError, RuntimeError) as error:
+                self.shared_state.mark_fail_open(
+                    f"SeaCache could not construct its vision indicator; running in fail-open mode: {error}"
+                )
+                indicator = None
+                indicator_error_reported = True
+        if indicator is None and not indicator_error_reported:
+            self.shared_state.mark_fail_open(
+                "SeaCache could not construct its vision indicator; running in fail-open mode."
+            )
+
+        should_compute = self.shared_state.resolve_gate(state, forward_metadata, indicator, self.config)
+        if should_compute or not state.history:
+            if not should_compute:
+                state.accumulated_distance = 0.0
+                self.shared_state.mark_fail_open(
+                    "SeaCache selected a cache hit without residual history; running in fail-open mode."
+                )
+            return und_seq, gen_seq, True
+
+        residual_history = state.history[-(self.config.residual_order + 1) :]
+        _, cached_und, cached_residual = residual_history[-1]
+        if (
+            any(
+                residual.shape != gen_seq.shape or residual.device != gen_seq.device or residual.dtype != gen_seq.dtype
+                for _, _, residual in residual_history
+            )
+            or cached_und.shape != und_seq.shape
+            or cached_und.device != und_seq.device
+            or cached_und.dtype != und_seq.dtype
+        ):
+            state.history = []
+            state.accumulated_distance = 0.0
+            self.shared_state.mark_fail_open(
+                "SeaCache residual history changed shape, device, or dtype; running in fail-open mode."
+            )
+            return und_seq, gen_seq, True
+
+        if self.config.residual_order == 1 and len(residual_history) >= 2:
+            previous_step, _, previous_residual = residual_history[-2]
+            latest_step, _, latest_residual = residual_history[-1]
+            if latest_step != previous_step:
+                step_scale = (forward_metadata.step_index - latest_step) / (latest_step - previous_step)
+                cached_residual = latest_residual + (latest_residual - previous_residual) * step_scale
+
+        state.skip_remaining = True
+        state.full_execution_pending = False
+        state.cached_und_output = cached_und
+        state.cached_gen_residual = cached_residual
+        state.consecutive_cached += 1
+        return cached_und, gen_seq + cached_residual, False
+
+    def record_decoder_stack(
+        self,
+        module: torch.nn.Module,
+        und_seq: torch.Tensor,
+        gen_seq: torch.Tensor,
+    ) -> None:
+        """Record post-normalization Cosmos 3 decoder outputs after a full step."""
+        if self.state_manager._current_context is None:
+            return
+        state: SeaCacheContextState = self.state_manager.get_state()
+        if state.full_execution_pending:
+            state.und_output = und_seq
+            state.gen_output = gen_seq
+
     def post_forward(self, module: torch.nn.Module, output: Any) -> Any:
         self.shared_state.forward_metadata = None
         if self.state_manager._current_context is not None:
-            self.state_manager.get_state().reset_forward()
+            state: SeaCacheContextState = self.state_manager.get_state()
+            if (
+                self.use_stack_boundary
+                and state.full_execution_pending
+                and state.und_output is not None
+                and state.gen_output is not None
+            ):
+                _record_full_execution(
+                    self.config,
+                    state,
+                    gen_output=state.gen_output,
+                    und_output=state.und_output,
+                )
+            else:
+                state.reset_forward()
         return output
 
     def reset_state(self, module: torch.nn.Module):
@@ -544,19 +701,7 @@ class SeaCacheLeaderBlockHook(ModelHook):
         return module
 
     def _build_indicator(self, forward_metadata: _SeaCacheForwardMetadata) -> list[torch.Tensor] | None:
-        if not forward_metadata.raw_vision:
-            return None
-        indicator = []
-        for latent in forward_metadata.raw_vision:
-            raw_vision = latent.movedim(0, -1)
-            indicator.append(
-                _apply_sea_filter(
-                    raw_vision,
-                    sigma=forward_metadata.sigma,
-                    power_exp=self.config.power_exp,
-                ).detach()
-            )
-        return indicator
+        return _build_indicator(self.config, forward_metadata)
 
     @torch.compiler.disable
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
@@ -745,7 +890,7 @@ def apply_sea_cache(module: torch.nn.Module, config: SeaCacheConfig) -> None:
     Apply SeaCache to a supported transformer.
 
     The hook caches the transformer's expensive language-model hidden transform. For Cosmos 3, the cache stores
-    post-normalization understanding output and a generation residual from the pre-block input to the
+    post-normalization understanding output and a generation residual from the decoder-stack input to the
     post-normalization output. Modality prediction heads continue to run normally. Other model adapters fall back to
     caching the complete repeated-block stack.
 
@@ -803,47 +948,49 @@ def apply_sea_cache(module: torch.nn.Module, config: SeaCacheConfig) -> None:
                 state_manager,
                 shared_state,
                 raw_vision_callback,
+                use_stack_boundary=is_cosmos3,
             ),
             _SEA_CACHE_ROOT_HOOK,
         )
 
-        leader_name, leader = blocks[0]
-        logger.debug(f"Applying SeaCache leader hook to '{leader_name}'.")
-        register_hook(
-            leader,
-            SeaCacheLeaderBlockHook(config, state_manager, shared_state, post_norm_boundary=post_norm_boundary),
-            _SEA_CACHE_LEADER_BLOCK_HOOK,
-        )
-
-        for name, block in blocks[1:-1]:
-            logger.debug(f"Applying SeaCache identity hook to '{name}'.")
+        if not is_cosmos3:
+            leader_name, leader = blocks[0]
+            logger.debug(f"Applying SeaCache leader hook to '{leader_name}'.")
             register_hook(
-                block,
-                SeaCacheBlockHook(config, state_manager, shared_state, post_norm_boundary=post_norm_boundary),
-                _SEA_CACHE_BLOCK_HOOK,
+                leader,
+                SeaCacheLeaderBlockHook(config, state_manager, shared_state, post_norm_boundary=post_norm_boundary),
+                _SEA_CACHE_LEADER_BLOCK_HOOK,
             )
 
-        tail_name, tail = blocks[-1]
-        logger.debug(f"Applying SeaCache tail hook to '{tail_name}'.")
-        register_hook(
-            tail,
-            SeaCacheBlockHook(
-                config,
-                state_manager,
-                shared_state,
-                is_tail=True,
-                post_norm_boundary=post_norm_boundary,
-            ),
-            _SEA_CACHE_BLOCK_HOOK,
-        )
-        if post_norm_modules is not None:
-            for pathway, name, norm_module in post_norm_modules:
-                logger.debug(f"Applying SeaCache post-normalization hook to '{name}'.")
+            for name, block in blocks[1:-1]:
+                logger.debug(f"Applying SeaCache identity hook to '{name}'.")
                 register_hook(
-                    norm_module,
-                    SeaCachePostNormHook(config, state_manager, shared_state, pathway=pathway),
-                    _SEA_CACHE_POST_NORM_HOOK,
+                    block,
+                    SeaCacheBlockHook(config, state_manager, shared_state, post_norm_boundary=post_norm_boundary),
+                    _SEA_CACHE_BLOCK_HOOK,
                 )
+
+            tail_name, tail = blocks[-1]
+            logger.debug(f"Applying SeaCache tail hook to '{tail_name}'.")
+            register_hook(
+                tail,
+                SeaCacheBlockHook(
+                    config,
+                    state_manager,
+                    shared_state,
+                    is_tail=True,
+                    post_norm_boundary=post_norm_boundary,
+                ),
+                _SEA_CACHE_BLOCK_HOOK,
+            )
+            if post_norm_modules is not None:
+                for pathway, name, norm_module in post_norm_modules:
+                    logger.debug(f"Applying SeaCache post-normalization hook to '{name}'.")
+                    register_hook(
+                        norm_module,
+                        SeaCachePostNormHook(config, state_manager, shared_state, pathway=pathway),
+                        _SEA_CACHE_POST_NORM_HOOK,
+                    )
     except Exception:
         for registry, name in reversed(registrations):
             registry.remove_hook(name, recurse=False)
