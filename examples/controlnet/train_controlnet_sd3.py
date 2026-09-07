@@ -585,7 +585,7 @@ def parse_args(input_args=None):
         "--max_sequence_length",
         type=int,
         default=77,
-        help="Maximum sequence length to use with with the T5 text encoder",
+        help="Maximum sequence length to use with the T5 text encoder",
     )
     parser.add_argument(
         "--dataset_preprocess_batch_size", type=int, default=1000, help="Batch size for preprocessing dataset."

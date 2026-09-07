@@ -329,7 +329,7 @@ def parse_args(input_args=None):
         "--max_sequence_length",
         type=int,
         default=77,
-        help="Maximum sequence length to use with with the T5 text encoder",
+        help="Maximum sequence length to use with the T5 text encoder",
     )
     parser.add_argument(
         "--validation_prompt",
