@@ -43,16 +43,19 @@ class SeaCacheConfig:
     `transformer.enable_cache(config)`.
 
     SeaCache compares Spectral-Evolution-Aware (SEA) indicators between scheduler steps. If their accumulated relative
-    change stays below `threshold`, the expensive language-model hidden transform is replaced with a cached residual.
-    For Cosmos 3, the residual spans the decoder stack and final pathway normalization; input packing and modality
-    prediction heads still execute.
+    change stays below `threshold`, the repeated transformer block stack is replaced with a cached residual. Cosmos 3
+    is the primary optimized and benchmarked integration; its residual spans the decoder stack and final pathway
+    normalization, while input packing and modality prediction heads still execute. Wan T2V provides a built-in
+    eager-only example of the generic repeated-block integration. Other video transformers can integrate by registering
+    their block metadata and providing `raw_vision_callback`; their pipeline must enter a `cache_context` for each
+    transformer trajectory.
 
     Args:
         threshold (`float`, defaults to `0.25`):
             Accumulated relative-L1 budget. Larger values reuse the cache more often.
         residual_order (`int`, defaults to `1`):
-            Order used to predict the generation-stream language-model residual. `0` directly reuses the most recent
-            residual and `1` linearly extrapolates from the two most recent full executions.
+            Order used to predict the transformer residual. `0` directly reuses the most recent residual and `1`
+            linearly extrapolates from the two most recent full executions.
         retention_steps (`int`, defaults to `1`):
             Number of initial scheduler steps that always execute in full.
         cache_end_steps (`int`, defaults to `1`):
@@ -69,8 +72,8 @@ class SeaCacheConfig:
         num_inference_steps_callback (`Callable[[], int]`):
             Callback returning the number of scheduler steps in the current pipeline call.
         raw_vision_callback (`Callable`, *optional*):
-            Advanced model adapter returning raw vision latents with shape `(C, T, H, W)`. Cosmos 3 uses its native
-            adapter when this is omitted.
+            Advanced model adapter returning raw vision latents with shape `(C, T, H, W)`. Cosmos 3 and compatible Wan
+            T2V transformers use built-in adapters when this is omitted.
 
     Example:
         ```python
@@ -363,6 +366,17 @@ def _prepare_cosmos3_raw_vision_metadata(
         raw_vision.append(latent)
 
     return raw_vision if raw_vision and has_noisy_vision else None
+
+
+def _prepare_wan_t2v_raw_vision_metadata(
+    module: torch.nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> list[torch.Tensor] | None:
+    module = unwrap_module(module)
+    bound_arguments = inspect.signature(module.__class__.forward).bind_partial(module, *args, **kwargs).arguments
+    hidden_states = bound_arguments.get("hidden_states")
+    if not isinstance(hidden_states, torch.Tensor) or hidden_states.ndim != 5:
+        return None
+    return list(hidden_states.unbind(dim=0))
 
 
 def _apply_sea_filter(
@@ -952,10 +966,9 @@ def apply_sea_cache(module: torch.nn.Module, config: SeaCacheConfig) -> None:
     r"""
     Apply SeaCache to a supported transformer.
 
-    The hook caches the transformer's expensive language-model hidden transform. For Cosmos 3, the cache stores
-    post-normalization understanding output and a generation residual from the decoder-stack input to the
-    post-normalization output. Modality prediction heads continue to run normally. Other model adapters fall back to
-    caching the complete repeated-block stack.
+    SeaCache reuses a cached residual for a transformer's repeated block stack. Model adapters may customize indicator
+    extraction and the residual boundary; the generic path uses registered block metadata and `raw_vision_callback`.
+    Compatibility and cache parameters must be validated for each model.
 
     Args:
         module (`torch.nn.Module`):
@@ -964,12 +977,18 @@ def apply_sea_cache(module: torch.nn.Module, config: SeaCacheConfig) -> None:
             SeaCache configuration.
     """
     from ..models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
+    from ..models.transformers.transformer_wan import WanTransformer3DModel
 
     unwrapped_module = unwrap_module(module)
     is_cosmos3 = isinstance(unwrapped_module, Cosmos3OmniTransformer)
+    is_wan_t2v = isinstance(unwrapped_module, WanTransformer3DModel) and (
+        unwrapped_module.config.in_channels == unwrapped_module.config.out_channels
+    )
     raw_vision_callback = config.raw_vision_callback
     if raw_vision_callback is None and is_cosmos3:
         raw_vision_callback = _prepare_cosmos3_raw_vision_metadata
+    elif raw_vision_callback is None and is_wan_t2v:
+        raw_vision_callback = _prepare_wan_t2v_raw_vision_metadata
 
     post_norm_modules = None
     if is_cosmos3:

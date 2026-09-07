@@ -691,6 +691,16 @@ The same model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModula
 `pipe.transformer.disable_cache()` when you need every denoising step to execute the full transformer. Cache state is
 reset after each pipeline call, and conditional and unconditional guidance branches keep independent histories.
 
+Cosmos 3 keeps the SeaCache gate outside its repeated decoder layers, so it is compatible with regional compilation.
+Compile the layers after enabling the cache:
+
+```python
+pipe.transformer.compile_repeated_blocks(fullgraph=True)
+```
+
+SeaCache also supports the Cosmos 3 Ulysses context-parallel and DTensor-based tensor-parallel helpers documented
+below. Cache decisions are synchronized across ranks. Full-model compilation and other model-sharding strategies are not claimed.
+
 ## Context parallelism
 
 For long videos or high resolutions, a single forward pass can exceed the memory and latency budget of one GPU. Cosmos 3 supports **context parallelism (CP)** to shard the sequence dimension across multiple GPUs, splitting the attention computation so each device holds only a slice of the tokens.
