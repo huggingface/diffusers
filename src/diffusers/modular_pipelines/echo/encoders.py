@@ -237,12 +237,6 @@ def _normalize_audio_latents(
     return (latents - latents_mean) / latents_std
 
 
-def _as_list(value):
-    if value is None:
-        return []
-    return list(value) if isinstance(value, (list, tuple)) else [value]
-
-
 def _prepare_image(image, height: int, width: int) -> torch.Tensor:
     if isinstance(image, PIL.Image.Image):
         image = image.convert("RGB")
@@ -455,7 +449,13 @@ class EchoVaeEncoderStep(ModularPipelineBlocks):
         else:
             first_frame_latents = None
 
-        memory_images = _as_list(block_state.memory_images)
+        memory_images = block_state.memory_images
+        if memory_images is None:
+            memory_images = []
+        elif not isinstance(memory_images, (list, tuple)):
+            memory_images = [memory_images]
+        else:
+            memory_images = list(memory_images)
         slot_count = len(memory_images)
         _validate_memory_slot_count(slot_count)
 
@@ -473,7 +473,13 @@ class EchoVaeEncoderStep(ModularPipelineBlocks):
             for image in memory_images
         ]
 
-        raw_audio = _as_list(block_state.memory_audio_waveforms)
+        raw_audio = block_state.memory_audio_waveforms
+        if raw_audio is None:
+            raw_audio = []
+        elif not isinstance(raw_audio, (list, tuple)):
+            raw_audio = [raw_audio]
+        else:
+            raw_audio = list(raw_audio)
         if raw_audio and len(raw_audio) != slot_count:
             raise ValueError("`memory_audio_waveforms` must have one entry per `memory_images` slot.")
 
