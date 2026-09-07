@@ -22,7 +22,6 @@ input/output hooks for the forward pass.
 """
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 
 
@@ -171,7 +170,11 @@ def _apply_tp_neuron(
 
     Model weights must be on CPU when this is called.
     """
-    rank = dist.get_rank()
+    # The shard index is this rank's coordinate on the tensor-parallel mesh, which is the global rank only
+    # when that mesh spans the whole world. Sharing a mesh with another parallelism makes `tp_mesh` a sub-mesh,
+    # and a global rank then indexes past the end of the weight. The generic backend already reads the
+    # coordinate (`tensor_parallel.py`), as does `ContextParallelConfig.setup`.
+    rank = tp_mesh.get_local_rank()
     tp_size = tp_mesh.size()
 
     for block, relative_plan in groups:
