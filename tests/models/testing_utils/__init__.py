@@ -23,6 +23,7 @@ from .parallelism import (
     ContextAndTensorParallelTesterMixin,
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
+    HybridParallelTesterMixin,
     TensorParallelTesterMixin,
 )
 from .quantization import (
@@ -68,6 +69,7 @@ __all__ = [
     "ContextAndTensorParallelTesterMixin",
     "ContextParallelTesterMixin",
     "ContextParallelAttentionBackendsTesterMixin",
+    "HybridParallelTesterMixin",
     "TensorParallelTesterMixin",
     "CPUOffloadTesterMixin",
     "FasterCacheConfigMixin",

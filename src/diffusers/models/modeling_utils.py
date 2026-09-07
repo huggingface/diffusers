@@ -1990,7 +1990,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 disable_mmap=disable_mmap,
             )
-
         if is_parallel_loading_enabled:
             offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(resolved_model_file)
             error_msgs += _error_msgs
