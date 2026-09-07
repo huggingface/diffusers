@@ -125,7 +125,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Works for forks too — no fork credentials needed.
           ref: refs/pull/${{ github.event.issue.number }}/head
@@ -166,7 +166,7 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: bot_gpu_test_reports
           path: reports
