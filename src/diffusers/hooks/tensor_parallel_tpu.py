@@ -18,8 +18,8 @@ The structure mirrors the Neuron backend (``tensor_parallel_neuron.py``). The mo
 pre-shard path works around an NRT consecutive-reduce-scatter bug; here it prevents OOM. Without pre-sharding,
 ``parallelize_module`` calls ``distribute_tensor`` internally, which loads the full weight matrix on every TPU chip
 before scattering. For large diffusion models this exhausts HBM. Pre-sharding each weight on CPU via
-``DTensor.from_local`` first means each chip only receives its local shard, then ``parallelize_module`` is called
-as a no-op for weights (they are already DTensors) but still registers the input/output hooks for the forward pass.
+``DTensor.from_local`` first means each chip only receives its local shard, then ``parallelize_module`` is called as a
+no-op for weights (they are already DTensors) but still registers the input/output hooks for the forward pass.
 """
 
 import torch

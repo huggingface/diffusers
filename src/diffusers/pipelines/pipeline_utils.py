@@ -2267,6 +2267,91 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         return not is_device_type_map and isinstance(device_map, dict) and len(device_map) > 1
 
+    def enable_tpu_compile(
+        self,
+        model_names: Optional[List[str]] = None,
+        **compile_kwargs,
+    ) -> None:
+        """Compile pipeline components that are on TPU using ``torch.compile`` with the ``TpuBackend``.
+
+        Before compiling, each component that exposes ``set_attn_processor`` has ``AttnProcessor`` applied. This
+        replaces ``AttnProcessor2_0`` (SDP-based) which triggers XLA fusion-emitter crashes in eager/lazy mode.
+        ``TpuBackend`` handles the resulting ``torch.cat`` layout internally during static tracing, so no additional
+        wrapper is needed at compile time.
+
+        Args:
+            model_names (`list[str]`, *optional*):
+                Names of pipeline components to compile. Defaults to all ``torch.nn.Module`` components currently
+                resident on a TPU device.
+            **compile_kwargs:
+                Extra keyword arguments forwarded to ``torch.compile``. ``backend`` defaults to ``TpuBackend()`` and
+                ``dynamic`` defaults to ``False`` (required for static tracing).
+
+        Example:
+        ```python
+        import torch
+        import torch_tpu  # noqa: F401
+
+        pipe.transformer.to("tpu")
+        pipe.vae.to("tpu")
+        pipe.enable_tpu_compile()
+        ```
+        """
+        requires_backends(self, "torch_tpu")
+        from torch_tpu._internal.compile import TpuBackend
+
+        from ..models.attention_processor import AttnProcessor
+
+        if model_names is None:
+            model_names = [
+                name
+                for name, comp in self.components.items()
+                if isinstance(comp, torch.nn.Module) and comp.device.type == "tpu"
+            ]
+
+        for name in model_names:
+            component = getattr(self, name, None)
+            if not isinstance(component, torch.nn.Module):
+                logger.warning(f"`enable_tpu_compile`: component '{name}' is not a nn.Module, skipping.")
+                continue
+            if is_compiled_module(component):
+                logger.warning(f"`enable_tpu_compile`: component '{name}' is already compiled, skipping.")
+                continue
+            if hasattr(component, "set_attn_processor"):
+                component.set_attn_processor(AttnProcessor())
+            compile_kwargs.setdefault("backend", TpuBackend())
+            compile_kwargs.setdefault("dynamic", False)
+            logger.info(f"Compiling '{name}' with TpuBackend.")
+            setattr(self, name, torch.compile(component, **compile_kwargs))
+
+    def tpu_warmup(self, *args, **kwargs) -> None:
+        """Run a single forward pass to trigger XLA / ``TpuBackend`` compilation.
+
+        Call this after ``enable_tpu_compile`` and before timed inference. The warmup pass compiles the static
+        computation graphs; subsequent calls reuse the compiled graphs and run at full speed.
+
+        Args:
+            *args: Positional arguments forwarded to the pipeline ``__call__``.
+            **kwargs: Keyword arguments forwarded to the pipeline ``__call__``.
+
+        Example:
+        ```python
+        pipe.tpu_warmup(
+            prompt="warmup",
+            height=1024,
+            width=1024,
+            num_inference_steps=4,
+            guidance_scale=0.0,
+        )
+        ```
+        """
+        logger.info("Running TPU warmup pass to trigger XLA compilation...")
+        with torch.no_grad():
+            self(*args, **kwargs)
+        if hasattr(torch, "tpu") and hasattr(torch.tpu, "synchronize"):
+            torch.tpu.synchronize()
+        logger.info("TPU warmup complete.")
+
 
 class StableDiffusionMixin:
     r"""
@@ -2349,89 +2434,3 @@ class StableDiffusionMixin:
             else:
                 self.vae.unfuse_qkv_projections()
                 self.fusing_vae = False
-
-    def enable_tpu_compile(
-        self,
-        model_names: Optional[List[str]] = None,
-        **compile_kwargs,
-    ) -> None:
-        """Compile pipeline components that are on TPU using ``torch.compile`` with the ``TpuBackend``.
-
-        Before compiling, each component that exposes ``set_attn_processor`` has ``AttnProcessor``
-        applied. This replaces ``AttnProcessor2_0`` (SDP-based) which triggers XLA fusion-emitter
-        crashes in eager/lazy mode. ``TpuBackend`` handles the resulting ``torch.cat`` layout
-        internally during static tracing, so no additional wrapper is needed at compile time.
-
-        Args:
-            model_names (`list[str]`, *optional*):
-                Names of pipeline components to compile. Defaults to all ``torch.nn.Module``
-                components currently resident on a TPU device.
-            **compile_kwargs:
-                Extra keyword arguments forwarded to ``torch.compile``. ``backend`` defaults to
-                ``TpuBackend()`` and ``dynamic`` defaults to ``False`` (required for static tracing).
-
-        Example:
-        ```python
-        import torch
-        import torch_tpu  # noqa: F401
-
-        pipe.transformer.to("tpu")
-        pipe.vae.to("tpu")
-        pipe.enable_tpu_compile()
-        ```
-        """
-        requires_backends(self, "torch_tpu")
-        from torch_tpu._internal.compile import TpuBackend
-
-        from ..models.attention_processor import AttnProcessor
-
-        if model_names is None:
-            model_names = [
-                name
-                for name, comp in self.components.items()
-                if isinstance(comp, torch.nn.Module) and comp.device.type == "tpu"
-            ]
-
-        for name in model_names:
-            component = getattr(self, name, None)
-            if not isinstance(component, torch.nn.Module):
-                logger.warning(f"`enable_tpu_compile`: component '{name}' is not a nn.Module, skipping.")
-                continue
-            if is_compiled_module(component):
-                logger.warning(f"`enable_tpu_compile`: component '{name}' is already compiled, skipping.")
-                continue
-            if hasattr(component, "set_attn_processor"):
-                component.set_attn_processor(AttnProcessor())
-            compile_kwargs.setdefault("backend", TpuBackend())
-            compile_kwargs.setdefault("dynamic", False)
-            logger.info(f"Compiling '{name}' with TpuBackend.")
-            setattr(self, name, torch.compile(component, **compile_kwargs))
-
-    def tpu_warmup(self, *args, **kwargs) -> None:
-        """Run a single forward pass to trigger XLA / ``TpuBackend`` compilation.
-
-        Call this after ``enable_tpu_compile`` and before timed inference. The warmup
-        pass compiles the static computation graphs; subsequent calls reuse the compiled
-        graphs and run at full speed.
-
-        Args:
-            *args: Positional arguments forwarded to the pipeline ``__call__``.
-            **kwargs: Keyword arguments forwarded to the pipeline ``__call__``.
-
-        Example:
-        ```python
-        pipe.tpu_warmup(
-            prompt="warmup",
-            height=1024,
-            width=1024,
-            num_inference_steps=4,
-            guidance_scale=0.0,
-        )
-        ```
-        """
-        logger.info("Running TPU warmup pass to trigger XLA compilation...")
-        with torch.no_grad():
-            self(*args, **kwargs)
-        if hasattr(torch, "tpu") and hasattr(torch.tpu, "synchronize"):
-            torch.tpu.synchronize()
-        logger.info("TPU warmup complete.")
