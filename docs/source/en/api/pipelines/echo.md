@@ -30,7 +30,7 @@ tokenizer directly from `google/gemma-3-12b-it`.
 python scripts/convert_echo_to_diffusers.py \
   --checkpoint /path/to/echo15_full_dmd \
   --output-path /path/to/Echo-Diffusers \
-  --repo-id jdopensource/JoyAI-Echo
+  --repo-id Echo-Team/JoyAI-Echo
 ```
 
 The Gemma repository is gated, so users must accept its license and authenticate with Hugging Face before loading the

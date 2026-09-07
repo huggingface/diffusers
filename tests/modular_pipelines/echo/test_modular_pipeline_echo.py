@@ -19,11 +19,7 @@ import pytest
 import torch
 
 from diffusers.modular_pipelines import EchoBlocks, EchoModularPipeline
-from diffusers.modular_pipelines.echo.echo_encoders import (
-    EchoConditionEncoderStep,
-    _max_response_window_start,
-    _validate_memory_slot_count,
-)
+from diffusers.modular_pipelines.echo.encoders import EchoVaeEncoderStep, _encode_audio, _validate_memory_slot_count
 
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
@@ -79,15 +75,24 @@ class EchoModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestEchoModularPipelineFast(EchoModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    def test_max_response_window_start(self):
-        mel = torch.zeros(1, 2, 2000, 64)
-        mel[:, :, 1900:] = 10
-
-        assert _max_response_window_start(mel, 963) == 1037
-
     def test_rejects_more_than_seven_memory_slots(self):
         with pytest.raises(ValueError, match="at most 7 memory slots"):
             _validate_memory_slot_count(8)
+
+    def test_vae_encoder_runs_without_transformer(self):
+        pipe = EchoVaeEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components(dtype=torch.float32)
+        output = pipe(
+            image=torch.rand(1, 3, 32, 32),
+            memory_images=[torch.rand(1, 3, 32, 32)],
+            height=32,
+            width=32,
+            output=["first_frame_latents", "memory_video_latents"],
+        )
+
+        assert set(pipe.components) == {"vae", "audio_vae"}
+        assert output["first_frame_latents"].shape == (1, 4, 1, 16, 16)
+        assert len(output["memory_video_latents"]) == 1
 
     def test_audio_memory_is_cropped_to_max_duration(self):
         pytest.importorskip("torchaudio")
@@ -102,15 +107,17 @@ class TestEchoModularPipelineFast(EchoModularPipelineTesterConfig, ModularPipeli
                 return SimpleNamespace(latent_dist=latent_dist)
 
         audio_vae = FakeAudioVAE()
-        components = SimpleNamespace(
-            audio_vae=audio_vae,
-            audio_latents_mean=torch.zeros(1),
-            audio_latents_std=torch.ones(1),
-        )
         waveform = torch.zeros(2, 12 * 16000)
         waveform[:, -16000:] = torch.randn(2, 16000)
 
-        EchoConditionEncoderStep._encode_audio(components, waveform, 16000, torch.device("cpu"))
+        _encode_audio(
+            audio_vae,
+            torch.zeros(1),
+            torch.ones(1),
+            waveform,
+            16000,
+            torch.device("cpu"),
+        )
 
         assert audio_vae.encoded_mel.shape[2] == 963
 

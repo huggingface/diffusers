@@ -21,7 +21,7 @@ from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
 from ...pipelines.ltx2.vocoder import LTX2Vocoder
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
 
@@ -109,8 +109,6 @@ class EchoVaeDecoderStep(ModularPipelineBlocks):
                 description="Noise interpolation factor applied at the decode timestep.",
             ),
             InputParam.template("generator"),
-            InputParam.template("batch_size"),
-            InputParam.template("dtype", required=True),
         ]
 
     @property
@@ -144,11 +142,10 @@ class EchoVaeDecoderStep(ModularPipelineBlocks):
             self.set_block_state(state, block_state)
             return components, state
 
-        latents = latents.to(block_state.dtype)
         if not vae.config.timestep_conditioning:
             timestep = None
         else:
-            batch_size = block_state.batch_size
+            batch_size = latents.shape[0]
             decode_timestep = block_state.decode_timestep
             decode_noise_scale = block_state.decode_noise_scale
             noise = randn_tensor(
@@ -241,61 +238,3 @@ class EchoAudioDecoderStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
-
-
-# auto_docstring
-class EchoDecoderStep(SequentialPipelineBlocks):
-    """
-    Decode Echo video and audio outputs with mixed-precision-safe audio vocoding.
-
-      Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
-          vocoder (`LTX2Vocoder`)
-
-      Inputs:
-          latents (`Tensor`):
-              Pre-generated noisy latents for image generation.
-          output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt'.
-          height (`int`, *optional*, defaults to 512):
-              The height in pixels of the generated image.
-          width (`int`, *optional*, defaults to 704):
-              The width in pixels of the generated image.
-          num_frames (`int`, *optional*):
-              The number of frames in the generated video.
-          decode_timestep (`None`, *optional*, defaults to 0.0):
-              The timestep at which the VAE decodes the final latents.
-          decode_noise_scale (`None`, *optional*):
-              Noise interpolation factor applied to the latents at the decode timestep.
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
-          batch_size (`int`, *optional*, defaults to 1):
-              Number of prompts before per-prompt expansion.
-          dtype (`dtype`):
-              The dtype of the model inputs.
-          audio_latents (`Tensor`):
-              Denoised audio latents.
-          audio_num_frames (`int`):
-              Number of audio latent frames used to unpack the audio latent sequence.
-
-      Outputs:
-          videos (`list`):
-              The generated videos.
-          audio (`Tensor`):
-              The generated audio waveform.
-    """
-
-    model_name = "echo"
-    block_classes = [EchoVaeDecoderStep, EchoAudioDecoderStep]
-    block_names = ["video_decode", "audio_decode"]
-
-    @property
-    def description(self):
-        return "Decode Echo video and audio outputs with mixed-precision-safe audio vocoding."
-
-    @property
-    def outputs(self):
-        return [
-            OutputParam.template("videos"),
-            OutputParam("audio", type_hint=torch.Tensor, description="The generated audio waveform."),
-        ]

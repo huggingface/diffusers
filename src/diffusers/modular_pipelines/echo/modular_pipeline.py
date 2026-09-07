@@ -16,7 +16,7 @@ import torch
 
 from ...loaders import LTX2LoraLoaderMixin as EchoLoraLoaderMixin
 from ..modular_pipeline import ModularPipeline
-from .echo_constants import (
+from .constants import (
     ECHO_AUDIO_LATENTS_MEAN,
     ECHO_AUDIO_LATENTS_STD,
     ECHO_LATENTS_MEAN,

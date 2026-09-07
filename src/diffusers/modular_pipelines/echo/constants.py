@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Per-channel latent statistics used by the Echo checkpoint. These values provide pipeline-property fallbacks when
+# Per-channel latent statistics used by the Echo checkpoint. These values provide pipeline property fallbacks when
 # the corresponding autoencoder is not loaded.
 
 # fmt: off
