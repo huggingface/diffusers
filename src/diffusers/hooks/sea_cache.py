@@ -410,28 +410,49 @@ def _build_indicator(
     ]
 
 
-def _is_parameter_sharded(module: torch.nn.Module) -> bool:
-    """Whether a block is managed by a parameter-sharding runtime that SeaCache cannot safely bypass."""
-
+def _parameter_sharding_types(module: torch.nn.Module) -> tuple[bool, bool]:
+    """Return whether a module contains FSDP-managed and DTensor parameters."""
+    has_fsdp = False
+    has_dtensor = False
     for submodule in unwrap_module(module).modules():
         module_type = type(submodule)
         if callable(getattr(submodule, "_get_fsdp_state", None)):
-            return True
+            has_fsdp = True
         if module_type.__name__ == "FullyShardedDataParallel" and module_type.__module__.startswith(
             "torch.distributed.fsdp"
         ):
-            return True
+            has_fsdp = True
         for parameter in submodule.parameters(recurse=False):
             parameter_type = type(parameter)
-            if (
-                parameter_type.__name__ == "FlatParameter"
-                and parameter_type.__module__.startswith("torch.distributed.fsdp")
-            ) or (
-                parameter_type.__name__ == "DTensor"
-                and parameter_type.__module__.startswith("torch.distributed.tensor")
+            if parameter_type.__name__ == "FlatParameter" and parameter_type.__module__.startswith(
+                "torch.distributed.fsdp"
             ):
-                return True
-    return False
+                has_fsdp = True
+            elif parameter_type.__name__ == "DTensor" and parameter_type.__module__.startswith(
+                "torch.distributed.tensor"
+            ):
+                has_dtensor = True
+    return has_fsdp, has_dtensor
+
+
+def _is_parameter_sharded(module: torch.nn.Module) -> bool:
+    """Whether a block is managed by a parameter-sharding runtime that SeaCache cannot safely bypass."""
+    return any(_parameter_sharding_types(module))
+
+
+def _synchronize_compute_decision(should_compute: bool, device: torch.device) -> tuple[bool, bool]:
+    """Synchronize a cache decision across the active distributed world.
+
+    The two votes distinguish unanimous full/skip decisions from disagreement. Disagreement always resolves to full
+    execution and resets cache trajectories.
+    """
+    votes = torch.tensor(
+        [int(should_compute), int(not should_compute)],
+        dtype=torch.int32,
+        device=device,
+    )
+    torch.distributed.all_reduce(votes, op=torch.distributed.ReduceOp.MAX)
+    return bool(votes[0].item()), bool(votes[0].item() and votes[1].item())
 
 
 class SeaCacheRootHook(ModelHook):
@@ -559,8 +580,24 @@ class SeaCacheRootHook(ModelHook):
         gen_seq: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, bool]:
         """Resolve the Cosmos 3 gate eagerly before entering compiled decoder blocks."""
+        unwrapped_module = unwrap_module(module)
+        layers = getattr(unwrapped_module, "layers", None)
+        uses_context_parallel = getattr(unwrapped_module, "_cp_shard_fn", None) is not None
+        has_fsdp, has_dtensor = _parameter_sharding_types(layers) if layers else (False, False)
+        uses_supported_parallelism = uses_context_parallel or has_dtensor
+        synchronize_decision = (
+            uses_supported_parallelism
+            and not has_fsdp
+            and torch.distributed.is_available()
+            and torch.distributed.is_initialized()
+        )
+
         forward_metadata = self.shared_state.forward_metadata
         if self.state_manager._current_context is None or forward_metadata is None:
+            if synchronize_decision:
+                _, disagreed = _synchronize_compute_decision(True, gen_seq.device)
+                if disagreed and self.state_manager._current_context is not None:
+                    self.state_manager.get_state().reset_trajectory()
             return und_seq, gen_seq, True
 
         state: SeaCacheContextState = self.state_manager.get_state()
@@ -570,19 +607,21 @@ class SeaCacheRootHook(ModelHook):
         state.gen_input = gen_seq
 
         indicator_error_reported = False
-        unwrapped_module = unwrap_module(module)
-        layers = getattr(unwrapped_module, "layers", None)
-        if getattr(unwrapped_module, "_cp_shard_fn", None) is not None:
+        if has_fsdp:
             self.shared_state.mark_fail_open(
-                "SeaCache cannot safely bypass the Cosmos 3 decoder stack with context parallelism; "
+                "SeaCache cannot safely bypass FSDP-managed transformer blocks; running in fail-open mode."
+            )
+            indicator = None
+            indicator_error_reported = True
+        elif uses_supported_parallelism and not synchronize_decision:
+            self.shared_state.mark_fail_open(
+                "SeaCache requires an initialized distributed process group for Cosmos 3 context/tensor parallelism; "
                 "running in fail-open mode."
             )
             indicator = None
             indicator_error_reported = True
-        elif not layers or _is_parameter_sharded(layers):
-            self.shared_state.mark_fail_open(
-                "SeaCache cannot safely bypass parameter-sharded transformer blocks; running in fail-open mode."
-            )
+        elif not layers:
+            self.shared_state.mark_fail_open("SeaCache could not locate the Cosmos 3 decoder stack; running full.")
             indicator = None
             indicator_error_reported = True
         else:
@@ -599,39 +638,53 @@ class SeaCacheRootHook(ModelHook):
                 "SeaCache could not construct its vision indicator; running in fail-open mode."
             )
 
-        should_compute = self.shared_state.resolve_gate(state, forward_metadata, indicator, self.config)
-        if should_compute or not state.history:
-            if not should_compute:
-                state.accumulated_distance = 0.0
-                self.shared_state.mark_fail_open(
-                    "SeaCache selected a cache hit without residual history; running in fail-open mode."
-                )
-            return und_seq, gen_seq, True
+        gate_should_compute = self.shared_state.resolve_gate(state, forward_metadata, indicator, self.config)
+        should_compute = gate_should_compute
+        cached_und = cached_residual = None
 
-        residual_history = state.history[-(self.config.residual_order + 1) :]
-        _, cached_und, cached_residual = residual_history[-1]
-        if (
-            any(
-                residual.shape != gen_seq.shape or residual.device != gen_seq.device or residual.dtype != gen_seq.dtype
-                for _, _, residual in residual_history
-            )
-            or cached_und.shape != und_seq.shape
-            or cached_und.device != und_seq.device
-            or cached_und.dtype != und_seq.dtype
-        ):
-            state.history = []
-            state.accumulated_distance = 0.0
+        if not should_compute and not state.history:
+            should_compute = True
             self.shared_state.mark_fail_open(
-                "SeaCache residual history changed shape, device, or dtype; running in fail-open mode."
+                "SeaCache selected a cache hit without residual history; running in fail-open mode."
             )
-            return und_seq, gen_seq, True
+        elif not should_compute:
+            residual_history = state.history[-(self.config.residual_order + 1) :]
+            _, cached_und, cached_residual = residual_history[-1]
+            if (
+                any(
+                    residual.shape != gen_seq.shape
+                    or residual.device != gen_seq.device
+                    or residual.dtype != gen_seq.dtype
+                    for _, _, residual in residual_history
+                )
+                or cached_und.shape != und_seq.shape
+                or cached_und.device != und_seq.device
+                or cached_und.dtype != und_seq.dtype
+            ):
+                state.history = []
+                should_compute = True
+                self.shared_state.mark_fail_open(
+                    "SeaCache residual history changed shape, device, or dtype; running in fail-open mode."
+                )
+            elif self.config.residual_order == 1 and len(residual_history) >= 2:
+                previous_step, _, previous_residual = residual_history[-2]
+                latest_step, _, latest_residual = residual_history[-1]
+                if latest_step != previous_step:
+                    step_scale = (forward_metadata.step_index - latest_step) / (latest_step - previous_step)
+                    cached_residual = latest_residual + (latest_residual - previous_residual) * step_scale
 
-        if self.config.residual_order == 1 and len(residual_history) >= 2:
-            previous_step, _, previous_residual = residual_history[-2]
-            latest_step, _, latest_residual = residual_history[-1]
-            if latest_step != previous_step:
-                step_scale = (forward_metadata.step_index - latest_step) / (latest_step - previous_step)
-                cached_residual = latest_residual + (latest_residual - previous_residual) * step_scale
+        disagreed = False
+        if synchronize_decision:
+            should_compute, disagreed = _synchronize_compute_decision(should_compute, gen_seq.device)
+
+        if disagreed:
+            state.reset_trajectory()
+        elif should_compute and not gate_should_compute:
+            state.accumulated_distance = 0.0
+            state.gate_should_compute = True
+
+        if should_compute:
+            return und_seq, gen_seq, True
 
         state.skip_remaining = True
         state.full_execution_pending = False
