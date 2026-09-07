@@ -420,7 +420,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             device (`torch.Device`, *optional*):
                 Returns a pipeline with the specified
                 [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
-            silence_dtype_warnings (`str`, *optional*, defaults to `False`):
+            silence_dtype_warnings (`bool`, *optional*, defaults to `False`):
                 Whether to omit warnings if the target `dtype` is not compatible with the target `device`.
 
         Returns:
