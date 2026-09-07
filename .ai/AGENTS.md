@@ -51,7 +51,7 @@ codex plugin marketplace add huggingface/diffusers    # then install from the Pl
 
 ## Human in the loop
 
-All the communication a PR reviewer sees must come directly from a human, or be explicitly approved by one for the exact content. This covers commit messages, code comments and docstrings, PR titles and descriptions, and any PR/issue comment, review, or reply. Ask whether the user prefers that you write a draft or that they prepare it themselves. If you're preparing the draft, keep every message concise and easy to digest. When you hand a draft over, remind the user that they need to genuinely read it and make sure it reads well for *other* humans.
+Everything a PR reviewer sees must come from a human, or be approved by one for the exact wording. That includes commit messages, code comments and docstrings, PR titles and descriptions, and any PR or issue comment, review, or reply. Ask whether the user wants you to draft that text or will write it themselves. Keep drafts short and easy to can. When you hand one over, remind them to read it for real and check that it reads well for other humans.
 
 - **Don't commit unless the user approved the exact commit message, and never push or open a PR on
   your own.** The user decides when anything is published, each time.
