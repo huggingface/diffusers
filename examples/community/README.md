@@ -89,6 +89,7 @@ PIXART-α Controlnet pipeline | Implementation of the controlnet model for pixar
 | Stable Diffusion 3 InstructPix2Pix Pipeline | Implementation of Stable Diffusion 3 InstructPix2Pix Pipeline | [Stable Diffusion 3 InstructPix2Pix Pipeline](#stable-diffusion-3-instructpix2pix-pipeline) | [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/BleachNick/SD3_UltraEdit_freeform) [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/CaptainZZZ/sd3-instructpix2pix) | [Jiayu Zhang](https://github.com/xduzhangjiayu) and [Haozhe Zhao](https://github.com/HaozheZhao)|
 | Flux Kontext multiple images | A modified version of the `FluxKontextPipeline` that supports calling Flux Kontext with multiple reference images.| [Flux Kontext multiple input Pipeline](#flux-kontext-multiple-images) | - |  [Net-Mist](https://github.com/Net-Mist) |
 | Flux Fill ControlNet Pipeline | A modified version of the `FluxFillPipeline` and `FluxControlNetInpaintPipeline` that supports Controlnet with Flux Fill model.| [Flux Fill ControlNet Pipeline](#Flux-Fill-ControlNet-Pipeline) | - |  [pratim4dasude](https://github.com/pratim4dasude) |
+| Stable Diffusion 3 Rectified-CFG++ Pipeline | Samples Stable Diffusion 3 / 3.5 with [Rectified-CFG++](https://huggingface.co/papers/2510.07631) (NeurIPS 2025), a training-free predictor-corrector replacement for classifier-free guidance that keeps samples on the conditional flow's data manifold and removes the over-saturation and structural artifacts of CFG at high guidance scales. | [Stable Diffusion 3 Rectified-CFG++ Pipeline](#stable-diffusion-3-rectified-cfg-pipeline) | - | [Shreshth Saini](https://github.com/shreshthsaini) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -5629,3 +5630,33 @@ from datetime import datetime
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 result.images[0].save(f"flux_fill_controlnet_inpaint_depth{timestamp}.jpg")
 ```
+
+# Stable Diffusion 3 Rectified-CFG++ Pipeline
+
+[Rectified-CFG++](https://huggingface.co/papers/2510.07631) (Saini, Gupta, Bovik; NeurIPS 2025) replaces the classifier-free guidance extrapolation in each ODE step of a rectified-flow model with a predictor-corrector update. The predictor steps along the conditional velocity; the corrector evaluates the conditional and unconditional velocities at that predicted point and adds their scaled difference to the conditional velocity at the current point. Because the update never leaves the neighbourhood of the conditional flow, high guidance scales keep prompt alignment without the over-saturated colours and broken structure that standard CFG produces. The method is training-free and works with any SD3 / SD3.5 checkpoint, including skip-layer guidance and IP-Adapters.
+
+Each step costs one conditional forward pass plus one batched conditional/unconditional pass, so about 1.5x the model evaluations of standard CFG.
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-3.5-medium",
+    custom_pipeline="pipeline_stable_diffusion_3_rectified_cfgpp",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+prompt = "A red fox standing on a mossy log in a misty pine forest, morning light, photograph"
+image = pipe(
+    prompt,
+    guidance_scale=4.5,
+    num_inference_steps=28,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("rectified_cfgpp.png")
+```
+
+The only argument beyond the standard `StableDiffusion3Pipeline` ones is `sigma_noise` (default `0.005`), the standard deviation of the Gaussian perturbation added to the predicted point before the corrector evaluation; `0` disables it. `guidance_scale` is `true_cfg` in the reference implementation.
+
+Setting `guidance_scale <= 1` disables guidance and reproduces plain conditional sampling. Reference implementation: https://github.com/shreshthsaini/Rectified-CFGpp
