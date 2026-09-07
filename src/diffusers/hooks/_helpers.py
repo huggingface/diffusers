@@ -28,7 +28,6 @@ class TransformerBlockMetadata:
     return_encoder_hidden_states_index: int = None
     hidden_states_argument_name: str = "hidden_states"
     encoder_hidden_states_argument_name: str = "encoder_hidden_states"
-    hidden_states_norm_module_name: str = None
 
     _cls: Type = None
     _cached_parameter_indices: dict[str, int] = None
@@ -241,7 +240,6 @@ def _register_transformer_blocks_metadata():
             return_encoder_hidden_states_index=0,
             hidden_states_argument_name="gen_seq",
             encoder_hidden_states_argument_name="und_seq",
-            hidden_states_norm_module_name="input_layernorm_moe_gen",
         ),
     )
 

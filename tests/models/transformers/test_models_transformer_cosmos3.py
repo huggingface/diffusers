@@ -108,8 +108,7 @@ class Cosmos3OmniTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelTesterMixin):
-    @pytest.mark.parametrize("indicator_source", ["first_block", "raw_vision_latents"])
-    def test_cosmos3_supports_sea_cache_without_changing_state_dict_keys(self, indicator_source):
+    def test_cosmos3_supports_sea_cache_without_changing_state_dict_keys(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         state_dict_keys = set(model.state_dict())
         norm_calls = {"und": 0, "gen": 0}
@@ -130,7 +129,6 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         config = SeaCacheConfig(
             threshold=100.0,
             cache_end_steps=0,
-            indicator_source=indicator_source,
             current_step_callback=lambda: runtime["step"],
             current_sigma_callback=lambda: runtime["sigma"],
             num_inference_steps_callback=lambda: runtime["num_steps"],
@@ -234,7 +232,6 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         assert metadata.return_encoder_hidden_states_index == 0
         assert metadata.hidden_states_argument_name == "gen_seq"
         assert metadata.encoder_hidden_states_argument_name == "und_seq"
-        assert metadata.hidden_states_norm_module_name == "input_layernorm_moe_gen"
 
     def test_output_format(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()

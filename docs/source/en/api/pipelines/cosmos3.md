@@ -664,7 +664,8 @@ if result.action is not None:
 
 SeaCache is disabled by default. Cosmos 3 supports enabling it explicitly with [`SeaCacheConfig`]. SeaCache reuses
 transformer residuals when the Spectral-Evolution-Aware indicator changes slowly, reducing the number of full
-transformer executions. Enable it on the transformer with scheduler metadata callbacks from the pipeline:
+transformer executions. It computes the indicator from the raw vision latents, including clean conditioning frames for
+image-to-video generation. Enable it on the transformer with scheduler metadata callbacks from the pipeline:
 
 ```python
 import torch

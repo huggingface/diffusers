@@ -72,7 +72,8 @@ pipeline.transformer.enable_cache(config)
 
 [SeaCache](https://huggingface.co/papers/2602.18993) compares Spectral-Evolution-Aware (SEA) indicators between
 successive denoising steps. When the accumulated indicator change remains below a threshold, it skips the expensive
-transformer block stack and predicts its output from cached residuals.
+transformer block stack and predicts its output from cached residuals. The indicator is computed from the raw vision
+latents, including clean conditioning frames for image-to-video generation.
 
 SeaCache is disabled by default. Enable it on the transformer and provide callbacks for the active scheduler step,
 sigma, and number of inference steps:

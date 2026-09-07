@@ -62,24 +62,15 @@ class SeaCacheConfig:
             limit.
         power_exp (`float`, defaults to `3.0`):
             Exponent of the SEA clean-signal power prior. SeaCache uses `3.0` for video features.
-        indicator_source (`str`, defaults to `"raw_vision_latents"`):
-            Feature source used to construct the SEA indicator. `"raw_vision_latents"` filters the complete raw vision
-            latent, including clean conditioning frames in I2V. `"first_block"` filters the timestep-modulated
-            pre-attention input of the first transformer block. Thresholds are not generally transferable between the
-            two sources.
         current_step_callback (`Callable[[], int]`):
             Callback returning the current scheduler step index.
         current_sigma_callback (`Callable[[], float]`):
             Callback returning the exact current scheduler sigma in `[0, 1]`.
         num_inference_steps_callback (`Callable[[], int]`):
             Callback returning the number of scheduler steps in the current pipeline call.
-        metadata_callback (`Callable`, *optional*):
-            Advanced model adapter returning a list of `(indices, (T, H, W))` entries that locate projected noisy
-            vision tokens in the generation stream for the `"first_block"` indicator. Cosmos 3 uses its native adapter
-            when this is omitted.
         raw_vision_callback (`Callable`, *optional*):
-            Advanced model adapter returning raw vision latents with shape `(C, T, H, W)` for the
-            `"raw_vision_latents"` indicator. Cosmos 3 uses its native adapter when this is omitted.
+            Advanced model adapter returning raw vision latents with shape `(C, T, H, W)`. Cosmos 3 uses its native
+            adapter when this is omitted.
 
     Example:
         ```python
@@ -102,14 +93,9 @@ class SeaCacheConfig:
     cache_end_steps: int = 1
     max_consecutive_cached: int = 2
     power_exp: float = 3.0
-    indicator_source: Literal["first_block", "raw_vision_latents"] = "raw_vision_latents"
     current_step_callback: Callable[[], int] = None
     current_sigma_callback: Callable[[], float] = None
     num_inference_steps_callback: Callable[[], int] = None
-    metadata_callback: Callable[
-        [torch.nn.Module, tuple[Any, ...], dict[str, Any]],
-        list[tuple[torch.Tensor, tuple[int, int, int]]] | None,
-    ] = None
     raw_vision_callback: Callable[
         [torch.nn.Module, tuple[Any, ...], dict[str, Any]],
         list[torch.Tensor] | None,
@@ -134,15 +120,10 @@ class SeaCacheConfig:
             )
         if not math.isfinite(self.power_exp) or self.power_exp <= 0:
             raise ValueError(f"`power_exp` must be positive, got {self.power_exp}.")
-        if self.indicator_source not in ("first_block", "raw_vision_latents"):
-            raise ValueError(
-                f"`indicator_source` must be 'first_block' or 'raw_vision_latents', got {self.indicator_source!r}."
-            )
         for name in (
             "current_step_callback",
             "current_sigma_callback",
             "num_inference_steps_callback",
-            "metadata_callback",
             "raw_vision_callback",
         ):
             callback = getattr(self, name)
@@ -155,7 +136,6 @@ class _SeaCacheForwardMetadata:
     step_index: int
     sigma: float
     num_inference_steps: int
-    vision_layout: list[tuple[torch.Tensor, tuple[int, int, int]]] | None = None
     raw_vision: list[torch.Tensor] | None = None
 
 
@@ -346,71 +326,6 @@ def _record_full_execution(
     state.reset_forward()
 
 
-def _prepare_cosmos3_vision_metadata(
-    module: torch.nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any]
-) -> list[tuple[torch.Tensor, tuple[int, int, int]]] | None:
-    module = unwrap_module(module)
-    bound_arguments = inspect.signature(module.__class__.forward).bind_partial(module, *args, **kwargs).arguments
-    vision_tokens = bound_arguments.get("vision_tokens")
-    vision_token_shapes = bound_arguments.get("vision_token_shapes")
-    vision_sequence_indexes = bound_arguments.get("vision_sequence_indexes")
-    vision_timesteps = bound_arguments.get("vision_timesteps")
-    vision_noisy_frame_indexes = bound_arguments.get("vision_noisy_frame_indexes")
-    und_len = bound_arguments.get("und_len")
-
-    if (
-        not isinstance(vision_tokens, (list, tuple))
-        or not isinstance(vision_token_shapes, (list, tuple))
-        or not isinstance(vision_sequence_indexes, torch.Tensor)
-        or not isinstance(vision_timesteps, torch.Tensor)
-        or vision_timesteps.numel() == 0
-        or not isinstance(vision_noisy_frame_indexes, (list, tuple))
-        or und_len is None
-        or len(vision_tokens) != len(vision_token_shapes)
-        or len(vision_tokens) != len(vision_noisy_frame_indexes)
-    ):
-        return None
-
-    vision_sequence_indexes = vision_sequence_indexes.flatten()
-    layout = []
-    offset = 0
-    for token, token_shape, noisy_frame_indexes in zip(vision_tokens, vision_token_shapes, vision_noisy_frame_indexes):
-        if (
-            not isinstance(token, torch.Tensor)
-            or not isinstance(noisy_frame_indexes, torch.Tensor)
-            or len(token_shape) != 3
-        ):
-            return None
-
-        temporal, height, width = (int(value) for value in token_shape)
-        item_numel = temporal * height * width
-        item_indexes = vision_sequence_indexes[offset : offset + item_numel]
-        if item_indexes.numel() != item_numel:
-            return None
-        offset += item_numel
-
-        noisy_frame_indexes = noisy_frame_indexes.flatten().to(device=item_indexes.device, dtype=torch.long)
-        if noisy_frame_indexes.numel() == 0:
-            continue
-        if torch.any(noisy_frame_indexes < 0) or torch.any(noisy_frame_indexes >= temporal):
-            return None
-
-        item_indexes = item_indexes.reshape(temporal, height, width)
-        generation_indexes = item_indexes[noisy_frame_indexes].flatten() - int(und_len)
-        if torch.any(generation_indexes < 0):
-            return None
-        layout.append(
-            (
-                generation_indexes,
-                (int(noisy_frame_indexes.numel()), height, width),
-            )
-        )
-
-    if offset != vision_sequence_indexes.numel() or not layout:
-        return None
-    return layout
-
-
 def _prepare_cosmos3_raw_vision_metadata(
     module: torch.nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any]
 ) -> list[torch.Tensor] | None:
@@ -509,14 +424,12 @@ class SeaCacheRootHook(ModelHook):
         config: SeaCacheConfig,
         state_manager: StateManager,
         shared_state: SeaCacheSharedState,
-        metadata_callback: Callable,
         raw_vision_callback: Callable,
     ):
         super().__init__()
         self.config = config
         self.state_manager = state_manager
         self.shared_state = shared_state
-        self.metadata_callback = metadata_callback
         self.raw_vision_callback = raw_vision_callback
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
@@ -574,31 +487,18 @@ class SeaCacheRootHook(ModelHook):
             )
             return args, kwargs
 
-        vision_layout = None
-        raw_vision = None
         try:
-            if self.config.indicator_source == "first_block":
-                vision_layout = (
-                    self.metadata_callback(module, args, kwargs) if self.metadata_callback is not None else None
-                )
-            else:
-                raw_vision = (
-                    self.raw_vision_callback(module, args, kwargs) if self.raw_vision_callback is not None else None
-                )
+            raw_vision = (
+                self.raw_vision_callback(module, args, kwargs) if self.raw_vision_callback is not None else None
+            )
         except (TypeError, ValueError, RuntimeError) as error:
             self.shared_state.mark_fail_open(
                 f"SeaCache model metadata is unavailable; running in fail-open mode: {error}"
             )
             return args, kwargs
-        if self.config.indicator_source == "first_block" and not vision_layout:
+        if not raw_vision:
             self.shared_state.mark_fail_open(
-                "SeaCache requires noisy vision tokens; action-only, sound-only, and conditioning-only calls run in "
-                "fail-open mode."
-            )
-            return args, kwargs
-        if self.config.indicator_source == "raw_vision_latents" and not raw_vision:
-            self.shared_state.mark_fail_open(
-                "SeaCache requires raw noisy vision latents for the selected indicator source; action-only, sound-only, "
+                "SeaCache requires raw vision latents containing at least one noisy frame; action-only, sound-only, "
                 "conditioning-only, and unsupported model calls run in fail-open mode."
             )
             return args, kwargs
@@ -607,7 +507,6 @@ class SeaCacheRootHook(ModelHook):
             step_index=step_index,
             sigma=sigma,
             num_inference_steps=num_inference_steps,
-            vision_layout=vision_layout,
             raw_vision=raw_vision,
         )
         return args, kwargs
@@ -638,53 +537,21 @@ class SeaCacheLeaderBlockHook(ModelHook):
         self.shared_state = shared_state
         self.post_norm_boundary = post_norm_boundary
         self._metadata = None
-        self._normalization = None
 
     def initialize_hook(self, module: torch.nn.Module):
         module = unwrap_module(module)
         self._metadata = TransformerBlockRegistry.get(module.__class__)
-        if self._metadata.hidden_states_norm_module_name is not None:
-            self._normalization = getattr(module, self._metadata.hidden_states_norm_module_name)
         return module
 
-    def _build_indicator(
-        self,
-        hidden_states: torch.Tensor,
-        forward_metadata: _SeaCacheForwardMetadata,
-    ) -> list[torch.Tensor] | None:
-        if self.config.indicator_source == "raw_vision_latents":
-            if not forward_metadata.raw_vision:
-                return None
-            indicator = []
-            for latent in forward_metadata.raw_vision:
-                raw_vision = latent.movedim(0, -1)
-                indicator.append(
-                    _apply_sea_filter(
-                        raw_vision,
-                        sigma=forward_metadata.sigma,
-                        power_exp=self.config.power_exp,
-                    ).detach()
-                )
-            return indicator
-
-        if self._normalization is None:
+    def _build_indicator(self, forward_metadata: _SeaCacheForwardMetadata) -> list[torch.Tensor] | None:
+        if not forward_metadata.raw_vision:
             return None
-        if not forward_metadata.vision_layout:
-            return None
-        normalized_hidden_states = self._normalization(hidden_states)
         indicator = []
-        for indexes, shape in forward_metadata.vision_layout:
-            indexes = indexes.to(device=normalized_hidden_states.device, dtype=torch.long)
-            if (
-                indexes.numel() != math.prod(shape)
-                or torch.any(indexes < 0)
-                or torch.any(indexes >= normalized_hidden_states.shape[0])
-            ):
-                return None
-            noisy_vision = normalized_hidden_states.index_select(0, indexes).reshape(*shape, -1)
+        for latent in forward_metadata.raw_vision:
+            raw_vision = latent.movedim(0, -1)
             indicator.append(
                 _apply_sea_filter(
-                    noisy_vision,
+                    raw_vision,
                     sigma=forward_metadata.sigma,
                     power_exp=self.config.power_exp,
                 ).detach()
@@ -716,7 +583,7 @@ class SeaCacheLeaderBlockHook(ModelHook):
             indicator_error_reported = True
         else:
             try:
-                indicator = self._build_indicator(hidden_states, forward_metadata)
+                indicator = self._build_indicator(forward_metadata)
             except (TypeError, ValueError, RuntimeError) as error:
                 self.shared_state.mark_fail_open(
                     f"SeaCache could not construct its vision indicator; running in fail-open mode: {error}"
@@ -892,14 +759,9 @@ def apply_sea_cache(module: torch.nn.Module, config: SeaCacheConfig) -> None:
 
     unwrapped_module = unwrap_module(module)
     is_cosmos3 = isinstance(unwrapped_module, Cosmos3OmniTransformer)
-    metadata_callback = config.metadata_callback
     raw_vision_callback = config.raw_vision_callback
-    if metadata_callback is None or raw_vision_callback is None:
-        if is_cosmos3:
-            if metadata_callback is None:
-                metadata_callback = _prepare_cosmos3_vision_metadata
-            if raw_vision_callback is None:
-                raw_vision_callback = _prepare_cosmos3_raw_vision_metadata
+    if raw_vision_callback is None and is_cosmos3:
+        raw_vision_callback = _prepare_cosmos3_raw_vision_metadata
 
     post_norm_modules = None
     if is_cosmos3:
@@ -940,7 +802,6 @@ def apply_sea_cache(module: torch.nn.Module, config: SeaCacheConfig) -> None:
                 config,
                 state_manager,
                 shared_state,
-                metadata_callback,
                 raw_vision_callback,
             ),
             _SEA_CACHE_ROOT_HOOK,
