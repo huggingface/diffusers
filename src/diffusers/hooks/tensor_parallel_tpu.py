@@ -30,29 +30,41 @@ import torch.nn as nn
 def _pre_shard_and_tp(
     module: nn.Module,
     tp_mesh: "torch.distributed.device_mesh.DeviceMesh",
-    plan: dict,
+    relative_plan: dict,
     rank: int,
     tp_size: int,
 ) -> None:
-    """Pre-shard Linear weights via ``DTensor.from_local``, then call ``parallelize_module``.
+    """Pre-shard plain colwise/rowwise Linear weights via ``DTensor.from_local``, then call ``parallelize_module``.
 
     Args:
         module: The block whose Linear sub-modules are being sharded.
         tp_mesh: Device mesh for TP (1-D, size == tp_size).
-        plan: ``{relative_path: ColwiseParallel() | RowwiseParallel()}`` dict,
-            as expected by ``parallelize_module``.
+        relative_plan: ``{relative_path: "colwise" | "rowwise" | PackedColwiseParallel | PackedRowwiseParallel}``,
+            the raw per-block plan as produced by ``_resolve_tp_plan`` (before ``_styles`` resolves it to
+            `parallelize_module` style instances).
         rank: Current rank (``dist.get_rank()``).
         tp_size: Total TP degree (``tp_mesh.size()``).
     """
     from torch.distributed.tensor import DTensor, Shard
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
 
+    from .tensor_parallel import PackedColwiseParallel, PackedRowwiseParallel, _styles
+
     # Each torchrun worker owns one TPU chip (its local device). Use "tpu" without an explicit
     # index — specifying tpu:rank would address chip `rank` from the current process's view,
     # which fails because each worker only has access to its own assigned chip.
     device = torch.device("tpu")
+    styles = _styles(relative_plan)
 
-    for path, style in plan.items():
+    for path, raw_style in relative_plan.items():
+        # Packed (fused) projections resolve to a `_partition_linear_fn` that first replicates the full weight
+        # before re-slicing it into blocks (see `_styles` in tensor_parallel.py). Pre-sharding it here would
+        # hand that function an already-sharded DTensor with a placement it never asked for, which raises
+        # "Cannot distribute a DTensor with placements (Shard(dim=0),) to a different placements [Replicate()]".
+        # Leave these to `parallelize_module`, which materializes and shards them directly.
+        if isinstance(raw_style, (PackedColwiseParallel, PackedRowwiseParallel)):
+            continue
+
         submod = module
         for part in path.split("."):
             submod = getattr(submod, part)
@@ -61,6 +73,7 @@ def _pre_shard_and_tp(
             continue
 
         w = submod.weight.data  # CPU at this point
+        style = styles[path]
         if isinstance(style, ColwiseParallel):
             rows = w.shape[0] // tp_size
             shard = w[rank * rows : (rank + 1) * rows, :].contiguous().to(device)
@@ -70,9 +83,10 @@ def _pre_shard_and_tp(
             shard = w[:, rank * cols : (rank + 1) * cols].contiguous().to(device)
             submod.weight = nn.Parameter(DTensor.from_local(shard, tp_mesh, [Shard(1)]))
 
-    # parallelize_module is now a no-op for weight distribution (already DTensors)
-    # but still registers the input/output hooks required for the forward pass.
-    parallelize_module(module, tp_mesh, plan)
+    # parallelize_module is now a no-op for weight distribution on the modules pre-sharded above (their
+    # weights are already DTensors with a matching placement), but still registers the input/output hooks
+    # required for the forward pass, and fully materializes+shards the packed modules skipped above.
+    parallelize_module(module, tp_mesh, styles)
 
 
 def _apply_tp_tpu(
@@ -91,8 +105,6 @@ def _apply_tp_tpu(
 
     Model weights must be on CPU when this is called.
     """
-    from .tensor_parallel import _styles
-
     rank = dist.get_rank()
     tp_size = tp_mesh.size()
     permuters = getattr(model, "_tp_fused_block_permuters", None) or {}
@@ -101,4 +113,4 @@ def _apply_tp_tpu(
         permuter = permuters.get(block.__class__.__name__)
         if permuter is not None:
             permuter(block, tp_size)
-        _pre_shard_and_tp(block, tp_mesh, _styles(relative_plan), rank, tp_size)
+        _pre_shard_and_tp(block, tp_mesh, relative_plan, rank, tp_size)

@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 
+import pytest
 import torch
 
 from diffusers import Flux2Transformer2DModel
@@ -186,11 +187,18 @@ def make_tpu_tp_spec():
     """Model spec consumed by the generic TPU TP worker (``_tpu_tp_worker.py``).
 
     Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all Flux2-specific test data lives in this file
-    while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest of
-    the Flux2 tests.
+    while the worker stays model-agnostic.
+
+    Overrides ``num_attention_heads`` to 4 (instead of reusing the shared tester config's 2) so the TP degree divides
+    the head count on a whole-pod-slice TPU host: `torch_tpu`'s per-generation topology table
+    (``torch_tpu._internal.utils.hardware``) only enumerates whole-slice chip counts (1/4/8 for v6e, for example), not
+    arbitrary sub-slices of a larger single host, and ``TestFlux2TransformerTensorParallelTPU`` shards across
+    ``WORLD_SIZE`` ranks to match. Every other field still comes from the shared config so the rest of the spec
+    doesn't drift from the other Flux2 tests.
     """
     config = Flux2TransformerTesterConfig()
-    return Flux2Transformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+    init_dict = {**config.get_init_dict(), "num_attention_heads": 4}
+    return Flux2Transformer2DModel, init_dict, config.get_dummy_inputs(device="cpu")
 
 
 @is_tensor_parallel
@@ -203,16 +211,68 @@ class TestFlux2TransformerTensorParallelTPU:
     the Flux2 model spec (``make_tpu_tp_spec``); the worker asserts the sharded output matches a single-device
     reference, and the test checks its exit code.
 
+    The worker runs with ``WORLD_SIZE`` ranks, and ``make_tpu_tp_spec`` overrides ``num_attention_heads`` to 4 so
+    that TP degree divides the head count. Unlike the CUDA/XPU ``TensorParallelTesterMixin``, which hardcodes
+    ``world_size = 2`` to match `Flux2TransformerTesterConfig`'s 2 heads, TPU can't use an arbitrary rank count:
+    `torch_tpu`'s per-generation topology table (``torch_tpu._internal.utils.hardware``) only enumerates
+    whole-pod-slice chip counts (1/4/8 for v6e, for example), not arbitrary sub-slices of a larger single host. A
+    rank count with no matching whole-slice topology has nothing to advertise and the PJRT client never completes
+    its start-session barrier — the test would hang for the barrier's full multi-minute timeout instead of failing.
+    4 is the smallest whole-slice count every current TPU generation defines (see ``_V4_TOPOLOGY`` /
+    ``_V5E_TOPOLOGY`` / ``_V6E_TOPOLOGY`` / ``_V7_TOPOLOGY`` in ``torch_tpu._internal.utils.hardware``).
+    ``skip_if_unsupported`` below still checks the actual host up front and skips fast instead of hanging when it
+    doesn't have exactly that many chips.
+
     Requires ``TORCH_TPU_TOPOLOGY`` and ``TORCH_TPU_SLICEBUILDER_ADDRESSES`` to be set. Source them via::
 
         eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
     """
 
+    WORLD_SIZE = 4
+    # The worker itself only needs a couple of minutes even from a cold XLA compile; this generously bounds the
+    # subprocess so a real hang (e.g. a barrier timeout this skip failed to catch) fails the test loudly instead of
+    # stalling the run.
+    TIMEOUT_S = 900
+
+    def skip_if_unsupported(self):
+        """Skip unless the host has exactly ``WORLD_SIZE`` TPU chips.
+
+        A topology *string* existing for a chip count (``hardware.get_tpu_topology``) isn't enough to guarantee the
+        PJRT client can actually form that session: a sub-slice of a larger single host (e.g. claiming 2 of a
+        4-chip v6e-4's chips via ``TORCH_TPU_TOPOLOGY``/``TORCH_TPU_SLICEBUILDER_ADDRESSES``) can still fail with a
+        low-level ``START_SESSION`` GRPC error, since the runtime's session setup is tied to the host's actual
+        provisioned slice, not just a topology label. The only combination verified to work is running with exactly
+        as many ranks as the host has chips.
+        """
+        from torch_tpu._internal.utils import hardware
+
+        try:
+            device_count = hardware.get_tpu_device_count()
+        except Exception as e:  # pragma: no cover - defensive, hardware detection is best-effort
+            pytest.skip(f"Could not determine local TPU chip count: {e}")
+            return
+
+        if device_count != self.WORLD_SIZE:
+            pytest.skip(
+                f"This host exposes {device_count} TPU chip(s), but this test requires exactly "
+                f"{self.WORLD_SIZE} (a TPU single-host tensor-parallel job must use all chips on the host; "
+                f"sub-slicing a larger host is not reliably supported by the runtime). Run this test on a host "
+                f"with exactly {self.WORLD_SIZE} TPU chips."
+            )
+
     def test_tensor_parallel_tpu_inference(self):
+        self.skip_if_unsupported()
+
         worker = os.path.join(os.path.dirname(__file__), "_tpu_tp_worker.py")
         spec = "tests.models.transformers.test_models_transformer_flux2:make_tpu_tp_spec"
-        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        cmd = [sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={self.WORLD_SIZE}", worker, spec]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=self.TIMEOUT_S)
+        except subprocess.TimeoutExpired as e:
+            raise AssertionError(
+                f"TPU tensor-parallel worker did not finish within {self.TIMEOUT_S}s (likely stuck on PJRT "
+                f"client start-session barrier).\n--- stdout ---\n{e.stdout}\n--- stderr ---\n{e.stderr}"
+            ) from e
         assert result.returncode == 0, (
             f"TPU tensor-parallel worker failed (exit {result.returncode}).\n"
             f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
