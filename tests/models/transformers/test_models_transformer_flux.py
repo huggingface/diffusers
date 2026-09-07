@@ -320,6 +320,41 @@ def make_neuron_tp_spec():
     return FluxTransformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
 
 
+def make_neuron_sharded_load_spec():
+    """Model spec consumed by the sharded-load worker (`_neuron_sharded_load_worker.py`).
+
+    Same contract as `make_neuron_tp_spec`, but `num_attention_heads` is raised to 8 so the head count survives
+    being divided twice: `tp_degree=2` leaves 4 heads per rank and `ulysses_degree=4` splits those into 1 each.
+    (`ulysses_degree` cannot be 2 on Neuron, whose all-to-all only accepts group sizes of 4, 8, 16 or multiples
+    of 32.)
+    """
+    config = FluxTransformerTesterConfig()
+    init_dict = config.get_init_dict() | {"num_attention_heads": 8}
+    return FluxTransformer2DModel, init_dict, config.get_dummy_inputs(device="cpu")
+
+
+@is_tensor_parallel
+@require_torch_neuron
+class TestFluxTransformerShardedLoadNeuron:
+    """`from_pretrained(..., parallel_config=...)` with both parallelisms, on AWS Neuron.
+
+    Launched the same way as `TestFluxTransformerTensorParallelNeuron`, at `tp_degree=2 x ulysses_degree=4`, i.e. 8
+    ranks. The worker asserts that the sharded-load path registered the context-parallel hooks — which numbers alone
+    cannot detect, since a model that silently skips them still returns the right answer — and that the output still
+    matches a single-device reference read back from the same checkpoint.
+    """
+
+    def test_sharded_load_context_parallel_neuron(self):
+        worker = os.path.join(os.path.dirname(__file__), "_neuron_sharded_load_worker.py")
+        spec = "tests.models.transformers.test_models_transformer_flux:make_neuron_sharded_load_spec"
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=8", worker, spec]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"Neuron sharded-load worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )
+
+
 @is_tensor_parallel
 @require_torch_neuron
 class TestFluxTransformerTensorParallelNeuron:

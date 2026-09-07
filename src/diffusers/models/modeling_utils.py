@@ -1546,6 +1546,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 # was recorded by `_resolve_parallel_config` before loading.
                 from ..hooks.tensor_parallel import apply_tensor_parallel
 
+                # A config that also asks for context parallelism gets its hooks here, in the same order as
+                # `enable_parallelism`, which is no longer callable now that the weights are sharded.
+                model._apply_context_parallel(parallel_config)
                 apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
             else:
                 model.enable_parallelism(config=parallel_config)
@@ -1768,11 +1771,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
         )
 
-        from ..hooks.context_parallel import apply_context_parallel
-        from .attention import AttentionModuleMixin
-        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
-        from .attention_processor import Attention, MochiAttention
-
         if self._parallel_config is not None:
             raise RuntimeError(
                 f"Parallelism is already applied to this {self.__class__.__name__}. `enable_parallelism` cannot be "
@@ -1798,6 +1796,32 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))
 
         config = self._resolve_parallel_config(config)
+
+        self._apply_context_parallel(config, cp_plan)
+
+        if config.tensor_parallel_config is not None:
+            from ..hooks.tensor_parallel import apply_tensor_parallel
+
+            apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
+
+    def _apply_context_parallel(
+        self,
+        config: ParallelConfig,
+        cp_plan: dict[str, ContextParallelModelPlan] | None = None,
+    ):
+        """Install the context-parallel hooks `config` asks for, if any, and hand it to the attention processors.
+
+        Split out of `enable_parallelism` for the same reason as `_resolve_parallel_config`: `from_pretrained(...,
+        parallel_config=...)` shards the weights while reading them, so it cannot call `enable_parallelism`
+        afterwards, yet it still has to apply these hooks when the config asks for context parallelism.
+        """
+        from ..hooks.context_parallel import apply_context_parallel
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+        from .attention_processor import Attention, MochiAttention
+
+        if config.context_parallel_config is None:
+            return
 
         attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
 
@@ -1847,11 +1871,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
             cp_plan = cp_plan if cp_plan is not None else self._cp_plan
             apply_context_parallel(self, config.context_parallel_config, cp_plan)
-
-        if config.tensor_parallel_config is not None:
-            from ..hooks.tensor_parallel import apply_tensor_parallel
-
-            apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
 
     @classmethod
     def _load_pretrained_model(
