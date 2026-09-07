@@ -24,6 +24,7 @@ from .parallelism import (
     ContextAndTensorParallelTesterMixin,
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
+    HybridParallelTesterMixin,
     TensorParallelTesterMixin,
     TensorParallelTPUTesterMixin,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "ContextAndTensorParallelTesterMixin",
     "ContextParallelTesterMixin",
     "ContextParallelAttentionBackendsTesterMixin",
+    "HybridParallelTesterMixin",
     "TensorParallelTesterMixin",
     "TensorParallelTPUTesterMixin",
     "CPUOffloadTesterMixin",
