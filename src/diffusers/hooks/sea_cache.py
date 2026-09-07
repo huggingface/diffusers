@@ -141,7 +141,7 @@ class _SeaCacheForwardMetadata:
 
 class SeaCacheContextState(BaseState):
     def __init__(self):
-        self.history: list[tuple[int, torch.Tensor, torch.Tensor]] = []
+        self.history: list[tuple[int, torch.Tensor | None, torch.Tensor]] = []
         self.gate_key: tuple[int, float] | None = None
         self.gate_should_compute = True
         self.previous_indicator: list[torch.Tensor] | None = None
@@ -308,19 +308,20 @@ def _record_full_execution(
     state: SeaCacheContextState,
     gen_output: torch.Tensor,
     und_output: torch.Tensor | None,
+    requires_und_output: bool = True,
 ) -> None:
     state.consecutive_cached = 0
     if (
         state.cacheable_execution
         and state.step_index is not None
         and state.gen_input is not None
-        and und_output is not None
+        and (und_output is not None or not requires_und_output)
         and gen_output.shape == state.gen_input.shape
     ):
         state.history.append(
             (
                 state.step_index,
-                und_output.detach().clone(),
+                und_output.detach().clone() if und_output is not None else None,
                 (gen_output - state.gen_input).detach().clone(),
             )
         )
@@ -804,6 +805,17 @@ class SeaCacheLeaderBlockHook(ModelHook):
 
         residual_history = state.history[-(self.config.residual_order + 1) :]
         _, cached_und, cached_residual = residual_history[-1]
+        expects_auxiliary_stream = self._metadata.return_encoder_hidden_states_index is not None
+        if expects_auxiliary_stream:
+            auxiliary_stream_mismatch = encoder_hidden_states is None or cached_und is None
+        else:
+            auxiliary_stream_mismatch = cached_und is not None
+        if expects_auxiliary_stream and encoder_hidden_states is not None and cached_und is not None:
+            auxiliary_stream_mismatch = auxiliary_stream_mismatch or (
+                cached_und.shape != encoder_hidden_states.shape
+                or cached_und.device != encoder_hidden_states.device
+                or cached_und.dtype != encoder_hidden_states.dtype
+            )
         if (
             any(
                 residual.shape != hidden_states.shape
@@ -811,10 +823,7 @@ class SeaCacheLeaderBlockHook(ModelHook):
                 or residual.dtype != hidden_states.dtype
                 for _, _, residual in residual_history
             )
-            or encoder_hidden_states is None
-            or cached_und.shape != encoder_hidden_states.shape
-            or cached_und.device != encoder_hidden_states.device
-            or cached_und.dtype != encoder_hidden_states.dtype
+            or auxiliary_stream_mismatch
         ):
             state.history = []
             state.accumulated_distance = 0.0
@@ -882,6 +891,7 @@ class SeaCacheBlockHook(ModelHook):
             state,
             gen_output=hidden_states,
             und_output=encoder_hidden_states,
+            requires_und_output=self._metadata.return_encoder_hidden_states_index is not None,
         )
         return output
 

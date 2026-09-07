@@ -26,6 +26,7 @@ from diffusers.hooks import (
     SeaCacheConfig,
     TaylorSeerCacheConfig,
 )
+from diffusers.hooks._helpers import TransformerBlockMetadata, TransformerBlockRegistry
 from diffusers.hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
 from diffusers.hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
 from diffusers.hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
@@ -552,6 +553,62 @@ class SeaCacheTesterMixin(SeaCacheConfigMixin, CacheTesterMixin):
         model._reset_stateful_cache()
         model.disable_cache()
 
+    @torch.no_grad()
+    def _test_single_stream_cache_inference(self):
+        class SingleStreamBlock(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.calls = 0
+
+            def forward(self, hidden_states):
+                self.calls += 1
+                return hidden_states * 2 + 1
+
+        class SingleStreamTransformer(torch.nn.Module, CacheMixin):
+            def __init__(self):
+                super().__init__()
+                self.transformer_blocks = torch.nn.ModuleList([SingleStreamBlock(), SingleStreamBlock()])
+
+            def forward(self, hidden_states, raw_vision):
+                for block in self.transformer_blocks:
+                    hidden_states = block(hidden_states)
+                return hidden_states
+
+        TransformerBlockRegistry.register(
+            SingleStreamBlock,
+            TransformerBlockMetadata(return_hidden_states_index=0),
+        )
+        runtime = {"step": 0, "sigma": 0.9, "num_steps": 2}
+        model = SingleStreamTransformer().eval()
+        model.enable_cache(
+            SeaCacheConfig(
+                threshold=100.0,
+                residual_order=0,
+                retention_steps=0,
+                cache_end_steps=0,
+                current_step_callback=lambda: runtime["step"],
+                current_sigma_callback=lambda: runtime["sigma"],
+                num_inference_steps_callback=lambda: runtime["num_steps"],
+                raw_vision_callback=lambda module, args, kwargs: [kwargs["raw_vision"]],
+            )
+        )
+
+        hidden_states = torch.zeros(1, 2, 3)
+        raw_vision = torch.ones(2, 1, 2, 2)
+        with model.cache_context("single_stream"):
+            model(hidden_states=hidden_states, raw_vision=raw_vision)
+
+        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+        assert root_hook.state_manager._state_cache["single_stream"].history[-1][1] is None
+        assert [block.calls for block in model.transformer_blocks] == [1, 1]
+
+        runtime.update(step=1, sigma=0.6)
+        with model.cache_context("single_stream"):
+            output = model(hidden_states=hidden_states + 0.25, raw_vision=raw_vision + 0.01)
+
+        assert [block.calls for block in model.transformer_blocks] == [1, 1]
+        torch.testing.assert_close(output, torch.full_like(output, 3.25))
+
     @require_cache_mixin
     def test_sea_cache_enable_disable_state(self):
         self._test_cache_enable_disable_state()
@@ -575,6 +632,9 @@ class SeaCacheTesterMixin(SeaCacheConfigMixin, CacheTesterMixin):
     @require_cache_mixin
     def test_sea_cache_reset_stateful_cache(self):
         self._test_reset_stateful_cache()
+
+    def test_sea_cache_single_stream_inference(self):
+        self._test_single_stream_cache_inference()
 
 
 @is_cache
