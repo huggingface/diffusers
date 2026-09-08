@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import (
     AutoConfig,
@@ -38,6 +38,7 @@ from diffusers.utils import load_image
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -45,15 +46,15 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class StableDiffusion3ControlNetPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusion3ControlNetPipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
             "prompt",
             "height",
@@ -64,9 +65,8 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             "negative_prompt_embeds",
         ]
     )
-    batch_params = frozenset(["prompt", "negative_prompt"])
-    test_layerwise_casting = True
-    test_group_offloading = True
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(
         self, num_controlnet_layers: int = 3, qk_norm: str | None = "rms_norm", use_dual_attention=False
@@ -125,7 +125,9 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
         torch.manual_seed(0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder_3 = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder_3 = T5EncoderModel(config).eval()
 
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -163,80 +165,68 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             "feature_extractor": None,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
+    def get_dummy_inputs(self):
+        # The control image is drawn from the same generator that is handed to the pipeline, so the pipeline sees an
+        # already-advanced generator state — keep the order to stay comparable with the expected slices below.
+        generator = self.get_generator(0)
         control_image = randn_tensor(
             (1, 3, 32, 32),
             generator=generator,
-            device=torch.device(device),
+            device=torch.device(torch_device),
             dtype=torch.float32,
         )
 
-        controlnet_conditioning_scale = 0.5
-
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "control_image": control_image,
-            "controlnet_conditioning_scale": controlnet_conditioning_scale,
+            "controlnet_conditioning_scale": 0.5,
         }
 
-        return inputs
 
-    def run_pipe(self, components, use_sd35=False):
-        sd_pipe = StableDiffusion3ControlNetPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device, dtype=torch.float32)
-        sd_pipe.set_progress_bar_config(disable=None)
+class TestStableDiffusion3ControlNetPipeline(StableDiffusion3ControlNetPipelineTesterConfig, PipelineTesterMixin):
+    def _run_and_check_slice(self, components, expected_slice):
+        pipe = self.get_pipeline(**components).to(torch_device, dtype=torch.float32)
 
-        inputs = self.get_dummy_inputs(torch_device)
-        output = sd_pipe(**inputs)
-        image = output.images
+        image = pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, *self.output_shape)
 
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 32, 32, 3)
-
-        if not use_sd35:
-            expected_slice = np.array([0.4121, 0.3775, 0.3734, 0.1509, 0.6324, 0.5503, 0.5425, 0.5614, 0.4061])
-        else:
-            expected_slice = np.array([0.3793, 0.5179, 0.4389, 0.2820, 0.5148, 0.5565, 0.6282, 0.6891, 0.4197])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
-            f"Expected: {expected_slice}, got: {image_slice.flatten()}"
-        )
+        image_slice = image[0, -1, -3:, -3:]
+        assert_tensors_close(image_slice.flatten().cpu(), expected_slice, atol=1e-2)
 
     def test_controlnet_sd3(self):
-        components = self.get_dummy_components()
-        self.run_pipe(components)
+        # fmt: off
+        expected_slice = torch.tensor([0.4121, 0.3775, 0.3734, 0.1509, 0.6324, 0.5503, 0.5425, 0.5614, 0.4061])
+        # fmt: on
+        self._run_and_check_slice(self.get_dummy_components(), expected_slice)
 
     def test_controlnet_sd35(self):
         components = self.get_dummy_components(num_controlnet_layers=1, qk_norm="rms_norm", use_dual_attention=True)
-        self.run_pipe(components, use_sd35=True)
+        # fmt: off
+        expected_slice = torch.tensor([0.3793, 0.5179, 0.4389, 0.2820, 0.5148, 0.5565, 0.6282, 0.6891, 0.4197])
+        # fmt: on
+        self._run_and_check_slice(components, expected_slice)
 
-    @unittest.skip("xFormersAttnProcessor does not work with SD3 Joint Attention")
-    def test_xformers_attention_forwardGenerator_pass(self):
-        pass
+
+class TestStableDiffusion3ControlNetPipelineMemory(StableDiffusion3ControlNetPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SD3 ControlNet pipeline."""
 
 
 @slow
 @require_big_accelerator
-class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
+class TestStableDiffusion3ControlNetPipelineSlow:
     pipeline_class = StableDiffusion3ControlNetPipeline
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

@@ -165,7 +165,7 @@ ModularPipeline {
 }
 ```
 
-If you pass a repository to [`~ModularPipelineBlocks.init_pipeline`], it overrides the loading path by matching your block's components against the pipeline config in that repository (`model_index.json` or `modular_model_index.json`).
+If you pass a repository to [`~ModularPipelineBlocks.init_pipeline`], it overrides the loading path by matching your block's components against the pipeline config in that repository (`model_index.json` or `modular_model_index.json`). See [Modular repository](#modular-repository) for how loading specs are recorded and saved.
 
 In the example below, the `pretrained_model_name_or_path` will be updated to `"stabilityai/stable-diffusion-xl-base-1.0"`.
 
@@ -414,6 +414,34 @@ pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base
 # push as a modular repository
 pipeline.save_pretrained("local/path", repo_id="my-username/sdxl-modular", push_to_hub=True)
 ```
+
+By default, [`~ModularPipeline.save_pretrained`] writes each currently loaded component that Diffusers can serialize. Components that are not loaded, or cannot be serialized, are not written and keep their existing loading specifications. This gives you two ways to save, depending on what you want.
+
+### Save a self-contained copy
+
+Load all the components, then save. Every spec points at the result, so it reloads entirely from one place, including offline.
+
+```py
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
+pipe.load_components()
+pipe.save_pretrained("path/to/local-copy")
+```
+
+The destination recorded in `modular_model_index.json` is wherever [`~ModularPipeline.save_pretrained`] writes: the `save_directory` for a local save, or the `repo_id` when you pass `push_to_hub=True`.
+
+### Keep references to existing components
+
+Load only what's new (or nothing at all). Only loaded components are saved; everything else stays a pointer to its original repository. Use this mode when you want to replace one component while continuing to load the others from their original repository. For example, save a custom transformer while the remaining components continue to load from the base repository.
+
+```py
+pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.2-dev")
+pipe.update_components(transformer=my_custom_transformer)  # the only component in memory
+pipe.save_pretrained("local/path", repo_id="my-username/flux2-custom-transformer", push_to_hub=True)
+```
+
+Pass `overwrite_modular_index=False` to keep the loading specs in `modular_model_index.json` as they are. A saved component whose loading spec is empty is still filled in with the destination, since there is nothing to preserve.
+
+Note that moving the files any other way (uploading with `hf upload`, downloading a repository with `hf download --local-dir`) doesn't rewrite the index, so the copy still points to the old location; update the index manually in that case.
 
 A modular repository can also include custom pipeline blocks as Python code. This allows you to share specialized blocks that aren't native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
 

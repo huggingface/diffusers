@@ -24,19 +24,6 @@ from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin
 from ..testing_utils.common import BasePipelineOutputMixin
 
 
-# `PipelineFromPipeTesterMixin` (tests/pipelines/test_pipelines_common.py) still covers `from_pipe` forward-pass
-# parity and the model-CPU-offload round trip, but it is unittest-era: its tests call `self.get_dummy_inputs(device,
-# seed=0)` and `self.assertLess`, neither of which exists on a `BasePipelineTesterConfig` outside a
-# `unittest.TestCase`. Un-skipping the parked classes below without porting the mixin first would error, not fail.
-# The mixin is still live for the ten `tests/pipelines/pag/` files and `stable_diffusion_adapter`; rewrite it
-# pytest-style when those are migrated, then drop these skips.
-FROM_PIPE_SKIP_REASON = (
-    "`PipelineFromPipeTesterMixin` is still unittest-style and cannot run against `BasePipelineTesterConfig` — "
-    "these error rather than fail if un-skipped. Port the mixin to pytest (due when `tests/pipelines/pag/` is "
-    "migrated), then remove this skip."
-)
-
-
 class MotionPipelineTesterConfig(BasePipelineTesterConfig):
     """`BasePipelineTesterConfig` for the AnimateDiff pipelines in this directory."""
 
