@@ -1446,7 +1446,7 @@ class LTX2VideoTransformer3DModel(
                 (SDPA) operation. If `None` or empty, STG will not be applied to any block.
             perturbation_mask (`torch.Tensor`, *optional*):
                 Perturbation mask for STG of shape `(batch_size,)` or `(batch_size, 1, 1)`. Should be 0 at batch
-                elements where STG should be applied and 1 elsewhere. If STG is being used but `peturbation_mask` is
+                elements where STG should be applied and 1 elsewhere. If STG is being used but `perturbation_mask` is
                 not supplied, will default to applying STG (perturbing) all batch elements.
             use_cross_timestep (`bool` *optional*, defaults to `False`):
                 Whether to use the cross modality (audio is the cross modality of video, and vice versa) sigma when
