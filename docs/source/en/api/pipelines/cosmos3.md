@@ -45,13 +45,22 @@ Two checkpoints are released on the Hub — [`nvidia/Cosmos3-Nano`](https://hugg
 
 ## FP8 mixed W8A8/W8A16 denoising
 
-Official ModelOpt FP8 checkpoints live on the Hub `fp8` revision (for example [`nvidia/Cosmos3-Nano`](https://huggingface.co/nvidia/Cosmos3-Nano) with `revision="fp8"`). The serialized weights are static W8A8. Video Nano / Super / Super-I2V checkpoints also store a `quantization_config.runtime.diffusion_step_policy` on the transformer: the **first 3 and last 3** denoising steps run **W8A16** (dequantized FP8 weights, `torch.nn.functional.linear`), and the middle steps keep native **W8A8**. Precision is chosen once per scheduler step so CFG cond/uncond calls match. Distilled 4-step and Super-T2I FP8 checkpoints omit that policy (`runtime` is `null`) and stay native W8A8 on every step.
+Official ModelOpt FP8 checkpoints live on the Hub `fp8` revision (for example [`nvidia/Cosmos3-Nano`](https://huggingface.co/nvidia/Cosmos3-Nano) with `revision="fp8"`).
 
-Loading those weights still uses [`NVIDIAModelOptConfig`](../../quantization/modelopt) as in the ModelOpt guide. After restore, mixed precision is **on by default** when the checkpoint declares the policy — you do not pass a format flag:
+All of these checkpoints are quantized the same way. **W8A8** uses 8-bit weights and 8-bit activations (the restored ModelOpt GEMM). **W8A16** reuses those same 8-bit weights but skips activation quantization: the FP8 weight is dequantized and a standard linear runs on BF16/FP16/FP32 activations.
+
+Running W8A8 on every step can produce visible flickering in multi-step video generation. The video Nano / Super / Super-I2V FP8 checkpoints therefore declare a schedule in `transformer/config.json`: **W8A16 on the first 3 and last 3 steps**, **W8A8 in the middle**. Diffusers reads those counts from the checkpoint rather than hardcoding them. Precision is chosen once per scheduler step so classifier-free guidance cond/uncond calls match.
+
+Image generation and few-step distilled checkpoints do not show that flickering, so Super-T2I and the distilled 4-step FP8 repos declare no schedule and stay W8A8 on every step. The schedule is also **ModelOpt FP8 only**: other quantization backends (for example TorchAO) keep their native forwards.
+
+Loading follows the [ModelOpt guide](../../quantization/modelopt): call `enable_huggingface_checkpointing()` so the serialized quantizers are restored. The `fp8` revision already carries its quantization config, so you do not pass one, and mixed precision follows the checkpoint automatically:
 
 ```python
 import torch
 from diffusers import Cosmos3OmniPipeline
+from modelopt.torch.opt import enable_huggingface_checkpointing
+
+enable_huggingface_checkpointing()
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano",
@@ -59,16 +68,10 @@ pipe = Cosmos3OmniPipeline.from_pretrained(
     dtype=torch.bfloat16,
     device_map="cuda",
 )
-result = pipe(prompt="...", num_inference_steps=35)  # 3×W8A16 / 29×W8A8 / 3×W8A16
+result = pipe(prompt="...", num_inference_steps=35)
 ```
 
-Call-site overrides:
-
-- `mixed_precision_format="none"` disables the schedule only (quantized W8A8 remains).
-- `mixed_precision_format="fp8"` forces the first/last-N schedule even if the checkpoint has no policy.
-- `mixed_precision_first_steps` / `mixed_precision_last_steps` / `mixed_precision_reasoner_policy` override the checkpoint counts and reasoner path (`"high_precision"` = W8A16, `"base_precision"` = native W8A8).
-
-These kwargs are not Accelerate `mixed_precision`. They only select W8A8 vs W8A16 on Cosmos3 ModelOpt linears.
+Pass `mixed_precision_format="none"` to keep every step on native W8A8.
 
 ## Prompt upsampling
 

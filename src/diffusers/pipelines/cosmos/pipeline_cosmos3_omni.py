@@ -1446,19 +1446,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 generation and the video guardrail on the decoded frames. Set to `False` to skip both for this call;
                 the checker remains loaded for subsequent calls.
             mixed_precision_format (`str`, *optional*):
-                `"fp8"` forces mixed W8A8/W8A16 denoising. `"none"` disables it even if the checkpoint declares a
-                policy. The default `None` reads `quantization_config.runtime.diffusion_step_policy` from the
-                transformer: Nano/Super/Super-I2V FP8 enable first/last-3 W8A16 automatically; distilled FP8
-                checkpoints omit that policy and stay native W8A8.
+                Follow the ModelOpt FP8 checkpoint schedule when `None`. `"none"` leaves the native quantized
+                forward unchanged. `"fp8"` enables first/last-N W8A16 only on serialized ModelOpt FP8
+                transformers; other backends such as TorchAO are left unchanged.
             mixed_precision_first_steps (`int`, *optional*):
-                Override the leading W8A16 step count from the checkpoint policy. Unused when mixed precision is
-                disabled.
+                Optional leading W8A16 step count. Ignored when mixed precision is off.
             mixed_precision_last_steps (`int`, *optional*):
-                Override the trailing W8A16 step count. Middle steps keep native W8A8. Precision is selected once
-                per scheduler step so CFG cond/uncond calls match.
+                Optional trailing W8A16 step count.
             mixed_precision_reasoner_policy (`str`, *optional*):
-                Override reasoner precision: W8A16 (`"high_precision"`) or checkpoint-native W8A8
-                (`"base_precision"`). Defaults to the checkpoint policy (`reasoner: a16`).
+                Optional reasoner path: `"high_precision"` (W8A16) or `"base_precision"` (native W8A8).
 
         Returns:
             [`Cosmos3OmniPipelineOutput`] or `tuple`:

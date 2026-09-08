@@ -472,25 +472,25 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 name="mixed_precision_format",
                 type_hint=str,
                 default=None,
-                description="None reads the checkpoint diffusion_step_policy; 'fp8' forces mixed precision; 'none' disables it.",
+                description="None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is ModelOpt FP8 only.",
             ),
             InputParam(
                 name="mixed_precision_first_steps",
                 type_hint=int,
                 default=None,
-                description="Optional override for the leading W8A16 step count.",
+                description="Optional leading W8A16 step count.",
             ),
             InputParam(
                 name="mixed_precision_last_steps",
                 type_hint=int,
                 default=None,
-                description="Optional override for the trailing W8A16 step count.",
+                description="Optional trailing W8A16 step count.",
             ),
             InputParam(
                 name="mixed_precision_reasoner_policy",
                 type_hint=str,
                 default=None,
-                description="Optional override: W8A16 ('high_precision') or native W8A8 ('base_precision') for the reasoner path.",
+                description="Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).",
             ),
         ]
 

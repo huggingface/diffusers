@@ -22,6 +22,9 @@ vLLM-Omni (vllm-project/vllm-omni#6560).
 Schedule defaults come from ``quantization_config.runtime.diffusion_step_policy``
 in the transformer's ``config.json`` (official Hub ``revision=fp8``). Distilled
 checkpoints omit that policy and stay on native W8A8.
+
+Other quantization backends (TorchAO, bitsandbytes, …) are left unchanged: mixed
+precision resolves to a no-op and does not wrap their linears.
 """
 
 from __future__ import annotations
@@ -33,6 +36,10 @@ from typing import Any, Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from ...utils import logging
+
+logger = logging.get_logger(__name__)
 
 
 MixedPrecisionFormat = Literal["none", "fp8"]
@@ -117,8 +124,10 @@ class Cosmos3MixedPrecisionConfig:
         precision only when the transformer declares ``diffusion_step_policy``.
         Distilled FP8 checkpoints omit that field and stay native W8A8. Pass
         ``"fp8"`` to force the schedule, or ``"none"`` to disable it.
+
+        Non-ModelOpt backends (TorchAO and others) always resolve to ``format="none"``.
         """
-        parsed = _parsed_checkpoint_policy(transformer, quantization_config)
+        quant_config = _maybe_mapping(quantization_config) or quantization_config_from_module(transformer)
         format_override = _optional_lower(mixed_precision_format)
         if format_override is not None and format_override not in MIXED_PRECISION_FORMATS:
             raise ValueError(
@@ -137,6 +146,16 @@ class Cosmos3MixedPrecisionConfig:
         if format_override == "none":
             return cls(format="none")
 
+        if not _is_modelopt_fp8_backend(transformer, quant_config):
+            if format_override == "fp8":
+                backend = _quantization_method(transformer, quant_config) or "unquantized"
+                logger.warning(
+                    "Cosmos3 mixed W8A8/W8A16 applies only to serialized ModelOpt FP8 checkpoints; "
+                    f"got backend={backend!r}. Leaving the native quantized forward unchanged."
+                )
+            return cls(format="none")
+
+        parsed = _parsed_checkpoint_policy(transformer, quant_config)
         if parsed is None and format_override != "fp8":
             return cls(format="none")
 
@@ -446,6 +465,47 @@ def _on_disk_quantization_config(module: nn.Module) -> dict[str, Any] | None:
     if isinstance(raw, dict):
         return _maybe_mapping(raw.get("quantization_config"))
     return None
+
+
+def _as_quant_method_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    value = getattr(value, "value", value)
+    text = str(value).strip().lower()
+    return text or None
+
+
+def _quantization_method(transformer: nn.Module | None, quantization_config: dict[str, Any] | None) -> str | None:
+    """Return the Diffusers ``quant_method`` string when a backend is declared."""
+    if transformer is not None:
+        hf_quantizer = getattr(transformer, "hf_quantizer", None)
+        if hf_quantizer is not None:
+            quantizer_config = getattr(hf_quantizer, "quantization_config", None)
+            method = _as_quant_method_str(getattr(quantizer_config, "quant_method", None))
+            if method is not None:
+                return method
+    if quantization_config:
+        method = _as_quant_method_str(quantization_config.get("quant_method"))
+        if method is not None:
+            return method
+    return None
+
+
+def _is_modelopt_fp8_backend(transformer: nn.Module | None, quantization_config: dict[str, Any] | None) -> bool:
+    """True only for serialized ModelOpt FP8. TorchAO and other backends are a no-op."""
+    method = _quantization_method(transformer, quantization_config)
+    if method is not None and method != "modelopt":
+        return False
+    algo = ""
+    if quantization_config:
+        algo = str(quantization_config.get("quant_algo") or quantization_config.get("quant_type") or "").upper()
+        if algo and "FP8" not in algo:
+            return False
+    if method == "modelopt" or "FP8" in algo:
+        return True
+    if transformer is None:
+        return False
+    return any(_is_modelopt_fp8_linear(layer) for _, layer in transformer.named_modules())
 
 
 def _parsed_checkpoint_policy(
