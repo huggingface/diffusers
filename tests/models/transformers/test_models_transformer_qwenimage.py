@@ -24,7 +24,13 @@ from diffusers import QwenImageTransformer2DModel
 from diffusers.models.transformers.transformer_qwenimage import compute_text_seq_len_from_mask
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
+from ...testing_utils import (
+    enable_full_determinism,
+    is_tensor_parallel,
+    require_torch_neuron,
+    require_torch_tpu,
+    torch_device,
+)
 from ..testing_utils import (
     AttentionBackendTesterMixin,
     AttentionTesterMixin,
@@ -41,6 +47,7 @@ from ..testing_utils import (
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
+from ._tp_worker_launch import TensorParallelTPUTesterMixin
 
 
 enable_full_determinism()
@@ -305,6 +312,32 @@ class TestQwenImageTransformerContextParallelAttnBackends(
 
 class TestQwenImageTransformerTensorParallel(QwenImageTransformerTesterConfig, TensorParallelTesterMixin):
     """Tensor Parallel inference tests for QwenImage Transformer (CUDA/XPU multi-accelerator)."""
+
+
+def make_tpu_tp_spec():
+    """Model spec consumed by the generic TPU TP worker (``_tpu_tp_worker.py``).
+
+    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all QwenImage-specific test data lives in this
+    file while the worker stays model-agnostic. ``QwenImageTransformerTesterConfig``'s default ``num_attention_heads``
+    (4) already divides ``TensorParallelTPUTesterMixin``'s default 4-rank ``WORLD_SIZE``, so no override is needed
+    here (contrast Flux/Flux2, whose shared config defaults to 2 heads and does need one).
+    """
+    config = QwenImageTransformerTesterConfig()
+    return QwenImageTransformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+@is_tensor_parallel
+@require_torch_tpu
+class TestQwenImageTransformerTensorParallelTPU(TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for QwenImage Transformer on TPU.
+
+    TPU TP runs through ``torchrun`` with the ``"tpu_dist"`` distributed backend, so it cannot use the
+    ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker
+    with the QwenImage model spec (``make_tpu_tp_spec``) via ``TensorParallelTPUTesterMixin``; the worker asserts
+    the sharded output matches a single-device reference, and the test checks its exit code.
+    """
+
+    TP_SPEC = "tests.models.transformers.test_models_transformer_qwenimage:make_tpu_tp_spec"
 
 
 def make_neuron_tp_spec():

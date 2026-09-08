@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 
 from diffusers import Flux2Transformer2DModel
@@ -50,7 +49,7 @@ from ..testing_utils import (
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
-from ._tp_worker_launch import run_tp_worker_subprocess
+from ._tp_worker_launch import TensorParallelTPUTesterMixin, run_tp_worker_subprocess
 
 
 enable_full_determinism()
@@ -200,71 +199,20 @@ def make_tpu_tp_spec():
 
 @is_tensor_parallel
 @require_torch_tpu
-class TestFlux2TransformerTensorParallelTPU:
+class TestFlux2TransformerTensorParallelTPU(TensorParallelTPUTesterMixin):
     """Tensor Parallel inference test for Flux2 Transformer on TPU.
 
     TPU TP runs through ``torchrun`` with the ``"tpu_dist"`` distributed backend, so it cannot use the
     ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker with
-    the Flux2 model spec (``make_tpu_tp_spec``); the worker asserts the sharded output matches a single-device
-    reference, and the test checks its exit code.
+    the Flux2 model spec (``make_tpu_tp_spec``) via ``TensorParallelTPUTesterMixin``; the worker asserts the sharded
+    output matches a single-device reference, and the test checks its exit code.
 
-    The worker runs with ``WORLD_SIZE`` ranks, and ``make_tpu_tp_spec`` overrides ``num_attention_heads`` to 4 so
-    that TP degree divides the head count. Unlike the CUDA/XPU ``TensorParallelTesterMixin``, which hardcodes
-    ``world_size = 2`` to match `Flux2TransformerTesterConfig`'s 2 heads, TPU can't use an arbitrary rank count:
-    `torch_tpu`'s per-generation topology table (``torch_tpu._internal.utils.hardware``) only enumerates
-    whole-pod-slice chip counts (1/4/8 for v6e, for example), not arbitrary sub-slices of a larger single host. A
-    rank count with no matching whole-slice topology has nothing to advertise and the PJRT client never completes
-    its start-session barrier — the test would hang for the barrier's full multi-minute timeout instead of failing.
-    4 is the smallest whole-slice count every current TPU generation defines (see ``_V4_TOPOLOGY`` /
-    ``_V5E_TOPOLOGY`` / ``_V6E_TOPOLOGY`` / ``_V7_TOPOLOGY`` in ``torch_tpu._internal.utils.hardware``).
-    ``skip_if_unsupported`` below still checks the actual host up front and skips fast instead of hanging when it
-    doesn't have exactly that many chips.
-
-    Requires ``TORCH_TPU_TOPOLOGY`` and ``TORCH_TPU_SLICEBUILDER_ADDRESSES`` to be set. Source them via::
-
-        eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
+    ``make_tpu_tp_spec`` overrides ``num_attention_heads`` to 4 so that ``TensorParallelTPUTesterMixin``'s default
+    4-rank ``WORLD_SIZE`` divides the head count — unlike the CUDA/XPU ``TensorParallelTesterMixin``, which hardcodes
+    ``world_size = 2`` to match `Flux2TransformerTesterConfig`'s 2 heads.
     """
 
-    WORLD_SIZE = 4
-    # The worker itself only needs a couple of minutes even from a cold XLA compile; this generously bounds the
-    # subprocess so a real hang (e.g. a barrier timeout this skip failed to catch) fails the test loudly instead of
-    # stalling the run.
-    TIMEOUT_S = 900
-
-    def skip_if_unsupported(self):
-        """Skip unless the host has exactly ``WORLD_SIZE`` TPU chips.
-
-        A topology *string* existing for a chip count (``hardware.get_tpu_topology``) isn't enough to guarantee the
-        PJRT client can actually form that session: a sub-slice of a larger single host (e.g. claiming 2 of a
-        4-chip v6e-4's chips via ``TORCH_TPU_TOPOLOGY``/``TORCH_TPU_SLICEBUILDER_ADDRESSES``) can still fail with a
-        low-level ``START_SESSION`` GRPC error, since the runtime's session setup is tied to the host's actual
-        provisioned slice, not just a topology label. The only combination verified to work is running with exactly
-        as many ranks as the host has chips.
-        """
-        from torch_tpu._internal.utils import hardware
-
-        try:
-            device_count = hardware.get_tpu_device_count()
-        except Exception as e:  # pragma: no cover - defensive, hardware detection is best-effort
-            pytest.skip(f"Could not determine local TPU chip count: {e}")
-            return
-
-        if device_count != self.WORLD_SIZE:
-            pytest.skip(
-                f"This host exposes {device_count} TPU chip(s), but this test requires exactly "
-                f"{self.WORLD_SIZE} (a TPU single-host tensor-parallel job must use all chips on the host; "
-                f"sub-slicing a larger host is not reliably supported by the runtime). Run this test on a host "
-                f"with exactly {self.WORLD_SIZE} TPU chips."
-            )
-
-    def test_tensor_parallel_tpu_inference(self):
-        self.skip_if_unsupported()
-        run_tp_worker_subprocess(
-            "_tpu_tp_worker.py",
-            "tests.models.transformers.test_models_transformer_flux2:make_tpu_tp_spec",
-            world_size=self.WORLD_SIZE,
-            timeout_s=self.TIMEOUT_S,
-        )
+    TP_SPEC = "tests.models.transformers.test_models_transformer_flux2:make_tpu_tp_spec"
 
 
 @is_tensor_parallel

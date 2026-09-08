@@ -196,6 +196,37 @@ class DeprecatedPipelineMixin:
         super().__init__(*args, **kwargs)
 
 
+def _supports_generic_attn_processor(module: "torch.nn.Module") -> bool:
+    """Whether every attention submodule in `module` accepts the generic, non-SDPA `AttnProcessor`.
+
+    Two independent module shapes are incompatible with the generic `AttnProcessor`:
+
+    1. Newer attention classes (`AttentionModuleMixin` subclasses, e.g. `FluxAttention`, `Flux2Attention`,
+       `WanAttention`) declare a fixed `_available_processors` list of model-specific processor classes; the
+       generic `AttnProcessor` isn't among them, because its `__call__` assumes attributes (e.g. `spatial_norm`)
+       only the legacy `Attention` class defines — forcing it onto one of these raises `AttributeError` on the
+       very next forward pass. Those models' own default processors (`FluxAttnProcessor`, `Flux2AttnProcessor`,
+       `WanAttnProcessor`, ...) are SDPA-based too, so they're not a safe substitute for the crash
+       `enable_tpu_compile` is working around either — the fix is simply to leave this class of module on its own
+       native processor, which compiles under `TpuBackend` without incident.
+    2. Legacy `Attention` modules configured for joint/dual-stream attention (`added_kv_proj_dim` set, e.g.
+       QwenImage's transformer blocks) use a custom processor (e.g. `QwenDoubleStreamAttnProcessor2_0`) that
+       returns a separate `(image, text)` output pair. The generic `AttnProcessor` returns a single tensor, so the
+       caller's unpacking of the paired output raises `ValueError` — this is a functional protocol mismatch, not
+       merely a numerical one, and no `_available_processors` restriction catches it since these aren't
+       `AttentionModuleMixin` subclasses.
+    """
+    from ..models.attention_processor import AttnProcessor
+
+    for submodule in module.modules():
+        available = getattr(submodule, "_available_processors", None)
+        if available is not None and AttnProcessor not in available:
+            return False
+        if getattr(submodule, "added_kv_proj_dim", None) is not None:
+            return False
+    return True
+
+
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     r"""
     Base class for all pipelines.
@@ -2308,7 +2339,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if is_compiled_module(component):
                 logger.warning(f"`enable_tpu_compile`: component '{name}' is already compiled, skipping.")
                 continue
-            if hasattr(component, "set_attn_processor"):
+            if hasattr(component, "set_attn_processor") and _supports_generic_attn_processor(component):
                 component.set_attn_processor(AttnProcessor())
             compile_kwargs.setdefault("backend", TpuBackend())
             compile_kwargs.setdefault("dynamic", False)
