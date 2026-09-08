@@ -191,6 +191,15 @@ Default to taking that option. The only reason not to split is when the variant 
 
 Don't fall back to the standard-pipeline habit of a config flag branching inside a shared block (`ConfigSpec(name="is_distilled")` + `if components.config.is_distilled:`). That keeps both variants' behavior bundled in one blockset — and the input surface is the one thing it can never fix: a repo can override components and config values per checkpoint, but never which inputs the blocks declare, so the distilled checkpoint would still accept `negative_prompt` and silently ignore it.
 
+## Key pattern: One canonical latents form
+
+Two transformations can sit between a VAE and a transformer: normalize/denormalize (the VAE's latent statistics) and pack/unpack (`[B, C, F, H, W]` <-> a token sequence `[B, S, D]`). Each is applied and undone in mirrored pairs, and the core denoise group hands latents back in the same form it received them. So the `latents` a family leaves in the state always has one consistent form that any block (a decoder, a latent upsampler, a second denoise group) can consume, and no block outside the group needs `height`/`width`/`num_frames` just to interpret tokens.
+
+- Pattern 1 (the common one): `encode -> norm -> pack -> denoise -> unpack -> denorm -> decode`. The pack/unpack lives in the core denoise group, either at block level (a prepare-latents step packs, an unpack step such as `Flux2UnpackLatentsStep` closes the group) or inside the transformer's forward.
+- Pattern 2 (packed-space statistics): when the VAE's statistics are defined over the packed channels, norm/denorm can only run on packed tensors, so pack/unpack happens inside the VAE blocks as well: `encode -> pack -> norm -> denoise -> denorm -> unpack -> decode`.
+
+Don't pack inside the denoise group and unpack inside the decoder: that strands packed latents in the state and makes the decoder carry geometry inputs it doesn't otherwise need. `test_latents_output_in_canonical_form` in `tests/modular_pipelines/testing_utils/common.py` pins each family's form through the tester's `expected_latents_shape`.
+
 ## Key pattern: Standalone block reusability
 
 One of the core reason a pipeline is split into blocks at all: each block (text encoder, VAE encoder, prepare-latents, denoise, decoder) must be runnable on its own, and its output must be reusable as the input to a different downstream chain.
