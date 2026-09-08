@@ -145,7 +145,7 @@ def save_joyvideoedit_pipeline(
         text_encoder=None,
         tokenizer=None,
         processor=None,
-        scheduler=FlowMatchEulerDiscreteScheduler(),
+        scheduler=FlowMatchEulerDiscreteScheduler(shift=5.159),
     )
     pipeline.save_pretrained(output_path, safe_serialization=True, max_shard_size="5GB")
 
