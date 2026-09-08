@@ -56,10 +56,15 @@ class BaseModularPipelineTesterConfig:
     # State name of the latents the denoise group hands to the decoder. Chunked families that hand over a list of
     # per-chunk latents (e.g. `latent_chunks`) are checked chunk by chunk.
     latents_output_name = "latents"
-    # The one canonical form this family keeps latents in after the denoise group, for the geometry that
-    # `get_dummy_inputs()` produces: the VAE form (e.g. `(1, 4, 32, 32)`) for pipelines that pack/unpack inside the
-    # denoise group or the transformer, or the channel-packed form for pipelines whose VAE statistics live there.
-    expected_latents_shape = None
+
+    @property
+    def expected_latents_shape(self) -> tuple:
+        raise NotImplementedError(
+            "You need to set the attribute `expected_latents_shape` in the child test class: the one canonical form "
+            "this family keeps latents in after the denoise group, for the geometry `get_dummy_inputs()` produces. "
+            "That is the VAE form (e.g. `(1, 4, 32, 32)`) for pipelines that pack/unpack inside the denoise group or "
+            "the transformer, or the channel-packed form for pipelines whose VAE statistics live there."
+        )
 
     # ==================== Required interface ====================
 
@@ -378,8 +383,6 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         chunks = list(latents) if isinstance(latents, (list, tuple)) else [latents]
         shapes = sorted({tuple(chunk.shape) for chunk in chunks})
 
-        if self.expected_latents_shape is None:
-            pytest.skip(f"{type(self).__name__}: `expected_latents_shape` not declared; latents shape is {shapes}")
         assert shapes == [tuple(self.expected_latents_shape)], (
             f"Latents left in the state have shape {shapes}, expected the canonical "
             f"{tuple(self.expected_latents_shape)}"

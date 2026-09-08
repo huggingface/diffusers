@@ -17,6 +17,7 @@ import random
 
 import numpy as np
 import PIL
+import pytest
 import torch
 
 from diffusers.image_processor import VaeImageProcessor
@@ -47,6 +48,7 @@ FLUX_TEXT2IMAGE_WORKFLOWS = {
         ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
         ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
         ("denoise.denoise", "FluxDenoiseStep"),
+        ("denoise.unpack_latents", "FluxUnpackLatentsStep"),
         ("decode", "FluxDecodeStep"),
     ]
 }
@@ -56,6 +58,7 @@ class FluxModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
+    expected_latents_shape = (1, 1, 8, 8)
 
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_params = frozenset(["prompt"])
@@ -77,6 +80,21 @@ class FluxModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestFluxModularPipelineFast(FluxModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_decode_accepts_packed_latents_with_deprecation(self):
+        # The old packed `[B, S, C]` form is still accepted by the decode step for a deprecation window.
+        inputs = self.get_dummy_inputs()
+        expected = self.get_pipeline().to(torch_device)(**inputs, output=self.output_name)
+
+        blocks = self.pipeline_blocks_class()
+        blocks.sub_blocks["denoise"].sub_blocks.pop("unpack_latents")
+        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components(dtype=torch.float32)
+        pipe.to(torch_device)
+        with pytest.warns(FutureWarning, match="packed latents"):
+            output = pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert torch.equal(output, expected)
+
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
 
@@ -109,6 +127,7 @@ FLUX_IMAGE2IMAGE_WORKFLOWS = {
         ("denoise.before_denoise.prepare_img2img_latents", "FluxImg2ImgPrepareLatentsStep"),
         ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
         ("denoise.denoise", "FluxDenoiseStep"),
+        ("denoise.unpack_latents", "FluxUnpackLatentsStep"),
         ("decode", "FluxDecodeStep"),
     ]
 }
@@ -118,6 +137,7 @@ class FluxImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
+    expected_latents_shape = (1, 1, 8, 8)
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
@@ -193,6 +213,7 @@ FLUX_KONTEXT_WORKFLOWS = {
         ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
         ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
         ("denoise.denoise", "FluxKontextDenoiseStep"),
+        ("denoise.unpack_latents", "FluxUnpackLatentsStep"),
         ("decode", "FluxDecodeStep"),
     ],
     "image_conditioned": [
@@ -206,6 +227,7 @@ FLUX_KONTEXT_WORKFLOWS = {
         ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
         ("denoise.before_denoise.prepare_rope_inputs", "FluxKontextRoPEInputsStep"),
         ("denoise.denoise", "FluxKontextDenoiseStep"),
+        ("denoise.unpack_latents", "FluxUnpackLatentsStep"),
         ("decode", "FluxDecodeStep"),
     ],
 }
@@ -215,6 +237,7 @@ class FluxKontextModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = FluxKontextModularPipeline
     pipeline_blocks_class = FluxKontextAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-kontext-pipe"
+    expected_latents_shape = (1, 1, 8, 8)
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
