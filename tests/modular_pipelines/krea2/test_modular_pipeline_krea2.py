@@ -14,6 +14,8 @@
 # limitations under the License.
 
 
+import copy
+
 import pytest
 import torch
 
@@ -72,7 +74,8 @@ class TestKrea2ModularPipelineFast(Krea2ModularPipelineTesterConfig, ModularPipe
         inputs = self.get_dummy_inputs()
         expected = self.get_pipeline().to(torch_device)(**inputs, output=self.output_name)
 
-        blocks = self.pipeline_blocks_class()
+        # Blocksets can be composed from shared block instances, so pop from a copy.
+        blocks = copy.deepcopy(self.pipeline_blocks_class())
         blocks.sub_blocks["denoise"].sub_blocks.pop("unpack_latents")
         pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
         pipe.load_components(dtype=torch.float32)
