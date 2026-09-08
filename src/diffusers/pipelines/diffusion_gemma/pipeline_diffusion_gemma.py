@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import inspect
 from typing import Any, Callable
 
 import torch
@@ -22,7 +21,7 @@ import torch.nn.functional as F
 from transformers import DynamicCache, StaticCache
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...schedulers import BlockRefinementScheduler, DiscreteDDIMScheduler, EntropyBoundScheduler
+from ...schedulers import DiscreteDDIMScheduler, EntropyBoundScheduler, UniformRefinementScheduler
 from ...utils import logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import DiffusionGemmaPipelineOutput
@@ -36,12 +35,12 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import torch
         >>> from transformers import AutoProcessor, DiffusionGemmaForBlockDiffusion
-        >>> from diffusers import BlockRefinementScheduler, DiffusionGemmaPipeline
+        >>> from diffusers import DiffusionGemmaPipeline, UniformRefinementScheduler
 
         >>> model_id = "google/diffusiongemma-26B-A4B-it"
         >>> model = DiffusionGemmaForBlockDiffusion.from_pretrained(model_id, dtype=torch.bfloat16, device_map="auto")
         >>> processor = AutoProcessor.from_pretrained(model_id)
-        >>> scheduler = BlockRefinementScheduler()
+        >>> scheduler = UniformRefinementScheduler()
 
         >>> pipe = DiffusionGemmaPipeline(model=model, scheduler=scheduler, processor=processor)
         >>> output = pipe(prompt="Why is the sky blue?", gen_length=256)
@@ -58,7 +57,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
     previously generated blocks) into a KV cache, and a bidirectional decoder denoises a fixed-size "canvas" of
     `canvas_length` tokens by cross-attending to that cache. Generation alternates an outer autoregressive loop over
     canvases with an inner denoising loop, where each step samples candidate tokens, commits the most confident ones
-    via [`BlockRefinementScheduler`] (uniform corruption mode, `mask_token_id=None`), and renoises the rest.
+    via [`UniformRefinementScheduler`], and renoises the rest.
 
     The model is expected to be a `DiffusionGemmaForBlockDiffusion` instance exposing `forward(input_ids,
     decoder_input_ids=..., self_conditioning_logits=..., ...)` and returning logits of shape `[batch, canvas_length,
@@ -67,8 +66,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
     Args:
         model ([`~transformers.DiffusionGemmaForBlockDiffusion`]):
             The block-diffusion denoiser (causal encoder + bidirectional decoder with tied weights).
-        scheduler ([`BlockRefinementScheduler`], [`DiscreteDDIMScheduler`] or [`EntropyBoundScheduler`]):
-            The sampler that commits and renoises canvas tokens each denoising step.
+        scheduler ([`UniformRefinementScheduler`], [`DiscreteDDIMScheduler`] or [`EntropyBoundScheduler`]):
+            The sampler that commits and renoises canvas tokens each denoising step. Any discrete scheduler works: the
+            loop only uses `set_timesteps`, `timesteps` and `step`.
         processor ([`~transformers.ProcessorMixin`]):
             The processor used to apply the chat template and decode the generated tokens.
     """
@@ -78,7 +78,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
     def __init__(
         self,
         model: Any,
-        scheduler: BlockRefinementScheduler | DiscreteDDIMScheduler | EntropyBoundScheduler,
+        scheduler: UniformRefinementScheduler | DiscreteDDIMScheduler | EntropyBoundScheduler,
         processor: Any,
     ):
         super().__init__()
@@ -170,7 +170,6 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         add_generation_prompt: bool = True,
         gen_length: int = 256,
         num_inference_steps: int = 48,
-        temperature: float = 0.0,
         cache_implementation: str | None = None,
         eos_early_stop: bool = True,
         eos_token_id: int | None = None,
@@ -203,12 +202,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             gen_length (`int`, defaults to `256`):
                 Number of tokens to generate, rounded up to a multiple of the model's `canvas_length`.
             num_inference_steps (`int`, defaults to `48`):
-                Number of denoising steps per canvas.
-            temperature (`float`, defaults to `0.0`):
-                Sampling temperature for `DiscreteDDIMScheduler`/`BlockRefinementScheduler` (`0.0` is greedy);
-                `EntropyBoundScheduler` ignores it and anneals its own temperature. Other sampling knobs (e.g. `top_k`,
-                `threshold`, `t_min`/`t_max`) are scheduler config; set them on the scheduler, e.g. `pipe.scheduler =
-                BlockRefinementScheduler.from_config(pipe.scheduler.config, top_k=...)`.
+                Number of denoising steps per canvas. Sampling knobs (`temperature`, `threshold`, `t_min`/`t_max`, ...)
+                belong to the scheduler, e.g. `pipe.scheduler =
+                UniformRefinementScheduler.from_config(pipe.scheduler.config, temperature=0.7)`.
             cache_implementation (`str`, *optional*):
                 Set to `"static"` to prefill the encoder once per block into a persistent `StaticCache` and run the
                 decoder against it with fixed shapes, instead of re-encoding the full sequence on every step. The fixed
@@ -290,13 +286,6 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             corrected_steps = 0
             predictor_steps = num_inference_steps
 
-        # Only `BlockRefinementScheduler` takes a per-call `block_length`; the DiscreteDDIM/EntropyBound schedulers do
-        # not, so we pass scheduler-specific kwargs by signature.
-        set_timesteps_kwargs = {"device": device}
-        if "block_length" in inspect.signature(self.scheduler.set_timesteps).parameters:
-            set_timesteps_kwargs["block_length"] = canvas_length
-        self.scheduler.set_timesteps(predictor_steps, **set_timesteps_kwargs)
-        step_param_names = set(inspect.signature(self.scheduler.step).parameters)
         self._num_timesteps = predictor_steps * num_canvases
 
         cur_input_ids = prompt_ids
@@ -343,7 +332,12 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 decoder_attention_mask=decoder_attention_mask,
             )
 
-            # Start from a fully random canvas and denoise it; the scheduler resets its committed state at step 0.
+            # Every canvas is a fresh denoising problem: `step_index` advances as the loop runs, so the schedule
+            # has to be rebuilt here rather than once before the outer loop. This also clears whatever per-canvas
+            # state the scheduler keeps, which nothing else would reset.
+            self.scheduler.set_timesteps(predictor_steps, device=device)
+
+            # Start from a fully random canvas and denoise it.
             canvas = torch.randint(
                 0, text_config.vocab_size, (batch_size, canvas_length), device=device, generator=generator
             )
@@ -356,11 +350,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             )
 
             # Denoise the predictor steps of this canvas; the first `corrected_steps` also run corrector sweeps.
-            for step_idx in range(predictor_steps):
+            for i, t in enumerate(self.scheduler.timesteps):
                 if corrected_steps:
-                    progress_bar.set_description(
-                        "denoising (corrector)" if step_idx < corrected_steps else "denoising"
-                    )
+                    progress_bar.set_description("denoising (corrector)" if i < corrected_steps else "denoising")
                 # Mark a fresh step and clone the logits so a cudagraph-compiled decoder (`mode="reduce-overhead"`)
                 # does not overwrite the tensors that self-conditioning and the scheduler read next. Both are no-ops
                 # when the decoder is not cudagraph-compiled.
@@ -373,13 +365,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                     decoder_position_ids=decoder_position_ids,
                 ).logits.clone()
 
-                # Pass only the kwargs the chosen scheduler accepts, so any of the schedulers can drive the pipeline.
-                # Sampling knobs (temperature annealing, thresholds, top-k, ...) live on the scheduler config, not here.
-                step_kwargs = {"mask_token_id": None, "temperature": temperature, "generator": generator}
-                step_kwargs = {k: v for k, v in step_kwargs.items() if k in step_param_names}
-                scheduler_output = self.scheduler.step(
-                    model_output=logits, timestep=step_idx, sample=canvas, return_dict=True, **step_kwargs
-                )
+                scheduler_output = self.scheduler.step(logits, t, canvas, generator=generator, return_dict=True)
                 canvas = scheduler_output.prev_sample
                 # Self-condition on the logits the scheduler sampled from: temperature-shaped for the reference
                 # EntropyBound sampler, the raw denoiser logits for the others.
@@ -389,7 +375,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 # Predictor-corrector (https://huggingface.co/papers/2605.22765): a scheduler exposing `corrector_steps`
                 # + `step_correct` refines the canvas with extra Gibbs sweeps on the first `corrected_steps` predictor
                 # steps (the budget split computed above). Each sweep needs fresh logits on the updated canvas.
-                if step_idx < corrected_steps:
+                if i < corrected_steps:
                     for _ in range(corrector_steps):
                         torch.compiler.cudagraph_mark_step_begin()
                         corrector_logits = self.model(
@@ -400,14 +386,15 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                             decoder_position_ids=decoder_position_ids,
                         ).logits.clone()
                         canvas = self.scheduler.step_correct(
-                            model_output=corrector_logits, timestep=step_idx, sample=canvas, generator=generator
+                            model_output=corrector_logits, timestep=t, sample=canvas, generator=generator
                         ).prev_sample
 
                 if callback_on_step_end is not None:
+                    available = {"canvas": canvas, "logits": logits}
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, global_step, step_idx, callback_kwargs)
+                        callback_kwargs[k] = available[k]
+                    callback_outputs = callback_on_step_end(self, global_step, t, callback_kwargs)
                     canvas = callback_outputs.pop("canvas", canvas)
                 global_step += 1
                 progress_bar.update()

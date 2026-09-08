@@ -800,6 +800,8 @@
       title: ScoreSdeVeScheduler
     - local: api/schedulers/tcd
       title: TCDScheduler
+    - local: api/schedulers/uniform_refinement
+      title: UniformRefinementScheduler
     - local: api/schedulers/unipc
       title: UniPCMultistepScheduler
     - local: api/schedulers/vq_diffusion
