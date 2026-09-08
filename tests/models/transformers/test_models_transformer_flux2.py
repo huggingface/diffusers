@@ -13,10 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import subprocess
-import sys
-
 import pytest
 import torch
 
@@ -54,6 +50,7 @@ from ..testing_utils import (
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
+from ._tp_worker_launch import run_tp_worker_subprocess
 
 
 enable_full_determinism()
@@ -262,20 +259,11 @@ class TestFlux2TransformerTensorParallelTPU:
 
     def test_tensor_parallel_tpu_inference(self):
         self.skip_if_unsupported()
-
-        worker = os.path.join(os.path.dirname(__file__), "_tpu_tp_worker.py")
-        spec = "tests.models.transformers.test_models_transformer_flux2:make_tpu_tp_spec"
-        cmd = [sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={self.WORLD_SIZE}", worker, spec]
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=self.TIMEOUT_S)
-        except subprocess.TimeoutExpired as e:
-            raise AssertionError(
-                f"TPU tensor-parallel worker did not finish within {self.TIMEOUT_S}s (likely stuck on PJRT "
-                f"client start-session barrier).\n--- stdout ---\n{e.stdout}\n--- stderr ---\n{e.stderr}"
-            ) from e
-        assert result.returncode == 0, (
-            f"TPU tensor-parallel worker failed (exit {result.returncode}).\n"
-            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        run_tp_worker_subprocess(
+            "_tpu_tp_worker.py",
+            "tests.models.transformers.test_models_transformer_flux2:make_tpu_tp_spec",
+            world_size=self.WORLD_SIZE,
+            timeout_s=self.TIMEOUT_S,
         )
 
 
@@ -290,14 +278,13 @@ class TestFlux2TransformerTensorParallelNeuron:
     reference, and the test checks its exit code.
     """
 
+    WORLD_SIZE = 2
+
     def test_tensor_parallel_neuron_inference(self):
-        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
-        spec = "tests.models.transformers.test_models_transformer_flux2:make_neuron_tp_spec"
-        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        assert result.returncode == 0, (
-            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
-            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        run_tp_worker_subprocess(
+            "_neuron_tp_worker.py",
+            "tests.models.transformers.test_models_transformer_flux2:make_neuron_tp_spec",
+            world_size=self.WORLD_SIZE,
         )
 
 
