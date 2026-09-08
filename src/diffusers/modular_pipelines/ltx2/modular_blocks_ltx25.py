@@ -1611,11 +1611,11 @@ class LTX25TwoStageBlocks(SequentialPipelineBlocks):
     pass that refines at the upsampled resolution, with the diffusion decoder at the end -- so the output is twice the
     size asked for, as with the standard pipelines. `stage_1` is the same auto denoise step as `LTX25AutoBlocks`;
     `stage_2` selects the workflow's second-pass group, which re-noises the upsampled latents on `stage_2_sigmas`.
-    Image and frame conditions are re-encoded at the upsampled resolution ahead of the second pass, as the standard
-    pipelines do on their second call. The text conditioning is expanded by `num_videos_per_prompt` once, by the
-    `input` step, so `stage_1` / `upsample` / `stage_2` / `decode` can each be popped and run as their own pipeline:
-    `stage_1` followed by `decode` previews the first pass, and popping `stage_1` and `upsample` leaves a standalone
-    second pass that takes `latents` / `audio_latents`.
+    Image and frame conditions are re-encoded at the upsampled resolution ahead of the second pass. The text
+    conditioning is expanded by `num_videos_per_prompt` once, by the `input` step, so `stage_1` / `upsample` /
+    `stage_2` / `decode` can each be popped and run as their own pipeline: `stage_1` followed by `decode` previews the
+    first pass, and popping `stage_1` and `upsample` leaves a standalone second pass that takes `latents` /
+    `audio_latents`.
 
       Supported workflows:
         - `text2video`: requires `prompt`
@@ -1739,6 +1739,10 @@ class LTX25TwoStageBlocks(SequentialPipelineBlocks):
         LTX2TextInputStep,
         LTX25AutoCoreDenoiseStep,
         LTX25UpsampleStep,
+        # Running the encoders again re-encodes the image / frame conditions at the upsampled resolution for the
+        # second pass. This is not what the standard `LTX2ImageToVideoPipeline` does on a `latents=` call (it keeps
+        # the upsampled first-frame latent and never touches `image`), but it matches the official two-stage recipe:
+        # https://github.com/Lightricks/LTX-2/blob/main/packages/ltx-pipelines/src/ltx_pipelines/ti2vid_two_stages.py
         LTX25AutoVaeEncoderStep,
         LTX25AutoConditionEncoderStep,
         LTX25AutoStage2CoreDenoiseStep,
@@ -1775,7 +1779,7 @@ class LTX25TwoStageBlocks(SequentialPipelineBlocks):
             "output is twice the size asked for, as with the standard pipelines. `stage_1` is the same auto denoise "
             "step as `LTX25AutoBlocks`; `stage_2` selects the workflow's second-pass group, which re-noises the "
             "upsampled latents on `stage_2_sigmas`. Image and frame conditions are re-encoded at the upsampled "
-            "resolution ahead of the second pass, as the standard pipelines do on their second call. The text "
+            "resolution ahead of the second pass. The text "
             "conditioning is expanded by `num_videos_per_prompt` once, by the `input` step, so `stage_1` / "
             "`upsample` / `stage_2` / `decode` can each be popped and run as their own pipeline: `stage_1` followed "
             "by `decode` previews the first pass, and popping `stage_1` and `upsample` leaves a standalone second "
