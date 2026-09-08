@@ -31,7 +31,7 @@ from diffusers import ModularPipeline
 
 pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-Music3")
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 lyrics = """[verse]
 Morning light filtering through the pine
@@ -70,7 +70,7 @@ from diffusers import ComponentsManager, ModularPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 
 manager = ComponentsManager()
-manager.enable_auto_cpu_offload(device="cuda")
+manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-Music3", components_manager=manager)
 pipe.load_components(dtype=torch.bfloat16)
 

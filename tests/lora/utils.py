@@ -35,12 +35,10 @@ from ..testing_utils import (
     CaptureLogger,
     check_if_dicts_are_equal,
     floats_tensor,
-    is_torch_version,
     require_peft_backend,
     require_peft_version_greater,
     require_torch_accelerator,
     require_transformers_version_greater,
-    skip_mps,
     torch_device,
 )
 
@@ -1333,12 +1331,6 @@ class PeftLoraLoaderMixinTests:
             "output with no lora and output with lora disabled should give same results",
         )
 
-    @skip_mps
-    @pytest.mark.xfail(
-        condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
-        reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
-        strict=False,
-    )
     def test_get_adapters(self):
         """
         Tests a simple usecase where we attach multiple adapters and check if the results
@@ -1693,16 +1685,6 @@ class PeftLoraLoaderMixinTests:
                 "Loading from saved checkpoints should give same results as set_adapters().",
             )
 
-    @pytest.mark.xfail(
-        condition=torch_device == "mps",
-        reason="MPS does not support float8 casting.",
-        strict=True,
-    )
-    @pytest.mark.xfail(
-        condition=torch_device == "mps",
-        reason="MPS does not support float8 casting.",
-        strict=True,
-    )
     @parameterized.expand([4, 8, 16])
     def test_lora_adapter_metadata_is_loaded_correctly(self, lora_alpha):
         components, text_lora_config, denoiser_lora_config = self.get_dummy_components(lora_alpha=lora_alpha)

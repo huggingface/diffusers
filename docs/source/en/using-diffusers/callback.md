@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 A callback is a function that modifies [`DiffusionPipeline`] behavior and it is executed at the end of a denoising step. The changes are propagated to subsequent steps in the denoising process. It is useful for adjusting pipeline attributes or tensor variables to support new features without rewriting the underlying pipeline code.
 
-Diffusers provides several callbacks in the pipeline [overview](../api/pipelines/overview#callbacks).
+Diffusers provides several callbacks in the pipeline [overview](../api/pipelines/overview#diffusers.callbacks.PipelineCallback).
 
 To enable a callback, configure when the callback is executed after a certain number of denoising steps with one of the following arguments.
 
@@ -37,7 +37,7 @@ callback = SDXLCFGCutoffCallback(cutoff_step_ratio=0.4)
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, use_karras_sigmas=True)
 
@@ -124,7 +124,7 @@ from diffusers import AutoPipelineForText2Image
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 image = pipeline(

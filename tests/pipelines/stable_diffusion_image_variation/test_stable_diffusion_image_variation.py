@@ -15,9 +15,9 @@
 
 import gc
 import random
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModelWithProjection
@@ -31,6 +31,7 @@ from diffusers import (
 )
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -46,21 +47,21 @@ from ...testing_utils import (
     torch_device,
 )
 from ..pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class StableDiffusionImageVariationPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
-):
+class StableDiffusionImageVariationPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionImageVariationPipeline
-    params = IMAGE_VARIATION_PARAMS
-    batch_params = IMAGE_VARIATION_BATCH_PARAMS
-    image_params = frozenset([])
-    # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
-    image_latents_params = frozenset([])
+    required_input_params_in_call_signature = IMAGE_VARIATION_PARAMS
+    batch_input_params = IMAGE_VARIATION_BATCH_PARAMS
+    output_shape = (3, 64, 64)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -98,7 +99,7 @@ class StableDiffusionImageVariationPipelineFastTests(
         image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
         feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
-        components = {
+        return {
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
@@ -106,75 +107,73 @@ class StableDiffusionImageVariationPipelineFastTests(
             "feature_extractor": feature_extractor,
             "safety_checker": None,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed))
-        image = image.cpu().permute(0, 2, 3, 1)[0]
+    def get_dummy_inputs(self):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0))
+        image = image.permute(0, 2, 3, 1)[0]
         image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+        return {
             "image": image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestStableDiffusionImageVariationPipeline(
+    StableDiffusionImageVariationPipelineTesterConfig, PipelineTesterMixin
+):
     def test_stable_diffusion_img_variation_default_case(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionImageVariationPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
+        image_slice = image[0, -1, -3:, -3:]
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5157, 0.5653, 0.4707, 0.4792, 0.5563, 0.4569, 0.5020, 0.4858, 0.4940])
+        assert image.shape == (1, *self.output_shape)
+        expected_slice = torch.tensor([0.5157, 0.5653, 0.4707, 0.4792, 0.5563, 0.4569, 0.5020, 0.4858, 0.4940])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_stable_diffusion_img_variation_multiple_images(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionImageVariationPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["image"] = 2 * [inputs["image"]]
         output = sd_pipe(**inputs)
 
         image = output.images
 
-        image_slice = image[-1, -3:, -3:, -1]
+        image_slice = image[-1, -1, -3:, -3:]
 
-        assert image.shape == (2, 64, 64, 3)
-        expected_slice = np.array([0.6749, 0.5424, 0.5692, 0.5694, 0.6228, 0.6268, 0.5516, 0.5598, 0.5227])
+        assert image.shape == (2, *self.output_shape)
+        expected_slice = torch.tensor([0.6749, 0.5424, 0.5692, 0.5694, 0.6228, 0.6268, 0.5516, 0.5598, 0.5227])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-3)
 
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=3e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
+
+
+class TestStableDiffusionImageVariationPipelineMemory(
+    StableDiffusionImageVariationPipelineTesterConfig, MemoryTesterMixin
+):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SD image-variation pipeline."""
 
 
 @slow
 @require_torch_accelerator
-class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestStableDiffusionImageVariationPipelineSlow:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -281,14 +280,12 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
 
 @nightly
 @require_torch_accelerator
-class StableDiffusionImageVariationPipelineNightlyTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestStableDiffusionImageVariationPipelineNightly:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

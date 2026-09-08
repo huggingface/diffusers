@@ -21,12 +21,12 @@ import torch
 from diffusers.loaders import IPAdapterMixin
 
 from ...testing_utils import assert_tensors_close, is_ip_adapter, torch_device
-from ..testing_utils.common import BasePipelineOutputMixin
+from .common import BasePipelineOutputMixin
 
 
 @is_ip_adapter
 class IPAdapterTesterMixin(BasePipelineOutputMixin):
-    """IP-Adapter tests shared by the Stable Diffusion pipelines in this directory.
+    """IP-Adapter tests for UNet pipelines that load adapters through the standard `IPAdapterMixin` API.
 
     Compose it with a `BasePipelineTesterConfig` subclass in its own test class, separate from the
     `PipelineTesterMixin` one. Pipelines whose IP-Adapter API differs (Flux, for example) keep their tests in

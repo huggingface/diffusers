@@ -80,9 +80,7 @@ def repeat_tensor_to_batch_size(
     elif input_tensor.shape[0] == batch_size:
         repeat_by = num_videos_per_prompt
     else:
-        raise ValueError(
-            f"`{input_name}` must have have batch size 1 or {batch_size}, but got {input_tensor.shape[0]}"
-        )
+        raise ValueError(f"`{input_name}` must have batch size 1 or {batch_size}, but got {input_tensor.shape[0]}")
 
     # expand the tensor to match the batch_size * num_videos_per_prompt
     input_tensor = input_tensor.repeat_interleave(repeat_by, dim=0)
@@ -399,6 +397,51 @@ class WanAdditionalInputsStep(ModularPipelineBlocks):
             )
 
             setattr(block_state, input_name, input_tensor)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanVaceAdditionalInputsStep(ModularPipelineBlocks):
+    model_name = "wan-vace"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Input processing step that extends `num_frames` with the reference image frames so that the initial "
+            "noise latents match the frame dimension of the vace conditioning latents.\n\n"
+            "This block should be placed after the encoder steps and the text input step."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="num_videos_per_prompt", default=1),
+            InputParam(name="batch_size", required=True),
+            InputParam(name="num_frames", type_hint=int),
+            InputParam(
+                name="num_reference_images",
+                type_hint=int,
+                default=0,
+                description="Number of reference images prepended on the frame dimension of the conditioning latents. Can be generated in vace_encoder step.",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(block_state):
+        if block_state.batch_size != 1:
+            raise ValueError("Passing a list of prompts is not yet supported. This may be supported in the future.")
+        if block_state.num_videos_per_prompt != 1:
+            raise ValueError(
+                "Generating multiple videos per prompt is not yet supported. This may be supported in the future."
+            )
+
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(block_state)
+
+        num_frames = block_state.num_frames or components.default_num_frames
+        block_state.num_frames = num_frames + block_state.num_reference_images * components.vae_scale_factor_temporal
 
         self.set_block_state(state, block_state)
         return components, state

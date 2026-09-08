@@ -217,7 +217,7 @@ with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=Fals
         num_inference_steps=50,
         guidance_scale=4.5,
         num_videos_per_prompt=1,
-        generator=torch.Generator(device="cuda").manual_seed(0),
+        generator=torch.Generator(device="cuda").manual_seed(0),  # or "mps", "xpu", "cpu"
         max_sequence_length=256,
         output_type="pil",
     ).frames[0]
@@ -257,7 +257,7 @@ with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=Fals
         num_inference_steps=50,
         guidance_scale=4.5,
         num_videos_per_prompt=1,
-        generator=torch.Generator(device="cuda").manual_seed(0),
+        generator=torch.Generator(device="cuda").manual_seed(0),  # or "mps", "xpu", "cpu"
         max_sequence_length=256,
         output_type="pil",
     ).frames[0]

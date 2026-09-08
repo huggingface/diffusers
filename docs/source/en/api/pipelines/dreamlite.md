@@ -45,7 +45,7 @@ import torch
 from diffusers import DreamLitePipeline
 
 pipe = DreamLitePipeline.from_pretrained("carlofkl/DreamLite-base", revision="diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(
     prompt="a dog running on the grass",
@@ -69,7 +69,7 @@ from diffusers import DreamLitePipeline
 from diffusers.utils import load_image
 
 pipe = DreamLitePipeline.from_pretrained("carlofkl/DreamLite-base", revision="diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 source = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
 
@@ -95,7 +95,7 @@ import torch
 from diffusers import DreamLiteMobilePipeline
 
 pipe = DreamLiteMobilePipeline.from_pretrained("carlofkl/DreamLite-mobile", revision="diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(
     prompt="a dog running on the grass",
@@ -115,7 +115,7 @@ from diffusers import DreamLiteMobilePipeline
 from diffusers.utils import load_image
 
 pipe = DreamLiteMobilePipeline.from_pretrained("carlofkl/DreamLite-mobile", revision="diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 source = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
 

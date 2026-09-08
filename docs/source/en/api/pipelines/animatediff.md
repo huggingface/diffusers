@@ -131,7 +131,7 @@ pipe: AnimateDiffControlNetPipeline = AnimateDiffControlNetPipeline.from_pretrai
     motion_adapter=motion_adapter,
     controlnet=controlnet,
     vae=vae,
-).to(device="cuda", dtype=torch.float16)
+).to(device="cuda", dtype=torch.float16)  # or "mps", "xpu", "cpu"
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
 pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora")
 pipe.set_adapters(["lcm-lora"], [0.8])
@@ -211,7 +211,7 @@ motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
 controlnet_id = "guoyww/animatediff-sparsectrl-scribble"
 lora_adapter_id = "guoyww/animatediff-motion-lora-v1-5-3"
 vae_id = "stabilityai/sd-vae-ft-mse"
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 
 motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, dtype=torch.float16).to(device)
 controlnet = SparseControlNetModel.from_pretrained(controlnet_id, dtype=torch.float16).to(device)
@@ -307,7 +307,7 @@ motion_adapter_id = "guoyww/animatediff-motion-adapter-v1-5-3"
 controlnet_id = "guoyww/animatediff-sparsectrl-rgb"
 lora_adapter_id = "guoyww/animatediff-motion-lora-v1-5-3"
 vae_id = "stabilityai/sd-vae-ft-mse"
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 
 motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, dtype=torch.float16).to(device)
 controlnet = SparseControlNetModel.from_pretrained(controlnet_id, dtype=torch.float16).to(device)
@@ -392,7 +392,7 @@ pipe = AnimateDiffSDXLPipeline.from_pretrained(
     scheduler=scheduler,
     dtype=torch.float16,
     variant="fp16",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # enable memory savings
 pipe.vae.enable_slicing()
@@ -549,7 +549,7 @@ pipe = AnimateDiffVideoToVideoControlNetPipeline.from_pretrained(
     motion_adapter=motion_adapter,
     controlnet=controlnet,
     vae=vae,
-).to(device="cuda", dtype=torch.float16)
+).to(device="cuda", dtype=torch.float16)  # or "mps", "xpu", "cpu"
 
 # Enable LCM to speed up inference
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
@@ -761,7 +761,7 @@ from diffusers.utils import export_to_gif
 
 adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
-pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, dtype=torch.float16).to("cuda")
+pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, dtype=torch.float16).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = DDIMScheduler.from_pretrained(
     model_id,
     subfolder="scheduler",
@@ -951,7 +951,7 @@ pipe.set_adapters(["lcm_lora"], [0.8])
 
 # Enable FreeNoise for long prompt generation
 pipe.enable_free_noise(context_length=16, context_stride=4)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Can be a single prompt, or a dictionary with frame timesteps
 prompt = {

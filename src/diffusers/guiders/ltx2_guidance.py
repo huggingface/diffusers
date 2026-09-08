@@ -12,33 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Two single-modality guiders (`LTX2Guidance`, one as the video `guider` and one as the `audio_guider`), driven
-# through the standard guider API (`prepare_inputs_from_block_state`). Wired into `LTX2LoopDenoiser`.
-#
-# The denoiser owns a `guider_input_fields` map (transformer arg -> per-pass block-state attribute names, indexed
-# [cond, uncond, stg, modality]); `guider.prepare_inputs_from_block_state(block_state, guider_input_fields)` yields
-# one identifier-tagged batch per active pass, carrying that pass's encoder tensors. The per-pass model flags
-# (`spatio_temporal_guidance_blocks`, `isolate_modalities`) are pass-identity constants rather than block-state
-# conditioning, so the denoiser sets them on each batch by identifier after preparation. The denoiser runs each
-# pass as its own single-batch forward, then each guider's `forward`/`__call__` combines its modality (CFG + STG +
-# modality-isolation, delta formulation in x0 space).
-#
-# Parity note. Because every pass (cond/uncond included) is a separate single-batch forward -- not the batched
-# `torch.cat([latents] * 2)` the standard `LTX2Pipeline` uses -- this does NOT match the reference bitwise. GPU
-# matmul is not batch-invariant, so `cond` computed alone differs from `cond` inside a batch-of-2: ~1e-6/op in fp32
-# (still within the harness's fp32 tolerance) but ~1e-2/op in bf16, which the CFG delta and sampler amplify to
-# ~10% mean-relative latent divergence. A batched cond+uncond forward would be fp32-bitwise, but it can't drive
-# the guider API per-pass, so this design trades bitwiseness for using the guider API end-to-end. Since
-# fp32-within-tolerance (not bitwise) is the modular-ecosystem norm, gate parity on fp32 and treat bf16 as a
-# close-but-not-bitwise check.
-
 import math
+from typing import TYPE_CHECKING
 
 import torch
 
-from ...configuration_utils import register_to_config
-from ...guiders.guider_utils import BaseGuidance, GuiderOutput, rescale_noise_cfg
-from ..modular_pipeline import BlockState
+from ..configuration_utils import register_to_config
+from .guider_utils import BaseGuidance, GuiderOutput, rescale_noise_cfg
+
+
+if TYPE_CHECKING:
+    from ..modular_pipelines.modular_pipeline import BlockState
 
 
 class LTX2Guidance(BaseGuidance):
@@ -48,10 +32,38 @@ class LTX2Guidance(BaseGuidance):
       - spatio-temporal guidance (STG), an extra pass with a set of transformer blocks perturbed,
       - modality-isolation guidance, an extra pass with A2V/V2A cross-attention disabled.
 
-    Instantiated once per modality (`guider` for video, `audio_guider` for audio) with that modality's scales;
-    that keeps the per-modality scales in independent, fully-defined component configs. The combine is done in
-    whatever space the caller feeds it — the LTX-2 denoiser converts velocity->x0 before calling this and back
-    afterwards, so `forward` operates on x0 predictions.
+    One instance drives one modality, so a multimodal checkpoint carries several: LTX-2.X pairs a video `guider`
+    with an `audio_guider`, each holding its own scales. The final guidance estimate is computed in whatever space
+    the caller feeds it — the LTX-2 denoiser converts velocity->x0 before calling this and back afterwards, so
+    `forward` operates on x0 predictions.
+
+    Unlike `SkipLayerGuidance`, which applies its perturbations with hooks, `LTX2Guidance` expects its non-CFG
+    perturbations to be configurable through model forward arguments (`spatio_temporal_guidance_blocks` and
+    `isolate_modalities` in `LTX2VideoTransformer3DModel`). The calling denoiser block is responsible for setting
+    those per pass identifier; see `LTX2LoopDenoiser` for a usage example.
+
+    Args:
+        guidance_scale (`float`, defaults to `1.0`):
+            CFG scale for this modality. The CFG pass is skipped entirely at `1.0`.
+        stg_scale (`float`, defaults to `0.0`):
+            Spatio-temporal guidance scale for this modality. The STG pass is skipped entirely at `0.0`.
+        modality_scale (`float`, defaults to `1.0`):
+            Modality-isolation guidance scale for this modality. That pass is skipped entirely at `1.0`.
+        guidance_rescale (`float`, defaults to `0.0`):
+            Rescaling factor to prevent overexposure from high guidance scales. Based on [Common Diffusion Noise
+            Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891). Range: 0.0 (no rescaling)
+            to 1.0 (full rescaling).
+        spatio_temporal_guidance_blocks (`list[int]`, *optional*):
+            Transformer blocks to perturb on the STG pass. How the value is consumed is up to the denoiser block:
+            LTX-2's perturbs whole blocks in a single forward that feeds every modality, so it reads this off the video
+            guider alone — setting it on the audio guider has no effect, and that guider joins the same STG forward
+            through its own `stg_scale`.
+        start (`float`, defaults to `0.0`):
+            Fraction of denoising steps (0.0-1.0) after which guidance starts.
+        stop (`float`, defaults to `1.0`):
+            Fraction of denoising steps (0.0-1.0) after which guidance stops.
+        enabled (`bool`, defaults to `True`):
+            Whether this guider applies guidance at all. When `False`, only the conditional pass runs.
     """
 
     # `pred_cond` is the base; the others are the guidance passes.
@@ -64,9 +76,6 @@ class LTX2Guidance(BaseGuidance):
         stg_scale: float = 0.0,
         modality_scale: float = 1.0,
         guidance_rescale: float = 0.0,
-        # STG perturbs whole transformer blocks, and one forward feeds *both* modalities, so the block list is a
-        # shared/transformer-level knob rather than a per-modality one; only the video guider carries it (the audio
-        # guider reuses the same STG forward via its own `stg_scale`). The denoiser reads it off the video guider.
         spatio_temporal_guidance_blocks: list[int] | None = None,
         start: float = 0.0,
         stop: float = 1.0,
@@ -121,7 +130,7 @@ class LTX2Guidance(BaseGuidance):
     # conditioning as `pred_cond` while the denoiser overrides their per-pass model flags after preparation.
     _PREDICTION_INDEX = {"pred_cond": 0, "pred_uncond": 1, "pred_cond_stg": 2, "pred_cond_modality": 3}
 
-    def prepare_inputs(self, guider_inputs: dict) -> list[BlockState]:
+    def prepare_inputs(self, guider_inputs: dict) -> list["BlockState"]:
         # One identifier-tagged batch per active pass. Every value in `guider_inputs` is a 4-tuple indexed by
         # `_PREDICTION_INDEX` ([cond, uncond, stg, modality]); each pass reads its own slot, so the per-pass model
         # flags (`spatio_temporal_guidance_blocks`, `isolate_modalities`) are carried exactly like the encoder
@@ -131,7 +140,7 @@ class LTX2Guidance(BaseGuidance):
             for pred in self.active_predictions()
         ]
 
-    def prepare_inputs_from_block_state(self, data: BlockState, input_fields: dict) -> list[BlockState]:
+    def prepare_inputs_from_block_state(self, data: "BlockState", input_fields: dict) -> list["BlockState"]:
         # One identifier-tagged batch per active pass. Each value in `input_fields` maps a transformer argument to a
         # 4-tuple of block-state attribute names indexed by `_PREDICTION_INDEX` ([cond, uncond, stg, modality]); the
         # base helper reads the pass's slot off `data`. The denoiser then sets the per-pass model flags and fills

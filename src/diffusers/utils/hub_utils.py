@@ -23,21 +23,24 @@ import warnings
 from pathlib import Path
 from uuid import uuid4
 
+import httpx
 from huggingface_hub import (
-    DDUFEntry,
     ModelCard,
     ModelCardData,
     create_repo,
     hf_hub_download,
     model_info,
+    resolve_revision,
     snapshot_download,
     upload_folder,
 )
 from huggingface_hub.constants import HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
+from huggingface_hub.errors import RevisionResolutionError
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
     HfHubHTTPError,
+    HFValidationError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     is_jinja_available,
@@ -209,6 +212,41 @@ def extract_commit_hash(resolved_file: str | None, commit_hash: str | None = Non
     return commit_hash if REGEX_COMMIT_HASH.match(commit_hash) else None
 
 
+def _resolve_revision(
+    pretrained_model_name_or_path: str | os.PathLike | None,
+    *,
+    revision: str | None = None,
+    cache_dir: str | os.PathLike | None = None,
+    local_files_only: bool | None = None,
+    token: str | bool | None = None,
+) -> str | None:
+    """
+    Resolves `revision` to a commit hash, to be called once at the beginning of a loading method.
+
+    Loading a model or a pipeline fetches several files from the same repo (config, weight index, shards, custom code,
+    ...). Passing the returned [`~huggingface_hub.ResolvedRevision`] down to every download pins them all to the same
+    commit - even if the repo is updated in the meantime - and lets `huggingface_hub` serve them from the cache without
+    resolving `revision` again on each call.
+
+    Resolution is best-effort: local folders are returned untouched and, if the Hub cannot answer (repo or revision not
+    found, offline mode with nothing cached, ...), `revision` is returned as is so that the download that follows fails
+    with its usual error message.
+    """
+    if pretrained_model_name_or_path is None or os.path.isdir(pretrained_model_name_or_path):
+        return revision
+
+    try:
+        return resolve_revision(
+            str(pretrained_model_name_or_path),
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=bool(local_files_only),
+            token=token,
+        )
+    except (HfHubHTTPError, RevisionResolutionError, HFValidationError, httpx.TransportError):
+        return revision
+
+
 def _add_variant(weights_name: str, variant: str | None = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
@@ -232,26 +270,10 @@ def _get_model_file(
     user_agent: dict | str | None = None,
     revision: str | None = None,
     commit_hash: str | None = None,
-    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
-    if dduf_entries:
-        if subfolder is not None:
-            raise ValueError(
-                "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
-                "Please check the DDUF structure"
-            )
-        model_file = (
-            weights_name
-            if pretrained_model_name_or_path == ""
-            else "/".join([pretrained_model_name_or_path, weights_name])
-        )
-        if model_file in dduf_entries:
-            return model_file
-        else:
-            raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_entries.keys()}.")
-    elif os.path.isfile(pretrained_model_name_or_path):
+    if os.path.isfile(pretrained_model_name_or_path):
         return pretrained_model_name_or_path
     elif os.path.isdir(pretrained_model_name_or_path):
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
@@ -360,7 +382,6 @@ def _get_checkpoint_shard_files(
     user_agent=None,
     revision=None,
     subfolder="",
-    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     """
     For a given model:
@@ -372,18 +393,11 @@ def _get_checkpoint_shard_files(
     For the description of each arg, see [`PreTrainedModel.from_pretrained`]. `index_filename` is the full path to the
     index (downloaded and cached if `pretrained_model_name_or_path` is a model ID on the Hub).
     """
-    if dduf_entries:
-        if index_filename not in dduf_entries:
-            raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
-    else:
-        if not os.path.isfile(index_filename):
-            raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
+    if not os.path.isfile(index_filename):
+        raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
 
-    if dduf_entries:
-        index = json.loads(dduf_entries[index_filename].read_text())
-    else:
-        with open(index_filename, "r") as f:
-            index = json.loads(f.read())
+    with open(index_filename, "r") as f:
+        index = json.loads(f.read())
 
     original_shard_filenames = sorted(set(index["weight_map"].values()))
     for shard_filename in original_shard_filenames:
@@ -399,21 +413,14 @@ def _get_checkpoint_shard_files(
     shards_path = os.path.join(pretrained_model_name_or_path, subfolder)
 
     # First, let's deal with local folder.
-    if os.path.isdir(pretrained_model_name_or_path) or dduf_entries:
+    if os.path.isdir(pretrained_model_name_or_path):
         shard_filenames = [os.path.join(shards_path, f) for f in original_shard_filenames]
         for shard_file in shard_filenames:
-            if dduf_entries:
-                if shard_file not in dduf_entries:
-                    raise FileNotFoundError(
-                        f"{shards_path} does not appear to have a file named {shard_file} which is "
-                        "required according to the checkpoint index."
-                    )
-            else:
-                if not os.path.exists(shard_file):
-                    raise FileNotFoundError(
-                        f"{shards_path} does not appear to have a file named {shard_file} which is "
-                        "required according to the checkpoint index."
-                    )
+            if not os.path.exists(shard_file):
+                raise FileNotFoundError(
+                    f"{shards_path} does not appear to have a file named {shard_file} which is "
+                    "required according to the checkpoint index."
+                )
         return shard_filenames, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub

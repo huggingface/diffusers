@@ -64,7 +64,7 @@ from huggingface_hub import snapshot_download
 snapshot_download(repo_id="BestWishYsh/ConsisID-preview", local_dir="BestWishYsh/ConsisID-preview")
 
 # Load face helper model to preprocess input face image
-face_helper_1, face_helper_2, face_clip_model, face_main_model, eva_transform_mean, eva_transform_std = prepare_face_models("BestWishYsh/ConsisID-preview", device="cuda", dtype=torch.bfloat16)
+face_helper_1, face_helper_2, face_clip_model, face_main_model, eva_transform_mean, eva_transform_std = prepare_face_models("BestWishYsh/ConsisID-preview", device="cuda", dtype=torch.bfloat16)  # or "mps", "xpu", "cpu"
 
 # Load consisid base model
 pipe = ConsisIDPipeline.from_pretrained("BestWishYsh/ConsisID-preview", dtype=torch.bfloat16)
