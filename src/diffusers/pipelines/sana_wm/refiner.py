@@ -145,6 +145,9 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             sigmas: descending Euler schedule terminating at 0.0 (canonical
                 3-step distilled: ``(0.909375, 0.725, 0.421875, 0.0)``). Fed to ``self.scheduler`` (minus the trailing
                 0.0, which the scheduler appends itself).
+            output_type: `"latent"` returns the refined latents. Anything else decodes through `self.vae` and
+                post-processes to that type (`"np"`, `"pt"`, `"pil"`); without a `vae` the latents are returned
+                regardless.
             device: execution device for the refiner's sub-modules. If ``None``, falls back to where the transformer
                 currently lives. The refiner moves each sub-module on/off this device as it runs.
 
