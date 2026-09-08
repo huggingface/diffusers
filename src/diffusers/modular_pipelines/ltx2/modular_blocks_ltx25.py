@@ -436,6 +436,8 @@ class LTX25CoreDenoiseStep(SequentialPipelineBlocks):
               The width in pixels of the generated image.
           num_frames (`int`):
               The number of frames in the generated video.
+          latents (`Tensor`, *optional*):
+              Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           generator (`Generator`, *optional*):
@@ -616,6 +618,8 @@ class LTX25Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               The width in pixels of the generated image.
           num_frames (`int`):
               The number of frames in the generated video.
+          latents (`Tensor`, *optional*):
+              Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           generator (`Generator`, *optional*):
@@ -1211,6 +1215,8 @@ class LTX25AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Audio-branch text conditioning (uncond); read only under classifier-free guidance.
           negative_connector_attention_mask (`Tensor`, *optional*):
               Binary text attention mask (uncond); read only under classifier-free guidance.
+          latents (`Tensor`):
+              Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           image_latents (`Tensor`, *optional*):
               VAE-encoded reference-image latents used for image-to-video conditioning.
 
@@ -1506,6 +1512,8 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
+          latents (`Tensor`):
+              Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           image_latents (`Tensor`, *optional*):
               VAE-encoded reference-image latents used for image-to-video conditioning.
           output_type (`str`, *optional*, defaults to pil):
@@ -1712,6 +1720,8 @@ class LTX25TwoStageBlocks(SequentialPipelineBlocks):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
+          latents (`Tensor`):
+              Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           image_latents (`Tensor`, *optional*):
               VAE-encoded reference-image latents used for image-to-video conditioning.
           stage_2_sigmas (`list`, *optional*, defaults to [0.909375, 0.725, 0.421875]):

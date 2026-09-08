@@ -60,10 +60,11 @@ class LTX25TwoStageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = LTX25_REPO_ID
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
-    optional_params = frozenset(["num_videos_per_prompt"])
-    # Each pass runs its own fixed sigma schedule, so there is no step count to set; and the first pass always
-    # starts from noise, so there are no pre-generated `latents` to pass -- the upsample step produces them.
-    not_params = frozenset(["num_inference_steps", "latents"])
+    optional_params = frozenset(["num_videos_per_prompt", "latents"])
+    # Each pass runs its own fixed sigma schedule, so there is no step count to set. `latents` is the first
+    # pass's optional pre-sampled noise, as on the other pipelines; the second pass reads the upsampled
+    # intermediates from state, never a user input.
+    not_params = frozenset(["num_inference_steps"])
     expected_workflow_blocks = LTX25_TWO_STAGE_WORKFLOWS
     output_name = "videos"
 

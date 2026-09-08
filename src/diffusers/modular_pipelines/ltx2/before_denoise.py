@@ -542,7 +542,8 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Samples the packed video noise latents for a first pass of text-to-video generation. Refining "
+            "Samples the packed video noise latents for a first pass of text-to-video generation, or takes them "
+            "from the optional `latents` input (pre-sampled noise only, as in the other pipelines). Refining "
             "existing latents is `LTX2Stage2PrepareLatentsStep`."
         )
 
@@ -555,6 +556,10 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
+            InputParam.template(
+                "latents",
+                description="Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.",
+            ),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
@@ -582,17 +587,20 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        batch_size = block_state.batch_size * block_state.num_videos_per_prompt
-        num_channels_latents = components.transformer.config.in_channels
-        latent_height = block_state.height // components.vae_spatial_compression_ratio
-        latent_width = block_state.width // components.vae_spatial_compression_ratio
-        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        if block_state.latents is None:
+            batch_size = block_state.batch_size * block_state.num_videos_per_prompt
+            num_channels_latents = components.transformer.config.in_channels
+            latent_height = block_state.height // components.vae_spatial_compression_ratio
+            latent_width = block_state.width // components.vae_spatial_compression_ratio
+            latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
 
-        shape = (batch_size, num_channels_latents, latent_num_frames, latent_height, latent_width)
-        latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=torch.float32)
-        block_state.latents = _pack_latents(
-            latents, components.transformer_spatial_patch_size, components.transformer_temporal_patch_size
-        )
+            shape = (batch_size, num_channels_latents, latent_num_frames, latent_height, latent_width)
+            latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=torch.float32)
+            block_state.latents = _pack_latents(
+                latents, components.transformer_spatial_patch_size, components.transformer_temporal_patch_size
+            )
+        else:
+            block_state.latents = block_state.latents.to(device=device, dtype=torch.float32)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -1810,7 +1818,9 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
         block_state.base_token_count = base_token_count
         block_state.num_ref_tokens = num_ref_tokens
         block_state.reference_token_counts = reference_token_counts
-        # Without reference tokens there is nothing to mask: leave the attention unmasked rather than pass all ones.
+        mask_needed = (
+            block_state.conditioning_attention_strength < 1.0 or block_state.conditioning_attention_mask is not None
+        )
         block_state.video_self_attention_mask = (
             _build_video_self_attention_mask(
                 block_state.latents,
@@ -1821,7 +1831,7 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
                 block_state.conditioning_attention_strength,
                 block_state.conditioning_attention_mask,
             )
-            if num_ref_tokens > 0
+            if num_ref_tokens > 0 and mask_needed
             else None
         )
         block_state.noise_scale = noise_scale
