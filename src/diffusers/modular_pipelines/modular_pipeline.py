@@ -1727,6 +1727,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             )
 
         if blocks is None:
+            blocks_class = None
             if modular_config_dict is not None:
                 blocks_class_name = modular_config_dict.get("_blocks_class_name")
             else:
@@ -1740,10 +1741,12 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     blocks_class_name = self.default_blocks_name
                     blocks_class = getattr(diffusers_module, blocks_class_name)
 
-            if blocks_class is not None:
-                blocks = blocks_class()
-            else:
-                logger.warning(f"`blocks` is `None`, no default blocks class found for {self.__class__.__name__}")
+            if blocks_class is None:
+                raise ValueError(
+                    f"No pipeline blocks could be resolved for {self.__class__.__name__}: pass `blocks`, or use a "
+                    "pipeline class with a `default_blocks_name`."
+                )
+            blocks = blocks_class()
 
         if workflow is not None:
             if blocks is None:
@@ -1927,6 +1930,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             logger.debug(" try to determine the modular pipeline class from model_index.json")
             standard_pipeline_class = _get_pipeline_class(cls, config=config_dict)
             model_name = _get_model(standard_pipeline_class.__name__)
+            if model_name not in MODULAR_PIPELINE_MAPPING:
+                # Pipelines outside the auto-pipeline task mappings (e.g. video) resolve by their pipeline folder
+                # when it names a modular family, e.g. `diffusers.pipelines.ltx` -> "ltx".
+                model_name = standard_pipeline_class.__module__.split(".")[2]
             map_fn = MODULAR_PIPELINE_MAPPING.get(model_name, _create_default_map_fn("ModularPipeline"))
             pipeline_class_name = map_fn(config_dict)
             diffusers_module = importlib.import_module("diffusers")
