@@ -32,13 +32,6 @@ class ModularLoraTesterMixin(BaseModularPipelineOutputMixin, LoraTesterMixin):
     denoiser components are not named `transformer`.
     """
 
-    @pytest.mark.skip(
-        reason="`ModularPipeline.save_pretrained` writes the component index, not the weights, so there is no "
-        "pipeline directory to reload an attached adapter from."
-    )
-    def test_simple_inference_save_pretrained_with_text_lora(self):
-        pass
-
 
 class ModularLoraMemoryTesterMixin(BaseModularPipelineOutputMixin, LoraMemoryTesterMixin):
     """LoRA x offloading tests for modular pipelines: group offloading composed with `load_lora_weights`."""
