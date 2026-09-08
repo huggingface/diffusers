@@ -54,7 +54,8 @@ class BaseModularPipelineTesterConfig:
     # Subclasses can override this to change the expected output type
     output_name = "images"
     # State name of the latents the denoise group hands to the decoder. Chunked families that hand over a list of
-    # per-chunk latents (e.g. `latent_chunks`) are checked chunk by chunk.
+    # per-chunk latents (e.g. `latent_chunks`) are checked chunk by chunk. Families that decode inside their
+    # denoise loop and leave no latents in the state set this to `None`.
     latents_output_name = "latents"
 
     @property
@@ -378,6 +379,8 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         # The denoise group must hand latents back in the family's one canonical form, so any block (a decoder, a
         # latent upsampler, a second denoise group) can consume them without geometry inputs. The decoder reads
         # the latents without removing them, so they are checked in the state after a full run.
+        if self.latents_output_name is None:
+            pytest.skip("This family decodes inside its denoise loop and leaves no latents in the state.")
         pipe = self.get_pipeline().to(torch_device)
         latents = pipe(**self.get_dummy_inputs(), output=self.latents_output_name)
         chunks = list(latents) if isinstance(latents, (list, tuple)) else [latents]

@@ -84,6 +84,9 @@ class WanAnimate2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = WanAnimate2ModularPipeline
     pipeline_blocks_class = WanAnimate2Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-modular"
+    # Each segment is decoded inside the denoise loop, so no latents are left in the state.
+    latents_output_name = None
+    expected_latents_shape = None
 
     params = frozenset(["prompt", "image", "driving_video"])
     batch_params = frozenset()
@@ -157,6 +160,9 @@ class WanAnimate2DistilledModularPipelineTesterConfig(WanAnimate2ModularPipeline
     pipeline_class = WanAnimate2DistilledModularPipeline
     pipeline_blocks_class = WanAnimate2DistilledBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-distilled-modular"
+    # Each segment is decoded inside the denoise loop, so no latents are left in the state.
+    latents_output_name = None
+    expected_latents_shape = None
     expected_workflow_defaults = WAN_ANIMATE_2_DISTILLED_DEFAULTS
 
 
