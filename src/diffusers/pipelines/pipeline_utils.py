@@ -1148,15 +1148,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             except ValueError:
                 pass
 
-        # When text encoders are offloaded to CPU while the denoising backbone
-        # (unet, transformer, vae) runs on an accelerator, self.device returns CPU
-        # (first component). Prefer any non-CPU, non-meta component device so that
-        # scheduler and latent tensors land on the accelerator. This covers TPU,
-        # NPU (npu), Intel GPU (xpu), Habana (hpu), and any other backend.
-        for name, model in self.components.items():
-            if isinstance(model, torch.nn.Module) and model.device.type not in ("cpu", "meta"):
-                return model.device
-
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module) or name in self._exclude_from_cpu_offload:
                 continue

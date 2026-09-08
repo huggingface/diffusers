@@ -199,6 +199,8 @@
     title: Intel Gaudi
   - local: optimization/neuron
     title: AWS Neuron
+  - local: optimization/tpu
+    title: TPU
   title: Model accelerators and hardware
 - isExpanded: false
   sections:
