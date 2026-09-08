@@ -74,6 +74,8 @@ class MiniMaxMusic3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
     output_name = "audios"
+    latents_output_name = "latent_chunks"
+    expected_latents_shape = (1, 8, 17)
     expected_workflow_defaults = {
         None: {
             "components": {

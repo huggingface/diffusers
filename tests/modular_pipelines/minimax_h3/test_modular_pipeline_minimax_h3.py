@@ -159,6 +159,7 @@ class MiniMaxH3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = MiniMaxH3ModularPipeline
     pipeline_blocks_class = MiniMaxH3Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-h3-modular-pipe"
+    expected_latents_shape = (1, 4, 37, 2, 2)
     params = frozenset(["prompt", "image", "last_image", "height", "width", "num_frames"])
     # MiniMax-H3 packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     batch_params = frozenset()
@@ -421,6 +422,7 @@ class MiniMaxH3Ref2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfig
     pipeline_class = MiniMaxH3ModularPipeline
     pipeline_blocks_class = MiniMaxH3Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-h3-modular-pipe"
+    expected_latents_shape = (1, 4, 37, 2, 2)
     params = frozenset(["prompt", "references", "height", "width", "num_frames"])
     # MiniMax-H3 packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     batch_params = frozenset()

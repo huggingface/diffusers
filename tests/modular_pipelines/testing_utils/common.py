@@ -53,6 +53,13 @@ class BaseModularPipelineTesterConfig:
     # Output type for the pipeline (e.g., "images" for image pipelines, "videos" for video pipelines)
     # Subclasses can override this to change the expected output type
     output_name = "images"
+    # State name of the latents the denoise group hands to the decoder. Chunked families that hand over a list of
+    # per-chunk latents (e.g. `latent_chunks`) are checked chunk by chunk.
+    latents_output_name = "latents"
+    # The one canonical form this family keeps latents in after the denoise group, for the geometry that
+    # `get_dummy_inputs()` produces: the VAE form (e.g. `(1, 4, 32, 32)`) for pipelines that pack/unpack inside the
+    # denoise group or the transformer, or the channel-packed form for pipelines whose VAE statistics live there.
+    expected_latents_shape = None
 
     # ==================== Required interface ====================
 
@@ -361,3 +368,19 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt, output=self.output_name)
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
+
+    def test_latents_output_in_canonical_form(self):
+        # The denoise group must hand latents back in the family's one canonical form, so any block (a decoder, a
+        # latent upsampler, a second denoise group) can consume them without geometry inputs. The decoder reads
+        # the latents without removing them, so they are checked in the state after a full run.
+        pipe = self.get_pipeline().to(torch_device)
+        latents = pipe(**self.get_dummy_inputs(), output=self.latents_output_name)
+        chunks = list(latents) if isinstance(latents, (list, tuple)) else [latents]
+        shapes = sorted({tuple(chunk.shape) for chunk in chunks})
+
+        if self.expected_latents_shape is None:
+            pytest.skip(f"{type(self).__name__}: `expected_latents_shape` not declared; latents shape is {shapes}")
+        assert shapes == [tuple(self.expected_latents_shape)], (
+            f"Latents left in the state have shape {shapes}, expected the canonical "
+            f"{tuple(self.expected_latents_shape)}"
+        )
