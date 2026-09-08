@@ -35,7 +35,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -47,7 +47,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     quantization_config=pipeline_quant_config,
     torch_dtype=torch.bfloat16,
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Without `device_map`, Diffusers quantizes the layers on the CPU. This is slower, but avoids the temporary GPU-memory spike during quantization. To reduce GPU memory usage further, use [`~DiffusionPipeline.enable_model_cpu_offload`] instead. You can also quantize additional components, such as the text encoder.
@@ -68,7 +68,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 pipeline.transformer.compile(transformer, mode="max-autotune", fullgraph=True)
@@ -124,7 +124,7 @@ from diffusers import FluxPipeline, AutoModel
 
 transformer = AutoModel.from_pretrained("/path/to/flux_int8wo", dtype=torch.bfloat16, use_safetensors=False)
 pipe = FluxPipeline.from_pretrained("black-forest-labs/Flux.1-Dev", transformer=transformer, dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A cat holding a sign that says hello world"
 image = pipe(prompt, num_inference_steps=30, guidance_scale=7.0).images[0]

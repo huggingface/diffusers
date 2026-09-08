@@ -21,7 +21,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import is_flaky, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 class AutoencoderKLLTX2AudioTesterConfig(BaseModelTesterConfig):
@@ -104,5 +104,5 @@ class TestAutoencoderKLLTX2AudioMemory(AutoencoderKLLTX2AudioTesterConfig, Memor
         super().test_group_offloading_with_disk(tmp_path, record_stream, offload_type, atol=atol, rtol=rtol)
 
 
-class TestAutoencoderKLLTX2AudioSlicingTiling(AutoencoderKLLTX2AudioTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLLTX2AudioSlicingTiling(AutoencoderKLLTX2AudioTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLLTX2Audio."""

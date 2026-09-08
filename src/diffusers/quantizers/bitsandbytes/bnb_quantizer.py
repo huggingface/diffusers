@@ -345,6 +345,39 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         if self.quantization_config.llm_int8_skip_modules is not None:
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
+        self._checkpoint_keys = set()
+        self._pending_quantized_state = {}
+
+    def maybe_update_loaded_keys(self, loaded_keys: list[str], checkpoint_files: list[str]) -> list[str]:
+        self._checkpoint_keys = set(loaded_keys)
+        return loaded_keys
+
+    def maybe_update_state_dict(self, state_dict: dict[str, Any]) -> dict[str, Any]:
+        if not self.pre_quantized:
+            return state_dict
+
+        # A sharded checkpoint can split an 8-bit weight from its `SCB` statistics, which must be
+        # materialized together. Hold the incomplete half back until its counterpart arrives with a
+        # later shard.
+        merged = {**self._pending_quantized_state, **state_dict}
+        pending = {}
+        for name in list(merged.keys()):
+            if name.endswith(".weight"):
+                partner = name[: -len("weight")] + "SCB"
+            elif name.endswith(".SCB"):
+                partner = name[: -len("SCB")] + "weight"
+            else:
+                continue
+            if partner in self._checkpoint_keys and partner not in merged:
+                pending[name] = merged.pop(name)
+        self._pending_quantized_state = pending
+        return merged
+
+    @property
+    def supports_parallel_loading(self) -> bool:
+        # Deferred SCB reconstruction carries incomplete weight/SCB pairs from one shard to the next.
+        return not self.pre_quantized
+
     def validate_environment(self, *args, **kwargs):
         if not (torch.cuda.is_available() or torch.xpu.is_available()):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")

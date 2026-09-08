@@ -29,7 +29,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -48,7 +48,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -72,7 +72,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-  "path/to/your/cache", dtype=torch.bfloat16, device_map="cuda"
+  "path/to/your/cache", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -128,7 +128,7 @@ max_memory = {0: "16GB", 1: "16GB"}
 pipeline = DiffusionPipeline.from_pretrained(
   "Qwen/Qwen-Image", 
   dtype=torch.bfloat16,
-  device_map="cuda",
+  device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -147,7 +147,7 @@ pipeline.reset_device_map()
 
 ## Parallel loading
 
-Large models are often [sharded](../training/distributed_inference#model-sharding) into smaller files so that they are easier to load. Diffusers supports loading shards in parallel to speed up the loading process.
+Large models are often [sharded](../optimization/memory#sharded-checkpoints) into smaller files so that they are easier to load. Diffusers supports loading shards in parallel to speed up the loading process.
 
 Set `HF_ENABLE_PARALLEL_LOADING` to `"YES"` to enable parallel loading of shards.
 
@@ -161,7 +161,7 @@ from diffusers import DiffusionPipeline
 os.environ["HF_ENABLE_PARALLEL_LOADING"] = "YES"
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Wan-AI/Wan2.2-I2V-A14B-Diffusers", dtype=torch.bfloat16, device_map="cuda"
+  "Wan-AI/Wan2.2-I2V-A14B-Diffusers", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -183,7 +183,7 @@ pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   vae=vae,
   dtype=torch.float16,
-  device_map="cuda"
+  device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -203,7 +203,7 @@ import torch
 from diffusers import AutoPipelineForText2Image
 
 pipeline_sdxl = AutoPipelineForText2Image.from_pretrained(
-  "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, device_map="cuda"
+  "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 prompt = """
 cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California

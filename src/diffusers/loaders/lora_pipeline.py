@@ -6748,6 +6748,12 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
     and degrades output), so routing is explicit: converted state dicts target `transformer.`; reach `transformer_ref`
     with a `transformer_ref.`-prefixed file or `load_into_transformer_ref=True`.
 
+    DiffSynth-Studio LoRAs (e.g.
+    [DiffSynth-Studio/MiniMax-H3-LoRA-LineartAnime](https://huggingface.co/DiffSynth-Studio/MiniMax-H3-LoRA-LineartAnime))
+    are trained against the raw checkpoint's per-head-interleaved fused QKV and are de-interleaved on conversion. Their
+    fp32 factors make the unfused LoRA path compute in fp32; `.to(torch.bfloat16)` on the model after loading restores
+    the bf16 memory budget.
+
     LoRAs trained against a pruned checkpoint (the `*_pruned_*` files in
     [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3);
     [joyfox/MiniMax-H3-Turbo](https://huggingface.co/joyfox/MiniMax-H3-Turbo) is one) fail with a size mismatch.
@@ -6815,20 +6821,22 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
+        # The original checkpoint's module names, none of which a diffusers name shares. Checked before the peft dump
+        # below, which DiffSynth-Studio's files would otherwise match: they carry `.default.` over these same names.
+        is_non_diffusers_format = any(
+            k.startswith(("diffusion_model.", "blocks.", "token_refiner.blocks.", "final_layer.", "lora_unet_"))
+            for k in state_dict
+        )
         # A peft dump: diffusers module names carrying peft's `.default.` infix and no component prefix. The missing
         # prefix is what keeps this from shadowing a file diffusers itself wrote.
         is_unprefixed_diffusers_format = any(".default.weight" in k for k in state_dict) and not any(
             k.startswith((f"{cls.transformer_name}.", f"{cls.transformer_ref_name}.")) for k in state_dict
         )
-        if is_unprefixed_diffusers_format:
-            state_dict = {f"{cls.transformer_name}.{k.replace('.default.', '.')}": v for k, v in state_dict.items()}
 
-        is_non_diffusers_format = any(
-            k.startswith(("diffusion_model.", "blocks.", "token_refiner.", "final_layer.", "lora_unet_"))
-            for k in state_dict
-        )
         if is_non_diffusers_format:
             state_dict = _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict)
+        elif is_unprefixed_diffusers_format:
+            state_dict = {f"{cls.transformer_name}.{k.replace('.default.', '.')}": v for k, v in state_dict.items()}
 
         # Published H3 LoRAs are alpha-less and mixed-rank (64 on attention and FFN, 16 on the AdaLN projections), and
         # `get_peft_kwargs` would scale one of the two rank groups by `alpha / r`, so `alpha == rank` is pinned below.

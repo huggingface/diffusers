@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
 import pytest
 import torch
 from PIL import Image
@@ -207,6 +208,35 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
         inputs.update(image=Image.new("RGB", (32, 32)), num_frames=1)
         with pytest.raises(ValueError, match="image-to-image generation is not supported"):
             pipe(**inputs, output=self.output_name)
+
+    def test_image_encoder_uses_native_aspect_preserving_center_crop(self):
+        pipe = self.get_pipeline()
+        image_encoder = pipe.blocks.sub_blocks["vae_encoder"].sub_blocks["image_conditioning"]
+        image_pipe = image_encoder.init_pipeline(self.pretrained_model_name_or_path)
+        image_pipe.load_components(dtype=torch.float32)
+
+        image = np.zeros((32, 64, 3), dtype=np.uint8)
+        image[:, :16] = [255, 0, 0]
+        image[:, 16:48] = [0, 255, 0]
+        image[:, 48:] = [0, 0, 255]
+        center_crop = Image.fromarray(image[:, 16:48])
+
+        wide_outputs = image_pipe(
+            image=Image.fromarray(image),
+            num_frames=5,
+            height=32,
+            width=32,
+            output=["x0_tokens_vision"],
+        )
+        crop_outputs = image_pipe(
+            image=center_crop,
+            num_frames=5,
+            height=32,
+            width=32,
+            output=["x0_tokens_vision"],
+        )
+
+        torch.testing.assert_close(wide_outputs["x0_tokens_vision"], crop_outputs["x0_tokens_vision"])
 
     @pytest.mark.parametrize("prompt_name", ["prompt", "negative_prompt"])
     def test_rejects_batched_prompts(self, prompt_name):

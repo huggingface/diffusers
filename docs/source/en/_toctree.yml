@@ -138,8 +138,6 @@
       title: Stable Diffusion XL
     - local: training/kandinsky
       title: Kandinsky 2.2
-    - local: training/wuerstchen
-      title: Wuerstchen
     - local: training/controlnet
       title: ControlNet
     - local: training/t2i_adapters
@@ -403,6 +401,8 @@
         title: SD3Transformer2DModel
       - local: api/models/skyreels_v2_transformer_3d
         title: SkyReelsV2Transformer3DModel
+      - local: api/models/stable_audio_3_transformer
+        title: StableAudio3DiTModel
       - local: api/models/stable_audio_transformer
         title: StableAudioDiTModel
       - local: api/models/transformer2d
@@ -481,6 +481,8 @@
         title: AutoencoderKLWan
       - local: api/models/autoencoder_rae
         title: AutoencoderRAE
+      - local: api/models/autoencoder_same
+        title: AutoencoderSAME
       - local: api/models/consistency_decoder_vae
         title: ConsistencyDecoderVAE
       - local: api/models/ltx2_diffusion_decoder
@@ -507,6 +509,8 @@
         title: LongCat-AudioDiT
       - local: api/pipelines/stable_audio
         title: Stable Audio
+      - local: api/pipelines/stable_audio_3
+        title: Stable Audio 3
       title: Audio
     - sections:
       - local: api/pipelines/anima
@@ -784,8 +788,6 @@
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
       title: IPNDMScheduler
-    - local: api/schedulers/stochastic_karras_ve
-      title: KarrasVeScheduler
     - local: api/schedulers/dpm_discrete_ancestral
       title: KDPM2AncestralDiscreteScheduler
     - local: api/schedulers/dpm_discrete
@@ -802,8 +804,6 @@
       title: RePaintScheduler
     - local: api/schedulers/score_sde_ve
       title: ScoreSdeVeScheduler
-    - local: api/schedulers/score_sde_vp
-      title: ScoreSdeVpScheduler
     - local: api/schedulers/tcd
       title: TCDScheduler
     - local: api/schedulers/unipc

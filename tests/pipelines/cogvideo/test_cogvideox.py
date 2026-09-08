@@ -23,15 +23,17 @@ from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransf
 from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
+    nightly,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
@@ -236,9 +238,24 @@ class TestCogVideoXPipelineFirstBlockCache(CogVideoXPipelineTesterConfig, FirstB
     pass
 
 
-@slow
+class TestCogVideoXPipelineLoRA(CogVideoXPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the CogVideoX pipeline."""
+
+
+class TestCogVideoXPipelineLoRAMemory(CogVideoXPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests for the CogVideoX pipeline."""
+
+    # `(leaf_level, True)` is left out on purpose, see
+    # https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
+    @pytest.mark.parametrize("offload_type,use_stream", [("block_level", True), ("leaf_level", False)])
+    @require_torch_accelerator
+    def test_group_offloading_inference_denoiser(self, tmp_path, offload_type, use_stream):
+        super().test_group_offloading_inference_denoiser(tmp_path, offload_type, use_stream)
+
+
+@nightly
 @require_torch_accelerator
-class TestCogVideoXPipelineSlow:
+class TestCogVideoXPipelineIntegration:
     prompt = "A painting of a squirrel eating a burger."
 
     @pytest.fixture(autouse=True)

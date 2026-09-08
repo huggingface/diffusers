@@ -24,6 +24,7 @@ from ...testing_utils import assert_tensors_close, enable_full_determinism, torc
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -416,3 +417,7 @@ class TestWanAnimate2TransformerCompile(WanAnimate2TransformerTesterConfig, Torc
     )
     def test_compile_works_with_aot(self, tmp_path):
         pass
+
+
+class TestWanAnimate2TransformerLoRA(WanAnimate2TransformerTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Wan-Animate-2 transformer."""

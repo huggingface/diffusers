@@ -1651,7 +1651,7 @@ class FreeNoiseTransformerBlock(nn.Module):
         #
         # The reasoning for the change here is `torch.where` became a bottleneck at some point when golfing memory
         # spikes. It is particularly noticeable when the number of frames is high. My understanding is that this comes
-        # from tensors being copied - which is why we resort to spliting and concatenating here. I've not particularly
+        # from tensors being copied - which is why we resort to splitting and concatenating here. I've not particularly
         # looked into this deeply because other memory optimizations led to more pronounced reductions.
         hidden_states = torch.cat(
             [

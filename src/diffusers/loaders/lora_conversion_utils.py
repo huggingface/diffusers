@@ -3124,7 +3124,8 @@ def _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict):
 
     Every known producer trains against the original checkpoint's module names — ai-toolkit under a `diffusion_model.`
     prefix, the reference `generate.py` / ComfyUI checkpoints under no prefix at all, musubi-tuner under a flattened
-    `lora_unet_` one — so the prefix is optional and the module names are what identifies the format. Handles:
+    `lora_unet_` one, DiffSynth-Studio under no prefix but with peft's `.default.` infix — so the prefix is optional
+    and the module names are what identifies the format. Handles:
 
     - `diffusion_model.` prefix removal, and bare `blocks.` / `token_refiner.` / `final_layer.` keys
     - musubi-tuner's flattened `lora_unet_blocks_0_attn_qkv_proj` -> `blocks.0.attn.qkv_proj`
@@ -3138,6 +3139,16 @@ def _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict):
     `MiniMaxH3LoraLoaderMixin.load_lora_weights` is what redirects it to `transformer_ref` when asked.
     """
     state_dict = {k.removeprefix("diffusion_model."): v for k, v in state_dict.items()}
+
+    # DiffSynth-Studio runs the raw checkpoint's per-head-interleaved fused QKV verbatim, where every other producer
+    # reorders it to `[q_all; k_all; v_all]` at load time as the reference implementation does. The two are
+    # indistinguishable by shape; what identifies DiffSynth is that it writes peft's `.default.` infix over these names.
+    is_diffsynth = any(".lora_A.default.weight" in k or ".lora_B.default.weight" in k for k in state_dict)
+    if is_diffsynth:
+        state_dict = {
+            k.replace(".lora_A.default.", ".lora_A.").replace(".lora_B.default.", ".lora_B."): v
+            for k, v in state_dict.items()
+        }
 
     # musubi-tuner (kohya sd-scripts) writes one flat module name per key under a `lora_unet_` prefix, with every `.`
     # collapsed to `_`. H3's own module names contain underscores (`qkv_proj`, `token_refiner`, `final_layer`,
@@ -3230,8 +3241,8 @@ def _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict):
             source = f"{source_prefix}.{i}"
             target = f"{target_prefix}.{i}"
 
-            # Fused qkv -> split to_q / to_k / to_v (shared down/lora_A, chunk up/lora_B in thirds). Both producers
-            # consume the fused rows as `[q_all; k_all; v_all]`, so no per-head de-interleave is involved.
+            # Fused qkv -> split to_q / to_k / to_v (shared down/lora_A, chunk up/lora_B in thirds), after the
+            # per-head de-interleave a DiffSynth file needs.
             qkv = pull(f"{source}.attn.qkv_proj")
             if qkv is not None:
                 down, up = qkv
@@ -3239,6 +3250,24 @@ def _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict):
                     raise ValueError(
                         f"`{source}.attn.qkv_proj` has {up.shape[0]} output rows, which is not divisible by 3. "
                         "This is not a fused MiniMax-H3 QKV projection."
+                    )
+                if is_diffsynth:
+                    # `[head0: q k v, head1: q k v, ...]` -> `[q_all; k_all; v_all]`. Every released MiniMax-H3
+                    # partition has a 128-wide head, which is what lets the head count be read off the row count.
+                    head_dim = 128
+                    if up.shape[0] % (3 * head_dim) != 0:
+                        raise ValueError(
+                            f"`{source}.attn.qkv_proj` has {up.shape[0]} output rows, which is not a multiple of "
+                            f"3 * {head_dim}. This is not a per-head-interleaved MiniMax-H3 QKV projection."
+                        )
+                    num_heads = up.shape[0] // (3 * head_dim)
+                    grouped = up.reshape(num_heads, 3 * head_dim, up.shape[1])
+                    up = torch.cat(
+                        [
+                            head_slice.reshape(num_heads * head_dim, up.shape[1])
+                            for head_slice in grouped.split(head_dim, dim=1)
+                        ],
+                        dim=0,
                     )
                 up_q, up_k, up_v = torch.chunk(up, 3, dim=0)
                 for proj, up_proj in (("to_q", up_q), ("to_k", up_k), ("to_v", up_v)):

@@ -34,7 +34,7 @@ import torch
 from diffusers import PRXPixelPipeline
 
 pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A front-facing portrait of a lion in the golden savanna at sunset."
 image = pipe(prompt, num_inference_steps=28, guidance_scale=5.0).images[0]

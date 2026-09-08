@@ -40,7 +40,7 @@ pipe = HunyuanImagePipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanImage-2.1-Diffusers", 
     dtype=torch.bfloat16
 )
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 ``` 
 
 You can inspect the `guider` object:
@@ -85,7 +85,7 @@ pipe = HunyuanImagePipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanImage-2.1-Diffusers", 
     dtype=torch.bfloat16
 )
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Update the guider configuration
 pipe.guider = pipe.guider.new(guidance_scale=5.0)
@@ -114,7 +114,7 @@ use `distilled_guidance_scale` with the guidance-distilled checkpoint,
 import torch
 from diffusers import HunyuanImagePipeline
 pipe = HunyuanImagePipeline.from_pretrained("hunyuanvideo-community/HunyuanImage-2.1-Distilled-Diffusers", dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = (
     "A cute, cartoon-style anthropomorphic penguin plush toy with fluffy fur, standing in a painting studio, "

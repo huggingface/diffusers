@@ -24,7 +24,7 @@ from ..utils import (
 _import_structure = {}
 
 if is_torch_available():
-    _import_structure["_modeling_parallel"] = ["ContextParallelConfig", "ParallelConfig"]
+    _import_structure["_modeling_parallel"] = ["ContextParallelConfig", "ParallelConfig", "TensorParallelConfig"]
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["attention_dispatch"] = ["AttentionBackendName", "attention_backend"]
     _import_structure["auto_model"] = ["AutoModel"]
@@ -56,6 +56,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_longcat_audio_dit"] = ["LongCatAudioDiTVae"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_rae"] = ["AutoencoderRAE"]
+    _import_structure["autoencoders.autoencoder_same"] = ["AutoencoderSAME"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.autoencoder_vidtok"] = ["AutoencoderVidTok"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
@@ -148,6 +149,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
+    _import_structure["transformers.transformer_stable_audio3"] = ["StableAudio3DiTModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
     _import_structure["transformers.transformer_wan_animate"] = ["WanAnimateTransformer3DModel"]
@@ -169,7 +171,7 @@ if is_torch_available():
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
-        from ._modeling_parallel import ContextParallelConfig, ParallelConfig
+        from ._modeling_parallel import ContextParallelConfig, ParallelConfig, TensorParallelConfig
         from .adapter import MultiAdapter, T2IAdapter
         from .attention_dispatch import AttentionBackendName, attention_backend
         from .auto_model import AutoModel
@@ -200,6 +202,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderRAE,
+            AutoencoderSAME,
             AutoencoderTiny,
             AutoencoderVidTok,
             ConsistencyDecoderVAE,
@@ -293,6 +296,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaVideoTransformer3DModel,
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
+            StableAudio3DiTModel,
             StableAudioDiTModel,
             T5FilmDecoder,
             Transformer2DModel,

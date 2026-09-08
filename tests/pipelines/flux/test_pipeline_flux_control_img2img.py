@@ -1,6 +1,3 @@
-import unittest
-
-import numpy as np
 import torch
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
@@ -12,18 +9,17 @@ from diffusers import (
     FluxTransformer2DModel,
 )
 
-from ...testing_utils import enable_full_determinism, torch_device
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import torch_device
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
-enable_full_determinism()
-
-
-class FluxControlImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class FluxControlImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = FluxControlImg2ImgPipeline
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
-    batch_params = frozenset(["prompt"])
-    test_xformers_attention = False
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"]
+    )
+    batch_input_params = frozenset(["prompt"])
+    output_shape = (3, 8, 8)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -90,12 +86,7 @@ class FluxControlImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin
             "vae": vae,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
+    def get_dummy_inputs(self):
         image = Image.new("RGB", (16, 16), 0)
         control_image = Image.new("RGB", (16, 16), 0)
 
@@ -103,36 +94,40 @@ class FluxControlImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin
             "prompt": "A painting of a squirrel eating a burger",
             "image": image,
             "control_image": control_image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "height": 8,
             "width": 8,
             "max_sequence_length": 48,
             "strength": 0.8,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
         return inputs
 
-    def test_flux_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+class TestFluxControlImg2ImgPipeline(FluxControlImg2ImgPipelineTesterConfig, PipelineTesterMixin):
+    def test_flux_different_prompts(self):
+        pipe = self.get_pipeline().to(torch_device)
+
+        inputs = self.get_dummy_inputs()
         output_same_prompt = pipe(**inputs).images[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt_2"] = "a different prompt"
         output_different_prompts = pipe(**inputs).images[0]
 
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+        max_diff = (output_same_prompt - output_different_prompts).abs().max()
 
         # Outputs should be different here
         # For some reasons, they don't show large differences
-        assert max_diff > 1e-6
+        assert max_diff > 1e-6, "Outputs should be different for different prompts."
 
     def test_flux_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (72, 57)]
         for height, width in height_width_pairs:
@@ -141,5 +136,11 @@ class FluxControlImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin
 
             inputs.update({"height": height, "width": width})
             image = pipe(**inputs).images[0]
-            output_height, output_width, _ = image.shape
-            assert (output_height, output_width) == (expected_height, expected_width)
+            _, output_height, output_width = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width), (
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}"
+            )
+
+
+class TestFluxControlImg2ImgPipelineMemory(FluxControlImg2ImgPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux control img2img pipeline."""
