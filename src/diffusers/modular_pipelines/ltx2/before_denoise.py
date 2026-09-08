@@ -684,7 +684,7 @@ class LTX2Stage2PrepareLatentsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        # The supplied latents fix the geometry of the pass; the blocks after this one read it from state.
+        # stage-2 does not take height/width/num_frames from users, it can derive them from the latents shape.
         _, _, latent_num_frames, latent_height, latent_width = block_state.latents.shape
         block_state.height = latent_height * components.vae_spatial_compression_ratio
         block_state.width = latent_width * components.vae_spatial_compression_ratio
@@ -714,8 +714,9 @@ class LTX2Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Prepares image-to-video latents: blends the pre-encoded `image_latents` (kept clean on the first latent "
-            "frame) with the noise `latents` via a conditioning mask. Expects pure-noise `latents` from "
-            "`LTX2PrepareLatentsStep`."
+            "frame) with the noise `latents` via a conditioning mask. Works in both stage 1 and stage 2: expects "
+            "pure-noise `latents` from `LTX2PrepareLatentsStep` in a first pass, re-noised upsampled latents from "
+            "`LTX2Stage2PrepareLatentsStep` in a second."
         )
 
     @property
@@ -802,11 +803,20 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "create the initial audio noise latents (packed) and derives the audio latent frame count.stage1 only"
+        return (
+            "Samples the packed audio noise latents for a first pass, or takes them from the optional "
+            "`audio_latents` input (pre-sampled noise only), and derives the audio latent frame count. Refining "
+            "existing audio latents is `LTX2Stage2PrepareAudioLatentsStep`."
+        )
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                description="Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.",
+            ),
             InputParam(
                 "num_frames",
                 type_hint=int,
@@ -855,9 +865,12 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
         )
         audio_num_frames = round(duration_s * audio_latents_per_second)
 
-        shape = (batch_size, num_channels_latents, audio_num_frames, latent_mel_bins)
-        audio_latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=torch.float32)
-        block_state.audio_latents = _pack_audio_latents(audio_latents)
+        if block_state.audio_latents is None:
+            shape = (batch_size, num_channels_latents, audio_num_frames, latent_mel_bins)
+            audio_latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=torch.float32)
+            block_state.audio_latents = _pack_audio_latents(audio_latents)
+        else:
+            block_state.audio_latents = block_state.audio_latents.to(device=device, dtype=torch.float32)
         block_state.audio_num_frames = audio_num_frames
 
         self.set_block_state(state, block_state)

@@ -444,6 +444,8 @@ class LTX25CoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           batch_size (`int`):
               The number of prompts being denoised, used to expand conditioning per prompt.
+          audio_latents (`Tensor`, *optional*):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
           dtype (`dtype`):
@@ -628,6 +630,8 @@ class LTX25Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               The number of prompts being denoised, used to expand conditioning per prompt.
           image_latents (`Tensor`):
               VAE-encoded reference-image latents used for image-to-video conditioning.
+          audio_latents (`Tensor`, *optional*):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
           dtype (`dtype`):
@@ -1219,6 +1223,8 @@ class LTX25AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           image_latents (`Tensor`, *optional*):
               VAE-encoded reference-image latents used for image-to-video conditioning.
+          audio_latents (`Tensor`):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
 
       Outputs:
           latents (`Tensor`):
@@ -1516,6 +1522,8 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
               Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           image_latents (`Tensor`, *optional*):
               VAE-encoded reference-image latents used for image-to-video conditioning.
+          audio_latents (`Tensor`):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
 
@@ -1724,6 +1732,8 @@ class LTX25TwoStageBlocks(SequentialPipelineBlocks):
               Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           image_latents (`Tensor`, *optional*):
               VAE-encoded reference-image latents used for image-to-video conditioning.
+          audio_latents (`Tensor`):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
           stage_2_sigmas (`list`, *optional*, defaults to [0.909375, 0.725, 0.421875]):
               Custom sigmas for the denoising process.
           stage_2_timesteps (`Tensor`, *optional*):

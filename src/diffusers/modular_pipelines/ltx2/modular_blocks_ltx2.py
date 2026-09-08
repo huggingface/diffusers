@@ -323,6 +323,8 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
               Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
+          audio_latents (`Tensor`, *optional*):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
           **denoiser_input_fields (`None`, *optional*):
@@ -415,6 +417,8 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           image_latents (`Tensor`):
               VAE-encoded reference-image latents used for image-to-video conditioning.
+          audio_latents (`Tensor`, *optional*):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
           **denoiser_input_fields (`None`, *optional*):
@@ -890,6 +894,8 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           image_latents (`Tensor`, *optional*):
               VAE-encoded reference-image latents used for image-to-video conditioning.
+          audio_latents (`Tensor`):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
 
       Outputs:
           latents (`Tensor`):
@@ -1045,6 +1051,8 @@ class LTX2Blocks(SequentialPipelineBlocks):
               The width in pixels of the generated image.
           latents (`Tensor`, *optional*):
               Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
+          audio_latents (`Tensor`, *optional*):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           attention_kwargs (`dict`, *optional*):
@@ -1152,6 +1160,8 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           image_latents (`Tensor`):
               VAE-encoded reference-image latents used for image-to-video conditioning.
+          audio_latents (`Tensor`, *optional*):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           attention_kwargs (`dict`, *optional*):
@@ -1542,6 +1552,8 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               Pre-generated packed noisy latents `[B, S, D]`, used as-is instead of sampling.
           image_latents (`Tensor`, *optional*):
               VAE-encoded reference-image latents used for image-to-video conditioning.
+          audio_latents (`Tensor`):
+              Pre-generated packed noisy audio latents `[B, L, D]`, used as-is instead of sampling.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
           decode_timestep (`None`, *optional*, defaults to 0.0):
