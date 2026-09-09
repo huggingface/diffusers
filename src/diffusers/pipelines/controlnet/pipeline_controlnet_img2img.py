@@ -585,6 +585,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
         control_guidance_start=0.0,
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
+        control_image=None,
     ):
         if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
@@ -649,19 +650,19 @@ class StableDiffusionControlNetImg2ImgPipeline(
             or is_compiled
             and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
         ):
-            if not isinstance(image, list):
-                raise TypeError("For multiple controlnets: `image` must be type `list`")
+            if not isinstance(control_image, list):
+                raise TypeError("For multiple controlnets: `control_image` must be type `list`")
 
-            # When `image` is a nested list:
+            # When `control_image` is a nested list:
             # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
-            elif any(isinstance(i, list) for i in image):
+            elif any(isinstance(i, list) for i in control_image):
                 raise ValueError("A single batch of multiple conditionings are supported at the moment.")
-            elif len(image) != len(self.controlnet.nets):
+            elif len(control_image) != len(self.controlnet.nets):
                 raise ValueError(
-                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
+                    f"For multiple controlnets: `control_image` must have the same length as the number of controlnets, but got {len(control_image)} images and {len(self.controlnet.nets)} ControlNets."
                 )
 
-            for image_ in image:
+            for image_ in control_image:
                 self.check_image(image_, prompt, prompt_embeds)
         else:
             assert False
@@ -1074,7 +1075,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            control_image,
+            image,
             callback_steps,
             negative_prompt,
             prompt_embeds,
@@ -1085,6 +1086,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
             control_guidance_start,
             control_guidance_end,
             callback_on_step_end_tensor_inputs,
+            control_image,
         )
 
         self._guidance_scale = guidance_scale
