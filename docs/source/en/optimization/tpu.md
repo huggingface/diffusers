@@ -57,8 +57,7 @@ image.save("output.png")
 
 ## Compiled mode
 
-`torch.compile` with `TpuBackend` traces the transformer statically. The first call (warmup)
-is slow because it triggers compilation; subsequent calls reuse the compiled graph.
+[`enable_tpu_compile`] runs `torch.compile` with `TpuBackend` on each pipeline module that is already on TPU. The first call (warmup) is slow because it compiles. Later calls reuse the compiled graph. Where it's supported, it replaces SDP-based attention with `AttnProcessor` for XLA tracing.
 
 > [!IMPORTANT]
 > TorchTPU requires **static shapes** — `torch.compile` is called with `dynamic=False`
