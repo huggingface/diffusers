@@ -27,6 +27,7 @@ from diffusers.modular_pipelines.minimax_h3 import (
     MiniMaxH3ImageReference,
     MiniMaxH3VideoReference,
 )
+from diffusers.modular_pipelines.minimax_h3.before_denoise import MiniMaxH3PrepareLayoutStep
 from diffusers.modular_pipelines.minimax_h3.before_encoder import MiniMaxH3Ref2VASetupStep
 from diffusers.modular_pipelines.minimax_h3.encoders import (
     MiniMaxH3FL2VATextEncoderStep,
@@ -35,7 +36,9 @@ from diffusers.modular_pipelines.minimax_h3.encoders import (
     MiniMaxH3TextEncoderStep,
 )
 from diffusers.modular_pipelines.minimax_h3.modular_pipeline import MINIMAX_H3_FPS
+from diffusers.utils.torch_utils import maybe_adjust_dtype_for_device
 
+from ...testing_utils import torch_device
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
@@ -894,3 +897,64 @@ class TestMiniMaxH3Reference:
             frames, fps=float(MINIMAX_H3_FPS), num_frames=124, **canvas
         )
         assert np.shares_memory(untouched, frames)
+
+
+class TestMiniMaxH3PositionIdsDevice:
+    """
+    `MiniMaxH3PrepareLayoutStep.build_packed_sequence` lays `position_ids` out in float64: the temporal axis is a
+    `cumsum` over a `5/3`-scaled span (see `_temporal_position_grid`), and float32 drifts perceptibly over the
+    thousands of latent frames a long video packs. MPS (and NPU) have no float64 support, so the layout steps have to
+    downcast when they move `position_ids` onto the execution device — see
+    https://github.com/huggingface/diffusers/issues/14639. Neither this nor the checkpoint-free
+    [`TestMiniMaxH3Reference`] above needs a checkpoint or an accelerator to run.
+    """
+
+    def test_position_ids_are_float64_on_the_host(self):
+        r"""The packed layout is always built in float64, regardless of what device it later moves to."""
+        text_token_tags = torch.ones(4, dtype=torch.int64)
+        position_ids, *_ = MiniMaxH3PrepareLayoutStep.build_packed_sequence(
+            text_token_tags,
+            num_latent_frames=2,
+            latent_height=16,
+            latent_width=16,
+            num_audio_latents=2,
+            patch_size=(1, 8, 8),
+            audio_channels=1,
+            audio_tag=2,
+            video_tag=0,
+        )
+        assert position_ids.dtype == torch.float64
+
+    @pytest.mark.parametrize(
+        "device_type, expected_dtype",
+        [("cpu", torch.float64), ("cuda", torch.float64), ("mps", torch.float32)],
+    )
+    def test_device_transfer_dtype_matches_the_execution_device(self, device_type, expected_dtype):
+        r"""
+        The dtype the layout steps pass to `position_ids.to(device, dtype=...)` is float32 exactly on the devices
+        that cannot hold float64, and float64 (i.e. a no-op cast) everywhere else — including on a machine that has
+        none of these backends, since building a `torch.device` object needs no hardware. NPU is also downcast by
+        `maybe_adjust_dtype_for_device`, but constructing a `torch.device("npu")` needs the `torch_npu` plugin
+        installed, so it is exercised only by that helper's own device-agnostic logic, not by an actual device here.
+        """
+        assert maybe_adjust_dtype_for_device(torch.float64, torch.device(device_type)) == expected_dtype
+
+    @pytest.mark.skipif(torch_device != "mps", reason="exercises the actual MPS float64 tensor-move limitation")
+    def test_position_ids_move_to_mps_as_float32(self):
+        r"""On real MPS hardware, the layout step's device transfer no longer tries to materialize a float64 tensor."""
+        text_token_tags = torch.ones(4, dtype=torch.int64)
+        position_ids, *_ = MiniMaxH3PrepareLayoutStep.build_packed_sequence(
+            text_token_tags,
+            num_latent_frames=2,
+            latent_height=16,
+            latent_width=16,
+            num_audio_latents=2,
+            patch_size=(1, 8, 8),
+            audio_channels=1,
+            audio_tag=2,
+            video_tag=0,
+        )
+        device = torch.device(torch_device)
+        moved = position_ids.to(device, dtype=maybe_adjust_dtype_for_device(torch.float64, device))
+        assert moved.dtype == torch.float32
+        assert moved.device.type == "mps"
