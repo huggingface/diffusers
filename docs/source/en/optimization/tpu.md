@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # TorchTPU
 
-[TorchTPU](https://github.com/google-pytorch/torch_tpu/) provides a PyTorch backend for Google's Tensor Processing Units (TPUs), enabling you to run diffusers pipelines on Google Cloud TPUs (v6e, v5p, …) with minimal code changes.
+[TorchTPU](https://github.com/google-pytorch/torch_tpu/) is a PyTorch backend for Google's Tensor Processing Units (TPUs), which lets you run Diffusers pipelines on Cloud TPUs (v6e, v5p, etc.) with minimal code changes.
 
 Four execution modes are available:
 
