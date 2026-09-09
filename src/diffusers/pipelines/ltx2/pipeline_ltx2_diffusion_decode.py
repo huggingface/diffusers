@@ -73,6 +73,28 @@ def _blend_t(a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tenso
     return b
 
 
+def _check_scheduler(scheduler: FlowMatchEulerDiscreteScheduler) -> None:
+    """Warn when the scheduler would bend the decoder's schedule out from under it.
+
+    The decoder walks the uniform sigmas it was distilled on and integrates them with a plain Euler step, so every knob
+    that reshapes the schedule has to be off. `use_dynamic_shifting` at least raises from `set_timesteps`; the other
+    three change the result silently, which is how a scheduler borrowed from a transformer (`shift`, `shift_terminal`)
+    quietly produces a worse decode.
+    """
+    config = scheduler.config
+    wrong = {
+        name: getattr(config, name, default)
+        for name, default in (("shift", 1.0), ("shift_terminal", None), ("stochastic_sampling", False))
+        if getattr(config, name, default) != default
+    }
+    if wrong:
+        logger.warning(
+            f"{scheduler.__class__.__name__} is configured with {wrong}, which reshapes the sigma schedule or the "
+            "update rule the diffusion decoder was distilled for; the decode will run but the result will be worse. "
+            "Load the decoder's own scheduler, e.g. from the checkpoint's `diffusion_decoder_scheduler` subfolder."
+        )
+
+
 def _progress_bar(progress_bar, total: int):
     """`progress_bar(total=total)` when the caller has one, an inert context otherwise."""
     return progress_bar(total=total) if progress_bar is not None else nullcontext()
@@ -431,6 +453,7 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
         """
         if sigmas is not None and num_inference_steps is not None:
             raise ValueError("Only one of `num_inference_steps` or `sigmas` can be passed, not both.")
+        _check_scheduler(self.scheduler)
 
         device = self._execution_device
         latents = latents.to(device)

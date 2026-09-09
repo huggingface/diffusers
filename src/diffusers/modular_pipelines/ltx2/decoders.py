@@ -139,6 +139,29 @@ def _blend_t(a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tenso
     return b
 
 
+# Copied from diffusers.pipelines.ltx2.pipeline_ltx2_diffusion_decode._check_scheduler
+def _check_scheduler(scheduler: FlowMatchEulerDiscreteScheduler) -> None:
+    """Warn when the scheduler would bend the decoder's schedule out from under it.
+
+    The decoder walks the uniform sigmas it was distilled on and integrates them with a plain Euler step, so every knob
+    that reshapes the schedule has to be off. `use_dynamic_shifting` at least raises from `set_timesteps`; the other
+    three change the result silently, which is how a scheduler borrowed from a transformer (`shift`, `shift_terminal`)
+    quietly produces a worse decode.
+    """
+    config = scheduler.config
+    wrong = {
+        name: getattr(config, name, default)
+        for name, default in (("shift", 1.0), ("shift_terminal", None), ("stochastic_sampling", False))
+        if getattr(config, name, default) != default
+    }
+    if wrong:
+        logger.warning(
+            f"{scheduler.__class__.__name__} is configured with {wrong}, which reshapes the sigma schedule or the "
+            "update rule the diffusion decoder was distilled for; the decode will run but the result will be worse. "
+            "Load the decoder's own scheduler, e.g. from the checkpoint's `diffusion_decoder_scheduler` subfolder."
+        )
+
+
 # Copied from diffusers.pipelines.ltx2.pipeline_ltx2_diffusion_decode._progress_bar
 def _progress_bar(progress_bar, total: int):
     """`progress_bar(total=total)` when the caller has one, an inert context otherwise."""
@@ -516,6 +539,7 @@ class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
         # The decoder's `forward` is a single denoising step, so the loop (and the tiling around it) is driven
         # from here. It samples the noise it denoises, so pass the generator to keep decoding reproducible.
         scheduler = components.diffusion_decoder_scheduler
+        _check_scheduler(scheduler)
         sigmas = _decoder_sigmas(decoder, block_state.decode_num_inference_steps)
         decode = _tiled_decode if _should_tile(decoder, latents) else _untiled_decode
         video = decode(decoder, scheduler, latents, block_state.generator, sigmas)

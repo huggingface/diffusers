@@ -21,6 +21,7 @@ from diffusers import (
     LTX2VideoDiffusionDecodePipeline,
     LTX2VideoDiffusionDecoderModel,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, require_accelerator, torch_device
 from .testing_utils import get_dummy_vae
@@ -46,9 +47,9 @@ DECODER_CONFIG = {
 }
 
 
-def _build(with_vae: bool = False):
+def _build(with_vae: bool = False, **config_overrides):
     torch.manual_seed(0)
-    decoder = LTX2VideoDiffusionDecoderModel(**DECODER_CONFIG).to(torch_device).eval()
+    decoder = LTX2VideoDiffusionDecoderModel(**{**DECODER_CONFIG, **config_overrides}).to(torch_device).eval()
     # Non-trivial statistics, so a run that skipped denormalization would not accidentally match.
     with torch.no_grad():
         decoder.latents_mean.copy_(torch.linspace(-0.1, 0.1, DECODER_CONFIG["latent_channels"]))
@@ -324,3 +325,88 @@ def test_model_cpu_offload_decodes():
         frames = pipe(latents, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt").frames
         assert frames.shape == (1, 17, 3, 64, 80)
         assert torch.isfinite(frames).all()
+
+
+@pytest.mark.parametrize("model_output_type", ["v", "x0"])
+def test_scheduler_step_matches_the_closed_form_euler_update(model_output_type):
+    """The scheduler must integrate exactly what the decoder's own solver did, on both prediction types.
+
+    This is the regression the move to a scheduler is most exposed to: `step` would still return a plausible
+    tensor if the sign of `dt` flipped, if the x0-to-velocity conversion used the wrong sigma, or if the sigma
+    handed to the model were the scheduler's `sigma * num_train_timesteps` timestep instead. So the loop is
+    recomputed here in closed form -- `x - (sigma - sigma_next) * v` -- and compared bit for bit.
+    """
+    steps = 3
+    pipe = _build(decoder_model_output_type=model_output_type, decoder_num_inference_steps=steps)
+    decoder, latents = pipe.diffusion_decoder, _latents()
+    sigmas = pipe.get_sigmas()
+    assert len(sigmas) == steps
+
+    with torch.no_grad():
+        context = decoder.encode_context_stage_4(decoder.encode_context_stages_1_to_3(latents))
+        pixel_shape = (
+            latents.shape[0],
+            DECODER_CONFIG["out_channels"],
+            context.shape[1],
+            context.shape[2] * DECODER_CONFIG["patch_size"],
+            context.shape[3] * DECODER_CONFIG["patch_size"],
+        )
+        # Same draw the pipeline makes, so both loops start from the same canvas.
+        x_t = randn_tensor(
+            pixel_shape,
+            generator=torch.Generator(torch_device).manual_seed(0),
+            device=latents.device,
+            dtype=latents.dtype,
+        )
+
+        # float32 scalars, matching the dtype the scheduler holds its sigmas in: a Python float would divide
+        # and subtract in double and leave a few ulps of difference that say nothing about the update rule.
+        sigma_values = torch.tensor(sigmas + [0.0], dtype=torch.float32, device=torch_device)
+        for i in range(steps):
+            sigma, sigma_next = sigma_values[i], sigma_values[i + 1]
+            prediction = decoder(x_t, context, sigma.expand(latents.shape[0]), return_dict=False)[0]
+            if model_output_type == "x0":
+                if i == steps - 1:
+                    # The x0 shortcut: `x - sigma * (x - x0) / sigma` is the prediction itself, and taking it
+                    # directly is what keeps the common one-step decode off a full-canvas float32 round trip.
+                    expected = prediction
+                    break
+                velocity = (x_t.float() - prediction.float()) / sigma
+            else:
+                velocity = prediction.float()
+            x_t = (x_t.float() - (sigma - sigma_next) * velocity).to(x_t.dtype)
+        else:
+            expected = x_t
+
+        actual = pipe.decode(latents, generator=torch.Generator(torch_device).manual_seed(0), sigmas=sigmas)
+
+    assert torch.equal(actual, expected), (
+        f"scheduler-driven decode diverged from the closed-form Euler update by "
+        f"{(actual - expected).abs().max().item():.3e} for model_output_type={model_output_type!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_config",
+    [{"shift": 3.0}, {"shift_terminal": 0.1}, {"stochastic_sampling": True}],
+)
+def test_a_scheduler_that_reshapes_the_schedule_warns(bad_config, caplog):
+    """Three scheduler settings change the decode with no error of their own -- they must not pass in silence.
+
+    `use_dynamic_shifting` is left out: `set_timesteps` already raises on it, so it cannot be the silent case.
+    """
+    pipe = _build()
+    pipe.scheduler = FlowMatchEulerDiscreteScheduler(**{**_scheduler().config, **bad_config})
+    with caplog.at_level("WARNING", logger="diffusers.pipelines.ltx2.pipeline_ltx2_diffusion_decode"):
+        pipe(_latents(), generator=torch.Generator(torch_device).manual_seed(0), output_type="pt")
+    assert any(key in caplog.text for key in bad_config), (
+        f"decoding with {bad_config} produced no warning naming it; log was: {caplog.text!r}"
+    )
+
+
+def test_the_decoders_own_scheduler_does_not_warn(caplog):
+    """The shipped config must be silent, or the warning above is noise every user learns to ignore."""
+    pipe = _build()
+    with caplog.at_level("WARNING", logger="diffusers.pipelines.ltx2.pipeline_ltx2_diffusion_decode"):
+        pipe(_latents(), generator=torch.Generator(torch_device).manual_seed(0), output_type="pt")
+    assert not caplog.text, f"the decoder's own scheduler warned: {caplog.text!r}"
