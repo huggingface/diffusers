@@ -19,7 +19,7 @@ Two execution modes are available:
 | Mode | Constant | How to activate | Notes |
 |---|---|---|---|
 | Strict eager (default) | `EagerMode.DEFER_NEVER` | `import torch_tpu` | Operations dispatched one at a time, asynchronous |
-| **Compile** | — | `pipe.enable_tpu_compile()` | AOT compilation with `TpuBackend` |
+| Compile | — | `pipe.enable_tpu_compile()` | AOT compilation with `TpuBackend` |
 
 ## Installation
 
