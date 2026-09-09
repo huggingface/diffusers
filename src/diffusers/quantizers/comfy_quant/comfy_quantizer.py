@@ -83,19 +83,17 @@ class ComfyQuantizer(DiffusersQuantizer):
         }
 
         # Check if it's already a QuantizedTensor (e.g., if loaded directly from a custom loader)
-        if hasattr(param_value, "layout") and isinstance(param_value.layout, getattr(ck_tensor, "BaseLayout", type)):
+        if isinstance(param_value, ck_tensor.QuantizedTensor):
             quantized_weight = param_value
         else:
             layout = layout_map.get(self.quant_format.lower())
             if layout is None:
-                raise ValueError(
-                    f"The layout for '{self.quant_format}' was not found in `comfy_kitchen`."
-                )
+                raise ValueError(f"The layout for '{self.quant_format}' was not found in `comfy_kitchen`.")
 
             # comfy-kitchen natively handles wrapping standard float tensors via from_float
             # If the tensor is pre-quantized raw bytes, comfy-kitchen exposes `.from_quantized(...)` or similar internally,
             # but `.from_float` guarantees we intercept float weights (e.g. standard safetensors float weights).
-            quantized_weight = ck_tensor.QuantizedTensor.from_float(param_value.to(target_device), layout)
+            quantized_weight = ck_tensor.QuantizedTensor.from_float(param_value.to(target_device), layout.__name__)
 
         if tensor_name in module._parameters:
             module._parameters[tensor_name] = quantized_weight.to(target_device)

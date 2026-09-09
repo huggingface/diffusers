@@ -1067,7 +1067,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_comfy_kitchen_objects import *
     else:
         from .quantizers.quantization_config import Com
-        
+
     try:
         if not is_onnx_available():
             raise OptionalDependencyNotAvailable()
