@@ -116,6 +116,48 @@ class LTX2TransformerTesterConfig(BaseModelTesterConfig):
 class TestLTX2Transformer(LTX2TransformerTesterConfig, ModelTesterMixin):
     """Core model tests for LTX2 Video Transformer."""
 
+    def test_keyframes_abs_pos_embedding_marks_only_masked_tokens(self):
+        init_dict = self.get_init_dict()
+        init_dict["use_keyframes_abs_pos_embedding"] = True
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict).to(torch_device).eval()
+        # The parameter is zero-initialized, so an untrained checkpoint is an exact no-op.
+        torch.nn.init.normal_(model.keyframes_abs_pos_embedding, std=0.1)
+
+        inputs = self.get_dummy_inputs()
+        num_tokens = inputs["hidden_states"].shape[1]
+        keyframes_mask = torch.zeros(
+            (inputs["hidden_states"].shape[0], num_tokens, 1), device=torch_device, dtype=torch.float32
+        )
+
+        with torch.no_grad():
+            unmarked = model(**inputs, return_dict=False)[0]
+            all_zero_mask = model(**inputs, video_keyframes_mask=keyframes_mask, return_dict=False)[0]
+            keyframes_mask[:, : num_tokens // 2] = 1.0
+            half_marked = model(**inputs, video_keyframes_mask=keyframes_mask, return_dict=False)[0]
+
+        # An all-zero mask marks nothing, so it must match omitting the mask.
+        assert torch.allclose(unmarked, all_zero_mask, atol=1e-5)
+        assert not torch.allclose(unmarked, half_marked, atol=1e-5)
+
+    def test_keyframes_mask_is_ignored_without_the_embedding(self):
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        assert not hasattr(model, "keyframes_abs_pos_embedding")
+
+        inputs = self.get_dummy_inputs()
+        keyframes_mask = torch.ones(
+            (inputs["hidden_states"].shape[0], inputs["hidden_states"].shape[1], 1),
+            device=torch_device,
+            dtype=torch.float32,
+        )
+
+        with torch.no_grad():
+            without_mask = model(**inputs, return_dict=False)[0]
+            with_mask = model(**inputs, video_keyframes_mask=keyframes_mask, return_dict=False)[0]
+
+        assert torch.allclose(without_mask, with_mask, atol=1e-5)
+
 
 class TestLTX2TransformerMemory(LTX2TransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for LTX2 Video Transformer."""
