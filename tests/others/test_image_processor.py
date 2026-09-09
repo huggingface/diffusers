@@ -17,7 +17,7 @@ import numpy as np
 import PIL.Image
 import torch
 
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import VaeImageProcessor, VaeImageProcessorLDM3D
 
 
 class TestImageProcessor:
@@ -306,3 +306,35 @@ class TestImageProcessor:
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+    def test_vae_ldm3d_rgblike_to_depthmap_returns_uint16(self):
+        # VaeImageProcessorLDM3D.rgblike_to_depthmap combines two 8-bit channels
+        # into a 16-bit depth value, so it must return uint16 regardless of the
+        # input dtype. Casting back to the 8-bit input dtype truncates the value
+        # and breaks the downstream `numpy_to_depth` build of the I;16 PIL image.
+        high, low = 200, 100
+        expected = high * 256 + low
+
+        np_image = np.zeros((8, 8, 6), dtype=np.uint8)
+        np_image[:, :, 1] = high
+        np_image[:, :, 2] = low
+        np_depth = VaeImageProcessorLDM3D.rgblike_to_depthmap(np_image)
+        assert np_depth.dtype == np.uint16, f"expected uint16, got {np_depth.dtype}"
+        assert int(np_depth[0, 0]) == expected
+
+        pt_image = torch.zeros((8, 8, 6), dtype=torch.uint8)
+        pt_image[:, :, 1] = high
+        pt_image[:, :, 2] = low
+        pt_depth = VaeImageProcessorLDM3D.rgblike_to_depthmap(pt_image)
+        assert pt_depth.dtype == torch.uint16, f"expected uint16, got {pt_depth.dtype}"
+        assert int(pt_depth[0, 0]) == expected
+
+        # The depth map feeds numpy_to_depth, which builds a mode="I;16" PIL image;
+        # that must not raise "buffer is not large enough".
+        image_processor = VaeImageProcessorLDM3D()
+        batch = np.zeros((1, 8, 8, 6), dtype=np.uint8)
+        batch[:, :, :, 1] = high
+        batch[:, :, :, 2] = low
+        pil_images = image_processor.numpy_to_depth(batch)
+        assert pil_images[0].mode == "I;16"
+        assert pil_images[0].size == (8, 8)
