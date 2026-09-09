@@ -76,7 +76,7 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
             InputParam("decode_noise_scale", default=None),
             InputParam.template("generator"),
             InputParam.template("batch_size"),
-            InputParam.template("dtype", required=True),
+            InputParam.template("dtype", required=True, default=None),
         ]
 
     @property

@@ -278,7 +278,7 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
             InputParam.template("latents"),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("generator"),
-            InputParam.template("batch_size", required=True),
+            InputParam.template("batch_size", required=True, default=None),
         ]
 
     @property
@@ -342,7 +342,7 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
             InputParam.template("width", default=704),
             InputParam("num_frames", type_hint=int, default=161),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam.template("batch_size", required=True),
+            InputParam.template("batch_size", required=True, default=None),
         ]
 
     @property
