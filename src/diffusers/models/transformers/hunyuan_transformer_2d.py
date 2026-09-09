@@ -401,6 +401,8 @@ class HunyuanDiT2DModel(ModelMixin, AttentionMixin, ConfigMixin):
         height, width = hidden_states.shape[-2:]
 
         hidden_states = self.pos_embed(hidden_states)
+        # pos_embed output is non-contiguous due to flatten+transpose in PatchEmbed (BCHW -> BNC).
+        hidden_states = hidden_states.contiguous()
 
         temb = self.time_extra_emb(
             timestep, encoder_hidden_states_t5, image_meta_size, style, hidden_dtype=timestep.dtype

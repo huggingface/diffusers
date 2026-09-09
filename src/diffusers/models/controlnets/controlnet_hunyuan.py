@@ -262,6 +262,8 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         height, width = hidden_states.shape[-2:]
 
         hidden_states = self.pos_embed(hidden_states)  # b,c,H,W -> b, N, C
+        # pos_embed output is non-contiguous due to flatten+transpose in PatchEmbed (BCHW -> BNC).
+        hidden_states = hidden_states.contiguous()
 
         # 2. pre-process
         hidden_states = hidden_states + self.input_block(self.pos_embed(controlnet_cond))
