@@ -64,7 +64,7 @@ is slow because it triggers compilation; subsequent calls reuse the compiled gra
 > TorchTPU requires **static shapes** — `torch.compile` is called with `dynamic=False`
 > internally. Every time `height`, `width`, or `num_inference_steps` changes, the graph is
 > recompiled from scratch. Keep these values constant across all calls after warmup, or call
-> `tpu_warmup` again before changing them.
+> [`tpu_warmup`] again before changing them.
 
 ```python
 import torch
