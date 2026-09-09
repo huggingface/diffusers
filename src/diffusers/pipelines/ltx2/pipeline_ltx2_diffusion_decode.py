@@ -74,24 +74,18 @@ def _blend_t(a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tenso
 
 
 def _check_scheduler(scheduler: FlowMatchEulerDiscreteScheduler) -> None:
-    """Warn when the scheduler would bend the decoder's schedule out from under it.
+    """Reject only what this pipeline cannot drive, which is resolution-dependent shifting.
 
-    The decoder walks the uniform sigmas it was distilled on and integrates them with a plain Euler step, so every knob
-    that reshapes the schedule has to be off. `use_dynamic_shifting` at least raises from `set_timesteps`; the other
-    three change the result silently, which is how a scheduler borrowed from a transformer (`shift`, `shift_terminal`)
-    quietly produces a worse decode.
+    Nothing else about the scheduler is checked. The sigmas the decoder was distilled on are a default
+    ([`get_sigmas`]), not a requirement: a shift, a terminal shift or a stochastic update are all legitimate choices,
+    and a finetune may well want them — moving the loop onto a scheduler is what makes them possible.
     """
-    config = scheduler.config
-    wrong = {
-        name: getattr(config, name, default)
-        for name, default in (("shift", 1.0), ("shift_terminal", None), ("stochastic_sampling", False))
-        if getattr(config, name, default) != default
-    }
-    if wrong:
-        logger.warning(
-            f"{scheduler.__class__.__name__} is configured with {wrong}, which reshapes the sigma schedule or the "
-            "update rule the diffusion decoder was distilled for; the decode will run but the result will be worse. "
-            "Load the decoder's own scheduler, e.g. from the checkpoint's `diffusion_decoder_scheduler` subfolder."
+    if scheduler.config.use_dynamic_shifting:
+        raise ValueError(
+            f"{scheduler.__class__.__name__} has `use_dynamic_shifting=True`, which needs a resolution-derived "
+            "`mu` that this pipeline does not compute. Use a scheduler with `use_dynamic_shifting=False` — the "
+            "converted checkpoints ship one in a `diffusion_decoder_scheduler` subfolder. Note that a "
+            "transformer's scheduler usually has it on, so it cannot be reused here as-is."
         )
 
 
@@ -341,10 +335,11 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
         diffusion_decoder ([`LTX2VideoDiffusionDecoderModel`]):
             The diffusion video decoder. Its `forward` is a single denoising step; this pipeline owns the loop.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
-            Scheduler driving the decoder's denoising steps. This is not the transformer's scheduler: the decoder walks
-            a plain uniform sigma schedule, so it needs one with `use_dynamic_shifting=False` and
-            `shift_terminal=None`. Checkpoints converted by `convert_ltx2_to_diffusers.py` ship it in a
-            `diffusion_decoder_scheduler` subfolder.
+            Scheduler driving the decoder's denoising steps. Not the transformer's: that one normally has
+            `use_dynamic_shifting=True`, which needs a `mu` this pipeline does not compute. Checkpoints converted by
+            `convert_ltx2_to_diffusers.py` ship a matching one in a `diffusion_decoder_scheduler` subfolder, configured
+            for the uniform schedule the LTX-2.5 decoder was distilled on. Anything else the scheduler can express — a
+            shift, a different sigma schedule — is a supported choice, not a misconfiguration.
         vae ([`AutoencoderKLLTX2Video`], *optional*):
             Only consulted for the latent statistics used to denormalize. When omitted the pipeline falls back to the
             LTX-2 defaults, so a decode-only workflow does not have to load a second autoencoder.

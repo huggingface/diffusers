@@ -141,24 +141,18 @@ def _blend_t(a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tenso
 
 # Copied from diffusers.pipelines.ltx2.pipeline_ltx2_diffusion_decode._check_scheduler
 def _check_scheduler(scheduler: FlowMatchEulerDiscreteScheduler) -> None:
-    """Warn when the scheduler would bend the decoder's schedule out from under it.
+    """Reject only what this pipeline cannot drive, which is resolution-dependent shifting.
 
-    The decoder walks the uniform sigmas it was distilled on and integrates them with a plain Euler step, so every knob
-    that reshapes the schedule has to be off. `use_dynamic_shifting` at least raises from `set_timesteps`; the other
-    three change the result silently, which is how a scheduler borrowed from a transformer (`shift`, `shift_terminal`)
-    quietly produces a worse decode.
+    Nothing else about the scheduler is checked. The sigmas the decoder was distilled on are a default
+    ([`get_sigmas`]), not a requirement: a shift, a terminal shift or a stochastic update are all legitimate choices,
+    and a finetune may well want them — moving the loop onto a scheduler is what makes them possible.
     """
-    config = scheduler.config
-    wrong = {
-        name: getattr(config, name, default)
-        for name, default in (("shift", 1.0), ("shift_terminal", None), ("stochastic_sampling", False))
-        if getattr(config, name, default) != default
-    }
-    if wrong:
-        logger.warning(
-            f"{scheduler.__class__.__name__} is configured with {wrong}, which reshapes the sigma schedule or the "
-            "update rule the diffusion decoder was distilled for; the decode will run but the result will be worse. "
-            "Load the decoder's own scheduler, e.g. from the checkpoint's `diffusion_decoder_scheduler` subfolder."
+    if scheduler.config.use_dynamic_shifting:
+        raise ValueError(
+            f"{scheduler.__class__.__name__} has `use_dynamic_shifting=True`, which needs a resolution-derived "
+            "`mu` that this pipeline does not compute. Use a scheduler with `use_dynamic_shifting=False` — the "
+            "converted checkpoints ship one in a `diffusion_decoder_scheduler` subfolder. Note that a "
+            "transformer's scheduler usually has it on, so it cannot be reused here as-is."
         )
 
 

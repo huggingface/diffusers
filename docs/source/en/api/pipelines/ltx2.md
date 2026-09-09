@@ -738,8 +738,8 @@ decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
 # Decode in overlapping tiles so peak memory scales with the tile size rather than the video size.
 decoder.enable_tiling()
 
-# The decoder's own scheduler, not `pipe.scheduler`: it walks a plain uniform sigma schedule, while the
-# transformer's is resolution-shifted and would need a `mu` the decoder has no sequence length to derive.
+# The decoder's own scheduler, not `pipe.scheduler`: the transformer's is resolution-shifted and would need
+# a `mu` this pipeline does not compute.
 scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(model_path, subfolder="diffusion_decoder_scheduler")
 decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=scheduler)
 
@@ -763,7 +763,7 @@ To combine this with [two-stage generation](#two-stage-generation-for-ltx-25), a
 
 `decoder.enable_tiling()` is what keeps a high resolution decode in memory, the same way `pipe.vae.enable_tiling()` does for the convolutional VAE. The memory-dominant part of the decode — the last upsampling stage and the diffusion stage — then runs on overlapping tiles that are blended back together, so peak memory is bounded by the tile size instead of the video size. Tiling only kicks in once the latent exceeds one tile, and the tile and overlap sizes can be tuned via the `tile_sample_min_*` / `tile_sample_stride_*` arguments (defaults match the reference implementation). Since the diffusion stage denoises each tile separately, a tiled decode does not reproduce the untiled result exactly. The call sets the sizes and [`LTX2VideoDiffusionDecodePipeline`] does the tiling, since each tile runs its own denoising loop — unlike the convolutional VAE, where the tiling is entirely inside the model.
 
-The decode is a denoising loop like any other, so `num_inference_steps` (or an explicit `sigmas` schedule) is a `__call__` argument. It defaults to what the checkpoint was distilled for, which is a single step on LTX-2.5; more steps cost proportionally more time and are rarely worth it on a distilled decoder.
+The decode is a denoising loop like any other, so `num_inference_steps` (or an explicit `sigmas` schedule) is a `__call__` argument. It defaults to what the checkpoint was distilled for, which is a single step on LTX-2.5; more steps cost proportionally more time and are rarely worth it on a distilled decoder. The scheduler is a real component rather than a formality — reshaping the schedule through its config (a `shift`, say) reaches the decode, which is the point of driving the loop from one. The only setting the pipeline cannot honour is `use_dynamic_shifting`, since it never computes a `mu`; that is why a transformer's scheduler cannot be reused here.
 
 On a single card it is also worth moving the pipeline out of the way before decoding (`pipe.to("cpu")` and `torch.cuda.empty_cache()`, after capturing `pipe.scheduler` and the vocoder's `output_sampling_rate`), since the decoder needs its own headroom. See [`LTX2VideoDiffusionDecoderModel`] for the attention backends, the tiling details, and the rest of the decoder's behaviour.
 
@@ -1263,7 +1263,7 @@ from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoDiffus
 decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
     "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder", dtype=torch.bfloat16
 )
-# The decoder's own scheduler, not `pipe.scheduler`: it walks a plain uniform sigma schedule.
+# The decoder's own scheduler, not `pipe.scheduler`, which this pipeline cannot drive.
 scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
     "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder_scheduler"
 )

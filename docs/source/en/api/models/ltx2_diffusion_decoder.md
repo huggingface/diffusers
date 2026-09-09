@@ -38,8 +38,8 @@ latents = pipe(prompt="a potter shaping a clay vase", output_type="latent").fram
 decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
     "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder", dtype=torch.bfloat16
 ).to("cuda")
-# The decoder's own scheduler, not `pipe.scheduler`: it walks a plain uniform sigma schedule, while the
-# transformer's is resolution-shifted and would need a `mu` the decoder has no sequence length to derive.
+# The decoder's own scheduler, not `pipe.scheduler`: the transformer's is resolution-shifted and would need
+# a `mu` this pipeline does not compute.
 scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
     "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder_scheduler"
 )

@@ -386,27 +386,36 @@ def test_scheduler_step_matches_the_closed_form_euler_update(model_output_type):
     )
 
 
-@pytest.mark.parametrize(
-    "bad_config",
-    [{"shift": 3.0}, {"shift_terminal": 0.1}, {"stochastic_sampling": True}],
-)
-def test_a_scheduler_that_reshapes_the_schedule_warns(bad_config, caplog):
-    """Three scheduler settings change the decode with no error of their own -- they must not pass in silence.
+def test_a_reshaped_sigma_schedule_is_honoured():
+    """A scheduler configured away from the shipped defaults must take effect, not be second-guessed.
 
-    `use_dynamic_shifting` is left out: `set_timesteps` already raises on it, so it cannot be the silent case.
+    The uniform schedule is what the LTX-2.5 checkpoint was distilled on, but it is a default, not a law: a
+    finetune may prefer a shift, and driving the loop from a scheduler is what makes that expressible. So `shift`
+    has to reach the sigmas and change the decode, with no warning and no correction.
+    """
+    pipe, latents = _build(), _latents()
+    shipped = pipe(latents, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt").frames
+
+    pipe.scheduler = FlowMatchEulerDiscreteScheduler(**{**_scheduler().config, "shift": 5.0})
+    sigmas = pipe.get_sigmas(3)
+    shifted = pipe(
+        latents, sigmas=sigmas, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt"
+    ).frames
+
+    # `shift` bends the schedule the pipeline handed in, rather than being ignored or overridden.
+    assert pipe.scheduler.sigmas[:-1].tolist() != sigmas
+    assert not torch.equal(shipped, shifted)
+    assert torch.isfinite(shifted).all()
+
+
+def test_dynamic_shifting_is_rejected_with_an_actionable_error():
+    """The one scheduler setting this pipeline cannot drive: it never computes `mu`, so the decode cannot run.
+
+    Worth its own error because it is what `scheduler=pipe.scheduler` gives you — a transformer's scheduler
+    normally has dynamic shifting on — and the scheduler's own complaint (`mu` must be passed) does not say where
+    to get a working one.
     """
     pipe = _build()
-    pipe.scheduler = FlowMatchEulerDiscreteScheduler(**{**_scheduler().config, **bad_config})
-    with caplog.at_level("WARNING", logger="diffusers.pipelines.ltx2.pipeline_ltx2_diffusion_decode"):
+    pipe.scheduler = FlowMatchEulerDiscreteScheduler(**{**_scheduler().config, "use_dynamic_shifting": True})
+    with pytest.raises(ValueError, match="diffusion_decoder_scheduler"):
         pipe(_latents(), generator=torch.Generator(torch_device).manual_seed(0), output_type="pt")
-    assert any(key in caplog.text for key in bad_config), (
-        f"decoding with {bad_config} produced no warning naming it; log was: {caplog.text!r}"
-    )
-
-
-def test_the_decoders_own_scheduler_does_not_warn(caplog):
-    """The shipped config must be silent, or the warning above is noise every user learns to ignore."""
-    pipe = _build()
-    with caplog.at_level("WARNING", logger="diffusers.pipelines.ltx2.pipeline_ltx2_diffusion_decode"):
-        pipe(_latents(), generator=torch.Generator(torch_device).manual_seed(0), output_type="pt")
-    assert not caplog.text, f"the decoder's own scheduler warned: {caplog.text!r}"
