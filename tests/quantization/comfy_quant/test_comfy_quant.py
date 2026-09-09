@@ -42,7 +42,7 @@ class TestComfyQuantizer:
         assert model.linear.weight._layout_cls == "TensorCoreFP8Layout"
 
     def test_create_quantized_param_invalid_format(self):
-        config = ComfyQuantConfig(quant_format="INT_42") #INT_42 is an non-existent format
+        config = ComfyQuantConfig(quant_format="INT_42")  # INT_42 is an non-existent format
         quantizer = ComfyQuantizer(config)
 
         class DummyModel(nn.Module):
