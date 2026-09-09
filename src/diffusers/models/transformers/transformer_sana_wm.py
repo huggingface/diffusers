@@ -2204,17 +2204,196 @@ class BidirectionalGDNUCPESinglePathLiteLA(nn.Module):
         return self.proj(combined.to(x.dtype))
 
 
-class _SoftmaxUCPESinglePathLiteLA(BidirectionalGDNUCPESinglePathLiteLA):
+class _SoftmaxUCPESinglePathLiteLA(nn.Module):
     """Softmax counterpart of [`BidirectionalGDNUCPESinglePathLiteLA`].
 
     The released checkpoint uses this block for every ``softmax_every_n``-th layer. It keeps the exact parameter layout
-    of its parent -- so both variants load from the same checkpoint -- but replaces both recurrences with a full
-    (non-causal) ``F.scaled_dot_product_attention``. Short convolutions are disabled (``conv_kernel_size=0``) and the
-    GDN-only gates (``beta_proj`` / ``gate_proj`` / ``dt_bias`` / ``A_log`` / ``recall_gate``) are present but unused.
+    of [`BidirectionalGDNUCPESinglePathLiteLA`] -- so both variants load from the same checkpoint -- but replaces both
+    recurrences with a full (non-causal) ``F.scaled_dot_product_attention``. Short convolutions are never built for
+    this variant, and the GDN-only parameters (``beta_proj`` / ``gate_proj`` / ``dt_bias`` / ``A_log`` /
+    ``recall_gate``) exist only so the shared checkpoint loads: they are created in the same order, under the same
+    names, and are unused by the forward.
+
+    Args:
+        in_dim (`int`): Input channels.
+        out_dim (`int`): Output channels.
+        cam_dim (`int`): Camera-branch width; must equal `in_dim` so the shared parameters line up.
+        cam_heads (`int`): Camera-branch heads; must equal `heads` and divide `cam_dim` into multiples of 4.
+        patch_size (`tuple[int, int, int]`, defaults to `(1, 2, 2)`): Latent patch size, used to map camera
+            intrinsics onto the token grid.
+        heads (`int`, *optional*): Number of attention heads; derived from `out_dim // dim * heads_ratio` when `None`.
+        heads_ratio (`float`, defaults to 1.0): Head-count multiplier used when `heads` is `None`.
+        dim (`int`, defaults to 32): Head dimension used when `heads` is `None`.
+        use_bias (`bool`, defaults to `False`): Whether the fused QKV projection has a bias.
+        qk_norm (`bool`, defaults to `False`): Apply RMSNorm to Q/K.
+        norm_eps (`float`, defaults to 1e-5): Epsilon of the Q/K RMSNorm.
+        use_output_gate (`bool`, defaults to `True`): Apply the shared silu output gate.
+        kwargs: The GDN-only options (`eps`, `chunk_gdn_chunk_size`, `conv_kernel_size`, `k_conv_only`) are accepted
+            and ignored, so both attention variants can be built from the same block keywords.
     """
 
-    def __init__(self, *args, conv_kernel_size: int = 0, **kwargs):
-        super().__init__(*args, conv_kernel_size=0, **kwargs)
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        *,
+        cam_dim: int,
+        cam_heads: int,
+        patch_size: tuple[int, int, int] = (1, 2, 2),
+        heads: int | None = None,
+        heads_ratio: float = 1.0,
+        dim: int = 32,
+        use_bias: bool = False,
+        qk_norm: bool = False,
+        norm_eps: float = 1e-5,
+        use_output_gate: bool = True,
+        **kwargs: object,
+    ) -> None:
+        heads = heads or int(out_dim // dim * heads_ratio)
+        super().__init__()
+
+        # Fused QKV projection and output projection (the `q_norm` / `k_norm`
+        # attributes are set further down, depending on `qk_norm`).
+        self.qkv = nn.Linear(in_dim, in_dim * 3, bias=use_bias)
+        self.proj = nn.Linear(in_dim, in_dim)
+
+        self.heads = heads
+        self.dim = out_dim // heads
+
+        if qk_norm:
+            self.q_norm = RMSNorm(in_dim, eps=norm_eps)
+            self.k_norm = RMSNorm(in_dim, eps=norm_eps)
+        else:
+            self.q_norm = nn.Identity()
+            self.k_norm = nn.Identity()
+
+        # GDN-only gates. Softmax attention never reads them, but they are part of the
+        # shared checkpoint, so they are built here in the checkpoint's order.
+        self.beta_proj = nn.Linear(in_dim, heads, bias=True)
+        self.gate_proj = nn.Linear(in_dim, heads, bias=True)
+
+        A = torch.zeros(heads, dtype=torch.float32).uniform_(0, 16)
+        self.A_log = nn.Parameter(torch.log(A))
+        dt_min = 0.001
+        dt_max = 0.1
+        dt_init_floor = 1e-4
+        dt = torch.exp(
+            torch.rand(heads) * (math.log(dt_max) - math.log(dt_min)) + math.log(dt_min),
+        )
+        dt = torch.clamp(dt, min=dt_init_floor)
+        # Inverse of softplus: https://github.com/pytorch/pytorch/issues/72759
+        inv_dt = dt + torch.log(-torch.expm1(-dt))
+        self.dt_bias = nn.Parameter(inv_dt)
+
+        # `recall_gate` is unused by the forward; kept as a buffer for checkpoint compatibility.
+        self.register_buffer("recall_gate", torch.zeros(1))
+
+        self.use_output_gate = use_output_gate
+        if use_output_gate:
+            self.output_gate = nn.Linear(in_dim, out_dim, bias=True)
+        else:
+            self.output_gate = None
+
+        self.patch_size = patch_size
+        self.cam_dim = cam_dim
+        self.cam_heads = cam_heads
+        self.cam_head_dim = cam_dim // cam_heads
+
+        if cam_dim != in_dim:
+            raise ValueError(f"Parameter sharing requires cam_dim == in_dim, got cam_dim={cam_dim}, in_dim={in_dim}.")
+        if cam_heads != self.heads:
+            raise ValueError(
+                f"Parameter sharing requires cam_heads == heads, got cam_heads={cam_heads}, heads={self.heads}."
+            )
+        if self.cam_head_dim % 4 != 0:
+            raise ValueError(
+                "UCPE camera branch requires cam_head_dim divisible by 4, "
+                f"got {self.cam_head_dim} (cam_dim={cam_dim}, cam_heads={cam_heads})."
+            )
+
+        # ---- Camera-specific: QKV + output projections only ----
+        self.q_proj_cam = nn.Linear(in_dim, cam_dim, bias=True)
+        self.k_proj_cam = nn.Linear(in_dim, cam_dim, bias=True)
+        self.v_proj_cam = nn.Linear(in_dim, cam_dim, bias=True)
+        self.out_proj_cam = nn.Linear(cam_dim, out_dim, bias=True)
+
+        # Keep branch-specific Q/K norms so camera statistics do not disturb the
+        # main branch (and vice versa). Start from identical weights.
+        self.q_norm_cam = deepcopy(self.q_norm)
+        self.k_norm_cam = deepcopy(self.k_norm)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _apply_output_gate(self, out: torch.Tensor, gate_x: torch.Tensor) -> torch.Tensor:
+        if not (self.use_output_gate and self.output_gate is not None):
+            return out
+        gate = F.silu(self.output_gate(gate_x).to(torch.float32))
+        return out * gate
+
+    @staticmethod
+    def _stabilize_cam_transforms(
+        q_cam: torch.Tensor,
+        k_cam: torch.Tensor,
+        v_cam: torch.Tensor,
+        q_cam_trans: torch.Tensor,
+        k_cam_trans: torch.Tensor,
+        v_cam_trans: torch.Tensor,
+        eps: float = 1e-6,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Downscale the UCPE-transformed camera tensors back to their pre-UCPE RMS envelope.
+
+        Each transformed tensor is rescaled so that its per-``(B, H, N)`` channel RMS never exceeds the RMS of the
+        matching pre-UCPE reference. All tensors are shaped ``(B, H, D, N)``.
+        """
+        stabilized = []
+        for ref, transformed in ((q_cam, q_cam_trans), (k_cam, k_cam_trans), (v_cam, v_cam_trans)):
+            ref_rms = ref.square().mean(dim=2, keepdim=True).add(eps).sqrt()
+            tr_rms = transformed.square().mean(dim=2, keepdim=True).add(eps).sqrt()
+            scale = (ref_rms / tr_rms.clamp_min(eps)).clamp(max=1.0)
+            stabilized.append(transformed * scale)
+        return stabilized[0], stabilized[1], stabilized[2]
+
+    @staticmethod
+    def _prepare_frame_valid_masks(
+        frame_valid_mask: torch.Tensor | None,
+        *,
+        B: int,
+        T: int,
+        S: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
+        """Convert frame-valid mask to token/beta/decay masks used by the attention branches."""
+        if frame_valid_mask is None:
+            return None, None, None
+
+        m = frame_valid_mask
+        if m.ndim == 5:
+            # (B, 1, T, 1, 1)
+            m = m[:, 0, :, 0, 0]
+        elif m.ndim == 3 and m.shape[1] == 1:
+            # (B, 1, T)
+            m = m[:, 0, :]
+        elif m.ndim != 2:
+            raise ValueError(
+                "frame_valid_mask must be shaped (B, 1, T, 1, 1), (B, 1, T), or (B, T); "
+                f"got shape={list(frame_valid_mask.shape)}"
+            )
+
+        if m.shape[0] != B or m.shape[1] != T:
+            raise ValueError(f"frame_valid_mask shape mismatch: expected (B={B}, T={T}), got {list(m.shape)}")
+
+        m = m.to(device=device, dtype=dtype)
+        token_valid_mask = m[:, :, None].expand(B, T, S).reshape(B, T * S)
+        beta_valid_mask = m.view(B, 1, T, 1)
+        decay_valid_mask = m.view(B, 1, T)
+        return token_valid_mask, beta_valid_mask, decay_valid_mask
+
+    # ------------------------------------------------------------------
+    # Main branch
+    # ------------------------------------------------------------------
 
     def _forward_main_branch_softmax(
         self,
@@ -2276,6 +2455,10 @@ class _SoftmaxUCPESinglePathLiteLA(BidirectionalGDNUCPESinglePathLiteLA):
         out = F.scaled_dot_product_attention(q, k, v)
         return out.transpose(1, 2).reshape(B, N, C).to(dtype_orig)
 
+    # ------------------------------------------------------------------
+    # Camera branch
+    # ------------------------------------------------------------------
+
     def _prepare_cam_qkv_softmax(
         self,
         x: torch.Tensor,
@@ -2289,9 +2472,9 @@ class _SoftmaxUCPESinglePathLiteLA(BidirectionalGDNUCPESinglePathLiteLA):
         """Camera-branch Q/K/V for softmax attention.
 
         Mirrors [`~BidirectionalGDNUCPESinglePathLiteLA._prepare_cam_qkv`] but skips the ReLU kernel, the GDN key
-        scaling (softmax SDPA provides its own ``1/sqrt(d_k)``) and the short convolutions (disabled for this block).
-        Returns ``(q, k, v, out_transform)``, where the tensors are shaped ``(B, cam_heads, cam_head_dim, N)`` and
-        ``out_transform`` is ``(P, rotary_emb_cam)``.
+        scaling (softmax SDPA provides its own ``1/sqrt(d_k)``) and the short convolutions (never built for this
+        block). Returns ``(q, k, v, out_transform)``, where the tensors are shaped ``(B, cam_heads, cam_head_dim, N)``
+        and ``out_transform`` is ``(P, rotary_emb_cam)``.
         """
         B, N, _ = x.shape
 
