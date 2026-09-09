@@ -26,7 +26,8 @@ from ..testing_utils.common import BasePipelineOutputMixin
 
 @is_ip_adapter
 class FluxIPAdapterTesterMixin(BasePipelineOutputMixin):
-    """IP-Adapter tests shared by the Flux pipelines in this directory.
+    """IP-Adapter tests shared by the Flux pipelines in this directory and by the other pipelines built on the
+    Flux IP-Adapter API (Chroma, Flux ControlNet).
 
     Flux has its own IP-Adapter API (`FluxIPAdapterMixin`, image embeddings sized after the transformer's
     `pooled_projection_dim`), so it doesn't reuse the Stable Diffusion `IPAdapterTesterMixin`. Compose it with a

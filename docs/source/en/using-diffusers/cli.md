@@ -21,8 +21,8 @@ specific language governing permissions and limitations under the License.
 | [`env`](#env) | Print environment info for bug reports. |
 | [`schema`](#schema) | Inspect a pipeline's `__call__` signature without downloading weights. |
 | [`run`](#run) | Run a pipeline locally or in a Hugging Face Sandbox. |
-| [`custom_blocks`](#custom_blocks) | Package a local `ModularPipelineBlocks` subclass for the Hub. |
-| [`fp16_safetensors`](#fp16_safetensors) | Convert a checkpoint to fp16 `.safetensors`. |
+| [`custom_blocks`](#customblocks) | Package a local `ModularPipelineBlocks` subclass for the Hub. |
+| [`fp16_safetensors`](#fp16safetensors) | Convert a checkpoint to fp16 `.safetensors`. |
 | [`skills`](#skills) | Install pre-authored skill bundles into your AI coding agent. |
 
 > [!TIP]
@@ -105,7 +105,7 @@ Configure how the CLI loads model weights and custom pipeline code.
 - `--dtype {auto, bfloat16, bf16, float16, fp16, float32, fp32}` — weight dtype.
 - `--device-map <value>` — component placement. Accepts a torch device string (`cuda`, `cuda:0`, `cpu`, `mps`),
   `balanced` (auto-splits components across visible GPUs), or a JSON dict for explicit per-component placement.
-  Auto-detected if omitted. See [device_map](../training/distributed_inference#device_map) for more details
+  Auto-detected if omitted. See [device_map](../training/distributed_inference#devicemap) for more details
 - `--variant fp16` — pick a weight variant.
 - `--revision <sha>` — pin a specific model revision.
 - `--trust-remote-code` — allow custom code from the Hub (required for repos that ship custom pipeline classes
@@ -342,5 +342,4 @@ diffusers-cli skills add --all --claude   # or --codex / --cursor
 Without a target flag, the CLI installs for whichever agent launched it, or for every agent when it can't tell.
 For Claude Code the skills are written as a plugin bundle at `.claude/skills/diffusers/`, so they are namespaced
 as `/diffusers:<skill name>`; Codex and Cursor get `.agents/skills/<skill name>/`.
-
 

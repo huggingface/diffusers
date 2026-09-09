@@ -29,6 +29,8 @@ from diffusers.pipelines.ideogram4.pipeline_ideogram4 import QWEN3_VL_ACTIVATION
 from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -48,8 +50,10 @@ class Ideogram4PipelineTesterConfig(BasePipelineTesterConfig):
     required_input_params_in_call_signature = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_input_params = frozenset(["prompt"])
     output_shape = (3, 16, 16)
-    # `encode_prompt` drives the Qwen3-VL decoder layers directly instead of calling `text_encoder.forward`, so the
-    # offloading hooks would leave its inputs on the offload device. Keep the text encoder out of group offloading.
+    # `encode_prompt` calls the Qwen3-VL decoder layers directly instead of calling `text_encoder.forward`, and
+    # pins its inputs to `self.text_encoder.device`. Leaf-level hooks onload each leaf on its own forward while the
+    # module keeps reporting the offload device, so the inputs are left behind; block-level onloads the whole group
+    # up front and is unaffected, which is where the text encoder does get covered.
     group_offloading_leaf_level_exclude_modules = ["text_encoder"]
 
     def get_dummy_components(self, num_layers: int = 1):
@@ -170,29 +174,6 @@ class TestIdeogram4Pipeline(Ideogram4PipelineTesterConfig, PipelineTesterMixin):
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         pass
 
-    # `callback_on_step_end` is unusable on the Python versions this repo supports (`python_requires>=3.10.0`):
-    # the denoising loop builds `callback_kwargs` with `{k: locals()[k] for k in callback_on_step_end_tensor_inputs}`,
-    # and before Python 3.12 a comprehension runs in its own frame, so `locals()` never contains `latents` and the
-    # call raises `KeyError: 'latents'`. PEP 709 inlined comprehensions in 3.12, which is the only reason this passes
-    # locally on 3.12 while CI (3.10) fails. Every other pipeline in the repo builds the dict with a plain `for` loop,
-    # which works on all versions.
-    _CALLBACK_SKIP = (
-        "`Ideogram4Pipeline` builds `callback_kwargs` in a dict comprehension, so `locals()` cannot see `latents` "
-        "before Python 3.12 and any `callback_on_step_end` raises `KeyError: 'latents'` on Python 3.10/3.11."
-    )
-
-    @pytest.mark.skip(reason=_CALLBACK_SKIP)
-    def test_callback_inputs(self):
-        pass
-
-    @pytest.mark.skip(
-        reason=(
-            f"{_CALLBACK_SKIP} The body below is the Ideogram4-specific replacement for the shared assertion (which "
-            "would not apply here either, since the pipeline republishes the step's schedule weight on "
-            "`_guidance_scale` so a callback's mutation cannot accumulate); drop this marker once the pipeline "
-            "builds `callback_kwargs` with a plain `for` loop."
-        )
-    )
     def test_callback_cfg(self):
         # Ideogram4 drives guidance from a per-step schedule and republishes the current step's weight on
         # `_guidance_scale` before invoking the callback, so a callback's mutation cannot accumulate across steps
@@ -306,7 +287,8 @@ class TestIdeogram4PipelineMemory(Ideogram4PipelineTesterConfig, MemoryTesterMix
     pins its inputs to `self.text_encoder.device` so they follow the weights under `enable_model_cpu_offload`
     (whose `CpuOffload` hook wraps the bypassed `forward` and so never fires). That pinning is wrong for every
     mechanism that hooks the submodules instead: they onload to the accelerator while the module still reports the
-    offload device, so the inputs are left behind. Hence the skips below.
+    offload device, so the inputs are left behind. Hence the skips below, and the text encoder's leaf-level group
+    offload exclusion on the config class.
     """
 
     _SUBMODULE_OFFLOAD_SKIP = (
@@ -328,13 +310,10 @@ class TestIdeogram4PipelineMemory(Ideogram4PipelineTesterConfig, MemoryTesterMix
     def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
         pass
 
-    @pytest.mark.skip(
-        reason=(
-            "Block-level group offloading cannot cover `text_encoder`: it leaves ungrouped leaves such as "
-            "`embed_tokens` to the root module's forward pre-hook, which never fires because `encode_prompt` "
-            "drives the decoder layers directly. Leaf-level offloading hooks those leaves individually and is "
-            "bit-exact here; only the block-level half of this test fails."
-        )
-    )
-    def test_group_offloading_inference(self):
-        pass
+
+class TestIdeogram4PipelineLoRA(Ideogram4PipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Ideogram4 pipeline."""
+
+
+class TestIdeogram4PipelineLoRAMemory(Ideogram4PipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA offloading tests for the Ideogram4 pipeline."""
