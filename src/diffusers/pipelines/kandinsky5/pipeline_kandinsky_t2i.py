@@ -30,6 +30,7 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 
 # Add imports for offloading and tiling
 from ...utils import (
+    BACKENDS_MAPPING,
     is_ftfy_available,
     is_torch_xla_available,
     logging,
@@ -92,6 +93,8 @@ def basic_clean(text):
     """
     if is_ftfy_available():
         text = ftfy.fix_text(text)
+    else:
+        logger.warning(BACKENDS_MAPPING["ftfy"][-1].format("Cleaning prompts"))
     text = html.unescape(html.unescape(text))
     return text.strip()
 

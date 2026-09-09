@@ -33,7 +33,7 @@ from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.prx.pipeline_output import PRXPipelineOutput
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
-from diffusers.utils import is_ftfy_available, logging, replace_example_docstring
+from diffusers.utils import BACKENDS_MAPPING, is_ftfy_available, logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
 
 
@@ -197,7 +197,10 @@ class TextPreprocessor:
             text = re.sub(regex2, " ", text)
 
         # Basic cleaning
-        text = ftfy.fix_text(text)
+        if is_ftfy_available():
+            text = ftfy.fix_text(text)
+        else:
+            logger.warning(BACKENDS_MAPPING["ftfy"][-1].format("Cleaning prompts"))
         text = html.unescape(html.unescape(text))
         text = text.strip()
 
