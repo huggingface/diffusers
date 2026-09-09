@@ -15,6 +15,8 @@
 Accelerate utilities: Utilities related to accelerate
 """
 
+import functools
+
 from packaging import version
 
 from .import_utils import is_accelerate_available
@@ -40,6 +42,7 @@ def apply_forward_hook(method):
     if version.parse(accelerate_version) < version.parse("0.17.0"):
         return method
 
+    @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
         if hasattr(self, "_hf_hook") and hasattr(self._hf_hook, "pre_forward"):
             self._hf_hook.pre_forward(self)
