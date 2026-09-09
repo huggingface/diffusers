@@ -43,7 +43,7 @@ pipe = FluxPipeline.from_pretrained(
 pipe.transformer.to("tpu")
 pipe.vae.to("tpu")
 
-# _execution_device is now "tpu" automatically.
+# move denoising modules to "tpu"
 image = pipe(
     prompt="a golden retriever surfing a wave, photorealistic",
     height=1024,
