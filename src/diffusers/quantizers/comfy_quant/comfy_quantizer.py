@@ -89,8 +89,7 @@ class ComfyQuantizer(DiffusersQuantizer):
             layout = layout_map.get(self.quant_format.lower())
             if layout is None:
                 raise ValueError(
-                    f"The layout for '{self.quant_format}' was not found in `comfy_kitchen`. "
-                    f"Make sure you have the latest version installed that supports this format."
+                    f"The layout for '{self.quant_format}' was not found in `comfy_kitchen`."
                 )
 
             # comfy-kitchen natively handles wrapping standard float tensors via from_float
