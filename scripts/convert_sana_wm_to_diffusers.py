@@ -48,12 +48,44 @@ from pathlib import Path
 
 import torch
 from huggingface_hub import snapshot_download
+from safetensors import safe_open
+from safetensors.torch import save_file
 
 
 def _copy_subdir(src: Path, dst: Path) -> None:
     if dst.exists():
         shutil.rmtree(dst)
     shutil.copytree(src, dst, symlinks=False)
+
+
+def _cast_to_bfloat16(component: Path) -> None:
+    """Rewrite a component's safetensors shards in bfloat16.
+
+    SANA-WM is served in `torch.bfloat16`, so `from_pretrained(torch_dtype=torch.bfloat16)` casts these weights
+    anyway; storing them cast halves the download without changing a single value. Non-float32 tensors are left
+    alone, and the VAE is deliberately not passed through here since it runs in `torch.float32`.
+    """
+    shards = sorted(component.glob("*.safetensors"))
+    if not shards:
+        return
+    total = 0
+    for shard in shards:
+        with safe_open(shard, framework="pt") as f:
+            metadata = f.metadata()
+            tensors = {
+                k: (lambda t: t.to(torch.bfloat16) if t.dtype == torch.float32 else t)(f.get_tensor(k))
+                for k in f.keys()
+            }
+        tmp = shard.with_suffix(shard.suffix + ".tmp")
+        save_file(tensors, tmp, metadata=metadata)
+        tmp.replace(shard)
+        total += shard.stat().st_size
+        del tensors
+    index = component / "model.safetensors.index.json"
+    if index.exists():
+        payload = json.loads(index.read_text())
+        payload["metadata"]["total_size"] = total
+        index.write_text(json.dumps(payload, indent=2))
 
 
 def main() -> None:
@@ -156,6 +188,7 @@ def main() -> None:
         for sub in ("transformer", "connectors", "text_encoder"):
             if (refiner_src / sub).is_dir():
                 _copy_subdir(refiner_src / sub, refiner_dst / sub)
+                _cast_to_bfloat16(refiner_dst / sub)
 
         # The weights are LTX-2's, but they are driven by `SanaWMLTX2RefinerTransformer3DModel`
         # (same submodule layout, streaming-attention forward), so point the config at that class.
