@@ -34,7 +34,7 @@
       title: Model formats
     - local: using-diffusers/push_to_hub
       title: Sharing pipelines and models
-    title: Use diffusion pipelines
+    title: Using diffusion pipelines
   - isExpanded: false
     sections:
     - local: tutorials/using_peft_for_inference
@@ -67,7 +67,7 @@
       title: Reduce memory usage
     - local: optimization/speed-memory-optims
       title: Compiling and offloading quantized models
-    title: Inference optimization
+    title: Inference
   - isExpanded: false
     sections:
     - local: optimization/pruna
@@ -88,7 +88,7 @@
       title: ParaAttention
     - local: using-diffusers/image_quality
       title: FreeU
-    title: Community optimizations
+    title: Community methods
   - isExpanded: false
     sections:
     - local: quantization/overview
