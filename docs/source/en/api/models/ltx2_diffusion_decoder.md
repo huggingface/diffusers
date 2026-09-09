@@ -19,6 +19,10 @@ consumes unchanged, so latents are interchangeable between the convolutional dec
 itself a diffusion model it is driven by [`LTX2VideoDiffusionDecodePipeline`] rather than being passed as a
 pipeline's `vae`: run any LTX-2 pipeline with `output_type="latent"`, then decode.
 
+`forward` is a single denoising step, like any other denoiser in the library. The loop over steps, the scheduler
+that drives it, and the tiling wrapped around it live in [`LTX2VideoDiffusionDecodePipeline`], so this model is not
+called directly in normal use — the two `encode_context_*` methods build the conditioning the step consumes.
+
 ```python
 import torch
 from diffusers import (
@@ -82,9 +86,10 @@ accepts the `BlockMask`. Use the NATTEN processor above instead.
 ## Tiling
 
 `decoder.enable_tiling()` decodes in overlapping tiles that are blended back together, bounding peak memory by the
-tile size instead of the video size. The cheap early upsampling stages still see the full latent — only the last
-upsampling stage and the diffusion stage, which dominate decode memory, run per tile — so tiling changes the output
-only near tile borders. Because the diffusion stage denoises each tile separately, a tiled decode does not
+tile size instead of the video size. It sets the tile sizes; the tiling itself is performed by
+[`LTX2VideoDiffusionDecodePipeline`], because tiles are cut in the *middle* of the decoder and each one runs its own
+denoising loop. The cheap early upsampling stages still see the full latent — only the last upsampling stage and the
+diffusion stage, which dominate decode memory, run per tile — so tiling changes the output only near tile borders. Because the diffusion stage denoises each tile separately, a tiled decode does not
 reproduce the untiled result exactly; the default tile and overlap sizes match the reference implementation's.
 Neighborhood attention rejects any grid smaller than its kernel, so a trailing remnant tile is merged into its
 neighbor rather than decoded on its own.
@@ -92,7 +97,7 @@ neighbor rather than decoded on its own.
 ## LTX2VideoDiffusionDecoderModel
 
 [[autodoc]] LTX2VideoDiffusionDecoderModel
-    - decode
+    - forward
     - enable_tiling
     - disable_tiling
     - all

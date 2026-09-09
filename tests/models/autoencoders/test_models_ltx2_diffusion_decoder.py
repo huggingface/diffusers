@@ -22,7 +22,7 @@ from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNei
 from diffusers.utils import is_kernels_available
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, require_accelerator, require_torch_gpu, torch_device
+from ...testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -44,7 +44,7 @@ class LTX2VideoDiffusionDecoderModelTesterConfig(BaseModelTesterConfig):
 
     @property
     def main_input_name(self):
-        return "z"
+        return "hidden_states"
 
     @property
     def model_class(self):
@@ -76,24 +76,29 @@ class LTX2VideoDiffusionDecoderModelTesterConfig(BaseModelTesterConfig):
         }
 
     def get_dummy_inputs(self):
-        # The decoder takes latents directly now: 2 latent frames decode to 9 pixel frames.
-        latents = randn_tensor((2, 8, 2, 3, 3), generator=self.generator, device=torch_device)
-        # The decoder denoises, so it draws noise on every call: without a seeded generator no two forward
-        # passes agree and every output comparison below would be meaningless.
-        return {"z": latents, "generator": self.generator}
+        """One denoising step's worth of input: noised pixels, the context conditioning them, and a noise level.
+
+        The latent this corresponds to is `(2, 8, 2, 3, 3)`, which decodes to 9 pixel frames of 48x48. The context
+        shares the diffusion stage's token grid, so it is that canvas divided by `patch_size` with the last stage's
+        channel count. Building it directly rather than by running the context stages keeps this a pure input
+        fixture -- `LTX2VideoDiffusionDecodePipeline` is where the two are wired together.
+        """
+        hidden_states = randn_tensor((2, 3, 9, 48, 48), generator=self.generator, device=torch_device)
+        latent_context = randn_tensor((2, 9, 24, 24, 16), generator=self.generator, device=torch_device)
+        timestep = torch.full((2,), 0.5, device=torch_device)
+        return {"hidden_states": hidden_states, "latent_context": latent_context, "timestep": timestep}
+
+    def get_dummy_latents(self):
+        """A latent to feed the context stages, matching the canvas `get_dummy_inputs` describes."""
+        return randn_tensor((2, 8, 2, 3, 3), generator=self.generator, device=torch_device)
+
+    def encode_context(self, model, latents):
+        """The two deterministic halves, as `LTX2VideoDiffusionDecodePipeline` runs them."""
+        return model.encode_context_stage_4(model.encode_context_stages_1_to_3(latents))
 
 
 class TestLTX2VideoDiffusionDecoderModel(LTX2VideoDiffusionDecoderModelTesterConfig, ModelTesterMixin):
     base_precision = 1e-2
-
-    @pytest.mark.skip(
-        "`forward` runs through the `apply_forward_hook`-decorated `decode`, and that decorator's "
-        "`pre_forward` call clears the input device accelerate's `AlignDevicesHook` recorded for the caller, so the "
-        "output comes back on the last device of the split rather than the input device and the comparison raises. "
-        "`test_cpu_offload` covers split placement instead — there every submodule executes on the same device."
-    )
-    def test_model_parallelism(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
-        pass
 
 
 class TestLTX2VideoDiffusionDecoderModelSwiGLUTiling(LTX2VideoDiffusionDecoderModelTesterConfig):
@@ -112,14 +117,12 @@ class TestLTX2VideoDiffusionDecoderModelSwiGLUTiling(LTX2VideoDiffusionDecoderMo
         """
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         inputs = self.get_dummy_inputs()
-        latent = inputs["z"]
 
         def decode():
-            # Re-seed per call: the decoder samples the noise it denoises, so a shared generator would
-            # hand the second call different noise and the comparison would be vacuous.
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+            # A fixed input rather than sampled noise: the point is that tiling the MLP changes nothing, so
+            # both calls have to see the same tensors.
             with torch.no_grad():
-                return model.decode(latent, generator=generator, return_dict=False)[0]
+                return model(**inputs, return_dict=False)[0]
 
         original = ltx2_diffusion_decoder._SWIGLU_TILE_SIZE
         try:
@@ -134,172 +137,6 @@ class TestLTX2VideoDiffusionDecoderModelSwiGLUTiling(LTX2VideoDiffusionDecoderMo
         assert torch.allclose(tiled, untiled, rtol=1e-5, atol=1e-5), (
             f"tiled SwiGLU diverged from untiled by {(tiled - untiled).abs().max().item():.3e}"
         )
-
-
-class TestLTX2VideoDiffusionDecoderModelTiling(LTX2VideoDiffusionDecoderModelTesterConfig):
-    """Tiled decoding: the early stages run on the full latent, stages 4-5 run per tile with blending.
-
-    The latent is 3x4x5 (17x64x80 pixels) so every axis is large enough to split: the tiling grid — the
-    stage-4 input grid — is 9x16x20, and the tile sizes below cut it into three temporal and two/three
-    spatial tiles.
-    """
-
-    def get_latent(self):
-        return randn_tensor((1, 8, 3, 4, 5), generator=self.generator, device=torch_device)
-
-    def decode(self, model, latent, num_inference_steps=None):
-        # Re-seed per call: the decoder samples the noise it denoises, so outputs are only comparable
-        # across calls that drew from the same generator state.
-        generator = torch.Generator("cpu").manual_seed(0)
-        with torch.no_grad():
-            return model.decode(latent, generator=generator, num_inference_steps=num_inference_steps)[0]
-
-    @require_accelerator
-    def test_tiles_covering_the_video_match_untiled_exactly(self):
-        """A tile schedule with a single covering tile must reproduce the untiled decode bit for bit.
-
-        This pins the per-tile plumbing — the ghost-frame carry/crop, the leading-frame drop, and the
-        stitching — because any offset in them shifts the single tile's output relative to the untiled path.
-        The default tile sizes are larger than the test video, so `tiled_decode` builds exactly one tile.
-        """
-        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        latent = self.get_latent()
-
-        for num_inference_steps in (None, 3):  # None: the single-step x0 shortcut; 3: the Euler loop
-            untiled = self.decode(model, latent, num_inference_steps)
-            generator = torch.Generator("cpu").manual_seed(0)
-            with torch.no_grad():
-                tiled = model.tiled_decode(latent, generator=generator, num_inference_steps=num_inference_steps)
-            assert torch.equal(tiled, untiled), (
-                f"single-tile tiled decode diverged from untiled by {(tiled - untiled).abs().max().item():.3e} "
-                f"with num_inference_steps={num_inference_steps}"
-            )
-
-    def test_tiled_decode_with_splits(self):
-        """Actually-split tiles must reassemble to the untiled output shape, on both noise paths.
-
-        Values legitimately differ from the untiled decode (each tile sees a truncated attention context at
-        its borders), so this asserts geometry, not closeness. The multi-step run additionally covers the
-        shared noise canvas that overlapping tiles slice from.
-        """
-        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        latent = self.get_latent()
-        untiled = self.decode(model, latent)
-
-        model.enable_tiling(
-            # Tiling-grid cells are 2 frames x 4 px x 4 px here (last upsample stride (2, 2, 2), patch 2), so
-            # this is a 4-cell tile with a 3-cell stride temporally and 8x8-cell tiles with 6-cell strides
-            # spatially: tiles (0, 4), (3, 7), (6, 9) over T and (0, 8), (6, 16|20) over H/W.
-            tile_sample_min_num_frames=8,
-            tile_sample_stride_num_frames=6,
-            tile_sample_min_height=32,
-            tile_sample_stride_height=24,
-            tile_sample_min_width=32,
-            tile_sample_stride_width=24,
-        )
-        for num_inference_steps in (None, 3):
-            tiled = self.decode(model, latent, num_inference_steps)
-            assert tiled.shape == untiled.shape
-            assert torch.isfinite(tiled).all()
-
-        model.disable_tiling()
-        assert torch.equal(self.decode(model, latent), untiled)
-
-    def test_tiled_decode_tiles_even_when_tiling_is_disabled(self):
-        """`tiled_decode` tiles on its own terms; `use_tiling` only gates whether `decode` routes to it.
-
-        `disable_tiling` flips the routing flag and leaves the configured tile sizes alone, so a direct
-        `tiled_decode` call still has a split schedule to honor. This counts stage-4 invocations rather than
-        comparing outputs because output comparison cannot see the failure: a `tiled_decode` that quietly
-        fell back to one full-grid tile would reproduce the untiled decode exactly and pass every other test
-        in this class.
-        """
-        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        latent = self.get_latent()
-        model.enable_tiling(
-            tile_sample_min_num_frames=8,
-            tile_sample_stride_num_frames=6,
-            tile_sample_min_height=32,
-            tile_sample_stride_height=24,
-            tile_sample_min_width=32,
-            tile_sample_stride_width=24,
-        )
-        model.disable_tiling()
-        assert not model.use_tiling
-
-        # Stage 4 runs once per tile, so its call count is the tile count.
-        stage_4_calls = []
-        original_stage_4 = model.decoder.encode_context_stage_4
-
-        def counting_stage_4(hidden_states, *args, **kwargs):
-            stage_4_calls.append(tuple(hidden_states.shape[1:4]))
-            return original_stage_4(hidden_states, *args, **kwargs)
-
-        model.decoder.encode_context_stage_4 = counting_stage_4
-        try:
-            generator = torch.Generator("cpu").manual_seed(0)
-            with torch.no_grad():
-                model.tiled_decode(latent, generator=generator)
-            tiled_call_count = len(stage_4_calls)
-
-            stage_4_calls.clear()
-            self.decode(model, latent)
-            untiled_call_count = len(stage_4_calls)
-        finally:
-            del model.decoder.encode_context_stage_4
-
-        assert tiled_call_count > 1, (
-            f"tiled_decode ran stage 4 {tiled_call_count} time(s) with use_tiling=False; it must tile "
-            "regardless of the flag"
-        )
-        assert untiled_call_count == 1, (
-            f"decode ran stage 4 {untiled_call_count} times with use_tiling=False; it must not tile"
-        )
-
-    def test_decode_skips_tiling_for_a_video_that_fits_in_one_tile(self):
-        """`decode` sizes the latent up before routing, so tiling only engages when it would split.
-
-        The two outcomes are indistinguishable from the output alone: a video below the tile size that
-        reaches `tiled_decode` anyway gets a single-tile schedule, which decodes to the same pixels. So
-        this asserts the routing directly -- `tiled_decode` is never reached -- and separately pins the
-        contract that matters to callers, that turning tiling on cannot change a small video's output.
-        """
-        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        latent = self.get_latent()
-        untiled = self.decode(model, latent)
-
-        calls = []
-        original_tiled_decode = model.tiled_decode
-
-        def counting_tiled_decode(*args, **kwargs):
-            calls.append(1)
-            return original_tiled_decode(*args, **kwargs)
-
-        model.tiled_decode = counting_tiled_decode
-        try:
-            # Default tile sizes are far larger than this 17x64x80 video, so the gate declines to tile.
-            model.enable_tiling()
-            fits_in_one_tile = self.decode(model, latent)
-            assert not calls, "decode routed to tiled_decode for a video that fits in a single tile"
-            assert torch.equal(fits_in_one_tile, untiled), (
-                "enabling tiling changed the output of a video below the tile size by "
-                f"{(fits_in_one_tile - untiled).abs().max().item():.3e}"
-            )
-
-            # Shrink the tiles below the video and the same latent must now route.
-            model.enable_tiling(
-                tile_sample_min_num_frames=8,
-                tile_sample_stride_num_frames=6,
-                tile_sample_min_height=32,
-                tile_sample_stride_height=24,
-                tile_sample_min_width=32,
-                tile_sample_stride_width=24,
-            )
-            self.decode(model, latent)
-            assert calls, "decode did not route to tiled_decode for a video larger than the tile size"
-        finally:
-            del model.tiled_decode
-            model.disable_tiling()
 
 
 class TestLTX2VideoDiffusionDecoderModelMemory(LTX2VideoDiffusionDecoderModelTesterConfig, MemoryTesterMixin):
@@ -331,8 +168,12 @@ class TestLTX2VideoDiffusionDecoderModelNattenProcessor(LTX2VideoDiffusionDecode
             isinstance(processor, LTX2VideoVaeNeighborhoodNattenProcessor) for processor in processors.values()
         )
 
+        # Through the context stages as well as the denoising step: the deterministic stages are where most
+        # of the neighborhood attention lives, and they use a different kernel size per stage.
+        latents = self.get_dummy_latents()
         with torch.no_grad():
-            output = model.decode(inputs["z"], generator=inputs["generator"], return_dict=False)[0]
+            latent_context = self.encode_context(model, latents)
+            output = model(inputs["hidden_states"], latent_context, inputs["timestep"], return_dict=False)[0]
 
-        assert output.shape == (inputs["z"].shape[0], *self.output_shape)
+        assert output.shape == (inputs["hidden_states"].shape[0], *self.output_shape)
         assert torch.isfinite(output).all(), "NATTEN decode produced NaN/inf values"
