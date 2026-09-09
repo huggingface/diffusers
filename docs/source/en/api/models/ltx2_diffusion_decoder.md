@@ -21,7 +21,12 @@ pipeline's `vae`: run any LTX-2 pipeline with `output_type="latent"`, then decod
 
 ```python
 import torch
-from diffusers import LTX2Pipeline, LTX2VideoDiffusionDecodePipeline, LTX2VideoDiffusionDecoderModel
+from diffusers import (
+    FlowMatchEulerDiscreteScheduler,
+    LTX2Pipeline,
+    LTX2VideoDiffusionDecodePipeline,
+    LTX2VideoDiffusionDecoderModel,
+)
 
 pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2.5-Diffusers", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 latents = pipe(prompt="a potter shaping a clay vase", output_type="latent").frames
@@ -29,7 +34,12 @@ latents = pipe(prompt="a potter shaping a clay vase", output_type="latent").fram
 decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
     "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder", dtype=torch.bfloat16
 ).to("cuda")
-decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=pipe.scheduler)
+# The decoder's own scheduler, not `pipe.scheduler`: it walks a plain uniform sigma schedule, while the
+# transformer's is resolution-shifted and would need a `mu` the decoder has no sequence length to derive.
+scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+    "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder_scheduler"
+)
+decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=scheduler)
 
 # `denormalize=False`: `output_type="latent"` already applied the latent statistics, so applying them
 # again here would scale every channel by its std a second time.

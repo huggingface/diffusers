@@ -15,6 +15,7 @@
 import torch
 
 from ...models.autoencoders import AutoencoderKLLTX2Video, LTX2VideoDiffusionDecoderModel
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -36,7 +37,10 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
         diffusion_decoder ([`LTX2VideoDiffusionDecoderModel`]):
             The diffusion video decoder.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
-            Scheduler driving the decoder's denoising steps.
+            Scheduler driving the decoder's denoising steps. This is not the transformer's scheduler: the decoder
+            walks a plain uniform sigma schedule, so it needs one with `use_dynamic_shifting=False` and
+            `shift_terminal=None`. Checkpoints converted by `convert_ltx2_to_diffusers.py` ship it in a
+            `diffusion_decoder_scheduler` subfolder.
         vae ([`AutoencoderKLLTX2Video`], *optional*):
             Only consulted for the latent statistics used to denormalize. When omitted the pipeline falls back to the
             LTX-2 defaults, so a decode-only workflow does not have to load a second autoencoder.
@@ -48,7 +52,7 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
     def __init__(
         self,
         diffusion_decoder: LTX2VideoDiffusionDecoderModel,
-        scheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKLLTX2Video = None,
     ):
         super().__init__()

@@ -680,7 +680,7 @@ The upsample step and the stage 2 call itself are unchanged from the distilled r
 LTX-2.5 ships two video decoders over the same latent space, so latents are interchangeable between them:
 
 - `vae/` — the convolutional VAE ([`AutoencoderKLLTX2Video`]). It is what the pipelines decode with, so every snippet above already uses it, and it is the only one of the two that tiles (`pipe.vae.enable_tiling()`), which is usually what makes a high resolution fit.
-- `diffusion_decoder/` — [`LTX2VideoDiffusionDecoderModel`]. It is a diffusion model in its own right rather than a pipeline component, so it is not passed as a `vae`: run the pipeline with `output_type="latent"` and hand the latents to [`LTX2VideoDiffusionDecodePipeline`].
+- `diffusion_decoder/` — [`LTX2VideoDiffusionDecoderModel`]. It is a diffusion model in its own right rather than a pipeline component, so it is not passed as a `vae`: run the pipeline with `output_type="latent"` and hand the latents to [`LTX2VideoDiffusionDecodePipeline`]. Because it denoises it needs a scheduler of its own, kept in `diffusion_decoder_scheduler/` — the repo's top-level `scheduler/` is the transformer's and is shifted for the transformer's sequence lengths.
 
 Encoding always goes through `vae/`, so image and video conditioning are unaffected by the choice.
 
@@ -688,7 +688,12 @@ Two things change when you decode with the diffusion decoder. `output_type="late
 
 ```py
 import torch
-from diffusers import LTX2Pipeline, LTX2VideoDiffusionDecodePipeline, LTX2VideoDiffusionDecoderModel
+from diffusers import (
+    FlowMatchEulerDiscreteScheduler,
+    LTX2Pipeline,
+    LTX2VideoDiffusionDecodePipeline,
+    LTX2VideoDiffusionDecoderModel,
+)
 from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
@@ -733,7 +738,10 @@ decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
 # Decode in overlapping tiles so peak memory scales with the tile size rather than the video size.
 decoder.enable_tiling()
 
-decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=pipe.scheduler)
+# The decoder's own scheduler, not `pipe.scheduler`: it walks a plain uniform sigma schedule, while the
+# transformer's is resolution-shifted and would need a `mu` the decoder has no sequence length to derive.
+scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(model_path, subfolder="diffusion_decoder_scheduler")
+decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=scheduler)
 
 # `denormalize=False`: `output_type="latent"` already applied the latent statistics, so applying them
 # again would rescale every channel by its std a second time. The decoder draws the noise it denoises,
@@ -1247,14 +1255,18 @@ The two axes are seamed differently. Neither side of a spatial border holds a kn
 **Decoding with the diffusion decoder.** For maximum detail fidelity, stay on `output_type="latent"` and hand the (already denormalized, possibly `trim_canvas`'d) latents to [`LTX2VideoDiffusionDecodePipeline`].
 
 ```py
-from diffusers import LTX2VideoDiffusionDecodePipeline
+from diffusers import FlowMatchEulerDiscreteScheduler, LTX2VideoDiffusionDecodePipeline
 from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel
 
 decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
     "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder", dtype=torch.bfloat16
 )
+# The decoder's own scheduler, not `pipe.scheduler`: it walks a plain uniform sigma schedule.
+scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+    "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder_scheduler"
+)
 decode_pipe = LTX2VideoDiffusionDecodePipeline(
-    diffusion_decoder=decoder, scheduler=pipe.scheduler, vae=pipe.vae
+    diffusion_decoder=decoder, scheduler=scheduler, vae=pipe.vae
 )
 decode_pipe.enable_model_cpu_offload()
 # `denormalize=False`: the `output_type="latent"` path already applied the latent statistics.
