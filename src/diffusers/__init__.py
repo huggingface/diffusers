@@ -1061,6 +1061,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import SDNQConfig
 
     try:
+        if not is_comfy_kitchen_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_comfy_kitchen_objects import *
+    else:
+        from .quantizers.quantization_config import ComfyQuantConfig
+
+    try:
         if not is_onnx_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
