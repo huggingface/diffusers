@@ -1930,10 +1930,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             logger.debug(" try to determine the modular pipeline class from model_index.json")
             standard_pipeline_class = _get_pipeline_class(cls, config=config_dict)
             model_name = _get_model(standard_pipeline_class.__name__)
-            if model_name not in MODULAR_PIPELINE_MAPPING:
-                # Pipelines outside the auto-pipeline task mappings (e.g. video) resolve by their pipeline folder
-                # when it names a modular family, e.g. `diffusers.pipelines.ltx` -> "ltx".
-                model_name = standard_pipeline_class.__module__.split(".")[2]
             map_fn = MODULAR_PIPELINE_MAPPING.get(model_name, _create_default_map_fn("ModularPipeline"))
             pipeline_class_name = map_fn(config_dict)
             diffusers_module = importlib.import_module("diffusers")

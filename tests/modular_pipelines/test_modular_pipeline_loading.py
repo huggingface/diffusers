@@ -275,7 +275,7 @@ class TestModularPipelineInitFallback:
             ModularPipeline()
 
     def test_from_pretrained_resolves_family_outside_auto_pipeline_mappings(self, tmp_path):
-        # LTX is not in the auto-pipeline task mappings, so the modular class resolves from the pipeline folder.
+        # A standard model_index.json resolves to the modular class through the auto-pipeline video mappings.
         with open(tmp_path / "model_index.json", "w") as f:
             json.dump({"_class_name": "LTXPipeline", "_diffusers_version": "0.0.0"}, f)
 
