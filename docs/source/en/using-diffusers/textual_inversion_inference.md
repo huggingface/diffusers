@@ -16,6 +16,8 @@ specific language governing permissions and limitations under the License.
 
 Textual Inversion weights are very lightweight and typically only a few KBs because they're only word embeddings. However, this also means the word embeddings need to be loaded after loading a model with [`~DiffusionPipeline.from_pretrained`].
 
+To train embeddings, see [Train textual inversion](../training/text_inversion).
+
 ```py
 import torch
 from diffusers import AutoPipelineForText2Image

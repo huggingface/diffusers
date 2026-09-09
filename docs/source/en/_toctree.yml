@@ -12,6 +12,8 @@
   sections:
   - isExpanded: false
     sections:
+    - local: using-diffusers/weighted_prompts
+      title: Prompting
     - local: using-diffusers/loading
       title: DiffusionPipeline
     - local: tutorials/autopipeline
@@ -48,8 +50,6 @@
     - local: using-diffusers/textual_inversion_inference
       title: Textual inversion
     title: Adapters and personalization
-  - local: using-diffusers/weighted_prompts
-    title: Prompting
   title: Inference
 - isExpanded: true
   sections:
@@ -127,14 +127,14 @@
     title: Hardware-specific acceleration
   - isExpanded: false
     sections:
+    - local: using-diffusers/create_a_server
+      title: Create a server
     - local: using-diffusers/batched_inference
       title: Batch inference
     - local: training/distributed_inference
       title: Distributed inference
     - local: hybrid_inference/overview
       title: Remote inference
-    - local: using-diffusers/create_a_server
-      title: Create a server
     title: Serving and scaling
   title: Optimize and scale
 - isExpanded: false
@@ -164,7 +164,7 @@
   - local: modular_diffusers/mellon
     title: Using Custom Blocks with Mellon
   title: Modular Diffusers
-- isExpanded: true
+- isExpanded: false
   sections:
   - local: training/overview
     title: Overview
@@ -211,7 +211,7 @@
   - local: training/nemo_automodel
     title: NeMo Automodel
   title: Train and fine-tune
-- isExpanded: true
+- isExpanded: false
   sections:
   - isExpanded: false
     sections:
@@ -232,6 +232,8 @@
     title: Recipes
   - isExpanded: false
     sections:
+    - local: conceptual/philosophy
+      title: Diffusers philosophy
     - local: using-diffusers/write_own_pipeline
       title: Understanding pipelines, models and schedulers
     - local: using-diffusers/controlling_generation
@@ -246,8 +248,6 @@
     title: How to contribute
   - local: conceptual/ethical_guidelines
     title: Diffusers' Ethical Guidelines
-  - local: conceptual/philosophy
-    title: Diffusers philosophy
   title: Contribute
 - isExpanded: false
   sections:
