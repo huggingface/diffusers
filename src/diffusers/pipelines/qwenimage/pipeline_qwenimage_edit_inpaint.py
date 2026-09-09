@@ -309,18 +309,13 @@ class QwenImageEditInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         device = device or self._execution_device
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
-
         if prompt_embeds is None:
             prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, device)
 
-        _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
         if prompt_embeds_mask is not None:
-            prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
-            prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
+            prompt_embeds_mask = prompt_embeds_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
             if prompt_embeds_mask.all():
                 prompt_embeds_mask = None
@@ -780,7 +775,11 @@ class QwenImageEditInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             [`~pipelines.qwenimage.QwenImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is a list with the generated images.
         """
-        image_size = image[0].size if isinstance(image, list) else image.size
+        img_for_size = image[0] if isinstance(image, list) else image
+        if isinstance(img_for_size, torch.Tensor):
+            image_size = (img_for_size.shape[-1], img_for_size.shape[-2])
+        else:
+            image_size = img_for_size.size
         calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
 
         # height and width are the same as the calculated height and width
