@@ -282,7 +282,7 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
     def _batch_get_variance(self, t: torch.Tensor, prev_t: torch.Tensor) -> torch.Tensor:
         alpha_prod_t = self.alphas_cumprod[t]
         alpha_prod_t_prev = self.alphas_cumprod[torch.clip(prev_t, min=0)]
-        alpha_prod_t_prev[prev_t < 0] = torch.tensor(1.0)
+        alpha_prod_t_prev[prev_t < 0] = self.final_alpha_cumprod
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -577,7 +577,7 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         self.final_alpha_cumprod = self.final_alpha_cumprod.to(model_output.device)
         alpha_prod_t = self.alphas_cumprod[t]
         alpha_prod_t_prev = self.alphas_cumprod[torch.clip(prev_t, min=0)]
-        alpha_prod_t_prev[prev_t < 0] = torch.tensor(1.0)
+        alpha_prod_t_prev[prev_t < 0] = self.final_alpha_cumprod
 
         beta_prod_t = 1 - alpha_prod_t
 
