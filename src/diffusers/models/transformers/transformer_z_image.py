@@ -352,7 +352,7 @@ class RopeEmbedder:
         result = []
         for i in range(len(self.axes_dims)):
             index = ids[:, i]
-            result.append(self.freqs_cis[i][index])
+            result.append(torch.complex(self.freqs_cis[i].real[index], self.freqs_cis[i].imag[index]))
         return torch.cat(result, dim=-1)
 
 
