@@ -235,8 +235,13 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
             ratios = np.linspace(stage_sigmas[0].item(), stage_sigmas[-1].item(), num_inference_steps)
             sigmas = torch.from_numpy(ratios)
 
-        self.timesteps = torch.from_numpy(timesteps).to(device=device)
-        self.sigmas = torch.cat([sigmas, torch.zeros(1)]).to(device=device)
+        if device is not None and torch.device(device).type == "mps":
+            # mps does not support float64
+            self.timesteps = torch.from_numpy(timesteps.astype(np.float32)).to(device=device)
+            self.sigmas = torch.cat([sigmas, torch.zeros(1)]).to(device=device, dtype=torch.float32)
+        else:
+            self.timesteps = torch.from_numpy(timesteps).to(device=device)
+            self.sigmas = torch.cat([sigmas, torch.zeros(1)]).to(device=device)
 
         self._step_index = None
         self.reset_scheduler_history()
