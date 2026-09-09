@@ -274,11 +274,13 @@ class VaeImageProcessor(ConfigMixin):
 
         Args:
             image (`PIL.Image.Image`):
-                The PIL image to convert to grayscale.
+                The input image to blur.
+            blur_factor (`int`, *optional*, defaults to 4):
+                The blur factor to apply. Higher values result in more blur.
 
         Returns:
             `PIL.Image.Image`:
-                The grayscale-converted PIL image.
+                The blurred PIL image.
         """
         image = image.filter(ImageFilter.GaussianBlur(blur_factor))
 
