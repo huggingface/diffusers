@@ -21,31 +21,42 @@ Four execution modes are available:
 | **Strict Eager** (default) | `EagerMode.DEFER_NEVER` | just `import torch_tpu` | Operations dispatched one at a time, asynchronous |
 | **Compile** | — | `pipe.enable_tpu_compile()` | AOT compilation with `TpuBackend` |
 
-## Installation
-
 Follow the [TorchTPU installation guide](https://github.com/google-pytorch/torch_tpu/). After installation,
 `import torch_tpu` registers the `"tpu"` device automatically.
 
-## Basic usage (strict eager mode)
+## Eager mode
 
 ```python
+import gc
 import torch
-import torch_tpu  # noqa: F401 — registers torch.tpu
+import torch_tpu  # noqa: F401
 
 from diffusers import FluxPipeline
 
-pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell",
-    torch_dtype=torch.bfloat16,
-)
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
 
-# Move only the denoising components to TPU; text encoders stay on CPU.
+# 1. Encode on TPU.
+pipe.text_encoder.to("tpu")
+pipe.text_encoder_2.to("tpu")
+with torch.no_grad():
+    prompt_embeds, pooled_prompt_embeds, _ = pipe.encode_prompt(
+        prompt="a golden retriever surfing a wave, photorealistic",
+        prompt_2="a golden retriever surfing a wave, photorealistic",
+        device=torch.device("tpu"),
+        max_sequence_length=512,
+    )
+
+# 2. Free the text encoders — nothing below needs them.
+pipe.text_encoder = None
+pipe.text_encoder_2 = None
+gc.collect()
+
+# 3. Move the transformer and VAE in, then denoise with the precomputed embeddings.
 pipe.transformer.to("tpu")
 pipe.vae.to("tpu")
-
-# _execution_device is now "tpu" automatically.
 image = pipe(
-    prompt="a golden retriever surfing a wave, photorealistic",
+    prompt_embeds=prompt_embeds,
+    pooled_prompt_embeds=pooled_prompt_embeds,
     height=1024,
     width=1024,
     num_inference_steps=4,
@@ -54,6 +65,15 @@ image = pipe(
 
 image.save("output.png")
 ```
+
+If the text encoder alone is too large for a single chip(eg. FLUX.2-dev's Mistral-3-Small is ~45GB),
+shard it across multiple chips with [`~diffusers.hooks.tensor_parallel.apply_tensor_parallel`], the
+same mechanism [`~ModelMixin.enable_parallelism`] uses for the transformer (see [Tensor
+parallelism](../training/distributed_inference#tensor-parallelism)). It only requires `model:
+torch.nn.Module`, so it works directly on a `transformers.PreTrainedModel` text encoder too, not
+just a diffusers `ModelMixin`. The text encoder doesn't define a `_tp_plan`, so supply one: pair
+each attention/MLP projection that expands the hidden dimension (`"colwise"`) with the one that
+contracts it back (`"rowwise"`), matching the `transformers` model's actual module names.
 
 ## Compiled mode (recommended for production)
 
@@ -79,8 +99,6 @@ pipe = FluxPipeline.from_pretrained(
 pipe.transformer.to("tpu")
 pipe.vae.to("tpu")
 
-# Compile TPU components with TpuBackend.
-# Also applies AttnProcessor to replace SDP-based attention (required for XLA).
 pipe.enable_tpu_compile()
 
 # Warmup — triggers static graph compilation.
@@ -103,21 +121,3 @@ image = pipe(
 
 image.save("output.png")
 ```
-
-## Eager mode
-
-TorchTPU defaults to **Strict Eager** (`EagerMode.DEFER_NEVER`): operations are dispatched one
-at a time asynchronously, matching standard PyTorch GPU behaviour.
-
-> [!TIP]
-> For the best production throughput, prefer `torch.compile` via `pipe.enable_tpu_compile()`.
-
-## API reference
-
-### `enable_tpu_compile`
-
-[[autodoc]] diffusers.DiffusionPipeline.enable_tpu_compile
-
-### `tpu_warmup`
-
-[[autodoc]] diffusers.DiffusionPipeline.tpu_warmup
