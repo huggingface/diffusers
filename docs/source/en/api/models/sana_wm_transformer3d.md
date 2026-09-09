@@ -20,10 +20,6 @@ sampler of [`SanaWMPipeline`]. The transformer combines:
 * a Wan-style 3D rotary position embedding plus periodic softmax-attention blocks injected every `softmax_every_n`
   layers.
 
-The state-dict layout matches the public SANA-WM release one-to-one — the diffusers wrapper places the inner DiT
-under a `_inner.` prefix. See [`SanaWMTransformer3DModel.add_inner_prefix`] for the helper used by the conversion
-script.
-
 The model can be loaded with:
 
 ```python

@@ -36,7 +36,7 @@ class SanaWMTransformer3DTesterConfig(BaseModelTesterConfig):
     # Tiny stand-in for the public `Efficient-Large-Model/SANA-WM_bidirectional` release
     # (depth 20 / hidden 2240 / 20 heads). `num_layers=2` together with `softmax_every_n=2`
     # keeps both camera-branch variants covered: block 0 is the GDN one and block 1 is the
-    # softmax one that `_inject_softmax_layers` swaps in.
+    # softmax one the model's per-layer `attn_cls` loop selects.
     num_layers = 2
     in_channels = 4
     caption_channels = 8
