@@ -16,6 +16,7 @@
 import json
 import os
 
+import pytest
 import torch
 
 from diffusers import AutoModel, ControlNetModel, ModularPipeline, UNet2DConditionModel
@@ -120,16 +121,17 @@ class TestLoadComponentsSkipBehavior:
 
 
 class TestCustomModelSavePretrained:
-    def test_save_pretrained_updates_index_for_local_model(self, tmp_path):
-        """When a component without _diffusers_load_id (custom/local model) is saved,
-        modular_model_index.json should point to the save directory."""
+    @pytest.mark.parametrize("overwrite_modular_index", [True, False])
+    def test_save_pretrained_updates_index_for_local_model(self, tmp_path, overwrite_modular_index):
+        """A component without _diffusers_load_id (custom/local model) is rewritten to the save directory in both
+        modes; other components' specs follow `overwrite_modular_index`."""
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
         pipe.load_components(dtype=torch.float32)
 
         pipe.unet._diffusers_load_id = "null"
 
         save_dir = str(tmp_path / "my-pipeline")
-        pipe.save_pretrained(save_dir)
+        pipe.save_pretrained(save_dir, overwrite_modular_index=overwrite_modular_index)
 
         with open(os.path.join(save_dir, "modular_model_index.json")) as f:
             index = json.load(f)
@@ -139,7 +141,8 @@ class TestCustomModelSavePretrained:
         assert unet_spec["subfolder"] == "unet"
 
         _library, _cls, vae_spec = index["vae"]
-        assert vae_spec["pretrained_model_name_or_path"] == "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+        expected_vae = save_dir if overwrite_modular_index else "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+        assert vae_spec["pretrained_model_name_or_path"] == expected_vae
 
     def test_save_pretrained_roundtrip_with_local_model(self, tmp_path):
         """A pipeline with a custom/local model should be saveable and re-loadable with identical outputs."""
@@ -164,9 +167,10 @@ class TestCustomModelSavePretrained:
         for key in original_state_dict:
             assert torch.equal(original_state_dict[key], loaded_state_dict[key]), f"Mismatch in {key}"
 
-    def test_save_pretrained_updates_index_for_model_with_no_load_id(self, tmp_path):
+    @pytest.mark.parametrize("overwrite_modular_index", [True, False])
+    def test_save_pretrained_updates_index_for_model_with_no_load_id(self, tmp_path, overwrite_modular_index):
         """testing the workflow of update the pipeline with a custom model and save the pipeline,
-        the modular_model_index.json should point to the save directory."""
+        the modular_model_index.json should point to the save directory in both modes."""
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
         pipe.load_components(dtype=torch.float32)
 
@@ -178,7 +182,7 @@ class TestCustomModelSavePretrained:
         pipe.update_components(unet=unet)
 
         save_dir = str(tmp_path / "my-pipeline")
-        pipe.save_pretrained(save_dir)
+        pipe.save_pretrained(save_dir, overwrite_modular_index=overwrite_modular_index)
 
         with open(os.path.join(save_dir, "modular_model_index.json")) as f:
             index = json.load(f)
@@ -188,7 +192,32 @@ class TestCustomModelSavePretrained:
         assert unet_spec["subfolder"] == "unet"
 
         _library, _cls, vae_spec = index["vae"]
+        expected_vae = save_dir if overwrite_modular_index else "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+        assert vae_spec["pretrained_model_name_or_path"] == expected_vae
+
+    def test_save_pretrained_default_writes_self_contained_local_copy(self, tmp_path):
+        """By default the saved index points at the save directory, so the copy reloads offline; a component
+        that was never loaded is not saved and keeps its recorded spec."""
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        pipe.load_components(names=["unet"], dtype=torch.float32)
+
+        save_dir = str(tmp_path / "my-pipeline")
+        pipe.save_pretrained(save_dir)
+
+        with open(os.path.join(save_dir, "modular_model_index.json")) as f:
+            index = json.load(f)
+
+        _library, _cls, unet_spec = index["unet"]
+        assert unet_spec["pretrained_model_name_or_path"] == save_dir
+        assert unet_spec["subfolder"] == "unet"
+        assert unet_spec["revision"] is None
+
+        _library, _cls, vae_spec = index["vae"]
         assert vae_spec["pretrained_model_name_or_path"] == "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+
+        loaded_pipe = ModularPipeline.from_pretrained(save_dir)
+        loaded_pipe.load_components(names=["unet"], dtype=torch.float32, local_files_only=True)
+        assert loaded_pipe.unet is not None
 
     def test_save_pretrained_overwrite_modular_index(self, tmp_path):
         """With overwrite_modular_index=True, all component references should point to the save directory."""
