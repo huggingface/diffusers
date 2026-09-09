@@ -29,6 +29,7 @@ class ComfyQuantizer(DiffusersQuantizer):
 
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
+        self.quant_format = getattr(quantization_config, "quant_format", "fp8")
         self.compute_dtype = quantization_config.compute_dtype
         self.modules_to_not_convert = quantization_config.modules_to_not_convert or []
         if not isinstance(self.modules_to_not_convert, list):
@@ -70,13 +71,32 @@ class ComfyQuantizer(DiffusersQuantizer):
     ):
         module, tensor_name = get_module_from_name(model, param_name)
 
-        # Defaulting to an example layout for now. Ideally this is pulled from config or metadata.
-        # Since ComfyQuantConfig can store the exact layout/format, we'd use it here.
-        # quantized_weight = ck_tensor.QuantizedTensor.from_float(param_value, ck_tensor.TensorCoreFP8Layout)
+        import comfy_kitchen.tensor as ck_tensor
 
-        # Since we don't have the exact layout detection in this PR snippet, we do a basic wrap.
-        # This is a placeholder for the actual comfy-kitchen wrapping logic.
-        quantized_weight = param_value
+        layout_map = {
+            "fp8": getattr(ck_tensor, "TensorCoreFP8Layout", None),
+            "nvfp4": getattr(ck_tensor, "TensorCoreNVFP4Layout", None),
+            "mxfp8": getattr(ck_tensor, "TensorCoreMXFP8Layout", None),
+            "int8": getattr(ck_tensor, "Int8Layout", None),
+            "int4_svd": getattr(ck_tensor, "SVDQuantW4A4Layout", None),
+            "int4_awq": getattr(ck_tensor, "AWQW4A16Layout", None),
+        }
+
+        # Check if it's already a QuantizedTensor (e.g., if loaded directly from a custom loader)
+        if hasattr(param_value, "layout") and isinstance(param_value.layout, getattr(ck_tensor, "BaseLayout", type)):
+            quantized_weight = param_value
+        else:
+            layout = layout_map.get(self.quant_format.lower())
+            if layout is None:
+                raise ValueError(
+                    f"The layout for '{self.quant_format}' was not found in `comfy_kitchen`. "
+                    f"Make sure you have the latest version installed that supports this format."
+                )
+
+            # comfy-kitchen natively handles wrapping standard float tensors via from_float
+            # If the tensor is pre-quantized raw bytes, comfy-kitchen exposes `.from_quantized(...)` or similar internally,
+            # but `.from_float` guarantees we intercept float weights (e.g. standard safetensors float weights).
+            quantized_weight = ck_tensor.QuantizedTensor.from_float(param_value.to(target_device), layout)
 
         if tensor_name in module._parameters:
             module._parameters[tensor_name] = quantized_weight.to(target_device)
