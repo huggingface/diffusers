@@ -114,7 +114,7 @@ at a time asynchronously, matching standard PyTorch GPU behaviour.
 
 ## API reference
 
-### `enable_tpu_compile`
+### enable_tpu_compile
 
 [[autodoc]] diffusers.DiffusionPipeline.enable_tpu_compile
 
