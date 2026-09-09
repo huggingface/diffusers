@@ -41,6 +41,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_hunyuanimage_refiner"] = ["AutoencoderKLHunyuanImageRefiner"]
     _import_structure["autoencoders.autoencoder_kl_hunyuanvideo15"] = ["AutoencoderKLHunyuanVideo15"]
     _import_structure["autoencoders.autoencoder_kl_kvae"] = ["AutoencoderKLKVAE"]
+    _import_structure["autoencoders.autoencoder_kl_kvae_audio"] = ["AutoencoderKLKVAEAudio"]
     _import_structure["autoencoders.autoencoder_kl_kvae_video"] = ["AutoencoderKLKVAEVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx2"] = ["AutoencoderKLLTX2Video"]
@@ -186,6 +187,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
             AutoencoderKLKVAE,
+            AutoencoderKLKVAEAudio,
             AutoencoderKLKVAEVideo,
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
