@@ -75,7 +75,7 @@ just a diffusers `ModelMixin`. The text encoder doesn't define a `_tp_plan`, so 
 each attention/MLP projection that expands the hidden dimension (`"colwise"`) with the one that
 contracts it back (`"rowwise"`), matching the `transformers` model's actual module names.
 
-## Compiled mode (recommended for production)
+## Compiled mode
 
 `torch.compile` with `TpuBackend` traces the transformer statically. The first call (warmup)
 is slow because it triggers compilation; subsequent calls reuse the compiled graph.
