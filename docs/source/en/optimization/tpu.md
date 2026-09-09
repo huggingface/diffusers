@@ -118,6 +118,6 @@ at a time asynchronously, matching standard PyTorch GPU behaviour.
 
 [[autodoc]] diffusers.DiffusionPipeline.enable_tpu_compile
 
-### `tpu_warmup`
+### tpu_warmup
 
 [[autodoc]] diffusers.DiffusionPipeline.tpu_warmup
