@@ -79,8 +79,6 @@ pipe = FluxPipeline.from_pretrained(
 pipe.transformer.to("tpu")
 pipe.vae.to("tpu")
 
-# Compile TPU components with TpuBackend.
-# Also applies AttnProcessor to replace SDP-based attention (required for XLA).
 pipe.enable_tpu_compile()
 
 # Warmup — triggers static graph compilation.
