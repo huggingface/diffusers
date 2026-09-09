@@ -23,6 +23,8 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
     LoraTesterMixin,
+    ModelOptCompileTesterMixin,
+    ModelOptTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
     TorchAoTesterMixin,
@@ -119,6 +121,14 @@ class TestSD3TransformerTraining(SD3TransformerTesterConfig, TrainingTesterMixin
 
 class TestSD3TransformerCompile(SD3TransformerTesterConfig, TorchCompileTesterMixin):
     pass
+
+
+class TestSD3TransformerModelOpt(SD3TransformerTesterConfig, ModelOptTesterMixin):
+    """NVIDIA ModelOpt quantization tests for SD3 Transformer."""
+
+
+class TestSD3TransformerModelOptCompile(SD3TransformerTesterConfig, ModelOptCompileTesterMixin):
+    """torch.compile tests for NVIDIA ModelOpt-quantized SD3 Transformer."""
 
 
 # ======================== SD3.5 Transformer ========================
