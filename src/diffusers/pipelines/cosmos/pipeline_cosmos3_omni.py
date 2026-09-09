@@ -28,6 +28,7 @@ from transformers import AutoTokenizer, BatchEncoding
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
+from ...models.modeling_utils import get_parameter_device
 from ...models.transformers.transformer_cosmos3 import (
     Cosmos3OmniTransformer,
 )
@@ -489,7 +490,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     return torch.device(execution_device)
 
             try:
-                return next(component.parameters()).device
+                return get_parameter_device(component)
             except StopIteration:
                 continue
 
