@@ -66,8 +66,8 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AutoencoderKLAllegro, AllegroPipeline
         >>> from diffusers.utils import export_to_video
 
-        >>> vae = AutoencoderKLAllegro.from_pretrained("rhymes-ai/Allegro", subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = AllegroPipeline.from_pretrained("rhymes-ai/Allegro", vae=vae, torch_dtype=torch.bfloat16).to("cuda")
+        >>> vae = AutoencoderKLAllegro.from_pretrained("rhymes-ai/Allegro", subfolder="vae", dtype=torch.float32)
+        >>> pipe = AllegroPipeline.from_pretrained("rhymes-ai/Allegro", vae=vae, dtype=torch.bfloat16).to("cuda")
         >>> pipe.vae.enable_tiling()
 
         >>> prompt = (

@@ -280,7 +280,7 @@ class StableDiffusionInstructPix2PixPipeline(
         >>> image = download_image(img_url).resize((512, 512))
 
         >>> pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-        ...     "timbrooks/instruct-pix2pix", torch_dtype=torch.float16
+        ...     "timbrooks/instruct-pix2pix", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

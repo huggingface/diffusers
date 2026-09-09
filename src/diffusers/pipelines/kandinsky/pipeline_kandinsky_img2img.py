@@ -47,7 +47,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
 
         >>> pipe_prior = KandinskyPriorPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-1-prior", dtype=torch.float16
         ... )
         >>> pipe_prior.to("cuda")
 
@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
         >>> image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
 
         >>> pipe = KandinskyImg2ImgPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-1", dtype=torch.float16
         ... )
         >>> pipe.to("cuda")
 

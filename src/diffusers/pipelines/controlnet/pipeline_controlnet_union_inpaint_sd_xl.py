@@ -107,14 +107,14 @@ EXAMPLE_DOC_STRING = """
         ).resize((1024, 1024))
         # initialize the models and pipeline
         controlnet = ControlNetUnionModel.from_pretrained(
-            "brad-twinkl/controlnet-union-sdxl-1.0-promax", torch_dtype=torch.float16
+            "brad-twinkl/controlnet-union-sdxl-1.0-promax", dtype=torch.float16
         )
-        vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+        vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
         pipe = StableDiffusionXLControlNetUnionInpaintPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
             controlnet=controlnet,
             vae=vae,
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
             variant="fp16",
         )
         pipe.enable_model_cpu_offload()

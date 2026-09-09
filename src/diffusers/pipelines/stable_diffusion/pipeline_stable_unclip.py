@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableUnCLIPPipeline
 
         >>> pipe = StableUnCLIPPipeline.from_pretrained(
-        ...     "fusing/stable-unclip-2-1-l", torch_dtype=torch.float16
+        ...     "fusing/stable-unclip-2-1-l", dtype=torch.float16
         ... )  # TODO update model path
         >>> pipe = pipe.to("cuda")
 

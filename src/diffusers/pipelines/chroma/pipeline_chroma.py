@@ -54,11 +54,11 @@ EXAMPLE_DOC_STRING = """
 
         >>> model_id = "lodestones/Chroma1-HD"
         >>> ckpt_path = "https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors"
-        >>> transformer = ChromaTransformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
+        >>> transformer = ChromaTransformer2DModel.from_single_file(ckpt_path, dtype=torch.bfloat16)
         >>> pipe = ChromaPipeline.from_pretrained(
         ...     model_id,
         ...     transformer=transformer,
-        ...     torch_dtype=torch.bfloat16,
+        ...     dtype=torch.bfloat16,
         ... )
         >>> pipe.enable_model_cpu_offload()
         >>> prompt = [

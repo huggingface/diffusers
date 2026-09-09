@@ -463,7 +463,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         >>> text = "a red car in the sun"
 
         >>> pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained(
-        ...     "shi-labs/versatile-diffusion", torch_dtype=torch.float16
+        ...     "shi-labs/versatile-diffusion", dtype=torch.float16
         ... )
         >>> pipe.remove_unused_weights()
         >>> pipe = pipe.to("cuda")

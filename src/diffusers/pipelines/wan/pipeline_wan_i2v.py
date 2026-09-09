@@ -56,11 +56,11 @@ EXAMPLE_DOC_STRING = """
         >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers, Wan-AI/Wan2.1-I2V-14B-720P-Diffusers
         >>> model_id = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
         >>> image_encoder = CLIPVisionModel.from_pretrained(
-        ...     model_id, subfolder="image_encoder", torch_dtype=torch.float32
+        ...     model_id, subfolder="image_encoder", dtype=torch.float32
         ... )
-        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
         >>> pipe = WanImageToVideoPipeline.from_pretrained(
-        ...     model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+        ...     model_id, vae=vae, image_encoder=image_encoder, dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 

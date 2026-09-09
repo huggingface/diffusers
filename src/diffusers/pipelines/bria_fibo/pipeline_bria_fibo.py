@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
     pipe = BriaFiboPipeline.from_pretrained(
         "briaai/FIBO",
         trust_remote_code=True,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
     )
     pipe.enable_model_cpu_offload()
 

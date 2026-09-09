@@ -32,7 +32,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import QwenImageImg2ImgPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = QwenImageImg2ImgPipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImageImg2ImgPipeline.from_pretrained("Qwen/Qwen-Image", dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
         >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
         >>> init_image = load_image(url).resize((1024, 1024))

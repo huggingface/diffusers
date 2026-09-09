@@ -29,7 +29,7 @@ Examples:
     >>> from diffusers.utils import load_image
 
     >>> model_id = "jdopensource/JoyAI-Image-Edit-Diffusers"
-    >>> pipe = JoyImageEditPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+    >>> pipe = JoyImageEditPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
     >>> pipe.to("cuda")
 
     >>> image = load_image("https://huggingface.co/datasets/diffusers/docs-images/resolve/main/astronaut.jpg")

@@ -46,7 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video
 
         >>> pipe = AnyFlowPipeline.from_pretrained(
-        ...     "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers", torch_dtype=torch.bfloat16
+        ...     "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers", dtype=torch.bfloat16
         ... ).to("cuda")
 
         >>> prompt = "A red panda eating bamboo in a forest, cinematic lighting"

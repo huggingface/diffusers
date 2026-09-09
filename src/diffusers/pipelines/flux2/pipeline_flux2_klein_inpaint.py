@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> pipe = Flux2KleinInpaintPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.2-klein-base-9B", torch_dtype=torch.bfloat16
+        ...     "black-forest-labs/FLUX.2-klein-base-9B", dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
         >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
@@ -70,7 +70,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> pipe = Flux2KleinInpaintPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.2-klein-base-9B", torch_dtype=torch.bfloat16
+        ...     "black-forest-labs/FLUX.2-klein-base-9B", dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 

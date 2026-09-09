@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import Flux2KleinKVPipeline
 
         >>> pipe = Flux2KleinKVPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.2-klein-9b-kv", torch_dtype=torch.bfloat16
+        ...     "black-forest-labs/FLUX.2-klein-9b-kv", dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
         >>> ref_image = Image.open("reference.png")

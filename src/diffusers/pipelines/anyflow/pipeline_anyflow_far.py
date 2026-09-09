@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_image
 
         >>> pipe = AnyFlowFARPipeline.from_pretrained(
-        ...     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+        ...     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
         ... ).to("cuda")
 
         >>> # Single-frame I2V: wrap the conditioning image as a (1, 1, 3, H, W) tensor in [0, 1].

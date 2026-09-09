@@ -53,7 +53,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Models: "alibaba-pai/EasyAnimateV5.1-12b-zh"
         >>> pipe = EasyAnimatePipeline.from_pretrained(
-        ...     "alibaba-pai/EasyAnimateV5.1-7b-zh-diffusers", torch_dtype=torch.float16
+        ...     "alibaba-pai/EasyAnimateV5.1-7b-zh-diffusers", dtype=torch.float16
         ... ).to("cuda")
         >>> prompt = (
         ...     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "

@@ -134,7 +134,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = AutoPipelineForImage2Image.from_pretrained("SimianLuo/LCM_Dreamshaper_v7")
         >>> # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
-        >>> pipe.to(torch_device="cuda", torch_dtype=torch.float32)
+        >>> pipe.to(torch_device="cuda", dtype=torch.float32)
 
         >>> prompt = "High altitude snowy mountains"
         >>> image = PIL.Image.open("./snowy_mountains.png")

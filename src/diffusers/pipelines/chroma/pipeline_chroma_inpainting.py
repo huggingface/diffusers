@@ -65,7 +65,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import ChromaInpaintPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = ChromaInpaintPipeline.from_pretrained("lodestones/Chroma1-HD", torch_dtype=torch.bfloat16)
+        >>> pipe = ChromaInpaintPipeline.from_pretrained("lodestones/Chroma1-HD", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
         >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"

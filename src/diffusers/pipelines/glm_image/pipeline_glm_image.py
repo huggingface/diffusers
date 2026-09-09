@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import GlmImagePipeline
 
-        >>> pipe = GlmImagePipeline.from_pretrained("zai-org/GLM-Image", torch_dtype=torch.bfloat16)
+        >>> pipe = GlmImagePipeline.from_pretrained("zai-org/GLM-Image", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A photo of an astronaut riding a horse on mars"

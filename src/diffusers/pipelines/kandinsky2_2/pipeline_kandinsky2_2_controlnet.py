@@ -60,12 +60,12 @@ EXAMPLE_DOC_STRING = """
         >>> depth_estimator = pipeline("depth-estimation")
 
         >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16
         ... )
         >>> pipe_prior = pipe_prior.to("cuda")
 
         >>> pipe = KandinskyV22ControlnetPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-2-controlnet-depth", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

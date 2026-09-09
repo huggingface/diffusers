@@ -56,7 +56,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> from torchvision import transforms
 
         >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16
         ... )
         >>> pipe_prior.to("cuda")
         >>> img1 = load_image(
@@ -71,7 +71,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> weights = [0.3, 0.3, 0.4]
         >>> out = pipe_prior.interpolate(images_texts, weights)
         >>> pipe = KandinskyV22Pipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16
         ... )
         >>> pipe.to("cuda")
         >>> image = pipe(

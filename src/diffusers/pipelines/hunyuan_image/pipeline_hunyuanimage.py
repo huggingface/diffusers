@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import HunyuanImagePipeline
 
         >>> pipe = HunyuanImagePipeline.from_pretrained(
-        ...     "hunyuanvideo-community/HunyuanImage-2.1-Diffusers", torch_dtype=torch.bfloat16
+        ...     "hunyuanvideo-community/HunyuanImage-2.1-Diffusers", dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
