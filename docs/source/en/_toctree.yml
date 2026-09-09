@@ -172,6 +172,8 @@
     title: bitsandbytes
   - local: quantization/gguf
     title: gguf
+  - local: quantization/comfy_quant
+    title: Comfy Quant
   - local: quantization/nunchaku
     title: Nunchaku Lite
   - local: quantization/torchao
