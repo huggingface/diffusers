@@ -24,6 +24,9 @@ if is_accelerate_available():
     import accelerate
 
 
+import functools
+
+
 def apply_forward_hook(method):
     """
     Decorator that applies a registered CpuOffload hook to an arbitrary function rather than `forward`. This is useful
@@ -40,6 +43,7 @@ def apply_forward_hook(method):
     if version.parse(accelerate_version) < version.parse("0.17.0"):
         return method
 
+    @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
         if hasattr(self, "_hf_hook") and hasattr(self._hf_hook, "pre_forward"):
             self._hf_hook.pre_forward(self)
