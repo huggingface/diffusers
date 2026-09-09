@@ -24,6 +24,8 @@ The server is accessed at http://localhost:8000. You can curl this model with th
 curl -X POST -H "Content-Type: application/json" --data '{"model": "something", "prompt": "a kitten in front of a fireplace"}' http://localhost:8000/v1/images/generations
 ```
 
+If you want to run the server on managed compute instead of keeping your own machine online, AI Badgr Compute can also serve open models as capped `model.serve` jobs through `POST https://aibadgr.com/v1/jobs`, with status, logs, teardown, billing, and receipts. The optional CLI path is `badgr serve <model> --max-cost 10`.
+
 If you need to upgrade some dependencies, you can use either [pip-tools](https://github.com/jazzband/pip-tools) or [uv](https://github.com/astral-sh/uv). For example, upgrade the dependencies with `uv` using the following command.
 
 ```
