@@ -12,14 +12,14 @@ specific language governing permissions and limitations under the License.
 
 # TorchTPU
 
-[TorchTPU](https://github.com/google-pytorch/torch_tpu/) provides a PyTorch backend for Google's Tensor Processing Units (TPUs), enabling you to run diffusers pipelines on Google Cloud TPUs (v6e, v5p, …) with minimal code changes.
+[TorchTPU](https://github.com/google-pytorch/torch_tpu/) is a PyTorch backend for Google's Tensor Processing Units (TPUs), which lets you run Diffusers pipelines on Cloud TPUs (v6e, v5p, etc.) with minimal code changes.
 
-Four execution modes are available:
+Two execution modes are available:
 
 | Mode | Constant | How to activate | Notes |
 |---|---|---|---|
-| **Strict Eager** (default) | `EagerMode.DEFER_NEVER` | just `import torch_tpu` | Operations dispatched one at a time, asynchronous |
-| **Compile** | — | `pipe.enable_tpu_compile()` | AOT compilation with `TpuBackend` |
+| Strict eager (default) | `EagerMode.DEFER_NEVER` | `import torch_tpu` | Operations dispatched one at a time, asynchronous |
+| Compile | — | `pipe.enable_tpu_compile()` | AOT compilation with `TpuBackend` |
 
 Follow the [TorchTPU installation guide](https://github.com/google-pytorch/torch_tpu/). After installation,
 `import torch_tpu` registers the `"tpu"` device automatically.
@@ -77,14 +77,13 @@ contracts it back (`"rowwise"`), matching the `transformers` model's actual modu
 
 ## Compiled mode
 
-`torch.compile` with `TpuBackend` traces the transformer statically. The first call (warmup)
-is slow because it triggers compilation; subsequent calls reuse the compiled graph.
+[`enable_tpu_compile`] runs `torch.compile` with `TpuBackend` on each pipeline module that is already on TPU. The first call (warmup) is slow because it compiles. Later calls reuse the compiled graph. Where it's supported, it replaces SDP-based attention with `AttnProcessor` for XLA tracing.
 
 > [!IMPORTANT]
 > TorchTPU requires **static shapes** — `torch.compile` is called with `dynamic=False`
 > internally. Every time `height`, `width`, or `num_inference_steps` changes, the graph is
 > recompiled from scratch. Keep these values constant across all calls after warmup, or call
-> `tpu_warmup` again before changing them.
+> [`tpu_warmup`] again before changing them.
 
 ```python
 import torch
