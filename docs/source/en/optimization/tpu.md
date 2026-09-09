@@ -55,7 +55,7 @@ image = pipe(
 image.save("output.png")
 ```
 
-## Compiled mode (recommended for production)
+## Compiled mode
 
 `torch.compile` with `TpuBackend` traces the transformer statically. The first call (warmup)
 is slow because it triggers compilation; subsequent calls reuse the compiled graph.
