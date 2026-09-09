@@ -23,6 +23,7 @@ from PIL import Image, ImageFilter, ImageOps
 
 from .configuration_utils import ConfigMixin, register_to_config
 from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
+from .utils.pil_utils import TORCH_INTERPOLATION
 
 
 PipelineImageInput = (
@@ -505,18 +506,25 @@ class VaeImageProcessor(ConfigMixin):
             else:
                 raise ValueError(f"resize_mode {resize_mode} is not supported")
 
-        elif isinstance(image, torch.Tensor):
+        elif isinstance(image, (torch.Tensor, np.ndarray)):
+            resample = self.config.resample
+            if resample not in TORCH_INTERPOLATION:
+                logger.warning(
+                    f"The resample mode '{resample}' is not supported for torch.Tensor/np.ndarray inputs "
+                    f"and will be ignored. Supported modes are: {list(TORCH_INTERPOLATION.keys())}. "
+                    "Falling back to default 'nearest' interpolation."
+                )
+                torch_mode, use_antialias = "nearest", False
+            else:
+                torch_mode, use_antialias = TORCH_INTERPOLATION[resample]
+
+            if isinstance(image, np.ndarray):
+                image = self.numpy_to_pt(image)
             image = torch.nn.functional.interpolate(
-                image,
-                size=(height, width),
+                image, size=(height, width), mode=torch_mode, antialias=use_antialias
             )
-        elif isinstance(image, np.ndarray):
-            image = self.numpy_to_pt(image)
-            image = torch.nn.functional.interpolate(
-                image,
-                size=(height, width),
-            )
-            image = self.pt_to_numpy(image)
+            if isinstance(image, np.ndarray):
+                image = self.pt_to_numpy(image)
 
         return image
 
