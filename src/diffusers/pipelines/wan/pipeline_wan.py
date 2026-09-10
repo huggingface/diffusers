@@ -184,10 +184,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
-        prompt_embeds = torch.stack(
-            [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
-        )
+        for i, seq_len in enumerate(seq_lens):
+            prompt_embeds[i, seq_len:] = 0
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
