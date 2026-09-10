@@ -154,7 +154,10 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+        return [
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -215,7 +218,12 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
             transformer_kwargs = {
                 name: value for name, value in transformer_kwargs.items() if name in transformer_args
             }
-            with components.transformer.cache_context(pass_name):
+            with components.transformer.cache_context(
+                pass_name,
+                step_index=i,
+                sigma=float(components.scheduler.sigmas[i]),
+                num_inference_steps=components.scheduler.num_inference_steps,
+            ):
                 preds_vision, preds_sound, preds_action = components.transformer(
                     **transformer_kwargs, return_dict=False
                 )
@@ -480,23 +488,13 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        components._current_step_index = None
-        components._current_sigma = None
-        components._num_timesteps = len(block_state.timesteps)
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
-                components._current_step_index = i
-                scheduler_sigmas = getattr(components.scheduler, "sigmas", None)
-                components._current_sigma = (
-                    scheduler_sigmas[i] if scheduler_sigmas is not None and i < len(scheduler_sigmas) else None
-                )
                 components, block_state = self.loop_step(components, block_state, i=i, t=t)
                 if i == len(block_state.timesteps) - 1 or (
                     (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
                 ):
                     progress_bar.update()
-        components._current_step_index = None
-        components._current_sigma = None
         self.set_block_state(state, block_state)
         return components, state
 
@@ -665,7 +663,10 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+        return [
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -728,8 +729,10 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         return [OutputParam("velocity", type_hint=torch.Tensor, description="Predicted (masked) transfer velocity.")]
 
     @staticmethod
-    def _forward(components, static, vision_tokens, vision_timesteps, context_name):
-        with components.transformer.cache_context(context_name):
+    def _forward(components, static, vision_tokens, vision_timesteps, context_name, step, sigma, num_inference_steps):
+        with components.transformer.cache_context(
+            context_name, step_index=step, sigma=sigma, num_inference_steps=num_inference_steps
+        ):
             preds_vision, _, _ = components.transformer(
                 input_ids=static["input_ids"],
                 text_indexes=static["text_indexes"],
@@ -773,6 +776,9 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
             block_state.vision_tokens_full,
             block_state.vision_timesteps,
             "cond",
+            step=i,
+            sigma=float(components.scheduler.sigmas[i]),
+            num_inference_steps=components.scheduler.num_inference_steps,
         )
 
         cond_no_control = None
@@ -783,6 +789,9 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 block_state.vision_tokens_target,
                 block_state.vision_timesteps,
                 "cond_no_control",
+                step=i,
+                sigma=float(components.scheduler.sigmas[i]),
+                num_inference_steps=components.scheduler.num_inference_steps,
             )
 
         uncond_full = None
@@ -793,6 +802,9 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 block_state.vision_tokens_full,
                 block_state.vision_timesteps,
                 "uncond",
+                step=i,
+                sigma=float(components.scheduler.sigmas[i]),
+                num_inference_steps=components.scheduler.num_inference_steps,
             )
 
         cond_full = cond_full.float()

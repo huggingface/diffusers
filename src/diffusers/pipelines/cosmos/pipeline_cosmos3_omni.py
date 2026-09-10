@@ -1297,14 +1297,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         return self._current_timestep
 
     @property
-    def current_step_index(self):
-        return self._current_step_index
-
-    @property
-    def current_sigma(self):
-        return self._current_sigma
-
-    @property
     def guidance_scale(self):
         return self._guidance_scale
 
@@ -1498,8 +1490,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             )
 
         self._current_timestep = None
-        self._current_step_index = None
-        self._current_sigma = None
         self._interrupt = False
         self._guidance_scale = guidance_scale
 
@@ -1706,8 +1696,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     continue
 
                 self._current_timestep = t
-                self._current_step_index = i
-                self._current_sigma = self.scheduler.sigmas[i]
+                sigma = float(self.scheduler.sigmas[i])
                 timestep = t.item()
 
                 # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
@@ -1726,7 +1715,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 )
 
                 # --- Conditional pass ---
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context(
+                    "cond", step_index=i, sigma=sigma, num_inference_steps=self._num_timesteps
+                ):
                     preds_vision, preds_sound, preds_action = self.transformer(
                         input_ids=cond_packed_static["input_ids"],
                         text_indexes=cond_packed_static["text_indexes"],
@@ -1767,7 +1758,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 # --- Unconditional pass (Skip if not using CFG) ---
                 uncond_v_vision = uncond_v_sound = uncond_v_action = None
                 if self.do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context(
+                        "uncond", step_index=i, sigma=sigma, num_inference_steps=self._num_timesteps
+                    ):
                         preds_vision, preds_sound, preds_action = self.transformer(
                             input_ids=uncond_packed_static["input_ids"],
                             text_indexes=uncond_packed_static["text_indexes"],
@@ -1861,8 +1854,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     progress_bar.update()
 
         self._current_timestep = None
-        self._current_step_index = None
-        self._current_sigma = None
 
         # 8. Postprocess + decode
         sound = self.decode_sound(sound_latents) if sound_latents is not None else None

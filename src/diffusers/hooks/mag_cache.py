@@ -21,7 +21,7 @@ from ..utils import get_logger
 from ..utils.torch_utils import unwrap_module
 from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS
 from ._helpers import TransformerBlockRegistry
-from .hooks import BaseState, HookRegistry, ModelHook, StateManager
+from .hooks import BaseState, CacheContext, HookRegistry, ModelHook, StateManager
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -183,8 +183,8 @@ class MagCacheHeadHook(ModelHook):
 
     @torch.compiler.disable
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        if self.state_manager._current_context is None:
-            self.state_manager.set_context("inference")
+        if self.state_manager._context is None:
+            self.state_manager.set_context(CacheContext(name="inference"))
 
         arg_name = self._metadata.hidden_states_argument_name
         hidden_states = self._metadata._get_parameter_from_args_kwargs(arg_name, args, kwargs)
@@ -299,8 +299,8 @@ class MagCacheBlockHook(ModelHook):
 
     @torch.compiler.disable
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        if self.state_manager._current_context is None:
-            self.state_manager.set_context("inference")
+        if self.state_manager._context is None:
+            self.state_manager.set_context(CacheContext(name="inference"))
         state: MagCacheState = self.state_manager.get_state()
 
         if not state.should_compute:

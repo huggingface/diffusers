@@ -174,25 +174,24 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
     def test_float16_inference(self):
         pass
 
-    def test_transformer_cache_contexts_receive_exact_scheduler_metadata(self):
+    def test_transformer_cache_contexts_receive_exact_scheduler_info(self):
         pipe = self.get_pipeline().to(torch_device)
         observed = []
 
         @contextmanager
-        def record_context(name):
-            observed.append((name, pipe.current_step_index, pipe.current_sigma))
+        def record_context(name, **info):
+            observed.append((name, info.get("step"), info.get("sigma"), info.get("num_steps")))
             yield
 
         with mock.patch.object(pipe.transformer, "cache_context", side_effect=record_context):
             pipe(**self.get_dummy_inputs(), output=self.output_name)
 
-        assert [name for name, _, _ in observed] == ["cond", "uncond", "cond", "uncond"]
-        for call_index, (_, step_index, sigma) in enumerate(observed):
+        assert [name for name, _, _, _ in observed] == ["cond", "uncond", "cond", "uncond"]
+        for call_index, (_, step_index, sigma, num_steps) in enumerate(observed):
             expected_step = call_index // 2
             assert step_index == expected_step
-            torch.testing.assert_close(sigma, pipe.scheduler.sigmas[expected_step])
-        assert pipe.current_step_index is None
-        assert pipe.current_sigma is None
+            torch.testing.assert_close(sigma, float(pipe.scheduler.sigmas[expected_step]))
+            assert num_steps is not None
 
     def _get_sampling_state_block_pipe(self, block):
         pipe = block.init_pipeline(self.pretrained_model_name_or_path)

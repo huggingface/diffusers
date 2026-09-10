@@ -67,12 +67,6 @@ class SeaCacheConfig:
             latent, including clean conditioning frames in I2V. `"first_block"` filters the timestep-modulated
             pre-attention input of the first transformer block. Thresholds are not generally transferable between the
             two sources.
-        current_step_callback (`Callable[[], int]`):
-            Callback returning the current scheduler step index.
-        current_sigma_callback (`Callable[[], float]`):
-            Callback returning the exact current scheduler sigma in `[0, 1]`.
-        num_inference_steps_callback (`Callable[[], int]`):
-            Callback returning the number of scheduler steps in the current pipeline call.
         metadata_callback (`Callable`, *optional*):
             Advanced model adapter returning a list of `(indices, (T, H, W))` entries that locate projected noisy
             vision tokens in the generation stream for the `"first_block"` indicator. Cosmos 3 uses its native adapter
@@ -86,13 +80,7 @@ class SeaCacheConfig:
         >>> from diffusers import Cosmos3OmniPipeline, SeaCacheConfig
 
         >>> pipe = Cosmos3OmniPipeline.from_pretrained("nvidia/Cosmos3-Nano")
-        >>> pipe.transformer.enable_cache(
-        ...     SeaCacheConfig(
-        ...         current_step_callback=lambda: pipe.current_step_index,
-        ...         current_sigma_callback=lambda: pipe.current_sigma,
-        ...         num_inference_steps_callback=lambda: pipe.num_timesteps,
-        ...     )
-        ... )
+        >>> pipe.transformer.enable_cache(SeaCacheConfig())
         ```
     """
 
@@ -103,9 +91,6 @@ class SeaCacheConfig:
     max_consecutive_cached: int = 2
     power_exp: float = 3.0
     indicator_source: Literal["first_block", "raw_vision_latents"] = "raw_vision_latents"
-    current_step_callback: Callable[[], int] = None
-    current_sigma_callback: Callable[[], float] = None
-    num_inference_steps_callback: Callable[[], int] = None
     metadata_callback: Callable[
         [torch.nn.Module, tuple[Any, ...], dict[str, Any]],
         list[tuple[torch.Tensor, tuple[int, int, int]]] | None,
@@ -138,13 +123,7 @@ class SeaCacheConfig:
             raise ValueError(
                 f"`indicator_source` must be 'first_block' or 'raw_vision_latents', got {self.indicator_source!r}."
             )
-        for name in (
-            "current_step_callback",
-            "current_sigma_callback",
-            "num_inference_steps_callback",
-            "metadata_callback",
-            "raw_vision_callback",
-        ):
+        for name in ("metadata_callback", "raw_vision_callback"):
             callback = getattr(self, name)
             if callback is not None and not callable(callback):
                 raise TypeError(f"`{name}` must be callable or `None`.")
@@ -526,27 +505,25 @@ class SeaCacheRootHook(ModelHook):
                 "SeaCache is inference-only; calls with autograd enabled run in fail-open mode."
             )
             return args, kwargs
-        if self.state_manager._current_context is None:
+        # Scheduler coordinates come from the cache context the denoising loop attaches:
+        # `transformer.cache_context(name, step_index=..., sigma=..., num_inference_steps=...)`.
+        context = self.state_manager._context
+        if context is None:
             self.shared_state.mark_fail_open(
                 "SeaCache requires a cache context for each transformer call; running in fail-open mode."
             )
             return args, kwargs
-        callbacks = (
-            self.config.current_step_callback,
-            self.config.current_sigma_callback,
-            self.config.num_inference_steps_callback,
-        )
-        if any(callback is None for callback in callbacks):
+        step_index = context.step_index
+        sigma = context.sigma
+        num_inference_steps = context.num_inference_steps
+        if step_index is None or sigma is None or num_inference_steps is None:
             self.shared_state.mark_fail_open(
-                "SeaCache is running in fail-open mode because scheduler step, sigma, and step-count callbacks are "
-                "required."
+                "SeaCache is running in fail-open mode because the scheduler step, sigma, and step count are "
+                "required: pass them as `cache_context(name, step_index=..., sigma=..., num_inference_steps=...)`."
             )
             return args, kwargs
 
         try:
-            step_index = self.config.current_step_callback()
-            sigma = self.config.current_sigma_callback()
-            num_inference_steps = self.config.num_inference_steps_callback()
             if isinstance(step_index, torch.Tensor):
                 step_index = step_index.item()
             if isinstance(sigma, torch.Tensor):
@@ -614,7 +591,7 @@ class SeaCacheRootHook(ModelHook):
 
     def post_forward(self, module: torch.nn.Module, output: Any) -> Any:
         self.shared_state.forward_metadata = None
-        if self.state_manager._current_context is not None:
+        if self.state_manager._context is not None:
             self.state_manager.get_state().reset_forward()
         return output
 
@@ -694,7 +671,7 @@ class SeaCacheLeaderBlockHook(ModelHook):
     @torch.compiler.disable
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         hidden_states, encoder_hidden_states = _get_block_inputs(self._metadata, args, kwargs)
-        context_is_set = self.state_manager._current_context is not None
+        context_is_set = self.state_manager._context is not None
         state = self.state_manager.get_state() if context_is_set else None
         if state is not None:
             state.reset_forward()
@@ -797,7 +774,7 @@ class SeaCacheBlockHook(ModelHook):
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        if self.state_manager._current_context is None:
+        if self.state_manager._context is None:
             return self.fn_ref.original_forward(*args, **kwargs)
 
         state: SeaCacheContextState = self.state_manager.get_state()
@@ -837,7 +814,7 @@ class SeaCachePostNormHook(ModelHook):
 
     @torch.compiler.disable
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        if self.state_manager._current_context is None:
+        if self.state_manager._context is None:
             return self.fn_ref.original_forward(*args, **kwargs)
 
         state: SeaCacheContextState = self.state_manager.get_state()
