@@ -69,12 +69,30 @@ class Mlp(nn.Module):
         return hidden_states
 
 
-class ShortConvolution(nn.Module):
-    """Depthwise causal 1D convolution over the temporal axis.
+class SanaWMTemporalShortConvolution(nn.Module):
+    """Depthwise short convolution over the temporal axis, run in both directions.
 
-    SANA-WM's GDN attention applies a short causal depthwise conv to Q/K/V before the linear-attention kernel. This is
-    a self-contained PyTorch implementation of the `fla.modules.ShortConvolution` layer the reference implementation
-    used (with `activation=None`), so the model needs no `fla-core` dependency and can be built on any device.
+    SANA-WM's GDN attention applies a short depthwise conv to Q/K/V before the linear-attention kernel. The reference
+    implementation used the *causal* `fla.modules.ShortConvolution` layer (with `activation=None`); this is a
+    self-contained PyTorch implementation -- so the model needs no `fla-core` dependency and can be built on any device
+    -- that runs the causal kernel forwards and backwards to obtain the non-causal filter the bidirectional model
+    needs.
+
+    A causal depthwise Conv1d with kernel ``[w_0, w_1, ..., w_{k-1}]`` computes at time *t*:
+
+        ``y_fwd[t] = w_0 * x[t-k+1] + ... + w_{k-1} * x[t]``
+
+    Running the same kernel on the time-flipped input and flipping back gives:
+
+        ``y_bwd[t] = w_{k-1} * x[t] + ... + w_0 * x[t+k-1]``
+
+    Both passes include the current timestep ``x[t]`` with the center weight ``w_{k-1}``. To avoid double-counting one
+    copy of the center contribution is subtracted:
+
+        ``y = y_fwd + y_bwd - w_{k-1} * x``
+
+    The result is a symmetric temporal filter where every position in the window ``[t-k+1, t+k-1]`` is counted exactly
+    once.
 
     Args:
         hidden_size (`int`): Number of channels (the conv is depthwise, one group per channel).
@@ -82,36 +100,66 @@ class ShortConvolution(nn.Module):
         bias (`bool`, defaults to `False`): Whether to add a per-channel bias.
     """
 
-    def __init__(self, hidden_size: int, kernel_size: int, bias: bool = False, activation: str | None = None) -> None:
+    def __init__(self, hidden_size: int, kernel_size: int, bias: bool = False) -> None:
         super().__init__()
-        if activation is not None:
-            raise ValueError(f"SANA-WM only uses `activation=None` short convolutions, got {activation!r}.")
         self.hidden_size = hidden_size
         self.kernel_size = kernel_size
         # Same parameter layout as the reference implementation: (C, 1, K).
         self.weight = nn.Parameter(torch.zeros(hidden_size, 1, kernel_size))
         self.bias = nn.Parameter(torch.zeros(hidden_size)) if bias else None
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, None]:
-        """Apply the causal conv.
-
-        Args:
-            x (`torch.Tensor`): Input of shape `(batch, seq_len, hidden_size)`.
-
-        Returns:
-            `tuple[torch.Tensor, None]`: `(output, cache)`; the cache slot is kept for signature compatibility with the
-            reference implementation but is unused for the bidirectional (non-streaming) forward SANA-WM runs.
-        """
-        seq_len = x.shape[1]
+    def _causal_conv(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """Depthwise causal conv over `(batch, seq_len, hidden_size)` inputs."""
+        seq_len = hidden_states.shape[1]
         # Left-pad by (K - 1) and drop the tail so output[t] only sees inputs <= t.
-        y = F.conv1d(
-            x.transpose(1, 2),
-            self.weight.to(x.dtype),
-            None if self.bias is None else self.bias.to(x.dtype),
+        hidden_states = F.conv1d(
+            hidden_states.transpose(1, 2),
+            self.weight.to(hidden_states.dtype),
+            None if self.bias is None else self.bias.to(hidden_states.dtype),
             groups=self.hidden_size,
             padding=self.kernel_size - 1,
         )[..., :seq_len]
-        return y.transpose(1, 2), None
+        return hidden_states.transpose(1, 2)
+
+    def forward(self, hidden_states: torch.Tensor, num_frames: int) -> torch.Tensor:
+        """Apply the bidirectional conv along the temporal axis, with the spatial axis merged into the batch.
+
+        Args:
+            hidden_states (`torch.Tensor`): Input of shape `(batch, num_frames * spatial_size, hidden_size)`.
+            num_frames (`int`): Number of frames the sequence axis is split into.
+
+        Returns:
+            `torch.Tensor`: Tensor of the same shape and dtype as `hidden_states`.
+        """
+        batch_size, seq_len, channels = hidden_states.shape
+        spatial_size = seq_len // num_frames
+        dtype_in = hidden_states.dtype
+
+        # (B, T * S, C) -> (B * S, T, C). The causal conv backward is not reliable on the non-contiguous
+        # strided layout this permutation produces, hence the explicit `contiguous()`.
+        hidden_states = (
+            hidden_states.reshape(batch_size, num_frames, spatial_size, channels)
+            .permute(0, 2, 1, 3)
+            .contiguous()
+            .reshape(batch_size * spatial_size, num_frames, channels)
+        )
+
+        causal_forward = self._causal_conv(hidden_states)
+        causal_backward = self._causal_conv(hidden_states.flip(1)).flip(1)
+
+        # Subtract the shared center tap (last weight of the causal kernel). Weight shape: (channels, 1, kernel_size),
+        # so the last element along dim=-1 is the weight applied to x[t].
+        center_term = hidden_states * self.weight[:, 0, -1].unsqueeze(0).unsqueeze(0)
+
+        hidden_states = causal_forward + causal_backward - center_term
+        if hidden_states.dtype != dtype_in:
+            hidden_states = hidden_states.to(dtype_in)
+
+        return (
+            hidden_states.reshape(batch_size, spatial_size, num_frames, channels)
+            .permute(0, 2, 1, 3)
+            .reshape(batch_size, seq_len, channels)
+        )
 
 
 # Safe element-count threshold for a single conv call: PyTorch's 2D conv kernels (both cuDNN and the ATEN fallback)
@@ -1288,19 +1336,416 @@ def torch_chunk_cam_single_path_delta_rule(
     return out.permute(0, 1, 3, 2, 4).reshape(B, H, D, N)
 
 
+def _prepare_frame_valid_masks(
+    frame_valid_mask: torch.Tensor | None,
+    *,
+    batch_size: int,
+    num_frames: int,
+    spatial_size: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
+    """Convert a frame-valid mask to the token / beta / decay masks the attention branches use.
+
+    Args:
+        frame_valid_mask (`torch.Tensor`, *optional*):
+            Per-frame validity mask shaped `(B, 1, T, 1, 1)`, `(B, 1, T)` or `(B, T)`. `None` disables all masking.
+        batch_size (`int`): Batch size `B`.
+        num_frames (`int`): Number of frames `T`.
+        spatial_size (`int`): Tokens per frame `S`.
+        device (`torch.device`): Device of the returned masks.
+        dtype (`torch.dtype`): Dtype of the returned masks.
+
+    Returns:
+        `tuple`: `(token_valid_mask, beta_valid_mask, decay_valid_mask)` shaped `(B, T * S)`, `(B, 1, T, 1)` and `(B,
+        1, T)`, or three `None` when `frame_valid_mask` is `None`.
+    """
+    if frame_valid_mask is None:
+        return None, None, None
+
+    mask = frame_valid_mask
+    if mask.ndim == 5:
+        # (B, 1, T, 1, 1)
+        mask = mask[:, 0, :, 0, 0]
+    elif mask.ndim == 3 and mask.shape[1] == 1:
+        # (B, 1, T)
+        mask = mask[:, 0, :]
+    elif mask.ndim != 2:
+        raise ValueError(
+            "frame_valid_mask must be shaped (B, 1, T, 1, 1), (B, 1, T), or (B, T); "
+            f"got shape={list(frame_valid_mask.shape)}"
+        )
+
+    if mask.shape[0] != batch_size or mask.shape[1] != num_frames:
+        raise ValueError(
+            f"frame_valid_mask shape mismatch: expected (B={batch_size}, T={num_frames}), got {list(mask.shape)}"
+        )
+
+    mask = mask.to(device=device, dtype=dtype)
+    token_valid_mask = mask[:, :, None].expand(batch_size, num_frames, spatial_size).reshape(batch_size, -1)
+    beta_valid_mask = mask.view(batch_size, 1, num_frames, 1)
+    decay_valid_mask = mask.view(batch_size, 1, num_frames)
+    return token_valid_mask, beta_valid_mask, decay_valid_mask
+
+
+def _downscale_to_reference_rms(
+    reference: torch.Tensor,
+    transformed: torch.Tensor,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """Downscale a UCPE-transformed tensor if its channel RMS exceeds the reference.
+
+    Args:
+        reference (`torch.Tensor`): Pre-UCPE tensor carrying the target magnitude, shaped `(B, H, D, N)`.
+        transformed (`torch.Tensor`): Tensor to stabilize, same shape as `reference`.
+        eps (`float`, defaults to 1e-6): Numerical epsilon of the RMS.
+
+    Returns:
+        `torch.Tensor`: Stabilized tensor whose per-`(B, H, N)` channel RMS is not larger than the reference's.
+    """
+    reference_rms = reference.square().mean(dim=2, keepdim=True).add(eps).sqrt()
+    transformed_rms = transformed.square().mean(dim=2, keepdim=True).add(eps).sqrt()
+    scale = (reference_rms / transformed_rms.clamp_min(eps)).clamp(max=1.0)
+    return transformed * scale
+
+
+class SanaWMBidirectionalGDNAttention(nn.Module):
+    """Bidirectional gated-delta-net linear attention over the temporal axis.
+
+    The delta rule runs twice -- forwards (frames ``1..t``) and backwards (frames ``t+1..T``) -- and the numerator /
+    denominator streams of both passes are summed before the final normalization. RoPE is applied to the numerator
+    stream only, so the denominator (``Z``) stream keeps unrotated queries/keys and mass is conserved.
+
+    This module holds no parameters. The projections, short convolutions, norms and gates feeding it live on
+    [`BidirectionalGDNUCPESinglePathLiteLA`], whose `forward` issues every layer call and passes the resulting tensors
+    in.
+
+    Args:
+        eps (`float`, defaults to 1e-15): Denominator epsilon of the linear-attention normalization.
+        chunk_size (`int`, defaults to 21): Temporal chunk length of the state scan.
+    """
+
+    def __init__(self, eps: float = 1e-15, chunk_size: int = 21) -> None:
+        super().__init__()
+        self.eps = eps
+        self.chunk_size = chunk_size
+
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        beta: torch.Tensor,
+        decay: torch.Tensor,
+        recall_gate: torch.Tensor,
+        num_frames: int,
+        rotary_emb: torch.Tensor | None = None,
+        token_valid_mask: torch.Tensor | None = None,
+        beta_valid_mask: torch.Tensor | None = None,
+        decay_valid_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Run the bidirectional delta rule.
+
+        Args:
+            query (`torch.Tensor`): Queries of shape `(B, N, H, D)`, already normalized and passed through the kernel.
+            key (`torch.Tensor`): Keys of shape `(B, N, H, D)`, same preprocessing as `query`.
+            value (`torch.Tensor`): Values of shape `(B, N, H, D)`.
+            beta (`torch.Tensor`): Per-frame delta-rule gate of shape `(B, H, T, S)`.
+            decay (`torch.Tensor`): Per-frame decay gate of shape `(B, H, T)`.
+            recall_gate (`torch.Tensor`): Recall gate buffer forwarded to the scan.
+            num_frames (`int`): Number of frames `T` the sequence axis is split into.
+            rotary_emb (`torch.Tensor`, *optional*): Rotary embeddings applied to the numerator stream.
+            token_valid_mask (`torch.Tensor`, *optional*): Token mask of shape `(B, N)`.
+            beta_valid_mask (`torch.Tensor`, *optional*): Frame mask of shape `(B, 1, T, 1)` applied to `beta`.
+            decay_valid_mask (`torch.Tensor`, *optional*): Frame mask of shape `(B, 1, T)` applied to `decay`.
+
+        Returns:
+            `torch.Tensor`: Raw attention output of shape `(B, N, H * D)`; the shared output gate and projection are
+            applied by the caller.
+        """
+        batch_size, seq_len, num_heads, head_dim = query.shape
+        spatial_size = seq_len // num_frames
+        dtype_orig = value.dtype
+
+        key = key * ((head_dim**-0.5) * (spatial_size**-0.5))
+
+        # Permute to (B, H, D, N) for processing.
+        query = query.permute(0, 2, 3, 1)
+        key = key.permute(0, 2, 3, 1)
+        value = value.permute(0, 2, 3, 1)
+        if token_valid_mask is not None:
+            token_mask_qkv = token_valid_mask.view(batch_size, 1, 1, seq_len)
+            query = query * token_mask_qkv
+            key = key * token_mask_qkv
+            value = value * token_mask_qkv
+
+        # RoPE preparation (numerator only).
+        if rotary_emb is not None:
+            query_rot = _apply_rotary_emb(query, rotary_emb)
+            key_rot = _apply_rotary_emb(key, rotary_emb)
+        else:
+            query_rot = query
+            key_rot = key
+        if token_valid_mask is not None:
+            token_mask_qkv = token_valid_mask.view(batch_size, 1, 1, seq_len)
+            query_rot = query_rot * token_mask_qkv
+            key_rot = key_rot * token_mask_qkv
+
+        if beta_valid_mask is not None:
+            beta = beta * beta_valid_mask.to(beta.dtype)
+        if decay_valid_mask is not None:
+            decay_mask = decay_valid_mask.to(decay.dtype)
+            decay = decay * decay_mask + (1.0 - decay_mask)
+
+        # Force FP32 to preserve recurrent stability.
+        query = query.float()
+        key = key.float()
+        value = value.float()
+        query_rot = query_rot.float()
+        key_rot = key_rot.float()
+        beta = beta.float()
+        decay = decay.float()
+        recall_gate = recall_gate.float()
+
+        # Forward pass (inclusive: 1..t).
+        num_fwd, den_fwd = torch_chunk_sana_gdn(
+            query,
+            key,
+            value,
+            query_rot,
+            key_rot,
+            beta,
+            decay,
+            recall_gate=recall_gate,
+            chunk_size=self.chunk_size,
+            eps=self.eps,
+            return_components=True,
+        )
+
+        # Backward pass (exclusive: t+1..T).
+        def to_time_structure(tensor: torch.Tensor) -> torch.Tensor:
+            return tensor.view(batch_size, num_heads, head_dim, num_frames, spatial_size).permute(0, 1, 3, 2, 4)
+
+        def from_time_structure(tensor: torch.Tensor) -> torch.Tensor:
+            return tensor.permute(0, 1, 3, 2, 4).reshape(batch_size, num_heads, head_dim, seq_len)
+
+        query_bwd = torch.flip(to_time_structure(query), dims=[2])
+        query_rot_bwd = torch.flip(to_time_structure(query_rot), dims=[2])
+        key_bwd = flip_and_shift(to_time_structure(key), dim=2, shift_val=0.0)
+        value_bwd = flip_and_shift(to_time_structure(value), dim=2, shift_val=0.0)
+        key_rot_bwd = flip_and_shift(to_time_structure(key_rot), dim=2, shift_val=0.0)
+        beta_bwd = flip_and_shift(beta, dim=2, shift_val=0.0)
+        decay_bwd = flip_and_shift(decay, dim=2, shift_val=1.0)
+
+        num_bwd_flipped, den_bwd_flipped = torch_chunk_sana_gdn(
+            from_time_structure(query_bwd),
+            from_time_structure(key_bwd),
+            from_time_structure(value_bwd),
+            from_time_structure(query_rot_bwd),
+            from_time_structure(key_rot_bwd),
+            beta_bwd,
+            decay_bwd,
+            recall_gate=recall_gate,
+            chunk_size=self.chunk_size,
+            eps=self.eps,
+            return_components=True,
+        )
+
+        def flip_back(tensor: torch.Tensor) -> torch.Tensor:
+            # The denominator stream carries a single channel, hence the runtime `dim` lookup.
+            dim = tensor.shape[2]
+            tensor = tensor.view(batch_size, num_heads, dim, num_frames, spatial_size)
+            return torch.flip(tensor, dims=[3]).reshape(batch_size, num_heads, dim, seq_len)
+
+        total_num = num_fwd + flip_back(num_bwd_flipped)
+        total_den = den_fwd + flip_back(den_bwd_flipped)
+
+        hidden_states = total_num / (total_den + self.eps)
+
+        if dtype_orig != torch.float32:
+            hidden_states = hidden_states.to(dtype_orig)
+
+        hidden_states = hidden_states.permute(0, 3, 1, 2).reshape(batch_size, seq_len, num_heads * head_dim)
+        if token_valid_mask is not None:
+            hidden_states = hidden_states * token_valid_mask.view(batch_size, seq_len, 1).to(hidden_states.dtype)
+        return hidden_states
+
+
+class SanaWMBidirectionalGDNCamAttention(nn.Module):
+    """Camera-control counterpart of [`SanaWMBidirectionalGDNAttention`].
+
+    The recurrence is the same bidirectional delta rule, but the queries/keys/values are positionally encoded with the
+    UCPE per-ray transforms instead of RoPE, and the rule is reduced to its numerator ("single path") stream. The
+    transformed tensors are downscaled back to their pre-UCPE RMS envelope, and the energy the transform still adds is
+    discounted from ``beta``.
+
+    This module holds no parameters; [`BidirectionalGDNUCPESinglePathLiteLA.forward`] issues every layer call and
+    passes the resulting tensors in.
+
+    Args:
+        chunk_size (`int`, defaults to 21): Temporal chunk length of the state scan.
+    """
+
+    def __init__(self, chunk_size: int = 21) -> None:
+        super().__init__()
+        self.chunk_size = chunk_size
+
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        ray_transforms: tuple,
+        beta: torch.Tensor,
+        decay: torch.Tensor,
+        num_frames: int,
+        token_valid_mask: torch.Tensor | None = None,
+        beta_valid_mask: torch.Tensor | None = None,
+        decay_valid_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Run the bidirectional single-path delta rule in UCPE ray space.
+
+        Args:
+            query (`torch.Tensor`): Camera queries of shape `(B, N, H, D)`, already normalized and passed through the
+                kernel.
+            key (`torch.Tensor`): Camera keys of shape `(B, N, H, D)`, same preprocessing as `query`.
+            value (`torch.Tensor`): Camera values of shape `(B, N, H, D)`.
+            ray_transforms (`tuple`): `(P, P_T, P_inv, rotary_emb_cam)` UCPE transforms; `P_T` encodes the queries,
+                `P_inv` the keys/values and `P` decodes the output.
+            beta (`torch.Tensor`): Per-frame delta-rule gate of shape `(B, H, T, S)`.
+            decay (`torch.Tensor`): Per-frame decay gate of shape `(B, H, T)`.
+            num_frames (`int`): Number of frames `T` the sequence axis is split into.
+            token_valid_mask (`torch.Tensor`, *optional*): Token mask of shape `(B, N)`.
+            beta_valid_mask (`torch.Tensor`, *optional*): Frame mask of shape `(B, 1, T, 1)` applied to `beta`.
+            decay_valid_mask (`torch.Tensor`, *optional*): Frame mask of shape `(B, 1, T)` applied to `decay`.
+
+        Returns:
+            `torch.Tensor`: Raw camera attention output of shape `(B, N, H * D)`, in world space; the caller projects
+            it back into the residual stream.
+        """
+        batch_size, seq_len, num_heads, head_dim = query.shape
+        spatial_size = seq_len // num_frames
+        dtype_orig = value.dtype
+
+        key = key * ((head_dim**-0.5) * (spatial_size**-0.5))
+
+        # Permute to (B, H, D, N) for processing.
+        query = query.permute(0, 2, 3, 1).contiguous()
+        key = key.permute(0, 2, 3, 1).contiguous()
+        value = value.permute(0, 2, 3, 1).contiguous()
+
+        # Measure the safe geometric norm before UCPE applies translations.
+        pre_ucpe_key_norm = torch.linalg.vector_norm(key, dim=2, keepdim=True).clamp_min(1e-6)
+
+        # UCPE expects (B, h, N, d); our tensors are (B, h, d, N). Avoid eager contiguous copies before the
+        # transforms, and fuse the K/V transform (both use P_inv) into one call, then split back.
+        P, P_T, P_inv, rotary_emb_cam = ray_transforms
+        query_ucpe = _apply_ucpe_transform(query.transpose(-1, -2), P_T, rotary_emb_cam).transpose(-1, -2).contiguous()
+        key_value = torch.cat([key, value], dim=1)
+        key_value_ucpe = (
+            _apply_ucpe_transform(key_value.transpose(-1, -2), P_inv, rotary_emb_cam).transpose(-1, -2).contiguous()
+        )
+        key_ucpe, value_ucpe = torch.chunk(key_value_ucpe, chunks=2, dim=1)
+
+        # Downscale the transformed tensors back to their pre-UCPE RMS envelope.
+        query_ucpe = _downscale_to_reference_rms(query, query_ucpe)
+        key_ucpe = _downscale_to_reference_rms(key, key_ucpe)
+        value_ucpe = _downscale_to_reference_rms(value, value_ucpe)
+
+        # Measure the inflated geometric norm after UCPE, for the beta discount below.
+        post_ucpe_key_norm = torch.linalg.vector_norm(key_ucpe, dim=2, keepdim=True).clamp_min(1e-6)
+        inflation_sq = (post_ucpe_key_norm / pre_ucpe_key_norm) ** 2
+
+        if token_valid_mask is not None:
+            token_mask_qkv = token_valid_mask.view(batch_size, 1, 1, seq_len)
+            value_ucpe = value_ucpe * token_mask_qkv
+            query_ucpe = query_ucpe * token_mask_qkv
+            key_ucpe = key_ucpe * token_mask_qkv
+
+        # Dynamic beta discounting: scale beta by the UCPE inflation factor.
+        frame_inflation_sq = inflation_sq.view(batch_size, num_heads, num_frames, spatial_size).mean(dim=-1)
+        if beta.ndim == 3:
+            beta = beta / frame_inflation_sq.clamp_min(1.0)
+        elif beta.ndim == 4:
+            beta = beta / frame_inflation_sq.unsqueeze(-1).clamp_min(1.0)
+
+        if beta_valid_mask is not None:
+            beta = beta * beta_valid_mask.to(beta.dtype)
+        if decay_valid_mask is not None:
+            decay_mask = decay_valid_mask.to(decay.dtype)
+            decay = decay * decay_mask + (1.0 - decay_mask)
+
+        # Forward pass (inclusive: 1..t). Force FP32 to preserve recurrent stability.
+        out_fwd = torch_chunk_cam_single_path_delta_rule(
+            query_ucpe.float(),
+            key_ucpe.float(),
+            value_ucpe.float(),
+            beta.float(),
+            decay.float(),
+            chunk_size=self.chunk_size,
+        )
+
+        # Backward pass (exclusive: t+1..T).
+        def to_time_structure(tensor: torch.Tensor) -> torch.Tensor:
+            return tensor.view(batch_size, num_heads, head_dim, num_frames, spatial_size).permute(0, 1, 3, 2, 4)
+
+        def from_time_structure(tensor: torch.Tensor) -> torch.Tensor:
+            return tensor.permute(0, 1, 3, 2, 4).reshape(batch_size, num_heads, head_dim, seq_len)
+
+        query_bwd = torch.flip(to_time_structure(query_ucpe), dims=[2])
+        key_bwd = flip_and_shift(to_time_structure(key_ucpe), dim=2, shift_val=0.0)
+        value_bwd = flip_and_shift(to_time_structure(value_ucpe), dim=2, shift_val=0.0)
+        beta_bwd = flip_and_shift(beta, dim=2, shift_val=0.0)
+        decay_bwd = flip_and_shift(decay, dim=2, shift_val=1.0)
+
+        out_bwd_flipped = torch_chunk_cam_single_path_delta_rule(
+            from_time_structure(query_bwd).float(),
+            from_time_structure(key_bwd).float(),
+            from_time_structure(value_bwd).float(),
+            beta_bwd.float(),
+            decay_bwd.float(),
+            chunk_size=self.chunk_size,
+        )
+        out_bwd = torch.flip(
+            out_bwd_flipped.view(batch_size, num_heads, head_dim, num_frames, spatial_size),
+            dims=[3],
+        ).reshape(batch_size, num_heads, head_dim, seq_len)
+
+        hidden_states = out_fwd + out_bwd
+
+        if dtype_orig != torch.float32:
+            hidden_states = hidden_states.to(dtype_orig)
+        if token_valid_mask is not None:
+            hidden_states = hidden_states * token_valid_mask.view(batch_size, 1, 1, seq_len).to(hidden_states.dtype)
+
+        # Decode back from ray space to world space.
+        hidden_states = (
+            _apply_ucpe_transform(hidden_states.transpose(-1, -2), P, rotary_emb_cam, inverse_rope=True)
+            .transpose(-1, -2)
+            .contiguous()
+        )
+        hidden_states = hidden_states.reshape(batch_size, num_heads * head_dim, seq_len).permute(0, 2, 1)
+        if token_valid_mask is not None:
+            hidden_states = hidden_states * token_valid_mask.view(batch_size, seq_len, 1).to(hidden_states.dtype)
+        return hidden_states
+
+
 class BidirectionalGDNUCPESinglePathLiteLA(nn.Module):
     """Bidirectional Gated-Delta-Net attention with a UCPE camera-control branch.
 
     This is the attention block used by every non-softmax layer of the released SANA-WM checkpoint. Two branches run
     over the same tokens and are summed before a single shared output gate + projection:
 
-    - **Main branch** -- bidirectional linear attention with a gated delta rule over the temporal axis. A ReLU kernel
-      is applied to Q/K, RoPE is applied to the numerator stream only, and the denominator (Z) stream keeps unrotated
-      Q/K so mass is conserved. The gates (``beta`` / ``decay``) are computed per frame and shared spatially, while the
-      states are maintained per pixel.
-    - **Camera branch** -- the same bidirectional recurrence, but positionally encoded with UCPE per-ray transforms
-      instead of RoPE and reduced to a numerator-only ("single path") delta rule. The transformed camera tensors are
-      downscaled back to their pre-UCPE RMS envelope before entering the recurrence.
+    - **Main branch** ([`SanaWMBidirectionalGDNAttention`]) -- bidirectional linear attention with a gated delta rule
+      over the temporal axis. A ReLU kernel is applied to Q/K, RoPE is applied to the numerator stream only, and the
+      denominator (Z) stream keeps unrotated Q/K so mass is conserved. The gates (``beta`` / ``decay``) are computed
+      per frame and shared spatially, while the states are maintained per pixel.
+    - **Camera branch** ([`SanaWMBidirectionalGDNCamAttention`]) -- the same bidirectional recurrence, but positionally
+      encoded with UCPE per-ray transforms instead of RoPE and reduced to a numerator-only ("single path") delta rule.
+      The transformed camera tensors are downscaled back to their pre-UCPE RMS envelope before entering the recurrence.
+
+    Both branch modules are parameter-free: every layer call happens in this class's `forward`, which owns the
+    projections, short convolutions, norms and gates the two branches consume.
 
     Camera-specific parameters: ``q_proj_cam``, ``k_proj_cam``, ``v_proj_cam``, ``out_proj_cam``, ``q_norm_cam``,
     ``k_norm_cam`` and ``conv_k_cam``. The GDN gates (``beta_proj`` / ``gate_proj`` / ``dt_bias`` / ``A_log`` /
@@ -1400,27 +1845,24 @@ class BidirectionalGDNUCPESinglePathLiteLA(nn.Module):
 
         self.chunk_gdn_chunk_size = chunk_gdn_chunk_size
 
-        # Short convolutions (depthwise causal Conv1d along T).
+        # Short convolutions (depthwise Conv1d along T).
         self.conv_kernel_size = conv_kernel_size
         if conv_kernel_size > 0:
-            self.conv_k = ShortConvolution(
+            self.conv_k = SanaWMTemporalShortConvolution(
                 hidden_size=out_dim,
                 kernel_size=conv_kernel_size,
-                activation=None,
             )
             if k_conv_only:
                 self.conv_q = None
                 self.conv_v = None
             else:
-                self.conv_q = ShortConvolution(
+                self.conv_q = SanaWMTemporalShortConvolution(
                     hidden_size=out_dim,
                     kernel_size=conv_kernel_size,
-                    activation=None,
                 )
-                self.conv_v = ShortConvolution(
+                self.conv_v = SanaWMTemporalShortConvolution(
                     hidden_size=out_dim,
                     kernel_size=conv_kernel_size,
-                    activation=None,
                 )
         else:
             self.conv_q = None
@@ -1457,677 +1899,31 @@ class BidirectionalGDNUCPESinglePathLiteLA(nn.Module):
 
         # Short convolutions for the camera branch (matching the main branch).
         if self.conv_kernel_size > 0:
-            self.conv_k_cam = ShortConvolution(
+            self.conv_k_cam = SanaWMTemporalShortConvolution(
                 hidden_size=cam_dim,
                 kernel_size=self.conv_kernel_size,
-                activation=None,
             )
             if self.k_conv_only:
                 self.conv_q_cam = None
                 self.conv_v_cam = None
             else:
-                self.conv_q_cam = ShortConvolution(
+                self.conv_q_cam = SanaWMTemporalShortConvolution(
                     hidden_size=cam_dim,
                     kernel_size=self.conv_kernel_size,
-                    activation=None,
                 )
-                self.conv_v_cam = ShortConvolution(
+                self.conv_v_cam = SanaWMTemporalShortConvolution(
                     hidden_size=cam_dim,
                     kernel_size=self.conv_kernel_size,
-                    activation=None,
                 )
         else:
             self.conv_q_cam = None
             self.conv_k_cam = None
             self.conv_v_cam = None
 
-    # ------------------------------------------------------------------
-    # Shared helpers
-    # ------------------------------------------------------------------
-
-    def _apply_output_gate(self, out: torch.Tensor, gate_x: torch.Tensor) -> torch.Tensor:
-        if not (self.use_output_gate and self.output_gate is not None):
-            return out
-        gate = F.silu(self.output_gate(gate_x).to(torch.float32))
-        return out * gate
-
-    @staticmethod
-    def _downscale_to_reference_rms(
-        ref: torch.Tensor,
-        transformed: torch.Tensor,
-        eps: float = 1e-6,
-    ) -> torch.Tensor:
-        """Downscale transformed tensor if its channel RMS exceeds reference.
-
-        Args:
-            ref: Reference tensor with target magnitude, shape (B, H, D, N).
-            transformed: Tensor to stabilize, shape (B, H, D, N).
-            eps: Numerical epsilon for RMS.
-
-        Returns:
-            Stabilized tensor with per-(B,H,N) channel RMS not larger than ref.
-        """
-        ref_rms = ref.square().mean(dim=2, keepdim=True).add(eps).sqrt()
-        tr_rms = transformed.square().mean(dim=2, keepdim=True).add(eps).sqrt()
-        scale = (ref_rms / tr_rms.clamp_min(eps)).clamp(max=1.0)
-        return transformed * scale
-
-    def _stabilize_cam_transforms(
-        self,
-        q_cam: torch.Tensor,
-        k_cam: torch.Tensor,
-        v_cam: torch.Tensor,
-        q_cam_trans: torch.Tensor,
-        k_cam_trans: torch.Tensor,
-        v_cam_trans: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Downscale the UCPE-transformed camera tensors back to their pre-UCPE RMS envelope."""
-        q_cam_trans = self._downscale_to_reference_rms(q_cam, q_cam_trans)
-        k_cam_trans = self._downscale_to_reference_rms(k_cam, k_cam_trans)
-        v_cam_trans = self._downscale_to_reference_rms(v_cam, v_cam_trans)
-        return q_cam_trans, k_cam_trans, v_cam_trans
-
-    @staticmethod
-    def _reshape_to_temporal(x: torch.Tensor, HW: tuple[int, int, int]) -> tuple[torch.Tensor, int, int, int]:
-        """Reshape (B, T*S, C) to (B*S, T, C) for temporal conv.
-
-        Returns:
-            Reshaped tensor and (B, S, T) for later restoration.
-        """
-        B, N, C = x.shape
-        T, H, W = HW
-        S = H * W
-        # ShortConvolution backward is not reliable on non-contiguous
-        # strided layouts produced by this permutation path.
-        x = x.reshape(B, T, S, C).permute(0, 2, 1, 3).contiguous().reshape(B * S, T, C)
-        return x, B, S, T
-
-    @staticmethod
-    def _reshape_from_temporal(x: torch.Tensor, B: int, S: int, T: int) -> torch.Tensor:
-        """Reshape (B*S, T, C) back to (B, T*S, C)."""
-        C = x.shape[-1]
-        return x.reshape(B, S, T, C).permute(0, 2, 1, 3).reshape(B, T * S, C)
-
-    @staticmethod
-    def _bidirectional_causal_conv_1d(
-        x: torch.Tensor,
-        conv: ShortConvolution,
-    ) -> torch.Tensor:
-        """Simulate non-causal conv by combining forward + backward causal passes.
-
-        A causal depthwise Conv1d with kernel ``[w_0, w_1, ..., w_{k-1}]`` computes at time *t*:
-
-            ``y_fwd[t] = w_0 * x[t-k+1] + ... + w_{k-1} * x[t]``
-
-        Running the same kernel on the time-flipped input and flipping back gives:
-
-            ``y_bwd[t] = w_{k-1} * x[t] + ... + w_0 * x[t+k-1]``
-
-        Both passes include the current timestep ``x[t]`` with the center weight ``w_{k-1}``. To avoid double-counting
-        we subtract one copy of the center contribution:
-
-            ``y = y_fwd + y_bwd - w_{k-1} * x``
-
-        The result is a symmetric temporal filter where every position in the window ``[t-k+1, t+k-1]`` is counted
-        exactly once.
-
-        Args:
-            x: Tensor of shape ``(batch, seq_len, channels)``.
-            conv: ``ShortConvolution`` module (depthwise causal Conv1d).
-
-        Returns:
-            Tensor of same shape and dtype as ``x``.
-        """
-        dtype_in = x.dtype
-
-        y_fwd, _ = conv(x)
-        y_bwd, _ = conv(x.flip(1))
-        y_bwd = y_bwd.flip(1)
-
-        # Subtract the shared center tap (last weight of the causal kernel).
-        # ShortConvolution weight shape: (channels, 1, kernel_size).
-        # The last element along dim=-1 is the weight applied to x[t].
-        w_center = conv.weight[:, 0, -1]  # (channels,)
-        center_term = x * w_center.unsqueeze(0).unsqueeze(0)  # broadcast over (B, T)
-
-        y = y_fwd + y_bwd - center_term
-        if y.dtype != dtype_in:
-            y = y.to(dtype_in)
-        return y
-
-    def _apply_temporal_short_conv(
-        self,
-        x: torch.Tensor,
-        conv: ShortConvolution,
-        HW: tuple[int, int, int],
-    ) -> torch.Tensor:
-        """Apply bidirectional (non-causal) ShortConvolution along T, with S merged into batch.
-
-        Args:
-            x: Input tensor of shape (B, N, C) where N = T * S.
-            conv: ``ShortConvolution`` module.
-            HW: Tuple of (T, H, W) describing the token layout.
-
-        Returns:
-            Tensor of shape (B, N, C) after bidirectional temporal conv.
-        """
-        x, B, S, T = self._reshape_to_temporal(x, HW)
-        x = self._bidirectional_causal_conv_1d(x, conv)
-        return self._reshape_from_temporal(x, B, S, T)
-
-    def _compute_frame_gates(
-        self,
-        x: torch.Tensor,
-        hw: tuple[int, int, int],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Per-frame beta / decay gates, shared across spatial positions."""
-        T, H, W = hw
-        S = H * W
-        B, _, C = x.shape
-        beta = self.beta_proj(x).sigmoid().reshape(B, T, S, self.heads).permute(0, 3, 1, 2)
-        x_frame = x.reshape(B, T, S, C).mean(dim=2)
-        a_out = self.gate_proj(x_frame).float()
-        dt = self.dt_bias.float().view(1, 1, -1)
-        A_val = self.A_log.float().exp().view(1, 1, -1)
-        decay = (-A_val * F.softplus(a_out + dt)).exp().transpose(1, 2)
-        return beta, decay
-
-    @staticmethod
-    def _prepare_frame_valid_masks(
-        frame_valid_mask: torch.Tensor | None,
-        *,
-        B: int,
-        T: int,
-        S: int,
-        device: torch.device,
-        dtype: torch.dtype,
-    ) -> tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
-        """Convert frame-valid mask to token/beta/decay masks used by the attention branches."""
-        if frame_valid_mask is None:
-            return None, None, None
-
-        m = frame_valid_mask
-        if m.ndim == 5:
-            # (B, 1, T, 1, 1)
-            m = m[:, 0, :, 0, 0]
-        elif m.ndim == 3 and m.shape[1] == 1:
-            # (B, 1, T)
-            m = m[:, 0, :]
-        elif m.ndim != 2:
-            raise ValueError(
-                "frame_valid_mask must be shaped (B, 1, T, 1, 1), (B, 1, T), or (B, T); "
-                f"got shape={list(frame_valid_mask.shape)}"
-            )
-
-        if m.shape[0] != B or m.shape[1] != T:
-            raise ValueError(f"frame_valid_mask shape mismatch: expected (B={B}, T={T}), got {list(m.shape)}")
-
-        m = m.to(device=device, dtype=dtype)
-        token_valid_mask = m[:, :, None].expand(B, T, S).reshape(B, T * S)
-        beta_valid_mask = m.view(B, 1, T, 1)
-        decay_valid_mask = m.view(B, 1, T)
-        return token_valid_mask, beta_valid_mask, decay_valid_mask
-
-    # ------------------------------------------------------------------
-    # Main branch
-    # ------------------------------------------------------------------
-
-    def _forward_main_branch(
-        self,
-        x: torch.Tensor,
-        HW: tuple[int, int, int] | None,
-        rotary_emb: torch.Tensor | None,
-        *,
-        frame_valid_mask: torch.Tensor | None = None,
-        precomputed_gates: tuple[torch.Tensor, torch.Tensor] | None = None,
-    ) -> torch.Tensor:
-        """Bidirectional GDN attention over the token sequence.
-
-        Returns the raw attention output ``(B, N, C)``: the shared output gate and projection are applied once in
-        :meth:`forward`, after the camera contribution has been added.
-        """
-        if HW is None:
-            raise ValueError("HW (T, H, W) must be provided for GDN attention.")
-
-        B, N, C = x.shape
-        T, H, W = HW
-        S = H * W
-        token_valid_mask, beta_valid_mask, decay_valid_mask = self._prepare_frame_valid_masks(
-            frame_valid_mask,
-            B=B,
-            T=T,
-            S=S,
-            device=x.device,
-            dtype=x.dtype,
-        )
-        if token_valid_mask is not None:
-            x = x * token_valid_mask.view(B, N, 1)
-
-        # Projections.
-        qkv = self.qkv(x).reshape(B, N, 3, self.heads, self.dim)
-        q, k, v = qkv.unbind(2)
-        if token_valid_mask is not None:
-            token_mask_bnhd = token_valid_mask.view(B, N, 1, 1)
-            q = q * token_mask_bnhd
-            k = k * token_mask_bnhd
-            v = v * token_mask_bnhd
-
-        # Short convolution along T (before norm / kernel activation).
-        if self.conv_k is not None:
-            if self.conv_q is not None:
-                q = self._apply_temporal_short_conv(q.reshape(B, N, C), self.conv_q, HW).reshape(
-                    B, N, self.heads, self.dim
-                )
-            k = self._apply_temporal_short_conv(k.reshape(B, N, C), self.conv_k, HW).reshape(
-                B, N, self.heads, self.dim
-            )
-            if self.conv_v is not None:
-                v = self._apply_temporal_short_conv(v.reshape(B, N, C), self.conv_v, HW).reshape(
-                    B, N, self.heads, self.dim
-                )
-
-        # Apply Q/K norm on flattened channels (B, N, C) then reshape to heads.
-        q = self.q_norm(q.reshape(B, N, C)).reshape(B, N, self.heads, self.dim)
-        k = self.k_norm(k.reshape(B, N, C)).reshape(B, N, self.heads, self.dim)
-
-        # ReLU kernel.
-        q = self.kernel_func(q)
-        k = self.kernel_func(k)
-
-        k_scale = (self.dim**-0.5) * (S**-0.5)
-        k = k * k_scale
-
-        # Permute to (B, H, D, N) for processing.
-        q = q.permute(0, 2, 3, 1)
-        k = k.permute(0, 2, 3, 1)
-        v = v.permute(0, 2, 3, 1)
-        if token_valid_mask is not None:
-            token_mask_qkv = token_valid_mask.view(B, 1, 1, N)
-            q = q * token_mask_qkv
-            k = k * token_mask_qkv
-            v = v * token_mask_qkv
-
-        # RoPE preparation (numerator only).
-        if rotary_emb is not None:
-            q_rot = _apply_rotary_emb(q, rotary_emb)
-            k_rot = _apply_rotary_emb(k, rotary_emb)
-        else:
-            q_rot = q
-            k_rot = k
-        if token_valid_mask is not None:
-            token_mask_qkv = token_valid_mask.view(B, 1, 1, N)
-            q_rot = q_rot * token_mask_qkv
-            k_rot = k_rot * token_mask_qkv
-
-        # Gate computation (use pre-computed gates when available).
-        if precomputed_gates is not None:
-            beta, decay = precomputed_gates
-        else:
-            beta, decay = self._compute_frame_gates(x, HW)
-        if beta_valid_mask is not None:
-            beta = beta * beta_valid_mask.to(beta.dtype)
-        if decay_valid_mask is not None:
-            decay_m = decay_valid_mask.to(decay.dtype)
-            decay = decay * decay_m + (1.0 - decay_m)
-
-        H_eff = q.shape[1]
-        N_eff = q.shape[3]
-        T_eff = N_eff // S
-
-        # Run the frame-wise GDN update.
-        # Force FP32 to preserve recurrent stability.
-        dtype_orig = x.dtype
-        recall_gate = self.recall_gate
-        q = q.float()
-        k = k.float()
-        v = v.float()
-        q_rot = q_rot.float()
-        k_rot = k_rot.float()
-        beta = beta.float()
-        decay = decay.float()
-        recall_gate = recall_gate.float()
-
-        # Forward pass (inclusive: 1..t).
-        num_fwd, den_fwd = torch_chunk_sana_gdn(
-            q,
-            k,
-            v,
-            q_rot,
-            k_rot,
-            beta,
-            decay,
-            recall_gate=recall_gate,
-            chunk_size=self.chunk_gdn_chunk_size,
-            eps=self.eps,
-            return_components=True,
-        )
-
-        # Backward pass (exclusive: t+1..T).
-        def to_time_structure(tensor: torch.Tensor) -> torch.Tensor:
-            return tensor.view(B, H_eff, self.dim, T_eff, S).permute(0, 1, 3, 2, 4)
-
-        def from_time_structure(tensor: torch.Tensor) -> torch.Tensor:
-            return tensor.permute(0, 1, 3, 2, 4).reshape(B, H_eff, self.dim, N_eff)
-
-        q_T = to_time_structure(q)
-        k_T = to_time_structure(k)
-        v_T = to_time_structure(v)
-        q_rot_T = to_time_structure(q_rot)
-        k_rot_T = to_time_structure(k_rot)
-
-        q_bwd = torch.flip(q_T, dims=[2])
-        q_rot_bwd = torch.flip(q_rot_T, dims=[2])
-
-        k_bwd = flip_and_shift(k_T, dim=2, shift_val=0.0)
-        v_bwd = flip_and_shift(v_T, dim=2, shift_val=0.0)
-        k_rot_bwd = flip_and_shift(k_rot_T, dim=2, shift_val=0.0)
-        beta_bwd = flip_and_shift(beta, dim=2, shift_val=0.0)
-        decay_bwd = flip_and_shift(decay, dim=2, shift_val=1.0)
-
-        k_bwd_flat = from_time_structure(k_bwd)
-        v_bwd_flat = from_time_structure(v_bwd)
-        q_bwd_flat = from_time_structure(q_bwd)
-        q_rot_bwd_flat = from_time_structure(q_rot_bwd)
-        k_rot_bwd_flat = from_time_structure(k_rot_bwd)
-
-        num_bwd_flipped, den_bwd_flipped = torch_chunk_sana_gdn(
-            q_bwd_flat,
-            k_bwd_flat,
-            v_bwd_flat,
-            q_rot_bwd_flat,
-            k_rot_bwd_flat,
-            beta_bwd,
-            decay_bwd,
-            recall_gate=recall_gate,
-            chunk_size=self.chunk_gdn_chunk_size,
-            eps=self.eps,
-            return_components=True,
-        )
-
-        def flip_back(tensor: torch.Tensor) -> torch.Tensor:
-            d_actual = tensor.shape[2]
-            t_struct = tensor.view(B, H_eff, d_actual, T_eff, S)
-            return torch.flip(t_struct, dims=[3]).reshape(B, H_eff, d_actual, N_eff)
-
-        num_bwd = flip_back(num_bwd_flipped)
-        den_bwd = flip_back(den_bwd_flipped)
-
-        total_num = num_fwd + num_bwd
-        total_den = den_fwd + den_bwd
-
-        out = total_num / (total_den + self.eps)
-
-        # Reshape the output.
-        if dtype_orig != torch.float32:
-            out = out.to(dtype_orig)
-
-        out = out.permute(0, 3, 1, 2)
-        N_out = out.shape[1]
-        out = out.reshape(B, N_out, C)
-        if token_valid_mask is not None:
-            out = out * token_valid_mask.view(B, N_out, 1).to(out.dtype)
-        return out
-
-    # ------------------------------------------------------------------
-    # Camera branch
-    # ------------------------------------------------------------------
-
-    def _prepare_cam_qkv(
-        self,
-        x: torch.Tensor,
-        HW: tuple[int, int, int],
-        camera_conditions: torch.Tensor,
-        rotary_emb: torch.Tensor | None,
-        *,
-        token_valid_mask: torch.Tensor | None = None,
-        ucpe_ray_transforms: tuple | None = None,
-    ) -> tuple:
-        """Project camera QKV, apply short conv + QK norm + kernel + scaling + UCPE.
-
-        The processing order mirrors the main branch:
-          project -> mask -> short_conv -> QK_norm -> kernel -> scale -> permute -> UCPE
-
-        Args:
-            x: Input tensor of shape ``(B, N, C)``.
-            HW: Tuple of (T, H, W) describing the token layout.
-            camera_conditions: Raw ``(B, T, 20)`` camera conditions.
-            rotary_emb: Main-branch rotary embeddings, re-sliced for the camera head dim.
-            token_valid_mask: Pre-computed mask of shape ``(B, N)`` from the
-                caller. Avoids redundant ``_prepare_frame_valid_masks`` calls.
-            ucpe_ray_transforms: Optional pre-computed ``(P, P_T, P_inv, rotary_emb_cam)``
-                UCPE transforms shared across blocks; recomputed here when ``None``.
-
-        Returns:
-            ``(v_cam_trans, q_cam_trans, k_cam_trans, out_transform, inflation_sq)``. The tensors are shaped ``(B,
-            cam_heads, cam_head_dim, N)``. ``out_transform`` is ``(P, rotary_emb_cam)``, the arguments
-            :func:`_apply_ucpe_transform` needs for the inverse-output transform. ``inflation_sq`` is the energy
-            inflation factor of shape ``(B, cam_heads, 1, N)``.
-        """
-        B, N, C = x.shape
-        T, H, W = HW
-        S = H * W
-
-        # Pre-projection token masking (matching main branch).
-        if token_valid_mask is not None:
-            x = x * token_valid_mask.view(B, N, 1)
-
-        q_cam, k_cam, v_cam = self.q_proj_cam(x), self.k_proj_cam(x), self.v_proj_cam(x)
-
-        # Post-projection token masking (before conv, matching main branch).
-        if token_valid_mask is not None:
-            token_mask = token_valid_mask.view(B, N, 1)
-            q_cam = q_cam * token_mask
-            k_cam = k_cam * token_mask
-            v_cam = v_cam * token_mask
-
-        # Short convolution along T (before norm / kernel activation).
-        if self.conv_q_cam is not None:
-            q_cam = self._apply_temporal_short_conv(q_cam, self.conv_q_cam, HW)
-        if self.conv_k_cam is not None:
-            k_cam = self._apply_temporal_short_conv(k_cam, self.conv_k_cam, HW)
-        if self.conv_v_cam is not None:
-            v_cam = self._apply_temporal_short_conv(v_cam, self.conv_v_cam, HW)
-
-        # Camera-specific QK normalization.
-        q_cam = self.q_norm_cam(q_cam).reshape(B, N, self.cam_heads, self.cam_head_dim)
-        k_cam = self.k_norm_cam(k_cam).reshape(B, N, self.cam_heads, self.cam_head_dim)
-        v_cam = v_cam.reshape(B, N, self.cam_heads, self.cam_head_dim)
-
-        # ReLU kernel (shared).
-        q_cam = self.kernel_func(q_cam)
-        k_cam = self.kernel_func(k_cam)
-
-        k_scale = (self.cam_head_dim**-0.5) * (S**-0.5)
-        k_cam = k_cam * k_scale
-
-        # Permute to (B, H, D, N) for GDN processing.
-        q_cam = q_cam.permute(0, 2, 3, 1).contiguous()
-        k_cam = k_cam.permute(0, 2, 3, 1).contiguous()
-        v_cam = v_cam.permute(0, 2, 3, 1).contiguous()
-
-        # Measure safe geometric norm before UCPE applies translations
-        pre_ucpe_k_norm = torch.linalg.vector_norm(k_cam, dim=2, keepdim=True).clamp_min(1e-6)
-
-        # UCPE per-ray transforms — reuse model-level cache when available
-        # to avoid recomputing _process_camera_conditions_ucpe per block.
-        ray_transforms = ucpe_ray_transforms
-        if ray_transforms is None:
-            ray_transforms = _prepare_ucpe_ray_transforms(
-                head_dim=self.cam_head_dim,
-                camera_conditions=camera_conditions,
-                HW=HW,
-                patch_size=self.patch_size,
-                rotary_emb=rotary_emb,
-            )
-        P, P_T, P_inv, rotary_emb_cam = ray_transforms
-
-        # UCPE expects (B, h, N, d); our tensors are (B, h, d, N). Avoid eager contiguous copies before the
-        # transforms, and fuse the K/V transform (both use P_inv) into one call, then split back.
-        q_cam_trans = (
-            _apply_ucpe_transform(q_cam.transpose(-1, -2), P_T, rotary_emb_cam).transpose(-1, -2).contiguous()
-        )
-        kv_cam = torch.cat([k_cam, v_cam], dim=1)
-        kv_cam_trans = (
-            _apply_ucpe_transform(kv_cam.transpose(-1, -2), P_inv, rotary_emb_cam).transpose(-1, -2).contiguous()
-        )
-        k_cam_trans, v_cam_trans = torch.chunk(kv_cam_trans, chunks=2, dim=1)
-
-        q_cam_trans, k_cam_trans, v_cam_trans = self._stabilize_cam_transforms(
-            q_cam=q_cam,
-            k_cam=k_cam,
-            v_cam=v_cam,
-            q_cam_trans=q_cam_trans,
-            k_cam_trans=k_cam_trans,
-            v_cam_trans=v_cam_trans,
-        )
-
-        # Measure inflated geometric norm after UCPE
-        post_ucpe_k_norm = torch.linalg.vector_norm(k_cam_trans, dim=2, keepdim=True).clamp_min(1e-6)
-
-        # Calculate the squared inflation factor for beta discounting
-        inflation_sq = (post_ucpe_k_norm / pre_ucpe_k_norm) ** 2
-
-        return v_cam_trans, q_cam_trans, k_cam_trans, (P, rotary_emb_cam), inflation_sq
-
-    def _run_cam_single_path(
-        self,
-        q_rot: torch.Tensor,
-        k_rot: torch.Tensor,
-        v: torch.Tensor,
-        beta: torch.Tensor,
-        decay: torch.Tensor,
-    ) -> torch.Tensor:
-        """Run the numerator-only camera delta-rule recurrence (parallel chunk scan)."""
-        q_rot = q_rot.float()
-        k_rot = k_rot.float()
-        v = v.float()
-        beta = beta.float()
-        decay = decay.float()
-        return torch_chunk_cam_single_path_delta_rule(
-            q_rot, k_rot, v, beta, decay, chunk_size=self.chunk_gdn_chunk_size
-        )
-
-    def _forward_cam_branch(
-        self,
-        x: torch.Tensor,
-        HW: tuple[int, int, int],
-        camera_conditions: torch.Tensor,
-        rotary_emb: torch.Tensor | None,
-        *,
-        frame_valid_mask: torch.Tensor | None = None,
-        precomputed_gates: tuple[torch.Tensor, torch.Tensor] | None = None,
-        ucpe_ray_transforms: tuple | None = None,
-    ) -> torch.Tensor:
-        """Bidirectional UCPE camera branch with numerator-only ("single path") delta-rule updates.
-
-        Returns the raw attention output ``(B, N, C)``; the shared output gate and projection are applied in
-        :meth:`forward`.
-        """
-        B, N, _ = x.shape
-        T, H, W = HW
-        S = H * W
-        dtype_orig = x.dtype
-
-        token_valid_mask, beta_valid_mask, decay_valid_mask = self._prepare_frame_valid_masks(
-            frame_valid_mask,
-            B=B,
-            T=T,
-            S=S,
-            device=x.device,
-            dtype=x.dtype,
-        )
-
-        v_cam_trans, q_cam_trans, k_cam_trans, out_transform, inflation_sq = self._prepare_cam_qkv(
-            x,
-            HW,
-            camera_conditions,
-            rotary_emb,
-            token_valid_mask=token_valid_mask,
-            ucpe_ray_transforms=ucpe_ray_transforms,
-        )
-        if token_valid_mask is not None:
-            token_mask_qkv = token_valid_mask.view(B, 1, 1, N)
-            v_cam_trans = v_cam_trans * token_mask_qkv
-            q_cam_trans = q_cam_trans * token_mask_qkv
-            k_cam_trans = k_cam_trans * token_mask_qkv
-
-        if precomputed_gates is not None:
-            beta, decay = precomputed_gates
-        else:
-            beta, decay = self._compute_frame_gates(x, HW)
-
-        # Dynamic Beta Discounting: scale beta by UCPE inflation factor.
-        inflation_sq_spatial = inflation_sq.view(B, self.cam_heads, T, S)
-        frame_inflation_sq = inflation_sq_spatial.mean(dim=-1)
-        if beta.ndim == 3:
-            beta = beta / frame_inflation_sq.clamp_min(1.0)
-        elif beta.ndim == 4:
-            beta = beta / frame_inflation_sq.unsqueeze(-1).clamp_min(1.0)
-
-        if beta_valid_mask is not None:
-            beta = beta * beta_valid_mask.to(beta.dtype)
-        if decay_valid_mask is not None:
-            decay_m = decay_valid_mask.to(decay.dtype)
-            decay = decay * decay_m + (1.0 - decay_m)
-
-        H_heads = self.cam_heads
-        D_head = self.cam_head_dim
-        out_fwd = self._run_cam_single_path(
-            q_cam_trans,
-            k_cam_trans,
-            v_cam_trans,
-            beta,
-            decay,
-        )
-
-        def to_time(t: torch.Tensor) -> torch.Tensor:
-            return t.view(B, H_heads, D_head, T, S).permute(0, 1, 3, 2, 4)
-
-        def from_time(t: torch.Tensor) -> torch.Tensor:
-            return t.permute(0, 1, 3, 2, 4).reshape(B, H_heads, D_head, N)
-
-        q_rot_T = to_time(q_cam_trans)
-        k_rot_T = to_time(k_cam_trans)
-        v_T = to_time(v_cam_trans)
-
-        q_rot_bwd = torch.flip(q_rot_T, dims=[2])
-        k_rot_bwd = flip_and_shift(k_rot_T, dim=2, shift_val=0.0)
-        v_bwd = flip_and_shift(v_T, dim=2, shift_val=0.0)
-        beta_bwd = flip_and_shift(beta, dim=2, shift_val=0.0)
-        decay_bwd = flip_and_shift(decay, dim=2, shift_val=1.0)
-
-        out_bwd_f = self._run_cam_single_path(
-            from_time(q_rot_bwd),
-            from_time(k_rot_bwd),
-            from_time(v_bwd),
-            beta_bwd,
-            decay_bwd,
-        )
-
-        out_bwd = torch.flip(
-            out_bwd_f.view(B, H_heads, D_head, T, S),
-            dims=[3],
-        ).reshape(B, H_heads, D_head, N)
-        out = out_fwd + out_bwd
-
-        if dtype_orig != torch.float32:
-            out = out.to(dtype_orig)
-        if token_valid_mask is not None:
-            out = out * token_valid_mask.view(B, 1, 1, N).to(out.dtype)
-
-        out = (
-            _apply_ucpe_transform(out.transpose(-1, -2), *out_transform, inverse_rope=True)
-            .transpose(-1, -2)
-            .contiguous()
-        )
-        out = out.reshape(B, self.cam_dim, N).permute(0, 2, 1)
-        if token_valid_mask is not None:
-            out = out * token_valid_mask.view(B, N, 1).to(out.dtype)
-        return out
-
-    # ------------------------------------------------------------------
-    # Full forward
-    # ------------------------------------------------------------------
+        # Branch compute modules. They own no parameters -- so the checkpoint layout is untouched -- and only carry
+        # the recurrence configuration; `forward` runs every layer call and hands them the resulting tensors.
+        self.attn = SanaWMBidirectionalGDNAttention(eps=eps, chunk_size=chunk_gdn_chunk_size)
+        self.cam_attn = SanaWMBidirectionalGDNCamAttention(chunk_size=chunk_gdn_chunk_size)
 
     def forward(
         self,
@@ -2145,9 +1941,9 @@ class BidirectionalGDNUCPESinglePathLiteLA(nn.Module):
         """Dual-branch forward: bidirectional GDN main branch + UCPE camera branch.
 
         Flow:
-            1. main_raw = GDN attention (no gate/proj)
-            2. cam_raw = GDN+UCPE attention (no gate/proj)
-            3. combined = main_raw + out_proj_cam(cam_raw) [zero at init]
+            1. attn_output = GDN attention (no gate/proj)
+            2. cam_output = GDN+UCPE attention (no gate/proj)
+            3. combined = attn_output + out_proj_cam(cam_output) [zero at init]
             4. output = proj(output_gate(combined)) [shared, once]
 
         Args:
@@ -2167,52 +1963,323 @@ class BidirectionalGDNUCPESinglePathLiteLA(nn.Module):
         """
         del mask, block_mask, chunk_size
 
-        # Pre-compute shared gates once for both branches.
-        if HW is not None:
-            precomputed_gates = self._compute_frame_gates(x, HW)
-        else:
-            precomputed_gates = None
+        if HW is None:
+            raise ValueError("HW (T, H, W) must be provided for GDN attention.")
 
-        # Main branch -- raw attention without gate/proj.
-        main_raw = self._forward_main_branch(
-            x,
-            HW,
-            rotary_emb,
-            frame_valid_mask=frame_valid_mask,
-            precomputed_gates=precomputed_gates,
+        batch_size, seq_len, channels = x.shape
+        num_frames, height, width = HW
+        spatial_size = height * width
+
+        token_valid_mask, beta_valid_mask, decay_valid_mask = _prepare_frame_valid_masks(
+            frame_valid_mask,
+            batch_size=batch_size,
+            num_frames=num_frames,
+            spatial_size=spatial_size,
+            device=x.device,
+            dtype=x.dtype,
         )
 
-        # Camera branch.
-        cam_contrib: torch.Tensor | int = 0
-        if camera_conditions is not None:
-            if HW is None:
-                raise ValueError("HW (T, H, W) must be provided for UCPE camera branch.")
-            cam_raw = self._forward_cam_branch(
-                x,
-                HW,
-                camera_conditions,
-                rotary_emb,
-                frame_valid_mask=frame_valid_mask,
-                precomputed_gates=precomputed_gates,
-                ucpe_ray_transforms=ucpe_ray_transforms,
-            )
-            cam_contrib = self.out_proj_cam(cam_raw)
+        # Per-frame beta / decay gates, computed once from the unmasked input and shared by both branches. `beta` is
+        # broadcast over the spatial axis; `decay` is a per-frame scalar per head.
+        beta = (
+            self.beta_proj(x).sigmoid().reshape(batch_size, num_frames, spatial_size, self.heads).permute(0, 3, 1, 2)
+        )
+        frame_hidden_states = x.reshape(batch_size, num_frames, spatial_size, channels).mean(dim=2)
+        gate = self.gate_proj(frame_hidden_states).float()
+        dt = self.dt_bias.float().view(1, 1, -1)
+        decay_rate = self.A_log.float().exp().view(1, 1, -1)
+        decay = (-decay_rate * F.softplus(gate + dt)).exp().transpose(1, 2)
 
-        # Combine, then shared gate + projection (applied once).
-        combined = main_raw + cam_contrib
-        combined = self._apply_output_gate(combined, x)
-        return self.proj(combined.to(x.dtype))
+        # ---- Main branch: fused QKV -> short conv -> Q/K norm -> ReLU kernel -> bidirectional GDN ----
+        hidden_states = x
+        if token_valid_mask is not None:
+            hidden_states = hidden_states * token_valid_mask.view(batch_size, seq_len, 1)
+
+        query, key, value = self.qkv(hidden_states).reshape(batch_size, seq_len, 3, self.heads, self.dim).unbind(2)
+        if token_valid_mask is not None:
+            token_mask = token_valid_mask.view(batch_size, seq_len, 1, 1)
+            query = query * token_mask
+            key = key * token_mask
+            value = value * token_mask
+
+        # Short convolution along T (before norm / kernel activation).
+        if self.conv_q is not None:
+            query = self.conv_q(query.reshape(batch_size, seq_len, channels), num_frames).reshape(
+                batch_size, seq_len, self.heads, self.dim
+            )
+        if self.conv_k is not None:
+            key = self.conv_k(key.reshape(batch_size, seq_len, channels), num_frames).reshape(
+                batch_size, seq_len, self.heads, self.dim
+            )
+        if self.conv_v is not None:
+            value = self.conv_v(value.reshape(batch_size, seq_len, channels), num_frames).reshape(
+                batch_size, seq_len, self.heads, self.dim
+            )
+
+        # Q/K norm runs on the flattened channels (B, N, C), then the tensors go back to (B, N, H, D).
+        query = self.q_norm(query.reshape(batch_size, seq_len, channels)).reshape(
+            batch_size, seq_len, self.heads, self.dim
+        )
+        key = self.k_norm(key.reshape(batch_size, seq_len, channels)).reshape(
+            batch_size, seq_len, self.heads, self.dim
+        )
+        query = self.kernel_func(query)
+        key = self.kernel_func(key)
+
+        attn_output = self.attn(
+            query,
+            key,
+            value,
+            beta,
+            decay,
+            self.recall_gate,
+            num_frames,
+            rotary_emb=rotary_emb,
+            token_valid_mask=token_valid_mask,
+            beta_valid_mask=beta_valid_mask,
+            decay_valid_mask=decay_valid_mask,
+        )
+
+        # ---- Camera branch: same pipeline on the camera projections, positionally encoded with UCPE ----
+        if camera_conditions is not None:
+            cam_hidden_states = x
+            if token_valid_mask is not None:
+                cam_hidden_states = cam_hidden_states * token_valid_mask.view(batch_size, seq_len, 1)
+
+            query_cam = self.q_proj_cam(cam_hidden_states)
+            key_cam = self.k_proj_cam(cam_hidden_states)
+            value_cam = self.v_proj_cam(cam_hidden_states)
+            if token_valid_mask is not None:
+                token_mask = token_valid_mask.view(batch_size, seq_len, 1)
+                query_cam = query_cam * token_mask
+                key_cam = key_cam * token_mask
+                value_cam = value_cam * token_mask
+
+            if self.conv_q_cam is not None:
+                query_cam = self.conv_q_cam(query_cam, num_frames)
+            if self.conv_k_cam is not None:
+                key_cam = self.conv_k_cam(key_cam, num_frames)
+            if self.conv_v_cam is not None:
+                value_cam = self.conv_v_cam(value_cam, num_frames)
+
+            query_cam = self.q_norm_cam(query_cam).reshape(batch_size, seq_len, self.cam_heads, self.cam_head_dim)
+            key_cam = self.k_norm_cam(key_cam).reshape(batch_size, seq_len, self.cam_heads, self.cam_head_dim)
+            value_cam = value_cam.reshape(batch_size, seq_len, self.cam_heads, self.cam_head_dim)
+            query_cam = self.kernel_func(query_cam)
+            key_cam = self.kernel_func(key_cam)
+
+            # Reuse the model-level cache when available, to avoid recomputing the ray transforms per block.
+            ray_transforms = ucpe_ray_transforms
+            if ray_transforms is None:
+                ray_transforms = _prepare_ucpe_ray_transforms(
+                    head_dim=self.cam_head_dim,
+                    camera_conditions=camera_conditions,
+                    HW=HW,
+                    patch_size=self.patch_size,
+                    rotary_emb=rotary_emb,
+                )
+
+            cam_output = self.cam_attn(
+                query_cam,
+                key_cam,
+                value_cam,
+                ray_transforms,
+                beta,
+                decay,
+                num_frames,
+                token_valid_mask=token_valid_mask,
+                beta_valid_mask=beta_valid_mask,
+                decay_valid_mask=decay_valid_mask,
+            )
+            attn_output = attn_output + self.out_proj_cam(cam_output)
+
+        # Shared output gate + projection, applied once over both branches.
+        if self.use_output_gate and self.output_gate is not None:
+            attn_output = attn_output * F.silu(self.output_gate(x).to(torch.float32))
+        return self.proj(attn_output.to(x.dtype))
+
+
+class SanaWMSoftmaxAttention(nn.Module):
+    """Softmax counterpart of [`SanaWMBidirectionalGDNAttention`].
+
+    Replaces the bidirectional recurrence with a full (non-causal) `F.scaled_dot_product_attention` over the whole
+    token sequence. RoPE is applied to the queries and keys, and no linear-attention kernel or key scaling is needed
+    (softmax attention brings its own ``1 / sqrt(d_k)``).
+
+    This module holds no parameters; [`_SoftmaxUCPESinglePathLiteLA.forward`] issues every layer call and passes the
+    resulting tensors in.
+    """
+
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        rotary_emb: torch.Tensor | None = None,
+        token_valid_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Run softmax attention over the token sequence.
+
+        Args:
+            query (`torch.Tensor`): Queries of shape `(B, N, H, D)`, already normalized.
+            key (`torch.Tensor`): Keys of shape `(B, N, H, D)`, already normalized.
+            value (`torch.Tensor`): Values of shape `(B, N, H, D)`.
+            rotary_emb (`torch.Tensor`, *optional*): Rotary embeddings applied to `query` and `key`.
+            token_valid_mask (`torch.Tensor`, *optional*): Token mask of shape `(B, N)`.
+
+        Returns:
+            `torch.Tensor`: Raw attention output of shape `(B, N, H * D)`; the shared output gate and projection are
+            applied by the caller.
+        """
+        batch_size, seq_len, num_heads, head_dim = query.shape
+        dtype_orig = value.dtype
+
+        # `_apply_rotary_emb` works on (B, H, D, N) features.
+        if rotary_emb is not None:
+            query = _apply_rotary_emb(query.permute(0, 2, 3, 1), rotary_emb).permute(0, 3, 1, 2)
+            key = _apply_rotary_emb(key.permute(0, 2, 3, 1), rotary_emb).permute(0, 3, 1, 2)
+
+        if token_valid_mask is not None:
+            token_mask = token_valid_mask.view(batch_size, seq_len, 1, 1)
+            query = query * token_mask
+            key = key * token_mask
+            value = value * token_mask
+
+        query = query.transpose(1, 2)  # (B, H, N, D)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
+
+        # SDPA / FlashAttention only supports bf16/fp16; fp32 falls back to the math backend.
+        if query.dtype == torch.float32:
+            query, key, value = query.bfloat16(), key.bfloat16(), value.bfloat16()
+
+        hidden_states = F.scaled_dot_product_attention(query, key, value)
+        return hidden_states.transpose(1, 2).reshape(batch_size, seq_len, num_heads * head_dim).to(dtype_orig)
+
+
+class SanaWMSoftmaxCamAttention(nn.Module):
+    """Softmax counterpart of [`SanaWMBidirectionalGDNCamAttention`].
+
+    Keeps the UCPE per-ray encode/decode of the camera branch but replaces the single-path delta rule with a full
+    (non-causal) `F.scaled_dot_product_attention`. Padded frames are masked with an additive logit bias on the keys
+    instead of being dropped from the recurrence, and no linear-attention kernel, key scaling or gate is involved.
+
+    This module holds no parameters; [`_SoftmaxUCPESinglePathLiteLA.forward`] issues every layer call and passes the
+    resulting tensors in.
+    """
+
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        ray_transforms: tuple,
+        token_valid_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Run softmax attention in UCPE ray space.
+
+        Args:
+            query (`torch.Tensor`): Camera queries of shape `(B, N, H, D)`, already normalized.
+            key (`torch.Tensor`): Camera keys of shape `(B, N, H, D)`, already normalized.
+            value (`torch.Tensor`): Camera values of shape `(B, N, H, D)`.
+            ray_transforms (`tuple`): `(P, P_T, P_inv, rotary_emb_cam)` UCPE transforms; `P_T` encodes the queries,
+                `P_inv` the keys/values and `P` decodes the output.
+            token_valid_mask (`torch.Tensor`, *optional*): Token mask of shape `(B, N)`.
+
+        Returns:
+            `torch.Tensor`: Raw camera attention output of shape `(B, N, H * D)`, in world space; the caller projects
+            it back into the residual stream.
+        """
+        batch_size, seq_len, num_heads, head_dim = query.shape
+        dtype_orig = value.dtype
+
+        # Permute to (B, H, D, N), matching the GDN camera branch.
+        query = query.permute(0, 2, 3, 1).contiguous()
+        key = key.permute(0, 2, 3, 1).contiguous()
+        value = value.permute(0, 2, 3, 1).contiguous()
+
+        # UCPE expects (B, h, N, d); our tensors are (B, h, d, N). Avoid eager contiguous copies before the
+        # transforms, and fuse the K/V transform (both use P_inv) into one call, then split back.
+        P, P_T, P_inv, rotary_emb_cam = ray_transforms
+        query_ucpe = _apply_ucpe_transform(query.transpose(-1, -2), P_T, rotary_emb_cam).transpose(-1, -2).contiguous()
+        key_value = torch.cat([key, value], dim=1)
+        key_value_ucpe = (
+            _apply_ucpe_transform(key_value.transpose(-1, -2), P_inv, rotary_emb_cam).transpose(-1, -2).contiguous()
+        )
+        key_ucpe, value_ucpe = torch.chunk(key_value_ucpe, chunks=2, dim=1)
+
+        # Downscale the transformed tensors back to their pre-UCPE RMS envelope.
+        query_ucpe = _downscale_to_reference_rms(query, query_ucpe)
+        key_ucpe = _downscale_to_reference_rms(key, key_ucpe)
+        value_ucpe = _downscale_to_reference_rms(value, value_ucpe)
+
+        if token_valid_mask is not None:
+            token_mask_qkv = token_valid_mask.view(batch_size, 1, 1, seq_len)
+            query_ucpe = query_ucpe * token_mask_qkv
+            value_ucpe = value_ucpe * token_mask_qkv
+
+        query_sdpa = query_ucpe.transpose(-1, -2)
+        key_sdpa = key_ucpe.transpose(-1, -2)
+        value_sdpa = value_ucpe.transpose(-1, -2)
+
+        query_sdpa, key_sdpa, value_sdpa = query_sdpa.float(), key_sdpa.float(), value_sdpa.float()
+        # SDPA / FlashAttention only supports bf16/fp16; fp32 falls back to math backend.
+        if query_sdpa.dtype == torch.float32:
+            query_sdpa, key_sdpa, value_sdpa = query_sdpa.bfloat16(), key_sdpa.bfloat16(), value_sdpa.bfloat16()
+
+        # Invalid frames are masked out of the keys with an additive bias rather than being zeroed.
+        invalid_kv_logit_bias = None
+        if token_valid_mask is not None and not bool(token_valid_mask.all()):
+            invalid_kv_logit_bias = torch.where(
+                token_valid_mask.bool().view(batch_size, 1, 1, -1),
+                torch.zeros((), dtype=query_sdpa.dtype, device=query_sdpa.device),
+                torch.full((), -1e9, dtype=query_sdpa.dtype, device=query_sdpa.device),
+            )
+
+        # FlashAttention-2 only supports head_dim in {32, 64, 128, 256}.
+        need_pad = head_dim not in (32, 64, 128, 256) and head_dim < 256
+        if need_pad:
+            pad_size = (128 if head_dim <= 128 else 256) - head_dim
+            query_sdpa = F.pad(query_sdpa, (0, pad_size))
+            key_sdpa = F.pad(key_sdpa, (0, pad_size))
+            value_sdpa = F.pad(value_sdpa, (0, pad_size))
+        hidden_states = F.scaled_dot_product_attention(
+            query_sdpa, key_sdpa, value_sdpa, attn_mask=invalid_kv_logit_bias
+        )
+        if need_pad:
+            hidden_states = hidden_states[..., :head_dim]
+
+        hidden_states = hidden_states.transpose(-1, -2)
+        if hidden_states.dtype != dtype_orig:
+            hidden_states = hidden_states.to(dtype_orig)
+        if token_valid_mask is not None:
+            hidden_states = hidden_states * token_valid_mask.view(batch_size, 1, 1, seq_len).to(hidden_states.dtype)
+
+        # Decode back from ray space to world space.
+        hidden_states = (
+            _apply_ucpe_transform(hidden_states.transpose(-1, -2), P, rotary_emb_cam, inverse_rope=True)
+            .transpose(-1, -2)
+            .contiguous()
+        )
+        hidden_states = hidden_states.reshape(batch_size, num_heads * head_dim, seq_len).permute(0, 2, 1)
+        if token_valid_mask is not None:
+            hidden_states = hidden_states * token_valid_mask.view(batch_size, seq_len, 1).to(hidden_states.dtype)
+        return hidden_states
 
 
 class _SoftmaxUCPESinglePathLiteLA(nn.Module):
     """Softmax counterpart of [`BidirectionalGDNUCPESinglePathLiteLA`].
 
     The released checkpoint uses this block for every ``softmax_every_n``-th layer. It keeps the exact parameter layout
-    of [`BidirectionalGDNUCPESinglePathLiteLA`] -- so both variants load from the same checkpoint -- but replaces both
-    recurrences with a full (non-causal) ``F.scaled_dot_product_attention``. Short convolutions are never built for
-    this variant, and the GDN-only parameters (``beta_proj`` / ``gate_proj`` / ``dt_bias`` / ``A_log`` /
-    ``recall_gate``) exist only so the shared checkpoint loads: they are created in the same order, under the same
+    of [`BidirectionalGDNUCPESinglePathLiteLA`] -- so both variants load from the same checkpoint -- but replaces the
+    main-branch recurrence with [`SanaWMSoftmaxAttention`] and the camera-branch recurrence with
+    [`SanaWMSoftmaxCamAttention`], both a full (non-causal) ``F.scaled_dot_product_attention``. Short convolutions are
+    never built for this variant, and the GDN-only parameters (``beta_proj`` / ``gate_proj`` / ``dt_bias`` / ``A_log``
+    / ``recall_gate``) exist only so the shared checkpoint loads: they are created in the same order, under the same
     names, and are unused by the forward.
+
+    Both branch modules are parameter-free: every layer call happens in this class's `forward`, which owns the
+    projections and norms the two branches consume.
 
     Args:
         in_dim (`int`): Input channels.
@@ -2322,295 +2389,10 @@ class _SoftmaxUCPESinglePathLiteLA(nn.Module):
         self.q_norm_cam = deepcopy(self.q_norm)
         self.k_norm_cam = deepcopy(self.k_norm)
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    def _apply_output_gate(self, out: torch.Tensor, gate_x: torch.Tensor) -> torch.Tensor:
-        if not (self.use_output_gate and self.output_gate is not None):
-            return out
-        gate = F.silu(self.output_gate(gate_x).to(torch.float32))
-        return out * gate
-
-    @staticmethod
-    def _stabilize_cam_transforms(
-        q_cam: torch.Tensor,
-        k_cam: torch.Tensor,
-        v_cam: torch.Tensor,
-        q_cam_trans: torch.Tensor,
-        k_cam_trans: torch.Tensor,
-        v_cam_trans: torch.Tensor,
-        eps: float = 1e-6,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Downscale the UCPE-transformed camera tensors back to their pre-UCPE RMS envelope.
-
-        Each transformed tensor is rescaled so that its per-``(B, H, N)`` channel RMS never exceeds the RMS of the
-        matching pre-UCPE reference. All tensors are shaped ``(B, H, D, N)``.
-        """
-        stabilized = []
-        for ref, transformed in ((q_cam, q_cam_trans), (k_cam, k_cam_trans), (v_cam, v_cam_trans)):
-            ref_rms = ref.square().mean(dim=2, keepdim=True).add(eps).sqrt()
-            tr_rms = transformed.square().mean(dim=2, keepdim=True).add(eps).sqrt()
-            scale = (ref_rms / tr_rms.clamp_min(eps)).clamp(max=1.0)
-            stabilized.append(transformed * scale)
-        return stabilized[0], stabilized[1], stabilized[2]
-
-    @staticmethod
-    def _prepare_frame_valid_masks(
-        frame_valid_mask: torch.Tensor | None,
-        *,
-        B: int,
-        T: int,
-        S: int,
-        device: torch.device,
-        dtype: torch.dtype,
-    ) -> tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
-        """Convert frame-valid mask to token/beta/decay masks used by the attention branches."""
-        if frame_valid_mask is None:
-            return None, None, None
-
-        m = frame_valid_mask
-        if m.ndim == 5:
-            # (B, 1, T, 1, 1)
-            m = m[:, 0, :, 0, 0]
-        elif m.ndim == 3 and m.shape[1] == 1:
-            # (B, 1, T)
-            m = m[:, 0, :]
-        elif m.ndim != 2:
-            raise ValueError(
-                "frame_valid_mask must be shaped (B, 1, T, 1, 1), (B, 1, T), or (B, T); "
-                f"got shape={list(frame_valid_mask.shape)}"
-            )
-
-        if m.shape[0] != B or m.shape[1] != T:
-            raise ValueError(f"frame_valid_mask shape mismatch: expected (B={B}, T={T}), got {list(m.shape)}")
-
-        m = m.to(device=device, dtype=dtype)
-        token_valid_mask = m[:, :, None].expand(B, T, S).reshape(B, T * S)
-        beta_valid_mask = m.view(B, 1, T, 1)
-        decay_valid_mask = m.view(B, 1, T)
-        return token_valid_mask, beta_valid_mask, decay_valid_mask
-
-    # ------------------------------------------------------------------
-    # Main branch
-    # ------------------------------------------------------------------
-
-    def _forward_main_branch_softmax(
-        self,
-        x: torch.Tensor,
-        HW: tuple[int, int, int],
-        rotary_emb: torch.Tensor | None,
-        *,
-        frame_valid_mask: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        """Softmax (SDPA) attention reusing the main-branch GDN parameters.
-
-        Returns the raw attention output ``(B, N, C)``; the shared output gate and projection are applied in
-        :meth:`forward`.
-        """
-        B, N, C = x.shape
-        T, H, W = HW
-        S = H * W
-
-        token_valid_mask, _, _ = self._prepare_frame_valid_masks(
-            frame_valid_mask,
-            B=B,
-            T=T,
-            S=S,
-            device=x.device,
-            dtype=x.dtype,
-        )
-        if token_valid_mask is not None:
-            x = x * token_valid_mask.view(B, N, 1)
-
-        qkv = self.qkv(x).reshape(B, N, 3, self.heads, self.dim)
-        q, k, v = qkv.unbind(2)
-        if token_valid_mask is not None:
-            m = token_valid_mask.view(B, N, 1, 1)
-            q, k, v = q * m, k * m, v * m
-
-        q = self.q_norm(q.reshape(B, N, C)).reshape(B, N, self.heads, self.dim)
-        k = self.k_norm(k.reshape(B, N, C)).reshape(B, N, self.heads, self.dim)
-
-        if rotary_emb is not None:
-            q_perm = q.permute(0, 2, 3, 1)
-            k_perm = k.permute(0, 2, 3, 1)
-            q_perm = _apply_rotary_emb(q_perm, rotary_emb)
-            k_perm = _apply_rotary_emb(k_perm, rotary_emb)
-            q = q_perm.permute(0, 3, 1, 2)
-            k = k_perm.permute(0, 3, 1, 2)
-
-        if token_valid_mask is not None:
-            m = token_valid_mask.view(B, N, 1, 1)
-            q, k, v = q * m, k * m, v * m
-
-        q = q.transpose(1, 2)  # (B, H, N, D)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
-
-        dtype_orig = x.dtype
-        if q.dtype == torch.float32:
-            q, k, v = q.bfloat16(), k.bfloat16(), v.bfloat16()
-
-        out = F.scaled_dot_product_attention(q, k, v)
-        return out.transpose(1, 2).reshape(B, N, C).to(dtype_orig)
-
-    # ------------------------------------------------------------------
-    # Camera branch
-    # ------------------------------------------------------------------
-
-    def _prepare_cam_qkv_softmax(
-        self,
-        x: torch.Tensor,
-        HW: tuple[int, int, int],
-        camera_conditions: torch.Tensor,
-        rotary_emb: torch.Tensor | None,
-        *,
-        token_valid_mask: torch.Tensor | None = None,
-        ucpe_ray_transforms: tuple | None = None,
-    ) -> tuple:
-        """Camera-branch Q/K/V for softmax attention.
-
-        Mirrors [`~BidirectionalGDNUCPESinglePathLiteLA._prepare_cam_qkv`] but skips the ReLU kernel, the GDN key
-        scaling (softmax SDPA provides its own ``1/sqrt(d_k)``) and the short convolutions (never built for this
-        block). Returns ``(q, k, v, out_transform)``, where the tensors are shaped ``(B, cam_heads, cam_head_dim, N)``
-        and ``out_transform`` is ``(P, rotary_emb_cam)``.
-        """
-        B, N, _ = x.shape
-
-        if token_valid_mask is not None:
-            x = x * token_valid_mask.view(B, N, 1)
-
-        q_cam, k_cam, v_cam = self.q_proj_cam(x), self.k_proj_cam(x), self.v_proj_cam(x)
-
-        if token_valid_mask is not None:
-            m = token_valid_mask.view(B, N, 1)
-            q_cam, k_cam, v_cam = q_cam * m, k_cam * m, v_cam * m
-
-        q_cam = self.q_norm_cam(q_cam).reshape(B, N, self.cam_heads, self.cam_head_dim)
-        k_cam = self.k_norm_cam(k_cam).reshape(B, N, self.cam_heads, self.cam_head_dim)
-        v_cam = v_cam.reshape(B, N, self.cam_heads, self.cam_head_dim)
-
-        q_cam = q_cam.permute(0, 2, 3, 1).contiguous()
-        k_cam = k_cam.permute(0, 2, 3, 1).contiguous()
-        v_cam = v_cam.permute(0, 2, 3, 1).contiguous()
-
-        ray_transforms = ucpe_ray_transforms
-        if ray_transforms is None:
-            ray_transforms = _prepare_ucpe_ray_transforms(
-                head_dim=self.cam_head_dim,
-                camera_conditions=camera_conditions,
-                HW=HW,
-                patch_size=self.patch_size,
-                rotary_emb=rotary_emb,
-            )
-        P, P_T, P_inv, rotary_emb_cam = ray_transforms
-
-        q_cam_trans = (
-            _apply_ucpe_transform(q_cam.transpose(-1, -2), P_T, rotary_emb_cam).transpose(-1, -2).contiguous()
-        )
-        kv_cam = torch.cat([k_cam, v_cam], dim=1)
-        kv_cam_trans = (
-            _apply_ucpe_transform(kv_cam.transpose(-1, -2), P_inv, rotary_emb_cam).transpose(-1, -2).contiguous()
-        )
-        k_cam_trans, v_cam_trans = torch.chunk(kv_cam_trans, chunks=2, dim=1)
-
-        q_cam_trans, k_cam_trans, v_cam_trans = self._stabilize_cam_transforms(
-            q_cam=q_cam,
-            k_cam=k_cam,
-            v_cam=v_cam,
-            q_cam_trans=q_cam_trans,
-            k_cam_trans=k_cam_trans,
-            v_cam_trans=v_cam_trans,
-        )
-        return q_cam_trans, k_cam_trans, v_cam_trans, (P, rotary_emb_cam)
-
-    def _forward_cam_branch_softmax(
-        self,
-        x: torch.Tensor,
-        HW: tuple[int, int, int],
-        camera_conditions: torch.Tensor,
-        rotary_emb: torch.Tensor | None,
-        *,
-        frame_valid_mask: torch.Tensor | None = None,
-        ucpe_ray_transforms: tuple | None = None,
-    ) -> torch.Tensor:
-        """Bidirectional softmax camera branch (with UCPE transforms).
-
-        Uses ``F.scaled_dot_product_attention`` with optional invalid-key masking. Returns the raw attention output
-        ``(B, N, C)``.
-        """
-        B, N, _ = x.shape
-        T, H, W = HW
-        S = H * W
-
-        token_valid_mask, _, _ = self._prepare_frame_valid_masks(
-            frame_valid_mask,
-            B=B,
-            T=T,
-            S=S,
-            device=x.device,
-            dtype=x.dtype,
-        )
-
-        q_cam_trans, k_cam_trans, v_cam_trans, out_transform = self._prepare_cam_qkv_softmax(
-            x,
-            HW,
-            camera_conditions,
-            rotary_emb,
-            token_valid_mask=token_valid_mask,
-            ucpe_ray_transforms=ucpe_ray_transforms,
-        )
-
-        if token_valid_mask is not None:
-            m = token_valid_mask.view(B, 1, 1, N)
-            q_cam_trans, v_cam_trans = q_cam_trans * m, v_cam_trans * m
-
-        q_sdpa = q_cam_trans.transpose(-1, -2)
-        k_sdpa = k_cam_trans.transpose(-1, -2)
-        v_sdpa = v_cam_trans.transpose(-1, -2)
-
-        dtype_orig = x.dtype
-        q_sdpa, k_sdpa, v_sdpa = q_sdpa.float(), k_sdpa.float(), v_sdpa.float()
-        # SDPA / FlashAttention only supports bf16/fp16; fp32 falls back to math backend.
-        if q_sdpa.dtype == torch.float32:
-            q_sdpa, k_sdpa, v_sdpa = q_sdpa.bfloat16(), k_sdpa.bfloat16(), v_sdpa.bfloat16()
-
-        invalid_kv_logit_bias = None
-        if token_valid_mask is not None and not bool(token_valid_mask.all()):
-            invalid_kv_logit_bias = torch.where(
-                token_valid_mask.bool().view(B, 1, 1, -1),
-                torch.zeros((), dtype=q_sdpa.dtype, device=q_sdpa.device),
-                torch.full((), -1e9, dtype=q_sdpa.dtype, device=q_sdpa.device),
-            )
-
-        # FlashAttention-2 only supports head_dim in {32, 64, 128, 256}.
-        D = q_sdpa.shape[-1]
-        _need_pad = D not in (32, 64, 128, 256) and D < 256
-        if _need_pad:
-            _pad_to = 128 if D <= 128 else 256
-            _pad_size = _pad_to - D
-            q_sdpa = F.pad(q_sdpa, (0, _pad_size))
-            k_sdpa = F.pad(k_sdpa, (0, _pad_size))
-            v_sdpa = F.pad(v_sdpa, (0, _pad_size))
-        out = F.scaled_dot_product_attention(q_sdpa, k_sdpa, v_sdpa, attn_mask=invalid_kv_logit_bias)
-        if _need_pad:
-            out = out[..., :D]
-
-        out = out.transpose(-1, -2)
-        if out.dtype != dtype_orig:
-            out = out.to(dtype_orig)
-        if token_valid_mask is not None:
-            out = out * token_valid_mask.view(B, 1, 1, N).to(out.dtype)
-        out = (
-            _apply_ucpe_transform(out.transpose(-1, -2), *out_transform, inverse_rope=True)
-            .transpose(-1, -2)
-            .contiguous()
-        )
-        out = out.reshape(B, self.cam_dim, N).permute(0, 2, 1)
-        if token_valid_mask is not None:
-            out = out * token_valid_mask.view(B, N, 1).to(out.dtype)
-        return out
+        # Branch compute modules. They own no parameters -- so the checkpoint layout is untouched -- and `forward`
+        # runs every layer call and hands them the resulting tensors.
+        self.attn = SanaWMSoftmaxAttention()
+        self.cam_attn = SanaWMSoftmaxCamAttention()
 
     def forward(
         self,
@@ -2644,30 +2426,83 @@ class _SoftmaxUCPESinglePathLiteLA(nn.Module):
         """
         del mask, block_mask, chunk_size
 
-        main_raw = self._forward_main_branch_softmax(
-            x,
-            HW,
-            rotary_emb,
-            frame_valid_mask=frame_valid_mask,
+        if HW is None:
+            raise ValueError("HW (T, H, W) must be provided for softmax attention.")
+
+        batch_size, seq_len, channels = x.shape
+        num_frames, height, width = HW
+        spatial_size = height * width
+
+        token_valid_mask, _, _ = _prepare_frame_valid_masks(
+            frame_valid_mask,
+            batch_size=batch_size,
+            num_frames=num_frames,
+            spatial_size=spatial_size,
+            device=x.device,
+            dtype=x.dtype,
         )
 
-        cam_contrib: torch.Tensor | int = 0
-        if camera_conditions is not None:
-            if HW is None:
-                raise ValueError("HW must be provided for UCPE camera branch.")
-            cam_raw = self._forward_cam_branch_softmax(
-                x,
-                HW,
-                camera_conditions,
-                rotary_emb,
-                frame_valid_mask=frame_valid_mask,
-                ucpe_ray_transforms=ucpe_ray_transforms,
-            )
-            cam_contrib = self.out_proj_cam(cam_raw)
+        # ---- Main branch: fused QKV -> Q/K norm -> softmax attention ----
+        hidden_states = x
+        if token_valid_mask is not None:
+            hidden_states = hidden_states * token_valid_mask.view(batch_size, seq_len, 1)
 
-        combined = main_raw + cam_contrib
-        combined = self._apply_output_gate(combined, x)
-        return self.proj(combined.to(x.dtype))
+        query, key, value = self.qkv(hidden_states).reshape(batch_size, seq_len, 3, self.heads, self.dim).unbind(2)
+        if token_valid_mask is not None:
+            token_mask = token_valid_mask.view(batch_size, seq_len, 1, 1)
+            query = query * token_mask
+            key = key * token_mask
+            value = value * token_mask
+
+        # Q/K norm runs on the flattened channels (B, N, C), then the tensors go back to (B, N, H, D).
+        query = self.q_norm(query.reshape(batch_size, seq_len, channels)).reshape(
+            batch_size, seq_len, self.heads, self.dim
+        )
+        key = self.k_norm(key.reshape(batch_size, seq_len, channels)).reshape(
+            batch_size, seq_len, self.heads, self.dim
+        )
+
+        attn_output = self.attn(query, key, value, rotary_emb=rotary_emb, token_valid_mask=token_valid_mask)
+
+        # ---- Camera branch: same pipeline on the camera projections, positionally encoded with UCPE ----
+        if camera_conditions is not None:
+            cam_hidden_states = x
+            if token_valid_mask is not None:
+                cam_hidden_states = cam_hidden_states * token_valid_mask.view(batch_size, seq_len, 1)
+
+            query_cam = self.q_proj_cam(cam_hidden_states)
+            key_cam = self.k_proj_cam(cam_hidden_states)
+            value_cam = self.v_proj_cam(cam_hidden_states)
+            if token_valid_mask is not None:
+                token_mask = token_valid_mask.view(batch_size, seq_len, 1)
+                query_cam = query_cam * token_mask
+                key_cam = key_cam * token_mask
+                value_cam = value_cam * token_mask
+
+            query_cam = self.q_norm_cam(query_cam).reshape(batch_size, seq_len, self.cam_heads, self.cam_head_dim)
+            key_cam = self.k_norm_cam(key_cam).reshape(batch_size, seq_len, self.cam_heads, self.cam_head_dim)
+            value_cam = value_cam.reshape(batch_size, seq_len, self.cam_heads, self.cam_head_dim)
+
+            # Reuse the model-level cache when available, to avoid recomputing the ray transforms per block.
+            ray_transforms = ucpe_ray_transforms
+            if ray_transforms is None:
+                ray_transforms = _prepare_ucpe_ray_transforms(
+                    head_dim=self.cam_head_dim,
+                    camera_conditions=camera_conditions,
+                    HW=HW,
+                    patch_size=self.patch_size,
+                    rotary_emb=rotary_emb,
+                )
+
+            cam_output = self.cam_attn(
+                query_cam, key_cam, value_cam, ray_transforms, token_valid_mask=token_valid_mask
+            )
+            attn_output = attn_output + self.out_proj_cam(cam_output)
+
+        # Shared output gate + projection, applied once over both branches.
+        if self.use_output_gate and self.output_gate is not None:
+            attn_output = attn_output * F.silu(self.output_gate(x).to(torch.float32))
+        return self.proj(attn_output.to(x.dtype))
 
 
 # ============================================================================
@@ -2704,8 +2539,6 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
 
         if use_chunk_plucker_post_attn:
             self.plucker_proj = nn.Linear(hidden_size, hidden_size, bias=True)
-            nn.init.zeros_(self.plucker_proj.weight)
-            nn.init.zeros_(self.plucker_proj.bias)
 
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         # Camera-conditioned (UCPE) attention: either the GDN or the softmax variant.

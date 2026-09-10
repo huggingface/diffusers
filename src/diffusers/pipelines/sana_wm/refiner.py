@@ -30,9 +30,6 @@ from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTo
 
 from ...models.autoencoders import AutoencoderKLLTX2Video
 from ...models.transformers.transformer_sana_wm_refiner import (
-    KV_CACHE_MODE_CAPTURE_PRE_ROPE,
-    KV_CACHE_MODE_INJECT,
-    KV_CACHE_MODE_INJECT_AND_CAPTURE_POST_ROPE,
     SanaWMLTX2RefinerTransformer3DModel,
     SanaWMRefinerKVCache,
 )
@@ -217,7 +214,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
             prompt_attention_mask=prompt_attention_mask,
             fps=fps,
             kv_cache=kv_cache,
-            kv_cache_mode=KV_CACHE_MODE_CAPTURE_PRE_ROPE,
+            kv_cache_mode="capture_pre_rope",
             device=device,
         )
         for layer_idx in range(num_layers):
@@ -283,7 +280,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
                         video_rotary_emb=video_rotary_emb,
                         encoder_attention_mask=prompt_attention_mask,
                         kv_cache=kv_cache,
-                        kv_cache_mode=KV_CACHE_MODE_INJECT,
+                        kv_cache_mode="inject",
                         return_dict=False,
                     )[0]
 
@@ -316,7 +313,7 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
                     prompt_attention_mask=prompt_attention_mask,
                     fps=fps,
                     kv_cache=kv_cache,
-                    kv_cache_mode=KV_CACHE_MODE_INJECT_AND_CAPTURE_POST_ROPE,
+                    kv_cache_mode="inject_and_capture_post_rope",
                     device=device,
                 )
                 for layer_idx in range(num_layers):
