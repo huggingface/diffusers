@@ -1749,8 +1749,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             blocks = blocks_class()
 
         if workflow is not None:
-            if blocks is None:
-                raise ValueError(f"`workflow={workflow!r}` requires pipeline blocks, but none could be resolved.")
             blocks = blocks.get_workflow(workflow)
 
         self._blocks = blocks
