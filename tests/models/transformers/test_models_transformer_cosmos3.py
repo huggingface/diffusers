@@ -126,13 +126,10 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
 
         model.norm.forward = counted_und_norm_forward
         model.norm_moe_gen.forward = counted_gen_norm_forward
-        runtime = {"step": 0, "sigma": 0.9, "num_steps": 3}
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
         config = SeaCacheConfig(
             threshold=100.0,
             cache_end_steps=0,
-            current_step_callback=lambda: runtime["step"],
-            current_sigma_callback=lambda: runtime["sigma"],
-            num_inference_steps_callback=lambda: runtime["num_steps"],
         )
 
         assert isinstance(model, CacheMixin)
@@ -141,14 +138,14 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         assert model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK) is not None
 
         inputs = self.get_dummy_inputs()
-        with torch.no_grad(), model.cache_context("cond"):
+        with torch.no_grad(), model.cache_context("cond", **runtime):
             model(**inputs)
         assert norm_calls == {"und": 1, "gen": 1}
 
-        runtime.update(step=1, sigma=0.6)
+        runtime.update(step_index=1, sigma=0.6)
         cached_inputs = self.get_dummy_inputs()
         cached_inputs["vision_tokens"] = [cached_inputs["vision_tokens"][0] + 0.1]
-        with torch.no_grad(), model.cache_context("cond"):
+        with torch.no_grad(), model.cache_context("cond", **runtime):
             output = model(**cached_inputs)
 
         # A hit bypasses the decoder stack and final pathway norms while prediction heads stay fresh.
@@ -165,13 +162,10 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
 
     def test_cosmos3_sea_cache_post_norm_boundary_numeric_semantics(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        runtime = {"step": 0, "sigma": 0.9, "num_steps": 3}
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
         config = SeaCacheConfig(
             threshold=100.0,
             cache_end_steps=0,
-            current_step_callback=lambda: runtime["step"],
-            current_sigma_callback=lambda: runtime["sigma"],
-            num_inference_steps_callback=lambda: runtime["num_steps"],
         )
         decoder_gen_inputs = []
         prepared_stack_outputs = []
@@ -221,7 +215,7 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
 
         model._sea_cache_prepare_decoder_stack = capture_prepare_decoder_stack
 
-        with torch.no_grad(), model.cache_context("cond"):
+        with torch.no_grad(), model.cache_context("cond", **runtime):
             model(**self.get_dummy_inputs())
 
         root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
@@ -234,10 +228,10 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
             returned_gen_outputs[0] - decoder_gen_inputs[0],
         )
 
-        runtime.update(step=1, sigma=0.6)
+        runtime.update(step_index=1, sigma=0.6)
         cached_inputs = self.get_dummy_inputs()
         cached_inputs["vision_tokens"] = [cached_inputs["vision_tokens"][0] + 0.1]
-        with torch.no_grad(), model.cache_context("cond"):
+        with torch.no_grad(), model.cache_context("cond", **runtime):
             model(**cached_inputs)
 
         assert len(und_norm_inputs) == len(gen_norm_inputs) == 1
@@ -276,23 +270,20 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
             layer_calls += 1
 
         model.layers[0].register_forward_hook(count_layer_calls)
-        runtime = {"step": 0, "sigma": 0.9, "num_steps": 3}
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
         model.enable_cache(
             SeaCacheConfig(
                 threshold=100.0,
                 cache_end_steps=0,
-                current_step_callback=lambda: runtime["step"],
-                current_sigma_callback=lambda: runtime["sigma"],
-                num_inference_steps_callback=lambda: runtime["num_steps"],
             )
         )
 
-        with torch.no_grad(), model.cache_context("cond"):
+        with torch.no_grad(), model.cache_context("cond", **runtime):
             model(**self.get_dummy_inputs())
-        runtime.update(step=1, sigma=0.6)
+        runtime.update(step_index=1, sigma=0.6)
         cached_inputs = self.get_dummy_inputs()
         cached_inputs["vision_tokens"] = [cached_inputs["vision_tokens"][0] + 0.1]
-        with torch.no_grad(), model.cache_context("cond"):
+        with torch.no_grad(), model.cache_context("cond", **runtime):
             model(**cached_inputs)
 
         root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
@@ -324,21 +315,18 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
             layer_calls += 1
 
         model.layers[0].register_forward_hook(count_layer_calls)
-        runtime = {"step": 0, "sigma": 0.9, "num_steps": 3}
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
         model.enable_cache(
             SeaCacheConfig(
                 threshold=100.0,
                 cache_end_steps=0,
-                current_step_callback=lambda: runtime["step"],
-                current_sigma_callback=lambda: runtime["sigma"],
-                num_inference_steps_callback=lambda: runtime["num_steps"],
             )
         )
 
-        with torch.no_grad(), model.cache_context("cond"):
+        with torch.no_grad(), model.cache_context("cond", **runtime):
             model(**self.get_dummy_inputs())
-        runtime.update(step=1, sigma=0.6)
-        with torch.no_grad(), model.cache_context("cond"):
+        runtime.update(step_index=1, sigma=0.6)
+        with torch.no_grad(), model.cache_context("cond", **runtime):
             model(**self.get_dummy_inputs())
 
         root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
@@ -359,21 +347,18 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
             layer_calls += 1
 
         model.layers[0].register_forward_hook(count_layer_calls)
-        runtime = {"step": 0, "sigma": 0.9, "num_steps": 3}
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
         model.enable_cache(
             SeaCacheConfig(
                 threshold=100.0,
                 cache_end_steps=0,
-                current_step_callback=lambda: runtime["step"],
-                current_sigma_callback=lambda: runtime["sigma"],
-                num_inference_steps_callback=lambda: runtime["num_steps"],
             )
         )
 
-        with torch.no_grad(), model.cache_context("cond"):
+        with torch.no_grad(), model.cache_context("cond", **runtime):
             model(**self.get_dummy_inputs())
-        runtime.update(step=1, sigma=0.6)
-        with torch.no_grad(), model.cache_context("cond"):
+        runtime.update(step_index=1, sigma=0.6)
+        with torch.no_grad(), model.cache_context("cond", **runtime):
             model(**self.get_dummy_inputs())
 
         root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
@@ -383,36 +368,33 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
     @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile is unavailable")
     def test_cosmos3_sea_cache_regional_compile_fullgraph_without_recompile(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        runtime = {"step": 0, "sigma": 0.9, "num_steps": 4}
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 4}
         model.enable_cache(
             SeaCacheConfig(
                 threshold=100.0,
                 cache_end_steps=0,
                 max_consecutive_cached=1,
-                current_step_callback=lambda: runtime["step"],
-                current_sigma_callback=lambda: runtime["sigma"],
-                num_inference_steps_callback=lambda: runtime["num_steps"],
             )
         )
         model.compile_repeated_blocks(backend="eager", fullgraph=True)
 
         with torch.no_grad():
-            with model.cache_context("cond"):
+            with model.cache_context("cond", **runtime):
                 first = model(**self.get_dummy_inputs())
 
         with torch.no_grad(), torch._dynamo.config.patch(error_on_recompile=True):
-            runtime.update(step=1, sigma=0.6)
+            runtime.update(step_index=1, sigma=0.6)
             cached_inputs = self.get_dummy_inputs()
             cached_inputs["vision_tokens"] = [cached_inputs["vision_tokens"][0] + 0.1]
-            with model.cache_context("cond"):
+            with model.cache_context("cond", **runtime):
                 cached = model(**cached_inputs)
             root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
             assert root_hook.state_manager._state_cache["cond"].consecutive_cached == 1
 
-            runtime.update(step=2, sigma=0.3)
+            runtime.update(step_index=2, sigma=0.3)
             refreshed_inputs = self.get_dummy_inputs()
             refreshed_inputs["vision_tokens"] = [refreshed_inputs["vision_tokens"][0] + 0.2]
-            with model.cache_context("cond"):
+            with model.cache_context("cond", **runtime):
                 refreshed = model(**refreshed_inputs)
 
         assert first.sample[0].shape == self.output_shape

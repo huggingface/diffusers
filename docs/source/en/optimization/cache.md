@@ -92,22 +92,14 @@ and scheduler; support and benchmark results do not transfer automatically from 
 
 ### Cosmos 3
 
-SeaCache is disabled by default. Enable it on the transformer and provide callbacks for the active scheduler step,
-sigma, and number of inference steps:
+SeaCache is disabled by default. Enable it on the transformer; the Cosmos 3 denoising loop attaches the active
+scheduler step, sigma, and step count to each `cache_context` call, so no extra wiring is needed:
 
 ```python
 from diffusers import Cosmos3OmniPipeline, SeaCacheConfig
 
 pipe = Cosmos3OmniPipeline.from_pretrained("nvidia/Cosmos3-Nano")
-pipe.transformer.enable_cache(
-    SeaCacheConfig(
-        threshold=0.2,
-        max_consecutive_cached=2,
-        current_step_callback=lambda: pipe.current_step_index,
-        current_sigma_callback=lambda: pipe.current_sigma,
-        num_inference_steps_callback=lambda: pipe.num_timesteps,
-    )
-)
+pipe.transformer.enable_cache(SeaCacheConfig(threshold=0.2, max_consecutive_cached=2))
 ```
 
 This model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and

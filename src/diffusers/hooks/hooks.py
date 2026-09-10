@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import functools
+from dataclasses import dataclass
 from typing import Any
 
 import torch
@@ -31,29 +32,64 @@ class BaseState:
         )
 
 
+@dataclass(frozen=True)
+class CacheContext:
+    """Information a pipeline attaches to a denoising call for the cache hooks, via `cache_context`.
+
+    `name` identifies the call (usually `"cond"` or `"uncond"`) and keys the per-context hook state; the remaining
+    fields describe where the denoising loop is. Fields default to `None`.
+    """
+
+    name: str
+    step_index: int | None = None
+    num_inference_steps: int | None = None
+    timestep: float | torch.Tensor | None = None
+    sigma: float | None = None
+
+
+def _set_cache_context(module: torch.nn.Module, context: CacheContext | None) -> None:
+    """Set (or clear, with `None`) the cache context on every stateful hook's `StateManager` under `module`."""
+    registry = HookRegistry.check_if_exists_or_initialize(module)
+    for child in (registry, *registry._get_child_registries()):
+        for hook_name in reversed(child._hook_order):
+            hook = child.hooks[hook_name]
+            if not hook._is_stateful:
+                continue
+            for attr in vars(hook).values():
+                if isinstance(attr, StateManager):
+                    attr.set_context(context)
+
+
 class StateManager:
     def __init__(self, state_cls: BaseState, init_args=None, init_kwargs=None):
         self._state_cls = state_cls
         self._init_args = init_args if init_args is not None else ()
         self._init_kwargs = init_kwargs if init_kwargs is not None else {}
         self._state_cache = {}
-        self._current_context = None
+        self._context: CacheContext | None = None
+
+    @property
+    def context(self) -> CacheContext:
+        if self._context is None:
+            raise ValueError(
+                "No cache context is set. Wrap the denoiser call in `model.cache_context(name, ...)` before calling it."
+            )
+        return self._context
 
     def get_state(self):
-        if self._current_context is None:
-            raise ValueError("No context is set. Please set a context before retrieving the state.")
-        if self._current_context not in self._state_cache.keys():
-            self._state_cache[self._current_context] = self._state_cls(*self._init_args, **self._init_kwargs)
-        return self._state_cache[self._current_context]
+        name = self.context.name
+        if name not in self._state_cache.keys():
+            self._state_cache[name] = self._state_cls(*self._init_args, **self._init_kwargs)
+        return self._state_cache[name]
 
-    def set_context(self, name: str) -> None:
-        self._current_context = name
+    def set_context(self, context: CacheContext | None) -> None:
+        self._context = context
 
     def reset(self, *args, **kwargs) -> None:
         for name, state in list(self._state_cache.items()):
             state.reset(*args, **kwargs)
             self._state_cache.pop(name)
-        self._current_context = None
+        self._context = None
 
 
 class ModelHook:
@@ -130,14 +166,6 @@ class ModelHook:
     def reset_state(self, module: torch.nn.Module):
         if self._is_stateful:
             raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
-        return module
-
-    def _set_context(self, module: torch.nn.Module, name: str) -> None:
-        # Iterate over all attributes of the hook to see if any of them have the type `StateManager`. If so, call `set_context` on them.
-        for attr_name in dir(self):
-            attr = getattr(self, attr_name)
-            if isinstance(attr, StateManager):
-                attr.set_context(name)
         return module
 
 
@@ -266,15 +294,6 @@ class HookRegistry:
         if not hasattr(module, "_diffusers_hook"):
             module._diffusers_hook = cls(module)
         return module._diffusers_hook
-
-    def _set_context(self, name: str | None = None) -> None:
-        for hook_name in reversed(self._hook_order):
-            hook = self.hooks[hook_name]
-            if hook._is_stateful:
-                hook._set_context(self._module_ref, name)
-
-        for registry in self._get_child_registries():
-            registry._set_context(name)
 
     def invalidate_child_registries_cache(self) -> None:
         """Invalidate the cached child-registry list across this module's tree.

@@ -457,14 +457,9 @@ class SeaCacheConfigMixin:
     }
 
     def _get_cache_config(self):
-        runtime = {"step": 0, "sigma": 0.9, "num_steps": 3}
-        self._sea_cache_runtime = runtime
-        return SeaCacheConfig(
-            **self.SEA_CACHE_CONFIG,
-            current_step_callback=lambda: runtime["step"],
-            current_sigma_callback=lambda: runtime["sigma"],
-            num_inference_steps_callback=lambda: runtime["num_steps"],
-        )
+        # scheduler coordinates are attached per call as `cache_context` metadata (see `_sea_cache_runtime`)
+        self._sea_cache_runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
+        return SeaCacheConfig(**self.SEA_CACHE_CONFIG)
 
     def _get_hook_names(self):
         return [
@@ -508,12 +503,12 @@ class SeaCacheTesterMixin(SeaCacheConfigMixin, CacheTesterMixin):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         model.enable_cache(self._get_cache_config())
 
-        with model.cache_context("sea_cache_test"):
+        with model.cache_context("sea_cache_test", **self._sea_cache_runtime):
             model(**self.get_dummy_inputs(), return_dict=False)
 
-        self._sea_cache_runtime.update(step=1, sigma=0.6)
+        self._sea_cache_runtime.update(step_index=1, sigma=0.6)
         modified_inputs = self._get_modified_cache_inputs()
-        with model.cache_context("sea_cache_test"):
+        with model.cache_context("sea_cache_test", **self._sea_cache_runtime):
             output_with_cache = self._unwrap_cache_output(model(**modified_inputs, return_dict=False))
 
         assert output_with_cache is not None
@@ -529,9 +524,9 @@ class SeaCacheTesterMixin(SeaCacheConfigMixin, CacheTesterMixin):
         model.enable_cache(self._get_cache_config())
         inputs = self.get_dummy_inputs()
 
-        with model.cache_context("context_1"):
+        with model.cache_context("context_1", **self._sea_cache_runtime):
             output_ctx1 = self._unwrap_cache_output(model(**inputs, return_dict=False))
-        with model.cache_context("context_2"):
+        with model.cache_context("context_2", **self._sea_cache_runtime):
             output_ctx2 = self._unwrap_cache_output(model(**inputs, return_dict=False))
 
         assert_tensors_close(
@@ -548,7 +543,7 @@ class SeaCacheTesterMixin(SeaCacheConfigMixin, CacheTesterMixin):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         model.enable_cache(self._get_cache_config())
 
-        with model.cache_context("sea_cache_test"):
+        with model.cache_context("sea_cache_test", **self._sea_cache_runtime):
             model(**self.get_dummy_inputs(), return_dict=False)
         model._reset_stateful_cache()
         model.disable_cache()
@@ -578,7 +573,7 @@ class SeaCacheTesterMixin(SeaCacheConfigMixin, CacheTesterMixin):
             SingleStreamBlock,
             TransformerBlockMetadata(return_hidden_states_index=0),
         )
-        runtime = {"step": 0, "sigma": 0.9, "num_steps": 2}
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 2}
         model = SingleStreamTransformer().eval()
         model.enable_cache(
             SeaCacheConfig(
@@ -586,24 +581,21 @@ class SeaCacheTesterMixin(SeaCacheConfigMixin, CacheTesterMixin):
                 residual_order=0,
                 retention_steps=0,
                 cache_end_steps=0,
-                current_step_callback=lambda: runtime["step"],
-                current_sigma_callback=lambda: runtime["sigma"],
-                num_inference_steps_callback=lambda: runtime["num_steps"],
                 raw_vision_callback=lambda module, args, kwargs: [kwargs["raw_vision"]],
             )
         )
 
         hidden_states = torch.zeros(1, 2, 3)
         raw_vision = torch.ones(2, 1, 2, 2)
-        with model.cache_context("single_stream"):
+        with model.cache_context("single_stream", **runtime):
             model(hidden_states=hidden_states, raw_vision=raw_vision)
 
         root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
         assert root_hook.state_manager._state_cache["single_stream"].history[-1][1] is None
         assert [block.calls for block in model.transformer_blocks] == [1, 1]
 
-        runtime.update(step=1, sigma=0.6)
-        with model.cache_context("single_stream"):
+        runtime.update(step_index=1, sigma=0.6)
+        with model.cache_context("single_stream", **runtime):
             output = model(hidden_states=hidden_states + 0.25, raw_vision=raw_vision + 0.01)
 
         assert [block.calls for block in model.transformer_blocks] == [1, 1]

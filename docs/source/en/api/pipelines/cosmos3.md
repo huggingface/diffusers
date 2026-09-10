@@ -675,15 +675,7 @@ pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
 )
 
-pipe.transformer.enable_cache(
-    SeaCacheConfig(
-        threshold=0.2,
-        max_consecutive_cached=2,
-        current_step_callback=lambda: pipe.current_step_index,
-        current_sigma_callback=lambda: pipe.current_sigma,
-        num_inference_steps_callback=lambda: pipe.num_timesteps,
-    )
-)
+pipe.transformer.enable_cache(SeaCacheConfig(threshold=0.2, max_consecutive_cached=2))
 ```
 
 The same model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
