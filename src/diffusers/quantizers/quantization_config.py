@@ -51,6 +51,7 @@ class QuantizationMethod(str, Enum):
     MODELOPT = "modelopt"
     AUTOROUND = "auto-round"
     SDNQ = "sdnq"
+    COMFY_QUANT = "comfy_quant"
 
 
 @dataclass
@@ -994,3 +995,32 @@ class SDNQConfig(QuantizationConfigMixin):
         from sdnq import SDNQConfig as SDNQLibConfig
 
         return SDNQLibConfig(*args, **kwargs)
+
+
+@dataclass
+class ComfyQuantConfig(QuantizationConfigMixin):
+    """
+    This is a wrapper class about all possible attributes and features that you can play with for a model that has been
+    quantized using comfy-kitchen.
+
+    Args:
+        quant_format (`str`, *optional*, defaults to `"fp8"`):
+            The quantization format. Supported values include `"fp8"`, `"int8"`, `"mxfp8"`, `"nvfp4"`, `"int4_svd"`,
+            and `"int4_awq"`.
+        compute_dtype (`torch.dtype`, *optional*):
+            The target dtype for the compute operations.
+        modules_to_not_convert (`list[str]`, *optional*, defaults to `None`):
+            The list of modules to skip during quantization.
+    """
+
+    def __init__(
+        self,
+        quant_format: str = "fp8",
+        compute_dtype: Any = None,
+        modules_to_not_convert: list[str] | None = None,
+        **kwargs,
+    ):
+        self.quant_method = QuantizationMethod.COMFY_QUANT
+        self.quant_format = quant_format
+        self.compute_dtype = compute_dtype
+        self.modules_to_not_convert = modules_to_not_convert

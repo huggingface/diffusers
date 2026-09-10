@@ -9,6 +9,7 @@ from .utils import (
     is_accelerate_available,
     is_auto_round_available,
     is_bitsandbytes_available,
+    is_comfy_kitchen_available,
     is_gguf_available,
     is_librosa_available,
     is_note_seq_available,
@@ -47,6 +48,7 @@ _import_structure = {
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
+        "is_comfy_kitchen_available",
         "is_inflect_available",
         "is_invisible_watermark_available",
         "is_librosa_available",
@@ -157,6 +159,18 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["quantizers.quantization_config"].append("SDNQConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_comfy_kitchen_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_comfy_kitchen_objects
+
+    _import_structure["utils.dummy_comfy_kitchen_objects"] = [
+        name for name in dir(dummy_comfy_kitchen_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("ComfyQuantConfig")
 
 try:
     if not is_onnx_available():
@@ -1047,6 +1061,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_sdnq_objects import *
     else:
         from .quantizers.quantization_config import SDNQConfig
+
+    try:
+        if not is_comfy_kitchen_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_comfy_kitchen_objects import *
+    else:
+        from .quantizers.quantization_config import Com
 
     try:
         if not is_onnx_available():
