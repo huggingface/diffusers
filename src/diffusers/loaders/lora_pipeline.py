@@ -1048,15 +1048,23 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
-        self.load_lora_into_transformer(
-            state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            adapter_name=adapter_name,
-            metadata=metadata,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+        else:
+            self.load_lora_into_transformer(
+                state_dict,
+                transformer=transformer,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=None,
@@ -1333,9 +1341,18 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -1616,9 +1633,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             and any(norm_key in k for norm_key in self._control_lora_supported_norm_keys)
         }
 
-        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None and (len(transformer_lora_state_dict) > 0 or len(transformer_norm_state_dict) > 0):
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+
         has_param_with_expanded_shape = False
-        if len(transformer_lora_state_dict) > 0:
+        if transformer is not None and len(transformer_lora_state_dict) > 0:
             has_param_with_expanded_shape = self._maybe_expand_transformer_param_shape_or_error_(
                 transformer, transformer_lora_state_dict, transformer_norm_state_dict
             )
@@ -1629,25 +1653,26 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 "As a result, the state_dict of the transformer has been expanded to match the LoRA parameter shapes. "
                 "To get a comprehensive list of parameter names that were modified, enable debug logging."
             )
-        if len(transformer_lora_state_dict) > 0:
+        if transformer is not None and len(transformer_lora_state_dict) > 0:
             transformer_lora_state_dict = self._maybe_expand_lora_state_dict(
                 transformer=transformer, lora_state_dict=transformer_lora_state_dict
             )
             for k in transformer_lora_state_dict:
                 state_dict.update({k: transformer_lora_state_dict[k]})
 
-        self.load_lora_into_transformer(
-            state_dict,
-            network_alphas=network_alphas,
-            transformer=transformer,
-            adapter_name=adapter_name,
-            metadata=metadata,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
+        if transformer is not None:
+            self.load_lora_into_transformer(
+                state_dict,
+                network_alphas=network_alphas,
+                transformer=transformer,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
 
-        if len(transformer_norm_state_dict) > 0:
+        if transformer is not None and len(transformer_norm_state_dict) > 0:
             transformer._transformer_norm_layers = self._load_norm_into_transformer(
                 transformer_norm_state_dict,
                 transformer=transformer,
@@ -2433,9 +2458,18 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -2619,9 +2653,18 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -2811,9 +2854,18 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -3013,15 +3065,24 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
             k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_name}.")
         }
         connectors_peft_state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{self.connectors_name}.")}
-        self.load_lora_into_transformer(
-            transformer_peft_state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            adapter_name=adapter_name,
-            metadata=metadata,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            if transformer_peft_state_dict:
+                logger.warning(
+                    f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                    "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                    "(for example, a text-encoder-only sub-pipeline)."
+                )
+        else:
+            self.load_lora_into_transformer(
+                transformer_peft_state_dict,
+                transformer=transformer,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
         if connectors_peft_state_dict:
             self.load_lora_into_transformer(
                 connectors_peft_state_dict,
@@ -3216,9 +3277,18 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -3406,9 +3476,18 @@ class HeliosLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -3598,9 +3677,18 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -3791,9 +3879,18 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -3980,9 +4077,18 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -4215,10 +4321,12 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         kwargs["return_lora_metadata"] = True
         state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         # convert T2V LoRA to I2V LoRA (when loaded to Wan I2V) by adding zeros for the additional (missing) _img layers
-        state_dict = self._maybe_expand_t2v_lora_for_i2v(
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            state_dict=state_dict,
-        )
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is not None:
+            state_dict = self._maybe_expand_t2v_lora_for_i2v(
+                transformer=transformer,
+                state_dict=state_dict,
+            )
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
@@ -4240,12 +4348,16 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 hotswap=hotswap,
             )
+        elif transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
         else:
             self.load_lora_into_transformer(
                 state_dict,
-                transformer=getattr(self, self.transformer_name)
-                if not hasattr(self, "transformer")
-                else self.transformer,
+                transformer=transformer,
                 adapter_name=adapter_name,
                 metadata=metadata,
                 _pipeline=self,
@@ -4481,10 +4593,12 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         kwargs["return_lora_metadata"] = True
         state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         # convert T2V LoRA to I2V LoRA (when loaded to Wan I2V) by adding zeros for the additional (missing) _img layers
-        state_dict = self._maybe_expand_t2v_lora_for_i2v(
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            state_dict=state_dict,
-        )
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is not None:
+            state_dict = self._maybe_expand_t2v_lora_for_i2v(
+                transformer=transformer,
+                state_dict=state_dict,
+            )
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
@@ -4506,12 +4620,16 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 hotswap=hotswap,
             )
+        elif transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
         else:
             self.load_lora_into_transformer(
                 state_dict,
-                transformer=getattr(self, self.transformer_name)
-                if not hasattr(self, "transformer")
-                else self.transformer,
+                transformer=transformer,
                 adapter_name=adapter_name,
                 metadata=metadata,
                 _pipeline=self,
@@ -4698,9 +4816,18 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -4890,9 +5017,18 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -5085,9 +5221,18 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -5279,9 +5424,18 @@ class Krea2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -5474,9 +5628,18 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -5668,15 +5831,25 @@ class AnimaLoraLoaderMixin(LoraBaseMixin):
         }
 
         if transformer_state_dict:
-            self.load_lora_into_transformer(
-                transformer_state_dict,
-                transformer=self.transformer,
-                adapter_name=adapter_name,
-                metadata=metadata,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-                hotswap=hotswap,
+            transformer = (
+                self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
             )
+            if transformer is None:
+                logger.warning(
+                    f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                    "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                    "(for example, a text-encoder-only sub-pipeline)."
+                )
+            else:
+                self.load_lora_into_transformer(
+                    transformer_state_dict,
+                    transformer=transformer,
+                    adapter_name=adapter_name,
+                    metadata=metadata,
+                    _pipeline=self,
+                    low_cpu_mem_usage=low_cpu_mem_usage,
+                    hotswap=hotswap,
+                )
 
         if text_conditioner_state_dict:
             self.load_lora_into_text_conditioner(
@@ -5863,9 +6036,18 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -6059,9 +6241,18 @@ class Ideogram4LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -6259,9 +6450,18 @@ class ErnieImageLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -6449,9 +6649,18 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
