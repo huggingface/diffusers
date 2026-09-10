@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 from contextlib import nullcontext
 
 import torch
@@ -27,20 +26,6 @@ from .pipeline_output import LTX2VideoDecodeOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def _tile_intervals(length: int, tile_size: int, stride: int, min_size: int) -> list[tuple[int, int]]:
-    """Overlapping `[start, end)` tiles covering `[0, length)`, with starts spaced `stride` apart.
-
-    A trailing remnant shorter than `min_size` is merged into the previous tile instead of decoded on its own:
-    neighborhood attention rejects any grid smaller than its kernel, so a remnant tile cannot always stand alone.
-    """
-    if length <= tile_size:
-        return [(0, length)]
-    starts = list(range(0, length, stride))
-    while len(starts) > 1 and length - starts[-1] < min_size:
-        starts.pop()
-    return [(start, min(start + tile_size, length)) for start in starts[:-1]] + [(starts[-1], length)]
 
 
 def _blend_v(a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
@@ -105,24 +90,6 @@ def _decoder_sigmas(decoder: LTX2VideoDiffusionDecoderModel, num_inference_steps
     return torch.linspace(1.0, 1.0 / num_inference_steps, num_inference_steps, dtype=torch.float32).tolist()
 
 
-def _tile_geometry(config) -> tuple[tuple[int, int, int], list[int]]:
-    """Pixels per cell of the tiling grid, and the smallest tile each remaining kernel will accept."""
-    patch_size = config.patch_size
-    # One cell of the grid entering the last deterministic stage covers this many output pixels: that stage's
-    # upsample stride times the diffusion stage's patch size.
-    upsample_stride = config.decoder_upsample_strides[-1]
-    scales = (upsample_stride[0], upsample_stride[1] * patch_size, upsample_stride[2] * patch_size)
-    # Every tile must satisfy both remaining neighborhood-attention kernels: the last deterministic stage sees the
-    # tile as-is, the diffusion stage sees it scaled by the upsample stride.
-    min_sizes = [
-        max(kernel_4, -(-kernel_5 // stride))
-        for kernel_4, kernel_5, stride in zip(
-            config.decoder_stage_kernels[-1], config.decoder_stage5_kernel, upsample_stride
-        )
-    ]
-    return scales, min_sizes
-
-
 def _denoise(
     decoder: LTX2VideoDiffusionDecoderModel,
     scheduler: FlowMatchEulerDiscreteScheduler,
@@ -173,61 +140,45 @@ def _tiled_decode(
     sigmas: list[float],
     progress_bar=None,
 ) -> torch.Tensor:
-    """Decode with the last deterministic stage and the diffusion stage running per tile. See [`tiled_decode`]."""
+    """Decode with the last deterministic stage and the diffusion stage running per tile. See [`tiled_decode`].
+
+    The cut itself comes from [`LTX2VideoDiffusionDecoderModel.get_tile_schedule`] — it is a fact about the decoder's
+    grid, not about sampling. What is here is the part that has to be: each tile runs its own denoising loop, so the
+    loop over tiles necessarily wraps the loop over steps.
+    """
     config = decoder.config
     batch_size = z.shape[0]
     patch_size = config.patch_size
-    (scale_t, scale_h, scale_w), min_sizes = _tile_geometry(config)
 
     features = decoder.encode_context_stages_1_to_3(z)
-    # The trailing ghost frames replicate through the earlier stages' temporal upsamples, whose composed mapping
-    # is affine with slope equal to the product of their strides.
-    trailing_pad_latent_frames = (config.decoder_stage_kernels[0][0] // 2) * 2
-    ghost_frames = trailing_pad_latent_frames * math.prod(stride[0] for stride in config.decoder_upsample_strides[:-1])
-    num_frames = features.shape[1] - ghost_frames
-    height, width = features.shape[2], features.shape[3]
-
-    tile_t = decoder.tile_sample_min_num_frames // scale_t
-    stride_t = decoder.tile_sample_stride_num_frames // scale_t
-    tile_h, stride_h = decoder.tile_sample_min_height // scale_h, decoder.tile_sample_stride_height // scale_h
-    tile_w, stride_w = decoder.tile_sample_min_width // scale_w, decoder.tile_sample_stride_width // scale_w
-
-    temporal_tiles = _tile_intervals(num_frames, tile_t, stride_t, min_sizes[0])
-    height_tiles = _tile_intervals(height, tile_h, stride_h, min_sizes[1])
-    width_tiles = _tile_intervals(width, tile_w, stride_w, min_sizes[2])
-    blend_frames = (tile_t - stride_t) * scale_t
-    blend_height = (tile_h - stride_h) * scale_h
-    blend_width = (tile_w - stride_w) * scale_w
+    schedule = decoder.get_tile_schedule(features.shape[1:4])
+    scale_t, scale_h, scale_w = schedule.scales
+    stride_t, stride_h, stride_w = schedule.cell_strides
+    blend_frames, blend_height, blend_width = schedule.blend
 
     # A single-step x0 decode predicts pixels from pure noise, so each tile draws its own; a multi-step decode
     # integrates its noise across steps, so overlapping tiles must start from the same canvas.
     single_step_x0 = len(sigmas) == 1 and config.decoder_model_output_type == "x0"
     x_t_full = None
     if not single_step_x0:
-        pixel_frames = num_frames * scale_t - (1 if scale_t == 2 else 0)
         x_t_full = randn_tensor(
-            (batch_size, config.out_channels, pixel_frames, height * scale_h, width * scale_w),
+            (batch_size, config.out_channels, *schedule.pixel_shape),
             generator=generator,
             device=z.device,
             dtype=z.dtype,
         )
 
-    num_tiles = len(temporal_tiles) * len(height_tiles) * len(width_tiles)
     frame_groups = []
-    with _progress_bar(progress_bar, num_tiles * len(sigmas)) as bar:
-        for t0, t1 in temporal_tiles:
-            is_origin = t0 == 0
-            is_trailing = t1 == num_frames
-            # The tile containing the video end takes the ghost frames with it into the last stage.
-            feature_t1 = features.shape[1] if is_trailing else t1
+    with _progress_bar(progress_bar, schedule.num_tiles * len(sigmas)) as bar:
+        for t0, t1 in schedule.temporal:
             rows = []
-            for h0, h1 in height_tiles:
+            for h0, h1 in schedule.height:
                 row = []
-                for w0, w1 in width_tiles:
+                for w0, w1 in schedule.width:
                     context = decoder.encode_context_stage_4(
-                        features[:, t0:feature_t1, h0:h1, w0:w1],
-                        drop_leading_frame=is_origin,
-                        crop_trailing_ghost=is_trailing,
+                        features[:, t0 : schedule.feature_end(t1), h0:h1, w0:w1],
+                        drop_leading_frame=t0 == 0,
+                        crop_trailing_ghost=t1 == schedule.num_frames,
                     )
                     tile_pixel_shape = (
                         batch_size,
@@ -239,9 +190,7 @@ def _tiled_decode(
                     if single_step_x0:
                         x_t = randn_tensor(tile_pixel_shape, generator=generator, device=z.device, dtype=z.dtype)
                     else:
-                        # A non-origin tile keeps the duplicate leading frame, placing its first cell one pixel
-                        # frame earlier than `t0 * scale_t` — the causal 1-then-`scale_t` frame mapping.
-                        pixel_t0 = t0 * scale_t - (1 if not is_origin and scale_t == 2 else 0)
+                        pixel_t0 = schedule.pixel_origin(t0)
                         x_t = x_t_full[
                             :,
                             :,
@@ -275,10 +224,7 @@ def _tiled_decode(
         if k > 0:
             group = _blend_t(frame_groups[k - 1], group, blend_frames)
         if k < len(frame_groups) - 1:
-            # The origin group is one frame short of `stride * scale`: its first cell decodes to a single pixel
-            # frame under the causal mapping.
-            keep_frames = stride_t * scale_t - (1 if k == 0 and scale_t == 2 else 0)
-            group = group[:, :, :keep_frames]
+            group = group[:, :, : schedule.pixel_frames(stride_t, is_origin=k == 0)]
         result.append(group)
     return torch.cat(result, dim=2)
 

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
+from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
@@ -654,6 +655,84 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         return _unpatchify(hidden_states, self.patch_size)
 
 
+def _tile_intervals(length: int, tile_size: int, stride: int, min_size: int) -> list[tuple[int, int]]:
+    """Overlapping `[start, end)` tiles covering `[0, length)`, with starts spaced `stride` apart.
+
+    A trailing remnant shorter than `min_size` is merged into the previous tile instead of decoded on its own:
+    neighborhood attention rejects any grid smaller than its kernel, so a remnant tile cannot always stand alone.
+    """
+    if length <= tile_size:
+        return [(0, length)]
+    starts = list(range(0, length, stride))
+    while len(starts) > 1 and length - starts[-1] < min_size:
+        starts.pop()
+    return [(start, min(start + tile_size, length)) for start in starts[:-1]] + [(starts[-1], length)]
+
+
+@dataclass(frozen=True)
+class LTX2VideoDiffusionDecoderTileSchedule:
+    """Where a tiled decode cuts, and where each tile's pixels land.
+
+    Tiles are expressed in cells of the grid entering the last deterministic stage — the only place the decoder can be
+    split, since everything before it is one attention neighbourhood over the whole volume. This holds the arithmetic
+    that mapping implies (cell-to-pixel scales, the causal frame offsets, the ghost frames NATTEN's border shift leaves
+    behind) so that the pipeline driving the tiles can stay a plain loop.
+    """
+
+    temporal: list[tuple[int, int]]
+    height: list[tuple[int, int]]
+    width: list[tuple[int, int]]
+    scales: tuple[int, int, int]
+    """Output pixels per cell, as (frames, height, width)."""
+    cell_strides: tuple[int, int, int]
+    """Distance between consecutive tile starts, in cells."""
+    blend: tuple[int, int, int]
+    """Overlap to blend across a seam, in pixels."""
+    num_frames: int
+    """Temporal cells of real video, i.e. excluding the trailing ghost frames."""
+    total_frames: int
+    """Temporal cells including the ghost frames."""
+
+    @property
+    def num_tiles(self) -> int:
+        return len(self.temporal) * len(self.height) * len(self.width)
+
+    @property
+    def pixel_shape(self) -> tuple[int, int, int]:
+        """The full decoded canvas, in pixels."""
+        scale_t, scale_h, scale_w = self.scales
+        return (
+            self.pixel_frames(self.num_frames, is_origin=True),
+            self.height[-1][1] * scale_h,
+            self.width[-1][1] * scale_w,
+        )
+
+    def pixel_frames(self, num_cells: int, is_origin: bool) -> int:
+        """Pixel frames `num_cells` cells decode to.
+
+        The causal mapping spends the first cell on a single frame rather than `scale_t` of them, so a run that starts
+        at t=0 is one frame shorter than the cell count suggests.
+        """
+        scale_t = self.scales[0]
+        return num_cells * scale_t - (1 if is_origin and scale_t == 2 else 0)
+
+    def pixel_origin(self, t0: int) -> int:
+        """Where the tile starting at cell `t0` begins on the pixel canvas: exactly where the cells before it end.
+
+        Which is one pixel frame earlier than `t0 * scale_t`, because the run those cells form starts at the origin and
+        so spends its first cell on a single frame. The origin tile itself starts at 0.
+        """
+        return self.pixel_frames(t0, is_origin=True) if t0 else 0
+
+    def feature_end(self, t1: int) -> int:
+        """Where to stop slicing the feature volume for a tile ending at cell `t1`.
+
+        Only the tile holding the end of the video carries the ghost frames into the last stage, since that is the only
+        place their border shift can still affect real output.
+        """
+        return self.total_frames if t1 == self.num_frames else t1
+
+
 class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
     r"""
     The LTX-2 diffusion video decoder, introduced in LTX-2.5.
@@ -784,6 +863,57 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
     def disable_tiling(self) -> None:
         r"""Disable tiled decoding, returning to decoding the whole video in one pass."""
         self.use_tiling = False
+
+    def get_tile_schedule(
+        self, feature_shape: torch.Size | tuple[int, int, int]
+    ) -> "LTX2VideoDiffusionDecoderTileSchedule":
+        """Plan a tiled decode over `feature_shape`, the `(T, H, W)` of an [`encode_context_stages_1_to_3`] output.
+
+        The cut is derived here, next to the stages whose geometry decides it, rather than in the pipeline that walks
+        it: how many pixels a cell covers, how small a tile the remaining attention kernels tolerate, and how many
+        ghost frames the border shift left on the end. The `tile_sample_*` sizes are in output pixels/frames and are
+        converted to cells, so they should be multiples of the cell size — 8 px and 2 frames for the production config.
+        """
+        config = self.config
+        patch_size = config.patch_size
+        # One cell of this grid covers the last upsample's stride times the diffusion stage's patch size.
+        upsample_stride = config.decoder_upsample_strides[-1]
+        scales = (upsample_stride[0], upsample_stride[1] * patch_size, upsample_stride[2] * patch_size)
+        # Every tile must satisfy both remaining neighborhood-attention kernels: the last deterministic stage sees
+        # the tile as-is, the diffusion stage sees it scaled by the upsample stride.
+        min_sizes = [
+            max(kernel_4, -(-kernel_5 // stride))
+            for kernel_4, kernel_5, stride in zip(
+                config.decoder_stage_kernels[-1], config.decoder_stage5_kernel, upsample_stride
+            )
+        ]
+        # The trailing ghost frames replicate through the earlier stages' temporal upsamples, whose composed
+        # mapping is affine with slope equal to the product of their strides.
+        ghost_frames = self.decoder.trailing_pad_latent_frames * math.prod(
+            stride[0] for stride in config.decoder_upsample_strides[:-1]
+        )
+
+        total_frames, height, width = feature_shape[0], feature_shape[1], feature_shape[2]
+        num_frames = total_frames - ghost_frames
+        tiles = (self.tile_sample_min_num_frames, self.tile_sample_min_height, self.tile_sample_min_width)
+        strides = (
+            self.tile_sample_stride_num_frames,
+            self.tile_sample_stride_height,
+            self.tile_sample_stride_width,
+        )
+        cell_tiles = tuple(tile // scale for tile, scale in zip(tiles, scales))
+        cell_strides = tuple(stride // scale for stride, scale in zip(strides, scales))
+
+        return LTX2VideoDiffusionDecoderTileSchedule(
+            temporal=_tile_intervals(num_frames, cell_tiles[0], cell_strides[0], min_sizes[0]),
+            height=_tile_intervals(height, cell_tiles[1], cell_strides[1], min_sizes[1]),
+            width=_tile_intervals(width, cell_tiles[2], cell_strides[2], min_sizes[2]),
+            scales=scales,
+            cell_strides=cell_strides,
+            blend=tuple((tile - stride) * scale for tile, stride, scale in zip(cell_tiles, cell_strides, scales)),
+            num_frames=num_frames,
+            total_frames=total_frames,
+        )
 
     # `@apply_forward_hook` on both context stages: accelerate's offload hooks fire on `forward`, and the
     # decode pipeline calls these before it ever calls one, so without it a CPU-offloaded model stays on the

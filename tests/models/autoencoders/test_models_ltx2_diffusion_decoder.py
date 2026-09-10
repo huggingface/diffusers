@@ -139,6 +139,86 @@ class TestLTX2VideoDiffusionDecoderModelSwiGLUTiling(LTX2VideoDiffusionDecoderMo
         )
 
 
+class TestLTX2VideoDiffusionDecoderModelTileSchedule(LTX2VideoDiffusionDecoderModelTesterConfig):
+    """Where a tiled decode cuts, independently of anything decoding it.
+
+    The pipeline walks this schedule; the arithmetic in it is the decoder's own -- cell-to-pixel scales, the
+    causal frame mapping, the ghost frames NATTEN's border shift leaves on the end. Pinning it here rather than
+    only through a decode means a mistake reads as a wrong number instead of a wrong picture.
+    """
+
+    TILES = {
+        "tile_sample_min_num_frames": 8,
+        "tile_sample_stride_num_frames": 6,
+        "tile_sample_min_height": 32,
+        "tile_sample_stride_height": 24,
+        "tile_sample_min_width": 32,
+        "tile_sample_stride_width": 24,
+    }
+
+    def get_schedule(self, feature_shape=(11, 16, 20), **tiles):
+        model = self.model_class(**self.get_init_dict())
+        model.enable_tiling(**{**self.TILES, **tiles})
+        return model.get_tile_schedule(feature_shape)
+
+    def test_cells_map_to_pixels_by_the_last_upsample_and_the_patch_size(self):
+        """A cell is the last upsample's stride times the diffusion stage's patch size: (2, 2, 2) x 2 here."""
+        schedule = self.get_schedule()
+        assert schedule.scales == (2, 4, 4)
+        # 8 frames / 32 px tiles over those scales, with 6 / 24 strides, so the overlap is 1 cell each way.
+        assert schedule.cell_strides == (3, 6, 6)
+        assert schedule.blend == (2, 8, 8)
+
+    def test_ghost_frames_are_excluded_from_the_cut_but_kept_for_the_last_tile(self):
+        """The border-shift padding is real signal for the final tile's attention and nothing else.
+
+        With a kernel of 3 the decoder pads 2 latent frames, and the earlier temporal upsamples (strides 1, 2, 2)
+        carry them to 8 cells -- so an 11-cell feature volume holds 3 cells of video.
+        """
+        schedule = self.get_schedule(feature_shape=(11, 16, 20))
+        assert (schedule.total_frames, schedule.num_frames) == (11, 3)
+        # Only the tile ending at the last real cell reaches past it, and it reaches all the way.
+        assert schedule.feature_end(schedule.num_frames) == 11
+        assert schedule.feature_end(2) == 2
+
+    def test_the_causal_frame_mapping_places_tiles_without_gaps_or_overlap(self):
+        """The origin cell decodes to one frame, every later cell to `scale_t`, so tile starts are offset by one.
+
+        This is the arithmetic a tiled decode is most easily wrong about: an off-by-one here still produces a
+        full-sized video, just one sampled from the wrong slice of the noise canvas.
+        """
+        schedule = self.get_schedule(feature_shape=(20, 16, 20), tile_sample_min_num_frames=8)
+        assert len(schedule.temporal) > 1, "need a real temporal split for this to mean anything"
+        scale_t = schedule.scales[0]
+
+        assert schedule.pixel_origin(0) == 0
+        for t0, _ in schedule.temporal[1:]:
+            # A non-origin tile keeps the upsample's duplicate leading frame, so it starts one frame early.
+            assert schedule.pixel_origin(t0) == t0 * scale_t - 1
+        # Each group contributes exactly the frames the next one starts after.
+        for index, (t0, _) in enumerate(schedule.temporal[:-1]):
+            kept = schedule.pixel_frames(schedule.cell_strides[0], is_origin=index == 0)
+            assert schedule.pixel_origin(t0) + kept == schedule.pixel_origin(schedule.temporal[index + 1][0])
+
+    def test_a_short_trailing_remnant_is_merged_into_its_neighbour(self):
+        """Neighborhood attention rejects a grid smaller than its kernel, so a stub tile cannot stand alone."""
+        # A stride of 6 cells over 20 would start a final tile at 18, leaving 2 cells -- under the kernel of 3.
+        schedule = self.get_schedule(feature_shape=(28, 16, 20), tile_sample_min_num_frames=8)
+        assert all(end - start >= 3 for start, end in schedule.temporal), schedule.temporal
+        assert schedule.temporal[-1][1] == schedule.num_frames, "the tiles must still cover the whole video"
+
+    def test_tiles_cover_every_axis_end_to_end(self):
+        schedule = self.get_schedule(feature_shape=(20, 30, 40))
+        for axis, tiles, length in (
+            ("t", schedule.temporal, schedule.num_frames),
+            ("h", schedule.height, 30),
+            ("w", schedule.width, 40),
+        ):
+            assert tiles[0][0] == 0 and tiles[-1][1] == length, (axis, tiles)
+            for (_, prev_end), (next_start, _) in zip(tiles, tiles[1:]):
+                assert next_start < prev_end, f"{axis} tiles leave a gap: {tiles}"
+
+
 class TestLTX2VideoDiffusionDecoderModelMemory(LTX2VideoDiffusionDecoderModelTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for LTX2VideoDiffusionDecoderModel."""
 

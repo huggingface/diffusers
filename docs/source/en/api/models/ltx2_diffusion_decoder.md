@@ -86,9 +86,9 @@ accepts the `BlockMask`. Use the NATTEN processor above instead.
 ## Tiling
 
 `decoder.enable_tiling()` decodes in overlapping tiles that are blended back together, bounding peak memory by the
-tile size instead of the video size. It sets the tile sizes; the tiling itself is performed by
-[`LTX2VideoDiffusionDecodePipeline`], because tiles are cut in the *middle* of the decoder and each one runs its own
-denoising loop. The cheap early upsampling stages still see the full latent — only the last upsampling stage and the
+tile size instead of the video size. It sets the tile sizes, and `get_tile_schedule` works out where the cuts fall;
+walking that schedule is [`LTX2VideoDiffusionDecodePipeline`]'s job, because tiles are cut in the *middle* of the
+decoder and each one runs its own denoising loop. The cheap early upsampling stages still see the full latent — only the last upsampling stage and the
 diffusion stage, which dominate decode memory, run per tile — so tiling changes the output only near tile borders. Because the diffusion stage denoises each tile separately, a tiled decode does not
 reproduce the untiled result exactly; the default tile and overlap sizes match the reference implementation's.
 Neighborhood attention rejects any grid smaller than its kernel, so a trailing remnant tile is merged into its
@@ -100,4 +100,5 @@ neighbor rather than decoded on its own.
     - forward
     - enable_tiling
     - disable_tiling
+    - get_tile_schedule
     - all
