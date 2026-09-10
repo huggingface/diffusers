@@ -21,6 +21,7 @@ from diffusers import (
     LTX2VideoDiffusionDecodePipeline,
     LTX2VideoDiffusionDecoderModel,
 )
+from diffusers.pipelines.ltx2 import pipeline_ltx2_diffusion_decode as decode_module
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, require_accelerator, torch_device
@@ -84,6 +85,26 @@ def _latents():
     return torch.randn(1, 8, 2, 3, 3, generator=torch.Generator().manual_seed(1)).to(torch_device)
 
 
+def _sigmas(pipe, num_inference_steps=None):
+    return decode_module._decoder_sigmas(pipe.diffusion_decoder, num_inference_steps)
+
+
+def _decode(pipe, latents, num_inference_steps=None, tiled=False, generator=None):
+    """Decode denormalized latents down one path, without the pre/post-processing `__call__` puts around it.
+
+    The path is named rather than routed: which one `__call__` picks is what
+    `test_decode_skips_tiling_for_a_video_that_fits_in_one_tile` is for, and reproducing the gate here would make
+    that test circular.
+    """
+    decoder, sigmas = pipe.diffusion_decoder, _sigmas(pipe, num_inference_steps)
+    decode = decode_module._tiled_decode if tiled else decode_module._untiled_decode
+    # Re-seed per call: the decoder samples the noise it denoises, so outputs are only comparable across calls
+    # that drew from the same generator state.
+    generator = generator if generator is not None else torch.Generator("cpu").manual_seed(0)
+    with torch.no_grad():
+        return decode(decoder, pipe.scheduler, latents, generator, sigmas, pipe.progress_bar)
+
+
 def test_decode_without_vae():
     """`vae` is optional: the pipeline must fall back to the decoder's own latent statistics."""
     pipe = _build(with_vae=False)
@@ -132,10 +153,10 @@ def test_sigma_schedule_is_uniform():
     and the same shape -- so the schedule itself is what has to be pinned.
     """
     pipe = _build()
-    assert pipe.get_sigmas(1) == [1.0]
-    assert pipe.get_sigmas(4) == [1.0, 0.75, 0.5, 0.25]
+    assert _sigmas(pipe, 1) == [1.0]
+    assert _sigmas(pipe, 4) == [1.0, 0.75, 0.5, 0.25]
     # The default comes from the checkpoint, i.e. what the decoder was distilled for.
-    assert len(pipe.get_sigmas()) == pipe.diffusion_decoder.config.decoder_num_inference_steps
+    assert len(_sigmas(pipe)) == pipe.diffusion_decoder.config.decoder_num_inference_steps
 
 
 def test_num_inference_steps_and_sigmas_are_exclusive():
@@ -181,13 +202,6 @@ class TestTiling:
     def latent(self):
         return torch.randn(1, 8, 3, 4, 5, generator=torch.Generator().manual_seed(2)).to(torch_device)
 
-    def decode(self, pipe, latent, num_inference_steps=None):
-        # Re-seed per call: the decoder samples the noise it denoises, so outputs are only comparable across
-        # calls that drew from the same generator state.
-        generator = torch.Generator("cpu").manual_seed(0)
-        with torch.no_grad():
-            return pipe.decode(latent, generator=generator, sigmas=pipe.get_sigmas(num_inference_steps))
-
     def test_tiles_covering_the_video_match_untiled_exactly(self):
         """A tile schedule with a single covering tile must reproduce the untiled decode bit for bit.
 
@@ -198,10 +212,8 @@ class TestTiling:
         pipe, latent = _build(), self.latent()
 
         for num_inference_steps in (None, 3):  # None: the single-step x0 shortcut; 3: the Euler loop
-            untiled = self.decode(pipe, latent, num_inference_steps)
-            generator = torch.Generator("cpu").manual_seed(0)
-            with torch.no_grad():
-                tiled = pipe.tiled_decode(latent, generator=generator, sigmas=pipe.get_sigmas(num_inference_steps))
+            untiled = _decode(pipe, latent, num_inference_steps)
+            tiled = _decode(pipe, latent, num_inference_steps, tiled=True)
             assert torch.equal(tiled, untiled), (
                 f"single-tile tiled decode diverged from untiled by {(tiled - untiled).abs().max().item():.3e} "
                 f"with num_inference_steps={num_inference_steps}"
@@ -215,16 +227,13 @@ class TestTiling:
         canvas that overlapping tiles slice from.
         """
         pipe, latent = _build(), self.latent()
-        untiled = self.decode(pipe, latent)
+        untiled = _decode(pipe, latent)
 
         pipe.diffusion_decoder.enable_tiling(**self.SPLIT_TILES)
         for num_inference_steps in (None, 3):
-            tiled = self.decode(pipe, latent, num_inference_steps)
+            tiled = _decode(pipe, latent, num_inference_steps, tiled=True)
             assert tiled.shape == untiled.shape
             assert torch.isfinite(tiled).all()
-
-        pipe.diffusion_decoder.disable_tiling()
-        assert torch.equal(self.decode(pipe, latent), untiled)
 
     def test_tiled_decode_tiles_even_when_tiling_is_disabled(self):
         """`tiled_decode` tiles on its own terms; `use_tiling` only gates whether `decode` routes to it.
@@ -250,13 +259,11 @@ class TestTiling:
 
         decoder.encode_context_stage_4 = counting_stage_4
         try:
-            generator = torch.Generator("cpu").manual_seed(0)
-            with torch.no_grad():
-                pipe.tiled_decode(latent, generator=generator)
+            _decode(pipe, latent, tiled=True)
             tiled_call_count = len(stage_4_calls)
 
             stage_4_calls.clear()
-            self.decode(pipe, latent)
+            _decode(pipe, latent)
             untiled_call_count = len(stage_4_calls)
         finally:
             del decoder.encode_context_stage_4
@@ -269,43 +276,47 @@ class TestTiling:
             f"decode ran the last stage {untiled_call_count} times with use_tiling=False; it must not tile"
         )
 
-    def test_decode_skips_tiling_for_a_video_that_fits_in_one_tile(self):
-        """`decode` sizes the latent up before routing, so tiling only engages when it would split.
+    def test_call_skips_tiling_for_a_video_that_fits_in_one_tile(self, monkeypatch):
+        """`__call__` sizes the latent up before routing, so tiling only engages when it would split.
 
-        The two outcomes are indistinguishable from the output alone: a video below the tile size that reaches
-        `tiled_decode` anyway gets a single-tile schedule, which decodes to the same pixels. So this asserts the
-        routing directly -- `tiled_decode` is never reached -- and separately pins the contract that matters to
-        callers, that turning tiling on cannot change a small video's output.
+        The two outcomes are indistinguishable from the output alone: a video below the tile size that reaches the
+        tiled path anyway gets a single-tile schedule, which decodes to the same pixels. So this asserts the routing
+        directly -- the tiled path is never entered -- and separately pins the contract that matters to callers,
+        that turning tiling on cannot change a small video's output.
         """
         pipe, latent = _build(), self.latent()
         decoder = pipe.diffusion_decoder
-        untiled = self.decode(pipe, latent)
+
+        def run():
+            return pipe(
+                latent, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt", denormalize=False
+            ).frames
+
+        decoder.disable_tiling()
+        untiled = run()
 
         calls = []
-        original_tiled_decode = pipe.tiled_decode
+        original = decode_module._tiled_decode
 
         def counting_tiled_decode(*args, **kwargs):
             calls.append(1)
-            return original_tiled_decode(*args, **kwargs)
+            return original(*args, **kwargs)
 
-        pipe.tiled_decode = counting_tiled_decode
-        try:
-            # Default tile sizes are far larger than this 17x64x80 video, so the gate declines to tile.
-            decoder.enable_tiling()
-            fits_in_one_tile = self.decode(pipe, latent)
-            assert not calls, "decode routed to tiled_decode for a video that fits in a single tile"
-            assert torch.equal(fits_in_one_tile, untiled), (
-                "enabling tiling changed the output of a video below the tile size by "
-                f"{(fits_in_one_tile - untiled).abs().max().item():.3e}"
-            )
+        monkeypatch.setattr(decode_module, "_tiled_decode", counting_tiled_decode)
 
-            # Shrink the tiles below the video and the same latent must now route.
-            decoder.enable_tiling(**self.SPLIT_TILES)
-            self.decode(pipe, latent)
-            assert calls, "decode did not route to tiled_decode for a video larger than the tile size"
-        finally:
-            del pipe.tiled_decode
-            decoder.disable_tiling()
+        # Default tile sizes are far larger than this 17x64x80 video, so the gate declines to tile.
+        decoder.enable_tiling()
+        fits_in_one_tile = run()
+        assert not calls, "__call__ routed to the tiled path for a video that fits in a single tile"
+        assert torch.equal(fits_in_one_tile, untiled), (
+            "enabling tiling changed the output of a video below the tile size by "
+            f"{(fits_in_one_tile - untiled).abs().max().item():.3e}"
+        )
+
+        # Shrink the tiles below the video and the same latent must now route.
+        decoder.enable_tiling(**self.SPLIT_TILES)
+        run()
+        assert calls, "__call__ did not route to the tiled path for a video larger than the tile size"
 
 
 @require_accelerator
@@ -339,7 +350,7 @@ def test_scheduler_step_matches_the_closed_form_euler_update(model_output_type):
     steps = 3
     pipe = _build(decoder_model_output_type=model_output_type, decoder_num_inference_steps=steps)
     decoder, latents = pipe.diffusion_decoder, _latents()
-    sigmas = pipe.get_sigmas()
+    sigmas = _sigmas(pipe)
     assert len(sigmas) == steps
 
     with torch.no_grad():
@@ -378,7 +389,7 @@ def test_scheduler_step_matches_the_closed_form_euler_update(model_output_type):
         else:
             expected = x_t
 
-        actual = pipe.decode(latents, generator=torch.Generator(torch_device).manual_seed(0), sigmas=sigmas)
+        actual = _decode(pipe, latents, steps, generator=torch.Generator(torch_device).manual_seed(0))
 
     assert torch.equal(actual, expected), (
         f"scheduler-driven decode diverged from the closed-form Euler update by "
@@ -397,7 +408,7 @@ def test_a_reshaped_sigma_schedule_is_honoured():
     shipped = pipe(latents, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt").frames
 
     pipe.scheduler = FlowMatchEulerDiscreteScheduler(**{**_scheduler().config, "shift": 5.0})
-    sigmas = pipe.get_sigmas(3)
+    sigmas = _sigmas(pipe, 3)
     shifted = pipe(
         latents, sigmas=sigmas, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt"
     ).frames

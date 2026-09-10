@@ -140,11 +140,12 @@ def _tiled_decode(
     sigmas: list[float],
     progress_bar=None,
 ) -> torch.Tensor:
-    """Decode with the last deterministic stage and the diffusion stage running per tile. See [`tiled_decode`].
+    """Decode with the last deterministic stage and the diffusion stage running per tile.
 
-    The cut itself comes from [`LTX2VideoDiffusionDecoderModel.get_tile_schedule`] — it is a fact about the decoder's
-    grid, not about sampling. What is here is the part that has to be: each tile runs its own denoising loop, so the
-    loop over tiles necessarily wraps the loop over steps.
+    This tiles unconditionally; [`LTX2VideoDiffusionDecodePipeline.__call__`] is what consults `use_tiling` and the
+    video size before routing here. The cut itself comes from [`LTX2VideoDiffusionDecoderModel.get_tile_schedule`] — it
+    is a fact about the decoder's grid, not about sampling. What is here is the part that has to be: each tile runs its
+    own denoising loop, so the loop over tiles necessarily wraps the loop over steps.
     """
     config = decoder.config
     batch_size = z.shape[0]
@@ -325,38 +326,6 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
         latents = latents * latents_std / scaling_factor + latents_mean
         return latents
 
-    def get_sigmas(self, num_inference_steps: int | None = None) -> list[float]:
-        """The decoder's sigma schedule, `linspace(1, 1 / num_inference_steps, num_inference_steps)`."""
-        return _decoder_sigmas(self.diffusion_decoder, num_inference_steps)
-
-    def tiled_decode(
-        self, z: torch.Tensor, generator: torch.Generator | None = None, sigmas: list[float] | None = None
-    ) -> torch.Tensor:
-        r"""Decode a batch of latents with the last deterministic stage and the diffusion stage running per tile.
-
-        Tiles live on the grid entering the last deterministic stage, where one cell maps to a fixed block of output
-        pixels; the decoder's `tile_sample_*` sizes are converted to that grid, so they should be multiples of the cell
-        size (8 px spatially and 2 frames temporally for the production config). Temporal tiles follow the causal frame
-        mapping: the tile containing t=0 drops the temporal upsample's duplicate leading frame and only the tile
-        containing the video end carries the NATTEN border padding.
-
-        This tiles whatever `diffusion_decoder.use_tiling` says — [`decode`] is the entry point that honors it.
-        """
-        sigmas = sigmas if sigmas is not None else self.get_sigmas()
-        return _tiled_decode(self.diffusion_decoder, self.scheduler, z, generator, sigmas, self.progress_bar)
-
-    def decode(
-        self, z: torch.Tensor, generator: torch.Generator | None = None, sigmas: list[float] | None = None
-    ) -> torch.Tensor:
-        """Decode a batch of latents, routing to [`tiled_decode`] when tiling is on and the video needs it.
-
-        `z` is expected to be denormalized already, matching [`AutoencoderKLLTX2Video`].
-        """
-        sigmas = sigmas if sigmas is not None else self.get_sigmas()
-        if _should_tile(self.diffusion_decoder, z):
-            return self.tiled_decode(z, generator=generator, sigmas=sigmas)
-        return _untiled_decode(self.diffusion_decoder, self.scheduler, z, generator, sigmas, self.progress_bar)
-
     @torch.no_grad()
     def __call__(
         self,
@@ -404,8 +373,13 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
             latents = self._denormalize_latents(latents, latents_mean, latents_std, scaling_factor)
 
         latents = latents.to(self.diffusion_decoder.dtype)
-        sigmas = sigmas if sigmas is not None else self.get_sigmas(num_inference_steps)
-        video = self.decode(latents, generator=generator, sigmas=sigmas)
+        if sigmas is None:
+            sigmas = _decoder_sigmas(self.diffusion_decoder, num_inference_steps)
+
+        decoder, scheduler = self.diffusion_decoder, self.scheduler
+        # Tiling is worth its seams only once the video actually exceeds one tile.
+        decode = _tiled_decode if _should_tile(decoder, latents) else _untiled_decode
+        video = decode(decoder, scheduler, latents, generator, sigmas, self.progress_bar)
         video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         self.maybe_free_model_hooks()

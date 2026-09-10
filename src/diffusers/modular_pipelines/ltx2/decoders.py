@@ -210,11 +210,12 @@ def _tiled_decode(
     sigmas: list[float],
     progress_bar=None,
 ) -> torch.Tensor:
-    """Decode with the last deterministic stage and the diffusion stage running per tile. See [`tiled_decode`].
+    """Decode with the last deterministic stage and the diffusion stage running per tile.
 
-    The cut itself comes from [`LTX2VideoDiffusionDecoderModel.get_tile_schedule`] — it is a fact about the decoder's
-    grid, not about sampling. What is here is the part that has to be: each tile runs its own denoising loop, so the
-    loop over tiles necessarily wraps the loop over steps.
+    This tiles unconditionally; [`LTX2VideoDiffusionDecodePipeline.__call__`] is what consults `use_tiling` and the
+    video size before routing here. The cut itself comes from [`LTX2VideoDiffusionDecoderModel.get_tile_schedule`] — it
+    is a fact about the decoder's grid, not about sampling. What is here is the part that has to be: each tile runs its
+    own denoising loop, so the loop over tiles necessarily wraps the loop over steps.
     """
     config = decoder.config
     batch_size = z.shape[0]
