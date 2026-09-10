@@ -15,8 +15,8 @@
 
 """Shared `pytest`-side launcher for the per-backend TP-correctness `torchrun` workers.
 
-Used by `TestFlux2TransformerTensorParallelTPU`/`TestFlux2TransformerTensorParallelNeuron` (and any future
-accelerator's TP test) to launch their `_<backend>_tp_worker.py` under `torchrun` and assert it exits cleanly.
+Used by `TensorParallelTPUTesterMixin` subclasses (and any future accelerator's TP test) to launch their
+`_<backend>_tp_worker.py` under `torchrun` and assert it exits cleanly.
 """
 
 import os

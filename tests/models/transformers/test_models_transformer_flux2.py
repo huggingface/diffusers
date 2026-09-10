@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import subprocess
+import sys
+
 import torch
 
 from diffusers import Flux2Transformer2DModel
@@ -49,7 +53,7 @@ from ..testing_utils import (
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
-from ._tp_worker_launch import TensorParallelTPUTesterMixin, run_tp_worker_subprocess
+from ._tp_worker_launch import TensorParallelTPUTesterMixin
 
 
 enable_full_determinism()
@@ -226,13 +230,14 @@ class TestFlux2TransformerTensorParallelNeuron:
     reference, and the test checks its exit code.
     """
 
-    WORLD_SIZE = 2
-
     def test_tensor_parallel_neuron_inference(self):
-        run_tp_worker_subprocess(
-            "_neuron_tp_worker.py",
-            "tests.models.transformers.test_models_transformer_flux2:make_neuron_tp_spec",
-            world_size=self.WORLD_SIZE,
+        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
+        spec = "tests.models.transformers.test_models_transformer_flux2:make_neuron_tp_spec"
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
         )
 
 

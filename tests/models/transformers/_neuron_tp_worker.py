@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Neuron entry point for the generic TP-correctness worker (see `_tp_worker_common.py`).
+"""Generic torchrun worker: assert a model's Neuron tensor-parallel output matches its single-device reference.
 
 Model-agnostic. The model under test is supplied as a `module:function` spec reference on the command line; the
 referenced factory returns `(model_class, init_dict, inputs)` with CPU tensors, so all model-specific test data lives
@@ -24,10 +24,14 @@ Launched as a subprocess by a `@require_torch_neuron` test (and runnable directl
     torchrun --nproc_per_node=2 _neuron_tp_worker.py \\
         tests.models.transformers.test_models_transformer_flux2:make_neuron_tp_spec
 
-Exit code 0 means the TP path is numerically equivalent to the unsharded model; non-zero means failure.
+Each rank builds an identical (seeded) model on CPU, computes a single-device reference, then shards it with
+`enable_parallelism(TensorParallelConfig(mesh=neuron_mesh))` — which auto-selects the Neuron pre-shard backend — runs
+a forward pass on the Neuron device, and asserts the gathered output matches the reference. Exit code 0 means the TP
+path is numerically equivalent to the unsharded model; non-zero means failure.
 """
 
 import argparse
+import importlib
 import os
 import sys
 import traceback
@@ -40,8 +44,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 import torch
 import torch.distributed as dist
 import torch_neuronx  # noqa: F401 — registers torch.neuron
+from torch.distributed.device_mesh import DeviceMesh
 
-from tests.models.transformers._tp_worker_common import run_tp_correctness_worker
+from diffusers import TensorParallelConfig
 
 
 def main():
@@ -51,23 +56,49 @@ def main():
         help="`module:function` reference returning (model_class, init_dict, cpu_inputs) for the model under test.",
     )
     args = parser.parse_args()
+    module_name, _, fn_name = args.spec.partition(":")
+    model_class, init_dict, inputs = getattr(importlib.import_module(module_name), fn_name)()
 
     dist.init_process_group(backend="neuron")
-    # The reference runs on CPU (fp32): unlike TPU's Flash Attention, Neuron's kernel selection doesn't depend on
-    # comparing against itself, so a CPU reference is sufficient. Neuron runs matmuls in bf16 internally, so compare
-    # with a bf16-level tolerance — a wrong shard plan still produces grossly different output, caught comfortably
-    # within this bound.
-    run_tp_correctness_worker(
-        args.spec,
-        mesh_device_type="neuron",
-        to_device=torch.neuron.current_device(),
-        backend_label="Neuron",
-        synchronize=torch.neuron.synchronize,
-        reference_on_device=False,
-        atol=2e-2,
-        rtol=2e-2,
-    )
-    dist.destroy_process_group()
+    rank = dist.get_rank()
+    tp_size = dist.get_world_size()
+    device = torch.neuron.current_device()
+    tp_mesh = DeviceMesh("neuron", list(range(tp_size)))
+
+    # Identical weights on every rank (same seed), kept on CPU as the Neuron pre-shard backend requires.
+    torch.manual_seed(0)
+    model = model_class(**init_dict).eval()
+
+    # Single-device (unsharded) reference on CPU, computed before TP mutates the weights in place.
+    with torch.no_grad():
+        ref_output = model(**inputs, return_dict=False)[0].float().cpu()
+
+    # Shard across all ranks; the Neuron backend is auto-selected from the mesh device type.
+    model.enable_parallelism(config=TensorParallelConfig(mesh=tp_mesh))
+    model = model.to(device)
+    torch.neuron.synchronize()
+
+    inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+    with torch.no_grad():
+        tp_output = model(**inputs_on_device, return_dict=False)[0]
+    torch.neuron.synchronize()
+    tp_output = tp_output.float().cpu()
+
+    if rank == 0:
+        assert tp_output.shape == ref_output.shape, f"shape mismatch: {tp_output.shape} vs {ref_output.shape}"
+        assert torch.isfinite(tp_output).all(), "TP output contains non-finite values"
+        max_abs = (tp_output - ref_output).abs().max().item()
+        denom = ref_output.abs().max().item() + 1e-6
+        print(
+            f"[rank0] tp_size={tp_size} output_shape={tuple(tp_output.shape)} "
+            f"max_abs_diff={max_abs:.4e} max_rel_diff={max_abs / denom:.4e}"
+        )
+        # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance. A wrong shard
+        # plan produces grossly different output and is caught comfortably within this bound.
+        torch.testing.assert_close(tp_output, ref_output, atol=2e-2, rtol=2e-2)
+        print("[rank0] PASS: Neuron tensor-parallel output matches single-device reference.")
+
+    dist.barrier()
 
 
 if __name__ == "__main__":
