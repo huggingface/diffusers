@@ -61,9 +61,9 @@ def _blend_t(a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tenso
 def _check_scheduler(scheduler: FlowMatchEulerDiscreteScheduler) -> None:
     """Reject only what this pipeline cannot drive, which is resolution-dependent shifting.
 
-    Nothing else about the scheduler is checked. The sigmas the decoder was distilled on are a default
-    ([`get_sigmas`]), not a requirement: a shift, a terminal shift or a stochastic update are all legitimate choices,
-    and a finetune may well want them — moving the loop onto a scheduler is what makes them possible.
+    Nothing else about the scheduler is checked. The sigmas the decoder was distilled on are a default, not a
+    requirement: a shift, a terminal shift or a stochastic update are all legitimate choices, and a finetune may well
+    want them — moving the loop onto a scheduler is what makes them possible.
     """
     if scheduler.config.use_dynamic_shifting:
         raise ValueError(
@@ -82,8 +82,10 @@ def _progress_bar(progress_bar, total: int):
 def _decoder_sigmas(decoder: LTX2VideoDiffusionDecoderModel, num_inference_steps: int | None = None) -> list[float]:
     """The decoder's sigma schedule: `linspace(1, 1 / num_inference_steps, num_inference_steps)`.
 
-    Uniform, rather than the scheduler's own default `linspace(sigma_max, sigma_min, n)`, so it has to be handed to
-    `set_timesteps` explicitly. `num_inference_steps` defaults to what the decoder was distilled for.
+    This has to be handed to `set_timesteps` explicitly rather than left to the scheduler: its own default walks
+    `linspace(sigma_max, sigma_min, n)` with `sigma_min = 1 / num_train_timesteps`, i.e. 0.001 rather than `1 / n`, so
+    the two agree only at n=1 and no static config reconciles them. `num_inference_steps` defaults to what the decoder
+    was distilled for.
     """
     if num_inference_steps is None:
         num_inference_steps = decoder.config.decoder_num_inference_steps
@@ -347,7 +349,8 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
                 is what the checkpoint was distilled for — 1 for LTX-2.5.
             sigmas (`list[float]`, *optional*):
                 Custom sigma schedule, overriding `num_inference_steps`. The default is the uniform `linspace(1, 1 /
-                num_inference_steps, num_inference_steps)` the decoder was trained on.
+                num_inference_steps, num_inference_steps)` the decoder was trained on. Whatever is passed still goes
+                through the scheduler, so a scheduler configured with a `shift` reshapes this too.
             generator (`torch.Generator`, *optional*):
                 The decoder samples the noise it denoises, so pass a generator to make decoding reproducible.
             output_type (`str`, *optional*, defaults to `"pil"`):
