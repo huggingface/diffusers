@@ -109,12 +109,19 @@ yourself.
 > little room for activations. Note also that stage 2 honours `torch_dtype`: loading the refiner in
 > `torch.float32` roughly doubles its memory and changes the output slightly.
 
-If you don't have camera intrinsics, [`pi3-vision`](https://github.com/OliverSFAC/pi3-vision) can estimate them
-from a single frame:
+If you don't have camera intrinsics, a hosted [modular block](../../modular_diffusers/overview) can estimate them
+from a single frame. It lives outside `diffusers` because it pulls in Pi3X — an extra dependency and a second
+checkpoint — so nothing is downloaded until you ask for it:
 
 ```python
-from diffusers.pipelines.sana_wm.cam_utils import estimate_intrinsics_with_pi3x
-intrinsics = estimate_intrinsics_with_pi3x(image)  # `pip install pi3-vision`
+from diffusers import ModularPipeline
+
+# One-time per image. Requires `pip install pi3-vision`.
+estimator = ModularPipeline.from_pretrained(
+    "Efficient-Large-Model/pi3x-intrinsics-estimator", trust_remote_code=True
+)
+estimator.load_components(dtype=torch.bfloat16)
+intrinsics = estimator(image=Image.open("input.png").convert("RGB"), output="intrinsics")
 ```
 
 ## Converting the released checkpoint

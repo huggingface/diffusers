@@ -196,14 +196,6 @@ class SanaWMPipeline(DiffusionPipeline):
         self.image_processor = SanaWMImageProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
 
-    def _model_cpu_offload_active(self) -> bool:
-        """Whether `enable_model_cpu_offload` currently owns module placement.
-
-        Mirrors the check `DiffusionPipeline` uses internally: the hooks list only exists (and is non-empty) while
-        model CPU offload is installed, and `remove_all_hooks()` empties it again.
-        """
-        return hasattr(self, "_all_hooks") and len(self._all_hooks) > 0
-
     # ------------------------------------------------------------------
     # Prompt encoding
     # ------------------------------------------------------------------
@@ -340,40 +332,46 @@ class SanaWMPipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        image: PIL.Image.Image | str | Path,
         c2w: np.ndarray | None,
         action: str | None,
         intrinsics: np.ndarray | list[float] | None,
-        num_frames: int,
-    ) -> tuple[PIL.Image.Image, np.ndarray, np.ndarray]:
-        """Validate `__call__` inputs and normalize to ``(image_pil, c2w_(F,4,4), intrinsics_(F,4))``.
-
-        Also snaps ``num_frames`` to the VAE-friendly ``8k+1`` and trims the c2w / intrinsics arrays to match. The
-        cropped image + rescaled intrinsics come later once we know the target resolution.
-        """
-        if isinstance(image, (str, Path)):
-            image = PIL.Image.open(image).convert("RGB")
-
+    ) -> None:
+        """Validate `__call__` inputs. Raises on bad input and returns nothing."""
         if (c2w is None) == (action is None):
             raise ValueError("Provide exactly one of `c2w` or `action`.")
-        if action is not None:
-            c2w = action_string_to_c2w(action)
-        c2w = np.asarray(c2w, dtype=np.float32)
-        if c2w.ndim != 3 or c2w.shape[1:] != (4, 4):
-            raise ValueError(f"`c2w` must be `(F, 4, 4)`; got {c2w.shape}.")
-
-        num_frames = min(num_frames, c2w.shape[0])
-        num_frames = snap_num_frames(num_frames, stride=self.vae_temporal_compression_ratio, upper_bound=c2w.shape[0])
-        c2w = c2w[:num_frames]
-
+        if c2w is not None:
+            poses = np.asarray(c2w, dtype=np.float32)
+            if poses.ndim != 3 or poses.shape[1:] != (4, 4):
+                raise ValueError(f"`c2w` must be `(F, 4, 4)`; got {poses.shape}.")
         if intrinsics is None:
             raise ValueError(
                 "Pass `intrinsics` as either `[fx, fy, cx, cy]`, a 3x3 K matrix, "
                 "an `(F, 4)` per-frame [fx,fy,cx,cy], or `(F, 3, 3)` per-frame K — "
                 "all in original-image pixel coordinates. Use "
-                "`diffusers.pipelines.sana_wm.cam_utils.estimate_intrinsics_with_pi3x(image)` "
-                "for an automatic estimate if pi3 is installed."
+                "the `Efficient-Large-Model/pi3x-intrinsics-estimator` modular block for an automatic "
+                "estimate."
             )
+
+    def prepare_camera_trajectory(
+        self,
+        c2w: np.ndarray | None,
+        action: str | None,
+        intrinsics: np.ndarray | list[float],
+        num_frames: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Normalize the camera inputs to ``(c2w_(F, 4, 4), intrinsics_(F, 4))``.
+
+        Also snaps ``num_frames`` to the VAE-friendly ``8k+1`` and trims both arrays to match. The cropped image and
+        rescaled intrinsics come later, once the target resolution is known.
+        """
+        if action is not None:
+            c2w = action_string_to_c2w(action)
+        c2w = np.asarray(c2w, dtype=np.float32)
+
+        num_frames = min(num_frames, c2w.shape[0])
+        num_frames = snap_num_frames(num_frames, stride=self.vae_temporal_compression_ratio, upper_bound=c2w.shape[0])
+        c2w = c2w[:num_frames]
+
         intr = np.asarray(intrinsics, dtype=np.float32)
         # Accept (3, 3), (F, 3, 3), (4,) and (F, 4) — normalize to (F, 4).
         if intr.shape == (3, 3):
@@ -390,7 +388,7 @@ class SanaWMPipeline(DiffusionPipeline):
                 f"`intrinsics` must be `(4,)`, `(F>={num_frames}, 4)`, `(3, 3)`, or "
                 f"`(F>={num_frames}, 3, 3)`; got shape {np.asarray(intrinsics).shape}."
             )
-        return image, c2w, intr
+        return c2w, intr
 
     def prepare_latents(
         self,
@@ -425,6 +423,26 @@ class SanaWMPipeline(DiffusionPipeline):
     # ------------------------------------------------------------------
     # __call__
     # ------------------------------------------------------------------
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1.0
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
+    def interrupt(self):
+        return self._interrupt
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -510,7 +528,8 @@ class SanaWMPipeline(DiffusionPipeline):
 
         Examples:
         """
-        image, c2w, intr = self.check_inputs(image, c2w, action, intrinsics, num_frames)
+        self.check_inputs(c2w, action, intrinsics)
+        c2w, intr = self.prepare_camera_trajectory(c2w, action, intrinsics, num_frames)
         num_frames = c2w.shape[0]
         pixel_values, intr = self.image_processor.preprocess_with_intrinsics(image, intr, height, width)
 
@@ -534,7 +553,10 @@ class SanaWMPipeline(DiffusionPipeline):
             c2w, intr, (height, width), device=device, dtype=dtype, do_cfg=guidance_scale > 1.0
         )
 
-        do_cfg = guidance_scale > 1.0
+        self._guidance_scale = guidance_scale
+        self._current_timestep = None
+        self._interrupt = False
+        do_cfg = self.do_classifier_free_guidance
 
         # Stage-1 denoising — LTX-style flow-matching Euler with per-token
         # timesteps. The first latent frame is the conditioning anchor: its
@@ -543,6 +565,7 @@ class SanaWMPipeline(DiffusionPipeline):
             first_latent, num_frames, height, width, dtype, device, generator
         )
         timesteps, _ = retrieve_timesteps(self.scheduler, num_inference_steps, device, None)
+        self._num_timesteps = len(timesteps)
 
         prompt_embeds = torch.cat([neg, cond], dim=0) if do_cfg else cond
         mask_cfg = torch.cat([neg_mask, cond_mask], dim=0) if do_cfg else cond_mask
@@ -555,6 +578,9 @@ class SanaWMPipeline(DiffusionPipeline):
         }
 
         for t in self.progress_bar(timesteps):
+            if self.interrupt:
+                continue
+            self._current_timestep = t
             cond_mask_input = torch.cat([condition_mask] * 2) if do_cfg else condition_mask
             latent_model_input = torch.cat([latents] * 2) if do_cfg else latents
             timestep = t.expand(cond_mask_input.shape).float()
@@ -586,7 +612,11 @@ class SanaWMPipeline(DiffusionPipeline):
             latents = torch.where(keep_clean, denoised, latents).to(dtype)
 
         if output_type == "latent":
-            return SanaWMPipelineOutput(frames=latents, c2w=c2w, latent=latents) if return_dict else (latents,)
+            if not return_dict:
+                return (latents, c2w, latents)
+            return SanaWMPipelineOutput(frames=latents, c2w=c2w, latent=latents)
+
+        self._current_timestep = None
 
         decoded = self._decode_latents(latents)  # (B=1, C=3, F, H, W) in [-1, 1]
         video_c2w = c2w[:num_frames]
@@ -597,5 +627,5 @@ class SanaWMPipeline(DiffusionPipeline):
         frames = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
 
         if not return_dict:
-            return (frames,)
+            return (frames, video_c2w, latents)
         return SanaWMPipelineOutput(frames=frames, c2w=video_c2w, latent=latents)

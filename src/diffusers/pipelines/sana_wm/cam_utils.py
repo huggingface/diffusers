@@ -17,7 +17,6 @@
 * Action-string DSL → camera-to-world trajectory.
 * Resize-and-center-crop to (704, 1280) with intrinsics adjustment.
 * Plücker / raymap packing for the DiT camera-control branch.
-* Optional Pi3X-based intrinsics estimation (only if `pi3` is installed).
 """
 
 from __future__ import annotations
@@ -27,8 +26,6 @@ import math
 import numpy as np
 import torch
 from PIL import Image
-
-from ...utils import is_pi3_available, is_torchvision_available
 
 
 TARGET_HEIGHT = 704
@@ -164,53 +161,6 @@ def transform_intrinsics_for_crop(
     out[..., 1] *= sy
     out[..., 3] = out[..., 3] * sy - ct
     return out
-
-
-def estimate_intrinsics_with_pi3x(image: Image.Image, device: torch.device | str = "cuda") -> np.ndarray:
-    """Estimate ``[fx, fy, cx, cy]`` for ``image`` using Pi3X.
-
-    Optional helper — requires ``pip install pi3-vision``. The result is in the **original image** pixel grid (not the
-    cropped one); pass it to [`SanaWMPipeline.__call__`] as ``intrinsics=...``.
-    """
-    if not is_pi3_available():
-        raise ImportError(
-            "`pi3` is required for intrinsics estimation. Pass `intrinsics` explicitly or `pip install pi3-vision`."
-        )
-    if not is_torchvision_available():
-        raise ImportError("`torchvision` is required for intrinsics estimation. Please `pip install torchvision`.")
-
-    from pi3.models.pi3x import Pi3X  # noqa: PLC0415
-    from pi3.utils.geometry import recover_intrinsic_from_rays_d  # noqa: PLC0415
-    from torchvision import transforms as T  # noqa: PLC0415
-
-    device_t = torch.device(device)
-    W_orig, H_orig = image.size
-    pixel_limit = 255_000
-    scale = math.sqrt(pixel_limit / (W_orig * H_orig)) if W_orig * H_orig > 0 else 1.0
-    W_t, H_t = W_orig * scale, H_orig * scale
-    k, m = max(1, round(W_t / 14)), max(1, round(H_t / 14))
-    while (k * 14) * (m * 14) > pixel_limit:
-        if k / m > W_t / H_t:
-            k -= 1
-        else:
-            m -= 1
-    W_model, H_model = max(1, k) * 14, max(1, m) * 14
-    resized = image.resize((W_model, H_model), Image.Resampling.LANCZOS)
-    tensor = T.ToTensor()(resized).unsqueeze(0).unsqueeze(0).to(device_t)
-
-    dtype = (
-        torch.bfloat16 if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8 else torch.float16
-    )
-    model = Pi3X.from_pretrained("yyfz233/Pi3X").to(device_t).eval()
-    model.disable_multimodal()
-    model.requires_grad_(False)
-    with torch.no_grad(), torch.amp.autocast("cuda", dtype=dtype):
-        out = model(imgs=tensor)
-    rays_d = torch.nn.functional.normalize(out["local_points"], dim=-1)
-    K = recover_intrinsic_from_rays_d(rays_d, force_center_principal_point=True)[0, 0]
-    K = K.detach().cpu().float().numpy()
-    sx, sy = W_orig / W_model, H_orig / H_model
-    return np.array([K[0, 0] * sx, K[1, 1] * sy, K[0, 2] * sx, K[1, 2] * sy], dtype=np.float32)
 
 
 # ---------------------------------------------------------------------------
