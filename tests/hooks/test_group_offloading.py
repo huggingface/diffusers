@@ -698,9 +698,12 @@ class TestConditionalModuleGroupOffload(TestGroupOffload):
 class TestGroupOffloadSummary:
     """`_get_group_offload_summary` renders the installed grouping, for failure messages and manual inspection.
 
-    Its output is only read once something has already gone wrong, so a regression is invisible — a summary is
-    still produced, it is just wrong, and a reader is sent to the wrong module. These pin what it claims (how many
-    groups, and which module's `forward` brings each one over) and deliberately not how it formats them.
+    Its output is only read once something has already gone wrong, so a regression is invisible — a summary is still
+    produced, it is just wrong, and a reader is sent to the wrong module. These pin the claim each line makes, as
+    literal expectations against a known fixture: which module's `forward` brings a group over, and which members
+    that group holds. Where the grouping itself is what a test needs, it is read off the hooks rather than out of
+    the summary, so the thing under test is not also the instrument. Rendering is pinned along with the claims,
+    deliberately: the rendering is what this function produces, so changing it should require updating these.
     """
 
     in_features = 64
@@ -718,25 +721,21 @@ class TestGroupOffloadSummary:
         )
 
     @staticmethod
-    def installed_groups(module):
-        """Read the groups straight off the hooks, as an oracle for what the summary should describe."""
-        groups, seen = [], set()
+    def prefetch_chain(module):
+        """{group's onload leader: onload leader of the group it prefetches}, read off the hooks.
+
+        This is the mechanism itself rather than anything the summary says, so a test can establish what group
+        offloading wired before asking whether the summary reports it.
+        """
+        name_of = {id(submodule): name or "<root>" for name, submodule in module.named_modules()}
+        chain = {}
         for submodule in module.modules():
             registry = getattr(submodule, "_diffusers_hook", None)
             hook = registry.get_hook(_GROUP_OFFLOADING) if registry is not None else None
-            if hook is not None and id(hook.group) not in seen:
-                seen.add(id(hook.group))
-                groups.append(hook.group)
-        return groups
-
-    @staticmethod
-    def group_lines(summary):
-        return summary.splitlines()[1:]
-
-    @staticmethod
-    def reported_members(line):
-        """The members one summary line lists, so a test can check that none were dropped."""
-        return line[line.index("[") + 1 : line.rindex("]")].split(", ")
+            if hook is None or hook.next_group is None:
+                continue
+            chain[name_of[id(hook.group.onload_leader)]] = name_of[id(hook.next_group.onload_leader)]
+        return chain
 
     def test_reports_that_nothing_is_offloaded_when_offloading_is_not_applied(self):
         assert "no group offloading applied" in _get_group_offload_summary(self.get_model())
@@ -745,7 +744,7 @@ class TestGroupOffloadSummary:
         torch.device(torch_device).type not in ["cuda", "xpu"],
         reason="Test requires a CUDA or XPU device.",
     )
-    def test_reports_one_line_per_installed_group(self):
+    def test_reports_each_group_against_the_module_that_onloads_it(self):
         model = self.get_model()
         apply_group_offloading(
             model,
@@ -756,8 +755,12 @@ class TestGroupOffloadSummary:
         )
         summary = _get_group_offload_summary(model)
 
-        assert len(self.group_lines(summary)) == len(self.installed_groups(model))
-        # Without a stream there is no prefetch chain, so every group onloads itself.
+        # One block per group, so each block is its own group and is onloaded by its own forward.
+        for i in range(self.num_layers):
+            assert f"onloaded by 'blocks.{i}' forward: [blocks.{i}]" in summary
+        # Whatever the block matching left over is gathered into one group led by the root.
+        assert "onloaded by '<root>' forward: [linear_1, activation, linear_2]" in summary
+        # Without a stream there is no prefetch chain, so no group is onloaded by another.
         assert "prefetched by" not in summary
 
     @pytest.mark.skipif(
@@ -770,14 +773,25 @@ class TestGroupOffloadSummary:
 
         # The chain is wired by the lazy prefetch hook at the end of the first forward, so until then the groups are
         # indistinguishable from the streamless case.
+        assert self.prefetch_chain(model) == {}
         assert "prefetched by" not in _get_group_offload_summary(model)
 
         model(torch.randn((4, self.in_features)).to(torch_device))
 
-        prefetched = sum(1 for group in self.installed_groups(model) if not group.onload_self)
-        assert prefetched > 0, "the first forward should have wired a prefetch chain"
+        # Each group is now chained to the one that runs after it, so it is onloaded a step early.
+        expected_chain = {
+            "<root>": "blocks.0",
+            "blocks.0": "blocks.1",
+            "blocks.1": "blocks.2",
+            "blocks.2": "blocks.3",
+        }
+        assert self.prefetch_chain(model) == expected_chain
+
         summary = _get_group_offload_summary(model)
-        assert sum(1 for line in self.group_lines(summary) if "prefetched by" in line) == prefetched
+        for leader, successor in expected_chain.items():
+            assert f"prefetched by '{leader}' forward: [{successor}]" in summary
+        # The root group is at the head of the chain, so nothing prefetches it.
+        assert "onloaded by '<root>' forward: [linear_1, activation, linear_2]" in summary
 
     @pytest.mark.skipif(
         torch.device(torch_device).type not in ["cuda", "xpu"],
@@ -794,11 +808,11 @@ class TestGroupOffloadSummary:
             offload_type="block_level",
             num_blocks_per_group=3,
         )
-        summary = _get_group_offload_summary(model.blocks[1])
+        assert "onloaded by 'blocks.0' forward: [blocks.0, blocks.1, blocks.2]" in _get_group_offload_summary(model)
 
-        groups = self.installed_groups(model.blocks[1])
-        lines = self.group_lines(summary)
-        assert len(lines) == len(groups)
-        # The group spans blocks 0-2, so from blocks[1] two of the three cannot be named — but all three are still
-        # its members, and a summary that drops the two it cannot name understates the group.
-        assert len(self.reported_members(lines[0])) == len(groups[0].modules) == 3
+        # From `blocks[1]` the group is the same one, but only `blocks[1]` itself can be named: the other two members
+        # and the leader are all outside. None of them may be dropped.
+        assert (
+            "onloaded by '<outside this module>' forward: "
+            "[<outside this module>, <root>, <outside this module>]" in _get_group_offload_summary(model.blocks[1])
+        )
