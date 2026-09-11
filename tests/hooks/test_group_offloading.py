@@ -21,6 +21,7 @@ import torch
 
 from diffusers import AutoencoderKL
 from diffusers.hooks import HookRegistry, ModelHook
+from diffusers.hooks.group_offloading import ModuleGroup, _restore_torchao_tensor, _swap_torchao_tensor
 from diffusers.models import ModelMixin
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils import logging as diffusers_logging
@@ -371,6 +372,30 @@ class TestGroupOffload:
         pipe.enable_sequential_cpu_offload()
         with pytest.raises(ValueError, match="Cannot apply group offloading"):
             pipe.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
+
+    def test_torchao_cpu_cache_does_not_alias_live_parameter(self):
+        try:
+            from torchao.quantization import Int8WeightOnlyConfig, quantize_
+        except ImportError:
+            pytest.skip("test requires torchao")
+
+        linear = torch.nn.Linear(16, 16, bias=False, dtype=torch.bfloat16)
+        quantize_(linear, Int8WeightOnlyConfig(version=2))
+        weight = linear.weight
+
+        cpu_copy = ModuleGroup._to_cpu(weight, low_cpu_mem_usage=True)
+        assert cpu_copy is not weight
+
+        moved = weight.to("meta")
+        _swap_torchao_tensor(weight, moved)
+
+        tensor_data_names = getattr(cpu_copy.__class__, "tensor_data_names")
+        for attr_name in tensor_data_names:
+            assert getattr(cpu_copy, attr_name).device.type == "cpu"
+
+        _restore_torchao_tensor(weight, cpu_copy)
+        for attr_name in tensor_data_names:
+            assert getattr(weight, attr_name).device.type == "cpu"
 
     def test_block_level_stream_with_invocation_order_different_from_initialization_order(self):
         if torch.device(torch_device).type not in ["cuda", "xpu"]:
