@@ -173,7 +173,10 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         filtered = BlockRefinementScheduler._top_p_filtering(filtered, top_p=top_p)
 
         probs = torch.softmax(filtered.float(), dim=-1)
-        token = torch.multinomial(probs, num_samples=1, generator=generator)
+        # `torch.multinomial` requires the generator and the sampled tensor's device to match, so (as with
+        # `randn_tensor`) a CPU generator samples on CPU and the result is moved back to `probs`'s device.
+        rand_device = generator.device if generator is not None else probs.device
+        token = torch.multinomial(probs.to(rand_device), num_samples=1, generator=generator).to(probs.device)
         token_prob = torch.gather(probs, -1, token)
 
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
@@ -285,9 +288,10 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
 
             prev_sample = torch.where(transfer_index | editing_transfer_index, sampled_tokens, sample)
             self._committed = committed | transfer_index
+            rand_device = generator.device if generator is not None else sample.device
             random_tokens = torch.randint(
-                low=0, high=model_output.shape[-1], size=sample.shape, device=sample.device, generator=generator
-            )
+                low=0, high=model_output.shape[-1], size=sample.shape, device=rand_device, generator=generator
+            ).to(sample.device)
             prev_sample = torch.where(self._committed, prev_sample, random_tokens)
 
             if not return_dict:
@@ -498,14 +502,15 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         masked_rev = torch.zeros_like(original_samples, dtype=torch.bool)
 
         valid = attention_mask.to(dtype=torch.bool)
+        rand_device = generator.device if generator is not None else device
         for block_start in range(prompt_length, seq_len, block_length):
             block_end = min(seq_len, block_start + block_length)
             seg_len = block_end - block_start
             if seg_len <= 0:
                 continue
 
-            p_mask = torch.rand((batch_size, 1), device=device, generator=generator)
-            seg = torch.rand((batch_size, seg_len), device=device, generator=generator) < p_mask
+            p_mask = torch.rand((batch_size, 1), device=rand_device, generator=generator).to(device)
+            seg = torch.rand((batch_size, seg_len), device=rand_device, generator=generator).to(device) < p_mask
             seg = seg & valid[:, block_start:block_end]
             seg_rev = (~seg) & valid[:, block_start:block_end]
 

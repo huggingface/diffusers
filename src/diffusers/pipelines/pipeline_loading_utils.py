@@ -936,7 +936,11 @@ def _fetch_class_library_tuple(module):
     pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
 
     path = not_compiled_module.__module__.split(".")
-    is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+    # A same-named folder in another library (e.g. `transformers.models.diffusion_gemma` vs
+    # `diffusers.pipelines.diffusion_gemma`) must not count as a pipeline module.
+    is_pipeline_module = (
+        path[0] == diffusers_module.__name__ and pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+    )
 
     # if library is not in LOADABLE_CLASSES, then it is a custom module.
     # Or if it's a pipeline module, then the module is inside the pipeline
