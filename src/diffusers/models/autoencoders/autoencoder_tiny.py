@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import torch
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_utils import ModelMixin
@@ -37,7 +38,7 @@ class AutoencoderTinyOutput(BaseOutput):
     latents: torch.Tensor
 
 
-class AutoencoderTiny(ModelMixin, AutoencoderMixin, ConfigMixin):
+class AutoencoderTiny(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A tiny distilled VAE model for encoding images into latents and decoding latent representations into images.
 

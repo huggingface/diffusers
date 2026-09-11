@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ..attention import LuminaFeedForward
 from ..attention_processor import Attention, LuminaAttnProcessor2_0
@@ -175,7 +176,7 @@ class LuminaNextDiTBlock(nn.Module):
         return hidden_states
 
 
-class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
+class LuminaNextDiT2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     LuminaNextDiT: Diffusion model with a Transformer backbone.
 

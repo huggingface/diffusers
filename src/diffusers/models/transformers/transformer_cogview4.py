@@ -19,7 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
@@ -612,7 +612,7 @@ class CogView4AdaLayerNormContinuous(nn.Module):
         return x
 
 
-class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, CacheMixin):
+class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, CacheMixin, FromOriginalModelMixin):
     r"""
     Args:
         patch_size (`int`, defaults to `2`):

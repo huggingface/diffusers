@@ -16,10 +16,11 @@ import torch
 from torch import nn
 
 from ....configuration_utils import ConfigMixin, register_to_config
+from ....loaders import FromOriginalModelMixin
 from ....models import ModelMixin
 
 
-class UnCLIPTextProjModel(ModelMixin, ConfigMixin):
+class UnCLIPTextProjModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     Utility class for CLIP embeddings. Used to combine the image and text embeddings into a format usable by the
     decoder.

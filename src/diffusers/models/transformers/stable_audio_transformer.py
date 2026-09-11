@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, FeedForward
@@ -180,7 +181,7 @@ class StableAudioDiTBlock(nn.Module):
         return hidden_states
 
 
-class StableAudioDiTModel(ModelMixin, AttentionMixin, ConfigMixin):
+class StableAudioDiTModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginalModelMixin):
     """
     The Diffusion Transformer model introduced in Stable Audio.
 

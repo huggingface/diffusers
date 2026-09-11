@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils.torch_utils import lru_cache_unless_export
 from ..attention import AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -144,7 +145,7 @@ class MiniMaxMusic3TransformerBlock(nn.Module):
         return hidden_states
 
 
-class MiniMaxMusic3Transformer1DModel(ModelMixin, ConfigMixin):
+class MiniMaxMusic3Transformer1DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     The flow-matching diffusion transformer of MiniMax Music 3. It denoises Flow-VAE audio latents conditioned on
     per-frame hidden states produced by the autoregressive language-model stage.

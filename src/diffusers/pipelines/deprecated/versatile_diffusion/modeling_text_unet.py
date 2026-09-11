@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from diffusers.utils import deprecate
 
 from ....configuration_utils import ConfigMixin, register_to_config
+from ....loaders import FromOriginalModelMixin
 from ....models import ModelMixin
 from ....models.activations import get_activation
 from ....models.attention_processor import (
@@ -268,7 +269,7 @@ class GLIGENTextBoundingboxProjection(nn.Module):
         return objs
 
 
-class UNetFlatConditionModel(ModelMixin, ConfigMixin):
+class UNetFlatConditionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
     shaped output.

@@ -20,7 +20,7 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale
 from ..attention import AttentionMixin, BasicTransformerBlock, SkipFFTransformerBlock
 from ..attention_processor import (
@@ -35,7 +35,7 @@ from ..normalization import GlobalResponseNorm, RMSNorm
 from ..resnet import Downsample2D, Upsample2D
 
 
-class UVit2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
+class UVit2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config

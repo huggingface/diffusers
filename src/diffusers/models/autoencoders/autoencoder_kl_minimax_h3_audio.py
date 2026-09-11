@@ -43,6 +43,7 @@ import torch.nn.functional as F
 from torch.nn.utils import weight_norm
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.torch_utils import randn_tensor
@@ -486,7 +487,7 @@ class MiniMaxH3AudioBigVGANDecoder(nn.Module):
         return torch.clamp(hidden_states, min=-1.0, max=1.0)
 
 
-class AutoencoderKLMiniMaxH3Audio(ModelMixin, ConfigMixin, AttentionMixin):
+class AutoencoderKLMiniMaxH3Audio(ModelMixin, ConfigMixin, AttentionMixin, FromOriginalModelMixin):
     r"""
     The audio autoencoder used by [MiniMax-H3](https://huggingface.co/MiniMaxAI): a DAC-lineage convolutional encoder
     and a BigVGAN decoder, operating directly on mono 32 kHz waveforms.

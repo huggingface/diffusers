@@ -27,6 +27,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import RMSNorm
 from ...models.transformers.ace_step_transformer import (
@@ -562,7 +563,7 @@ class AceStepAttentionPooler(nn.Module):
         return hidden_states.reshape(batch_size, num_patches, -1)
 
 
-class AceStepAudioTokenDetokenizer(ModelMixin, ConfigMixin):
+class AceStepAudioTokenDetokenizer(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """Expands ACE-Step 5 Hz audio tokens back to 25 Hz acoustic conditioning."""
 
     _supports_gradient_checkpointing = True
@@ -662,7 +663,7 @@ class AceStepAudioTokenDetokenizer(ModelMixin, ConfigMixin):
         return hidden_states.reshape(batch_size, num_tokens * self.pool_window_size, -1)
 
 
-class AceStepAudioTokenizer(ModelMixin, ConfigMixin):
+class AceStepAudioTokenizer(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """Converts 25 Hz acoustic latents to ACE-Step 5 Hz audio tokens."""
 
     _supports_gradient_checkpointing = True
@@ -749,7 +750,7 @@ class AceStepAudioTokenizer(ModelMixin, ConfigMixin):
 # --------------------------------------------------------------------------- #
 
 
-class AceStepConditionEncoder(ModelMixin, ConfigMixin):
+class AceStepConditionEncoder(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """Fuses text + lyric + timbre conditioning into the packed sequence used by
     the DiT's cross-attention.
     """

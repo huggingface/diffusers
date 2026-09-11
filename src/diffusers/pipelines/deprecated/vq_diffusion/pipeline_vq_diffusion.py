@@ -18,6 +18,7 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ....configuration_utils import ConfigMixin, register_to_config
+from ....loaders.single_file_model import FromOriginalModelMixin
 from ....models import ModelMixin, Transformer2DModel, VQModel
 from ....schedulers import VQDiffusionScheduler
 from ....utils import logging
@@ -27,7 +28,7 @@ from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class LearnedClassifierFreeSamplingEmbeddings(ModelMixin, ConfigMixin):
+class LearnedClassifierFreeSamplingEmbeddings(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     Utility class for storing learned text embeddings for classifier free sampling
     """

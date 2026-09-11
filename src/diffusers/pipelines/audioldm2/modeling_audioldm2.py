@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import UNet2DConditionLoadersMixin
+from ...loaders import FromOriginalModelMixin, UNet2DConditionLoadersMixin
 from ...models.activations import get_activation
 from ...models.attention import AttentionMixin
 from ...models.attention_processor import (
@@ -75,7 +75,7 @@ class AudioLDM2ProjectionModelOutput(BaseOutput):
     attention_mask: torch.LongTensor | None = None
 
 
-class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
+class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     A simple linear projection model to map two text embeddings to a shared latent space. It also inserts learned
     embedding vectors at the start and end of each text embedding sequence respectively. Each variable appended with
@@ -160,7 +160,9 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
         )
 
 
-class AudioLDM2UNet2DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+class AudioLDM2UNet2DConditionModel(
+    ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin, FromOriginalModelMixin
+):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
     shaped output. Compared to the vanilla [`UNet2DConditionModel`], this variant optionally includes an additional

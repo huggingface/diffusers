@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
 from ..embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
@@ -37,7 +38,7 @@ class UNet1DOutput(BaseOutput):
     sample: torch.Tensor
 
 
-class UNet1DModel(ModelMixin, ConfigMixin):
+class UNet1DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A 1D UNet model that takes a noisy sample and a timestep and returns a sample shaped output.
 

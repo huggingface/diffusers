@@ -17,6 +17,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
 from ..attention_processor import AttentionProcessor
 from ..embeddings import (
@@ -37,7 +38,7 @@ class HunyuanControlNetOutput(BaseOutput):
     controlnet_block_samples: tuple[torch.Tensor]
 
 
-class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
+class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @register_to_config
     def __init__(
         self,

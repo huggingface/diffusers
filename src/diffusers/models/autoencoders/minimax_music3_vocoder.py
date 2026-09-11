@@ -19,6 +19,7 @@ import torch.nn as nn
 from torch.nn.utils import weight_norm
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ..modeling_utils import ModelMixin
 
 
@@ -68,7 +69,7 @@ class MiniMaxMusic3VocoderBlock(nn.Module):
         return self.res_unit3(hidden_states)
 
 
-class MiniMaxMusic3Vocoder(ModelMixin, ConfigMixin):
+class MiniMaxMusic3Vocoder(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     The Flow-VAE waveform decoder of MiniMax Music 3 (a DAC-style decoder). It decodes flow-matched latents of shape
     `(batch, latent_channels, length)` into stereo waveforms at `sampling_rate`; the two audio channels are decoded as

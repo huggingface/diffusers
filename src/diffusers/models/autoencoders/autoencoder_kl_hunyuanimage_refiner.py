@@ -20,6 +20,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
@@ -590,7 +591,7 @@ class HunyuanImageRefinerDecoder3D(nn.Module):
         return hidden_states
 
 
-class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin):
+class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Used for
     HunyuanImage-2.1 Refiner.

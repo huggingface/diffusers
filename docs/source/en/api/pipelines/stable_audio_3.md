@@ -40,7 +40,7 @@ The Stability AI checkpoints are not published in diffusers format, so convert t
 checkpoint's `model_config.json` and selects the scheduler from its `diffusion_objective`:
 
 ```bash
-python scripts/convert_stable_audio_3_to_diffusers.py \
+python scripts/build_pipeline.py stable_audio3 \
   --checkpoint_path stabilityai/stable-audio-3-medium-base \
   --text_encoder_repo google/t5gemma-b-b-ul2 \
   --output_dir /tmp/sa3-diffusers-euler \

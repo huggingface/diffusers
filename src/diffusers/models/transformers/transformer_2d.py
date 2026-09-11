@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import LegacyConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import deprecate, logging
 from ..attention import BasicTransformerBlock
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
@@ -36,7 +37,7 @@ class Transformer2DModelOutput(Transformer2DModelOutput):
         super().__init__(*args, **kwargs)
 
 
-class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
+class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin, FromOriginalModelMixin):
     """
     A 2D Transformer model for image-like data.
 

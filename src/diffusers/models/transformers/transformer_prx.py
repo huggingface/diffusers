@@ -18,6 +18,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin, AttentionModuleMixin
@@ -631,7 +632,7 @@ def seq2img(seq: torch.Tensor, patch_size: int, shape: torch.Tensor) -> torch.Te
     return seq
 
 
-class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
+class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, FromOriginalModelMixin):
     r"""
     Transformer-based 2D model for text to image generation.
 

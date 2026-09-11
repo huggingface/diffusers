@@ -21,6 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import get_logger
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_outputs import AutoencoderKLOutput
@@ -876,7 +877,7 @@ class CosmosDecoder3d(nn.Module):
         return hidden_states
 
 
-class AutoencoderKLCosmos(ModelMixin, AutoencoderMixin, ConfigMixin):
+class AutoencoderKLCosmos(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     Autoencoder used in [Cosmos](https://huggingface.co/papers/2501.03575).
 

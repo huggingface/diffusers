@@ -23,6 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
 from ...utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from ..attention import AttentionModuleMixin
@@ -452,7 +453,7 @@ class AudioDiTBlock(nn.Module):
         return hidden_states
 
 
-class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
+class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = False
     _repeated_blocks = ["AudioDiTBlock"]
 

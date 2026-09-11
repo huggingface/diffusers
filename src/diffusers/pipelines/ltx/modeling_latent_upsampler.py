@@ -15,6 +15,7 @@
 import torch
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...models.modeling_utils import ModelMixin
 
 
@@ -73,7 +74,7 @@ class PixelShuffleND(torch.nn.Module):
             return x.unflatten(1, (-1, *self.upscale_factors[:1])).permute(0, 1, 3, 2, 4, 5).flatten(2, 3)
 
 
-class LTXLatentUpsamplerModel(ModelMixin, ConfigMixin):
+class LTXLatentUpsamplerModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     Model to spatially upsample VAE latents.
 

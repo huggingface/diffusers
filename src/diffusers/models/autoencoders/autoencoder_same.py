@@ -33,6 +33,7 @@ import torch.nn.functional as F
 from torch.nn.utils import weight_norm
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..attention import AttentionMixin, AttentionModuleMixin
@@ -605,7 +606,7 @@ class SAMEDecoder(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class AutoencoderSAME(ModelMixin, ConfigMixin, AttentionMixin):
+class AutoencoderSAME(ModelMixin, ConfigMixin, AttentionMixin, FromOriginalModelMixin):
     r"""
     Semantically-Aligned Music Encoder (SAME) autoencoder from *Stable Audio 3* (`arXiv 2605.17991
     <https://arxiv.org/abs/2605.17991>`_).

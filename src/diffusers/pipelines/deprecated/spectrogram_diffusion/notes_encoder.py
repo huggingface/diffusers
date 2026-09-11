@@ -19,10 +19,11 @@ from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.t5.modeling_t5 import T5Block, T5Config, T5LayerNorm
 
 from ....configuration_utils import ConfigMixin, register_to_config
+from ....loaders import FromOriginalModelMixin
 from ....models import ModelMixin
 
 
-class SpectrogramNotesEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
+class SpectrogramNotesEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin, FromOriginalModelMixin):
     @register_to_config
     def __init__(
         self,

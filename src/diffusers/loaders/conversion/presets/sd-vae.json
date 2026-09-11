@@ -1,0 +1,28 @@
+{
+  "_class_name": "AutoencoderKL",
+  "in_channels": 3,
+  "out_channels": 3,
+  "block_out_channels": [
+    128,
+    256,
+    512,
+    512
+  ],
+  "down_block_types": [
+    "DownEncoderBlock2D",
+    "DownEncoderBlock2D",
+    "DownEncoderBlock2D",
+    "DownEncoderBlock2D"
+  ],
+  "up_block_types": [
+    "UpDecoderBlock2D",
+    "UpDecoderBlock2D",
+    "UpDecoderBlock2D",
+    "UpDecoderBlock2D"
+  ],
+  "layers_per_block": 2,
+  "latent_channels": 4,
+  "sample_size": 512,
+  "norm_num_groups": 32,
+  "scaling_factor": 0.18215
+}

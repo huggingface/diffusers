@@ -20,6 +20,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -314,7 +315,7 @@ class JoyImageEditPlusTimeTextImageEmbedding(nn.Module):
         return temb, timestep_proj, encoder_hidden_states
 
 
-class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
+class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, FromOriginalModelMixin):
     r"""
     JoyImage Edit Plus Transformer for multi-image editing.
 

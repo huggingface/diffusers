@@ -71,7 +71,7 @@ git checkout pr/13
 4. 이제 스크립트를 실행하여 .ckpt 파일을 변환할 수 있습니다:
 
 ```bash
-python ../diffusers/scripts/convert_original_stable_diffusion_to_diffusers.py --checkpoint_path temporalnetv3.ckpt --original_config_file cldm_v15.yaml --dump_path ./ --controlnet
+python ../diffusers/scripts/build_pipeline.py stable_diffusion --checkpoint_path temporalnetv3.ckpt --original_config_file cldm_v15.yaml --dump_path ./ --controlnet
 ```
 
 5. 변환이 완료되면 변환된 모델을 업로드하고 결과물을 pull request [pull request](https://huggingface.co/CiaraRowles/TemporalNet/discussions/13)를 테스트하세요!

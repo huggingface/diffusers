@@ -17,6 +17,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ..attention import AttentionMixin, BasicTransformerBlock
 from ..attention_processor import Attention, AttnProcessor, FusedAttnProcessor2_0
@@ -29,7 +30,7 @@ from ..normalization import AdaLayerNormSingle
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class PixArtTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin):
+class PixArtTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A 2D Transformer model as introduced in PixArt family of models (https://huggingface.co/papers/2310.00426,
     https://huggingface.co/papers/2403.04692).

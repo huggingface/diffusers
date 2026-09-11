@@ -222,12 +222,12 @@ pipeline = DiffusionPipeline.from_single_file(
 
 Diffusers provides scripts and methods to convert format and files to enable broader support across the diffusion ecosystem.
 
-Take a look at the [diffusers/scripts](https://github.com/huggingface/diffusers/tree/main/scripts) folder to find a conversion script. Scripts with `"to_diffusers` appended at the end converts a model to the Diffusers format. Each script has a specific set of arguments for configuring the conversion. Make sure you check what arguments are available.
+Use the shared component converter below for tensor layout conversion. The [scripts guide](https://github.com/huggingface/diffusers/blob/main/scripts/README.md) describes the remaining scripts for complete pipeline assembly, source preparation, and graph export.
 
 The example below converts a model stored in Diffusers format to a single-file format. Provide the path to the model to convert and where to save the converted model. You can optionally specify what file type and data type to save the model as.
 
 ```bash
-python convert_diffusers_to_original_sdxl.py --model_path path/to/model/to/convert --checkpoint_path path/to/save/model/to --use_safetensors
+python scripts/export_pipeline_checkpoint.py --input ./sdxl --output ./sdxl.safetensors
 ```
 
 The [`~DiffusionPipeline.save_pretrained`] method also saves a model in Diffusers format and takes care of creating subfolders for each model. It saves the files as safetensor files by default.
@@ -242,6 +242,114 @@ pipeline.save_pretrained()
 ```
 
 Finally, you can use a Space like [SD To Diffusers](https://hf.co/spaces/diffusers/sd-to-diffusers) or [SD-XL To Diffusers](https://hf.co/spaces/diffusers/sdxl-to-diffusers) to convert models to the Diffusers format. It'll open a PR on your model repository with the converted files. This is the easiest way to convert a model, but it may fail for more complicated models. Using a conversion script is more reliable.
+
+### Bidirectional component conversion
+
+The `diffusers.loaders.conversion` package defines each component's tensor layout once and uses the same definition in
+both directions. It covers the model component classes used by the conversion scripts and single-file model loader,
+including transformers, UNets, autoencoders, ControlNets, adapters, text/audio encoders, and LoRA layouts. List the
+registered classes from a repository checkout with:
+
+```bash
+python scripts/convert_checkpoint.py --list-models
+```
+
+Use the matching **Diffusers component configuration** in either direction. The conversion does not instantiate a
+model, change tensor dtypes, or need a record of an earlier import:
+
+```python
+from diffusers.loaders.conversion import get_conversion
+
+conversion = get_conversion("FluxTransformer2DModel", transformer_config)
+original_weights = conversion.to_original(diffusers_weights)
+diffusers_weights = conversion.to_diffusers(original_weights)
+```
+
+The shared file converter accepts a local component directory, safetensors/PyTorch file, or shard index. It writes a
+new component directory with safetensors weights, optionally sharded. For example:
+
+```bash
+python scripts/convert_checkpoint.py --direction to-original \
+    --input ./flux/transformer --output ./flux-original
+
+python scripts/convert_checkpoint.py --direction to-diffusers \
+    --input ./flux-original --config ./flux-original/conversion_config.json \
+    --output ./flux-restored
+```
+
+For bundled original inputs, `--input-prefix model.diffusion_model.` selects and strips a component prefix.
+`--input-wrapper state_dict` selects a nested PyTorch dictionary; repeat the option for nested wrappers. Set
+`--output-prefix` to prepend an original component prefix, and `--max-shard-size` to set a shard limit in bytes.
+One tensor can exceed that limit. Existing outputs are not overwritten.
+
+Use `--output-format pytorch` to write a single checkpoint file instead of a directory, and repeat
+`--output-wrapper` to nest its state dict. For example, the original SAT transformer container uses:
+
+```bash
+python scripts/convert_checkpoint.py --direction to-original --input ./cogvideox/transformer \
+    --output ./mp_rank_00_model_states.pt --output-format pytorch \
+    --output-wrapper module --output-prefix model.diffusion_model.
+```
+
+The PyTorch exporter regenerates CogVideoX's fixed positional embedding from config. A SAT VAE uses
+`--output-wrapper state_dict` with no prefix. See the [scripts migration guide](https://github.com/huggingface/diffusers/blob/main/scripts/README.md)
+for the component commands replaced by this shared converter and the pipeline preparation scripts that remain.
+
+Use `--list-presets` to inspect reusable configuration presets and original-config helpers. Select one with `--preset`,
+pass helper keyword arguments as JSON with `--preset-args`, and specify `--model-class` when the config has no class name.
+For components stored across several files, `--input-manifest` accepts a JSON list of namespaced sources. See the
+[scripts guide](https://github.com/huggingface/diffusers/blob/main/scripts/README.md) for manifest examples, original
+runtime requirements, and the complete command migration table. Complete pipeline assembly uses `build_pipeline.py`;
+SD/SDXL checkpoint packaging uses `export_pipeline_checkpoint.py`, and adapter fusion uses `merge_lora.py`.
+
+Some architectures have several source layouts. Set `original_format` in the config, or pass `--original-format` to
+the script. Examples include CLIP/OpenCLIP, Cosmos 1/2, CogView4 Megatron, and MiniMax H3's tensor-parallel shard layout.
+See the [component definitions and format notes](https://github.com/huggingface/diffusers/tree/main/src/diffusers/loaders/conversion)
+for the supported choices.
+
+These APIs convert component tensor layouts. The generic script expects the canonical keys declared by the selected
+definition after wrapper/prefix selection; it does not download external encoder weights, assemble tensor-parallel
+ranks, or reconstruct original runtime configuration, tokenizers, training state, or pipeline packaging. Exports carry
+`conversion_config.json` for repeat conversion, rather than an original runtime config. Shared source preparation handles known auxiliary state such as training counters; such state is not recoverable from Diffusers weights. The generic command can also write original PyTorch containers, including SAT checkpoints.
+
+Most operations preserve tensors exactly. A conversion with `lossless=False` performs a documented normalization,
+such as folding LTX2 decoder gates into linear weights; its inverse emits a canonical factorization. Shared original
+parameters can only be exported when their separate Diffusers copies agree. LoRA conversion preserves the factors and
+alpha tensors; it does not merge adapters into base weights. Quantized packed weights and graph exports such as ONNX
+or TensorRT are outside this tensor conversion API.
+
+### Defining a reversible conversion
+
+Single-file model loading and the shared file converter use the registry in `diffusers.loaders.conversion`.
+To define another component conversion, use `Conversion` for exact key renames and `Rule` for grouped tensor operations:
+
+```python
+from diffusers.loaders.conversion import Conversion, Rule, Split
+
+conversion = Conversion(
+    mapping={"time_embed.0.weight": "time_embedding.linear_1.weight"},
+    rules=(
+        Rule(
+            original=("attention.qkv.weight",),
+            diffusers=("attn.to_q.weight", "attn.to_k.weight", "attn.to_v.weight"),
+            transform=Split((64, 64, 64)),
+        ),
+    ),
+)
+
+# Supply a component state dict containing exactly the keys declared above.
+diffusers_weights = conversion.to_diffusers(original_weights)
+original_weights = conversion.to_original(diffusers_weights)
+```
+
+Build exact keys and split sizes from the component config with ordinary Python loops. A custom tensor transform
+implements `forward(tensors)` and `inverse(tensors)`, each returning an ordered tuple of tensors. Transform inputs must
+not be modified, and dtype/device must be preserved. Outputs may share storage with inputs.
+
+Each original key and each Diffusers key must appear once in the definition. Missing keys, unknown keys, duplicate
+destinations, and incompatible split shapes raise errors. Handle component prefixes and known auxiliary keys before
+calling the conversion. Conversion definitions describe tensor layouts; configuration conversion, checkpoint wrappers,
+and file I/O remain the responsibility of the model's format-specific code.
 
 ## Resources
 

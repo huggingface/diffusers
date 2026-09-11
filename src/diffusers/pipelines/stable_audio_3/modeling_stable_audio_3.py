@@ -33,6 +33,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...models.modeling_utils import ModelMixin
 from ...utils import logging
 
@@ -40,7 +41,7 @@ from ...utils import logging
 logger = logging.get_logger(__name__)
 
 
-class StableAudio3DurationEmbedder(ModelMixin, ConfigMixin):
+class StableAudio3DurationEmbedder(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     Embeds a duration value (in seconds) into a global conditioning vector for the Stable Audio 3 DiT (used as the
     ``global_hidden_states`` AdaLN input).

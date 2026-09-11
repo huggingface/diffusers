@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ..attention_processor import Attention
 from ..embeddings import TimestepEmbedding, Timesteps, get_2d_sincos_pos_embed
@@ -280,7 +281,7 @@ class OmniGenBlock(nn.Module):
         return hidden_states
 
 
-class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
+class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     The Transformer model introduced in OmniGen (https://huggingface.co/papers/2409.11340).
 

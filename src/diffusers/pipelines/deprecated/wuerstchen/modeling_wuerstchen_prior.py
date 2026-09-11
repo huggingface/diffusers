@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from ....configuration_utils import ConfigMixin, register_to_config
-from ....loaders import PeftAdapterMixin, UNet2DConditionLoadersMixin
+from ....loaders import FromOriginalModelMixin, PeftAdapterMixin, UNet2DConditionLoadersMixin
 from ....models.attention import AttentionMixin
 from ....models.attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -31,7 +31,9 @@ from ....models.modeling_utils import ModelMixin
 from .modeling_wuerstchen_common import AttnBlock, ResBlock, TimestepBlock, WuerstchenLayerNorm
 
 
-class WuerstchenPrior(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin):
+class WuerstchenPrior(
+    ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin, FromOriginalModelMixin
+):
     unet_name = "prior"
     _supports_gradient_checkpointing = True
 

@@ -18,6 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import is_kernels_available, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.constants import DIFFUSERS_DISABLE_REMOTE_CODE
@@ -697,7 +698,7 @@ def _tile_intervals(length: int, tile_size: int, stride: int, min_size: int) -> 
     return [(start, min(start + tile_size, length)) for start in starts[:-1]] + [(starts[-1], length)]
 
 
-class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
+class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     The LTX-2 diffusion video decoder, introduced in LTX-2.5.
 

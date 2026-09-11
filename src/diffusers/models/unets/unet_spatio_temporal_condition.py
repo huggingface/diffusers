@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import UNet2DConditionLoadersMixin
+from ...loaders import FromOriginalModelMixin, UNet2DConditionLoadersMixin
 from ...utils import BaseOutput, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin
@@ -30,7 +30,9 @@ class UNetSpatioTemporalConditionOutput(BaseOutput):
     sample: torch.Tensor = None
 
 
-class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+class UNetSpatioTemporalConditionModel(
+    ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin, FromOriginalModelMixin
+):
     r"""
     A conditional Spatio-Temporal UNet model that takes a noisy video frames, conditional state, and a timestep and
     returns a sample shaped output.

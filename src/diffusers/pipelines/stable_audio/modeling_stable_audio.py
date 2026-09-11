@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...models.modeling_utils import ModelMixin
 from ...utils import BaseOutput, logging
 
@@ -111,7 +112,7 @@ class StableAudioNumberConditioner(nn.Module):
         return float_embeds
 
 
-class StableAudioProjectionModel(ModelMixin, ConfigMixin):
+class StableAudioProjectionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     A simple linear projection model to map the conditioning values to a shared latent space.
 

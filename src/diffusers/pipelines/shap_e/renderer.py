@@ -21,6 +21,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...models import ModelMixin
 from ...utils import BaseOutput
 from .camera import create_pan_cameras
@@ -780,7 +781,7 @@ class ShapEParamsProjModel(ModelMixin, ConfigMixin):
         return out
 
 
-class ShapERenderer(ModelMixin, ConfigMixin):
+class ShapERenderer(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @register_to_config
     def __init__(
         self,

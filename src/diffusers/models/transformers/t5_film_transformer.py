@@ -17,12 +17,13 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ..attention_processor import Attention
 from ..embeddings import get_timestep_embedding
 from ..modeling_utils import ModelMixin
 
 
-class T5FilmDecoder(ModelMixin, ConfigMixin):
+class T5FilmDecoder(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     T5 style decoder with FiLM conditioning.
 

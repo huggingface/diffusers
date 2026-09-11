@@ -1,0 +1,31 @@
+{
+  "_class_name": "UNet1DModel",
+  "original_format": "diffuser_rl_legacy",
+  "in_channels": 14,
+  "down_block_types": [
+    "DownResnetBlock1D",
+    "DownResnetBlock1D",
+    "DownResnetBlock1D",
+    "DownResnetBlock1D"
+  ],
+  "up_block_types": [],
+  "out_block_type": "ValueFunction",
+  "mid_block_type": "ValueFunctionMidBlock1D",
+  "block_out_channels": [
+    32,
+    64,
+    128,
+    256
+  ],
+  "layers_per_block": 1,
+  "downsample_each_block": true,
+  "sample_size": 65536,
+  "out_channels": 14,
+  "extra_in_channels": 0,
+  "time_embedding_type": "positional",
+  "use_timestep_embedding": true,
+  "flip_sin_to_cos": false,
+  "freq_shift": 1,
+  "norm_num_groups": 8,
+  "act_fn": "mish"
+}

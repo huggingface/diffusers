@@ -11,10 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import importlib
 import inspect
 import re
+from collections.abc import Mapping
 from contextlib import nullcontext
+from typing import Any
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -29,36 +30,10 @@ from ..models.model_loading_utils import (
 from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, is_torch_version, logging
 from ..utils.torch_utils import empty_device_cache
+from .conversion.registry import CONVERSION_BUILDERS
 from .single_file_utils import (
     SingleFileComponentError,
-    convert_animatediff_checkpoint_to_diffusers,
-    convert_auraflow_transformer_checkpoint_to_diffusers,
-    convert_autoencoder_dc_checkpoint_to_diffusers,
-    convert_chroma_transformer_checkpoint_to_diffusers,
-    convert_controlnet_checkpoint,
-    convert_cosmos_transformer_checkpoint_to_diffusers,
-    convert_ernie_image_transformer_checkpoint_to_diffusers,
-    convert_flux2_transformer_checkpoint_to_diffusers,
-    convert_flux_transformer_checkpoint_to_diffusers,
-    convert_hidream_transformer_to_diffusers,
-    convert_hunyuan_video_transformer_to_diffusers,
-    convert_ldm_unet_checkpoint,
-    convert_ldm_vae_checkpoint,
-    convert_ltx2_audio_vae_to_diffusers,
-    convert_ltx2_transformer_to_diffusers,
-    convert_ltx2_vae_to_diffusers,
-    convert_ltx_transformer_checkpoint_to_diffusers,
-    convert_ltx_vae_checkpoint_to_diffusers,
-    convert_lumina2_to_diffusers,
-    convert_mochi_transformer_checkpoint_to_diffusers,
-    convert_sana_transformer_to_diffusers,
-    convert_sd3_transformer_checkpoint_to_diffusers,
-    convert_stable_cascade_unet_single_file_to_diffusers,
-    convert_wan_animate_2_transformer_to_diffusers,
-    convert_wan_transformer_to_diffusers,
-    convert_wan_vae_to_diffusers,
-    convert_z_image_controlnet_checkpoint_to_diffusers,
-    convert_z_image_transformer_checkpoint_to_diffusers,
+    convert_model_checkpoint,
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
     create_vae_diffusers_config_from_ldm,
@@ -81,12 +56,11 @@ if is_torch_version(">=", "1.9.0") and is_accelerate_available():
 else:
     _LOW_CPU_MEM_USAGE_DEFAULT = False
 
-SINGLE_FILE_LOADABLE_CLASSES = {
-    "StableCascadeUNet": {
-        "checkpoint_mapping_fn": convert_stable_cascade_unet_single_file_to_diffusers,
-    },
+# Models with established original-config mappings or checkpoint-based config inference.
+# Other registered conversions require an explicit Diffusers component config.
+SINGLE_FILE_CONFIGS = {
+    "StableCascadeUNet": {},
     "UNet2DConditionModel": {
-        "checkpoint_mapping_fn": convert_ldm_unet_checkpoint,
         "config_mapping_fn": create_unet_diffusers_config_from_ldm,
         "default_subfolder": "unet",
         "legacy_kwargs": {
@@ -94,130 +68,95 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         },
     },
     "AutoencoderKL": {
-        "checkpoint_mapping_fn": convert_ldm_vae_checkpoint,
         "config_mapping_fn": create_vae_diffusers_config_from_ldm,
         "default_subfolder": "vae",
     },
     "ControlNetModel": {
-        "checkpoint_mapping_fn": convert_controlnet_checkpoint,
         "config_mapping_fn": create_controlnet_diffusers_config_from_ldm,
     },
     "SD3Transformer2DModel": {
-        "checkpoint_mapping_fn": convert_sd3_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
-    "MotionAdapter": {
-        "checkpoint_mapping_fn": convert_animatediff_checkpoint_to_diffusers,
-    },
-    "SparseControlNetModel": {
-        "checkpoint_mapping_fn": convert_animatediff_checkpoint_to_diffusers,
-    },
+    "MotionAdapter": {},
+    "SparseControlNetModel": {},
     "FluxTransformer2DModel": {
-        "checkpoint_mapping_fn": convert_flux_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "ChromaTransformer2DModel": {
-        "checkpoint_mapping_fn": convert_chroma_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "ErnieImageTransformer2DModel": {
-        "checkpoint_mapping_fn": convert_ernie_image_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "LTXVideoTransformer3DModel": {
-        "checkpoint_mapping_fn": convert_ltx_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "AutoencoderKLLTXVideo": {
-        "checkpoint_mapping_fn": convert_ltx_vae_checkpoint_to_diffusers,
         "default_subfolder": "vae",
     },
-    "AutoencoderDC": {"checkpoint_mapping_fn": convert_autoencoder_dc_checkpoint_to_diffusers},
+    "AutoencoderDC": {},
     "MochiTransformer3DModel": {
-        "checkpoint_mapping_fn": convert_mochi_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "HunyuanVideoTransformer3DModel": {
-        "checkpoint_mapping_fn": convert_hunyuan_video_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "AuraFlowTransformer2DModel": {
-        "checkpoint_mapping_fn": convert_auraflow_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "Lumina2Transformer2DModel": {
-        "checkpoint_mapping_fn": convert_lumina2_to_diffusers,
         "default_subfolder": "transformer",
     },
     "SanaTransformer2DModel": {
-        "checkpoint_mapping_fn": convert_sana_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "SkyReelsV2Transformer3DModel": {
-        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "ChronoEditTransformer3DModel": {
-        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "WanTransformer3DModel": {
-        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "WanVACETransformer3DModel": {
-        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "WanAnimateTransformer3DModel": {
-        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "WanAnimate2Transformer3DModel": {
-        "checkpoint_mapping_fn": convert_wan_animate_2_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "AutoencoderKLWan": {
-        "checkpoint_mapping_fn": convert_wan_vae_to_diffusers,
         "default_subfolder": "vae",
     },
     "HiDreamImageTransformer2DModel": {
-        "checkpoint_mapping_fn": convert_hidream_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "CosmosTransformer3DModel": {
-        "checkpoint_mapping_fn": convert_cosmos_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "QwenImageTransformer2DModel": {
-        "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
         "default_subfolder": "transformer",
     },
     "Flux2Transformer2DModel": {
-        "checkpoint_mapping_fn": convert_flux2_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "ZImageTransformer2DModel": {
-        "checkpoint_mapping_fn": convert_z_image_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
-    "ZImageControlNetModel": {
-        "checkpoint_mapping_fn": convert_z_image_controlnet_checkpoint_to_diffusers,
-    },
+    "ZImageControlNetModel": {},
     "LTX2VideoTransformer3DModel": {
-        "checkpoint_mapping_fn": convert_ltx2_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "AutoencoderKLLTX2Video": {
-        "checkpoint_mapping_fn": convert_ltx2_vae_to_diffusers,
         "default_subfolder": "vae",
     },
     "AutoencoderKLLTX2Audio": {
-        "checkpoint_mapping_fn": convert_ltx2_audio_vae_to_diffusers,
         "default_subfolder": "audio_vae",
     },
     "MotifVideoTransformer3DModel": {
-        "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
         "default_subfolder": "transformer",
     },
 }
@@ -232,14 +171,15 @@ def _should_convert_state_dict_to_diffusers(model_state_dict, checkpoint_state_d
 
 
 def _get_single_file_loadable_mapping_class(cls):
-    diffusers_module = importlib.import_module(__name__.split(".")[0])
-    for loadable_class_str in SINGLE_FILE_LOADABLE_CLASSES:
-        loadable_class = getattr(diffusers_module, loadable_class_str)
-
-        if issubclass(cls, loadable_class):
-            return loadable_class_str
-
-    return None
+    # Follow the MRO so a specialized model keeps its own conversion before considering a base class.
+    return next(
+        (
+            base.__name__
+            for base in cls.__mro__
+            if base.__module__.startswith("diffusers.") and base.__name__ in CONVERSION_BUILDERS
+        ),
+        None,
+    )
 
 
 def _get_mapping_function_kwargs(mapping_fn, **kwargs):
@@ -260,7 +200,9 @@ class FromOriginalModelMixin:
 
     @classmethod
     @validate_hf_hub_args
-    def from_single_file(cls, pretrained_model_link_or_path_or_dict: str | None = None, **kwargs) -> Self:
+    def from_single_file(
+        cls, pretrained_model_link_or_path_or_dict: str | Mapping[str, Any] | None = None, **kwargs
+    ) -> Self:
         r"""
         Instantiate a model from pretrained weights saved in the original `.ckpt` or `.safetensors` format. The model
         is set in evaluation mode (`model.eval()`) by default.
@@ -272,11 +214,12 @@ class FromOriginalModelMixin:
                       `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.safetensors"`) on the Hub.
                     - A path to a local *file* containing the weights of the component model.
                     - A state dict containing the component model weights.
-            config (`str`, *optional*):
+            config (`str` or `dict`, *optional*):
                 - A string, the *repo id* (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline hosted
                   on the Hub.
                 - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline component
                   configs in Diffusers format.
+                - A dictionary containing the matching Diffusers component configuration.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             original_config (`str`, *optional*):
@@ -325,11 +268,8 @@ class FromOriginalModelMixin:
         """
 
         mapping_class_name = _get_single_file_loadable_mapping_class(cls)
-        # if class_name not in SINGLE_FILE_LOADABLE_CLASSES:
         if mapping_class_name is None:
-            raise ValueError(
-                f"FromOriginalModelMixin is currently only compatible with {', '.join(SINGLE_FILE_LOADABLE_CLASSES.keys())}"
-            )
+            raise ValueError(f"No original checkpoint conversion is registered for {cls.__name__}.")
 
         pretrained_model_link_or_path = kwargs.get("pretrained_model_link_or_path", None)
         if pretrained_model_link_or_path is not None:
@@ -379,7 +319,7 @@ class FromOriginalModelMixin:
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
             )
 
-        if isinstance(pretrained_model_link_or_path_or_dict, dict):
+        if isinstance(pretrained_model_link_or_path_or_dict, Mapping):
             checkpoint = pretrained_model_link_or_path_or_dict
         else:
             checkpoint = load_single_file_checkpoint(
@@ -401,12 +341,17 @@ class FromOriginalModelMixin:
         else:
             hf_quantizer = None
 
-        mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
+        loading_config = SINGLE_FILE_CONFIGS.get(mapping_class_name, {"config_required": True})
 
-        checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
+        if loading_config.get("config_required", False) and config is None and original_config is None:
+            raise ValueError(
+                f"{mapping_class_name} requires an explicit Diffusers `config` directory or repository when loading "
+                "a single file. The original weights do not specify all settings of the model variant."
+            )
+
         if original_config is not None:
-            if "config_mapping_fn" in mapping_functions:
-                config_mapping_fn = mapping_functions["config_mapping_fn"]
+            if "config_mapping_fn" in loading_config:
+                config_mapping_fn = loading_config["config_mapping_fn"]
             else:
                 config_mapping_fn = None
 
@@ -430,7 +375,10 @@ class FromOriginalModelMixin:
                 **config_mapping_kwargs,
             )
         else:
-            if config is not None:
+            config_is_mapping = isinstance(config, Mapping)
+            if config_is_mapping:
+                diffusers_model_config = dict(config)
+            elif config is not None:
                 if isinstance(config, str):
                     default_pretrained_model_config_name = config
                 else:
@@ -445,25 +393,26 @@ class FromOriginalModelMixin:
                 config = fetch_diffusers_config(checkpoint)
                 default_pretrained_model_config_name = config["pretrained_model_name_or_path"]
 
-                if "default_subfolder" in mapping_functions:
-                    subfolder = mapping_functions["default_subfolder"]
+                if "default_subfolder" in loading_config:
+                    subfolder = loading_config["default_subfolder"]
 
                 subfolder = subfolder or config.pop(
                     "subfolder", None
                 )  # some configs contain a subfolder key, e.g. StableCascadeUNet
 
-            diffusers_model_config = cls.load_config(
-                pretrained_model_name_or_path=default_pretrained_model_config_name,
-                subfolder=subfolder,
-                local_files_only=local_files_only,
-                token=token,
-                revision=config_revision,
-            )
+            if not config_is_mapping:
+                diffusers_model_config = cls.load_config(
+                    pretrained_model_name_or_path=default_pretrained_model_config_name,
+                    subfolder=subfolder,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=config_revision,
+                )
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
 
             # Map legacy kwargs to new kwargs
-            if "legacy_kwargs" in mapping_functions:
-                legacy_kwargs = mapping_functions["legacy_kwargs"]
+            if "legacy_kwargs" in loading_config:
+                legacy_kwargs = loading_config["legacy_kwargs"]
                 for legacy_key, new_key in legacy_kwargs.items():
                     if legacy_key in kwargs:
                         kwargs[new_key] = kwargs.pop(legacy_key)
@@ -495,14 +444,17 @@ class FromOriginalModelMixin:
             expanded_device_map = _expand_device_map(device_map, model_state_dict.keys())
             _caching_allocator_warmup(model, expanded_device_map, torch_dtype, hf_quantizer)
 
-        checkpoint_mapping_kwargs = _get_mapping_function_kwargs(checkpoint_mapping_fn, **kwargs)
+        checkpoint_mapping_kwargs = _get_mapping_function_kwargs(convert_model_checkpoint, **kwargs)
+        checkpoint_mapping_kwargs["return_config"] = True
 
         if _should_convert_state_dict_to_diffusers(model_state_dict, checkpoint):
-            diffusers_format_checkpoint = checkpoint_mapping_fn(
-                config=diffusers_model_config,
+            diffusers_format_checkpoint, conversion_config = convert_model_checkpoint(
+                config=dict(diffusers_model_config, _class_name=mapping_class_name),
                 checkpoint=checkpoint,
                 **checkpoint_mapping_kwargs,
             )
+            if "original_format" in conversion_config:
+                model.register_to_config(original_format=conversion_config["original_format"])
         else:
             diffusers_format_checkpoint = checkpoint
 

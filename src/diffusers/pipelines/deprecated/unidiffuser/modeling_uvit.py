@@ -4,6 +4,7 @@ import torch
 from torch import nn
 
 from ....configuration_utils import ConfigMixin, register_to_config
+from ....loaders import FromOriginalModelMixin
 from ....models import ModelMixin
 from ....models.attention import FeedForward
 from ....models.attention_processor import Attention
@@ -829,7 +830,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
         return Transformer2DModelOutput(sample=output)
 
 
-class UniDiffuserModel(ModelMixin, ConfigMixin):
+class UniDiffuserModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     Transformer model for a image-text [UniDiffuser](https://huggingface.co/papers/2303.06555) model. This is a
     modification of [`UTransformer2DModel`] with input and output heads for the VAE-embedded latent image, the

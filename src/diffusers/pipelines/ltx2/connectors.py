@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention import FeedForward
 from ...models.modeling_utils import ModelMixin
 from ...models.transformers.transformer_ltx2 import LTX2Attention, LTX2AudioVideoAttnProcessor
@@ -332,7 +332,7 @@ class LTX2ConnectorTransformer1d(nn.Module):
         return hidden_states, attention_mask
 
 
-class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
+class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin, FromOriginalModelMixin):
     """
     Text connector stack used by LTX 2.0 to process the packed text encoder hidden states for both the video and audio
     streams.
