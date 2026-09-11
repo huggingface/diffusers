@@ -80,6 +80,25 @@ def nearest_interp(src_array: torch.Tensor, target_length: int) -> torch.Tensor:
     return src_array[mapped_indices]
 
 
+def _align_to_hidden_states(tensor: torch.Tensor, hidden_states: torch.Tensor) -> torch.Tensor:
+    """
+    Slice `tensor` down to the trailing `hidden_states.shape[1]` tokens when it is longer along the sequence axis.
+
+    Models such as Flux2 concatenate the text and image streams before their single-stream blocks, so the tail block
+    returns `[text; image]` while the head block only saw the image stream. The image stream sits at the end of the
+    fused sequence in these layouts.
+    """
+    if (
+        tensor.ndim == 3
+        and hidden_states.ndim == 3
+        and tensor.shape[0] == hidden_states.shape[0]
+        and tensor.shape[2] == hidden_states.shape[2]
+        and tensor.shape[1] > hidden_states.shape[1]
+    ):
+        return tensor[:, -hidden_states.shape[1] :]
+    return tensor
+
+
 @dataclass
 class MagCacheConfig:
     r"""
@@ -339,15 +358,10 @@ class MagCacheBlockHook(ModelHook):
             if in_hidden is None:
                 return output
 
-            # Determine residual
+            # Keep the image tokens only, so the residual matches the head input it is added to on skipped steps.
+            out_hidden = _align_to_hidden_states(out_hidden, in_hidden)
             if out_hidden.shape == in_hidden.shape:
                 residual = out_hidden - in_hidden
-            elif out_hidden.ndim == 3 and in_hidden.ndim == 3 and out_hidden.shape[2] == in_hidden.shape[2]:
-                diff = in_hidden.shape[1] - out_hidden.shape[1]
-                if diff == 0:
-                    residual = out_hidden - in_hidden
-                else:
-                    residual = out_hidden - in_hidden  # Fallback to matching tail
             else:
                 # Fallback for completely mismatched shapes
                 residual = out_hidden
