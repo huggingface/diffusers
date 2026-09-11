@@ -150,31 +150,11 @@ class AttentionMixin:
             if isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion:
                 module.unfuse_projections()
 
-    def restore_checkpoint_fusion_state(self, inplace: bool = False):
-        """
-        Restores the QKV fusion state back to that of the original model checkpoint (unlike `fuse_qkv_projections`,
-        which will fuse all eligible projections). This can be undone by `unfuse_qkv_projections`. The original
-        checkpoint fusion info is held on each `AttentionModuleMixin` module in the _native_fused_projections
-        attribute.
-
-        > [!WARNING] > This API is 🧪 experimental.
-        """
-        self._raise_on_unmerged_lora(fused=False, action="fuse")
-        self._raise_on_unmerged_lora(fused=True, action="unfuse")
-
-        for module in self.modules():
-            if isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion:
-                if module._native_fused_projections is True:
-                    module.fuse_projections(inplace=inplace)
-                elif module._native_fused_projections is False:
-                    module.unfuse_projections()
-
 
 class AttentionModuleMixin:
     _default_processor_cls = None
     _available_processors = []
     _supports_qkv_fusion = True
-    _native_fused_projections = None
     fused_projections = False
 
     # The projections QKV fusion rewrites, before and after fusing.

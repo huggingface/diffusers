@@ -595,38 +595,6 @@ class TestAttentionMixin:
         assert not hasattr(model.block1, "to_qkv")
         assert not hasattr(model.block2, "to_kv")
 
-    # -------------------------------------------------------------------------
-    # restore_checkpoint_fusion_state
-    # -------------------------------------------------------------------------
-
-    def test_restore_checkpoint_noop_for_none(self, model):
-        # Default _native_fused_projections is None — state should be unchanged.
-        model.restore_checkpoint_fusion_state()
-        assert model.block1.fused_projections is False
-        assert model.block2.fused_projections is False
-
-    def test_restore_checkpoint_fuses_true_blocks(self, model):
-        model.block1._native_fused_projections = True
-        model.restore_checkpoint_fusion_state()
-        assert model.block1.fused_projections is True
-        assert model.block2.fused_projections is False  # _native_fused_projections=None, untouched
-
-    def test_restore_checkpoint_unfuses_false_blocks(self, model):
-        # Pre-fuse block1, mark it natively split — restore should unfuse it.
-        model.block1.fuse_projections()
-        model.block1._native_fused_projections = False
-        model.restore_checkpoint_fusion_state()
-        assert model.block1.fused_projections is False
-
-    def test_restore_checkpoint_mixed_state(self, model):
-        # block1 natively fused, block2 natively split (pre-fuse block2 to give restore work to do).
-        model.block2.fuse_projections()
-        model.block1._native_fused_projections = True
-        model.block2._native_fused_projections = False
-        model.restore_checkpoint_fusion_state()
-        assert model.block1.fused_projections is True
-        assert model.block2.fused_projections is False
-
 
 # Real models at the tiny configs their own model tests use. QKV fusion takes two code paths and the
 # LoRA guard has to hold on both: FluxTransformer2DModel goes through
