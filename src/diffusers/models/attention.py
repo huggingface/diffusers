@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import deprecate, logging
+from ..utils import deprecate, has_unmerged_lora, logging
 from ..utils.import_utils import is_torch_npu_available, is_torch_xla_available, is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, LinearActivation, SwiGLU
@@ -95,6 +95,35 @@ class AttentionMixin:
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
+    def _raise_on_unmerged_lora(self, fused: bool, action: str) -> None:
+        """
+        Refuse to rewrite attention projection weights while an unmerged LoRA adapter is attached to them.
+
+        (Un)fusing concatenates or splits the base weights, so an adapter that has not been merged into them would be
+        silently dropped. The whole model is checked before any module is touched, so a rejected call leaves it exactly
+        as it was.
+
+        Args:
+            fused (`bool`):
+                Whether to inspect the fused projections (`to_qkv`, ...) rather than the split ones (`to_q`, ...).
+            action (`str`):
+                Verb naming the caller, used in the error message.
+        """
+        offending_projections = []
+        for module_name, module in self.named_modules():
+            if not (isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion):
+                continue
+            offending_projections.extend(
+                f"{module_name}.{projection_name}" for projection_name in module._unmerged_lora_projections(fused)
+            )
+
+        if offending_projections:
+            raise ValueError(
+                f"Cannot {action} QKV projections: {len(offending_projections)} attention projection(s) carry an "
+                f"unmerged LoRA adapter (for example {offending_projections[0]}). Call `fuse_lora()` to merge the "
+                "LoRA into the base weights first, or `unload_lora_weights()` to remove it."
+            )
+
     def fuse_qkv_projections(self, inplace: bool = False):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
@@ -103,6 +132,8 @@ class AttentionMixin:
         for _, attn_processor in self.attn_processors.items():
             if "Added" in str(attn_processor.__class__.__name__):
                 raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+
+        self._raise_on_unmerged_lora(fused=False, action="fuse")
 
         for module in self.modules():
             if isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion:
@@ -113,6 +144,8 @@ class AttentionMixin:
 
         > [!WARNING] > This API is 🧪 experimental.
         """
+        self._raise_on_unmerged_lora(fused=True, action="unfuse")
+
         for module in self.modules():
             if isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion:
                 module.unfuse_projections()
@@ -126,6 +159,9 @@ class AttentionMixin:
 
         > [!WARNING] > This API is 🧪 experimental.
         """
+        self._raise_on_unmerged_lora(fused=False, action="fuse")
+        self._raise_on_unmerged_lora(fused=True, action="unfuse")
+
         for module in self.modules():
             if isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion:
                 if module._native_fused_projections is True:
@@ -140,6 +176,10 @@ class AttentionModuleMixin:
     _supports_qkv_fusion = True
     _native_fused_projections = None
     fused_projections = False
+
+    # The projections QKV fusion rewrites, before and after fusing.
+    _qkv_projection_names = ("to_q", "to_k", "to_v", "add_q_proj", "add_k_proj", "add_v_proj")
+    _fused_qkv_projection_names = ("to_qkv", "to_kv", "to_added_qkv", "to_added_kv")
 
     def set_processor(self, processor: AttentionProcessor) -> None:
         """
@@ -261,34 +301,27 @@ class AttentionModuleMixin:
 
                 self.set_attention_backend("xformers")
 
-    @staticmethod
-    def _has_active_lora(module: nn.Module) -> bool:
-        """Checks for the presence of PEFT-style LoRA modules without needing to import `peft`."""
-        return any("lora_A" in name or "lora_B" in name for name, _ in module.named_modules())
+    def _unmerged_lora_projections(self, fused: bool) -> list[str]:
+        """
+        Names of the projections that (un)fusing would rewrite and that still carry an unmerged LoRA adapter.
+
+        Args:
+            fused (`bool`):
+                Whether to inspect the fused projections (`to_qkv`, ...) rather than the split ones (`to_q`, ...).
+        """
+        names = self._fused_qkv_projection_names if fused else self._qkv_projection_names
+        unmerged = []
+        for name in names:
+            projection = getattr(self, name, None)
+            if projection is not None and has_unmerged_lora(projection):
+                unmerged.append(name)
+        return unmerged
 
     @torch.no_grad()
     def fuse_projections(self, inplace: bool = False):
         """
         Fuse the query, key, and value projections into a single projection for efficiency.
         """
-        # Do not fuse if LoRA adapters are active on the Q,K,V projections.
-        possible_qkv_modules = [
-            ("to_q", getattr(self, "to_q", None)),
-            ("to_k", getattr(self, "to_k", None)),
-            ("to_v", getattr(self, "to_v", None)),
-            ("add_q_proj", getattr(self, "add_q_proj", None)),
-            ("add_k_proj", getattr(self, "add_k_proj", None)),
-            ("add_v_proj", getattr(self, "add_v_proj", None)),
-        ]
-        active_lora_modules = [
-            name for name, mod in possible_qkv_modules if mod is not None and self._has_active_lora(mod)
-        ]
-        if active_lora_modules:
-            raise ValueError(
-                f"Cannot fuse QKV projections: LoRA adapters are active on {active_lora_modules}. "
-                "Please detach the LoRA or call `merge_and_unload()` to merge LoRA weights first."
-            )
-
         # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections in Flux2
         # single stream blocks are always fused)
         if not self._supports_qkv_fusion:
@@ -407,22 +440,6 @@ class AttentionModuleMixin:
         """
         Unfuse the query, key, and value projections back to separate projections.
         """
-        # Do not unfuse if LoRA adapters are active on the Q,K,V projections.
-        possible_fused_modules = [
-            ("to_qkv", getattr(self, "to_qkv", None)),
-            ("to_kv", getattr(self, "to_kv", None)),
-            ("to_added_qkv", getattr(self, "to_added_qkv", None)),
-            ("to_added_kv", getattr(self, "to_added_kv", None)),
-        ]
-        active_lora_modules = [
-            name for name, mod in possible_fused_modules if mod is not None and self._has_active_lora(mod)
-        ]
-        if active_lora_modules:
-            raise ValueError(
-                f"Cannot unfuse QKV projections: LoRA adapters are active on {active_lora_modules}. "
-                "Please detach the LoRA or call `merge_and_unload()` to merge LoRA weights first."
-            )
-
         # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections in Flux2
         # single stream blocks are always fused)
         if not self._supports_qkv_fusion:

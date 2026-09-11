@@ -2,12 +2,19 @@ import pytest
 import torch
 import torch.nn as nn
 
+from diffusers import FluxTransformer2DModel, WanTransformer3DModel
 from diffusers.models.attention import AttentionMixin, AttentionModuleMixin
+from diffusers.utils.import_utils import is_peft_available
+from diffusers.utils.peft_utils import set_adapter_layers
 
-from ..testing_utils import enable_full_determinism
+from ..testing_utils import assert_tensors_close, enable_full_determinism, require_peft_backend
 
 
 enable_full_determinism()
+
+
+if is_peft_available():
+    from peft import LoraConfig
 
 
 # Minimal concrete AttentionModuleMixin subclasses used as test fixtures.
@@ -86,17 +93,6 @@ class _AttentionMixinModel(nn.Module, AttentionMixin):
         nn.Module.__init__(self)
         self.block1 = _MinimalSelfAttn(d_model=64)
         self.block2 = _MinimalCrossAttn(d_model=64, d_cross=32)
-
-
-class MockLoRA(nn.Module):
-    def __init__(self, linear: nn.Module, rank: int = 4):
-        super().__init__()
-        self.base = linear
-        self.lora_A = nn.Linear(linear.in_features, rank, bias=False)
-        self.lora_B = nn.Linear(linear.out_features, rank, bias=False)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.base(x) + self.lora_B(self.lora_A(x))
 
 
 class TestAttentionModuleMixin:
@@ -530,42 +526,6 @@ class TestAttentionModuleMixin:
         assert torch.equal(k, k_ref)
         assert torch.equal(v, v_ref)
 
-    # -------------------------------------------------------------------------
-    # LoRA guard
-    # -------------------------------------------------------------------------
-
-    def test_fuse_raises_with_lora_on_to_q(self, self_attn):
-        self_attn.to_q = MockLoRA(self_attn.to_q)
-        with pytest.raises(ValueError, match="LoRA"):
-            self_attn.fuse_projections()
-
-    def test_fuse_raises_with_lora_on_to_k(self, self_attn):
-        self_attn.to_k = MockLoRA(self_attn.to_k)
-        with pytest.raises(ValueError, match="LoRA"):
-            self_attn.fuse_projections()
-
-    def test_fuse_raises_with_lora_on_add_k_proj(self, added_kv_attn):
-        added_kv_attn.add_k_proj = MockLoRA(added_kv_attn.add_k_proj)
-        with pytest.raises(ValueError, match="LoRA"):
-            added_kv_attn.fuse_projections()
-
-    def test_fuse_raises_with_lora_on_add_q_proj(self, added_qkv_attn):
-        added_qkv_attn.add_q_proj = MockLoRA(added_qkv_attn.add_q_proj)
-        with pytest.raises(ValueError, match="LoRA"):
-            added_qkv_attn.fuse_projections()
-
-    def test_unfuse_raises_with_lora_on_to_qkv(self, self_attn):
-        self_attn.fuse_projections()
-        self_attn.to_qkv = MockLoRA(self_attn.to_qkv)
-        with pytest.raises(ValueError, match="LoRA"):
-            self_attn.unfuse_projections()
-
-    def test_unfuse_raises_with_lora_on_to_kv(self, cross_attn):
-        cross_attn.fuse_projections()
-        cross_attn.to_kv = MockLoRA(cross_attn.to_kv)
-        with pytest.raises(ValueError, match="LoRA"):
-            cross_attn.unfuse_projections()
-
 
 class TestAttentionMixin:
     @pytest.fixture
@@ -622,3 +582,152 @@ class TestAttentionMixin:
         model.restore_checkpoint_fusion_state()
         assert model.block1.fused_projections is True
         assert model.block2.fused_projections is False
+
+
+# Real models at the tiny configs their own model tests use. QKV fusion takes two code paths and the
+# LoRA guard has to hold on both: FluxTransformer2DModel goes through
+# AttentionModuleMixin.fuse_projections, while WanTransformer3DModel overrides it.
+def _build_flux():
+    model = FluxTransformer2DModel(
+        patch_size=1,
+        in_channels=4,
+        num_layers=2,
+        num_single_layers=1,
+        attention_head_dim=16,
+        num_attention_heads=2,
+        joint_attention_dim=32,
+        pooled_projection_dim=32,
+        axes_dims_rope=[4, 4, 8],
+    ).eval()
+    inputs = {
+        "hidden_states": torch.randn(1, 16, 4),
+        "encoder_hidden_states": torch.randn(1, 48, 32),
+        "pooled_projections": torch.randn(1, 32),
+        "img_ids": torch.randn(16, 3),
+        "txt_ids": torch.randn(48, 3),
+        "timestep": torch.tensor([1.0]),
+    }
+    return model, inputs
+
+
+def _build_wan():
+    model = WanTransformer3DModel(
+        patch_size=(1, 2, 2),
+        num_attention_heads=2,
+        attention_head_dim=12,
+        in_channels=4,
+        out_channels=4,
+        text_dim=16,
+        freq_dim=256,
+        ffn_dim=32,
+        num_layers=2,
+        cross_attn_norm=True,
+        qk_norm="rms_norm_across_heads",
+        rope_max_seq_len=32,
+    ).eval()
+    inputs = {
+        "hidden_states": torch.randn(1, 4, 2, 16, 16),
+        "encoder_hidden_states": torch.randn(1, 12, 16),
+        "timestep": torch.tensor([500]),
+    }
+    return model, inputs
+
+
+@require_peft_backend
+@pytest.mark.parametrize(
+    "build_model",
+    [_build_flux, _build_wan],
+    ids=["flux-base-fuse_projections", "wan-overridden-fuse_projections"],
+)
+class TestQkvFusionLoraGuard:
+    """
+    Fusing rewrites the base projection weights, so it must refuse to run while a LoRA adapter still contributes
+    something those weights don't already carry — and must go ahead once the adapter is merged or disabled.
+    """
+
+    def add_adapter(self, model):
+        model.add_adapter(
+            LoraConfig(
+                r=4,
+                target_modules=["to_q", "to_k", "to_v", "add_k_proj", "add_v_proj"],
+                init_lora_weights=False,
+            )
+        )
+
+    def fused_module_count(self, model):
+        return sum(
+            1
+            for module in model.modules()
+            if isinstance(module, AttentionModuleMixin) and getattr(module, "fused_projections", False)
+        )
+
+    # -------------------------------------------------------------------------
+    # An adapter that still contributes blocks fusion
+    # -------------------------------------------------------------------------
+
+    def test_fuses_without_lora(self, build_model):
+        model, _ = build_model()
+        model.fuse_qkv_projections()
+        assert self.fused_module_count(model) > 0
+
+    def test_refuses_with_attached_lora(self, build_model):
+        model, _ = build_model()
+        self.add_adapter(model)
+        with pytest.raises(ValueError, match="unmerged LoRA adapter"):
+            model.fuse_qkv_projections()
+
+    def test_refuses_after_unfuse_lora(self, build_model):
+        model, _ = build_model()
+        self.add_adapter(model)
+        model.fuse_lora()
+        model.unfuse_lora()
+        with pytest.raises(ValueError, match="unmerged LoRA adapter"):
+            model.fuse_qkv_projections()
+
+    def test_refusal_leaves_model_untouched(self, build_model):
+        # The whole model is checked before anything is mutated, so a refusal must not leave it half-fused.
+        model, _ = build_model()
+        self.add_adapter(model)
+        with pytest.raises(ValueError, match="unmerged LoRA adapter"):
+            model.fuse_qkv_projections()
+        assert self.fused_module_count(model) == 0
+
+    def test_refuses_unfuse_with_lora_on_fused_projection(self, build_model):
+        model, _ = build_model()
+        model.fuse_qkv_projections()
+        model.add_adapter(LoraConfig(r=4, target_modules=["to_qkv"], init_lora_weights=False))
+        with pytest.raises(ValueError, match="unmerged LoRA adapter"):
+            model.unfuse_qkv_projections()
+
+    # -------------------------------------------------------------------------
+    # An adapter whose contribution is already in the base weights does not
+    # -------------------------------------------------------------------------
+
+    def test_allows_after_fuse_lora(self, build_model):
+        # fuse_lora merges the adapter into the base weights but leaves the PEFT layers in place, so a check that
+        # only looked for lora_A/lora_B submodules would refuse this.
+        model, _ = build_model()
+        self.add_adapter(model)
+        model.fuse_lora()
+        model.fuse_qkv_projections()
+        assert self.fused_module_count(model) > 0
+
+    def test_allows_with_disabled_adapters(self, build_model):
+        model, _ = build_model()
+        self.add_adapter(model)
+        set_adapter_layers(model, enabled=False)
+        model.fuse_qkv_projections()
+        assert self.fused_module_count(model) > 0
+
+    def test_fusing_after_fuse_lora_preserves_output(self, build_model):
+        # The merged LoRA has to survive fusion — that is why allowing the call above is correct, not just permissive.
+        model, inputs = build_model()
+        self.add_adapter(model)
+        model.fuse_lora()
+
+        with torch.no_grad():
+            output_before_fusion = model(**inputs, return_dict=False)[0]
+            model.fuse_qkv_projections()
+            output_after_fusion = model(**inputs, return_dict=False)[0]
+
+        assert_tensors_close(output_before_fusion, output_after_fusion, atol=1e-5, rtol=0)
