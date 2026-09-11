@@ -49,6 +49,14 @@ codex plugin marketplace add huggingface/diffusers    # then install from the Pl
 ```
 
 
+## Human in the loop
+
+Everything a PR reviewer sees must come from a human, or be approved by one for the exact wording. That includes commit messages, code comments and docstrings, PR titles and descriptions, and any PR or issue comment, review, or reply. Ask whether the user wants you to draft that text or will write it themselves. Keep drafts short and easy to understand. When you hand one over, remind them to read it for real and check that it reads well for other humans.
+
+- **Don't commit unless the user approved the exact commit message, and never push or open a PR on
+  your own.** The user decides when anything is published, each time.
+- **Don't post to GitHub directly** — no comments, reviews, or replies. Draft when asked and hand the text to the user.
+
 ## Code formatting
 
 - `make style` and `make fix-copies` should be run before opening a PR
