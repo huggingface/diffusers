@@ -33,12 +33,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import httpx
 import numpy as np
 import torch
 from huggingface_hub import HfApi, Sandbox, Volume, get_token, parse_hf_uri
 from huggingface_hub.cli._output import out
-from huggingface_hub.utils import send_telemetry
+from huggingface_hub.utils import httpx, send_telemetry
 from PIL import Image
 
 import diffusers
