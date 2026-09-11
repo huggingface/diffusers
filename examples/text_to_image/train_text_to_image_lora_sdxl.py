@@ -23,7 +23,8 @@ import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
-
+import io
+from PIL import Image as PILImage
 import datasets
 import numpy as np
 import torch
@@ -206,6 +207,17 @@ def parse_args(input_args=None):
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--enable_bucketing",
+        action="store_true",
+        help="Enable aspect-ratio / size bucketing. When enabled, images are grouped into buckets and each batch contains images of the same bucket.",
+    )
+    parser.add_argument(
+        "--buckets",
+        type=str,
+        default="512x512,768x768,1024x1024,1024x1536,1536x1024",
+        help="Comma-separated list of buckets W x H, e.g. '512x512,1024x1536'. If not specified, defaults provided.",
+    )
+    parser.add_argument(
         "--variant",
         type=str,
         default=None,
@@ -300,7 +312,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--center_crop",
-        default=False,
+        default=True,
         action="store_true",
         help=(
             "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
@@ -536,12 +548,18 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
             text_input_ids = text_input_ids_list[i]
 
         prompt_embeds = text_encoder(
-            text_input_ids.to(text_encoder.device), output_hidden_states=True, return_dict=False
+            text_input_ids.to(text_encoder.device), output_hidden_states=True, 
+            # return_dict=False !!change
         )
 
         # We are only ALWAYS interested in the pooled output of the final text encoder
         pooled_prompt_embeds = prompt_embeds[0]
+        #!!change
+        # pooled_prompt_embeds = prompt_embeds.pooler_output
+
         prompt_embeds = prompt_embeds[-1][-2]
+        #!!change
+        # prompt_embeds = prompt_embeds.hidden_states[-2]
         bs_embed, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
         prompt_embeds_list.append(prompt_embeds)
@@ -869,6 +887,7 @@ def main(args):
         dataset = load_dataset(
             args.dataset_name, args.dataset_config_name, cache_dir=args.cache_dir, data_dir=args.train_data_dir
         )
+
     else:
         data_files = {}
         if args.train_data_dir is not None:
@@ -903,6 +922,59 @@ def main(args):
             raise ValueError(
                 f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
             )
+
+    def parse_buckets(buckets_str):
+        buckets = []
+        for item in buckets_str.split(","):
+            item = item.strip()
+            if "x" in item:
+                try:
+                    w, h = item.split("x")
+                    buckets.append((int(w), int(h)))
+                except Exception:
+                    continue
+        return buckets
+
+    buckets = parse_buckets(args.buckets)
+    if len(buckets) == 0:
+        buckets = [(args.resolution, args.resolution)]
+
+    # Pre-scan dataset["train"] sizes and assign bucket indices (run on main process)
+    bucket_assignments = None
+    with accelerator.main_process_first():
+        sizes = []
+        for idx in range(len(dataset["train"])):
+            example = dataset["train"][idx]
+            img_field = example[image_column]
+            try:
+                if isinstance(img_field, dict) and "path" in img_field:
+                    with PILImage.open(img_field["path"]) as im:
+                        w, h = im.size
+                elif hasattr(img_field, "size"):
+                    w, h = img_field.size
+                elif isinstance(img_field, (bytes, bytearray)):
+                    with PILImage.open(io.BytesIO(img_field)) as im:
+                        w, h = im.size
+                else:
+                    # fallback
+                    with PILImage.open(img_field) as im:
+                        w, h = im.size
+            except Exception:
+                w, h = args.resolution, args.resolution
+            sizes.append((w, h))
+
+        def aspect(w, h):
+            return float(w) / float(h)
+
+        bucket_aspects = [aspect(w, h) for (w, h) in buckets]
+        bucket_assignments = []
+        for (w, h) in sizes:
+            ar = aspect(w, h)
+            best_i = int(min(range(len(bucket_aspects)), key=lambda i: abs(ar - bucket_aspects[i])))
+            bucket_assignments.append(best_i)
+
+        # Add bucket column to dataset so transform can access it
+        dataset["train"] = dataset["train"].add_column("bucket", bucket_assignments)
 
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
@@ -942,26 +1014,43 @@ def main(args):
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
         # image aug
+        batch_buckets = examples.get('bucket', [None] * len(images))
         original_sizes = []
+        target_sizes = []
         all_images = []
         crop_top_lefts = []
-        for image in images:
+        for i, image in enumerate(images):
+            iw, ih = image.width, image.height
             original_sizes.append((image.height, image.width))
-            image = train_resize(image)
+            # image = train_resize(image)
+            b = batch_buckets[i] if batch_buckets is not None else None
+            if (args.enable_bucketing and b is not None):
+                try:
+                    target_w, target_h = buckets[b]
+                    # print(f'装桶成功啦:{target_w}, {target_h}')
+                except Exception as e:
+                    print(f'装桶没成功？why:{e}')
+                    target_w, target_h = args.resolution, args.resolution
+            else:
+                target_w, target_h = args.resolution, args.resolution
+            scale = max(target_w / float(iw), target_h / float(ih))
+            new_w = math.ceil(iw * scale)
+            new_h = math.ceil(ih * scale)
+            img = image.resize((new_w, new_h), PILImage.LANCZOS)
             if args.random_flip and random.random() < 0.5:
                 # flip
-                image = train_flip(image)
+                img = train_flip(img)
             if args.center_crop:
-                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
-                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
-                image = train_crop(image)
+                y1 = max(0, int(round((new_h - target_h) / 2.0)))
+                x1 = max(0, int(round((new_w - target_w) / 2.0)))
+                # image = train_crop(image)
             else:
-                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
-                image = crop(image, y1, x1, h, w)
-            crop_top_left = (y1, x1)
-            crop_top_lefts.append(crop_top_left)
-            image = train_transforms(image)
-            all_images.append(image)
+                y1, x1, _, _ = transforms.RandomCrop.get_params(img, (target_h, target_w))
+            crop_top_lefts.append((y1, x1))
+            img = crop(img, y1, x1, target_h, target_w)
+            img_t = train_transforms(img)
+            all_images.append(img_t)
+            target_sizes.append((target_h, target_w))
 
         examples["original_sizes"] = original_sizes
         examples["crop_top_lefts"] = crop_top_lefts
@@ -969,6 +1058,7 @@ def main(args):
         tokens_one, tokens_two = tokenize_captions(examples)
         examples["input_ids_one"] = tokens_one
         examples["input_ids_two"] = tokens_two
+        examples["target_sizes"] = target_sizes
         if args.debug_loss:
             fnames = [os.path.basename(image.filename) for image in examples[image_column] if image.filename]
             if fnames:
@@ -995,21 +1085,60 @@ def main(args):
             "original_sizes": original_sizes,
             "crop_top_lefts": crop_top_lefts,
         }
-
+        target_sizes = [example["target_sizes"] for example in examples]
         filenames = [example["filenames"] for example in examples if "filenames" in example]
+        result['bucket_index'] = [example['bucket'] for example in examples]
+        result["target_sizes"] = target_sizes
         if filenames:
             result["filenames"] = filenames
         return result
+    
+    class BucketBatchSample(torch.utils.data.Sampler):
+        def __init__(self, bucket_column, batch_size, shuffle=True):
+            self.bucket_to_indices = {}
+            for i, b in enumerate(bucket_column):
+                if int(b) not in self.bucket_to_indices:
+                    self.bucket_to_indices[int(b)] = [i]
+                else:
+                    self.bucket_to_indices[int(b)].append(i) 
+            self.batch_size = batch_size
+            self.shuffle = shuffle
+        
+        def __iter__(self):
+            buckets = list(self.bucket_to_indices.items())
+            if self.shuffle:
+                random.shuffle(buckets)
+            for bucket_id, index in buckets:
+                indx = index[:]
+                if self.shuffle:
+                    random.shuffle(indx)
+                for i in range(0, len(index), self.batch_size):
+                    # print(f'当前桶id:{bucket_id}')
+                    yield indx[i:i+self.batch_size]
 
-    # DataLoaders creation:
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
-        shuffle=True,
-        collate_fn=collate_fn,
-        batch_size=args.train_batch_size,
-        num_workers=args.dataloader_num_workers,
-    )
-
+        def __len__(self):
+            total = 0
+            for idx in self.bucket_to_indices.values():
+                total += math.ceil(len(idx) / self.batch_size)
+            return total
+        
+    if args.enable_bucketing:
+        bucket_col = dataset['train']['bucket']
+        batch_sampler = BucketBatchSample(bucket_col, args.train_batch_size)
+        train_dataloader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_sampler=batch_sampler,
+            collate_fn=collate_fn,
+            num_workers=args.dataloader_num_workers,
+        )
+    else:
+        train_dataloader = torch.utils.data.DataLoader(
+            train_dataset,
+            shuffle=True,
+            collate_fn=collate_fn,
+            batch_size=args.train_batch_size,
+            num_workers=args.dataloader_num_workers,
+        )
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -1134,16 +1263,17 @@ def main(args):
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
                 # time ids
-                def compute_time_ids(original_size, crops_coords_top_left):
+                def compute_time_ids(original_size, crops_coords_top_left, target_size, batch_index):
                     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-                    target_size = (args.resolution, args.resolution)
+                    # target_size = (args.resolution, args.resolution)
+                    # print(f'------\n算时间嵌入，当前tgt_size:{target_size}, 当前桶序号{batch_index}---------\n')
                     add_time_ids = list(original_size + crops_coords_top_left + target_size)
                     add_time_ids = torch.tensor([add_time_ids])
                     add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
                     return add_time_ids
 
                 add_time_ids = torch.cat(
-                    [compute_time_ids(s, c) for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])]
+                    [compute_time_ids(s, c, t, i) for s, c, t, i in zip(batch["original_sizes"], batch["crop_top_lefts"], batch["target_sizes"], batch['bucket_index'])]
                 )
 
                 # Predict the noise residual
@@ -1212,7 +1342,7 @@ def main(args):
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                accelerator.log({"train_loss": train_loss,'lr':optimizer.param_groups[0]['lr']}, step=global_step)
                 train_loss = 0.0
 
                 # DeepSpeed requires saving weights on every device; saving weights only on the main process would cause issues.
@@ -1240,6 +1370,10 @@ def main(args):
 
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
+                        des_path = '/content/drive/MyDrive/latest_lora'
+                        if os.path.exists(des_path):
+                            os.remove(f'{des_path}.zip')
+                        shutil.make_archive(des_path, 'zip', save_path)
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
