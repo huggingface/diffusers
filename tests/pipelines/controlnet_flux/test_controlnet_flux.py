@@ -40,12 +40,8 @@ from ...testing_utils import (
     require_big_accelerator,
     torch_device,
 )
-from ..testing_utils import (
-    BasePipelineTesterConfig,
-    FluxIPAdapterTesterMixin,
-    MemoryTesterMixin,
-    PipelineTesterMixin,
-)
+from ..flux.testing_utils import FluxIPAdapterTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()

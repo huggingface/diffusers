@@ -31,7 +31,6 @@ from ..testing_utils import (
     BasePipelineTesterConfig,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
-    FluxIPAdapterTesterMixin,
     LoraMemoryTesterMixin,
     LoraTesterMixin,
     MagCacheTesterMixin,
@@ -40,6 +39,7 @@ from ..testing_utils import (
     PyramidAttentionBroadcastTesterMixin,
     TaylorSeerCacheTesterMixin,
 )
+from .testing_utils import FluxIPAdapterTesterMixin
 
 
 if is_peft_available():
