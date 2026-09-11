@@ -4,7 +4,7 @@ Shared reference for modular pipeline conventions, patterns, and gotchas.
 
 ## Common modular conventions
 
-When adding a new modular pipeline (or reviewing one), skim `src/diffusers/modular_pipelines/qwenimage/`, `src/diffusers/modular_pipelines/flux2/`, `src/diffusers/modular_pipelines/wan/`, and `src/diffusers/modular_pipelines/helios/` first to establish the pattern. Most conventions (file split between `encoders.py` / `before_denoise.py` / `denoise.py` / `decoders.py`, how `expected_components` / `inputs` / `intermediate_outputs` are declared, the denoise-loop wrapping with `LoopSequentialPipelineBlocks`, top-level assembly via `AutoPipelineBlocks` / `SequentialPipelineBlocks` in `modular_blocks_<model>.py`, the `ModularPipeline` subclass shape, the guider-abstracted denoise body, `kwargs_type="denoiser_input_fields"` plumbing) are easiest to internalize by comparison rather than from a fixed list.
+When adding a new modular pipeline (or reviewing one), skim `src/diffusers/modular_pipelines/qwenimage/`, `src/diffusers/modular_pipelines/flux2/`, `src/diffusers/modular_pipelines/wan/`, and `src/diffusers/modular_pipelines/helios/` first to establish the pattern. Most conventions (file split between `encoders.py` / `before_denoise.py` / `denoise.py` / `decoders.py`, how `expected_components` / `inputs` / `intermediate_outputs` are declared, the denoise-loop wrapping with `IterativePipelineBlocks` (see `flux2/denoise.py`; `wan_animate_2/denoise.py` for a nested chunk loop), top-level assembly via `AutoPipelineBlocks` / `SequentialPipelineBlocks` in `modular_blocks_<model>.py`, the `ModularPipeline` subclass shape, the guider-abstracted denoise body, `kwargs_type="denoiser_input_fields"` plumbing) are easiest to internalize by comparison rather than from a fixed list.
 
 ## Running a modular pipeline
 
@@ -51,8 +51,12 @@ Is this a single operation?
 
 Does it run multiple blocks in sequence?
   YES -> SequentialPipelineBlocks
-    Does it iterate (e.g. chunk loop)?
-      YES -> LoopSequentialPipelineBlocks
+    Does it iterate (denoising loop)?
+      YES -> IterativePipelineBlocks (steps are ModularLoopPipelineBlocks)
+        Does each iteration run a loop of its own (autoregressive chunk loop: per chunk, a denoise loop)?
+          YES -> nest them: the inner IterativePipelineBlocks is a step of the outer one, and its
+                 __call__/stream and its steps also take the outer loop variable (see wan_animate_2/denoise.py)
+      LoopSequentialPipelineBlocks is the legacy loop type — don't use it for new pipelines
 
 Does it choose ONE block based on which input is present?
   Is the selection 1:1 with trigger inputs?
@@ -121,25 +125,96 @@ for i, t in enumerate(timesteps):
 
 ## Key pattern: Denoising loop
 
-All models use `LoopSequentialPipelineBlocks` for the denoising loop (iterating over timesteps):
+The denoising loop is an `IterativePipelineBlocks` whose steps are `ModularLoopPipelineBlocks` (see `flux2/denoise.py` as example). Building one takes three parts: write the loop steps, write the wrapper, assemble.
+
+**1. Write the loop steps.** Loop steps are regular blocks. They declare `inputs` and `intermediate_outputs` and use `get_block_state` / `set_block_state` with the full `PipelineState`.
+
+Their `__call__` also accepts the loop variables they use as keyword arguments. If a step ignores some loop variables, declare `**kwargs`. Otherwise, name every loop variable. The loop validates these signatures when it is constructed and raises for unknown or missing variables.
+
 ```python
-class MyModelDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
-    block_classes = [LoopBeforeDenoiser, LoopDenoiser, LoopAfterDenoiser]
+class MyModelLoopAfterDenoiser(ModularLoopPipelineBlocks):
+    @property
+    def expected_components(self):
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def inputs(self):
+        return [InputParam("latents", required=True), InputParam("noise_pred", required=True)]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam("latents")]
+
+    @torch.no_grad()
+    def __call__(self, components, state, i, t):
+        block_state = self.get_block_state(state)
+        block_state.latents = components.scheduler.step(block_state.noise_pred, t, block_state.latents, return_dict=False)[0]
+        self.set_block_state(state, block_state)
+        return components, state
 ```
 
-Autoregressive video models (e.g. Helios) also use it for an outer chunk loop:
+**2. Write the wrapper.** The loop logic only: `loop_variables` (passed to every step), `loop_inputs` (what the loop logic itself reads), and the loop in `__call__`; `stream` is the same loop as a generator over `stream_step` and is what makes `pipe.stream(...)` work — implement both:
+
 ```python
-class HeliosChunkDenoiseStep(HeliosChunkLoopWrapper):
-    block_classes = [
-        HeliosChunkHistorySliceStep,
-        HeliosChunkNoiseGenStep,
-        HeliosChunkSchedulerResetStep,
-        HeliosChunkDenoiseInner,
-        HeliosChunkUpdateStep,
-    ]
+class MyModelDenoiseLoopWrapper(IterativePipelineBlocks):
+    @property
+    def loop_variables(self):  # passed to every loop step
+        return ["i", "t"]
+
+    @property
+    def loop_inputs(self):
+        # what the loop logic itself reads — `get_block_state` returns exactly these
+        # (the loop steps declare their own `inputs` on top of this)
+        return [InputParam("timesteps", required=True), InputParam.template("num_inference_steps", required=True)]
+
+    @torch.no_grad()
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        for i, t in enumerate(block_state.timesteps):
+            components, state = self.loop_step(components, state, i=i, t=t)
+        return components, state
+
+    @torch.no_grad()
+    def stream(self, components, state):
+        block_state = self.get_block_state(state)
+        for i, t in enumerate(block_state.timesteps):
+            components, state = yield from self.stream_step(components, state, i=i, t=t)
+        return components, state
 ```
 
-Note: sub-blocks inside `LoopSequentialPipelineBlocks` receive `(components, block_state, i, t)` for denoise loops or `(components, block_state, k)` for chunk loops.
+**3. Assemble.** Attach the steps in a subclass (or at runtime with `from_blocks_dict`):
+
+```python
+class MyModelDenoiseStep(MyModelDenoiseLoopWrapper):
+    block_classes = [MyModelLoopDenoiser, MyModelLoopAfterDenoiser]
+    block_names = ["denoiser", "after_denoiser"]
+```
+
+Autoregressive video models nest loops: an outer segment loop (`loop_variables = ["k"]`) whose steps prepare the segment, run the full inner denoising loop, and update the history (see `wan_animate_2/denoise.py` as an example). The inner loop is a step of the outer one, so its `__call__` / `stream` accept the outer variable (`def __call__(self, components, state, k)`) and pass its own `i`, `t` to its own steps.
+
+The wrapper should contain only the loop logic, i.e. how to iterate through the steps, and its `loop_inputs` are just what that takes (e.g. `timesteps`, `num_segments`). All data flows through the steps, which read and write the pipeline state directly: in the example above, the denoiser step writes `noise_pred` to the pipeline state and `MyModelLoopAfterDenoiser` reads it back and writes the updated `latents`; the wrapper touches none of them. If the loop logic seems to need to do more than just iterate (e.g. collect results, carry something to the next iteration), add a loop step for it instead. In `wan_animate_2`, a small `collect` step appends each segment's decoded frames to `segment_frames`, and the next segment's prep step reads it back. What we don't want is the wrapper doing it inline:
+
+```python
+# don't: loop logic collecting results itself
+def __call__(self, components, state):
+    block_state = self.get_block_state(state)
+    segment_frames = []
+    for k in range(block_state.num_segments):
+        components, state = self.loop_step(components, state, k=k)
+        segment_frames.append(state.get("out_frames"))  # reaching into the state: make this a `collect` loop step
+    ...
+```
+
+Two small notes:
+- A value written late in iteration `k` and read early in iteration `k + 1` becomes a pipeline input, since its first read has no writer before it. if a user-supplied value isn't meaningful, seed it in a block that runs before the loop instead: declare it as an output and set it to `None`, and it stays internal.
+
+  ```
+  loop, iteration k:   step_1:  x = xs[-1]        <- first read of `xs`, no writer before it:
+                       step_2:  xs.append(x * 10)    `xs` becomes a pipeline input unless a previous block produce it
+  ```
+- Components the loop logic itself uses are added by overriding `expected_components` (e.g. `flux2`'s wrapper reads `scheduler.order` to compute the progress-bar warmup steps).
+
+Existing pipelines still use `LoopSequentialPipelineBlocks` (steps receive a shared flattened `block_state`, no nesting, no streaming). Leave them alone unless you are porting the pipeline; don't use it for new ones.
 
 ## Key pattern: `kwargs_type` inputs (`denoiser_input_fields`)
 

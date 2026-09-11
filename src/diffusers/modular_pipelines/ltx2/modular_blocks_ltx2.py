@@ -975,7 +975,7 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
           num_inference_steps (`int`):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
           audio_latents (`Tensor`):
               Optional pre-encoded audio latents; random noise is used when not provided.
@@ -1822,7 +1822,7 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
           num_inference_steps (`int`):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
           audio_latents (`Tensor`):
               Optional pre-encoded audio latents; random noise is used when not provided.

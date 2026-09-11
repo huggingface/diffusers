@@ -175,8 +175,6 @@ class WanAnimate2DistilledCoreDenoiseStep(SequentialPipelineBlocks):
               The reference conditioning tensor `[20, 1, latent_height, latent_width]`; provides the latent grid
           driving_video_pixels (`Tensor`):
               The preprocessed driving video `[1, 3, T, H, W]`, from the video preprocess step
-          num_segments (`int`):
-              Total number of segments in the driving video, from the video preprocess step
           effective_segment (`int`):
               Frames each segment advances: `segment_frame_length - prev_segment_conditioning_frames`, from the video
               preprocess step
@@ -190,6 +188,8 @@ class WanAnimate2DistilledCoreDenoiseStep(SequentialPipelineBlocks):
               CLIP vision features of the driving video's first frame
           prompt_ref_embeds (`Tensor`):
               Text embeddings of the reference prompt, guiding the reference-extraction pass
+          num_segments (`int`):
+              Total number of segments in the driving video, from the video preprocess step
           height (`int`):
               The resolved frame height in pixels
           width (`int`):
