@@ -435,10 +435,12 @@ class AttentionModuleMixin:
                 # QKV fused in-place, need to reconstruct the individual Q,K,V projections
                 has_bias = self.to_qkv.bias is not None
                 d_q, d_k, d_v, d_in = self._qkv_split_dims
-                self.to_q = nn.Linear(d_in, d_q, bias=has_bias)
-                self.to_k = nn.Linear(d_in, d_k, bias=has_bias)
-                self.to_v = nn.Linear(d_in, d_v, bias=has_bias)
-                # Avoid copying by using a view which shares storage with the fused projection
+                with torch.device("meta"):
+                    self.to_q = nn.Linear(d_in, d_q, bias=has_bias)
+                    self.to_k = nn.Linear(d_in, d_k, bias=has_bias)
+                    self.to_v = nn.Linear(d_in, d_v, bias=has_bias)
+                # Every parameter below is replaced by a view sharing storage with the fused projection, so the
+                # layers are built on `meta` to skip materialising and initialising weights that are discarded
                 self.to_q.weight = nn.Parameter(self.to_qkv.weight[:d_q])
                 self.to_k.weight = nn.Parameter(self.to_qkv.weight[d_q : d_q + d_k])
                 self.to_v.weight = nn.Parameter(self.to_qkv.weight[d_q + d_k :])
@@ -452,8 +454,9 @@ class AttentionModuleMixin:
             if not hasattr(self, "to_k"):
                 has_bias = self.to_kv.bias is not None
                 d_k, d_v, d_in = self._qkv_split_dims
-                self.to_k = nn.Linear(d_in, d_k, bias=has_bias)
-                self.to_v = nn.Linear(d_in, d_v, bias=has_bias)
+                with torch.device("meta"):
+                    self.to_k = nn.Linear(d_in, d_k, bias=has_bias)
+                    self.to_v = nn.Linear(d_in, d_v, bias=has_bias)
                 self.to_k.weight = nn.Parameter(self.to_kv.weight[:d_k])
                 self.to_v.weight = nn.Parameter(self.to_kv.weight[d_k:])
                 if has_bias:
@@ -465,10 +468,12 @@ class AttentionModuleMixin:
             if not hasattr(self, "add_q_proj"):
                 has_bias = self.to_added_qkv.bias is not None
                 d_q, d_k, d_v, d_in = self._added_qkv_split_dims
-                self.add_q_proj = nn.Linear(d_in, d_q, bias=has_bias)
-                self.add_k_proj = nn.Linear(d_in, d_k, bias=has_bias)
-                self.add_v_proj = nn.Linear(d_in, d_v, bias=has_bias)
-                # Avoid copying by using a view which shares storage with the fused projection
+                with torch.device("meta"):
+                    self.add_q_proj = nn.Linear(d_in, d_q, bias=has_bias)
+                    self.add_k_proj = nn.Linear(d_in, d_k, bias=has_bias)
+                    self.add_v_proj = nn.Linear(d_in, d_v, bias=has_bias)
+                # Every parameter below is replaced by a view sharing storage with the fused projection, so the
+                # layers are built on `meta` to skip materialising and initialising weights that are discarded
                 self.add_q_proj.weight = nn.Parameter(self.to_added_qkv.weight[:d_q])
                 self.add_k_proj.weight = nn.Parameter(self.to_added_qkv.weight[d_q : d_q + d_k])
                 self.add_v_proj.weight = nn.Parameter(self.to_added_qkv.weight[d_q + d_k :])
@@ -482,8 +487,9 @@ class AttentionModuleMixin:
             if not hasattr(self, "add_k_proj"):
                 has_bias = self.to_added_kv.bias is not None
                 d_k, d_v, d_in = self._added_qkv_split_dims
-                self.add_k_proj = nn.Linear(d_in, d_k, bias=has_bias)
-                self.add_v_proj = nn.Linear(d_in, d_v, bias=has_bias)
+                with torch.device("meta"):
+                    self.add_k_proj = nn.Linear(d_in, d_k, bias=has_bias)
+                    self.add_v_proj = nn.Linear(d_in, d_v, bias=has_bias)
                 self.add_k_proj.weight = nn.Parameter(self.to_added_kv.weight[:d_k])
                 self.add_v_proj.weight = nn.Parameter(self.to_added_kv.weight[d_k:])
                 if has_bias:

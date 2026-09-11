@@ -251,6 +251,27 @@ class TestAttentionModuleMixin:
         assert self_attn.to_k.weight.untyped_storage().data_ptr() == storage_ptr
         assert self_attn.to_v.weight.untyped_storage().data_ptr() == storage_ptr
 
+    # unfuse_projections builds the reconstructed layers on the meta device, since every one of their parameters is
+    # then replaced by a view into the fused weight. A parameter that is not replaced would stay on meta and break
+    # the module, so check across every reconstruction path that none is left behind.
+    @pytest.mark.parametrize("bias", [True, False], ids=["bias", "no_bias"])
+    @pytest.mark.parametrize(
+        "attn_cls",
+        [_MinimalSelfAttn, _MinimalCrossAttn, _MinimalAddedKVAttn, _MinimalAddedQKVAttn],
+        ids=["self", "cross", "added_kv", "added_qkv"],
+    )
+    def test_inplace_unfuse_leaves_no_meta_parameters(self, attn_cls, bias):
+        attn = attn_cls(bias=bias)
+        before = {name: param.data.clone() for name, param in attn.named_parameters()}
+
+        attn.fuse_projections(inplace=True)
+        attn.unfuse_projections()
+
+        assert [name for name, param in attn.named_parameters() if param.is_meta] == []
+        assert {name for name, _ in attn.named_parameters()} == set(before)
+        for name, param in attn.named_parameters():
+            assert torch.equal(param.data, before[name])
+
     # -------------------------------------------------------------------------
     # Bias
     # -------------------------------------------------------------------------
