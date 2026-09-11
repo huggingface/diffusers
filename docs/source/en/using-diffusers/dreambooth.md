@@ -16,6 +16,8 @@ specific language governing permissions and limitations under the License.
 
 DreamBooth checkpoints are typically a few GBs in size because it contains the full model weights.
 
+To train one, see [Train DreamBooth](../training/dreambooth).
+
 Load the DreamBooth checkpoint with [`~DiffusionPipeline.from_pretrained`] and include the unique identifier in the prompt to activate its generation.
 
 ```py
