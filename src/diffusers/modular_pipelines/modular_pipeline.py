@@ -1727,6 +1727,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             )
 
         if blocks is None:
+            blocks_class = None
             if modular_config_dict is not None:
                 blocks_class_name = modular_config_dict.get("_blocks_class_name")
             else:
@@ -1740,14 +1741,14 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     blocks_class_name = self.default_blocks_name
                     blocks_class = getattr(diffusers_module, blocks_class_name)
 
-            if blocks_class is not None:
-                blocks = blocks_class()
-            else:
-                logger.warning(f"`blocks` is `None`, no default blocks class found for {self.__class__.__name__}")
+            if blocks_class is None:
+                raise ValueError(
+                    f"No pipeline blocks could be resolved for {self.__class__.__name__}: pass `blocks`, or use a "
+                    "pipeline class with a `default_blocks_name`."
+                )
+            blocks = blocks_class()
 
         if workflow is not None:
-            if blocks is None:
-                raise ValueError(f"`workflow={workflow!r}` requires pipeline blocks, but none could be resolved.")
             blocks = blocks.get_workflow(workflow)
 
         self._blocks = blocks

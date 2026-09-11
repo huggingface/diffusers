@@ -268,3 +268,18 @@ class TestModularPipelineInitFallback:
         assert loaded_pipe.__class__.__name__ == pipe.__class__.__name__
         assert loaded_pipe._blocks.__class__.__name__ == pipe._blocks.__class__.__name__
         assert len(loaded_pipe._blocks.sub_blocks) == len(pipe._blocks.sub_blocks)
+
+    def test_init_raises_without_resolvable_blocks(self):
+        # The base class has no `default_blocks_name`, so with no `blocks` there is nothing to build from.
+        with pytest.raises(ValueError, match="No pipeline blocks could be resolved"):
+            ModularPipeline()
+
+    def test_from_pretrained_resolves_video_pipeline_from_model_index(self, tmp_path):
+        # A standard model_index.json resolves to the modular class through the auto-pipeline video mappings.
+        with open(tmp_path / "model_index.json", "w") as f:
+            json.dump({"_class_name": "LTXPipeline", "_diffusers_version": "0.0.0"}, f)
+
+        pipe = ModularPipeline.from_pretrained(str(tmp_path))
+
+        assert pipe.__class__.__name__ == "LTXModularPipeline"
+        assert pipe.blocks.__class__.__name__ == "LTXAutoBlocks"
