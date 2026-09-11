@@ -110,6 +110,15 @@ class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTester
         new_model = self.model_class.from_pretrained(tmp_path, dtype=dtype)
         assert new_model.dtype == dtype
 
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_decode_in_low_precision(self, tmp_path, dtype):
+        # Decode is mixed precision with no autocast, so every dtype seam has to hold on its own.
+        self.model_class(**self.get_init_dict()).save_pretrained(tmp_path)
+        model = self.model_class.from_pretrained(tmp_path, dtype=dtype).eval()
+        with torch.no_grad():
+            decoded = model.decode(torch.randn(1, 4, 7, HEIGHT // 4, WIDTH // 4), return_dict=False)[0]
+        assert decoded.dtype == dtype
+
     @pytest.mark.skip(
         "`forward` runs through the `apply_forward_hook`-decorated `encode` and `decode`, and that decorator's "
         "`pre_forward` call clears the input device accelerate's `AlignDevicesHook` recorded for the caller, so the "
