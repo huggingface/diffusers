@@ -29,6 +29,40 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+class WanVaceTrimReferenceLatentsStep(ModularPipelineBlocks):
+    model_name = "wan-vace"
+
+    @property
+    def description(self) -> str:
+        return "Step that removes the prepended reference image frames from the denoised latents before decoding"
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The denoised latents from the denoising step",
+            ),
+            InputParam(
+                "num_reference_images",
+                type_hint=int,
+                default=0,
+                description="Number of reference image frames to remove from the front of the latents. Can be generated in vace_encoder step.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        block_state.latents = block_state.latents[:, :, block_state.num_reference_images :]
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class WanVaeDecoderStep(ModularPipelineBlocks):
     model_name = "wan"
 

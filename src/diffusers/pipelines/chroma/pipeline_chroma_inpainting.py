@@ -828,20 +828,20 @@ class ChromaInpaintPipeline(
                 with the same aspect ratio of the image and contains all masked area, and then expand that area based
                 on `padding_mask_crop`. The image and mask_image will then be cropped based on the expanded area before
                 resizing to the original image size for inpainting.
-            num_inference_steps (`int`, *optional*, defaults to 35):
+            num_inference_steps (`int`, *optional*, defaults to 28):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             sigmas (`List[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to 3.5):
+            guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
-            strength (`float, *optional*, defaults to 0.9):
+            strength (`float, *optional*, defaults to 0.6):
                 Conceptually, indicates how much to transform the reference image. Must be between 0 and 1. image will
                 be used as a starting point, adding more noise to it the larger the strength. The number of denoising
                 steps depends on the amount of noise initially added. When strength is 1, added noise will be maximum
@@ -900,7 +900,7 @@ class ChromaInpaintPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
+            max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
 
         Examples:
 
