@@ -552,8 +552,8 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
         Load a pretrained MiniMax-H3 video autoencoder.
 
         Takes the same arguments as [`ModelMixin.from_pretrained`], except that a requested `bfloat16` is loaded as
-        `float16`. Pipelines apply one dtype to every component, and this decoder degrades in `bfloat16` without
-        using any less memory than `float16`.
+        `float16`. Pipelines apply one dtype to every component, and this decoder degrades in `bfloat16` without using
+        any less memory than `float16`.
         """
         for key in ("dtype", "torch_dtype"):
             if kwargs.get(key) == torch.bfloat16:
