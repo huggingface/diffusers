@@ -96,13 +96,11 @@ class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTester
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_save_pretrained_dtype(self, tmp_path, dtype):
-        # `_keep_in_fp32_modules` pins every module: the released checkpoint is float32 and decoding through
-        # downcast weights degrades (the bfloat16 audio VAE decodes roughly 20 dB too quiet), so a requested
-        # `torch_dtype` cast at load time must be refused and the weights must stay float32.
+        # A requested bfloat16 is loaded as float16; the modules in `_keep_in_fp32_modules` stay float32.
         model = self.model_class(**self.get_init_dict())
         model.save_pretrained(tmp_path)
         new_model = self.model_class.from_pretrained(tmp_path, torch_dtype=dtype)
-        assert new_model.dtype == torch.float32
+        assert new_model.dtype == torch.float16
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_pretrained_dtype_alias(self, tmp_path, dtype):
@@ -110,7 +108,7 @@ class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTester
         model = self.model_class(**self.get_init_dict())
         model.save_pretrained(tmp_path)
         new_model = self.model_class.from_pretrained(tmp_path, dtype=dtype)
-        assert new_model.dtype == torch.float32
+        assert new_model.dtype == torch.float16
 
     @pytest.mark.skip(
         "`forward` runs through the `apply_forward_hook`-decorated `encode` and `decode`, and that decorator's "
