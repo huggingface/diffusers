@@ -288,8 +288,9 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             all_input_ids.append(inputs["input_ids"])
             all_attention_masks.append(inputs["attention_mask"])
 
-        input_ids = torch.cat(all_input_ids, dim=0).to(device)
-        attention_mask = torch.cat(all_attention_masks, dim=0).to(device)
+        model_device = text_encoder.device
+        input_ids = torch.cat(all_input_ids, dim=0).to(model_device)
+        attention_mask = torch.cat(all_attention_masks, dim=0).to(model_device)
 
         # Forward pass through the model
         output = text_encoder(
@@ -584,7 +585,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         latent_image_ids = self._prepare_latent_ids(dummy_latents)
         latent_image_ids = latent_image_ids.to(device)
 
-        image = image.to(device=device, dtype=dtype)
+        image = image.to(device=self.vae.device, dtype=dtype)
         if image.shape[1] != self.latent_channels * 4:
             image_latents = self._encode_vae_image(image=image, generator=generator)
         else:
@@ -594,6 +595,8 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 image_latents.device, image_latents.dtype
             )
             image_latents = (image_latents - latents_bn_mean) / latents_bn_std
+
+        image_latents = image_latents.to(device)
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand init_latents for batch_size
@@ -626,7 +629,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     ):
         image_latents = []
         for image in images:
-            image = image.to(device=device, dtype=dtype)
+            image = image.to(device=self.vae.device, dtype=dtype)
 
             if image.shape[1] != self.latent_channels * 4:
                 image_latent = self._encode_vae_image(image=image, generator=generator)
@@ -655,6 +658,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             final_latents.append(packed)
 
         image_latents = torch.cat(final_latents, dim=1)  # (batch_size, total_seq_len, 128)
+        image_latents = image_latents.to(device)
 
         image_latent_ids = image_latent_ids.to(device)
 
