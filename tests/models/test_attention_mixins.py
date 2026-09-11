@@ -526,6 +526,50 @@ class TestAttentionModuleMixin:
         assert torch.equal(k, k_ref)
         assert torch.equal(v, v_ref)
 
+    # -------------------------------------------------------------------------
+    # Which stream K,V come from must not depend on the fusion state
+    # -------------------------------------------------------------------------
+
+    # Fusing picks to_qkv vs to_kv from `is_cross_attention`, so a self-attention module cannot honour
+    # encoder_hidden_states once fused. Accepting it in the split state would make fusing change the result.
+    @pytest.mark.parametrize("fused", [False, True], ids=["split", "fused"])
+    def test_get_qkv_self_attn_rejects_encoder_hidden_states(self, self_attn, fused):
+        if fused:
+            self_attn.fuse_projections()
+        with pytest.raises(ValueError, match="self-attention module"):
+            self_attn.get_qkv(torch.randn(2, 8, 64), encoder_hidden_states=torch.randn(2, 6, 64))
+
+    @pytest.mark.parametrize("fused", [False, True], ids=["split", "fused"])
+    def test_get_qkv_cross_attn_requires_encoder_hidden_states(self, cross_attn, fused):
+        if fused:
+            cross_attn.fuse_projections()
+        with pytest.raises(ValueError, match="cross-attention module"):
+            cross_attn.get_qkv(torch.randn(2, 8, 64))
+
+    @pytest.mark.parametrize("fused", [False, True], ids=["split", "fused"])
+    def test_get_added_qkv_with_add_q_proj_rejects_encoder_hidden_states(self, added_qkv_attn, fused):
+        if fused:
+            added_qkv_attn.fuse_projections()
+        with pytest.raises(ValueError, match="single stream"):
+            added_qkv_attn.get_added_qkv(torch.randn(2, 8, 64), encoder_hidden_states=torch.randn(2, 6, 64))
+
+    @pytest.mark.parametrize("fused", [False, True], ids=["split", "fused"])
+    def test_get_added_qkv_without_add_q_proj_requires_encoder_hidden_states(self, added_kv_attn, fused):
+        if fused:
+            added_kv_attn.fuse_projections()
+        with pytest.raises(ValueError, match="no `add_q_proj`"):
+            added_kv_attn.get_added_qkv(torch.randn(2, 8, 64))
+
+    def test_get_added_qkv_treats_none_add_q_proj_as_absent(self, added_kv_attn):
+        # Wan-style modules set add_q_proj to None rather than leaving it unset; `hasattr` is True for both.
+        added_kv_attn.add_q_proj = None
+        hidden = torch.randn(2, 8, 64)
+        enc = torch.randn(2, 6, 32)
+        q, k, v = added_kv_attn.get_added_qkv(hidden, encoder_hidden_states=enc)
+        assert torch.equal(q, added_kv_attn.to_q(hidden))
+        assert torch.equal(k, added_kv_attn.add_k_proj(enc))
+        assert torch.equal(v, added_kv_attn.add_v_proj(enc))
+
 
 class TestAttentionMixin:
     @pytest.fixture

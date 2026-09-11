@@ -524,20 +524,37 @@ class AttentionModuleMixin:
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Get the query, key, and value from the Q,K,V projections, handling both the split and fused cases.
+
+        Where K and V come from is decided by `is_cross_attention` — the same flag `fuse_projections` uses to choose
+        which projections to fuse — so the result does not depend on whether the module happens to be fused. A
+        cross-attention module therefore requires `encoder_hidden_states`, and a self-attention module takes K and V
+        from `hidden_states` and rejects it.
         """
-        if self.fused_projections:
-            if hasattr(self, "to_kv"):
-                query = self.to_q(hidden_states)
+        if getattr(self, "is_cross_attention", False):
+            if encoder_hidden_states is None:
+                raise ValueError(
+                    f"{self.__class__.__name__} is a cross-attention module, so `encoder_hidden_states` is required "
+                    "to compute its key and value."
+                )
+            query = self.to_q(hidden_states)
+            if self.fused_projections:
                 key, value = self.to_kv(encoder_hidden_states).chunk(2, dim=-1)
-            elif hasattr(self, "to_qkv"):
+            else:
+                key = self.to_k(encoder_hidden_states)
+                value = self.to_v(encoder_hidden_states)
+        else:
+            if encoder_hidden_states is not None:
+                raise ValueError(
+                    f"{self.__class__.__name__} is a self-attention module, so its key and value come from "
+                    "`hidden_states`. Concatenate the encoder states into `hidden_states`, or set "
+                    "`is_cross_attention` on the module."
+                )
+            if self.fused_projections:
                 query, key, value = self.to_qkv(hidden_states).chunk(3, dim=-1)
             else:
-                raise RuntimeError("Cannot find fused self-attn proj `to_qkv` or cross-attn proj `to_kv`.")
-        else:
-            query = self.to_q(hidden_states)
-            kv_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
-            key = self.to_k(kv_states)
-            value = self.to_v(kv_states)
+                query = self.to_q(hidden_states)
+                key = self.to_k(hidden_states)
+                value = self.to_v(hidden_states)
         return query, key, value
 
     def get_added_qkv(
@@ -549,22 +566,35 @@ class AttentionModuleMixin:
         Get the added query, key, and value from added Q,K,V projections (for example, second stream projections in a
         MM-DiT-style model like Flux). Note that for models with only `add_k_proj`/`add_v_proj` such as Wan, Q comes
         from the normal `to_q` projection.
+
+        As in `get_qkv`, which stream K and V come from is fixed by the module's projections rather than by what the
+        caller passes: with an `add_q_proj` all three come from `hidden_states`, and without one the added K and V
+        require `encoder_hidden_states`.
         """
-        if self.fused_projections:
-            if hasattr(self, "to_added_kv"):
-                query = self.to_q(hidden_states)
-                key, value = self.to_added_kv(encoder_hidden_states).chunk(2, dim=-1)
-            elif hasattr(self, "to_added_qkv"):
+        if getattr(self, "add_q_proj", None) is not None:
+            if encoder_hidden_states is not None:
+                raise ValueError(
+                    f"{self.__class__.__name__} projects its added query, key and value from a single stream, so "
+                    "pass that stream as `hidden_states` and leave `encoder_hidden_states` unset."
+                )
+            if self.fused_projections:
                 query, key, value = self.to_added_qkv(hidden_states).chunk(3, dim=-1)
             else:
-                raise RuntimeError(
-                    "Cannot find added fused self-attn proj `to_added_qkv` or cross-attn proj `to_added_kv`."
-                )
+                query = self.add_q_proj(hidden_states)
+                key = self.add_k_proj(hidden_states)
+                value = self.add_v_proj(hidden_states)
         else:
-            query = self.add_q_proj(hidden_states) if hasattr(self, "add_q_proj") else self.to_q(hidden_states)
-            kv_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
-            key = self.add_k_proj(kv_states)
-            value = self.add_v_proj(kv_states)
+            if encoder_hidden_states is None:
+                raise ValueError(
+                    f"{self.__class__.__name__} has no `add_q_proj`, so `encoder_hidden_states` is required to "
+                    "compute its added key and value."
+                )
+            query = self.to_q(hidden_states)
+            if self.fused_projections:
+                key, value = self.to_added_kv(encoder_hidden_states).chunk(2, dim=-1)
+            else:
+                key = self.add_k_proj(encoder_hidden_states)
+                value = self.add_v_proj(encoder_hidden_states)
         return query, key, value
 
     def set_attention_slice(self, slice_size: int) -> None:
