@@ -85,9 +85,9 @@ def register_dummy_blocks():
 
 def _set_context(model, context_name):
     """Helper to set context on all hooks in the model."""
-    for module in model.modules():
-        if hasattr(module, "_diffusers_hook"):
-            module._diffusers_hook._set_context(context_name)
+    from diffusers.hooks.hooks import CacheContext, _set_cache_context
+
+    _set_cache_context(model, CacheContext(name=context_name))
 
 
 def _get_calibration_data(model):

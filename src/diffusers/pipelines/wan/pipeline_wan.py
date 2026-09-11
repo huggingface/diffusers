@@ -611,7 +611,12 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 else:
                     timestep = t.expand(latents.shape[0])
 
-                with current_model.cache_context("cond"):
+                cache_context_kwargs = {
+                    "step_index": i,
+                    "sigma": float(self.scheduler.sigmas[i]),
+                    "num_inference_steps": self._num_timesteps,
+                }
+                with current_model.cache_context("cond", **cache_context_kwargs):
                     noise_pred = current_model(
                         hidden_states=latent_model_input,
                         timestep=timestep,
@@ -621,7 +626,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     )[0]
 
                 if self.do_classifier_free_guidance:
-                    with current_model.cache_context("uncond"):
+                    with current_model.cache_context("uncond", **cache_context_kwargs):
                         noise_uncond = current_model(
                             hidden_states=latent_model_input,
                             timestep=timestep,

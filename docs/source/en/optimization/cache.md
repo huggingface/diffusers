@@ -68,6 +68,44 @@ config = FasterCacheConfig(
 pipeline.transformer.enable_cache(config)
 ```
 
+## SeaCache
+
+[SeaCache](https://huggingface.co/papers/2602.18993) compares Spectral-Evolution-Aware (SEA) indicators between
+successive denoising steps. When the accumulated indicator change remains below a threshold, it skips the expensive
+transformer block stack and predicts its output from cached residuals. The indicator is computed from the raw vision
+latents, including clean conditioning frames for image-to-video generation.
+
+The implementation provides built-in adapters for the following models:
+
+- **Cosmos 3** is the primary optimized and benchmarked integration. It caches the complete decoder stack through a
+  post-normalization boundary.
+- **Wan T2V** uses the generic repeated-block path in eager mode. This integration demonstrates how another
+  single-stream video transformer can provide raw vision latents to SeaCache; it is not a claim that the same cache
+  parameters are optimal for Wan or that other Wan variants are supported.
+
+Other video transformers can integrate with the generic path when they use `CacheMixin`, expose a recognized repeated
+block list, and register the block input/output layout in `TransformerBlockRegistry`. The pipeline must enter a
+`cache_context` for every transformer call, attach `step_index`, `sigma`, and `num_inference_steps`, and use separate
+context names for independent trajectories such as conditional and unconditional guidance. Pass a `raw_vision_callback`
+that returns the noisy vision latents when no built-in adapter is available. Validate output quality and tune the cache
+parameters for each model and scheduler; support and benchmark results do not transfer automatically from Cosmos 3.
+
+### Cosmos 3
+
+SeaCache is disabled by default. Enable it on the transformer; the Cosmos 3 denoising loop attaches the active
+scheduler step, sigma, and step count to each `cache_context` call, so no extra wiring is needed:
+
+```python
+from diffusers import Cosmos3OmniPipeline, SeaCacheConfig
+
+pipe = Cosmos3OmniPipeline.from_pretrained("nvidia/Cosmos3-Nano")
+pipe.transformer.enable_cache(SeaCacheConfig(threshold=0.2, max_consecutive_cached=2))
+```
+
+This model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
+[`Cosmos3DistilledModularPipeline`]. SeaCache is an approximate optimization and may change generated outputs. Call
+`pipe.transformer.disable_cache()` when you need every denoising step to execute the full transformer.
+
 ## FirstBlockCache
 
 [FirstBlock Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) checks how much the early layers of the denoiser changes from one timestep to the next. If the change is small, the model skips the expensive later layers and reuses the previous output.

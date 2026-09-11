@@ -53,11 +53,11 @@ from .modular_pipeline import Cosmos3OmniModularPipeline
 # auto_docstring
 class Cosmos3TransferTextBlocks(SequentialPipelineBlocks):
     """
-    Transfer text branch: resolves the control-video chunk geometry, then tokenizes the (pre-upsampled) prompt in
-    transfer mode using the per-chunk frame count.
+    Transfer text branch: resolves the control-video chunk geometry, then tokenizes the (pre-upsampled) prompt in transfer mode using the per-chunk frame count.
 
       Components:
-          video_processor (`VideoProcessor`) text_tokenizer (`AutoTokenizer`)
+          video_processor (`VideoProcessor`)
+          text_tokenizer (`AutoTokenizer`)
 
       Inputs:
           control_videos (`dict`):
@@ -121,10 +121,12 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
        - Cosmos3TextEncoderStep runs otherwise.
 
       Components:
-          video_processor (`VideoProcessor`) text_tokenizer (`AutoTokenizer`)
+          video_processor (`VideoProcessor`)
+          text_tokenizer (`AutoTokenizer`)
 
       Configs:
-          default_use_system_prompt (default: True) enable_safety_checker (default: True)
+          default_use_system_prompt (default: True)
+          enable_safety_checker (default: True)
 
       Inputs:
           control_videos (`dict`, *optional*):
@@ -204,7 +206,8 @@ class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
        - when no action, image, or video conditioning is provided, this block is skipped.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          vae (`AutoencoderKLWan`)
+          video_processor (`VideoProcessor`)
 
       Inputs:
           action (`CosmosActionCondition`, *optional*):
@@ -313,7 +316,9 @@ class Cosmos3DecodeStep(SequentialPipelineBlocks):
     Decodes denoised latents into modality outputs.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
+          vae (`AutoencoderKLWan`)
+          video_processor (`VideoProcessor`)
+          sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
 
       Inputs:
           latents (`Tensor`):
@@ -368,7 +373,8 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text-and-vision Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Configs:
           use_native_flow_schedule (default: False)
@@ -439,7 +445,8 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text, vision, and sound Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Configs:
           use_native_flow_schedule (default: False)
@@ -523,7 +530,8 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text, vision, and action Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Configs:
           use_native_flow_schedule (default: False)
@@ -611,7 +619,8 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text, vision, sound, and action Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Configs:
           use_native_flow_schedule (default: False)
@@ -707,13 +716,13 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
     """
-    Autoregressive transfer chunk loop. Overrides __call__ to iterate chunks (the inner timestep loop is a non-leaf
-    LoopSequentialPipelineBlocks, so this outer loop cannot itself be a LoopSequentialPipelineBlocks). Per-chunk
-    cross-carry (previous_output, output_chunks) lives on PipelineState.
+    Autoregressive transfer chunk loop. Overrides __call__ to iterate chunks (the inner timestep loop is a non-leaf LoopSequentialPipelineBlocks, so this outer loop cannot itself be a LoopSequentialPipelineBlocks). Per-chunk cross-carry (previous_output, output_chunks) lives on PipelineState.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer (`Cosmos3OmniTransformer`) scheduler
-          (`UniPCMultistepScheduler`)
+          vae (`AutoencoderKLWan`)
+          video_processor (`VideoProcessor`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           chunk_id (`int`, *optional*, defaults to 0):
@@ -842,6 +851,8 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
         state.set("output_chunks", [])
         state.set("previous_output", None)
         for chunk_id in range(num_chunks):
+            if chunk_id > 0:
+                components.transformer._reset_stateful_cache()
             state.set("chunk_id", chunk_id)
             for _, block in self.sub_blocks.items():
                 components, state = block(components, state)
@@ -854,8 +865,10 @@ class Cosmos3TransferCoreDenoiseStep(SequentialPipelineBlocks):
     Transfer denoise stage: prepare shared text segments once, then run the autoregressive chunk loop.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) scheduler
-          (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          vae (`AutoencoderKLWan`)
+          video_processor (`VideoProcessor`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           cond_input_ids (`None`):
@@ -973,8 +986,10 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
        - vision runs otherwise.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) scheduler
-          (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          vae (`AutoencoderKLWan`)
+          video_processor (`VideoProcessor`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Configs:
           use_native_flow_schedule (default: False)
@@ -1162,13 +1177,17 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
         - `action_inverse_dynamics`: requires `prompt`, `action`
 
       Components:
-          video_processor (`VideoProcessor`) text_tokenizer (`AutoTokenizer`) vae (`AutoencoderKLWan`) transformer
-          (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`) sound_tokenizer
-          (`Cosmos3AVAEAudioTokenizer`)
+          video_processor (`VideoProcessor`)
+          text_tokenizer (`AutoTokenizer`)
+          vae (`AutoencoderKLWan`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
+          sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
 
       Configs:
-          default_use_system_prompt (default: True) enable_safety_checker (default: True) use_native_flow_schedule
-          (default: False)
+          default_use_system_prompt (default: True)
+          enable_safety_checker (default: True)
+          use_native_flow_schedule (default: False)
 
       Inputs:
           control_videos (`dict`, *optional*):

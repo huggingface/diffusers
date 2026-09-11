@@ -16,11 +16,16 @@
 import pytest
 import torch
 
-from diffusers import Cosmos3OmniTransformer
+from diffusers import Cosmos3OmniTransformer, SeaCacheConfig
+from diffusers.hooks import sea_cache as sea_cache_module
+from diffusers.hooks._helpers import TransformerBlockRegistry
+from diffusers.hooks.sea_cache import _SEA_CACHE_ROOT_HOOK
+from diffusers.models.cache_utils import CacheMixin
 from diffusers.models.transformers.transformer_cosmos3 import (
     Cosmos3NemotronRMSNorm,
     Cosmos3OmniTransformerOutput,
     Cosmos3PackedMoTAttention,
+    Cosmos3VLTextMoTDecoderLayer,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -30,6 +35,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SeaCacheTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -103,6 +109,307 @@ class Cosmos3OmniTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelTesterMixin):
+    def test_cosmos3_supports_sea_cache_without_changing_state_dict_keys(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        state_dict_keys = set(model.state_dict())
+        norm_calls = {"und": 0, "gen": 0}
+        original_und_norm_forward = model.norm.forward
+        original_gen_norm_forward = model.norm_moe_gen.forward
+
+        def counted_und_norm_forward(*args, **kwargs):
+            norm_calls["und"] += 1
+            return original_und_norm_forward(*args, **kwargs)
+
+        def counted_gen_norm_forward(*args, **kwargs):
+            norm_calls["gen"] += 1
+            return original_gen_norm_forward(*args, **kwargs)
+
+        model.norm.forward = counted_und_norm_forward
+        model.norm_moe_gen.forward = counted_gen_norm_forward
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
+        config = SeaCacheConfig(
+            threshold=100.0,
+            cache_end_steps=0,
+        )
+
+        assert isinstance(model, CacheMixin)
+        model.enable_cache(config)
+        assert set(model.state_dict()) == state_dict_keys
+        assert model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK) is not None
+
+        inputs = self.get_dummy_inputs()
+        with torch.no_grad(), model.cache_context("cond", **runtime):
+            model(**inputs)
+        assert norm_calls == {"und": 1, "gen": 1}
+
+        runtime.update(step_index=1, sigma=0.6)
+        cached_inputs = self.get_dummy_inputs()
+        cached_inputs["vision_tokens"] = [cached_inputs["vision_tokens"][0] + 0.1]
+        with torch.no_grad(), model.cache_context("cond", **runtime):
+            output = model(**cached_inputs)
+
+        # A hit bypasses the decoder stack and final pathway norms while prediction heads stay fresh.
+        assert norm_calls == {"und": 1, "gen": 1}
+        assert output.sample[0].shape == self.output_shape
+
+        model.disable_cache()
+        assert set(model.state_dict()) == state_dict_keys
+        assert not hasattr(model, "_sea_cache_prepare_decoder_stack")
+        assert not hasattr(model, "_sea_cache_record_decoder_stack")
+        with torch.no_grad():
+            model(**self.get_dummy_inputs())
+        assert norm_calls == {"und": 2, "gen": 2}
+
+    def test_cosmos3_sea_cache_post_norm_boundary_numeric_semantics(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
+        config = SeaCacheConfig(
+            threshold=100.0,
+            cache_end_steps=0,
+        )
+        decoder_gen_inputs = []
+        prepared_stack_outputs = []
+        und_norm_inputs = []
+        gen_norm_inputs = []
+        returned_und_outputs = []
+        returned_gen_outputs = []
+        projection_head_inputs = []
+        projection_head_calls = 0
+
+        def capture_und_norm_input(module, args):
+            und_norm_inputs.append(args[0].detach().clone())
+
+        def capture_gen_norm_input(module, args):
+            gen_norm_inputs.append(args[0].detach().clone())
+
+        def capture_und_output(module, args, output):
+            returned_und_outputs.append(output.detach().clone())
+
+        def capture_gen_output(module, args, output):
+            returned_gen_outputs.append(output.detach().clone())
+
+        original_projection_forward = model.proj_out.forward
+
+        def counted_projection_forward(hidden_states):
+            nonlocal projection_head_calls
+            projection_head_calls += 1
+            projection_head_inputs.append(hidden_states.detach().clone())
+            return original_projection_forward(hidden_states)
+
+        model.norm.register_forward_pre_hook(capture_und_norm_input)
+        model.norm_moe_gen.register_forward_pre_hook(capture_gen_norm_input)
+        model.norm.register_forward_hook(capture_und_output)
+        model.norm_moe_gen.register_forward_hook(capture_gen_output)
+        model.proj_out.forward = counted_projection_forward
+        model.enable_cache(config)
+
+        original_prepare_decoder_stack = model._sea_cache_prepare_decoder_stack
+
+        def capture_prepare_decoder_stack(module, und_seq, gen_seq):
+            decoder_gen_inputs.append(gen_seq.detach().clone())
+            prepared_und, prepared_gen, should_compute = original_prepare_decoder_stack(module, und_seq, gen_seq)
+            prepared_stack_outputs.append(
+                (prepared_und.detach().clone(), prepared_gen.detach().clone(), should_compute)
+            )
+            return prepared_und, prepared_gen, should_compute
+
+        model._sea_cache_prepare_decoder_stack = capture_prepare_decoder_stack
+
+        with torch.no_grad(), model.cache_context("cond", **runtime):
+            model(**self.get_dummy_inputs())
+
+        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+        state = root_hook.state_manager._state_cache["cond"]
+        cached_step, cached_und_output, cached_gen_residual = state.history[-1]
+        assert cached_step == 0
+        torch.testing.assert_close(cached_und_output, returned_und_outputs[0])
+        torch.testing.assert_close(
+            cached_gen_residual,
+            returned_gen_outputs[0] - decoder_gen_inputs[0],
+        )
+
+        runtime.update(step_index=1, sigma=0.6)
+        cached_inputs = self.get_dummy_inputs()
+        cached_inputs["vision_tokens"] = [cached_inputs["vision_tokens"][0] + 0.1]
+        with torch.no_grad(), model.cache_context("cond", **runtime):
+            model(**cached_inputs)
+
+        assert len(und_norm_inputs) == len(gen_norm_inputs) == 1
+        assert prepared_stack_outputs[1][2] is False
+        torch.testing.assert_close(prepared_stack_outputs[1][0], cached_und_output)
+        torch.testing.assert_close(
+            prepared_stack_outputs[1][1],
+            decoder_gen_inputs[1] + cached_gen_residual,
+        )
+        torch.testing.assert_close(projection_head_inputs[1], prepared_stack_outputs[1][1])
+        assert projection_head_calls == 2
+
+    @pytest.mark.parametrize("parallelism", ["cp", "tp"])
+    def test_cosmos3_sea_cache_reuses_with_model_parallel_consensus(self, monkeypatch, parallelism):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        if parallelism == "cp":
+            model._cp_shard_fn = lambda und_seq, gen_seq, rotary_emb: (und_seq, gen_seq, rotary_emb)
+            model._cp_gather_fn = lambda und_out, gen_out: (und_out, gen_out)
+        else:
+            monkeypatch.setattr(sea_cache_module, "_parameter_sharding_types", lambda _module: (False, True))
+
+        votes = []
+
+        def all_reduce(decision, *, op):
+            assert op == torch.distributed.ReduceOp.MAX
+            votes.append(decision.tolist())
+
+        monkeypatch.setattr(torch.distributed, "is_available", lambda: True)
+        monkeypatch.setattr(torch.distributed, "is_initialized", lambda: True)
+        monkeypatch.setattr(torch.distributed, "all_reduce", all_reduce)
+
+        layer_calls = 0
+
+        def count_layer_calls(_module, _args, _output):
+            nonlocal layer_calls
+            layer_calls += 1
+
+        model.layers[0].register_forward_hook(count_layer_calls)
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
+        model.enable_cache(
+            SeaCacheConfig(
+                threshold=100.0,
+                cache_end_steps=0,
+            )
+        )
+
+        with torch.no_grad(), model.cache_context("cond", **runtime):
+            model(**self.get_dummy_inputs())
+        runtime.update(step_index=1, sigma=0.6)
+        cached_inputs = self.get_dummy_inputs()
+        cached_inputs["vision_tokens"] = [cached_inputs["vision_tokens"][0] + 0.1]
+        with torch.no_grad(), model.cache_context("cond", **runtime):
+            model(**cached_inputs)
+
+        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+        assert layer_calls == 1
+        assert root_hook.state_manager._state_cache["cond"].consecutive_cached == 1
+        assert votes == [[1, 0], [0, 1]]
+
+    def test_cosmos3_sea_cache_parallel_disagreement_forces_full_execution(self, monkeypatch):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model._cp_shard_fn = lambda und_seq, gen_seq, rotary_emb: (und_seq, gen_seq, rotary_emb)
+        model._cp_gather_fn = lambda und_out, gen_out: (und_out, gen_out)
+        reduction_count = 0
+
+        def all_reduce(decision, *, op):
+            nonlocal reduction_count
+            assert op == torch.distributed.ReduceOp.MAX
+            reduction_count += 1
+            if reduction_count == 2:
+                decision.fill_(1)
+
+        monkeypatch.setattr(torch.distributed, "is_available", lambda: True)
+        monkeypatch.setattr(torch.distributed, "is_initialized", lambda: True)
+        monkeypatch.setattr(torch.distributed, "all_reduce", all_reduce)
+
+        layer_calls = 0
+
+        def count_layer_calls(_module, _args, _output):
+            nonlocal layer_calls
+            layer_calls += 1
+
+        model.layers[0].register_forward_hook(count_layer_calls)
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
+        model.enable_cache(
+            SeaCacheConfig(
+                threshold=100.0,
+                cache_end_steps=0,
+            )
+        )
+
+        with torch.no_grad(), model.cache_context("cond", **runtime):
+            model(**self.get_dummy_inputs())
+        runtime.update(step_index=1, sigma=0.6)
+        with torch.no_grad(), model.cache_context("cond", **runtime):
+            model(**self.get_dummy_inputs())
+
+        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+        state = root_hook.state_manager._state_cache["cond"]
+        assert reduction_count == 2
+        assert layer_calls == 2
+        assert state.consecutive_cached == 0
+        assert [step for step, _, _ in state.history] == [1]
+
+    def test_cosmos3_sea_cache_parallelism_without_process_group_fails_open(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model._cp_shard_fn = lambda und_seq, gen_seq, rotary_emb: (und_seq, gen_seq, rotary_emb)
+        model._cp_gather_fn = lambda und_out, gen_out: (und_out, gen_out)
+        layer_calls = 0
+
+        def count_layer_calls(_module, _args, _output):
+            nonlocal layer_calls
+            layer_calls += 1
+
+        model.layers[0].register_forward_hook(count_layer_calls)
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
+        model.enable_cache(
+            SeaCacheConfig(
+                threshold=100.0,
+                cache_end_steps=0,
+            )
+        )
+
+        with torch.no_grad(), model.cache_context("cond", **runtime):
+            model(**self.get_dummy_inputs())
+        runtime.update(step_index=1, sigma=0.6)
+        with torch.no_grad(), model.cache_context("cond", **runtime):
+            model(**self.get_dummy_inputs())
+
+        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+        assert layer_calls == 2
+        assert root_hook.state_manager._state_cache["cond"].consecutive_cached == 0
+
+    @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile is unavailable")
+    def test_cosmos3_sea_cache_regional_compile_fullgraph_without_recompile(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 4}
+        model.enable_cache(
+            SeaCacheConfig(
+                threshold=100.0,
+                cache_end_steps=0,
+                max_consecutive_cached=1,
+            )
+        )
+        model.compile_repeated_blocks(backend="eager", fullgraph=True)
+
+        with torch.no_grad():
+            with model.cache_context("cond", **runtime):
+                first = model(**self.get_dummy_inputs())
+
+        with torch.no_grad(), torch._dynamo.config.patch(error_on_recompile=True):
+            runtime.update(step_index=1, sigma=0.6)
+            cached_inputs = self.get_dummy_inputs()
+            cached_inputs["vision_tokens"] = [cached_inputs["vision_tokens"][0] + 0.1]
+            with model.cache_context("cond", **runtime):
+                cached = model(**cached_inputs)
+            root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+            assert root_hook.state_manager._state_cache["cond"].consecutive_cached == 1
+
+            runtime.update(step_index=2, sigma=0.3)
+            refreshed_inputs = self.get_dummy_inputs()
+            refreshed_inputs["vision_tokens"] = [refreshed_inputs["vision_tokens"][0] + 0.2]
+            with model.cache_context("cond", **runtime):
+                refreshed = model(**refreshed_inputs)
+
+        assert first.sample[0].shape == self.output_shape
+        assert cached.sample[0].shape == self.output_shape
+        assert refreshed.sample[0].shape == self.output_shape
+        assert root_hook.state_manager._state_cache["cond"].history[-1][0] == 2
+
+    def test_cosmos3_decoder_layer_cache_metadata_tracks_generation_stream(self):
+        metadata = TransformerBlockRegistry.get(Cosmos3VLTextMoTDecoderLayer)
+
+        assert metadata.return_hidden_states_index == 1
+        assert metadata.return_encoder_hidden_states_index == 0
+        assert metadata.hidden_states_argument_name == "gen_seq"
+        assert metadata.encoder_hidden_states_argument_name == "und_seq"
+
     def test_output_format(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
 
@@ -241,6 +548,10 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         expected = (norm.weight.float() * expected).to(hidden_states.dtype)
 
         torch.testing.assert_close(norm(hidden_states), expected, rtol=0, atol=0)
+
+
+class TestCosmos3OmniTransformerSeaCache(Cosmos3OmniTransformerTesterConfig, SeaCacheTesterMixin):
+    cache_input_key = "vision_tokens"
 
 
 class TestCosmos3OmniTransformerMemory(Cosmos3OmniTransformerTesterConfig, MemoryTesterMixin):

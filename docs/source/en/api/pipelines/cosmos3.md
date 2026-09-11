@@ -660,6 +660,39 @@ if result.action is not None:
 </hfoption>
 </hfoptions>
 
+## SeaCache
+
+SeaCache is disabled by default. Cosmos 3 supports enabling it explicitly with [`SeaCacheConfig`]. SeaCache reuses
+transformer residuals when the Spectral-Evolution-Aware indicator changes slowly, reducing the number of full
+transformer executions. It computes the indicator from the raw vision latents, including clean conditioning frames for
+image-to-video generation. Enable it on the transformer with scheduler metadata callbacks from the pipeline:
+
+```python
+import torch
+from diffusers import Cosmos3OmniPipeline, SeaCacheConfig
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+)
+
+pipe.transformer.enable_cache(SeaCacheConfig(threshold=0.2, max_consecutive_cached=2))
+```
+
+The same model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
+[`Cosmos3DistilledModularPipeline`]. SeaCache is approximate and can change generated outputs. Disable it with
+`pipe.transformer.disable_cache()` when you need every denoising step to execute the full transformer. Cache state is
+reset after each pipeline call, and conditional and unconditional guidance branches keep independent histories.
+
+Cosmos 3 keeps the SeaCache gate outside its repeated decoder layers, so it is compatible with regional compilation.
+Compile the layers after enabling the cache:
+
+```python
+pipe.transformer.compile_repeated_blocks(fullgraph=True)
+```
+
+SeaCache also supports the Cosmos 3 Ulysses context-parallel and DTensor-based tensor-parallel helpers documented
+below. Cache decisions are synchronized across ranks. Full-model compilation and other model-sharding strategies are not claimed.
+
 ## Context parallelism
 
 For long videos or high resolutions, a single forward pass can exceed the memory and latency budget of one GPU. Cosmos 3 supports **context parallelism (CP)** to shard the sequence dimension across multiple GPUs, splitting the attention computation so each device holds only a slice of the tokens.
