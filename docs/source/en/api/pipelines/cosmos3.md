@@ -53,14 +53,11 @@ Running W8A8 on every step can produce visible flickering in multi-step video ge
 
 Image generation and few-step distilled checkpoints do not show that flickering, so Super-T2I and the distilled 4-step FP8 repos declare no schedule and stay W8A8 on every step. The schedule is also **ModelOpt FP8 only**: other quantization backends (for example TorchAO) keep their native forwards.
 
-Loading follows the [ModelOpt guide](../../quantization/modelopt): call `enable_huggingface_checkpointing()` so the serialized quantizers are restored. The `fp8` revision already carries its quantization config, so you do not pass one, and mixed precision follows the checkpoint automatically:
+Load the `fp8` revision with the same restore path as the [ModelOpt guide](../../quantization/modelopt) (`revision="fp8"` already carries the quantization config). Mixed precision then follows the checkpoint automatically:
 
 ```python
 import torch
 from diffusers import Cosmos3OmniPipeline
-from modelopt.torch.opt import enable_huggingface_checkpointing
-
-enable_huggingface_checkpointing()
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano",
@@ -71,7 +68,12 @@ pipe = Cosmos3OmniPipeline.from_pretrained(
 result = pipe(prompt="...", num_inference_steps=35)
 ```
 
-Pass `mixed_precision_format="none"` to keep every step on native W8A8.
+Two generate-time choices:
+
+- **Default** (`mixed_precision_format=None`): if the checkpoint declares `diffusion_step_policy`, run W8A16 on the first/last N steps and native W8A8 in the middle. That is the intended recipe for multi-step **video** FP8 (less flickering than all-W8A8). Distilled 4-step and Super-T2I FP8 omit the policy, so the default is already all W8A8.
+- **`mixed_precision_format="none"`**: keep every step on native W8A8. Faster, because W8A16 is dequant + `torch.nn.functional.linear` rather than the restored FP8 GEMM, but multi-step video can flicker. Use this to A/B the schedule or to match a fully quantized baseline.
+
+On one Blackwell workstation, Cosmos3-Nano `@fp8` at 720×1280 / 35 steps was about **27% slower** (T2I) and **13% slower** (49-frame T2V) with the default mixed schedule than with `"none"`. Those numbers are not a throughput guarantee. Pass `"fp8"` only to force the first/last-N schedule on a ModelOpt FP8 checkpoint that has no policy.
 
 ## Prompt upsampling
 
