@@ -182,9 +182,9 @@ def test_multi_step_decode_runs_the_scheduler_loop():
 class TestTiling:
     """Tiled decoding: the early stages run on the full latent, the last stage and the diffusion loop run per tile.
 
-    The latent is 3x4x5 (17x64x80 pixels) so every axis is large enough to split: the tiling grid -- the grid
+    `latent` is 3x4x5 (17x64x80 pixels) so every axis is large enough to split: the tiling grid -- the grid
     entering the last deterministic stage -- is 9x16x20, and the tile sizes below cut it into three temporal and
-    two/three spatial tiles.
+    two/three spatial tiles. Tests that never want a split use `small_latent` instead.
     """
 
     SPLIT_TILES = {
@@ -202,6 +202,14 @@ class TestTiling:
     def latent(self):
         return torch.randn(1, 8, 3, 4, 5, generator=torch.Generator().manual_seed(2)).to(torch_device)
 
+    def small_latent(self):
+        """2x3x3 (9x48x48 pixels): under the default tile sizes, over `SPLIT_TILES`.
+
+        Stage 5 attends over the whole grid, so decode cost grows with the square of the video. A test that only
+        exercises the single-tile path has no use for a splittable video and should not pay for one.
+        """
+        return torch.randn(1, 8, 2, 3, 3, generator=torch.Generator().manual_seed(2)).to(torch_device)
+
     def test_tiles_covering_the_video_match_untiled_exactly(self):
         """A tile schedule with a single covering tile must reproduce the untiled decode bit for bit.
 
@@ -209,7 +217,7 @@ class TestTiling:
         because any offset in them shifts the single tile's output relative to the untiled path. The default tile
         sizes are larger than the test video, so `tiled_decode` builds exactly one tile.
         """
-        pipe, latent = _build(), self.latent()
+        pipe, latent = _build(), self.small_latent()
 
         for num_inference_steps in (None, 3):  # None: the single-step x0 shortcut; 3: the Euler loop
             untiled = _decode(pipe, latent, num_inference_steps)
@@ -284,7 +292,7 @@ class TestTiling:
         directly -- the tiled path is never entered -- and separately pins the contract that matters to callers,
         that turning tiling on cannot change a small video's output.
         """
-        pipe, latent = _build(), self.latent()
+        pipe, latent = _build(), self.small_latent()
         decoder = pipe.diffusion_decoder
 
         def run():
@@ -304,7 +312,7 @@ class TestTiling:
 
         monkeypatch.setattr(decode_module, "_tiled_decode", counting_tiled_decode)
 
-        # Default tile sizes are far larger than this 17x64x80 video, so the gate declines to tile.
+        # Default tile sizes are far larger than this 9x48x48 video, so the gate declines to tile.
         decoder.enable_tiling()
         fits_in_one_tile = run()
         assert not calls, "__call__ routed to the tiled path for a video that fits in a single tile"
