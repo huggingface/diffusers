@@ -25,7 +25,6 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import deprecate, is_scipy_available
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
-
 if is_scipy_available():
     import scipy.stats
 
@@ -321,6 +320,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         device: str | torch.device = None,
         sigmas: list[float] | None = None,
         mu: bool | None = None,
+        timesteps: list[int] | None = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -335,9 +335,26 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 automatically.
             mu (`float`, *optional*):
                 Optional mu parameter for dynamic shifting when using exponential time shift type.
+            timesteps (`list[int]`, *optional*):
+                Custom timesteps used to support arbitrary timesteps schedule. If `None`, timesteps will be generated
+                based on the `timestep_spacing` attribute. If `timesteps` is passed, `num_inference_steps` and `sigmas`
+                must be `None`, and `timestep_spacing` attribute will be ignored.
         """
         if self.config.use_dynamic_shifting and mu is None:
             raise ValueError("`mu` must be passed when `use_dynamic_shifting` is set to be `True`")
+        if num_inference_steps is None and timesteps is None and sigmas is None:
+            raise ValueError("Must pass exactly one of `num_inference_steps`, `timesteps`, or `sigmas`.")
+        if num_inference_steps is not None and timesteps is not None:
+            raise ValueError("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
+        if timesteps is not None and self.config.use_karras_sigmas:
+            raise ValueError("Cannot use `timesteps` with `config.use_karras_sigmas = True`")
+        if timesteps is not None and self.config.use_exponential_sigmas:
+            raise ValueError("Cannot set `timesteps` with `config.use_exponential_sigmas = True`.")
+        if timesteps is not None and self.config.use_beta_sigmas:
+            raise ValueError("Cannot set `timesteps` with `config.use_beta_sigmas = True`.")
+        if timesteps is not None and sigmas is not None:
+            raise ValueError("Cannot set `timesteps` and `sigmas` at the same time.")
+        
 
         if sigmas is not None:
             if not self.config.use_flow_sigmas:
@@ -348,7 +365,9 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             num_inference_steps = len(sigmas)
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://huggingface.co/papers/2305.08891
-        if self.config.timestep_spacing == "linspace":
+        if timesteps is not None:
+            timesteps = np.array(timesteps).astype(np.int64)
+        elif self.config.timestep_spacing == "linspace":
             timesteps = (
                 np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
                 .round()[::-1][:-1]
