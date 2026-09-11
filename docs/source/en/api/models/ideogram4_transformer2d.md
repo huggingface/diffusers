@@ -14,6 +14,19 @@ specific language governing permissions and limitations under the License.
 
 A transformer for image-like data from [Ideogram 4](https://github.com/ideogram-oss/ideogram-4). 
 
+## Loading single-file checkpoints
+
+`Ideogram4Transformer2DModel` supports loading from single-file checkpoints via [`~loaders.FromOriginalModelMixin.from_single_file`]:
+
+```python
+from diffusers import Ideogram4Transformer2DModel
+
+transformer = Ideogram4Transformer2DModel.from_single_file(
+    "path/to/ideogram4_transformer.safetensors",
+    torch_dtype=torch.bfloat16,
+)
+```
+
 ## Ideogram4Transformer2DModel
 
 [[autodoc]] Ideogram4Transformer2DModel
