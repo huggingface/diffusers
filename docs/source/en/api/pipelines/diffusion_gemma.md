@@ -16,7 +16,7 @@ DiffusionGemma is a block-diffusion encoder-decoder language model. A causal enc
 previously generated blocks) into a KV cache, and a bidirectional decoder denoises a fixed-size "canvas" of
 `canvas_length` tokens by cross-attending to that cache. Generation alternates an outer autoregressive loop over
 canvases with an inner denoising loop, where each step samples candidate tokens, commits the most confident ones via
-[`BlockRefinementScheduler`] in uniform corruption mode, and renoises the rest. The model itself lives in
+[`UniformRefinementScheduler`], and renoises the rest. The model itself lives in
 `transformers` as `DiffusionGemmaForBlockDiffusion`; the released checkpoint is
 [`google/diffusiongemma-26B-A4B-it`](https://huggingface.co/google/diffusiongemma-26B-A4B-it).
 
@@ -26,12 +26,12 @@ canvases with an inner denoising loop, where each step samples candidate tokens,
 import torch
 from transformers import AutoProcessor, DiffusionGemmaForBlockDiffusion
 
-from diffusers import BlockRefinementScheduler, DiffusionGemmaPipeline
+from diffusers import DiffusionGemmaPipeline, UniformRefinementScheduler
 
 model_id = "google/diffusiongemma-26B-A4B-it"
 model = DiffusionGemmaForBlockDiffusion.from_pretrained(model_id, dtype=torch.bfloat16, device_map="auto")
 processor = AutoProcessor.from_pretrained(model_id)
-scheduler = BlockRefinementScheduler()
+scheduler = UniformRefinementScheduler()
 
 pipe = DiffusionGemmaPipeline(model=model, scheduler=scheduler, processor=processor)
 pipe.model.model.decoder = torch.compile(pipe.model.model.decoder, mode="reduce-overhead", fullgraph=True)
@@ -76,8 +76,10 @@ the model's image inputs automatically.
 The scheduler is the sampler that denoises each canvas, and it is interchangeable: swap it to change the sampling
 strategy without touching anything else. Three schedulers are available:
 
-- [`BlockRefinementScheduler`] (default): commits the most confident tokens each step (above `threshold`, plus an even
-  per-step quota) and renoises the rest. `editing_threshold` additionally lets it re-edit already committed tokens.
+- [`UniformRefinementScheduler`] (default): commits the most confident tokens each step (above `threshold`, plus an
+  even per-step quota) and renoises the rest. `editing_threshold` additionally lets it re-edit already committed
+  tokens. (For the absorbing/masked process, where undecided positions hold a mask token, use
+  [`BlockRefinementScheduler`] instead — DiffusionGemma's canvas has no mask token.)
 - [`DiscreteDDIMScheduler`]: samples each position from the exact discrete posterior of the uniform corruption process
   (D3PM). It is parameter free, and the final step deterministically commits the predicted tokens.
 - [`EntropyBoundScheduler`]: commits the lowest-entropy positions whose joint entropy stays under `entropy_bound`, so
@@ -93,17 +95,17 @@ output = pipe(prompt="Why is the sky blue?", gen_length=256, num_inference_steps
 print(output.texts[0])
 ```
 
-Scheduler-specific sampling knobs (the block-refinement `threshold`/`top_k`, the entropy bound, ...) are set on the
-scheduler config:
+Every sampling knob — `temperature`, the refinement `threshold`, the entropy bound, ... — is set on the scheduler,
+not passed to the pipeline:
 
 ```py
-from diffusers import BlockRefinementScheduler
+from diffusers import UniformRefinementScheduler
 
-pipe.scheduler = BlockRefinementScheduler.from_config(pipe.scheduler.config, threshold=0.9)
+pipe.scheduler = UniformRefinementScheduler.from_config(pipe.scheduler.config, threshold=0.9, temperature=0.7)
 ```
 
 `EntropyBoundScheduler` anneals its sampling temperature (`t_max`/`t_min`) internally over the denoising steps;
-`DiscreteDDIMScheduler` and `BlockRefinementScheduler` use the flat `temperature` passed to the pipeline (`0.0` for
+[`UniformRefinementScheduler`] and [`DiscreteDDIMScheduler`] take a flat `temperature` (`0.0`, the default, is
 greedy).
 
 ### Predictor-corrector sampling

@@ -76,6 +76,46 @@ class SchedulerOutput(BaseOutput):
     prev_sample: torch.Tensor
 
 
+@dataclass
+class DiscreteSchedulerOutput(BaseOutput):
+    """
+    Base class for the output of a discrete diffusion scheduler's `step` function.
+
+    Discrete diffusion operates on token IDs rather than continuous latents, so a step yields the token predictions and
+    the per-position bookkeeping of which positions were decided, alongside the `prev_sample` hand-off common to every
+    scheduler.
+
+    Args:
+        prev_sample (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
+            Computed sample `(x_{t-1})` of the previous timestep, as token IDs. `prev_sample` should be used as the
+            next model input in the denoising loop.
+        pred_original_sample (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
+            The predicted clean token at each position, i.e. the discrete analog of `x0`. Sampled from the model
+            distribution rather than taken as its argmax, unless the sampling configuration is greedy.
+        sampled_probs (`torch.Tensor` of shape `(batch_size, sequence_length)`):
+            Probability of each token in `pred_original_sample` under the **unmodified** denoiser distribution, so that
+            confidence thresholds mean the same thing across schedulers and across sampling temperatures.
+        pred_logits (`torch.Tensor` of shape `(batch_size, sequence_length, vocab_size)`):
+            The distribution the tokens were actually drawn from, after any shaping the scheduler applies (temperature,
+            top-k, top-p, or a schedule-dependent annealing). Returned because the scheduler owns that shaping, so it
+            is the only holder of this tensor; pipelines that self-condition the denoiser on its own prediction need
+            exactly this and not the raw logits they passed in.
+        committed_mask (`torch.BoolTensor` of shape `(batch_size, sequence_length)`):
+            Positions that adopted their predicted token in this step. For schedulers that resample every position each
+            step, this is every position.
+        edited_mask (`torch.BoolTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Subset of positions that overwrote an already-committed token. `None` for schedulers with no editing
+            concept.
+    """
+
+    prev_sample: torch.LongTensor
+    pred_original_sample: torch.LongTensor
+    sampled_probs: torch.Tensor
+    pred_logits: torch.Tensor
+    committed_mask: torch.BoolTensor
+    edited_mask: torch.BoolTensor | None = None
+
+
 class SchedulerMixin(PushToHubMixin):
     """
     Base class for all schedulers.

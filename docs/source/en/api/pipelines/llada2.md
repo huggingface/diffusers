@@ -30,7 +30,13 @@ model = AutoModelForCausalLM.from_pretrained(
     model_id, trust_remote_code=True, dtype=torch.bfloat16, device_map="auto"
 )
 tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-scheduler = BlockRefinementScheduler()
+# Sampling and the confidence thresholds belong to the scheduler.
+scheduler = BlockRefinementScheduler(
+    block_length=32,
+    temperature=0.0,
+    threshold=0.7,
+    editing_threshold=0.5,
+)
 
 pipe = LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
 output = pipe(
@@ -38,20 +44,17 @@ output = pipe(
     gen_length=256,
     block_length=32,
     num_inference_steps=32,
-    threshold=0.7,
-    editing_threshold=0.5,
     max_post_steps=16,
-    temperature=0.0,
 )
 print(output.texts[0])
 ```
 
 ## Callbacks
 
-Callbacks run after each refinement step. Pass `callback_on_step_end_tensor_inputs` to select which tensors are
-included in `callback_kwargs`. In the current implementation, `block_x` (the sequence window being refined) and
-`transfer_index` (mask-filling commit mask) are provided; return `{"block_x": ...}` from the callback to replace the
-window.
+Callbacks run after each refinement step, in both phases. Pass `callback_on_step_end_tensor_inputs` to select
+which tensors are included in `callback_kwargs`: `block_x` (the sequence window being refined), `active_block`,
+`pred_original_sample`, `sampled_probs`, `committed_mask` (the mask-filling commits) and `edited_mask` (the
+overwrites). Return `{"block_x": ...}` from the callback to replace the window.
 
 ```py
 def on_step_end(pipe, step, timestep, callback_kwargs):
@@ -68,18 +71,31 @@ out = pipe(
 
 ## Recommended parameters
 
-LLaDA2.1 models support two modes:
+LLaDA2.1 models support two modes. `threshold` and `editing_threshold` are
+[`BlockRefinementScheduler`] settings; `max_post_steps` is a pipeline argument, since it bounds the loop rather
+than the sampling.
 
 | Mode | `threshold` | `editing_threshold` | `max_post_steps` |
 |------|-------------|---------------------|------------------|
 | Quality | 0.7 | 0.5 | 16 |
 | Speed | 0.5 | `None` | 16 |
 
-Pass `editing_threshold=None`, `0.0`, or a negative value to turn off post-mask editing.
+Configuring the scheduler with `editing_threshold=None` (the default), `0.0`, or a negative value turns off
+post-mask editing — which is also the recommendation for LLaDA2.0 models. To change a mode on an existing
+pipeline:
 
-For LLaDA2.0 models, disable editing by passing `editing_threshold=None` or `0.0`.
+```py
+pipe.scheduler = BlockRefinementScheduler.from_config(pipe.scheduler.config, threshold=0.5, editing_threshold=None)
+```
 
 For all models: `block_length=32`, `temperature=0.0`, `num_inference_steps=32`.
+
+<Tip warning={true}>
+
+`temperature`, `top_p`, `top_k`, `sampling_method`, `threshold`, `editing_threshold` and `minimal_topk` used to be
+`__call__` arguments. They are deprecated there and will be removed in v1.0.0: set them on the scheduler instead.
+
+</Tip>
 
 ## LLaDA2Pipeline
 [[autodoc]] LLaDA2Pipeline
