@@ -387,10 +387,12 @@ class MiniMaxH3VideoTransformerBlock(nn.Module):
     def forward(
         self, hidden_states: torch.Tensor, rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None
     ) -> torch.Tensor:
-        # The reference normalizes in float32 regardless of the compute dtype.
-        norm_hidden_states = self.norm1(hidden_states.float()).to(hidden_states.dtype)
+        # The reference normalizes in float32 regardless of the compute dtype. The residual stream is float32 too
+        # because the anchors are, so the normed activation follows the projections instead.
+        compute_dtype = get_parameter_dtype(self.attn.to_q)
+        norm_hidden_states = self.norm1(hidden_states.float()).to(compute_dtype)
         hidden_states = hidden_states + self.attn(norm_hidden_states, rotary_emb) * self.scale1
-        norm_hidden_states = self.norm2(hidden_states.float()).to(hidden_states.dtype)
+        norm_hidden_states = self.norm2(hidden_states.float()).to(compute_dtype)
         hidden_states = hidden_states + self.ff(norm_hidden_states) * self.scale2
         return hidden_states
 
@@ -453,7 +455,8 @@ class MiniMaxH3VideoViTDecoder3d(nn.Module):
         hidden_states = self.proj_in(hidden_states)
         num_patches = hidden_states.shape[1]
 
-        register_tokens = self.register_tokens.expand(batch_size, -1, -1)
+        # `proj_in` is pinned to float32 and `register_tokens` is not, so align rather than rely on promotion.
+        register_tokens = self.register_tokens.expand(batch_size, -1, -1).to(hidden_states.dtype)
         cls_token = torch.zeros_like(hidden_states[:, :1, :])
         hidden_states = torch.cat([hidden_states, register_tokens, cls_token], dim=1)
 
@@ -473,7 +476,8 @@ class MiniMaxH3VideoViTDecoder3d(nn.Module):
             else:
                 hidden_states = block(hidden_states, rotary_emb)
 
-        hidden_states = self.norm_out(hidden_states)
+        # `norm_out` is pinned to float32 and `proj_out` is not.
+        hidden_states = self.norm_out(hidden_states).to(get_parameter_dtype(self.proj_out))
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states[:, :num_patches, :]
 
@@ -526,10 +530,20 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
     _no_split_modules = ["MiniMaxH3VideoResnetBlock3d", "MiniMaxH3VideoTransformerBlock"]
     _repeated_blocks = ["MiniMaxH3VideoTransformerBlock"]
     _skip_layerwise_casting_patterns = ["norm"]
-    # The released checkpoint is float32 and the verified decode recipe is float16 *autocast over float32 weights*
-    # (see `decode`). A pipeline-level `torch_dtype=torch.bfloat16` must therefore not downcast the weights, so every
-    # top-level module is pinned, mirroring the transformer's mixed-precision contract.
-    _keep_in_fp32_modules = ["encoder", "decoder", "quant_conv", "post_quant_conv"]
+    # The released checkpoint is float32; only the cast-sensitive modules are pinned so `torch_dtype` still reaches
+    # the decoder block stack. `proj_out` is left out on purpose: it sets the dtype of the decoded pixels, and
+    # pinning it holds the whole video in float32. Entries match whole segments of the parameter name.
+    _keep_in_fp32_modules = [
+        "encoder",
+        "quant_conv",
+        "post_quant_conv",
+        "proj_in",
+        "norm1",
+        "norm2",
+        "norm_out",
+        "scale1",
+        "scale2",
+    ]
 
     @register_to_config
     def __init__(
@@ -857,7 +871,7 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
             The latent distribution of the encoded videos. Note that MiniMax-H3 normalizes the sampled latents with
             `latents_mean` / `latents_std` afterwards.
         """
-        # Every module is pinned to float32 by `_keep_in_fp32_modules`, so a pipeline running in a lower `torch_dtype`
+        # The encoder is pinned to float32 by `_keep_in_fp32_modules`, so a pipeline running in a lower `torch_dtype`
         # hands over lower-precision pixels; align them with the weights, like the audio autoencoder does.
         x = x.to(get_parameter_dtype(self.encoder))
         if self.use_slicing and x.shape[0] > 1:
@@ -884,7 +898,8 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
             [`~models.autoencoders.vae.DecoderOutput`] or `tuple`:
                 The decoded videos, shape `(batch_size, out_channels, num_frames, height, width)`.
         """
-        z = z.to(get_parameter_dtype(self.decoder))
+        # The decoder is mixed precision, so align with the first module that consumes the latents.
+        z = z.to(get_parameter_dtype(self.post_quant_conv))
         if self.use_slicing and z.shape[0] > 1:
             decoded = torch.cat([self._decode(z_slice) for z_slice in z.split(1)])
         else:
