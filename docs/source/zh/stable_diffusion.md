@@ -75,7 +75,7 @@ image
 ```python
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, use_safetensors=True)
+pipeline = DiffusionPipeline.from_pretrained(model_id, dtype=torch.float16, use_safetensors=True)
 pipeline = pipeline.to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 image = pipeline(prompt, generator=generator).images[0]
@@ -195,7 +195,7 @@ make_image_grid(images, rows=2, cols=4)
 ```python
 from diffusers import AutoencoderKL
 
-vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16).to("cuda")
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", dtype=torch.float16).to("cuda")
 pipeline.vae = vae
 images = pipeline(**get_inputs(batch_size=8)).images
 make_image_grid(images, rows=2, cols=4)

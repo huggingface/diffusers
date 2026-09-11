@@ -35,7 +35,7 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 model_id = "./textual_inversion_cat_sdxl"
-pipe = StableDiffusionXLPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionXLPipeline.from_pretrained(model_id,dtype=torch.float16).to("cuda")
 
 prompt = "A <cat-toy> backpack"
 

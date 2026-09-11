@@ -40,7 +40,7 @@ Quantizing a model in 8-bit halves the memory-usage:
 bitsandbytes is supported in both Transformers and Diffusers, so you can quantize both the
 [`FluxTransformer2DModel`] and [`~transformers.T5EncoderModel`].
 
-For Ada and higher-series GPUs. we recommend changing `torch_dtype` to `torch.bfloat16`.
+For Ada and higher-series GPUs. we recommend changing `dtype` to `torch.bfloat16`.
 
 > [!TIP]
 > The [`CLIPTextModel`] and [`AutoencoderKL`] aren't quantized because they're already small in size and because [`AutoencoderKL`] only has a few `torch.nn.Linear` layers.
@@ -58,7 +58,7 @@ text_encoder_2_8bit = T5EncoderModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True,)
@@ -67,18 +67,18 @@ transformer_8bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 ```
 
-By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`. You can change the data type of these modules with the `torch_dtype` parameter.
+By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`. You can change the data type of these modules with the `dtype` parameter.
 
 ```diff
 transformer_8bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-+   torch_dtype=torch.float32,
++   dtype=torch.float32,
 )
 ```
 
@@ -94,7 +94,7 @@ pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer_8bit,
     text_encoder_2=text_encoder_2_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="auto",
 )
 
@@ -126,7 +126,7 @@ Quantizing a model in 4-bit reduces your memory-usage by 4x:
 bitsandbytes is supported in both Transformers and Diffusers, so you can can quantize both the
 [`FluxTransformer2DModel`] and [`~transformers.T5EncoderModel`].
 
-For Ada and higher-series GPUs. we recommend changing `torch_dtype` to `torch.bfloat16`.
+For Ada and higher-series GPUs. we recommend changing `dtype` to `torch.bfloat16`.
 
 > [!TIP]
 > The [`CLIPTextModel`] and [`AutoencoderKL`] aren't quantized because they're already small in size and because [`AutoencoderKL`] only has a few `torch.nn.Linear` layers.
@@ -144,7 +144,7 @@ text_encoder_2_4bit = T5EncoderModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True,)
@@ -153,18 +153,18 @@ transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 ```
 
-By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`. You can change the data type of these modules with the `torch_dtype` parameter.
+By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`. You can change the data type of these modules with the `dtype` parameter.
 
 ```diff
 transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-+   torch_dtype=torch.float32,
++   dtype=torch.float32,
 )
 ```
 
@@ -179,7 +179,7 @@ pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer_4bit,
     text_encoder_2=text_encoder_2_4bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="auto",
 )
 
@@ -314,7 +314,7 @@ text_encoder_2_4bit = T5EncoderModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(
@@ -326,11 +326,11 @@ transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 ```
 
-For inference, the `bnb_4bit_quant_type` does not have a huge impact on performance. However, to remain consistent with the model weights, you should use the `bnb_4bit_compute_dtype` and `torch_dtype` values.
+For inference, the `bnb_4bit_quant_type` does not have a huge impact on performance. However, to remain consistent with the model weights, you should use the `bnb_4bit_compute_dtype` and `dtype` values.
 
 ### Nested quantization
 
@@ -352,7 +352,7 @@ text_encoder_2_4bit = T5EncoderModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(
@@ -364,7 +364,7 @@ transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 ```
 
@@ -388,7 +388,7 @@ text_encoder_2_4bit = T5EncoderModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(
@@ -400,7 +400,7 @@ transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 text_encoder_2_4bit.dequantize()
@@ -421,7 +421,7 @@ transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 transformer_4bit.compile(fullgraph=True)
 ```
@@ -435,7 +435,7 @@ transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 transformer_4bit.compile(fullgraph=True)
 ```

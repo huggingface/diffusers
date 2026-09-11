@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class DreamBoothLoRAlumina2(ExamplesTestsAccelerate):
+class TestDreamBoothLoRAlumina2(ExamplesTestsAccelerate):
     instance_data_dir = "docs/source/en/imgs"
     pretrained_model_name_or_path = "hf-internal-testing/tiny-lumina2-pipe"
     script_path = "examples/dreambooth/train_dreambooth_lora_lumina2.py"
@@ -59,17 +59,17 @@ class DreamBoothLoRAlumina2(ExamplesTestsAccelerate):
             test_args.extend(["--instance_prompt", ""])
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"transformer"` in their names.
             starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
-            self.assertTrue(starts_with_transformer)
+            assert starts_with_transformer
 
     def test_dreambooth_lora_latent_caching(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -93,17 +93,17 @@ class DreamBoothLoRAlumina2(ExamplesTestsAccelerate):
             test_args.extend(["--instance_prompt", ""])
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"transformer"` in their names.
             starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
-            self.assertTrue(starts_with_transformer)
+            assert starts_with_transformer
 
     def test_dreambooth_lora_layers(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -128,18 +128,18 @@ class DreamBoothLoRAlumina2(ExamplesTestsAccelerate):
             test_args.extend(["--instance_prompt", ""])
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"transformer"` in their names. In this test, we only params of
             # `self.transformer_layer_type` should be in the state dict.
             starts_with_transformer = all(self.transformer_layer_type in key for key in lora_state_dict)
-            self.assertTrue(starts_with_transformer)
+            assert starts_with_transformer
 
     def test_dreambooth_lora_lumina2_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -160,10 +160,7 @@ class DreamBoothLoRAlumina2(ExamplesTestsAccelerate):
             test_args.extend(["--instance_prompt", ""])
             run_command(self._launch_args + test_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_dreambooth_lora_lumina2_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -183,7 +180,7 @@ class DreamBoothLoRAlumina2(ExamplesTestsAccelerate):
             test_args.extend(["--instance_prompt", ""])
             run_command(self._launch_args + test_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-2", "checkpoint-4"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-4"}
 
             resume_run_args = f"""
             {self.script_path}
@@ -203,4 +200,4 @@ class DreamBoothLoRAlumina2(ExamplesTestsAccelerate):
             resume_run_args.extend(["--instance_prompt", ""])
             run_command(self._launch_args + resume_run_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-6", "checkpoint-8"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-6", "checkpoint-8"}

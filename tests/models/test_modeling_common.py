@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -119,12 +119,10 @@ class TestModelUtils:
 
     def test_local_files_only_with_sharded_checkpoint(self):
         repo_id = "hf-internal-testing/tiny-flux-sharded"
-        error_response = mock.Mock(
-            status_code=500,
-            headers={},
-            raise_for_status=mock.Mock(side_effect=HfHubHTTPError("Server down", response=mock.Mock())),
-            json=mock.Mock(return_value={}),
-        )
+        error_response = mock.Mock(status_code=500, headers={}, json=mock.Mock(return_value={}))
+        # `resolve_revision` inspects `error.response.status_code` to tell a Hub outage from a definitive answer,
+        # so the raised error has to carry the response itself.
+        error_response.raise_for_status = mock.Mock(side_effect=HfHubHTTPError("Server down", response=error_response))
         client_mock = mock.Mock()
         client_mock.get.return_value = error_response
 
@@ -161,9 +159,11 @@ class TestModelUtils:
                     repo_id, subfolder="transformer", cache_dir=tmpdir, local_files_only=True
                 )
 
-            # Verify error mentions the missing shard
+            # Verify error mentions the missing shard. `huggingface_hub>=1.22.0` reports it via
+            # `IncompleteSnapshotError` (repo-relative path), older versions via diffusers' own check on the
+            # cached folder (absolute path), so match on the shard's filename.
             error_msg = str(context.value)
-            assert cached_shard_file in error_msg or "required according to the checkpoint index" in error_msg, (
+            assert os.path.basename(cached_shard_file) in error_msg, (
                 f"Expected error about missing shard, got: {error_msg}"
             )
 

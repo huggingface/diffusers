@@ -21,7 +21,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import logging
+from ...loaders import PeftAdapterMixin
+from ...utils import apply_lora_scale, logging
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import (
     AttentionBackendName,
@@ -428,7 +429,7 @@ class AceStepTransformerBlock(nn.Module):
 # --------------------------------------------------------------------------- #
 
 
-class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMixin):
+class AceStepTransformer1DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, AttentionMixin, CacheMixin):
     """Diffusion Transformer for ACE-Step 1.5 music generation.
 
     Generates audio latents conditioned on text, lyrics, and timbre. Uses 1D patch embedding (`Conv1d` with stride
@@ -528,6 +529,7 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -535,6 +537,7 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         timestep_r: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         context_latents: torch.Tensor,
+        attention_kwargs: Optional[dict] = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """The [`AceStepTransformer1DModel`] forward method.
@@ -551,6 +554,9 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
             context_latents (`torch.Tensor` of shape `(batch_size, seq_len, context_dim)`):
                 Context latents (source latents concatenated with chunk masks) — fed to the patchify conv alongside
                 `hidden_states`.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary passed along to the `AttentionProcessor`. Used to pass the LoRA scale via
+                `{"scale": float}`.
             return_dict (`bool`, defaults to `True`):
                 Whether to return a `Transformer2DModelOutput` or a plain tuple.
 

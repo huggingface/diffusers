@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,7 +37,22 @@ from ...testing_utils import (
     require_accelerator,
     torch_device,
 )
-from .common import cast_inputs_to_dtype, check_device_map_is_respected
+from .common import BaseModelOutputMixin, cast_inputs_to_dtype, check_device_map_is_respected
+
+
+def reseed_generator_input(model, inputs_dict):
+    """Re-seed a `generator` entry in `inputs_dict`, in place, if the model's forward takes one.
+
+    A `torch.Generator` is stateful, so a model that draws noise in its forward (e.g. a diffusion decoder)
+    returns something different on every call. Tests below reuse one `inputs_dict` across several forwards
+    and compare the outputs, which only holds if each pass starts from the same generator state.
+
+    The signature is read off the class, not the instance: offloading hooks replace `model.forward` with a
+    `(*args, **kwargs)` wrapper, so an instance lookup finds no `generator` on exactly the models these
+    tests offload.
+    """
+    if "generator" in inspect.signature(type(model).forward).parameters:
+        inputs_dict["generator"] = torch.manual_seed(0)
 
 
 def require_offload_support(func):
@@ -69,7 +84,7 @@ def require_group_offload_support(func):
 
 
 @is_cpu_offload
-class CPUOffloadTesterMixin:
+class CPUOffloadTesterMixin(BaseModelOutputMixin):
     """
     Mixin class for testing CPU offloading functionality.
 
@@ -94,15 +109,13 @@ class CPUOffloadTesterMixin:
 
     @require_offload_support
     @torch.no_grad()
-    def test_cpu_offload(self, tmp_path, atol=1e-5, rtol=0):
+    def test_cpu_offload(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
+        torch.manual_seed(0)
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
 
         model = model.to(torch_device)
-
-        torch.manual_seed(0)
-        base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
         # We test several splits of sizes to make sure it works
@@ -120,20 +133,18 @@ class CPUOffloadTesterMixin:
             new_output = new_model(**inputs_dict)
 
             assert_tensors_close(
-                base_output[0], new_output[0], atol=atol, rtol=rtol, msg="Output should match with CPU offloading"
+                base_model_output, new_output[0], atol=atol, rtol=rtol, msg="Output should match with CPU offloading"
             )
 
     @require_offload_support
     @torch.no_grad()
-    def test_disk_offload_without_safetensors(self, tmp_path, atol=1e-5, rtol=0):
+    def test_disk_offload_without_safetensors(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
+        torch.manual_seed(0)
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
 
         model = model.to(torch_device)
-
-        torch.manual_seed(0)
-        base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
         max_size = int(self.model_split_percents[0] * model_size)
@@ -154,20 +165,18 @@ class CPUOffloadTesterMixin:
         new_output = new_model(**inputs_dict)
 
         assert_tensors_close(
-            base_output[0], new_output[0], atol=atol, rtol=rtol, msg="Output should match with disk offloading"
+            base_model_output, new_output[0], atol=atol, rtol=rtol, msg="Output should match with disk offloading"
         )
 
     @require_offload_support
     @torch.no_grad()
-    def test_disk_offload_with_safetensors(self, tmp_path, atol=1e-5, rtol=0):
+    def test_disk_offload_with_safetensors(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
+        torch.manual_seed(0)
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
 
         model = model.to(torch_device)
-
-        torch.manual_seed(0)
-        base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
         model.cpu().save_pretrained(str(tmp_path))
@@ -183,7 +192,7 @@ class CPUOffloadTesterMixin:
         new_output = new_model(**inputs_dict)
 
         assert_tensors_close(
-            base_output[0],
+            base_model_output,
             new_output[0],
             atol=atol,
             rtol=rtol,
@@ -192,7 +201,7 @@ class CPUOffloadTesterMixin:
 
 
 @is_group_offload
-class GroupOffloadTesterMixin:
+class GroupOffloadTesterMixin(BaseModelOutputMixin):
     """
     Mixin class for testing group offloading functionality.
 
@@ -209,10 +218,9 @@ class GroupOffloadTesterMixin:
 
     @require_group_offload_support
     @pytest.mark.parametrize("record_stream", [False, True])
-    def test_group_offloading(self, record_stream, atol=1e-5, rtol=0):
+    def test_group_offloading(self, base_model_output, record_stream, atol=1e-5, rtol=0):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
-        torch.manual_seed(0)
 
         @torch.no_grad()
         def run_forward(model):
@@ -222,12 +230,10 @@ class GroupOffloadTesterMixin:
                 if hasattr(module, "_diffusers_hook")
             ), "Group offloading hook should be set"
             model.eval()
+            reseed_generator_input(model, inputs_dict)
             return model(**inputs_dict)[0]
 
-        model = self.model_class(**init_dict)
-
-        model.to(torch_device)
-        output_without_group_offloading = run_forward(model)
+        output_without_group_offloading = base_model_output
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
@@ -314,15 +320,8 @@ class GroupOffloadTesterMixin:
     @torch.no_grad()
     @torch.inference_mode()
     def test_group_offloading_with_disk(self, tmp_path, record_stream, offload_type, atol=1e-5, rtol=0):
-        def _has_generator_arg(model):
-            sig = inspect.signature(model.forward)
-            params = sig.parameters
-            return "generator" in params
-
         def _run_forward(model, inputs_dict):
-            accepts_generator = _has_generator_arg(model)
-            if accepts_generator:
-                inputs_dict["generator"] = torch.manual_seed(0)
+            reseed_generator_input(model, inputs_dict)
             torch.manual_seed(0)
             return model(**inputs_dict)[0]
 
@@ -393,6 +392,11 @@ class LayerwiseCastingTesterMixin:
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
     """
 
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
     @torch.no_grad()
     def test_layerwise_casting_memory(self):
         MB_TOLERANCE = 0.2
@@ -446,6 +450,11 @@ class LayerwiseCastingTesterMixin:
             or abs(fp8_e4m3_fp32_max_memory - fp32_max_memory) < MB_TOLERANCE
         ), "Peak memory should be lower or within tolerance with fp8 storage"
 
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
     def test_layerwise_casting_training(self):
         def test_fn(storage_dtype, compute_dtype):
             if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:

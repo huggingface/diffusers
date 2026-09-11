@@ -30,7 +30,7 @@ Some notes about this pipeline:
 * It rivals the quality of state-of-the-art text-to-image generation systems (as of this writing) such as Stable Diffusion XL, Imagen, and DALL-E 2, while being more efficient than them.
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 ## Inference with under 8GB GPU VRAM
 
@@ -92,8 +92,8 @@ Then compute the latents with the prompt embeddings as inputs:
 pipe = PixArtAlphaPipeline.from_pretrained(
     "PixArt-alpha/PixArt-XL-2-1024-MS",
     text_encoder=None,
-    torch_dtype=torch.float16,
-).to("cuda")
+    dtype=torch.float16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 latents = pipe(
     negative_prompt=None,

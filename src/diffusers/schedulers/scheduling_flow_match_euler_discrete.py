@@ -364,10 +364,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # 5. Convert sigmas and timesteps to tensors and move to specified device
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
-        if not is_timesteps_provided:
-            timesteps = sigmas * self.config.num_train_timesteps
-        else:
-            timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32, device=device)
+        timesteps = sigmas * self.config.num_train_timesteps
 
         # 6. Append the terminal sigma value.
         #    If a model requires inverted sigma schedule for denoising but timesteps without inversion, the

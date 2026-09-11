@@ -40,7 +40,7 @@ class TCDSchedulerOutput(BaseOutput):
         prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        pred_noised_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
+        pred_noised_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images, *optional*):
             The predicted noised sample `(x_{s})` based on the model output from the current timestep.
     """
 
@@ -151,45 +151,45 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
     functionality via the [`SchedulerMixin.save_pretrained`] and [`~SchedulerMixin.from_pretrained`] functions.
 
     Args:
-        num_train_timesteps (`int`, defaults to 1000):
+        num_train_timesteps (`int`, defaults to `1000`):
             The number of diffusion steps to train the model.
-        beta_start (`float`, defaults to 0.0001):
+        beta_start (`float`, defaults to `0.00085`):
             The starting `beta` value of inference.
-        beta_end (`float`, defaults to 0.02):
+        beta_end (`float`, defaults to `0.012`):
             The final `beta` value.
-        beta_schedule (`str`, defaults to `"linear"`):
+        beta_schedule (`str`, defaults to `"scaled_linear"`):
             The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`np.ndarray`, *optional*):
+        trained_betas (`np.ndarray` or `list[float]`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
-        original_inference_steps (`int`, *optional*, defaults to 50):
+        original_inference_steps (`int`, defaults to `50`):
             The default number of inference steps used to generate a linearly-spaced timestep schedule, from which we
             will ultimately take `num_inference_steps` evenly spaced timesteps to form the final timestep schedule.
-        clip_sample (`bool`, defaults to `True`):
+        clip_sample (`bool`, defaults to `False`):
             Clip the predicted sample for numerical stability.
-        clip_sample_range (`float`, defaults to 1.0):
+        clip_sample_range (`float`, defaults to `1.0`):
             The maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         set_alpha_to_one (`bool`, defaults to `True`):
             Each diffusion step uses the alphas product value at that step and at the previous one. For the final step
             there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
             otherwise it uses the alpha value at step 0.
-        steps_offset (`int`, defaults to 0):
+        steps_offset (`int`, defaults to `0`):
             An offset added to the inference steps, as required by some model families.
-        prediction_type (`str`, defaults to `epsilon`, *optional*):
+        prediction_type (`str`, defaults to `"epsilon"`):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
             Video](https://huggingface.co/papers/2210.02303) paper).
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
-        dynamic_thresholding_ratio (`float`, defaults to 0.995):
+        dynamic_thresholding_ratio (`float`, defaults to `0.995`):
             The ratio for the dynamic thresholding method. Valid only when `thresholding=True`.
-        sample_max_value (`float`, defaults to 1.0):
+        sample_max_value (`float`, defaults to `1.0`):
             The threshold value for dynamic thresholding. Valid only when `thresholding=True`.
         timestep_spacing (`str`, defaults to `"leading"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
-        timestep_scaling (`float`, defaults to 10.0):
+        timestep_scaling (`float`, defaults to `10.0`):
             The factor the timesteps will be multiplied by when calculating the consistency model boundary conditions
             `c_skip` and `c_out`. Increasing this will decrease the approximation error (although the approximation
             error at the default of `10.0` is already pretty small).
@@ -221,7 +221,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         timestep_spacing: str = "leading",
         timestep_scaling: float = 10.0,
         rescale_betas_zero_snr: bool = False,
-    ):
+    ) -> None:
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -307,18 +307,29 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = self._begin_index
 
     @property
-    def step_index(self):
+    def step_index(self) -> int | None:
+        """
+        The index counter for the current timestep. It increases by one after each scheduler step.
+
+        Returns:
+            `int` or `None`:
+                The current step index, or `None` if it has not been initialized.
+        """
         return self._step_index
 
     @property
-    def begin_index(self):
+    def begin_index(self) -> int | None:
         """
         The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+
+        Returns:
+            `int` or `None`:
+                The begin index for the scheduler, or `None` if it has not been set.
         """
         return self._begin_index
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
-    def set_begin_index(self, begin_index: int = 0):
+    def set_begin_index(self, begin_index: int = 0) -> None:
         """
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
@@ -328,7 +339,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | torch.Tensor | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -336,7 +347,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         Args:
             sample (`torch.Tensor`):
                 The input sample.
-            timestep (`int`, *optional*):
+            timestep (`int` or `torch.Tensor`, *optional*):
                 The current timestep in the diffusion chain.
 
         Returns:
@@ -346,7 +357,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         return sample
 
     # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler._get_variance
-    def _get_variance(self, timestep, prev_timestep):
+    def _get_variance(self, timestep: int, prev_timestep: int) -> torch.Tensor:
         """
         Computes the variance of the noise added at a given diffusion step.
 
@@ -421,11 +432,11 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int | None = None,
-        device: str | torch.device = None,
+        device: str | torch.device | None = None,
         original_inference_steps: int | None = None,
         timesteps: list[int] | None = None,
         strength: float = 1.0,
-    ):
+    ) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -444,7 +455,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps on the training/distillation timestep
                 schedule is used. If `timesteps` is passed, `num_inference_steps` must be `None`.
-            strength (`float`, *optional*, defaults to 1.0):
+            strength (`float`, defaults to `1.0`):
                 Used to determine the number of timesteps used for inference when using img2img, inpaint, etc.
         """
         # 0. Check inputs
@@ -583,12 +594,12 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: int,
+        timestep: int | torch.Tensor,
         sample: torch.Tensor,
         eta: float = 0.3,
         generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> TCDSchedulerOutput | tuple:
+    ) -> TCDSchedulerOutput | tuple[torch.Tensor, torch.Tensor]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -596,22 +607,23 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
-            timestep (`int`):
+            timestep (`int` or `torch.Tensor`):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
-            eta (`float`):
+            eta (`float`, defaults to `0.3`):
                 A stochastic parameter (referred to as `gamma` in the paper) used to control the stochasticity in every
                 step. When eta = 0, it represents deterministic sampling, whereas eta = 1 indicates full stochastic
                 sampling.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
-            return_dict (`bool`, *optional*, defaults to `True`):
+            return_dict (`bool`, defaults to `True`):
                 Whether or not to return a [`~schedulers.scheduling_tcd.TCDSchedulerOutput`] or `tuple`.
+
         Returns:
-            [`~schedulers.scheduling_utils.TCDSchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_tcd.TCDSchedulerOutput`] or `tuple[torch.Tensor, torch.Tensor]`:
                 If return_dict is `True`, [`~schedulers.scheduling_tcd.TCDSchedulerOutput`] is returned, otherwise a
-                tuple is returned where the first element is the sample tensor.
+                tuple is returned containing the previous sample and the predicted noised sample.
         """
         if self.num_inference_steps is None:
             raise ValueError(
@@ -764,11 +776,18 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         velocity = sqrt_alpha_prod * noise - sqrt_one_minus_alpha_prod * sample
         return velocity
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Return the number of training timesteps.
+
+        Returns:
+            `int`:
+                The number of diffusion steps used to train the model.
+        """
         return self.config.num_train_timesteps
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.previous_timestep
-    def previous_timestep(self, timestep):
+    def previous_timestep(self, timestep: int) -> int | torch.Tensor:
         """
         Compute the previous timestep in the diffusion chain.
 

@@ -9,6 +9,7 @@ If a community script doesn't work as expected, please open an issue and ping th
 | Using IP-Adapter with Negative Noise                                                                                                  | Using negative noise with IP-adapter to better control the generation (see the [original post](https://github.com/huggingface/diffusers/discussions/7167) on the forum for more details)                                                                                                                                                                                                                                                    | [IP-Adapter Negative Noise](#ip-adapter-negative-noise)                                   |[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/ip_adapter_negative_noise.ipynb) | [Álvaro Somoza](https://github.com/asomoza)|
 | Asymmetric Tiling                                                                                                  |configure seamless image tiling independently for the X and Y axes                                                                                                                                                                                                      | [Asymmetric Tiling](#Asymmetric-Tiling )                                   |[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/asymetric_tiling.ipynb) | [alexisrolland](https://github.com/alexisrolland)|
 | Prompt Scheduling Callback                                                                                                  |Allows changing prompts during a generation                                                                                                                                                                                                      | [Prompt Scheduling-Callback](#Prompt-Scheduling-Callback )                                   |[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/prompt_scheduling_callback.ipynb) | [hlky](https://github.com/hlky)|
+| CachedSearch: cheaper best-of-N for video pipelines | Test-time search where every candidate is generated under caching and only the winning seed is regenerated at full compute, from [CachedSearch](https://huggingface.co/papers/2607.23159). About 60% of the cost of full best-of-N with most of its gain. | [CachedSearch](#cachedsearch-cheaper-best-of-n-for-video-pipelines) | - | [Shreshth Saini](https://github.com/shreshthsaini)|
 
 
 ## Example usages
@@ -123,12 +124,12 @@ def prepare_ip_adapter_image_embeds(
 
 vae = AutoencoderKL.from_pretrained(
     "madebyollin/sdxl-vae-fp16-fix",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "RunDiffusion/Juggernaut-XL-v9",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     vae=vae,
     variant="fp16",
 ).to("cuda")
@@ -210,7 +211,7 @@ def seamless_tiling(pipeline, x_axis, y_axis):
         layer._conv_forward = asymmetric_conv2d_convforward.__get__(layer, torch.nn.Conv2d)
     return pipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True)
 pipeline.enable_model_cpu_offload()
 prompt = ["texture of a red brick wall"]
 seed = 123456
@@ -284,7 +285,7 @@ class SDPromptSchedulingCallback(PipelineCallback):
 
 pipeline: StableDiffusionPipeline = StableDiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
     use_safetensors=True,
 ).to("cuda")
@@ -379,7 +380,7 @@ class SDXLPromptSchedulingCallback(PipelineCallback):
 
 pipeline: StableDiffusionXLPipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
     use_safetensors=True,
 ).to("cuda")
@@ -436,4 +437,85 @@ image = pipeline(
         "add_time_ids",
     ],
 ).images[0]
+```
+
+### CachedSearch: cheaper best-of-N for video pipelines
+
+Best-of-N search (generate N candidates, keep the one a verifier scores highest) is the simplest way to spend more compute on a video model, and it is expensive: N full rollouts for one delivered video. [CachedSearch](https://huggingface.co/papers/2607.23159) (Saini, Birkbeck, Wang, Adsumilli, Bovik) makes the exploration phase cheap: every candidate is generated with a training-free cache enabled, the verifier ranks the cached drafts, and only the winning seed is regenerated with caching off. Because sampling is seed-deterministic, the delivered video is exactly what full-compute search would have returned whenever both pick the same seed; caching changes which candidate gets picked, never the quality of what ships. On Wan2.1-1.3B the paper measures 94.7% of best-of-8's gain at 63% of its cost.
+
+The script below uses Diffusers' built-in `FirstBlockCacheConfig` for the drafts and works with any pipeline whose denoiser supports `enable_cache` (Wan, HunyuanVideo, LTX-Video, CogVideoX, and image pipelines such as Flux). The threshold is the one model-specific number: 0.10 is a reasonable start for the Wan family, and other families need their own value (lower keeps more fidelity; higher is faster). The verifier is any callable `(frames, prompt) -> float`; the paper uses ImageReward averaged over eight uniformly spaced frames. The full package with `tau` calibration is `pip install cachedsearch`, https://github.com/shreshthsaini/CachedSearch.
+
+```py
+import numpy as np
+import torch
+from diffusers import FirstBlockCacheConfig
+
+
+def cached_search(pipe, prompt, verifier, n=8, threshold=0.10, num_inference_steps=50, seeds=None, commit=True, **gen_kwargs):
+    """Best-of-n over seeds where every candidate is generated under caching and only the winner is regenerated at full compute.
+
+    pipe: any diffusers video (or image) pipeline whose denoiser supports `enable_cache`.
+    verifier: callable (frames, prompt) -> float, higher is better.
+    threshold: FirstBlockCache threshold used for the drafts (calibrate per model family).
+    commit: regenerate the winning seed with caching off (recommended). False returns the cached draft itself.
+    Returns (video, winning_seed, draft_scores).
+    """
+    seeds = list(seeds) if seeds is not None else list(range(n))
+    denoisers = [m for m in (getattr(pipe, "transformer", None), getattr(pipe, "transformer_2", None)) if m is not None]
+
+    def generate(seed):
+        generator = torch.Generator(device=pipe._execution_device).manual_seed(seed)
+        out = pipe(prompt=prompt, num_inference_steps=num_inference_steps, generator=generator, **gen_kwargs)
+        return out.frames[0] if hasattr(out, "frames") else out.images[0]
+
+    # Explore: every candidate under caching. The pipeline resets the cache state after each call.
+    for m in denoisers:
+        m.enable_cache(FirstBlockCacheConfig(threshold=threshold))
+    drafts, scores = [], []
+    for seed in seeds:
+        frames = generate(seed)
+        drafts.append(frames)
+        scores.append(float(verifier(frames, prompt)))
+    for m in denoisers:
+        m.disable_cache()
+
+    best = int(np.argmax(scores))
+    if not commit:
+        return drafts[best], seeds[best], scores
+    # Commit: full compute only for the winner. Same seed, caching off, so this is a genuine full-compute sample.
+    return generate(seeds[best]), seeds[best], scores
+
+
+# Example: Wan2.1-1.3B with an ImageReward verifier (pip install image-reward)
+import ImageReward as RM
+from PIL import Image
+from diffusers import AutoencoderKLWan, WanPipeline
+from diffusers.utils import export_to_video
+
+model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16).to("cuda")
+
+reward = RM.load("ImageReward-v1.0", device="cuda")
+
+
+def imagereward_verifier(frames, prompt, num_frames=8):
+    idx = np.linspace(0, len(frames) - 1, min(num_frames, len(frames))).astype(int)
+    return float(np.mean([reward.score(prompt, Image.fromarray(np.asarray(frames[i]).astype("uint8"))) for i in idx]))
+
+
+video, seed, scores = cached_search(
+    pipe,
+    "a red fox running through deep snow",
+    imagereward_verifier,
+    n=8,
+    threshold=0.10,
+    num_inference_steps=50,
+    height=480,
+    width=832,
+    num_frames=81,
+    guidance_scale=5.0,
+)
+print(f"winner seed {seed}, draft scores {[round(s, 3) for s in scores]}")
+export_to_video(video, "cachedsearch.mp4", fps=16)
 ```

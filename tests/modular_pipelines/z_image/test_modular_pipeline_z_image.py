@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,13 @@
 
 from diffusers.modular_pipelines import ZImageAutoBlocks, ZImageModularPipeline
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 ZIMAGE_WORKFLOWS = {
@@ -43,11 +49,10 @@ ZIMAGE_WORKFLOWS = {
 }
 
 
-class TestZImageModularPipelineFast(ModularPipelineTesterMixin):
+class ZImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = ZImageModularPipeline
     pipeline_blocks_class = ZImageAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-zimage-modular-pipe"
-
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     expected_workflow_blocks = ZIMAGE_WORKFLOWS
@@ -65,5 +70,19 @@ class TestZImageModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestZImageModularPipelineFast(ZImageModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-3)
+
+
+class TestZImageModularPipelineLoading(ZImageModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestZImageModularPipelineWorkflow(ZImageModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestZImageModularPipelineMemory(ZImageModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

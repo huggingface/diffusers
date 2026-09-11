@@ -12,6 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # ComponentsManager
 
+> [!WARNING]
+> [`ComponentsManager`] is still under active development and its API may change.
+
 The [`ComponentsManager`] is a model registry and management system for Modular Diffusers. It adds and tracks models, stores useful metadata (model size, device placement, adapters), and supports offloading.
 
 This guide will show you how to use [`ComponentsManager`] to manage components and device memory.
@@ -30,7 +33,7 @@ import torch
 
 manager = ComponentsManager()
 pipe = ModularPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", components_manager=manager)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 ```
 
 </hfoption>
@@ -42,7 +45,7 @@ import torch
 manager = ComponentsManager()
 blocks = ModularPipelineBlocks.from_pretrained("diffusers/Florence2-image-Annotator", trust_remote_code=True)
 pipe= blocks.init_pipeline(components_manager=manager)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 ```
 
 </hfoption>
@@ -84,7 +87,7 @@ The table shows models (with device, dtype, and memory info) separately from oth
 The [`~ComponentsManager.enable_auto_cpu_offload`] method is a global offloading strategy that works across all models regardless of which pipeline is using them. Once enabled, you don't need to worry about device placement if you add or remove components.
 
 ```py
-manager.enable_auto_cpu_offload(device="cuda")
+manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 ```
 
 All models begin on the CPU and [`ComponentsManager`] moves them to the appropriate device right before they're needed, and moves other models back to the CPU when GPU memory is low.

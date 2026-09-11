@@ -23,7 +23,7 @@
 *We present a neural network structure, FramePack, to train next-frame (or next-frame-section) prediction models for video generation. The FramePack compresses input frames to make the transformer context length a fixed number regardless of the video length. As a result, we are able to process a large number of frames using video diffusion with computation bottleneck similar to image diffusion. This also makes the training video batch sizes significantly higher (batch sizes become comparable to image diffusion training). We also propose an anti-drifting sampling method that generates frames in inverted temporal order with early-established endpoints to avoid exposure bias (error accumulation over iterations). Finally, we show that existing video diffusion models can be finetuned with FramePack, and their visual quality may be improved because the next-frame prediction supports more balanced diffusion schedulers with less extreme flow shift timesteps.*
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 ## Available models
 
@@ -47,20 +47,20 @@ from diffusers.utils import export_to_video, load_image
 from transformers import SiglipImageProcessor, SiglipVisionModel
 
 transformer = HunyuanVideoFramepackTransformer3DModel.from_pretrained(
-    "lllyasviel/FramePackI2V_HY", torch_dtype=torch.bfloat16
+    "lllyasviel/FramePackI2V_HY", dtype=torch.bfloat16
 )
 feature_extractor = SiglipImageProcessor.from_pretrained(
     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"
 )
 image_encoder = SiglipVisionModel.from_pretrained(
-    "lllyasviel/flux_redux_bfl", subfolder="image_encoder", torch_dtype=torch.float16
+    "lllyasviel/flux_redux_bfl", subfolder="image_encoder", dtype=torch.float16
 )
 pipe = HunyuanVideoFramepackPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
     transformer=transformer,
     feature_extractor=feature_extractor,
     image_encoder=image_encoder,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 # Enable memory optimizations
@@ -100,20 +100,20 @@ from diffusers.utils import export_to_video, load_image
 from transformers import SiglipImageProcessor, SiglipVisionModel
 
 transformer = HunyuanVideoFramepackTransformer3DModel.from_pretrained(
-    "lllyasviel/FramePack_F1_I2V_HY_20250503", torch_dtype=torch.bfloat16
+    "lllyasviel/FramePack_F1_I2V_HY_20250503", dtype=torch.bfloat16
 )
 feature_extractor = SiglipImageProcessor.from_pretrained(
     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"
 )
 image_encoder = SiglipVisionModel.from_pretrained(
-    "lllyasviel/flux_redux_bfl", subfolder="image_encoder", torch_dtype=torch.float16
+    "lllyasviel/flux_redux_bfl", subfolder="image_encoder", dtype=torch.float16
 )
 pipe = HunyuanVideoFramepackPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
     transformer=transformer,
     feature_extractor=feature_extractor,
     image_encoder=image_encoder,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 # Enable memory optimizations
@@ -149,20 +149,20 @@ from diffusers.utils import export_to_video, load_image
 from transformers import SiglipImageProcessor, SiglipVisionModel
 
 transformer = HunyuanVideoFramepackTransformer3DModel.from_pretrained(
-    "lllyasviel/FramePack_F1_I2V_HY_20250503", torch_dtype=torch.bfloat16
+    "lllyasviel/FramePack_F1_I2V_HY_20250503", dtype=torch.bfloat16
 )
 feature_extractor = SiglipImageProcessor.from_pretrained(
     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"
 )
 image_encoder = SiglipVisionModel.from_pretrained(
-    "lllyasviel/flux_redux_bfl", subfolder="image_encoder", torch_dtype=torch.float16
+    "lllyasviel/flux_redux_bfl", subfolder="image_encoder", dtype=torch.float16
 )
 pipe = HunyuanVideoFramepackPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
     transformer=transformer,
     feature_extractor=feature_extractor,
     image_encoder=image_encoder,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 # Enable group offloading

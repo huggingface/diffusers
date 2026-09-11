@@ -52,13 +52,13 @@ from diffusers import AutoModel, HeliosPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video
 
-vae = AutoModel.from_pretrained("BestWishYsh/Helios-Base", subfolder="vae", torch_dtype=torch.float32)
+vae = AutoModel.from_pretrained("BestWishYsh/Helios-Base", subfolder="vae", dtype=torch.float32)
 
 # group-offloading
 pipeline = HeliosPipeline.from_pretrained(
     "BestWishYsh/Helios-Base",
     vae=vae,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipeline.enable_group_offload(
     onload_device=torch.device("cuda"),
@@ -103,14 +103,14 @@ import torch
 from diffusers import AutoModel, HeliosPipeline
 from diffusers.utils import export_to_video
 
-vae = AutoModel.from_pretrained("BestWishYsh/Helios-Base", subfolder="vae", torch_dtype=torch.float32)
+vae = AutoModel.from_pretrained("BestWishYsh/Helios-Base", subfolder="vae", dtype=torch.float32)
 
 pipeline = HeliosPipeline.from_pretrained(
     "BestWishYsh/Helios-Base",
     vae=vae,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 # attention backend
 # pipeline.transformer.set_attention_backend("flash")
@@ -163,14 +163,14 @@ import torch
 from diffusers import AutoModel, HeliosPipeline
 from diffusers.utils import export_to_video, load_video, load_image
 
-vae = AutoModel.from_pretrained("BestWishYsh/Helios-Base", subfolder="vae", torch_dtype=torch.float32)
+vae = AutoModel.from_pretrained("BestWishYsh/Helios-Base", subfolder="vae", dtype=torch.float32)
 
 pipeline = HeliosPipeline.from_pretrained(
     "BestWishYsh/Helios-Base",
     vae=vae,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
@@ -258,14 +258,14 @@ import torch
 from diffusers import AutoModel, HeliosPyramidPipeline
 from diffusers.utils import export_to_video, load_video, load_image
 
-vae = AutoModel.from_pretrained("BestWishYsh/Helios-Mid", subfolder="vae", torch_dtype=torch.float32)
+vae = AutoModel.from_pretrained("BestWishYsh/Helios-Mid", subfolder="vae", dtype=torch.float32)
 
 pipeline = HeliosPyramidPipeline.from_pretrained(
     "BestWishYsh/Helios-Mid",
     vae=vae,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
@@ -359,14 +359,14 @@ import torch
 from diffusers import AutoModel, HeliosPyramidPipeline
 from diffusers.utils import export_to_video, load_video, load_image
 
-vae = AutoModel.from_pretrained("BestWishYsh/Helios-Distilled", subfolder="vae", torch_dtype=torch.float32)
+vae = AutoModel.from_pretrained("BestWishYsh/Helios-Distilled", subfolder="vae", dtype=torch.float32)
 
 pipeline = HeliosPyramidPipeline.from_pretrained(
     "BestWishYsh/Helios-Distilled",
     vae=vae,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,

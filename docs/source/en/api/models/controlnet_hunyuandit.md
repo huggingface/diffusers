@@ -29,7 +29,7 @@ This code is implemented by Tencent Hunyuan Team. You can find pre-trained check
 ```py
 from diffusers import HunyuanDiT2DControlNetModel
 import torch
-controlnet = HunyuanDiT2DControlNetModel.from_pretrained("Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Pose", torch_dtype=torch.float16)
+controlnet = HunyuanDiT2DControlNetModel.from_pretrained("Tencent-Hunyuan/HunyuanDiT-v1.1-ControlNet-Diffusers-Pose", dtype=torch.float16)
 ```
 
 ## HunyuanDiT2DControlNetModel

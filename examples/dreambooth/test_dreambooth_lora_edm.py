@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class DreamBoothLoRASDXLWithEDM(ExamplesTestsAccelerate):
+class TestDreamBoothLoRASDXLWithEDM(ExamplesTestsAccelerate):
     def test_dreambooth_lora_sdxl_with_edm(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -54,17 +54,17 @@ class DreamBoothLoRASDXLWithEDM(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"unet"` in their names.
             starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
-            self.assertTrue(starts_with_unet)
+            assert starts_with_unet
 
     def test_dreambooth_lora_playground(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -86,14 +86,14 @@ class DreamBoothLoRASDXLWithEDM(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
             is_lora = all("lora" in k for k in lora_state_dict.keys())
-            self.assertTrue(is_lora)
+            assert is_lora
 
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"unet"` in their names.
             starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
-            self.assertTrue(starts_with_unet)
+            assert starts_with_unet

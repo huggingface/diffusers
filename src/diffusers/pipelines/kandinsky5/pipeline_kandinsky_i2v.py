@@ -704,6 +704,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
             # Reshape to match latent dimensions [batch, frames, height, width, channels]
             image_latents = image_latents.permute(0, 2, 3, 4, 1)  # [batch, 1, H, W, C]
+            image_latents = image_latents.to(device=latents.device, dtype=latents.dtype)
 
             # Replace first frame with encoded image
             latents[:, 0:1] = image_latents
@@ -724,7 +725,6 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             )
 
             visual_cond_mask[:, 0:1] = 1
-            visual_cond[:, 0:1] = image_latents
 
             latents = torch.cat([latents, visual_cond, visual_cond_mask], dim=-1)
 

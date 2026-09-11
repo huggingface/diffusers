@@ -20,7 +20,6 @@ class Ideogram4ModularPipeline(ModularPipeline, Ideogram4LoraLoaderMixin):
     """
     A ModularPipeline for Ideogram4.
 
-    > [!WARNING] > This is an experimental feature!
     """
 
     default_blocks_name = "Ideogram4AutoBlocks"

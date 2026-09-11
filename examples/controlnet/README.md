@@ -267,9 +267,9 @@ import torch
 base_model_path = "path to model"
 controlnet_path = "path to controlnet"
 
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, dtype=torch.float16)
 pipe = StableDiffusionControlNetPipeline.from_pretrained(
-    base_model_path, controlnet=controlnet, torch_dtype=torch.float16
+    base_model_path, controlnet=controlnet, dtype=torch.float16
 )
 
 # speed up diffusion process with faster scheduler and memory optimization
@@ -291,6 +291,9 @@ image.save("./output.png")
 ```
 
 ## Training with Flax/JAX
+
+> [!WARNING]
+> JAX/Flax support was removed from the `diffusers` library in v0.40.0. These scripts require `diffusers<=0.39.x` to run.
 
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,10 +14,9 @@
 # limitations under the License.
 
 import gc
-import tempfile
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
@@ -30,6 +29,7 @@ from diffusers import (
 from diffusers.utils.import_utils import is_torch_neuronx_available
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     backend_synchronize,
     enable_full_determinism,
@@ -39,23 +39,19 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class PixArtAlphaPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = PixArtAlphaPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-
-    required_optional_params = PipelineTesterMixin.required_optional_params
-    test_layerwise_casting = True
-    test_group_offloading = True
+    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    # `transformer.sample_size` (8) * `vae_scale_factor` (8) / 8 -> the dummy transformer generates 8x8 images.
+    output_shape = (3, 8, 8)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -87,98 +83,74 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
-        components = {
+        return {
             "transformer": transformer.eval(),
             "vae": vae.eval(),
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "use_resolution_binning": False,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
-        return inputs
 
-    @unittest.skip("Not supported.")
-    def test_sequential_cpu_offload_forward_pass(self):
-        # TODO(PVP, Sayak) need to fix later
-        return
 
+class TestPixArtAlphaPipeline(PixArtAlphaPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        image = pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, *self.output_shape)
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
-
-        self.assertEqual(image.shape, (1, 8, 8, 3))
-        expected_slice = np.array([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.483, 0.2583, 0.5331, 0.4852])
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        # fmt: off
+        expected_slice = torch.tensor([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.483, 0.2583, 0.5331, 0.4852])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
 
     def test_inference_non_square_images(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        image = pipe(**self.get_dummy_inputs(), height=32, width=48).images
+        assert image.shape == (1, 3, 32, 48)
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs, height=32, width=48).images
-        image_slice = image[0, -3:, -3:, -1]
-        self.assertEqual(image.shape, (1, 32, 48, 3))
+        # fmt: off
+        expected_slice = torch.tensor([0.6493, 0.537, 0.4081, 0.4762, 0.3695, 0.4711, 0.3026, 0.5218, 0.5263])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
 
-        expected_slice = np.array([0.6493, 0.537, 0.4081, 0.4762, 0.3695, 0.4711, 0.3026, 0.5218, 0.5263])
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
-
-    @unittest.skip("Test is already covered through encode_prompt isolation.")
+    @pytest.mark.skip("Test is already covered through encode_prompt isolation.")
     def test_save_load_optional_components(self):
         pass
 
-    def test_inference_with_embeddings_and_multiple_images(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+    def test_inference_with_embeddings_and_multiple_images(self, tmp_path):
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
-
-        prompt = inputs["prompt"]
-        generator = inputs["generator"]
-        num_inference_steps = inputs["num_inference_steps"]
-        output_type = inputs["output_type"]
-
-        prompt_embeds, prompt_attn_mask, negative_prompt_embeds, neg_prompt_attn_mask = pipe.encode_prompt(prompt)
+        inputs = self.get_dummy_inputs()
+        prompt_embeds, prompt_attn_mask, negative_prompt_embeds, neg_prompt_attn_mask = pipe.encode_prompt(
+            inputs["prompt"]
+        )
 
         # inputs with prompt converted to embeddings
-        inputs = {
+        embedding_inputs = {
             "prompt_embeds": prompt_embeds,
             "prompt_attention_mask": prompt_attn_mask,
             "negative_prompt": None,
             "negative_prompt_embeds": negative_prompt_embeds,
             "negative_prompt_attention_mask": neg_prompt_attn_mask,
-            "generator": generator,
-            "num_inference_steps": num_inference_steps,
-            "output_type": output_type,
+            "generator": inputs["generator"],
+            "num_inference_steps": inputs["num_inference_steps"],
+            "output_type": inputs["output_type"],
             "num_images_per_prompt": 2,
             "use_resolution_binning": False,
         }
@@ -187,97 +159,76 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         for optional_component in pipe._optional_components:
             setattr(pipe, optional_component, None)
 
-        output = pipe(**inputs)[0]
+        output = pipe(**embedding_inputs)[0]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(torch_device)
-            pipe_loaded.set_progress_bar_config(disable=None)
+        pipe.save_pretrained(tmp_path)
+        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path)
+        pipe_loaded.to(torch_device)
+        pipe_loaded.set_progress_bar_config(disable=None)
 
         for optional_component in pipe._optional_components:
-            self.assertTrue(
-                getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
+            assert getattr(pipe_loaded, optional_component) is None, (
+                f"`{optional_component}` did not stay set to None after loading."
             )
 
-        inputs = self.get_dummy_inputs(torch_device)
+        embedding_inputs["generator"] = self.get_generator(0)
+        output_loaded = pipe_loaded(**embedding_inputs)[0]
 
-        generator = inputs["generator"]
-        num_inference_steps = inputs["num_inference_steps"]
-        output_type = inputs["output_type"]
-
-        # inputs with prompt converted to embeddings
-        inputs = {
-            "prompt_embeds": prompt_embeds,
-            "prompt_attention_mask": prompt_attn_mask,
-            "negative_prompt": None,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "negative_prompt_attention_mask": neg_prompt_attn_mask,
-            "generator": generator,
-            "num_inference_steps": num_inference_steps,
-            "output_type": output_type,
-            "num_images_per_prompt": 2,
-            "use_resolution_binning": False,
-        }
-
-        output_loaded = pipe_loaded(**inputs)[0]
-
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1e-4)
+        assert_tensors_close(
+            output_loaded, output, atol=1e-4, msg="Output changed after dropping optional components."
+        )
 
     def test_inference_with_multiple_images_per_prompt(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        image = pipe(**self.get_dummy_inputs(), num_images_per_prompt=2).images
+        assert image.shape == (2, *self.output_shape)
 
-        inputs = self.get_dummy_inputs(device)
-        inputs["num_images_per_prompt"] = 2
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
-
-        self.assertEqual(image.shape, (2, 8, 8, 3))
-        expected_slice = np.array([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.483, 0.2583, 0.5331, 0.4852])
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        # fmt: off
+        expected_slice = torch.tensor([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.483, 0.2583, 0.5331, 0.4852])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
 
     def test_raises_warning_for_mask_feature(self):
-        device = "cpu"
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs.update({"mask_feature": True})
 
-        with self.assertWarns(FutureWarning) as warning_ctx:
+        with pytest.warns(FutureWarning, match="mask_feature"):
             _ = pipe(**inputs).images
 
-        assert "mask_feature" in str(warning_ctx.warning)
-
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
+        super().test_inference_batch_single_identical(expected_max_diff=1e-3)
+
+
+class TestPixArtAlphaPipelineMemory(PixArtAlphaPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the PixArt-alpha pipeline."""
+
+    @pytest.mark.skip("Not supported.")
+    def test_sequential_cpu_offload_forward_pass(self):
+        # TODO(PVP, Sayak) need to fix later
+        pass
+
+    @pytest.mark.skip("Not supported.")
+    def test_sequential_offload_forward_pass_twice(self):
+        # TODO(PVP, Sayak) need to fix later
+        pass
 
 
 @slow
 @require_torch_accelerator
-class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
+class TestPixArtAlphaPipelineIntegration:
     ckpt_id_1024 = "PixArt-alpha/PixArt-XL-2-1024-MS"
     ckpt_id_512 = "PixArt-alpha/PixArt-XL-2-512x512"
     prompt = "A small cactus with a happy face in the Sahara desert."
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -296,7 +247,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
         # Neuron uses bfloat16 internally which has lower precision than float16 on CUDA
         atol = 1e-2 if is_torch_neuronx_available() else 1e-4
-        self.assertLessEqual(max_diff, atol)
+        assert max_diff <= atol
 
     def test_pixart_512(self):
         generator = torch.Generator("cpu").manual_seed(0)
@@ -314,7 +265,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
         # Neuron uses bfloat16 internally which has lower precision than float16 on CUDA
         atol = 1e-2 if is_torch_neuronx_available() else 1e-4
-        self.assertLessEqual(max_diff, atol)
+        assert max_diff <= atol
 
     def test_pixart_1024_without_resolution_binning(self):
         generator = torch.manual_seed(0)
@@ -419,9 +370,6 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
             output_type="np",
         ).images
 
-        self.assertEqual(image.shape, (1, 512, 512, 3))
-        self.assertFalse(np.isnan(image).any(), "Output contains NaN values")
-        self.assertTrue(
-            (image >= 0.0).all() and (image <= 1.0).all(),
-            "Output pixel values outside [0, 1]",
-        )
+        assert image.shape == (1, 512, 512, 3)
+        assert not np.isnan(image).any(), "Output contains NaN values"
+        assert (image >= 0.0).all() and (image <= 1.0).all(), "Output pixel values outside [0, 1]"

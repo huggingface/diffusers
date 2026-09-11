@@ -221,7 +221,7 @@ accelerate launch train_custom_diffusion.py \
 import torch
 from diffusers import DiffusionPipeline
 
-pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", dtype=torch.float16).to("cuda")
 pipe.unet.load_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion("path-to-save-model", weight_name="<new1>.bin")
 
@@ -245,7 +245,7 @@ model_id = "sayakpaul/custom-diffusion-cat"
 card = RepoCard.load(model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16).to("cuda")
 pipe.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new1>.bin")
 
@@ -269,7 +269,7 @@ model_id = "sayakpaul/custom-diffusion-cat-wooden-pot"
 card = RepoCard.load(model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16).to("cuda")
 pipe.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new1>.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new2>.bin")

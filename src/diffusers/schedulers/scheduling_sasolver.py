@@ -16,7 +16,7 @@
 # The codebase is modified based on https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
 
 import math
-from typing import Callable, Literal
+from typing import Callable, List, Literal
 
 import numpy as np
 import torch
@@ -109,10 +109,10 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         corrector_order (`int`, defaults to 2):
             The corrector order which can be `1` or `2` or `3` or '4'. It is recommended to use `corrector_order=2` for
             guided sampling, and `corrector_order=3` for unconditional sampling.
-        prediction_type (`str`, defaults to `epsilon`, *optional*):
-            Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
-            `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://huggingface.co/papers/2210.02303) paper).
+        prediction_type (`"epsilon"`, `"sample"`, `"v_prediction"`, or `"flow_prediction"`, defaults to `"epsilon"`):
+            Prediction type of the scheduler function. `epsilon` predicts the noise of the diffusion process, `sample`
+            directly predicts the noisy sample, `v_prediction` predicts the velocity (see section 2.4 of [Imagen
+            Video](https://huggingface.co/papers/2210.02303) paper), and `flow_prediction` predicts the flow.
         tau_func (`Callable`, *optional*):
             Stochasticity during the sampling. Default in init is `lambda t: 1 if t >= 200 and t <= 800 else 0`.
             SA-Solver will sample from vanilla diffusion ODE if tau_func is set to `lambda t: 0`. SA-Solver will sample
@@ -139,6 +139,10 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         use_beta_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use beta sigmas for step sizes in the noise schedule during the sampling process. Refer to [Beta
             Sampling is All You Need](https://huggingface.co/papers/2407.12173) for more information.
+        use_flow_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use flow sigmas for step sizes in the noise schedule during the sampling process.
+        flow_shift (`float`, *optional*, defaults to `1.0`):
+            The shift value for the timestep schedule for flow matching.
         lambda_min_clipped (`float`, defaults to `-inf`):
             Clipping threshold for the minimum value of `lambda(t)` for numerical stability. This is critical for the
             cosine (`squaredcos_cap_v2`) noise schedule.
@@ -271,7 +275,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
-            num_inference_steps (`int`):
+            num_inference_steps (`int`, *optional*):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
@@ -451,7 +455,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         return alpha_t, sigma_t
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
-    def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps) -> torch.Tensor:
+    def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
         """
         Construct the noise schedule as proposed in [Elucidating the Design Space of Diffusion-Based Generative
         Models](https://huggingface.co/papers/2206.00364).
@@ -576,7 +580,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self,
         model_output: torch.Tensor,
         *args,
-        sample: torch.Tensor = None,
+        sample: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -663,9 +667,24 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
             return epsilon
 
-    def get_coefficients_exponential_negative(self, order, interval_start, interval_end):
-        """
-        Calculate the integral of exp(-x) * x^order dx from interval_start to interval_end
+    def get_coefficients_exponential_negative(
+        self, order: int, interval_start: torch.Tensor, interval_end: torch.Tensor
+    ) -> torch.Tensor:
+        r"""
+        Compute the integral of $\exp(-x) \cdot x^{order}$ over the interval `[interval_start, interval_end]`. This is
+        used as a building block of the SA-Solver algorithm (negative exponential case).
+
+        Args:
+            order (`int`):
+                The order of the polynomial factor $x^{order}$ in the integrand. Must be in `[0, 1, 2, 3]`.
+            interval_start (`torch.Tensor`):
+                The lower bound of the integration interval.
+            interval_end (`torch.Tensor`):
+                The upper bound of the integration interval.
+
+        Returns:
+            `torch.Tensor`:
+                The value of the integral $\int_{interval_start}^{interval_end} \exp(-x) \cdot x^{order} \, dx$.
         """
         assert order in [0, 1, 2, 3], "order is only supported for 0, 1, 2 and 3"
 
@@ -687,9 +706,27 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 - (interval_end**3 + 3 * interval_end**2 + 6 * interval_end + 6)
             )
 
-    def get_coefficients_exponential_positive(self, order, interval_start, interval_end, tau):
-        """
-        Calculate the integral of exp(x(1+tau^2)) * x^order dx from interval_start to interval_end
+    def get_coefficients_exponential_positive(
+        self, order: int, interval_start: torch.Tensor, interval_end: torch.Tensor, tau: torch.Tensor
+    ) -> torch.Tensor:
+        r"""
+        Compute the integral of $\exp(x(1+\tau^2)) \cdot x^{order}$ over the interval `[interval_start, interval_end]`.
+        This is used as a building block of the SA-Solver algorithm (positive exponential case).
+
+        Args:
+            order (`int`):
+                The order of the polynomial factor $x^{order}$ in the integrand. Must be in `[0, 1, 2, 3]`.
+            interval_start (`torch.Tensor`):
+                The lower bound of the integration interval.
+            interval_end (`torch.Tensor`):
+                The upper bound of the integration interval.
+            tau (`torch.Tensor`):
+                The stochasticity coefficient $\tau$ that scales the exponent in the integrand.
+
+        Returns:
+            `torch.Tensor`:
+                The value of the integral $\int_{interval_start}^{interval_end} \exp(x(1+\tau^2)) \cdot x^{order} \,
+                dx$.
         """
         assert order in [0, 1, 2, 3], "order is only supported for 0, 1, 2 and 3"
 
@@ -731,9 +768,23 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 / ((1 + tau**2) ** 4)
             )
 
-    def lagrange_polynomial_coefficient(self, order, lambda_list):
-        """
-        Calculate the coefficient of lagrange polynomial
+    def lagrange_polynomial_coefficient(self, order: int, lambda_list: List[torch.Tensor]) -> List[List[torch.Tensor]]:
+        r"""
+        Compute the coefficients of the Lagrange polynomial of order `order` that interpolates the points $(x_i, y_i) =
+        (\lambda_i, i)$ for $i \in [0, order]`. The returned coefficients describe the polynomial in its expanded form
+        $\sum_{k=0}^{order} c_k \cdot x^k$.
+
+        Args:
+            order (`int`):
+                The order of the Lagrange polynomial. Must be in `[0, 1, 2, 3]`.
+            lambda_list (`List[torch.Tensor]`):
+                A list of `order + 1` $\lambda$ values (i.e. the $x$-coordinates of the interpolation nodes). Must
+                satisfy `len(lambda_list) == order + 1`.
+
+        Returns:
+            `List[List[torch.Tensor]]`:
+                A list of `order + 1` coefficient lists — one for each output channel — where each inner list contains
+                the polynomial coefficients $c_0, c_1, \ldots, c_{order}$.
         """
 
         assert order in [0, 1, 2, 3]
@@ -840,7 +891,35 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 ],
             ]
 
-    def get_coefficients_fn(self, order, interval_start, interval_end, lambda_list, tau):
+    def get_coefficients_fn(
+        self,
+        order: int,
+        interval_start: torch.Tensor,
+        interval_end: torch.Tensor,
+        lambda_list: List[torch.Tensor],
+        tau: torch.Tensor,
+    ) -> List[torch.Tensor]:
+        r"""
+        Compute the gradient coefficients used by the SA-Predictor and SA-Corrector. The coefficients are obtained by
+        combining the Lagrange polynomial interpolation with the closed-form exponential integrals.
+
+        Args:
+            order (`int`):
+                The order of the solver. Must be in `[1, 2, 3, 4]` and equal to `len(lambda_list)`.
+            interval_start (`torch.Tensor`):
+                The lower bound $\lambda_{s_0}$ of the integration interval.
+            interval_end (`torch.Tensor`):
+                The upper bound $\lambda_t$ of the integration interval.
+            lambda_list (`List[torch.Tensor]`):
+                The $\lambda$ values of the past `order` timesteps used as the interpolation nodes of the Lagrange
+                polynomial.
+            tau (`torch.Tensor`):
+                The stochasticity coefficient $\tau$ at the current step.
+
+        Returns:
+            `List[torch.Tensor]`:
+                A list of `order` gradient coefficients, one per past model output.
+        """
         assert order in [1, 2, 3, 4]
         assert order == len(lambda_list), "the length of lambda list must be equal to the order"
         coefficients = []
@@ -876,12 +955,15 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`):
                 The direct output from the learned diffusion model at the current timestep.
-            prev_timestep (`int`):
-                The previous discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
+            noise (`torch.Tensor`):
+                A noise tensor of the same shape as `sample`, drawn from a standard normal distribution. Used to inject
+                stochasticity into the update.
             order (`int`):
                 The order of SA-Predictor at this timestep.
+            tau (`torch.Tensor`):
+                The stochasticity coefficient tau at the current step.
 
         Returns:
             `torch.Tensor`:
@@ -1004,14 +1086,17 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         Args:
             this_model_output (`torch.Tensor`):
                 The model outputs at `x_t`.
-            this_timestep (`int`):
-                The current timestep `t`.
             last_sample (`torch.Tensor`):
                 The generated sample before the last predictor `x_{t-1}`.
+            last_noise (`torch.Tensor`):
+                The noise tensor injected by the last predictor at the previous step. Used to ensure consistent
+                stochasticity between the predictor and the corrector.
             this_sample (`torch.Tensor`):
                 The generated sample after the last predictor `x_{t}`.
             order (`int`):
                 The order of SA-Corrector at this step.
+            tau (`torch.Tensor`):
+                The stochasticity coefficient tau at the current step.
 
         Returns:
             `torch.Tensor`:
@@ -1195,7 +1280,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
-            return_dict (`bool`):
+            return_dict (`bool`, defaults to `True`):
                 Whether or not to return a [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`.
 
         Returns:

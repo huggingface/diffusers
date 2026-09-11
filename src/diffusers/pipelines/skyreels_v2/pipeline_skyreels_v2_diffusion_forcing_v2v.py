@@ -441,6 +441,8 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
         latent_width = width // self.vae_scale_factor_spatial
 
         if long_video_iter == 0:
+            # `video` is preprocessed in float32; the VAE may be running in another dtype (fp16/bf16).
+            video = video.to(self.vae.dtype)
             prefix_video_latents = [
                 retrieve_latents(
                     self.vae.encode(
@@ -1049,7 +1051,9 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
             )
             latents = latents / latents_std + latents_mean
             video_generated = self.vae.decode(latents, return_dict=False)[0]
-            video = torch.cat([video_original, video_generated], dim=2)
+            # `video_original` is kept in float32 by `preprocess_video`; promote the decoded frames to match it
+            # so the two halves can be concatenated when the VAE runs in fp16/bf16.
+            video = torch.cat([video_original, video_generated.to(video_original.dtype)], dim=2)
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents

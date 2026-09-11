@@ -24,7 +24,7 @@ env:
   MKL_NUM_THREADS: 8
   HF_XET_HIGH_PERFORMANCE: 1
   PYTEST_TIMEOUT: 600
-  # Force version overrides across every `uv pip install`: pin tokenizers and the
+  # Force version overrides across every `uv pip install`: pin the
   # torch/torchvision/torchaudio set baked into the image so `-U` installs can't bump
   # torch and break torchvision's C++ ABI. Re-written into the file in the install step.
   UV_OVERRIDE: /tmp/uv-overrides.txt
@@ -136,7 +136,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
+          printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality,training,test]"
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git

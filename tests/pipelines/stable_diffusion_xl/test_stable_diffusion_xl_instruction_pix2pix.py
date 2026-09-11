@@ -14,9 +14,8 @@
 # limitations under the License.
 
 import random
-import unittest
 
-import numpy as np
+import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -25,38 +24,31 @@ from diffusers import (
     EulerDiscreteScheduler,
     UNet2DConditionModel,
 )
-from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_instruct_pix2pix import (
     StableDiffusionXLInstructPix2PixPipeline,
 )
 
-from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
+from ...testing_utils import floats_tensor, torch_device
 from ..pipeline_params import (
-    IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
-from ..test_pipelines_common import (
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineLatentTesterMixin,
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
     PipelineTesterMixin,
 )
 
 
-enable_full_determinism()
-
-
-class StableDiffusionXLInstructPix2PixPipelineFastTests(
-    PipelineLatentTesterMixin,
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineTesterMixin,
-    unittest.TestCase,
-):
+class StableDiffusionXLInstructPix2PixPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionXLInstructPix2PixPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "cross_attention_kwargs"}
-    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
+        "height",
+        "width",
+        "cross_attention_kwargs",
+    }
+    batch_input_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    output_shape = (3, 64, 64)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -127,63 +119,35 @@ class StableDiffusionXLInstructPix2PixPipelineFastTests(
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
+    def get_dummy_inputs(self):
+        image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)
         image = image / 2 + 0.5
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "image": image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "image_guidance_scale": 1,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
         return inputs
 
-    def test_components_function(self):
-        init_components = self.get_dummy_components()
-        pipe = self.pipeline_class(**init_components)
 
-        self.assertTrue(hasattr(pipe, "components"))
-        self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
-
+class TestStableDiffusionXLInstructPix2PixPipeline(
+    StableDiffusionXLInstructPix2PixPipelineTesterConfig, PipelineTesterMixin
+):
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
-    def test_attention_slicing_forward_pass(self):
-        super().test_attention_slicing_forward_pass(expected_max_diff=2e-3)
-
-    # Overwrite the default test_latents_inputs because pix2pix encode the image differently
-    def test_latents_input(self):
-        components = self.get_dummy_components()
-        pipe = StableDiffusionXLInstructPix2PixPipeline(**components)
-        pipe.image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        out = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="pt"))[0]
-
-        vae = components["vae"]
-        inputs = self.get_dummy_inputs_by_type(torch_device, input_image_type="pt")
-
-        for image_param in self.image_latents_params:
-            if image_param in inputs.keys():
-                inputs[image_param] = vae.encode(inputs[image_param]).latent_dist.mode()
-
-        out_latents_inputs = pipe(**inputs)[0]
-
-        max_diff = np.abs(out - out_latents_inputs).max()
-        self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
-
-    @unittest.skip("Test not supported at the moment.")
-    def test_cfg(self):
-        pass
-
-    @unittest.skip("Functionality is tested elsewhere.")
+    @pytest.mark.skip("Every `_optional_component` is needed to encode the prompt this pipeline requires.")
     def test_save_load_optional_components(self):
         pass
+
+
+class TestStableDiffusionXLInstructPix2PixPipelineMemory(
+    StableDiffusionXLInstructPix2PixPipelineTesterConfig, MemoryTesterMixin
+):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SDXL pix2pix pipeline."""

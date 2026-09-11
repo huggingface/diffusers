@@ -183,7 +183,7 @@ from diffusers.modular_pipelines import ComponentsManager
 components = ComponentManager()
 
 dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", components_manager=components, collection="diffdiff")
-dd_pipeline.load_default_componenets(torch_dtype=torch.float16)
+dd_pipeline.load_default_componenets(dtype=torch.float16)
 dd_pipeline.to("cuda")
 ```
 
@@ -213,7 +213,7 @@ dd_blocks.sub_blocks.insert("ip_adapter", ip_adapter_block, 0)
 
 ```py
 dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_components(torch_dtype=torch.float16)
+dd_pipeline.load_components(dtype=torch.float16)
 dd_pipeline.loader.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 dd_pipeline.loader.set_ip_adapter_scale(0.6)
 dd_pipeline = dd_pipeline.to(device)
@@ -268,7 +268,7 @@ dd_blocks.sub_blocks.insert("controlnet_input", control_input_block, 7)
 dd_blocks.sub_blocks["denoise"] = controlnet_denoise_block
 
 dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_components(torch_dtype=torch.float16)
+dd_pipeline.load_components(dtype=torch.float16)
 dd_pipeline = dd_pipeline.to(device)
 
 control_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/diffdiff_tomato_canny.jpeg")
@@ -322,7 +322,7 @@ DIFFDIFF_AUTO_BLOCKS.insert("controlnet_input",StableDiffusionXLControlNetAutoIn
 ```py
 dd_auto_blocks = SequentialPipelineBlocks.from_blocks_dict(DIFFDIFF_AUTO_BLOCKS)
 dd_pipeline = dd_auto_blocks.init_pipeline("YiYiXu/modular-demo-auto", collection="diffdiff")
-dd_pipeline.load_components(torch_dtype=torch.float16)
+dd_pipeline.load_components(dtype=torch.float16)
 ```
 
 ## 分享
@@ -342,5 +342,5 @@ from diffusers.modular_pipelines import ModularPipeline, ComponentsManager
 components = ComponentsManager()
 
 diffdiff_pipeline = ModularPipeline.from_pretrained("YiYiXu/modular-diffdiff-0704", trust_remote_code=True, components_manager=components, collection="diffdiff")
-diffdiff_pipeline.load_components(torch_dtype=torch.float16)
+diffdiff_pipeline.load_components(dtype=torch.float16)
 ```

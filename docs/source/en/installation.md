@@ -33,6 +33,24 @@ uv pip install diffusers["torch"] transformers
 ```
 
 </hfoption>
+<hfoption id="NVIDIA Spark (ARM64)">
+
+To install Diffusers with PyTorch on NVIDIA Spark devices (such as an RTX Spark laptop) running ARM64, install PyTorch from the NVIDIA PyPI index. These devices require NVIDIA's ARM64 builds of PyTorch, which are not available on the default PyPI index or the standard PyTorch wheel index.
+
+Run the command below to check if your system detects an NVIDIA GPU.
+
+```bash
+nvidia-smi
+```
+
+Install PyTorch from the NVIDIA PyPI index, then install Diffusers.
+
+```bash
+uv pip install torch --index-url https://pypi.nvidia.com
+uv pip install diffusers
+```
+
+</hfoption>
 <hfoption id="conda">
 
 ```bash
@@ -58,6 +76,23 @@ uv pip install git+https://github.com/huggingface/diffusers
 
 </hfoption>
 </hfoptions>
+
+## Devices
+
+Diffusers runs on any accelerator supported by PyTorch. The examples throughout the docs use `"cuda"` because it is the most common setup, but nothing is CUDA-specific. Swap in the device string for your hardware, such as `"xpu"` for Intel GPUs, `"mps"` for Apple silicon, or `"cpu"`.
+
+```py
+device = "cuda"  # or "mps", "xpu", "cpu"
+pipeline.to(device)
+```
+
+To pick the device at runtime instead of hardcoding it, use [torch.accelerator](https://docs.pytorch.org/docs/stable/accelerator.html).
+
+```py
+import torch
+
+device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+```
 
 ## Editable install
 

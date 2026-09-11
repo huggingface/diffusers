@@ -1,4 +1,4 @@
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,8 +25,10 @@ from ..testing_utils import (
     BitsAndBytesTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -116,12 +118,6 @@ class WanVACETransformer3DTesterConfig(BaseModelTesterConfig):
 
 class TestWanVACETransformer3D(WanVACETransformer3DTesterConfig, ModelTesterMixin):
     """Core model tests for Wan VACE Transformer 3D."""
-
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
-        # Skip: fp16/bf16 require very high atol to pass, providing little signal.
-        # Dtype preservation is already tested by test_from_save_pretrained_dtype and test_keep_in_fp32_modules.
-        pytest.skip("Tolerance requirements too high for meaningful test")
 
     def test_model_parallelism(self, tmp_path):
         # Skip: Device mismatch between cuda:0 and cuda:1 in VACE control flow
@@ -257,3 +253,21 @@ class TestWanVACETransformer3DGGUFCompile(WanVACETransformer3DTesterConfig, GGUF
             ),
             "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
         }
+
+
+class TestWanVACETransformer3DLoRA(WanVACETransformer3DTesterConfig, LoraTesterMixin):
+    pass
+
+
+class TestWanVACETransformer3DSingleFile(WanVACETransformer3DTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_vace_1.3B_fp16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Wan-AI/Wan2.1-VACE-1.3B-diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
