@@ -19,7 +19,7 @@ Two execution modes are available:
 | Mode | Constant | How to activate | Notes |
 |---|---|---|---|
 | Strict eager (default) | `EagerMode.DEFER_NEVER` | `import torch_tpu` | Operations dispatched one at a time, asynchronous |
-| Compile | — | `pipe.enable_tpu_compile()` | AOT compilation with `TpuBackend` |
+| Compile | — | `torch.compile(module, backend="tpu")` | AOT compilation with `TpuBackend` |
 
 Follow the [TorchTPU installation guide](https://github.com/google-pytorch/torch_tpu/). After installation,
 `import torch_tpu` registers the `"tpu"` device automatically.
@@ -77,17 +77,18 @@ contracts it back (`"rowwise"`), matching the `transformers` model's actual modu
 
 ## Compiled mode
 
-[`enable_tpu_compile`] runs `torch.compile` with `TpuBackend` on each pipeline module that is already on TPU. The first call (warmup) is slow because it compiles. Later calls reuse the compiled graph. Where it's supported, it replaces SDP-based attention with `AttnProcessor` for XLA tracing.
+`import torch_tpu` registers `"tpu"` as a `torch.compile` backend name (`TpuBackend` under the hood), so
+components compile like any other `torch.compile` target — no diffusers-specific method needed. The first
+call (warmup) is slow because it compiles; later calls with the same shapes reuse the compiled graph.
 
 > [!IMPORTANT]
-> TorchTPU requires **static shapes** — `torch.compile` is called with `dynamic=False`
-> internally. Every time `height`, `width`, or `num_inference_steps` changes, the graph is
-> recompiled from scratch. Keep these values constant across all calls after warmup, or call
-> [`tpu_warmup`] again before changing them.
+> TorchTPU requires **static shapes** — pass `dynamic=False`. Every time `height`, `width`, or
+> `num_inference_steps` changes, the graph is recompiled from scratch. Keep these values constant
+> across all calls after warmup, or run another warmup pass before changing them.
 
 ```python
 import torch
-import torch_tpu  # noqa: F401
+import torch_tpu  # noqa: F401 — registers the "tpu" torch.compile backend
 
 from diffusers import FluxPipeline
 
@@ -98,16 +99,18 @@ pipe = FluxPipeline.from_pretrained(
 pipe.transformer.to("tpu")
 pipe.vae.to("tpu")
 
-pipe.enable_tpu_compile()
+pipe.transformer = torch.compile(pipe.transformer, backend="tpu", fullgraph=True, dynamic=False)
+pipe.vae = torch.compile(pipe.vae, backend="tpu", fullgraph=True, dynamic=False)
 
 # Warmup — triggers static graph compilation.
-pipe.tpu_warmup(
-    prompt="warmup",
-    height=1024,
-    width=1024,
-    num_inference_steps=4,
-    guidance_scale=0.0,
-)
+with torch.no_grad():
+    pipe(
+        prompt="warmup",
+        height=1024,
+        width=1024,
+        num_inference_steps=4,
+        guidance_scale=0.0,
+    )
 
 # Timed inference reuses the compiled graph.
 image = pipe(
@@ -119,4 +122,25 @@ image = pipe(
 ).images[0]
 
 image.save("output.png")
+```
+
+## Tensor parallelism
+
+Shard a model too large for one chip across several with [`~ModelMixin.enable_parallelism`], see [Tensor parallelism](../training/distributed_inference#tensor-parallelism) for the full
+guide.
+
+```python
+import torch
+import torch.distributed as dist
+import torch_tpu  # noqa: F401
+from torch.distributed.device_mesh import DeviceMesh
+
+from diffusers import DiffusionPipeline, TensorParallelConfig
+
+dist.init_process_group(backend="tpu_dist")
+tp_mesh = DeviceMesh("tpu", list(range(dist.get_world_size())))
+
+pipe = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.2-dev", torch_dtype=torch.bfloat16)
+pipe.transformer.enable_parallelism(config=TensorParallelConfig(mesh=tp_mesh))
+pipe.transformer.to("tpu")
 ```

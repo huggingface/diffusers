@@ -32,7 +32,6 @@ from ...testing_utils import (
     enable_full_determinism,
     is_tensor_parallel,
     require_torch_neuron,
-    require_torch_tpu,
     torch_device,
 )
 from ..testing_utils import (
@@ -48,12 +47,12 @@ from ..testing_utils import (
     ModelTesterMixin,
     SingleFileTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
-from ._tp_worker_launch import TensorParallelTPUTesterMixin
 
 
 enable_full_determinism()
@@ -201,8 +200,6 @@ def make_tpu_tp_spec():
     return Flux2Transformer2DModel, init_dict, config.get_dummy_inputs(device="cpu")
 
 
-@is_tensor_parallel
-@require_torch_tpu
 class TestFlux2TransformerTensorParallelTPU(TensorParallelTPUTesterMixin):
     """Tensor Parallel inference test for Flux2 Transformer on TPU.
 

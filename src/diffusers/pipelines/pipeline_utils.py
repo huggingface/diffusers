@@ -22,7 +22,7 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin, get_type_hints
+from typing import Any, Callable, Dict, List, Union, get_args, get_origin, get_type_hints
 
 import httpx
 import numpy as np
@@ -73,7 +73,6 @@ from ..utils import (
     is_transformers_version,
     logging,
     numpy_to_pil,
-    requires_backends,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
 from ..utils.hub_utils import (
@@ -194,37 +193,6 @@ class DeprecatedPipelineMixin:
 
         # Call the parent class's __init__ method
         super().__init__(*args, **kwargs)
-
-
-def _supports_generic_attn_processor(module: "torch.nn.Module") -> bool:
-    """Whether every attention submodule in `module` accepts the generic, non-SDPA `AttnProcessor`.
-
-    Two independent module shapes are incompatible with the generic `AttnProcessor`:
-
-    1. Newer attention classes (`AttentionModuleMixin` subclasses, e.g. `FluxAttention`, `Flux2Attention`,
-       `WanAttention`) declare a fixed `_available_processors` list of model-specific processor classes; the
-       generic `AttnProcessor` isn't among them, because its `__call__` assumes attributes (e.g. `spatial_norm`)
-       only the legacy `Attention` class defines — forcing it onto one of these raises `AttributeError` on the
-       very next forward pass. Those models' own default processors (`FluxAttnProcessor`, `Flux2AttnProcessor`,
-       `WanAttnProcessor`, ...) are SDPA-based too, so they're not a safe substitute for the crash
-       `enable_tpu_compile` is working around either — the fix is simply to leave this class of module on its own
-       native processor, which compiles under `TpuBackend` without incident.
-    2. Legacy `Attention` modules configured for joint/dual-stream attention (`added_kv_proj_dim` set, e.g.
-       QwenImage's transformer blocks) use a custom processor (e.g. `QwenDoubleStreamAttnProcessor2_0`) that
-       returns a separate `(image, text)` output pair. The generic `AttnProcessor` returns a single tensor, so the
-       caller's unpacking of the paired output raises `ValueError` — this is a functional protocol mismatch, not
-       merely a numerical one, and no `_available_processors` restriction catches it since these aren't
-       `AttentionModuleMixin` subclasses.
-    """
-    from ..models.attention_processor import AttnProcessor
-
-    for submodule in module.modules():
-        available = getattr(submodule, "_available_processors", None)
-        if available is not None and AttnProcessor not in available:
-            return False
-        if getattr(submodule, "added_kv_proj_dim", None) is not None:
-            return False
-    return True
 
 
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):
@@ -2288,91 +2256,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 pass
 
         return not is_device_type_map and isinstance(device_map, dict) and len(device_map) > 1
-
-    def enable_tpu_compile(
-        self,
-        model_names: Optional[List[str]] = None,
-        **compile_kwargs,
-    ) -> None:
-        """Compile pipeline components that are on TPU using ``torch.compile`` with the ``TpuBackend``.
-
-        Before compiling, each component that exposes ``set_attn_processor`` has ``AttnProcessor`` applied. This
-        replaces ``AttnProcessor2_0`` (SDP-based) which triggers XLA fusion-emitter crashes in eager/lazy mode.
-        ``TpuBackend`` handles the resulting ``torch.cat`` layout internally during static tracing, so no additional
-        wrapper is needed at compile time.
-
-        Args:
-            model_names (`list[str]`, *optional*):
-                Names of pipeline components to compile. Defaults to all ``torch.nn.Module`` components currently
-                resident on a TPU device.
-            **compile_kwargs:
-                Extra keyword arguments forwarded to ``torch.compile``. ``backend`` defaults to ``TpuBackend()`` and
-                ``dynamic`` defaults to ``False`` (required for static tracing).
-
-        Example:
-        ```python
-        import torch
-        import torch_tpu  # noqa: F401
-
-        pipe.transformer.to("tpu")
-        pipe.vae.to("tpu")
-        pipe.enable_tpu_compile()
-        ```
-        """
-        requires_backends(self, "torch_tpu")
-        from torch_tpu._internal.compile import TpuBackend
-
-        from ..models.attention_processor import AttnProcessor
-
-        if model_names is None:
-            model_names = [
-                name
-                for name, comp in self.components.items()
-                if isinstance(comp, torch.nn.Module) and comp.device.type == "tpu"
-            ]
-
-        for name in model_names:
-            component = getattr(self, name, None)
-            if not isinstance(component, torch.nn.Module):
-                logger.warning(f"`enable_tpu_compile`: component '{name}' is not a nn.Module, skipping.")
-                continue
-            if is_compiled_module(component):
-                logger.warning(f"`enable_tpu_compile`: component '{name}' is already compiled, skipping.")
-                continue
-            if hasattr(component, "set_attn_processor") and _supports_generic_attn_processor(component):
-                component.set_attn_processor(AttnProcessor())
-            compile_kwargs.setdefault("backend", TpuBackend())
-            compile_kwargs.setdefault("dynamic", False)
-            logger.info(f"Compiling '{name}' with TpuBackend.")
-            setattr(self, name, torch.compile(component, **compile_kwargs))
-
-    def tpu_warmup(self, *args, **kwargs) -> None:
-        """Run a single forward pass to trigger XLA / ``TpuBackend`` compilation.
-
-        Call this after ``enable_tpu_compile`` and before timed inference. The warmup pass compiles the static
-        computation graphs; subsequent calls reuse the compiled graphs and run at full speed.
-
-        Args:
-            *args: Positional arguments forwarded to the pipeline ``__call__``.
-            **kwargs: Keyword arguments forwarded to the pipeline ``__call__``.
-
-        Example:
-        ```python
-        pipe.tpu_warmup(
-            prompt="warmup",
-            height=1024,
-            width=1024,
-            num_inference_steps=4,
-            guidance_scale=0.0,
-        )
-        ```
-        """
-        logger.info("Running TPU warmup pass to trigger XLA compilation...")
-        with torch.no_grad():
-            self(*args, **kwargs)
-        if hasattr(torch, "tpu") and hasattr(torch.tpu, "synchronize"):
-            torch.tpu.synchronize()
-        logger.info("TPU warmup complete.")
 
 
 class StableDiffusionMixin:

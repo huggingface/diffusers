@@ -28,13 +28,3 @@ Parallelism strategies help speed up diffusion transformers by distributing comp
 [[autodoc]] TensorParallelConfig
 
 [[autodoc]] hooks.apply_tensor_parallel
-
-## TPU
-
-### `enable_tpu_compile`
-
-[[autodoc]] diffusers.DiffusionPipeline.enable_tpu_compile
-
-### `tpu_warmup`
-
-[[autodoc]] diffusers.DiffusionPipeline.tpu_warmup
