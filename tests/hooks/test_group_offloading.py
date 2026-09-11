@@ -20,7 +20,8 @@ import pytest
 import torch
 
 from diffusers import AutoencoderKL
-from diffusers.hooks import HookRegistry, ModelHook
+from diffusers.hooks import HookRegistry, ModelHook, apply_group_offloading
+from diffusers.hooks.group_offloading import _GROUP_OFFLOADING, _get_group_offload_summary
 from diffusers.models import ModelMixin
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils import logging as diffusers_logging
@@ -692,3 +693,126 @@ class TestConditionalModuleGroupOffload(TestGroupOffload):
             assert torch.allclose(out_ref_no_opt2, out_no_opt2, atol=1e-5), (
                 f"[{offload_type}] Outputs do not match on third pass (back to no optional_input)."
             )
+
+
+class TestGroupOffloadSummary:
+    """`_get_group_offload_summary` renders the installed grouping, for failure messages and manual inspection.
+
+    Its output is only read once something has already gone wrong, so a regression is invisible — a summary is still
+    produced, it is just wrong, and a reader is sent to the wrong module. These pin the claim each line makes, as
+    literal expectations against a known fixture: which module's `forward` brings a group over, and which members
+    that group holds. Where the grouping itself is what a test needs, it is read off the hooks rather than out of
+    the summary, so the thing under test is not also the instrument. Rendering is pinned along with the claims,
+    deliberately: the rendering is what this function produces, so changing it should require updating these.
+    """
+
+    in_features = 64
+    hidden_features = 256
+    out_features = 64
+    num_layers = 4
+
+    def get_model(self):
+        torch.manual_seed(0)
+        return DummyModel(
+            in_features=self.in_features,
+            hidden_features=self.hidden_features,
+            out_features=self.out_features,
+            num_layers=self.num_layers,
+        )
+
+    @staticmethod
+    def prefetch_chain(module):
+        """{group's onload leader: onload leader of the group it prefetches}, read off the hooks.
+
+        This is the mechanism itself rather than anything the summary says, so a test can establish what group
+        offloading wired before asking whether the summary reports it.
+        """
+        name_of = {id(submodule): name or "<root>" for name, submodule in module.named_modules()}
+        chain = {}
+        for submodule in module.modules():
+            registry = getattr(submodule, "_diffusers_hook", None)
+            hook = registry.get_hook(_GROUP_OFFLOADING) if registry is not None else None
+            if hook is None or hook.next_group is None:
+                continue
+            chain[name_of[id(hook.group.onload_leader)]] = name_of[id(hook.next_group.onload_leader)]
+        return chain
+
+    def test_reports_that_nothing_is_offloaded_when_offloading_is_not_applied(self):
+        assert "no group offloading applied" in _get_group_offload_summary(self.get_model())
+
+    @pytest.mark.skipif(
+        torch.device(torch_device).type not in ["cuda", "xpu"],
+        reason="Test requires a CUDA or XPU device.",
+    )
+    def test_reports_each_group_against_the_module_that_onloads_it(self):
+        model = self.get_model()
+        apply_group_offloading(
+            model,
+            onload_device=torch.device(torch_device),
+            offload_device=torch.device("cpu"),
+            offload_type="block_level",
+            num_blocks_per_group=1,
+        )
+        summary = _get_group_offload_summary(model)
+
+        # One block per group, so each block is its own group and is onloaded by its own forward.
+        for i in range(self.num_layers):
+            assert f"onloaded by 'blocks.{i}' forward: [blocks.{i}]" in summary
+        # Whatever the block matching left over is gathered into one group led by the root.
+        assert "onloaded by '<root>' forward: [linear_1, activation, linear_2]" in summary
+        # Without a stream there is no prefetch chain, so no group is onloaded by another.
+        assert "prefetched by" not in summary
+
+    @pytest.mark.skipif(
+        torch.device(torch_device).type not in ["cuda", "xpu"],
+        reason="Test requires a CUDA or XPU device.",
+    )
+    def test_reports_prefetching_only_once_the_chain_is_wired(self):
+        model = self.get_model()
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+
+        # The chain is wired by the lazy prefetch hook at the end of the first forward, so until then the groups are
+        # indistinguishable from the streamless case.
+        assert self.prefetch_chain(model) == {}
+        assert "prefetched by" not in _get_group_offload_summary(model)
+
+        model(torch.randn((4, self.in_features)).to(torch_device))
+
+        # Each group is now chained to the one that runs after it, so it is onloaded a step early.
+        expected_chain = {
+            "<root>": "blocks.0",
+            "blocks.0": "blocks.1",
+            "blocks.1": "blocks.2",
+            "blocks.2": "blocks.3",
+        }
+        assert self.prefetch_chain(model) == expected_chain
+
+        summary = _get_group_offload_summary(model)
+        for leader, successor in expected_chain.items():
+            assert f"prefetched by '{leader}' forward: [{successor}]" in summary
+        # The root group is at the head of the chain, so nothing prefetches it.
+        assert "onloaded by '<root>' forward: [linear_1, activation, linear_2]" in summary
+
+    @pytest.mark.skipif(
+        torch.device(torch_device).type not in ["cuda", "xpu"],
+        reason="Test requires a CUDA or XPU device.",
+    )
+    def test_summarizes_a_submodule_whose_group_reaches_outside_it(self):
+        # With more than one block per group, a block's group holds its siblings too. Summarizing that block alone
+        # cannot name them, and a user inspecting one component should still get a summary rather than a KeyError.
+        model = self.get_model()
+        apply_group_offloading(
+            model,
+            onload_device=torch.device(torch_device),
+            offload_device=torch.device("cpu"),
+            offload_type="block_level",
+            num_blocks_per_group=3,
+        )
+        assert "onloaded by 'blocks.0' forward: [blocks.0, blocks.1, blocks.2]" in _get_group_offload_summary(model)
+
+        # From `blocks[1]` the group is the same one, but only `blocks[1]` itself can be named: the other two members
+        # and the leader are all outside. None of them may be dropped.
+        assert (
+            "onloaded by '<outside this module>' forward: "
+            "[<outside this module>, <root>, <outside this module>]" in _get_group_offload_summary(model.blocks[1])
+        )
