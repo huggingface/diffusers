@@ -13,10 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+
 import pytest
+import torch
 
 from diffusers.modular_pipelines import LTXAutoBlocks, LTXModularPipeline
 
+from ...testing_utils import torch_device
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
@@ -33,6 +37,7 @@ LTX_WORKFLOWS = {
         ("denoise.set_timesteps", "LTXSetTimestepsStep"),
         ("denoise.prepare_latents", "LTXPrepareLatentsStep"),
         ("denoise.denoise", "LTXDenoiseStep"),
+        ("denoise.unpack_latents", "LTXUnpackLatentsStep"),
         ("decode", "LTXVaeDecoderStep"),
     ],
     "image2video": [
@@ -43,6 +48,7 @@ LTX_WORKFLOWS = {
         ("denoise.prepare_latents", "LTXPrepareLatentsStep"),
         ("denoise.prepare_i2v_latents", "LTXImage2VideoPrepareLatentsStep"),
         ("denoise.denoise", "LTXImage2VideoDenoiseStep"),
+        ("denoise.unpack_latents", "LTXUnpackLatentsStep"),
         ("decode", "LTXVaeDecoderStep"),
     ],
 }
@@ -52,6 +58,7 @@ class LTXModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = LTXModularPipeline
     pipeline_blocks_class = LTXAutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-ltx-modular-pipe"
+    expected_latents_shape = (1, 8, 5, 16, 16)
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
@@ -74,6 +81,23 @@ class LTXModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestLTXModularPipelineFast(LTXModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_decode_accepts_packed_latents_with_deprecation(self):
+        # The old packed `[B, S, C]` form is still accepted by the decode step for a deprecation window.
+        inputs = self.get_dummy_inputs()
+        expected = self.get_pipeline().to(torch_device)(**inputs, output=self.output_name)
+
+        # Blocksets can be composed from shared block instances, so pop from a copy.
+        blocks = copy.deepcopy(self.pipeline_blocks_class())
+        for workflow in blocks.sub_blocks["denoise"].sub_blocks.values():
+            workflow.sub_blocks.pop("unpack_latents")
+        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components(dtype=torch.float32)
+        pipe.to(torch_device)
+        with pytest.warns(FutureWarning, match="packed latents"):
+            output = pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert torch.equal(output, expected)
+
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
