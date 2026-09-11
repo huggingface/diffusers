@@ -15,7 +15,7 @@
 import inspect
 import math
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 import torch
 
@@ -43,12 +43,10 @@ class SeaCacheConfig:
     `transformer.enable_cache(config)`.
 
     SeaCache compares Spectral-Evolution-Aware (SEA) indicators between scheduler steps. If their accumulated relative
-    change stays below `threshold`, the repeated transformer block stack is replaced with a cached residual. Cosmos 3
-    is the primary optimized and benchmarked integration; its residual spans the decoder stack and final pathway
-    normalization, while input packing and modality prediction heads still execute. Wan T2V provides a built-in
-    eager-only example of the generic repeated-block integration. Other video transformers can integrate by registering
-    their block metadata and providing `raw_vision_callback`; their pipeline must enter a `cache_context` for each
-    transformer trajectory.
+    change stays below `threshold`, the repeated transformer block stack is replaced with a cached residual.
+    Model-specific adapters may extend the residual boundary beyond those blocks. Other video transformers can use the
+    generic path by registering their block metadata and providing `raw_vision_callback`; their pipeline must enter a
+    `cache_context` for each transformer trajectory.
 
     Args:
         threshold (`float`, defaults to `0.25`):
@@ -66,8 +64,8 @@ class SeaCacheConfig:
         power_exp (`float`, defaults to `3.0`):
             Exponent of the SEA clean-signal power prior. SeaCache uses `3.0` for video features.
         raw_vision_callback (`Callable`, *optional*):
-            Advanced model adapter returning raw vision latents with shape `(C, T, H, W)`. Cosmos 3 and compatible Wan
-            T2V transformers use built-in adapters when this is omitted.
+            Advanced model adapter returning raw vision latents with shape `(C, T, H, W)`. When omitted, a built-in
+            adapter is used if one is available.
 
     Example:
         ```python

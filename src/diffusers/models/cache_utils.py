@@ -110,7 +110,7 @@ class CacheMixin:
 
         # Applying a cache technique registers hooks on child blocks, which stales any
         # `_child_registries_cache` built earlier (e.g. by a prior `cache_context`). Invalidate it
-        # so `_set_context` reaches the freshly-registered block hooks.
+        # so later context updates reach the freshly-registered block hooks.
         HookRegistry.check_if_exists_or_initialize(self).invalidate_child_registries_cache()
 
         self._cache_config = config

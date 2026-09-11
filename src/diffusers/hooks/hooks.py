@@ -313,8 +313,8 @@ class HookRegistry:
         """Return registries of child modules, using a cached list when available.
 
         The cache is built on first call and reused for subsequent calls. This avoids the cost of walking the full
-        module tree via named_modules() on every _set_context call, which is significant for large models (e.g. ~2.7ms
-        per call on Flux2).
+        module tree via named_modules() on every cache context update, which is significant for large models (e.g.
+        ~2.7ms per call on Flux2).
         """
         if not hasattr(self, "_child_registries_cache"):
             self._child_registries_cache = None

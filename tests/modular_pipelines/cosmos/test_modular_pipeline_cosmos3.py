@@ -180,7 +180,7 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
 
         @contextmanager
         def record_context(name, **info):
-            observed.append((name, info.get("step"), info.get("sigma"), info.get("num_steps")))
+            observed.append((name, info.get("step_index"), info.get("sigma"), info.get("num_inference_steps")))
             yield
 
         with mock.patch.object(pipe.transformer, "cache_context", side_effect=record_context):
@@ -192,6 +192,14 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
             assert step_index == expected_step
             torch.testing.assert_close(sigma, float(pipe.scheduler.sigmas[expected_step]))
             assert num_steps is not None
+
+    def test_pipeline_resets_stateful_cache(self):
+        pipe = self.get_pipeline().to(torch_device)
+
+        with mock.patch.object(pipe.transformer, "_reset_stateful_cache") as reset_cache:
+            pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        reset_cache.assert_called_once_with()
 
     def _get_sampling_state_block_pipe(self, block):
         pipe = block.init_pipeline(self.pretrained_model_name_or_path)

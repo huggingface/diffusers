@@ -78,17 +78,17 @@ latents, including clean conditioning frames for image-to-video generation.
 The implementation provides built-in adapters for the following models:
 
 - **Cosmos 3** is the primary optimized and benchmarked integration. It caches the complete decoder stack through a
-  post-normalization boundary and supports eager inference and regional compilation.
+  post-normalization boundary.
 - **Wan T2V** uses the generic repeated-block path in eager mode. This integration demonstrates how another
   single-stream video transformer can provide raw vision latents to SeaCache; it is not a claim that the same cache
   parameters are optimal for Wan or that other Wan variants are supported.
 
 Other video transformers can integrate with the generic path when they use `CacheMixin`, expose a recognized repeated
 block list, and register the block input/output layout in `TransformerBlockRegistry`. The pipeline must enter a
-`cache_context` for every transformer call, using separate context names for independent trajectories such as
-conditional and unconditional guidance. Pass a `raw_vision_callback` that returns the noisy vision latents, in addition
-to the scheduler metadata callbacks shown below. Validate output quality and tune the cache parameters for each model
-and scheduler; support and benchmark results do not transfer automatically from Cosmos 3.
+`cache_context` for every transformer call, attach `step_index`, `sigma`, and `num_inference_steps`, and use separate
+context names for independent trajectories such as conditional and unconditional guidance. Pass a `raw_vision_callback`
+that returns the noisy vision latents when no built-in adapter is available. Validate output quality and tune the cache
+parameters for each model and scheduler; support and benchmark results do not transfer automatically from Cosmos 3.
 
 ### Cosmos 3
 

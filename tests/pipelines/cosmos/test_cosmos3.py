@@ -132,7 +132,7 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
             callback_latent_dtypes.append(callback_kwargs["latents"].dtype)
             return {"latents": callback_kwargs["latents"].to(torch.float16)}
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs.update(
             output_type="latent",
             enable_safety_check=False,
@@ -154,10 +154,10 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
 
         @contextmanager
         def record_context(name, **info):
-            observed.append((name, info.get("step"), info.get("sigma"), info.get("num_steps")))
+            observed.append((name, info.get("step_index"), info.get("sigma"), info.get("num_inference_steps")))
             yield
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["guidance_scale"] = 2.0
         with mock.patch.object(pipeline.transformer, "cache_context", side_effect=record_context):
             pipeline(**inputs)
