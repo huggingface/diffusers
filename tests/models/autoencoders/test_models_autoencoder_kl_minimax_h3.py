@@ -19,7 +19,7 @@ import torch
 from diffusers import AutoencoderKLMiniMaxH3
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, require_accelerator, torch_device
+from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -96,11 +96,11 @@ class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTester
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_save_pretrained_dtype(self, tmp_path, dtype):
-        # A requested bfloat16 is loaded as float16; the modules in `_keep_in_fp32_modules` stay float32.
+        # The requested dtype reaches the decoder; only `_keep_in_fp32_modules` stays float32.
         model = self.model_class(**self.get_init_dict())
         model.save_pretrained(tmp_path)
         new_model = self.model_class.from_pretrained(tmp_path, torch_dtype=dtype)
-        assert new_model.dtype == torch.float16
+        assert new_model.dtype == dtype
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_pretrained_dtype_alias(self, tmp_path, dtype):
@@ -108,19 +108,7 @@ class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTester
         model = self.model_class(**self.get_init_dict())
         model.save_pretrained(tmp_path)
         new_model = self.model_class.from_pretrained(tmp_path, dtype=dtype)
-        assert new_model.dtype == torch.float16
-
-    @require_accelerator
-    @pytest.mark.skipif(
-        torch_device not in ["cuda", "xpu"],
-        reason="float16 and bfloat16 can only be use for inference with an accelerator",
-    )
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
-    @torch.no_grad()
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype, atol=1e-4, rtol=0):
-        # The shared test builds its own reference model, so it needs the dtype bfloat16 is loaded as.
-        loaded_dtype = torch.float16 if dtype == torch.bfloat16 else dtype
-        super().test_from_save_pretrained_dtype_inference(tmp_path, loaded_dtype, atol=atol, rtol=rtol)
+        assert new_model.dtype == dtype
 
     @pytest.mark.skip(
         "`forward` runs through the `apply_forward_hook`-decorated `encode` and `decode`, and that decorator's "

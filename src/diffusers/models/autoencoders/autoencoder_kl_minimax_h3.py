@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-import os
 
 import torch
 import torch.nn as nn
@@ -545,20 +544,6 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
         "scale1",
         "scale2",
     ]
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: str | os.PathLike | None, **kwargs):
-        r"""
-        Load a pretrained MiniMax-H3 video autoencoder.
-
-        Takes the same arguments as [`ModelMixin.from_pretrained`], except that a requested `bfloat16` is loaded as
-        `float16`. Pipelines apply one dtype to every component, and this decoder degrades in `bfloat16` without using
-        any less memory than `float16`.
-        """
-        for key in ("dtype", "torch_dtype"):
-            if kwargs.get(key) == torch.bfloat16:
-                kwargs[key] = torch.float16
-        return super().from_pretrained(pretrained_model_name_or_path, **kwargs)
 
     @register_to_config
     def __init__(
