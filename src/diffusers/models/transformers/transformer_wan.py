@@ -84,7 +84,7 @@ class WanAttnProcessor:
         rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
-        if attn.add_k_proj is not None:
+        if attn.added_kv_proj_dim is not None:
             # 512 is the context length of the text encoder, hardcoded for now
             image_context_length = encoder_hidden_states.shape[1] - 512
             encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
@@ -234,6 +234,18 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
             self.to_qkv.load_state_dict(
                 {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
             )
+
+            if inplace:
+                # Keep the necessary Q,K,V dims so that the individual projections can be reconstructed.
+                self._qkv_split_dims = (
+                    self.to_q.weight.shape[0],
+                    self.to_k.weight.shape[0],
+                    self.to_v.weight.shape[0],
+                    self.to_q.weight.shape[1],
+                )
+                delattr(self, "to_q")
+                delattr(self, "to_k")
+                delattr(self, "to_v")
         else:
             concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
             concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
@@ -243,6 +255,16 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
             self.to_kv.load_state_dict(
                 {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
             )
+
+            if inplace:
+                # Keep the necessary K,V dims so that the individual projections can be reconstructed.
+                self._qkv_split_dims = (
+                    self.to_k.weight.shape[0],
+                    self.to_v.weight.shape[0],
+                    self.to_k.weight.shape[1],
+                )
+                delattr(self, "to_k")
+                delattr(self, "to_v")
 
         if self.added_kv_proj_dim is not None:
             concatenated_weights = torch.cat([self.add_k_proj.weight.data, self.add_v_proj.weight.data])
@@ -254,21 +276,16 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
                 {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
             )
 
+            if inplace:
+                self._added_qkv_split_dims = (
+                    self.add_k_proj.weight.shape[0],
+                    self.add_v_proj.weight.shape[0],
+                    self.add_k_proj.weight.shape[1],
+                )
+                delattr(self, "add_k_proj")
+                delattr(self, "add_v_proj")
+
         self.fused_projections = True
-
-    @torch.no_grad()
-    def unfuse_projections(self):
-        if not getattr(self, "fused_projections", False):
-            return
-
-        if hasattr(self, "to_qkv"):
-            delattr(self, "to_qkv")
-        if hasattr(self, "to_kv"):
-            delattr(self, "to_kv")
-        if hasattr(self, "to_added_kv"):
-            delattr(self, "to_added_kv")
-
-        self.fused_projections = False
 
     def forward(
         self,
