@@ -550,7 +550,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             )
             if self.variance_type == "fixed_small_log":
                 variance = self._get_variance(t, predicted_variance=predicted_variance) * variance_noise
-            elif self.variance_type == "learned_range":
+            elif self.variance_type in ("learned_range", "fixed_large_log"):
+                # `_get_variance` returns a log-space value for these types. Convert back to a
+                # standard deviation with exp(0.5 * log_var). Taking sqrt() of log(beta) for
+                # `fixed_large_log` is invalid (beta < 1) and produces NaNs.
                 variance = self._get_variance(t, predicted_variance=predicted_variance)
                 variance = torch.exp(0.5 * variance) * variance_noise
             else:
