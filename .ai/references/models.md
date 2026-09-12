@@ -14,6 +14,7 @@ Shared reference for model-related conventions, patterns, and gotchas.
 * Models use `ModelMixin` with `register_to_config` for config serialization. 
 * When adding a new transformer (or reviewing one), skim `src/diffusers/models/transformers/transformer_flux.py`, `src/diffusers/models/transformers/transformer_flux2.py`, `src/diffusers/models/transformers/transformer_qwenimage.py`, and `src/diffusers/models/transformers/transformer_wan.py` first to establish the pattern. Most conventions (mixin set, file structure, naming, gradient-checkpointing implementation, `_no_split_modules` settings, etc.) are easiest to internalize by comparison rather than from a fixed list.
 * **Loading goes through `from_pretrained` / `from_single_file`.** Weights and configs load through the standard paths — never fetched or imported out-of-band at runtime. Don't override or add a custom `from_pretrained`, and don't load weights manually (`load_file(...)`, `hf_hub_download(...)`, or `sys.path.insert(...)` to import a reference repo). For an original-format single checkpoint, add `from_single_file` support (mixin + weight-mapping).
+* **Support only what released checkpoints use.** A new model only ships the configuration options, branches, and classes that published checkpoints use. Every config argument must be needed by a real config; if you plan to release more checkpoints and think a config option will be needed for a future one — still don't add it now: we will deal with it when that checkpoint is released, in the PR that adds it. The same goes for runtime arguments (`forward` / `__call__` parameters nothing passes). With both trimmed to what checkpoints actually use, every unreachable code path is dead code — remove it; it also makes the model much easier to review.
 
 ## Single-file model layout
 
@@ -227,3 +228,5 @@ Boolean gate. If `False` (default), calling that method raises `ValueError`. All
 7. **Tensor contiguity.** - Non-contiguous tensors can degrade performance. Therefore, try to maintain contiguity
 of the tensors whenever possible. A non-contiguous tensor is usually produced because of the operations. A common
 example is a `flatten()` followed by a `transpose()`. This sequence is known to produce non-contiguous layouts. So, prefer calling `contiguous()` on the output tensor to maintain performance.
+
+8. **Keeping dead keys or legacy names "because the checkpoint has them".** Diffusers checkpoints normally host a separate set of converted weights, and the conversion script owns the key remapping — so the original checkpoint format is not a constraint, unless explicitly discussed with the reviewer.
