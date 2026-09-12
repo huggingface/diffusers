@@ -37,6 +37,11 @@ from ...testing_utils import (
 )
 
 
+def check_same_shape(tensor_list):
+    shapes = [tensor.shape for tensor in tensor_list]
+    return all(shape == shapes[0] for shape in shapes[1:])
+
+
 def cast_module_to_dtype(module, dtype):
     """Cast `module` to `dtype` in place, keeping its `_keep_in_fp32_modules` submodules in float32.
 
