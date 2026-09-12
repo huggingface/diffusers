@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
@@ -99,6 +100,15 @@ class TestDDPMPipeline(DDPMPipelineTesterConfig, PipelineTesterMixin):
         assert output_sample.shape == output_epsilon.shape
         assert not torch.isnan(output_sample).any()
         assert not torch.allclose(output_sample, output_epsilon, atol=1e-3)
+
+    def test_generator_list_batch_size_mismatch_raises(self):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["batch_size"] = 2
+        inputs["generator"] = [self.get_generator(0)]
+
+        with pytest.raises(ValueError, match="list of generators of length 1.*effective batch size of 2"):
+            pipe(**inputs)
 
 
 class TestDDPMPipelineMemory(DDPMPipelineTesterConfig, MemoryTesterMixin):
