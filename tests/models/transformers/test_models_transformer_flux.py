@@ -253,6 +253,14 @@ class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterM
 class TestFluxTransformerAttentionBackend(FluxTransformerTesterConfig, AttentionBackendTesterMixin):
     """Attention backend tests for Flux Transformer."""
 
+    def get_init_dict(self) -> dict[str, int | list[int]]:
+        # `sage_blackwell_hub` runs a kernel that only accepts head dims of 64 or 128, so widen the
+        # shared dummy config's `attention_head_dim` of 16. `axes_dims_rope` has to keep summing to it.
+        init_dict = super().get_init_dict()
+        init_dict["attention_head_dim"] = 64
+        init_dict["axes_dims_rope"] = [16, 16, 32]
+        return init_dict
+
 
 class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux Transformer"""

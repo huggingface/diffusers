@@ -134,7 +134,7 @@ Configure how the CLI loads model weights and custom pipeline code.
   `enable_auto_cpu_offload` as `memory_reserve_margin` (default `3GB`). Raise it when a large canvas runs out
   of memory mid-forward: the offloader keeps components resident while they fit, so on a high-VRAM card the
   default margin can leave too little room for the activations of a long video.
-- `--attention-backend {default, flash_hub, flash_varlen_hub, flash_4_hub, sage_hub}` — Hub-hosted attention
+- `--attention-backend {default, flash_hub, flash_varlen_hub, flash_4_hub, sage_hub, sage_blackwell_hub}` — Hub-hosted attention
   kernels, auto-downloaded on first use. Transformer-based pipelines only; ignored with a warning on legacy UNet
   pipelines. See [Attention backends](../optimization/attention_backends).
 - `--vae-tiling` / `--vae-slicing` — lower VAE decode VRAM. See
