@@ -15,6 +15,7 @@
 
 import gc
 import random
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -356,6 +357,40 @@ class TestStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipelineTeste
         image_slice_with_neg_conditions = image[0, -1, -3:, -3:]
 
         assert (image_slice_with_no_neg_conditions - image_slice_with_neg_conditions).abs().max() > 1e-4
+
+    def test_get_add_time_ids_uses_negative_crops_coords_top_left(self):
+        # Regression: the non-aesthetic-score branch built the negative time ids from
+        # `crops_coords_top_left` rather than `negative_crops_coords_top_left`, so asking for
+        # different positive and negative crop conditioning silently applied the positive
+        # coordinates to both. The aesthetic-score branch above it was already correct.
+        #
+        # Driven through a stand-in rather than the dummy pipeline: this branch emits six time ids
+        # instead of five, which the dummy UNet's `add_embedding` is not sized for.
+        stand_in = SimpleNamespace(
+            config=SimpleNamespace(requires_aesthetics_score=False),
+            unet=SimpleNamespace(
+                config=SimpleNamespace(addition_time_embed_dim=1),
+                add_embedding=SimpleNamespace(linear_1=SimpleNamespace(in_features=7)),
+            ),
+        )
+
+        _, add_neg_time_ids = StableDiffusionXLImg2ImgPipeline._get_add_time_ids(
+            stand_in,
+            original_size=(64, 64),
+            crops_coords_top_left=(1, 2),
+            target_size=(64, 64),
+            aesthetic_score=6.0,
+            negative_aesthetic_score=2.5,
+            negative_original_size=(32, 32),
+            negative_crops_coords_top_left=(9, 10),
+            negative_target_size=(32, 32),
+            dtype=torch.float32,
+            text_encoder_projection_dim=1,
+        )
+
+        assert add_neg_time_ids.flatten().tolist() == [32.0, 32.0, 9.0, 10.0, 32.0, 32.0], (
+            "Negative time ids should use `negative_crops_coords_top_left`."
+        )
 
     def test_pipeline_interrupt(self):
         sd_pipe = self.get_pipeline().to(torch_device)
