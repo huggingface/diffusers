@@ -1433,10 +1433,14 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
 
         # Split z into overlapping tiles and decode them separately.
         # The tiles have an overlap to avoid seams between tiles.
+        # A final tile wholly inside the preceding overlap adds no coverage and can be too small for reflection
+        # padding. Stop before that overlap and retain the last decoded tile in full when assembling each axis.
+        row_stop = max(height - (tile_latent_min_height - tile_latent_stride_height), 1)
+        col_stop = max(width - (tile_latent_min_width - tile_latent_stride_width), 1)
         rows = []
-        for i in range(0, height, tile_latent_stride_height):
+        for i in range(0, row_stop, tile_latent_stride_height):
             row = []
-            for j in range(0, width, tile_latent_stride_width):
+            for j in range(0, col_stop, tile_latent_stride_width):
                 time = self.decoder(
                     z[:, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width], temb, causal=causal
                 )
@@ -1454,7 +1458,9 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
                     tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                 if j > 0:
                     tile = self.blend_h(row[j - 1], tile, blend_width)
-                result_row.append(tile[:, :, :, : self.tile_sample_stride_height, : self.tile_sample_stride_width])
+                row_end = self.tile_sample_stride_height if i < len(rows) - 1 else None
+                col_end = self.tile_sample_stride_width if j < len(row) - 1 else None
+                result_row.append(tile[:, :, :, :row_end, :col_end])
             result_rows.append(torch.cat(result_row, dim=4))
 
         dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
