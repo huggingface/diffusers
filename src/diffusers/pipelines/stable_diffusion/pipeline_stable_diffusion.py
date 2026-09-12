@@ -434,7 +434,10 @@ class StableDiffusionPipeline(
                 # representations. The `last_hidden_states` that we typically use for
                 # obtaining the final prompt representations passes through the LayerNorm
                 # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
+                if hasattr(self.text_encoder, "text_model"):
+                    prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
+                else:
+                    prompt_embeds = self.text_encoder.final_layer_norm(prompt_embeds)
 
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
