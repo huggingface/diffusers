@@ -1,0 +1,119 @@
+name: Diffusers Bot
+
+# Maintainer commands, triggered by commenting on an open PR:
+#
+#   @diffusers-bot style           run `make style && make quality` and push the fixes to the PR branch
+#   @diffusers-bot review          request a Serge AI review (also works from an inline review comment)
+#   @diffusers-bot pytest <args>   run `pytest <args>` on a GPU runner, e.g.
+#                                  `@diffusers-bot pytest tests/models/test_modeling_common.py -k "some_test"`
+#
+# Auth is checked once in the `authorize` job. Each subcommand lives in its
+# own reusable workflow file under .github/workflows/bot_*.yml.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+# Default to read-only; calling jobs grant extra permissions to the sub-workflows
+# that need them.
+permissions:
+  contents: read
+
+jobs:
+  # ── Shared gate: authorize commenter & parse subcommand ──────────────────────
+  authorize:
+    name: Authorize
+    if: |
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        github.event.issue.state == 'open' &&
+        contains(github.event.comment.body, '@diffusers-bot')
+      ) || (
+        github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@diffusers-bot')
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      is_authorized: ${{ steps.check.outputs.is_authorized }}
+      subcommand: ${{ steps.check.outputs.subcommand }}
+      pytest_args: ${{ steps.check.outputs.pytest_args }}
+    steps:
+      - name: Authorize and parse command
+        id: check
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
+        with:
+          script: |
+            const commenter = context.payload.comment.user.login;
+            const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: commenter
+            });
+            const authorized = ['admin', 'write'].includes(permission.permission);
+            console.log(`User ${commenter}: permission=${permission.permission}, authorized=${authorized}`);
+            core.setOutput('is_authorized', authorized);
+
+            const body = context.payload.comment.body;
+            const firstLine = body.split('\n')[0];
+
+            let subcommand = 'unknown';
+            let pytestArgs = '';
+
+            if (firstLine.startsWith('@diffusers-bot pytest')) {
+              subcommand = 'pytest';
+              pytestArgs = firstLine.replace('@diffusers-bot pytest', '').trim();
+            } else if (body.includes('@diffusers-bot style')) {
+              subcommand = 'style';
+            } else if (body.includes('@diffusers-bot review')) {
+              subcommand = 'review';
+            }
+
+            console.log(`Subcommand: ${subcommand}, pytestArgs: ${pytestArgs}`);
+            core.setOutput('subcommand', subcommand);
+            core.setOutput('pytest_args', pytestArgs);
+
+  # ── Dispatch to sub-workflows ────────────────────────────────────────────────
+  style:
+    needs: authorize
+    if: |
+      needs.authorize.outputs.subcommand == 'style' &&
+      needs.authorize.outputs.is_authorized == 'true' &&
+      github.event_name == 'issue_comment'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/bot_style.yml
+    secrets:
+      HF_BOT_STYLE_APP_ID: ${{ secrets.HF_BOT_STYLE_APP_ID }}
+      HF_BOT_STYLE_SECRET_PEM: ${{ secrets.HF_BOT_STYLE_SECRET_PEM }}
+
+  review:
+    needs: authorize
+    if: |
+      needs.authorize.outputs.subcommand == 'review' &&
+      needs.authorize.outputs.is_authorized == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/bot_review.yml
+    secrets:
+      SERGE_WEBHOOK_SECRET: ${{ secrets.SERGE_WEBHOOK_SECRET }}
+      SERGE_INSTALLATION_ID: ${{ secrets.SERGE_INSTALLATION_ID }}
+
+  pytest:
+    needs: authorize
+    if: |
+      needs.authorize.outputs.subcommand == 'pytest' &&
+      needs.authorize.outputs.is_authorized == 'true' &&
+      github.event_name == 'issue_comment'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/bot_pytest.yml
+    with:
+      pytest_args: ${{ needs.authorize.outputs.pytest_args }}

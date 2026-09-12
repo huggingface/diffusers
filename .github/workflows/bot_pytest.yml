@@ -1,77 +1,24 @@
-name: GPU Tests from PR Comment
+name: "Bot: Pytest"
 
-# Lets maintainers (admin / write access) run GPU tests on a PR by commenting:
-#   /diffusers-bot pytest <args>
-# e.g. `/diffusers-bot pytest tests/models/test_modeling_common.py -k "some_test"`.
-
+# Reusable workflow called by diffusers_bot.yml for `@diffusers-bot pytest <args>`.
+# Runs pytest on a GPU runner and reports the result back on the PR.
 
 on:
-  issue_comment:
-    types: [created]
-
-# Default to read-only; jobs that comment opt into `pull-requests: write` explicitly.
-permissions:
-  contents: read
-
-concurrency:
-  # A newer command on the same PR supersedes an in-flight one.
-  group: diffusers-bot-${{ github.event.issue.number }}
-  cancel-in-progress: true
-
-env:
-  DIFFUSERS_IS_CI: yes
-  OMP_NUM_THREADS: 8
-  MKL_NUM_THREADS: 8
-  HF_XET_HIGH_PERFORMANCE: 1
-  PYTEST_TIMEOUT: 600
-  # Force version overrides across every `uv pip install`: pin the
-  # torch/torchvision/torchaudio set baked into the image so `-U` installs can't bump
-  # torch and break torchvision's C++ ABI. Re-written into the file in the install step.
-  UV_OVERRIDE: /tmp/uv-overrides.txt
+  workflow_call:
+    inputs:
+      pytest_args:
+        required: true
+        type: string
 
 jobs:
   gate:
-    name: Authorize & launch
-    # Only react to `/diffusers-bot pytest …` comments on open PRs.
-    if: |
-      github.event.issue.pull_request &&
-      github.event.issue.state == 'open' &&
-      startsWith(github.event.comment.body, '/diffusers-bot pytest')
+    name: Acknowledge
     runs-on: ubuntu-22.04
     permissions:
       pull-requests: write
     outputs:
-      pytest_args: ${{ steps.parse.outputs.pytest_args }}
       comment_id: ${{ steps.comment.outputs.comment_id }}
     steps:
-      - name: Check commenter permission
-        id: auth
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          COMMENTER: ${{ github.event.comment.user.login }}
-        run: |
-          PERM=$(gh api "repos/${REPO}/collaborators/${COMMENTER}/permission" --jq '.permission' 2>/dev/null || echo "none")
-          echo "Commenter @${COMMENTER} has permission: ${PERM}"
-          if [[ "$PERM" == "admin" || "$PERM" == "write" ]]; then
-            echo "authorized=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "authorized=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Reject unauthorized commenter
-        if: steps.auth.outputs.authorized != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.issue.number }}
-          COMMENTER: ${{ github.event.comment.user.login }}
-        run: |
-          gh api -X POST "repos/${REPO}/issues/${PR}/comments" \
-            -f body="🚫 Sorry @${COMMENTER}, you're not authorized to run \`/diffusers-bot\`. Only maintainers with write or admin access can trigger GPU tests." >/dev/null
-          echo "::error::Only maintainers with write/admin access can run /diffusers-bot."
-          exit 1
-
       - name: Acknowledge with 👀
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,18 +27,6 @@ jobs:
         run: |
           gh api -X POST "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" -f content="eyes" >/dev/null
 
-      - name: Parse pytest args
-        id: parse
-        env:
-          COMMENT_BODY: ${{ github.event.comment.body }}
-        run: |
-          # Use only the first line of the comment, strip the command prefix.
-          FIRST_LINE=$(printf '%s' "$COMMENT_BODY" | head -n1)
-          ARGS="${FIRST_LINE#/diffusers-bot pytest}"
-          # Trim surrounding whitespace/CR.
-          ARGS="$(printf '%s' "$ARGS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-          echo "pytest_args=${ARGS}" >> "$GITHUB_OUTPUT"
-
       - name: Post "running" comment
         id: comment
         env:
@@ -99,7 +34,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.issue.number }}
           COMMENTER: ${{ github.event.comment.user.login }}
-          PYTEST_ARGS: ${{ steps.parse.outputs.pytest_args }}
+          PYTEST_ARGS: ${{ inputs.pytest_args }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           BODY="⏳ Running \`pytest ${PYTEST_ARGS}\` on a GPU runner — [view logs](${RUN_URL}).
@@ -108,9 +43,14 @@ jobs:
           CID=$(gh api -X POST "repos/${REPO}/issues/${PR}/comments" -f body="$BODY" --jq '.id')
           echo "comment_id=${CID}" >> "$GITHUB_OUTPUT"
 
-  gpu_tests:
+  gpu:
     name: Run pytest on GPU
     needs: gate
+    # A newer command on the same PR supersedes an in-flight one. Scoped to this job
+    # only so the superseded run's `report` still updates its comment.
+    concurrency:
+      group: diffusers-bot-pytest-${{ github.event.issue.number }}
+      cancel-in-progress: true
     runs-on:
       group: aws-g4dn-2xlarge
     container:
@@ -120,6 +60,16 @@ jobs:
     # write token. Comment writes happen only in `gate`/`report`.
     permissions:
       contents: read
+    env:
+      DIFFUSERS_IS_CI: yes
+      OMP_NUM_THREADS: 8
+      MKL_NUM_THREADS: 8
+      HF_XET_HIGH_PERFORMANCE: 1
+      PYTEST_TIMEOUT: 600
+      # Force version overrides across every `uv pip install`: pin the
+      # torch/torchvision/torchaudio set baked into the image so `-U` installs can't bump
+      # torch and break torchvision's C++ ABI. Re-written into the file in the install step.
+      UV_OVERRIDE: /tmp/uv-overrides.txt
     defaults:
       run:
         shell: bash
@@ -154,7 +104,7 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
           # Forwarded via env (not interpolated into the script) to avoid breakage on
           # quotes/special characters in a legitimate command.
-          PYTEST_ARGS: ${{ needs.gate.outputs.pytest_args }}
+          PYTEST_ARGS: ${{ inputs.pytest_args }}
         run: |
           eval "pytest --make-reports=tests_bot_gpu $PYTEST_ARGS"
 
@@ -173,7 +123,7 @@ jobs:
 
   report:
     name: Report status
-    needs: [gate, gpu_tests]
+    needs: [gate, gpu]
     # Always run so the comment is updated on success, failure, or cancellation —
     # but only if `gate` actually posted a comment to update.
     if: ${{ always() && needs.gate.outputs.comment_id != '' }}
@@ -186,8 +136,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           CID: ${{ needs.gate.outputs.comment_id }}
-          RESULT: ${{ needs.gpu_tests.result }}
-          PYTEST_ARGS: ${{ needs.gate.outputs.pytest_args }}
+          RESULT: ${{ needs.gpu.result }}
+          PYTEST_ARGS: ${{ inputs.pytest_args }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           case "$RESULT" in
