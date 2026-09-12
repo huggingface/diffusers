@@ -357,6 +357,25 @@ class TestStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipelineTeste
 
         assert (image_slice_with_no_neg_conditions - image_slice_with_neg_conditions).abs().max() > 1e-4
 
+    def test_latent_output_skips_watermark_and_postprocess(self):
+        # Regression: `output_type="latent"` sets `image = latents`, but this pipeline still ran the
+        # watermarker and `image_processor.postprocess` over it, treating raw latents as decoded RGB.
+        # The text-to-image pipeline already guards both behind `output_type != "latent"`.
+        class SentinelWatermark:
+            def apply_watermark(self, images):
+                raise AssertionError("watermark must not be applied to latent output")
+
+        sd_pipe = self.get_pipeline()
+        sd_pipe.watermark = SentinelWatermark()
+
+        inputs = self.get_dummy_inputs()
+        inputs["output_type"] = "latent"
+        output = sd_pipe(**inputs).images
+
+        assert torch.is_tensor(output)
+        # Raw latents keep the VAE latent channel count; postprocess would have produced 3 channels.
+        assert output.shape[1] == sd_pipe.unet.config.in_channels
+
     def test_pipeline_interrupt(self):
         sd_pipe = self.get_pipeline().to(torch_device)
 

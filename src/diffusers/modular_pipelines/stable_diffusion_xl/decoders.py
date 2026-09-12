@@ -129,13 +129,14 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
         else:
             block_state.images = block_state.latents
 
-        # apply watermark if available
-        if hasattr(components, "watermark") and components.watermark is not None:
-            block_state.images = components.watermark.apply_watermark(block_state.images)
+        if not block_state.output_type == "latent":
+            # apply watermark if available
+            if hasattr(components, "watermark") and components.watermark is not None:
+                block_state.images = components.watermark.apply_watermark(block_state.images)
 
-        block_state.images = components.image_processor.postprocess(
-            block_state.images, output_type=block_state.output_type
-        )
+            block_state.images = components.image_processor.postprocess(
+                block_state.images, output_type=block_state.output_type
+            )
 
         self.set_block_state(state, block_state)
 
