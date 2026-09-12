@@ -17,7 +17,7 @@ import numpy as np
 import PIL.Image
 import torch
 
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import InpaintProcessor, VaeImageProcessor
 
 
 class TestImageProcessor:
@@ -306,3 +306,46 @@ class TestImageProcessor:
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+    def test_inpaint_processor_preprocess_with_mask(self):
+        processor = InpaintProcessor()
+        image = PIL.Image.fromarray(np.zeros((64, 64, 3), dtype=np.uint8))
+        mask = PIL.Image.fromarray(np.zeros((64, 64), dtype=np.uint8))
+
+        out_img, out_mask, postprocessing_kwargs = processor.preprocess(image, mask=mask, height=64, width=64)
+
+        assert isinstance(out_img, torch.Tensor)
+        assert isinstance(out_mask, torch.Tensor)
+        assert isinstance(postprocessing_kwargs, dict)
+        assert postprocessing_kwargs["crops_coords"] is None
+        assert postprocessing_kwargs["original_image"] is None
+        assert postprocessing_kwargs["original_mask"] is None
+
+    def test_inpaint_processor_preprocess_without_mask(self):
+        processor = InpaintProcessor()
+        image = PIL.Image.fromarray(np.zeros((64, 64, 3), dtype=np.uint8))
+
+        out_img, out_mask, postprocessing_kwargs = processor.preprocess(image, height=64, width=64)
+
+        assert isinstance(out_img, torch.Tensor)
+        assert out_mask is None
+        assert isinstance(postprocessing_kwargs, dict)
+        assert postprocessing_kwargs["crops_coords"] is None
+        assert postprocessing_kwargs["original_image"] is None
+        assert postprocessing_kwargs["original_mask"] is None
+
+    def test_inpaint_processor_preprocess_with_padding_mask_crop(self):
+        processor = InpaintProcessor()
+        image = PIL.Image.fromarray(np.zeros((64, 64, 3), dtype=np.uint8))
+        mask = PIL.Image.fromarray(np.ones((64, 64), dtype=np.uint8) * 255)
+
+        out_img, out_mask, postprocessing_kwargs = processor.preprocess(
+            image, mask=mask, height=64, width=64, padding_mask_crop=8
+        )
+
+        assert isinstance(out_img, torch.Tensor)
+        assert isinstance(out_mask, torch.Tensor)
+        assert isinstance(postprocessing_kwargs, dict)
+        assert postprocessing_kwargs["crops_coords"] is not None
+        assert postprocessing_kwargs["original_image"] == image
+        assert postprocessing_kwargs["original_mask"] == mask

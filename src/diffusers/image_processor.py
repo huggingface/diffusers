@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from typing import Any
 import warnings
 
 import numpy as np
@@ -885,7 +886,7 @@ class InpaintProcessor(ConfigMixin):
         height: int | None = None,
         width: int | None = None,
         padding_mask_crop: int | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor | None, dict[str, Any]]:
         """
         Preprocess the image and mask.
         """
@@ -894,7 +895,13 @@ class InpaintProcessor(ConfigMixin):
 
         # if mask is None, same behavior as regular image processor
         if mask is None:
-            return self._image_processor.preprocess(image, height=height, width=width)
+            processed_image = self._image_processor.preprocess(image, height=height, width=width)
+            postprocessing_kwargs = {
+                "crops_coords": None,
+                "original_image": None,
+                "original_mask": None,
+            }
+            return processed_image, None, postprocessing_kwargs
 
         if padding_mask_crop is not None:
             crops_coords = self._image_processor.get_crop_region(mask, width, height, pad=padding_mask_crop)
