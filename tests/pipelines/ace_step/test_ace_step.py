@@ -237,7 +237,6 @@ class AceStepPipelineTesterConfig(BasePipelineTesterConfig):
             "num_inference_steps": 2,
             "generator": self.get_generator(0),
             "max_text_length": 32,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

@@ -108,7 +108,6 @@ class BriaPipelineTesterConfig(BasePipelineTesterConfig):
             "height": 16,
             "width": 16,
             "max_sequence_length": 48,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

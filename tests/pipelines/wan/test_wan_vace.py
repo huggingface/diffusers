@@ -121,7 +121,6 @@ class WanVACEPipelineTesterConfig(BasePipelineTesterConfig):
             "width": 16,
             "num_frames": num_frames,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
