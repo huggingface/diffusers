@@ -128,6 +128,15 @@ class AttentionMixin:
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
         are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        Args:
+            inplace (`bool`, defaults to `False`):
+                Whether to drop the individual projections once they have been fused. Fusing otherwise keeps both
+                copies of the weights, so the attention projections take twice the memory until they are unfused. Note
+                that this changes the model's `state_dict`: `to_q`, `to_k` and `to_v` are replaced by a single `to_qkv`
+                entry, which `from_pretrained` cannot load. Call `unfuse_qkv_projections()` before saving. Unfusing
+                rebuilds the individual projections as views into the fused weight, so restoring them costs no extra
+                memory.
         """
         for _, attn_processor in self.attn_processors.items():
             if "Added" in str(attn_processor.__class__.__name__):
@@ -301,6 +310,11 @@ class AttentionModuleMixin:
     def fuse_projections(self, inplace: bool = False):
         """
         Fuse the query, key, and value projections into a single projection for efficiency.
+
+        Args:
+            inplace (`bool`, defaults to `False`):
+                Whether to drop the individual projections once they have been fused, rather than keeping both copies
+                of the weights. `unfuse_projections` restores them as views into the fused weight.
         """
         # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections in Flux2
         # single stream blocks are always fused)
