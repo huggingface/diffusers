@@ -61,13 +61,12 @@ class TestModelUtils:
                 kwargs["subfolder"] = subfolder
             return UNet2DConditionModel.from_pretrained(path, **kwargs)
 
+        # Download outside of `pytest.warns` so that a Hub hiccup surfaces as the network error it is,
+        # instead of a misleading "DID NOT WARN".
+        path = snapshot_download(repo_id=repo_id) if use_local else repo_id
+
         with pytest.warns(FutureWarning) as warning:
-            if use_local:
-                with tempfile.TemporaryDirectory() as tmpdirname:
-                    tmpdirname = snapshot_download(repo_id=repo_id)
-                    _ = load_model(tmpdirname)
-            else:
-                _ = load_model(repo_id)
+            _ = load_model(path)
 
         warning_messages = " ".join(str(w.message) for w in warning)
         assert "This serialization format is now deprecated to standardize the serialization" in warning_messages
