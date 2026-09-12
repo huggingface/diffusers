@@ -158,7 +158,13 @@ class AttentionTesterMixin:
         Use `pytest -m "not attention"` to skip these tests
     """
 
-    _FUSED_PROJECTION_NAMES = ("to_qkv", "to_kv", "to_added_qkv", "to_added_kv")
+    # Each fused projection and the split projections it replaces.
+    _FUSED_TO_SPLIT_PROJECTIONS = {
+        "to_qkv": ("to_q", "to_k", "to_v"),
+        "to_kv": ("to_k", "to_v"),
+        "to_added_qkv": ("add_q_proj", "add_k_proj", "add_v_proj"),
+        "to_added_kv": ("add_k_proj", "add_v_proj"),
+    }
 
     def setup_method(self):
         gc.collect()
@@ -200,6 +206,26 @@ class AttentionTesterMixin:
         if not has_fused_projections:
             return
 
+        # In-place fusion removes the projections it folded away; a split fusion leaves them alone. Either way
+        # unfusing has to bring the whole set back.
+        expected_split_projections = {}
+        for name, module in model.named_modules():
+            if not isinstance(module, AttentionModuleMixin):
+                continue
+            for fused_name, split_names in self._FUSED_TO_SPLIT_PROJECTIONS.items():
+                if not hasattr(module, fused_name):
+                    continue
+                expected_split_projections.setdefault(name, set()).update(split_names)
+                for split_name in split_names:
+                    if inplace:
+                        assert not hasattr(module, split_name), (
+                            f"{name}.{split_name} should be removed by in-place fusion into {fused_name}"
+                        )
+                    else:
+                        assert hasattr(module, split_name), (
+                            f"{name}.{split_name} should be kept by a non-in-place fusion into {fused_name}"
+                        )
+
         output_after_fusion = model(**inputs_dict, return_dict=False)[0]
 
         assert_tensors_close(
@@ -212,11 +238,16 @@ class AttentionTesterMixin:
 
         model.unfuse_qkv_projections()
 
-        for module in model.modules():
-            if isinstance(module, AttentionModuleMixin):
-                for name in self._FUSED_PROJECTION_NAMES:
-                    assert not hasattr(module, name), f"{name} should be removed after unfusing"
-                assert not module.fused_projections, "fused_projections flag should be False"
+        for name, module in model.named_modules():
+            if not isinstance(module, AttentionModuleMixin):
+                continue
+            for fused_name in self._FUSED_TO_SPLIT_PROJECTIONS:
+                assert not hasattr(module, fused_name), f"{fused_name} should be removed after unfusing"
+            for split_name in expected_split_projections.get(name, ()):
+                assert getattr(module, split_name, None) is not None, (
+                    f"{name}.{split_name} should be restored after unfusing"
+                )
+            assert not module.fused_projections, "fused_projections flag should be False"
 
         # In-place fusion rebuilds the split projections on the meta device and repoints every parameter at a view
         # into the fused weight; one that was missed would be left on meta and break the model.
@@ -239,12 +270,8 @@ class AttentionTesterMixin:
     def test_fuse_unfuse_qkv_projections_inplace(self, atol=1e-3, rtol=0):
         self._check_fuse_unfuse_round_trip(inplace=True, atol=atol, rtol=rtol)
 
-    @require_peft_backend
-    def test_fuse_qkv_projections_rejects_unmerged_lora(self):
-        """
-        Fusing concatenates the base projection weights, so an adapter that has not been merged into them would be
-        silently dropped. Once `fuse_lora` has merged it, the base weights are faithful again and fusing is allowed.
-        """
+    def _build_guardable_model(self):
+        """A model whose `fuse_qkv_projections` is the guarded one from `AttentionMixin` and can take an adapter."""
         model = self._build_model()
 
         if not hasattr(model, "fuse_qkv_projections"):
@@ -256,6 +283,15 @@ class AttentionTesterMixin:
                 "Model defines its own `fuse_qkv_projections` over the legacy `Attention` class, which carries no "
                 "LoRA guard: fusing there still drops an unmerged adapter silently."
             )
+        return model
+
+    @require_peft_backend
+    def test_fuse_qkv_projections_rejects_unmerged_lora(self):
+        """
+        Fusing concatenates the base projection weights, so an adapter that has not been merged into them would be
+        silently dropped. Once `fuse_lora` has merged it, the base weights are faithful again and fusing is allowed.
+        """
+        model = self._build_guardable_model()
 
         model.add_adapter(LoraConfig(r=4, target_modules=["to_q", "to_k", "to_v"], init_lora_weights=False))
 
@@ -285,6 +321,38 @@ class AttentionTesterMixin:
         # Merged into the base weights by fuse_lora: likewise allowed.
         model.fuse_lora()
         model.fuse_qkv_projections()
+
+    @require_peft_backend
+    def test_unfuse_qkv_projections_rejects_unmerged_lora(self):
+        """Unfusing splits the fused weights back apart, so an adapter attached to them would be dropped too."""
+        model = self._build_guardable_model()
+
+        model.fuse_qkv_projections()
+
+        fused_names = sorted(
+            {
+                fused_name
+                for module in model.modules()
+                if isinstance(module, AttentionModuleMixin)
+                for fused_name in self._FUSED_TO_SPLIT_PROJECTIONS
+                if hasattr(module, fused_name)
+            }
+        )
+        if not fused_names:
+            pytest.skip("Model has no fused projections for an adapter to attach to.")
+
+        model.add_adapter(LoraConfig(r=4, target_modules=fused_names, init_lora_weights=False))
+
+        with pytest.raises(ValueError, match="unmerged LoRA adapter"):
+            model.unfuse_qkv_projections()
+        assert all(
+            getattr(module, "fused_projections", False)
+            for module in model.modules()
+            if isinstance(module, AttentionModuleMixin) and any(hasattr(module, n) for n in fused_names)
+        ), "a refused unfusing must leave the model fused"
+
+        model.fuse_lora()
+        model.unfuse_qkv_projections()
 
     def test_get_set_processor(self):
         init_dict = self.get_init_dict()

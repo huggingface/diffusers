@@ -191,6 +191,12 @@ class TestLTX2TransformerAttention(LTX2TransformerTesterConfig, AttentionTesterM
     def test_fuse_qkv_projections_rejects_unmerged_lora(self):
         pass
 
+    @pytest.mark.skip(
+        "LTX2Attention does not set is_cross_attention, so fuse_projections cannot fuse this model at all."
+    )
+    def test_unfuse_qkv_projections_rejects_unmerged_lora(self):
+        pass
+
 
 class TestLTX2TransformerCompile(LTX2TransformerTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for LTX2 Video Transformer."""
