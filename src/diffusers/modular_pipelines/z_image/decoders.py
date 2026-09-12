@@ -24,6 +24,7 @@ from ...models import AutoencoderKL
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import ZImageModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -79,7 +80,10 @@ class ZImageVaeDecoderStep(ModularPipelineBlocks):
         vae_dtype = components.vae.dtype
 
         latents = block_state.latents.to(vae_dtype)
-        latents = latents / components.vae.config.scaling_factor + components.vae.config.shift_factor
+        latents = (
+            latents / components.vae.config.scaling_factor
+            + components.vae.config.shift_factor
+        )
 
         block_state.images = components.vae.decode(latents, return_dict=False)[0]
         block_state.images = components.image_processor.postprocess(
@@ -88,4 +92,56 @@ class ZImageVaeDecoderStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
 
+        return components, state
+
+
+class ZImageInpaintOverlayMaskStep(ModularPipelineBlocks):
+    model_name = "z-image"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 8 * 2}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def description(self) -> str:
+        return "Overlays a cropped inpaint result onto the original image."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("images", required=True),
+            InputParam("image", required=True, type_hint=PIL.Image.Image),
+            InputParam("mask_image", required=True, type_hint=PIL.Image.Image),
+            InputParam.template("padding_mask_crop"),
+            InputParam("crops_coords", type_hint=tuple[int, int, int, int] | None),
+            InputParam("output_type", default="pil", type_hint=str),
+        ]
+
+    @torch.no_grad()
+    def __call__(
+        self, components: ZImageModularPipeline, state: PipelineState
+    ) -> PipelineState:
+        block_state = self.get_block_state(state)
+        if block_state.padding_mask_crop is not None:
+            if block_state.output_type != "pil":
+                raise ValueError(
+                    "`output_type` must be 'pil' when `padding_mask_crop` is provided."
+                )
+            block_state.images = [
+                components.image_processor.apply_overlay(
+                    block_state.mask_image,
+                    block_state.image,
+                    image,
+                    block_state.crops_coords,
+                )
+                for image in block_state.images
+            ]
+        self.set_block_state(state, block_state)
         return components, state
