@@ -39,8 +39,9 @@ class LTX25DecoderStep(SequentialPipelineBlocks):
     returns latents).
 
       Components:
-          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) audio_vae
-          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) diffusion_decoder_scheduler
+          (`FlowMatchEulerDiscreteScheduler`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
+          vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -57,6 +58,9 @@ class LTX25DecoderStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
+          decode_num_inference_steps (`int`, *optional*):
+              Number of denoising steps the diffusion decoder takes. Separate from `num_inference_steps`, which belongs
+              to the transformer's loop. Defaults to what the decoder was distilled for.
           audio_latents (`Tensor`):
               Denoised audio latents.
           audio_num_frames (`int`):
@@ -95,8 +99,9 @@ class LTX25ConditionDecoderStep(SequentialPipelineBlocks):
     latents with the diffusion decoder and vocodes the audio latents (or returns latents).
 
       Components:
-          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) audio_vae
-          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) diffusion_decoder_scheduler
+          (`FlowMatchEulerDiscreteScheduler`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
+          vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -115,6 +120,9 @@ class LTX25ConditionDecoderStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
+          decode_num_inference_steps (`int`, *optional*):
+              Number of denoising steps the diffusion decoder takes. Separate from `num_inference_steps`, which belongs
+              to the transformer's loop. Defaults to what the decoder was distilled for.
           audio_latents (`Tensor`):
               Denoised audio latents.
           audio_num_frames (`int`):
@@ -156,8 +164,9 @@ class LTX25AutoDecoderStep(AutoPipelineBlocks):
        - `LTX25DecoderStep` otherwise (text-to-video, image-to-video).
 
       Components:
-          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) audio_vae
-          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) diffusion_decoder_scheduler
+          (`FlowMatchEulerDiscreteScheduler`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
+          vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -176,6 +185,9 @@ class LTX25AutoDecoderStep(AutoPipelineBlocks):
               Torch generator for deterministic generation.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
+          decode_num_inference_steps (`int`, *optional*):
+              Number of denoising steps the diffusion decoder takes. Separate from `num_inference_steps`, which belongs
+              to the transformer's loop. Defaults to what the decoder was distilled for.
           audio_latents (`Tensor`):
               Denoised audio latents.
           audio_num_frames (`int`):
@@ -230,7 +242,8 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
           (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
           (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) transformer (`LTX2VideoTransformer3DModel`)
           scheduler (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`)
-          audio_guider (`LTX2Guidance`) diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) vocoder (`LTX2Vocoder`)
+          audio_guider (`LTX2Guidance`) diffusion_decoder (`LTX2VideoDiffusionDecoderModel`)
+          diffusion_decoder_scheduler (`FlowMatchEulerDiscreteScheduler`) vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -332,6 +345,9 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
               VAE-encoded reference-image latents used for image-to-video conditioning.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
+          decode_num_inference_steps (`int`, *optional*):
+              Number of denoising steps the diffusion decoder takes. Separate from `num_inference_steps`, which belongs
+              to the transformer's loop. Defaults to what the decoder was distilled for.
 
       Outputs:
           videos (`list`):
