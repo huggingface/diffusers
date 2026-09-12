@@ -188,7 +188,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         self.prompt_template = "\n".join(
             [
-                "<|im_start|>system\nYou are a promt engineer. Describe the video in detail.",
+                "<|im_start|>system\nYou are a prompt engineer. Describe the video in detail.",
                 "Describe how the camera moves or shakes, describe the zoom and view angle, whether it follows the objects.",
                 "Describe the location of the video, main characters or objects and their action.",
                 "Describe the dynamism of the video and presented actions.",
@@ -326,7 +326,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Args:
             prompt (str | list[str]): Input prompt or list of prompts
             device (torch.device): Device to run encoding on
-            num_videos_per_prompt (int): Number of videos to generate per prompt
             max_sequence_length (int): Maximum sequence length for tokenization
             dtype (torch.dtype): Data type for embeddings
 
@@ -395,7 +394,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Args:
             prompt (str | list[str]): Input prompt or list of prompts
             device (torch.device): Device to run encoding on
-            num_videos_per_prompt (int): Number of videos to generate per prompt
             dtype (torch.dtype): Data type for embeddings
 
         Returns:
