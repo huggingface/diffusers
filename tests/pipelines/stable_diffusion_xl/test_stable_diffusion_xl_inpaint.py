@@ -692,6 +692,25 @@ class TestStableDiffusionXLInpaintPipeline(StableDiffusionXLInpaintPipelineTeste
         image_slice2 = images[1, -1, -3:, -3:]
         assert (image_slice1 - image_slice2).abs().max() > 1e-2
 
+    def test_latent_output_runs_cleanup_and_honors_return_dict(self):
+        # Regression: `output_type="latent"` returned `StableDiffusionXLPipelineOutput(images=latents)`
+        # immediately, which skipped `maybe_free_model_hooks()` and ignored `return_dict=False`.
+        sd_pipe = self.get_pipeline()
+
+        called = {"cleanup": False}
+        sd_pipe.maybe_free_model_hooks = lambda: called.__setitem__("cleanup", True)
+
+        inputs = self.get_dummy_inputs()
+        inputs["output_type"] = "latent"
+        inputs["return_dict"] = False
+        output = sd_pipe(**inputs)
+
+        assert called["cleanup"], "`maybe_free_model_hooks()` should still run for latent output."
+        assert isinstance(output, tuple), "`return_dict=False` should return a tuple."
+        assert torch.is_tensor(output[0])
+        # Raw latents keep the VAE latent channel count; postprocess would have produced 3 channels.
+        assert output[0].shape[1] == sd_pipe.unet.config.in_channels
+
     def test_pipeline_interrupt(self):
         sd_pipe = self.get_pipeline().to(torch_device)
 

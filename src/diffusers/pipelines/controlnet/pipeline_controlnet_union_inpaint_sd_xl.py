@@ -1878,16 +1878,19 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         else:
-            return StableDiffusionXLPipelineOutput(images=latents)
+            image = latents
 
-        # apply watermark if available
-        if self.watermark is not None:
-            image = self.watermark.apply_watermark(image)
+        if not output_type == "latent":
+            # apply watermark if available
+            if self.watermark is not None:
+                image = self.watermark.apply_watermark(image)
 
-        image = self.image_processor.postprocess(image, output_type=output_type)
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
-        if padding_mask_crop is not None:
-            image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
+            if padding_mask_crop is not None:
+                image = [
+                    self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image
+                ]
 
         # Offload all models
         self.maybe_free_model_hooks()
