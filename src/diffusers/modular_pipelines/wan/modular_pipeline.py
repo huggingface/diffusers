@@ -119,6 +119,16 @@ class WanImage2VideoModularPipeline(WanModularPipeline):
     default_blocks_name = "WanImage2VideoAutoBlocks"
 
 
+class WanVideoToVideoModularPipeline(WanModularPipeline):
+    """
+    A ModularPipeline for Wan video-to-video.
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "WanVideoToVideoBlocks"
+
+
 class Wan22ModularPipeline(WanModularPipeline):
     """
     A ModularPipeline for Wan2.2 text2video.
