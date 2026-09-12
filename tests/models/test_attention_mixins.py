@@ -114,26 +114,26 @@ class TestAttentionModuleMixin:
         w = self_attn.to_qkv.weight.clone()
         self_attn.fuse_projections()
         assert torch.equal(self_attn.to_qkv.weight, w)
-        assert self_attn.fused_projections is True
+        assert self_attn.fused_projections
 
     def test_fuse_inplace_is_idempotent(self, self_attn):
         self_attn.fuse_projections(inplace=True)
         w = self_attn.to_qkv.weight.clone()
         self_attn.fuse_projections(inplace=True)
         assert torch.equal(self_attn.to_qkv.weight, w)
-        assert self_attn.fused_projections is True
+        assert self_attn.fused_projections
 
     def test_unfuse_before_fuse_is_noop(self, self_attn):
         assert not hasattr(self_attn, "to_qkv")
         self_attn.unfuse_projections()
         assert not hasattr(self_attn, "to_qkv")
-        assert self_attn.fused_projections is False
+        assert not self_attn.fused_projections
 
     def test_unfuse_is_idempotent(self, self_attn):
         self_attn.fuse_projections()
         self_attn.unfuse_projections()
         self_attn.unfuse_projections()
-        assert self_attn.fused_projections is False
+        assert not self_attn.fused_projections
 
     # -------------------------------------------------------------------------
     # Module attribute invariants — non-inplace
@@ -142,7 +142,7 @@ class TestAttentionModuleMixin:
     def test_noninplace_fuse_creates_to_qkv(self, self_attn):
         self_attn.fuse_projections(inplace=False)
         assert hasattr(self_attn, "to_qkv")
-        assert self_attn.fused_projections is True
+        assert self_attn.fused_projections
 
     def test_noninplace_fuse_preserves_split_projections(self, self_attn):
         self_attn.fuse_projections(inplace=False)
@@ -160,7 +160,7 @@ class TestAttentionModuleMixin:
         self_attn.fuse_projections(inplace=False)
         self_attn.unfuse_projections()
         assert not hasattr(self_attn, "to_qkv")
-        assert self_attn.fused_projections is False
+        assert not self_attn.fused_projections
         assert hasattr(self_attn, "to_q") and hasattr(self_attn, "to_k") and hasattr(self_attn, "to_v")
 
     # -------------------------------------------------------------------------
@@ -170,7 +170,7 @@ class TestAttentionModuleMixin:
     def test_inplace_fuse_creates_to_qkv(self, self_attn):
         self_attn.fuse_projections(inplace=True)
         assert hasattr(self_attn, "to_qkv")
-        assert self_attn.fused_projections is True
+        assert self_attn.fused_projections
 
     def test_inplace_fuse_removes_split_projections(self, self_attn):
         self_attn.fuse_projections(inplace=True)
@@ -190,7 +190,7 @@ class TestAttentionModuleMixin:
         self_attn.unfuse_projections()
         assert hasattr(self_attn, "to_q") and hasattr(self_attn, "to_k") and hasattr(self_attn, "to_v")
         assert not hasattr(self_attn, "to_qkv")
-        assert self_attn.fused_projections is False
+        assert not self_attn.fused_projections
 
     def test_inplace_unfuse_cleans_up_split_dims(self, self_attn):
         self_attn.fuse_projections(inplace=True)
@@ -318,7 +318,7 @@ class TestAttentionModuleMixin:
         cross_attn.fuse_projections()
         assert hasattr(cross_attn, "to_kv")
         assert not hasattr(cross_attn, "to_qkv")
-        assert cross_attn.fused_projections is True
+        assert cross_attn.fused_projections
 
     def test_cross_attn_fuse_preserves_to_q(self, cross_attn):
         cross_attn.fuse_projections()
@@ -366,7 +366,7 @@ class TestAttentionModuleMixin:
         added_kv_attn.fuse_projections()
         assert hasattr(added_kv_attn, "to_added_kv")
         assert not hasattr(added_kv_attn, "to_added_qkv")
-        assert added_kv_attn.fused_projections is True
+        assert added_kv_attn.fused_projections
 
     def test_added_kv_fuse_also_fuses_main_projections(self, added_kv_attn):
         added_kv_attn.fuse_projections()
@@ -418,7 +418,7 @@ class TestAttentionModuleMixin:
         added_qkv_attn.fuse_projections()
         assert hasattr(added_qkv_attn, "to_added_qkv")
         assert not hasattr(added_qkv_attn, "to_added_kv")
-        assert added_qkv_attn.fused_projections is True
+        assert added_qkv_attn.fused_projections
 
     def test_added_qkv_inplace_fuse_removes_add_projections(self, added_qkv_attn):
         added_qkv_attn.fuse_projections(inplace=True)
@@ -596,15 +596,15 @@ class TestAttentionMixin:
 
     def test_fuse_qkv_projections_fuses_all_eligible(self, model):
         model.fuse_qkv_projections()
-        assert model.block1.fused_projections is True
-        assert model.block2.fused_projections is True
+        assert model.block1.fused_projections
+        assert model.block2.fused_projections
         assert hasattr(model.block1, "to_qkv")
         assert hasattr(model.block2, "to_kv")
 
     def test_unfuse_qkv_projections_unfuses_all(self, model):
         model.fuse_qkv_projections()
         model.unfuse_qkv_projections()
-        assert model.block1.fused_projections is False
-        assert model.block2.fused_projections is False
+        assert not model.block1.fused_projections
+        assert not model.block2.fused_projections
         assert not hasattr(model.block1, "to_qkv")
         assert not hasattr(model.block2, "to_kv")
