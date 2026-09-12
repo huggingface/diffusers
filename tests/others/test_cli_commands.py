@@ -49,6 +49,7 @@ from diffusers.commands.schema import SchemaCommand, _parse_docstring_args
 from diffusers.utils.testing_utils import (
     require_accelerator,
     require_kernels_version_greater_or_equal,
+    require_torch_accelerator,
     require_torch_gpu,
 )
 
@@ -201,7 +202,7 @@ class TestRunCommand:
             ]
         )
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_group_offload_arg(self):
         from diffusers.hooks.group_offloading import _is_group_offload_enabled
 
