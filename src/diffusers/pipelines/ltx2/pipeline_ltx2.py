@@ -897,7 +897,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
 
     @property
     def do_classifier_free_guidance(self):
-        return (self._guidance_scale > 1.0) or (self._audio_guidance_scale > 1.0)
+        return (self._guidance_scale > 1.0) and (self._audio_guidance_scale > 1.0)
 
     @property
     def do_spatio_temporal_guidance(self):
@@ -939,12 +939,12 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         sigmas: list[float] | None = None,
         timesteps: list[int] = None,
         guidance_scale: float = 3.0,
-        stg_scale: float = 1.0,
-        modality_scale: float = 3.0,
+        stg_scale: float = 0.0,
+        modality_scale: float = 1.0,
         guidance_rescale: float = 0.7,
         audio_guidance_scale: float | None = 7.0,
-        audio_stg_scale: float | None = 1.0,
-        audio_modality_scale: float | None = 3.0,
+        audio_stg_scale: float | None = 0.0,
+        audio_modality_scale: float | None = None,
         audio_guidance_rescale: float | None = 0.7,
         spatio_temporal_guidance_blocks: list[int] | None = [28],
         noise_scale: float = 0.0,
