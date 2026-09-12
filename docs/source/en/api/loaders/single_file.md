@@ -48,7 +48,7 @@ The [`~loaders.FromSingleFileMixin.from_single_file`] method allows you to load:
 
 - [`UNet2DConditionModel`]
 - [`StableCascadeUNet`]
-- [`AutoencoderKL`]
+- [`absent`]
 - [`ControlNetModel`]
 - [`SD3Transformer2DModel`]
 - [`FluxTransformer2DModel`]
