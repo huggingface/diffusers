@@ -569,7 +569,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
         if segment_height != height or segment_width != width:
-            print(
+            logger.warning(
                 f"Interpolating prev segment cond video from ({segment_width}, {segment_height}) to ({width}, {height})"
             )
             # Perform a 4D (spatial) rather than a 5D (spatiotemporal) reshape, following the original code
