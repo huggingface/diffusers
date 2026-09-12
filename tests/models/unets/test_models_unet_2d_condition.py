@@ -23,7 +23,6 @@ from collections import OrderedDict
 import torch
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
-from pytest import mark
 
 from diffusers import UNet2DConditionModel
 from diffusers.models.attention_processor import (
@@ -496,16 +495,11 @@ class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTes
         assert output.shape == expected_shape, "Input and output shapes do not match"
 
     # see diffusers.models.attention_processor::Attention#prepare_attention_mask
-    # note: we may not need to fix mask padding to work for stable-diffusion cross-attn masks.
-    # since the use-case (somebody passes in a too-short cross-attn mask) is pretty small,
-    # maybe it's fine that this only works for the unclip use-case.
-    @mark.skip(
-        reason="we currently pad mask by target_length tokens (what unclip needs), whereas stable-diffusion's cross-attn needs to instead pad by remaining_length."
-    )
     def test_model_xattn_padding(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
 
+        init_dict["block_out_channels"] = (16, 32)
         model = self.model_class(**{**init_dict, "attention_head_dim": (8, 16)})
         model.to(torch_device)
         model.eval()
