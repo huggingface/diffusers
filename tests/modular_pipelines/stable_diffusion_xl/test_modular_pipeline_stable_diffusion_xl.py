@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import random
+from types import SimpleNamespace
 from typing import Any, Dict
 
 import numpy as np
@@ -22,6 +23,7 @@ from PIL import Image
 
 from diffusers import ClassifierFreeGuidance, StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
 from diffusers.loaders import ModularIPAdapterMixin
+from diffusers.modular_pipelines.stable_diffusion_xl.encoders import StableDiffusionXLInpaintVaeEncoderStep
 
 from ...models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
 from ...testing_utils import enable_full_determinism, floats_tensor, is_ip_adapter, torch_device
@@ -667,3 +669,41 @@ class SDXLInpaintingModularPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+
+class TestSDXLInpaintVaeEncoderStep:
+    """`StableDiffusionXLInpaintVaeEncoderStep._encode_vae_image` with a shifted/scaled VAE config.
+
+    Driven directly with a stand-in VAE: the branch under test only runs for a VAE config that
+    defines `latents_mean` and `latents_std`, which the SDXL VAE used elsewhere in this file
+    does not.
+    """
+
+    @staticmethod
+    def _components():
+        class StandInVAE:
+            config = SimpleNamespace(
+                force_upcast=False,
+                latents_mean=[0.0, 0.0, 0.0, 0.0],
+                latents_std=[1.0, 1.0, 1.0, 1.0],
+                scaling_factor=0.18215,
+            )
+
+            def encode(self, image):
+                return SimpleNamespace(latents=torch.ones(image.shape[0], 4, 2, 2, dtype=image.dtype))
+
+        return SimpleNamespace(vae=StandInVAE())
+
+    def test_encode_vae_image_with_latents_mean_and_std(self):
+        # Regression: this branch read `self.vae`, but `self` is the block, not the components
+        # object, so any VAE config carrying `latents_mean`/`latents_std` raised
+        # `AttributeError: 'StableDiffusionXLInpaintVaeEncoderStep' object has no attribute 'vae'`.
+        components = self._components()
+
+        image_latents = StableDiffusionXLInpaintVaeEncoderStep()._encode_vae_image(
+            components, torch.zeros(1, 3, 16, 16), generator=None
+        )
+
+        assert image_latents.shape == (1, 4, 2, 2)
+        # latents_mean=0 and latents_std=1 reduce the branch to a plain scaling_factor multiply.
+        assert torch.allclose(image_latents, torch.full_like(image_latents, components.vae.config.scaling_factor))

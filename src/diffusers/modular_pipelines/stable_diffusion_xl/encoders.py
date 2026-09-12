@@ -769,7 +769,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(ModularPipelineBlocks):
         if latents_mean is not None and latents_std is not None:
             latents_mean = latents_mean.to(device=image_latents.device, dtype=dtype)
             latents_std = latents_std.to(device=image_latents.device, dtype=dtype)
-            image_latents = (image_latents - latents_mean) * self.vae.config.scaling_factor / latents_std
+            image_latents = (image_latents - latents_mean) * components.vae.config.scaling_factor / latents_std
         else:
             image_latents = components.vae.config.scaling_factor * image_latents
 
