@@ -151,8 +151,8 @@ user also explicitly asked for a local target via `--output`.
 ## Remote execution (`--remote`)
 
 Add `--remote` to run the same call inside a [Hugging Face Sandbox](https://huggingface.co/docs/huggingface_hub/en/guides/sandbox)
-— an isolated cloud VM (built on HF Jobs) the CLI drives over HTTP: it uploads inputs, installs deps, runs
-the pipeline, downloads outputs, then terminates the sandbox.
+— an isolated cloud VM (built on HF Jobs) the CLI drives over HTTP: it uploads inputs, runs the pipeline,
+downloads outputs, then terminates the sandbox.
 
 ```bash
 diffusers-cli run \
@@ -167,12 +167,14 @@ What happens:
 
 1. Your HF token is picked up (from `--token` or your login) and forwarded into the sandbox as `HF_TOKEN`.
 2. `--pipeline-kwargs` are parsed locally so JSON errors fail fast (no wasted sandbox time).
-3. A dedicated sandbox is created on `--flavor` from a pytorch image
-   (`pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime` by default) that already has torch + CUDA. Any local
-   file paths in `--pipeline-kwargs` are uploaded into the sandbox under `/tmp/diffusers-cli/inputs/<run_id>/`
-   via native file transfer (no bucket), and the JSON paths are rewritten to point at them.
-4. The small Python deps (`diffusers`, `accelerate`, `transformers`, `safetensors`, `sentencepiece`, `ftfy`)
-   are installed with `uv pip install --system`. Output (install + run) streams live to your terminal.
+3. A dedicated sandbox is created on `--flavor` from `diffusers/diffusers-cli-cuda:latest` by default — a
+   prebuilt image (`docker/diffusers-cli-cuda/` in this repo, rebuilt nightly) that already ships torch,
+   CUDA, `diffusers`, and the rest of the CLI's deps. Any local file paths in `--pipeline-kwargs` are
+   uploaded into the sandbox under `/tmp/diffusers-cli/inputs/<run_id>/` via native file transfer (no
+   bucket), and the JSON paths are rewritten to point at them.
+4. No dependency install runs on the default image — that step is skipped unless you passed `--dependencies`
+   (only the extras are installed then) or pointed `--image` somewhere else (the full set is installed).
+   Output streams live to your terminal.
 5. The sandbox CLI writes outputs to `/tmp/diffusers-cli/outputs/`; the CLI downloads every artifact back into
    the local target (see [`--push-to`](#-push-to) for when the download is skipped).
 6. The sandbox is terminated (unless `--keep-alive`/`--sandbox-id`), and the wallclock `run_seconds` for the
@@ -182,12 +184,13 @@ Flags:
 
 - `--flavor <name>` — sandbox hardware (e.g. `a10g-small`, `a100-large`, `4xa100-large`).
 - `--timeout <duration>` — max wallclock for the run command inside the sandbox (e.g. `30m`, `2h`). Defaults to `10m`.
-- `--dependencies <pkg>` — extra pip deps (repeatable). Appends to the defaults.
+- `--dependencies <pkg>` — extra pip deps (repeatable), installed on top of whatever the image ships.
 - `--namespace <name>` — create the sandbox under a different account.
 - `--push-to <bucket>` — see [`--push-to`](#-push-to) above. The upload runs inside the sandbox; an explicit
   value with no `--output` makes the bucket the sole destination and skips the local download.
-- `--image <ref>` — override the sandbox image. Must ship torch + CUDA; the CLI installs the small Python
-  deps on top via `uv pip install --system`. Useful for pinning a specific torch or bundling extra system libs.
+- `--image <ref>` — override the sandbox image. Must ship torch + CUDA; the CLI then installs the small
+  Python deps on top via `uv pip install --system` on every cold sandbox, which the default image avoids.
+  Useful for pinning a specific torch or bundling extra system libs.
 - `--volume <bucket-id>[:<mount-path>]` — mount an HF storage bucket into the sandbox as a read-write directory.
   Repeatable. Default mount is `/mnt/buckets/<bucket-id>`. Reference mounted files from `--pipeline-kwargs`
   like any other local path — no upload happens, the container reads straight from the FUSE mount. Applied
