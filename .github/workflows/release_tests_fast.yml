@@ -205,7 +205,6 @@ jobs:
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             --make-reports=tests_torch_minimum_cuda \
             tests/models/test_modeling_common.py \
-            tests/pipelines/test_pipelines_common.py \
             tests/pipelines/test_pipeline_utils.py \
             tests/pipelines/test_pipelines.py \
             tests/pipelines/test_pipelines_auto.py \

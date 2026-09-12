@@ -64,7 +64,7 @@ enable_full_determinism()
 
 
 # TODO: This standalone function maintains backward compatibility with pipeline tests
-# (tests/pipelines/test_pipelines_common.py) and will be refactored.
+# (tests/pipelines/testing_utils/ip_adapter.py) and will be refactored.
 def create_flux_ip_adapter_state_dict(model) -> dict[str, dict[str, Any]]:
     """Create a dummy IP Adapter state dict for Flux transformer testing."""
     ip_cross_attn_state_dict = {}
