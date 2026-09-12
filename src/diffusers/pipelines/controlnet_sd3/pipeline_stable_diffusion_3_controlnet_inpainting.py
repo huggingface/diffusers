@@ -1269,8 +1269,6 @@ class StableDiffusion3ControlNetInpaintingPipeline(
 
         if controlnet_pooled_projections is None:
             controlnet_pooled_projections = torch.zeros_like(pooled_prompt_embeds)
-        else:
-            controlnet_pooled_projections = controlnet_pooled_projections or pooled_prompt_embeds
 
         # 4. Prepare timesteps
         if XLA_AVAILABLE:

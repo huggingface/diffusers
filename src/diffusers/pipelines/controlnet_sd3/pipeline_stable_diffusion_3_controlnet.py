@@ -1137,8 +1137,8 @@ class StableDiffusion3ControlNetPipeline(
         if controlnet_config.force_zeros_for_pooled_projection:
             # instantx sd3 controlnet used zero pooled projection
             controlnet_pooled_projections = torch.zeros_like(pooled_prompt_embeds)
-        else:
-            controlnet_pooled_projections = controlnet_pooled_projections or pooled_prompt_embeds
+        elif controlnet_pooled_projections is None:
+            controlnet_pooled_projections = pooled_prompt_embeds
 
         if controlnet_config.joint_attention_dim is not None:
             controlnet_encoder_hidden_states = prompt_embeds
