@@ -116,7 +116,7 @@ pipe.transformer.enable_cache(config)
 
 [MagCache](https://github.com/Zehong-Ma/MagCache) accelerates inference by skipping transformer blocks based on the magnitude of the residual update. It observes that the magnitude of updates (Output - Input) decays predictably over the diffusion process. By accumulating an "error budget" based on pre-computed magnitude ratios, it dynamically decides when to skip computation and reuse the previous residual.
 
-MagCache relies on **Magnitude Ratios** (`mag_ratios`), which describe this decay curve. These ratios are specific to the model checkpoint and scheduler.
+MagCache relies on **Magnitude Ratios** (`mag_ratios`), which describe this decay curve. These ratios are specific to the model checkpoint and scheduler. The bundled `FLUX_MAG_RATIOS` were measured on FLUX.1; other models, including Flux2 and Flux2 Klein, need their own calibration run.
 
 To use MagCache, you typically follow a two-step process: **Calibration** and **Inference**.
 
