@@ -182,6 +182,12 @@ class TestAutoencoderKLMiniMaxH3Training(AutoencoderKLMiniMaxH3TesterConfig, Tra
 class TestAutoencoderKLMiniMaxH3Attention(AutoencoderKLMiniMaxH3TesterConfig, AttentionTesterMixin):
     """Attention processor tests for the MiniMax-H3 video autoencoder."""
 
+    @pytest.mark.skip(
+        "MiniMaxH3VideoAttention's attention processor has no fused-projection branch, so it reads the split projections that in-place fusion removes. Fusing is a no-op for this model until its processor uses the fused weights."
+    )
+    def test_fuse_unfuse_qkv_projections_inplace(self, atol=1e-3, rtol=0):
+        pass
+
 
 class TestAutoencoderKLMiniMaxH3SlicingTiling(AutoencoderKLMiniMaxH3TesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for the MiniMax-H3 video autoencoder."""

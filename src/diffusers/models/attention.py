@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import deprecate, logging
+from ..utils import deprecate, has_unmerged_lora, logging
 from ..utils.import_utils import is_torch_npu_available, is_torch_xla_available, is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, LinearActivation, SwiGLU
@@ -95,24 +95,66 @@ class AttentionMixin:
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    def fuse_qkv_projections(self):
+    def _raise_on_unmerged_lora(self, fused: bool, action: str) -> None:
+        """
+        Refuse to rewrite attention projection weights while an unmerged LoRA adapter is attached to them.
+
+        (Un)fusing concatenates or splits the base weights, so an adapter that has not been merged into them would be
+        silently dropped. The whole model is checked before any module is touched, so a rejected call leaves it exactly
+        as it was.
+
+        Args:
+            fused (`bool`):
+                Whether to inspect the fused projections (`to_qkv`, ...) rather than the split ones (`to_q`, ...).
+            action (`str`):
+                Verb naming the caller, used in the error message.
+        """
+        offending_projections = []
+        for module_name, module in self.named_modules():
+            if not (isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion):
+                continue
+            offending_projections.extend(
+                f"{module_name}.{projection_name}" for projection_name in module._unmerged_lora_projections(fused)
+            )
+
+        if offending_projections:
+            raise ValueError(
+                f"Cannot {action} QKV projections: {len(offending_projections)} attention projection(s) carry an "
+                f"unmerged LoRA adapter (for example {offending_projections[0]}). Call `fuse_lora()` to merge the "
+                "LoRA into the base weights first, or `unload_lora_weights()` to remove it."
+            )
+
+    def fuse_qkv_projections(self, inplace: bool = False):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
         are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        Args:
+            inplace (`bool`, defaults to `False`):
+                Whether to drop the individual projections once they have been fused. Fusing otherwise keeps both
+                copies of the weights, so the attention projections take twice the memory until they are unfused. Note
+                that this changes the model's `state_dict`: `to_q`, `to_k` and `to_v` are replaced by a single `to_qkv`
+                entry, which `from_pretrained` cannot load. Call `unfuse_qkv_projections()` before saving. Unfusing
+                rebuilds the individual projections as views into the fused weight, so restoring them costs no extra
+                memory.
         """
         for _, attn_processor in self.attn_processors.items():
             if "Added" in str(attn_processor.__class__.__name__):
                 raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
 
+        self._raise_on_unmerged_lora(fused=False, action="fuse")
+
         for module in self.modules():
             if isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion:
-                module.fuse_projections()
+                module.fuse_projections(inplace=inplace)
 
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
         > [!WARNING] > This API is 🧪 experimental.
         """
+        self._raise_on_unmerged_lora(fused=True, action="unfuse")
+
         for module in self.modules():
             if isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion:
                 module.unfuse_projections()
@@ -123,6 +165,10 @@ class AttentionModuleMixin:
     _available_processors = []
     _supports_qkv_fusion = True
     fused_projections = False
+
+    # The projections QKV fusion rewrites, before and after fusing.
+    _qkv_projection_names = ("to_q", "to_k", "to_v", "add_q_proj", "add_k_proj", "add_v_proj")
+    _fused_qkv_projection_names = ("to_qkv", "to_kv", "to_added_qkv", "to_added_kv")
 
     def set_processor(self, processor: AttentionProcessor) -> None:
         """
@@ -244,10 +290,31 @@ class AttentionModuleMixin:
 
                 self.set_attention_backend("xformers")
 
+    def _unmerged_lora_projections(self, fused: bool) -> list[str]:
+        """
+        Names of the projections that (un)fusing would rewrite and that still carry an unmerged LoRA adapter.
+
+        Args:
+            fused (`bool`):
+                Whether to inspect the fused projections (`to_qkv`, ...) rather than the split ones (`to_q`, ...).
+        """
+        names = self._fused_qkv_projection_names if fused else self._qkv_projection_names
+        unmerged = []
+        for name in names:
+            projection = getattr(self, name, None)
+            if projection is not None and has_unmerged_lora(projection):
+                unmerged.append(name)
+        return unmerged
+
     @torch.no_grad()
-    def fuse_projections(self):
+    def fuse_projections(self, inplace: bool = False):
         """
         Fuse the query, key, and value projections into a single projection for efficiency.
+
+        Args:
+            inplace (`bool`, defaults to `False`):
+                Whether to drop the individual projections once they have been fused, rather than keeping both copies
+                of the weights. `unfuse_projections` restores them as views into the fused weight.
         """
         # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections in Flux2
         # single stream blocks are always fused)
@@ -275,6 +342,16 @@ class AttentionModuleMixin:
             if hasattr(self, "use_bias") and self.use_bias:
                 concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
                 self.to_kv.bias.copy_(concatenated_bias)
+
+            if inplace:
+                # Keep the necessary K,V dims so that the individual projections can be reconstructed.
+                self._qkv_split_dims = (
+                    self.to_k.weight.shape[0],
+                    self.to_v.weight.shape[0],
+                    self.to_k.weight.shape[1],
+                )
+                delattr(self, "to_k")
+                delattr(self, "to_v")
         else:
             # Fuse self-attention projections
             concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
@@ -287,27 +364,68 @@ class AttentionModuleMixin:
                 concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
                 self.to_qkv.bias.copy_(concatenated_bias)
 
-        # Handle added projections for models like SD3, Flux, etc.
-        if (
-            getattr(self, "add_q_proj", None) is not None
-            and getattr(self, "add_k_proj", None) is not None
-            and getattr(self, "add_v_proj", None) is not None
-        ):
-            concatenated_weights = torch.cat(
-                [self.add_q_proj.weight.data, self.add_k_proj.weight.data, self.add_v_proj.weight.data]
-            )
-            in_features = concatenated_weights.shape[1]
-            out_features = concatenated_weights.shape[0]
-
-            self.to_added_qkv = nn.Linear(
-                in_features, out_features, bias=self.added_proj_bias, device=device, dtype=dtype
-            )
-            self.to_added_qkv.weight.copy_(concatenated_weights)
-            if self.added_proj_bias:
-                concatenated_bias = torch.cat(
-                    [self.add_q_proj.bias.data, self.add_k_proj.bias.data, self.add_v_proj.bias.data]
+            if inplace:
+                # Keep the necessary Q,K,V dims so that the individual projections can be reconstructed.
+                self._qkv_split_dims = (
+                    self.to_q.weight.shape[0],
+                    self.to_k.weight.shape[0],
+                    self.to_v.weight.shape[0],
+                    self.to_q.weight.shape[1],
                 )
-                self.to_added_qkv.bias.copy_(concatenated_bias)
+                delattr(self, "to_q")
+                delattr(self, "to_k")
+                delattr(self, "to_v")
+
+        # Handle added projections for models like SD3, Flux, etc.
+        if getattr(self, "add_k_proj", None) is not None and getattr(self, "add_v_proj", None) is not None:
+            if getattr(self, "add_q_proj", None) is not None:
+                # Added Self Attention (e.g. Flux)
+                concatenated_weights = torch.cat(
+                    [self.add_q_proj.weight.data, self.add_k_proj.weight.data, self.add_v_proj.weight.data]
+                )
+                in_features = concatenated_weights.shape[1]
+                out_features = concatenated_weights.shape[0]
+
+                self.to_added_qkv = nn.Linear(
+                    in_features, out_features, bias=self.added_proj_bias, device=device, dtype=dtype
+                )
+                self.to_added_qkv.weight.copy_(concatenated_weights)
+                if self.added_proj_bias:
+                    concatenated_bias = torch.cat(
+                        [self.add_q_proj.bias.data, self.add_k_proj.bias.data, self.add_v_proj.bias.data]
+                    )
+                    self.to_added_qkv.bias.copy_(concatenated_bias)
+
+                if inplace:
+                    self._added_qkv_split_dims = (
+                        self.add_q_proj.weight.shape[0],
+                        self.add_k_proj.weight.shape[0],
+                        self.add_v_proj.weight.shape[0],
+                        self.add_q_proj.weight.shape[1],
+                    )
+                    delattr(self, "add_q_proj")
+                    delattr(self, "add_k_proj")
+                    delattr(self, "add_v_proj")
+            else:
+                # Added Cross Attention (e.g. Wan)
+                concatenated_weights = torch.cat([self.add_k_proj.weight.data, self.add_v_proj.weight.data])
+                in_features = concatenated_weights.shape[1]
+                out_features = concatenated_weights.shape[0]
+
+                self.to_added_kv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
+                self.to_added_kv.weight.copy_(concatenated_weights)
+                if hasattr(self, "use_bias") and self.use_bias:
+                    concatenated_bias = torch.cat([self.add_k_proj.bias.data, self.add_v_proj.bias.data])
+                    self.to_added_kv.bias.copy_(concatenated_bias)
+
+                if inplace:
+                    self._added_qkv_split_dims = (
+                        self.add_k_proj.weight.shape[0],
+                        self.add_v_proj.weight.shape[0],
+                        self.add_k_proj.weight.shape[1],
+                    )
+                    delattr(self, "add_k_proj")
+                    delattr(self, "add_v_proj")
 
         self.fused_projections = True
 
@@ -327,15 +445,157 @@ class AttentionModuleMixin:
 
         # Remove fused projection layers
         if hasattr(self, "to_qkv"):
+            if not hasattr(self, "to_q"):
+                # QKV fused in-place, need to reconstruct the individual Q,K,V projections
+                has_bias = self.to_qkv.bias is not None
+                d_q, d_k, d_v, d_in = self._qkv_split_dims
+                with torch.device("meta"):
+                    self.to_q = nn.Linear(d_in, d_q, bias=has_bias)
+                    self.to_k = nn.Linear(d_in, d_k, bias=has_bias)
+                    self.to_v = nn.Linear(d_in, d_v, bias=has_bias)
+                # Every parameter below is replaced by a view sharing storage with the fused projection, so the
+                # layers are built on `meta` to skip materialising and initialising weights that are discarded
+                self.to_q.weight = nn.Parameter(self.to_qkv.weight[:d_q])
+                self.to_k.weight = nn.Parameter(self.to_qkv.weight[d_q : d_q + d_k])
+                self.to_v.weight = nn.Parameter(self.to_qkv.weight[d_q + d_k :])
+                if has_bias:
+                    self.to_q.bias = nn.Parameter(self.to_qkv.bias[:d_q])
+                    self.to_k.bias = nn.Parameter(self.to_qkv.bias[d_q : d_q + d_k])
+                    self.to_v.bias = nn.Parameter(self.to_qkv.bias[d_q + d_k :])
             delattr(self, "to_qkv")
 
         if hasattr(self, "to_kv"):
+            if not hasattr(self, "to_k"):
+                has_bias = self.to_kv.bias is not None
+                d_k, d_v, d_in = self._qkv_split_dims
+                with torch.device("meta"):
+                    self.to_k = nn.Linear(d_in, d_k, bias=has_bias)
+                    self.to_v = nn.Linear(d_in, d_v, bias=has_bias)
+                self.to_k.weight = nn.Parameter(self.to_kv.weight[:d_k])
+                self.to_v.weight = nn.Parameter(self.to_kv.weight[d_k:])
+                if has_bias:
+                    self.to_k.bias = nn.Parameter(self.to_kv.bias[:d_k])
+                    self.to_v.bias = nn.Parameter(self.to_kv.bias[d_k:])
             delattr(self, "to_kv")
 
         if hasattr(self, "to_added_qkv"):
+            if not hasattr(self, "add_q_proj"):
+                has_bias = self.to_added_qkv.bias is not None
+                d_q, d_k, d_v, d_in = self._added_qkv_split_dims
+                with torch.device("meta"):
+                    self.add_q_proj = nn.Linear(d_in, d_q, bias=has_bias)
+                    self.add_k_proj = nn.Linear(d_in, d_k, bias=has_bias)
+                    self.add_v_proj = nn.Linear(d_in, d_v, bias=has_bias)
+                # Every parameter below is replaced by a view sharing storage with the fused projection, so the
+                # layers are built on `meta` to skip materialising and initialising weights that are discarded
+                self.add_q_proj.weight = nn.Parameter(self.to_added_qkv.weight[:d_q])
+                self.add_k_proj.weight = nn.Parameter(self.to_added_qkv.weight[d_q : d_q + d_k])
+                self.add_v_proj.weight = nn.Parameter(self.to_added_qkv.weight[d_q + d_k :])
+                if has_bias:
+                    self.add_q_proj.bias = nn.Parameter(self.to_added_qkv.bias[:d_q])
+                    self.add_k_proj.bias = nn.Parameter(self.to_added_qkv.bias[d_q : d_q + d_k])
+                    self.add_v_proj.bias = nn.Parameter(self.to_added_qkv.bias[d_q + d_k :])
             delattr(self, "to_added_qkv")
 
+        if hasattr(self, "to_added_kv"):
+            if not hasattr(self, "add_k_proj"):
+                has_bias = self.to_added_kv.bias is not None
+                d_k, d_v, d_in = self._added_qkv_split_dims
+                with torch.device("meta"):
+                    self.add_k_proj = nn.Linear(d_in, d_k, bias=has_bias)
+                    self.add_v_proj = nn.Linear(d_in, d_v, bias=has_bias)
+                self.add_k_proj.weight = nn.Parameter(self.to_added_kv.weight[:d_k])
+                self.add_v_proj.weight = nn.Parameter(self.to_added_kv.weight[d_k:])
+                if has_bias:
+                    self.add_k_proj.bias = nn.Parameter(self.to_added_kv.bias[:d_k])
+                    self.add_v_proj.bias = nn.Parameter(self.to_added_kv.bias[d_k:])
+            delattr(self, "to_added_kv")
+
+        if hasattr(self, "_qkv_split_dims"):
+            delattr(self, "_qkv_split_dims")
+        if hasattr(self, "_added_qkv_split_dims"):
+            delattr(self, "_added_qkv_split_dims")
         self.fused_projections = False
+
+    def get_qkv(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Get the query, key, and value from the Q,K,V projections, handling both the split and fused cases.
+
+        Where K and V come from is decided by `is_cross_attention` — the same flag `fuse_projections` uses to choose
+        which projections to fuse — so the result does not depend on whether the module happens to be fused. A
+        cross-attention module therefore requires `encoder_hidden_states`, and a self-attention module takes K and V
+        from `hidden_states` and rejects it.
+        """
+        if getattr(self, "is_cross_attention", False):
+            if encoder_hidden_states is None:
+                raise ValueError(
+                    f"{self.__class__.__name__} is a cross-attention module, so `encoder_hidden_states` is required "
+                    "to compute its key and value."
+                )
+            query = self.to_q(hidden_states)
+            if self.fused_projections:
+                key, value = self.to_kv(encoder_hidden_states).chunk(2, dim=-1)
+            else:
+                key = self.to_k(encoder_hidden_states)
+                value = self.to_v(encoder_hidden_states)
+        else:
+            if encoder_hidden_states is not None:
+                raise ValueError(
+                    f"{self.__class__.__name__} is a self-attention module, so its key and value come from "
+                    "`hidden_states`. Concatenate the encoder states into `hidden_states`, or set "
+                    "`is_cross_attention` on the module."
+                )
+            if self.fused_projections:
+                query, key, value = self.to_qkv(hidden_states).chunk(3, dim=-1)
+            else:
+                query = self.to_q(hidden_states)
+                key = self.to_k(hidden_states)
+                value = self.to_v(hidden_states)
+        return query, key, value
+
+    def get_added_qkv(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Get the added query, key, and value from added Q,K,V projections (for example, second stream projections in a
+        MM-DiT-style model like Flux). Note that for models with only `add_k_proj`/`add_v_proj` such as Wan, Q comes
+        from the normal `to_q` projection.
+
+        As in `get_qkv`, which stream K and V come from is fixed by the module's projections rather than by what the
+        caller passes: with an `add_q_proj` all three come from `hidden_states`, and without one the added K and V
+        require `encoder_hidden_states`.
+        """
+        if getattr(self, "add_q_proj", None) is not None:
+            if encoder_hidden_states is not None:
+                raise ValueError(
+                    f"{self.__class__.__name__} projects its added query, key and value from a single stream, so "
+                    "pass that stream as `hidden_states` and leave `encoder_hidden_states` unset."
+                )
+            if self.fused_projections:
+                query, key, value = self.to_added_qkv(hidden_states).chunk(3, dim=-1)
+            else:
+                query = self.add_q_proj(hidden_states)
+                key = self.add_k_proj(hidden_states)
+                value = self.add_v_proj(hidden_states)
+        else:
+            if encoder_hidden_states is None:
+                raise ValueError(
+                    f"{self.__class__.__name__} has no `add_q_proj`, so `encoder_hidden_states` is required to "
+                    "compute its added key and value."
+                )
+            query = self.to_q(hidden_states)
+            if self.fused_projections:
+                key, value = self.to_added_kv(encoder_hidden_states).chunk(2, dim=-1)
+            else:
+                key = self.add_k_proj(encoder_hidden_states)
+                value = self.add_v_proj(encoder_hidden_states)
+        return query, key, value
 
     def set_attention_slice(self, slice_size: int) -> None:
         """
