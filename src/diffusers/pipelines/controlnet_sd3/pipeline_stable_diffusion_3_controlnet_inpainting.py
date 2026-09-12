@@ -103,6 +103,20 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
+def calculate_shift(
+    image_seq_len,
+    base_seq_len: int = 256,
+    max_seq_len: int = 4096,
+    base_shift: float = 0.5,
+    max_shift: float = 1.15,
+):
+    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
+    b = base_shift - m * base_seq_len
+    mu = image_seq_len * m + b
+    return mu
+
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
@@ -1020,6 +1034,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 256,
+        mu: float | None = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1135,6 +1150,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+            mu (`float`, *optional*): `mu` value used for `dynamic_shifting`.
 
         Examples:
 
@@ -1272,18 +1288,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         else:
             controlnet_pooled_projections = controlnet_pooled_projections or pooled_prompt_embeds
 
-        # 4. Prepare timesteps
-        if XLA_AVAILABLE:
-            timestep_device = "cpu"
-        else:
-            timestep_device = device
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, timestep_device, sigmas=sigmas
-        )
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-        self._num_timesteps = len(timesteps)
-
-        # 5. Prepare latent variables
+        # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -1295,6 +1300,34 @@ class StableDiffusion3ControlNetInpaintingPipeline(
             generator,
             latents,
         )
+
+        # 5. Prepare timesteps
+        scheduler_kwargs = {}
+        if self.scheduler.config.get("use_dynamic_shifting", None) and mu is None:
+            _, _, latent_height, latent_width = latents.shape
+            image_seq_len = (latent_height // self.transformer.config.patch_size) * (
+                latent_width // self.transformer.config.patch_size
+            )
+            mu = calculate_shift(
+                image_seq_len,
+                self.scheduler.config.get("base_image_seq_len", 256),
+                self.scheduler.config.get("max_image_seq_len", 4096),
+                self.scheduler.config.get("base_shift", 0.5),
+                self.scheduler.config.get("max_shift", 1.16),
+            )
+            scheduler_kwargs["mu"] = mu
+        elif mu is not None:
+            scheduler_kwargs["mu"] = mu
+
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, timestep_device, sigmas=sigmas, **scheduler_kwargs
+        )
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        self._num_timesteps = len(timesteps)
 
         # 6. Create tensor stating which controlnets to keep
         controlnet_keep = []
