@@ -9,7 +9,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  issues: read
+  issues: write
 
 jobs:
   claude-review:
@@ -156,6 +156,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
           COMMENT_USER: ${{ github.event.comment.user.login }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
         run: |
           set -euo pipefail
 
@@ -171,17 +172,18 @@ jobs:
           }
 
           # Backstop: if the step exits non-zero without already reporting
-          # (e.g. git push fails, gh pr create errors), leave a generic message
-          # so the maintainer isn't left guessing from Action logs alone.
+          # (e.g. git push fails, gh pr create / gh issue create errors),
+          # leave a generic message so the maintainer isn't left guessing
+          # from Action logs alone.
           trap 'code=$?; if [[ $code -ne 0 && $REPORTED -eq 0 ]]; then
-            gh pr comment "$PR_NUMBER" --body "❌ Failed to open follow-up PR with the Claude edits — see [workflow run]($RUN_URL)." >/dev/null 2>&1 || true;
+            gh pr comment "$PR_NUMBER" --body "❌ Failed to follow up on Claude'"'"'s edits — see [workflow run]($RUN_URL)." >/dev/null 2>&1 || true;
           fi' EXIT
 
           # Only consider edits under the allowed paths. The post-checkout hook
           # installed earlier touches CLAUDE.md / .claude/ at the repo root —
           # those are workflow artifacts, not Claude's edits, so we ignore them.
           if [[ -z "$(git status --porcelain -- .ai src/diffusers)" ]]; then
-            post_status "ℹ️ \`COMMIT THIS\` was requested, but Claude didn't edit any files under \`.ai/\` or \`src/diffusers/\`, so no follow-up PR was opened. See [workflow run]($RUN_URL)."
+            post_status "ℹ️ \`COMMIT THIS\` was requested, but Claude didn't edit any files under \`.ai/\` or \`src/diffusers/\`, so no follow-up was opened. See [workflow run]($RUN_URL)."
             exit 0
           fi
 
@@ -189,12 +191,29 @@ jobs:
           PR_BRANCH=$(echo "$PR_INFO" | jq -r '.headRefName')
           IS_FORK=$(echo "$PR_INFO" | jq -r '.isCrossRepository')
 
-          # COMMIT THIS isn't supported on fork PRs: we can't push to the
-          # fork's branch, and falling back to main almost always conflicts
-          # once the PR touches files that also moved on main. Bail early —
-          # Claude's review comment with the suggested diff still stands.
+          # COMMIT THIS can't push to a fork's branch (no write access). Open
+          # a tracking issue against this repo instead so the suggestions
+          # aren't lost — maintainers can pick it up and apply manually.
           if [[ "$IS_FORK" == "true" ]]; then
-            post_status "ℹ️ \`COMMIT THIS\` isn't supported on fork PRs. Apply Claude's suggestions manually, or open an issue to track them. See [workflow run]($RUN_URL)."
+            ISSUE_BODY_FILE=$(mktemp)
+            cat > "$ISSUE_BODY_FILE" <<EOF
+          Claude made edits in response to \`COMMIT THIS\` from @${COMMENT_USER} on fork PR #${PR_NUMBER}, but the workflow can't push to a fork's branch. Tracking the suggested follow-up here.
+
+          - Source PR: #${PR_NUMBER}
+          - Triggering comment: ${COMMENT_URL}
+          - Workflow run: ${RUN_URL}
+
+          See Claude's review comment on #${PR_NUMBER} for the suggested changes.
+          EOF
+
+            if ISSUE_URL=$(gh issue create \
+              --title "Follow up on Claude's suggestions from #${PR_NUMBER}" \
+              --body-file "$ISSUE_BODY_FILE"); then
+              post_status "ℹ️ \`COMMIT THIS\` isn't supported on fork PRs — opened tracking issue for Claude's suggestions: ${ISSUE_URL}"
+            else
+              post_status "❌ \`COMMIT THIS\` isn't supported on fork PRs, and the workflow couldn't open a tracking issue. See [workflow run]($RUN_URL)."
+              exit 1
+            fi
             exit 0
           fi
 
