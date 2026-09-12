@@ -15,6 +15,7 @@ from .autoencoder_kl_kvae_video import AutoencoderKLKVAEVideo
 from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
 from .autoencoder_kl_ltx2 import AutoencoderKLLTX2Video
 from .autoencoder_kl_ltx2_audio import AutoencoderKLLTX2Audio
+from .autoencoder_kl_magi import AutoencoderKLMagi
 from .autoencoder_kl_magvit import AutoencoderKLMagvit
 from .autoencoder_kl_minimax_h3 import AutoencoderKLMiniMaxH3
 from .autoencoder_kl_minimax_h3_audio import AutoencoderKLMiniMaxH3Audio

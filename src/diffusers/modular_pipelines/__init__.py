@@ -47,6 +47,16 @@ else:
         "WanAnimate2DistilledModularPipeline",
         "WanAnimate2ModularPipeline",
     ]
+    _import_structure["magi"] = [
+        "MagiDenoiseStep",
+        "MagiModularPipeline",
+        "MagiTextToVideoBlocks",
+        "MagiImageToVideoBlocks",
+        "MagiVideoToVideoBlocks",
+        "MagiTextEncoderStep",
+        "MagiPrepareLatentsStep",
+        "MagiVaeDecoderStep",
+    ]
     _import_structure["wan"] = [
         "WanBlocks",
         "Wan22Blocks",
@@ -192,6 +202,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .ltx2 import LTX2AutoBlocks, LTX2ModularPipeline, LTX25AutoBlocks, LTX25ModularPipeline
+        from .magi import (
+            MagiDenoiseStep,
+            MagiImageToVideoBlocks,
+            MagiModularPipeline,
+            MagiPrepareLatentsStep,
+            MagiTextEncoderStep,
+            MagiTextToVideoBlocks,
+            MagiVaeDecoderStep,
+            MagiVideoToVideoBlocks,
+        )
         from .minimax_h3 import (
             MiniMaxH3Blocks,
             MiniMaxH3ModularPipeline,
