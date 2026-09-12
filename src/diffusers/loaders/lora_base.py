@@ -344,6 +344,9 @@ def _load_lora_into_text_encoder(
 ):
     from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 
+    # Imported lazily to avoid a circular import (peft.py imports from this module).
+    from .peft import _LOW_CPU_MEM_USAGE_INJECTION_LOCK
+
     if not USE_PEFT_BACKEND:
         raise ValueError("PEFT backend is required for this method.")
 
@@ -406,12 +409,21 @@ def _load_lora_into_text_encoder(
         )
         # inject LoRA layers and load the state dict
         # in transformers we automatically check whether the adapter name is already in use or not
-        text_encoder.load_adapter(
-            adapter_name=adapter_name,
-            adapter_state_dict=state_dict,
-            peft_config=lora_config,
-            **peft_kwargs,
-        )
+        if low_cpu_mem_usage:
+            with _LOW_CPU_MEM_USAGE_INJECTION_LOCK:
+                text_encoder.load_adapter(
+                    adapter_name=adapter_name,
+                    adapter_state_dict=state_dict,
+                    peft_config=lora_config,
+                    **peft_kwargs,
+                )
+        else:
+            text_encoder.load_adapter(
+                adapter_name=adapter_name,
+                adapter_state_dict=state_dict,
+                peft_config=lora_config,
+                **peft_kwargs,
+            )
 
         # scale LoRA layers with `lora_scale`
         scale_lora_layers(text_encoder, weight=lora_scale)
