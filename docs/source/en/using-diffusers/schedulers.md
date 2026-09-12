@@ -148,7 +148,7 @@ image = pipeline(prompt, guidance_rescale=0.7).images[0]
 
 ## Timestep spacing
 
-Timestep spacing refers to the specific steps *t* to sample from from the schedule. Diffusers provides three spacing types as shown below.
+Timestep spacing refers to the specific steps *t* to sample from the schedule. Diffusers provides three spacing types as shown below.
 
 | spacing strategy | spacing calculation | example timesteps |
 |---|---|---|
