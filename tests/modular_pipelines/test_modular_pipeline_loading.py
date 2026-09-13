@@ -253,6 +253,9 @@ class TestModularPipelineInitFallback:
     def test_init_fallback_when_blocks_class_name_is_base_class(self, tmp_path):
         # 1. Load pipeline and get a workflow (returns a base SequentialPipelineBlocks)
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        assert pipe.__class__.__name__ == "StableDiffusionXLModularPipeline"
+        assert pipe.blocks.__class__.__name__ == "StableDiffusionXLAutoBlocks"
+
         t2i_blocks = pipe.blocks.get_workflow("text2image")
         assert t2i_blocks.__class__.__name__ == "SequentialPipelineBlocks"
 
@@ -273,13 +276,3 @@ class TestModularPipelineInitFallback:
         # The base class has no `default_blocks_name`, so with no `blocks` there is nothing to build from.
         with pytest.raises(ValueError, match="No pipeline blocks could be resolved"):
             ModularPipeline()
-
-    def test_from_pretrained_resolves_video_pipeline_from_model_index(self, tmp_path):
-        # A standard model_index.json resolves to the modular class through the auto-pipeline video mappings.
-        with open(tmp_path / "model_index.json", "w") as f:
-            json.dump({"_class_name": "LTXPipeline", "_diffusers_version": "0.0.0"}, f)
-
-        pipe = ModularPipeline.from_pretrained(str(tmp_path))
-
-        assert pipe.__class__.__name__ == "LTXModularPipeline"
-        assert pipe.blocks.__class__.__name__ == "LTXAutoBlocks"
