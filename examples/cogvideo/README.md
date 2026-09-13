@@ -6,7 +6,7 @@ In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-de
 
 - Previous pretrained weights are kept frozen so that model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114).
 - Rank-decomposition matrices have significantly fewer parameters than original model, which means that trained LoRA weights are easily portable.
-- LoRA attention layers allow to control to which extent the model is adapted toward new training images via a `scale` parameter.
+- LoRA attention layers allow you to control to which extent the model is adapted toward new training images via a `scale` parameter.
 
 At the moment, LoRA finetuning has only been tested for [CogVideoX-2b](https://huggingface.co/THUDM/CogVideoX-2b).
 
