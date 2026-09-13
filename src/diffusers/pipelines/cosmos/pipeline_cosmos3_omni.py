@@ -1446,9 +1446,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 generation and the video guardrail on the decoded frames. Set to `False` to skip both for this call;
                 the checker remains loaded for subsequent calls.
             mixed_precision_format (`str`, *optional*):
-                Follow the ModelOpt FP8 checkpoint schedule when `None`. `"none"` leaves the native quantized
-                forward unchanged. `"fp8"` enables first/last-N W8A16 only on serialized ModelOpt FP8
-                transformers; other backends such as TorchAO are left unchanged.
+                Follow the ModelOpt FP8 checkpoint schedule when `None`. `"none"` leaves the native quantized forward
+                unchanged. `"fp8"` enables first/last-N W8A16 only on serialized ModelOpt FP8 transformers; other
+                backends such as TorchAO are left unchanged.
             mixed_precision_first_steps (`int`, *optional*):
                 Optional leading W8A16 step count. Ignored when mixed precision is off.
             mixed_precision_last_steps (`int`, *optional*):

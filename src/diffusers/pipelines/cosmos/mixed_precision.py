@@ -14,17 +14,15 @@
 
 """Mixed W8A8/W8A16 denoising for serialized Cosmos3 ModelOpt FP8 checkpoints.
 
-The checkpoint's restored ModelOpt forward is the native W8A8 path. W8A16
-bypasses that forward, dequantizes the FP8 weight to the activation dtype, and
-uses :func:`torch.nn.functional.linear`. This matches the uncached strategy in
+The checkpoint's restored ModelOpt forward is the native W8A8 path. W8A16 bypasses that forward, dequantizes the FP8
+weight to the activation dtype, and uses :func:`torch.nn.functional.linear`. This matches the uncached strategy in
 vLLM-Omni (vllm-project/vllm-omni#6560).
 
-Schedule defaults come from ``quantization_config.runtime.diffusion_step_policy``
-in the transformer's ``config.json`` (official Hub ``revision=fp8``). Distilled
-checkpoints omit that policy and stay on native W8A8.
+Schedule defaults come from ``quantization_config.runtime.diffusion_step_policy`` in the transformer's ``config.json``
+(official Hub ``revision=fp8``). Distilled checkpoints omit that policy and stay on native W8A8.
 
-Other quantization backends (TorchAO, bitsandbytes, …) are left unchanged: mixed
-precision resolves to a no-op and does not wrap their linears.
+Other quantization backends (TorchAO, bitsandbytes, …) are left unchanged: mixed precision resolves to a no-op and does
+not wrap their linears.
 """
 
 from __future__ import annotations
@@ -38,6 +36,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...utils import logging
+
 
 logger = logging.get_logger(__name__)
 
@@ -120,9 +119,8 @@ class Cosmos3MixedPrecisionConfig:
     ) -> Cosmos3MixedPrecisionConfig:
         """Build a schedule from the checkpoint policy, with optional call-site overrides.
 
-        ``mixed_precision_format=None`` (pipeline default) means auto: enable mixed
-        precision only when the transformer declares ``diffusion_step_policy``.
-        Distilled FP8 checkpoints omit that field and stay native W8A8. Pass
+        ``mixed_precision_format=None`` (pipeline default) means auto: enable mixed precision only when the transformer
+        declares ``diffusion_step_policy``. Distilled FP8 checkpoints omit that field and stay native W8A8. Pass
         ``"fp8"`` to force the schedule, or ``"none"`` to disable it.
 
         Non-ModelOpt backends (TorchAO and others) always resolve to ``format="none"``.
@@ -354,9 +352,8 @@ def apply_cosmos3_mixed_precision_step(
 def reset_cosmos3_mixed_precision(module: nn.Module, config: Cosmos3MixedPrecisionConfig) -> None:
     """Return installed wrappers to the checkpoint's native W8A8 path.
 
-    Wrappers stay on ``layer.forward`` for the rest of the process. When inactive
-    they call the original ModelOpt forward, so a later bare ``transformer(...)``
-    still runs native W8A8.
+    Wrappers stay on ``layer.forward`` for the rest of the process. When inactive they call the original ModelOpt
+    forward, so a later bare ``transformer(...)`` still runs native W8A8.
     """
     if not config.enabled:
         return
@@ -412,9 +409,9 @@ def _maybe_mapping(value: Any) -> dict[str, Any] | None:
 def quantization_config_from_module(module: nn.Module | None) -> dict[str, Any] | None:
     """Read ModelOpt ``quantization_config`` from a loaded transformer, if present.
 
-    Diffusers strips ``quantization_config`` from the in-memory FrozenDict, and ModelOpt
-    restore may attach a live config without ``runtime``. Prefer the live object, then
-    overlay ``runtime`` from the on-disk ``transformer/config.json`` when present.
+    Diffusers strips ``quantization_config`` from the in-memory FrozenDict, and ModelOpt restore may attach a live
+    config without ``runtime``. Prefer the live object, then overlay ``runtime`` from the on-disk
+    ``transformer/config.json`` when present.
     """
     if module is None:
         return None
@@ -533,8 +530,7 @@ def parse_diffusion_step_policy(
 ) -> _ParsedCheckpointPolicy:
     """Validate the versioned first/last-N policy from transformer/config.json.
 
-    Missing fields fail closed. Official Hub policies include every key in
-    ``_REQUIRED_POLICY_FIELDS``.
+    Missing fields fail closed. Official Hub policies include every key in ``_REQUIRED_POLICY_FIELDS``.
     """
     policy_map = _maybe_mapping(policy)
     if policy_map is None:
