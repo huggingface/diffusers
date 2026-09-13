@@ -108,7 +108,7 @@ def prepare_pos_ids(modality_id=0, type="text", start=(0, 0), num_token=None, he
     if type == "text":
         assert num_token
         if height or width:
-            print('Warning: The parameters of height and width will be ignored in "text" type.')
+            logger.warning('The parameters of height and width will be ignored in "text" type.')
         pos_ids = torch.zeros(num_token, 3)
         pos_ids[..., 0] = modality_id
         pos_ids[..., 1] = torch.arange(num_token) + start[0]
@@ -116,7 +116,7 @@ def prepare_pos_ids(modality_id=0, type="text", start=(0, 0), num_token=None, he
     elif type == "image":
         assert height and width
         if num_token:
-            print('Warning: The parameter of num_token will be ignored in "image" type.')
+            logger.warning('The parameter of num_token will be ignored in "image" type.')
         pos_ids = torch.zeros(height, width, 3)
         pos_ids[..., 0] = modality_id
         pos_ids[..., 1] = pos_ids[..., 1] + torch.arange(height)[:, None] + start[0]
