@@ -1,6 +1,6 @@
 name: "Bot: Style"
 
-# Reusable workflow called by diffusers_bot.yml for `@diffusers-bot style`.
+# Reusable workflow called by diffusers_bot.yml for `/diffusers-bot style`.
 # Runs `make style && make quality` on the PR branch, then pushes the fixes.
 #
 # Security model: the `run` job checks out and executes untrusted fork code with
@@ -131,7 +131,7 @@ jobs:
             const pushTimestamp = new Date(pushedDate).getTime();
             console.log(`Push timestamp (server-side): ${pushedDate}, Comment date: ${process.env.COMMENT_DATE}`);
             if (pushTimestamp >= commentTimestamp) {
-              core.setFailed(`❌ Commit ${headSha} was pushed at or after the @diffusers-bot style comment. Aborting.`);
+              core.setFailed(`❌ Commit ${headSha} was pushed at or after the /diffusers-bot style comment. Aborting.`);
             } else {
               console.log('✅ Push timestamp check passed.');
             }

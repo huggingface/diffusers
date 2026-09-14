@@ -2,10 +2,10 @@ name: Diffusers Bot
 
 # Maintainer commands, triggered by commenting on an open PR:
 #
-#   @diffusers-bot style           run `make style && make quality` and push the fixes to the PR branch
-#   @diffusers-bot review          request a Serge AI review (also works from an inline review comment)
-#   @diffusers-bot pytest <args>   run `pytest <args>` on a GPU runner, e.g.
-#                                  `@diffusers-bot pytest tests/models/test_modeling_common.py -k "some_test"`
+#   /diffusers-bot style           run `make style && make quality` and push the fixes to the PR branch
+#   /diffusers-bot review          request a Serge AI review (also works from an inline review comment)
+#   /diffusers-bot pytest <args>   run `pytest <args>` on a GPU runner, e.g.
+#                                  `/diffusers-bot pytest tests/models/test_modeling_common.py -k "some_test"`
 #
 # Auth is checked once in the `authorize` job. Each subcommand lives in its
 # own reusable workflow file under .github/workflows/bot_*.yml.
@@ -30,10 +30,10 @@ jobs:
         github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
         github.event.issue.state == 'open' &&
-        contains(github.event.comment.body, '@diffusers-bot')
+        contains(github.event.comment.body, '/diffusers-bot')
       ) || (
         github.event_name == 'pull_request_review_comment' &&
-        contains(github.event.comment.body, '@diffusers-bot')
+        contains(github.event.comment.body, '/diffusers-bot')
       )
     runs-on: ubuntu-latest
     permissions:
@@ -65,12 +65,12 @@ jobs:
             let subcommand = 'unknown';
             let pytestArgs = '';
 
-            if (firstLine.startsWith('@diffusers-bot pytest')) {
+            if (firstLine.startsWith('/diffusers-bot pytest')) {
               subcommand = 'pytest';
-              pytestArgs = firstLine.replace('@diffusers-bot pytest', '').trim();
-            } else if (body.includes('@diffusers-bot style')) {
+              pytestArgs = firstLine.replace('/diffusers-bot pytest', '').trim();
+            } else if (body.includes('/diffusers-bot style')) {
               subcommand = 'style';
-            } else if (body.includes('@diffusers-bot review')) {
+            } else if (body.includes('/diffusers-bot review')) {
               subcommand = 'review';
             }
 

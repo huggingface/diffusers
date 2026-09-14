@@ -1,6 +1,6 @@
 name: "Bot: Pytest"
 
-# Reusable workflow called by diffusers_bot.yml for `@diffusers-bot pytest <args>`.
+# Reusable workflow called by diffusers_bot.yml for `/diffusers-bot pytest <args>`.
 # Runs pytest on a GPU runner and reports the result back on the PR.
 
 on:
