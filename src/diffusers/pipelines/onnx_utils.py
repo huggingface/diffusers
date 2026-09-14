@@ -24,7 +24,7 @@ import numpy as np
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..utils import ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME, is_onnx_available, logging
+from ..utils import ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME, deprecate, is_onnx_available, logging
 
 
 if is_onnx_available():
@@ -50,8 +50,14 @@ ORT_TO_NP_TYPE = {
 
 
 class OnnxRuntimeModel:
+    _last_supported_version = "0.43.0"
+
     def __init__(self, model=None, **kwargs):
-        logger.info("`diffusers.OnnxRuntimeModel` is experimental and might change in the future.")
+        deprecate(
+            "OnnxRuntimeModel",
+            "0.43.0",
+            "Please use Optimum for ONNX Runtime support.",
+        )
         self.model = model
         self.model_save_dir = kwargs.get("model_save_dir", None)
         self.latest_model_name = kwargs.get("latest_model_name", ONNX_WEIGHTS_NAME)

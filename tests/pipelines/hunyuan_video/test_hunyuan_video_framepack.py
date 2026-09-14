@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-import unittest
-
-import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import (
@@ -31,48 +28,41 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKLHunyuanVideo,
-    FasterCacheConfig,
     FlowMatchEulerDiscreteScheduler,
     HunyuanVideoFramepackPipeline,
     HunyuanVideoFramepackTransformer3DModel,
 )
 
 from ...testing_utils import (
+    assert_tensors_close,
     enable_full_determinism,
     torch_device,
 )
-from ..test_pipelines_common import (
+from ..testing_utils import (
+    BasePipelineTesterConfig,
     FasterCacheTesterMixin,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
-    to_np,
 )
 
 
 enable_full_determinism()
 
 
-class HunyuanVideoFramepackPipelineFastTests(
-    PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin, unittest.TestCase
-):
+class HunyuanVideoFramepackPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = HunyuanVideoFramepackPipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         ["image", "prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"]
     )
-    batch_params = frozenset(["image", "prompt"])
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
+    batch_input_params = frozenset(["image", "prompt"])
+    output_shape = (13, 3, 32, 32)
+    # Framepack is a video pipeline (`num_videos_per_prompt`) and takes `image_latents` rather than `latents`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_videos_per_prompt", "generator", "output_type", "return_dict"]
     )
-
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
 
     # `image_encoder` is a `SiglipVisionModel`, whose attention pooling head
     # (`SiglipMultiheadAttentionPoolingHead`) wraps a `torch.nn.MultiheadAttention`. That hands
@@ -82,14 +72,6 @@ class HunyuanVideoFramepackPipelineFastTests(
     # (the whole head is onloaded as one unmatched module), and every other component offloads fine at leaf level,
     # so exclude just this one rather than skipping the test.
     group_offloading_leaf_level_exclude_modules = ["image_encoder"]
-
-    faster_cache_config = FasterCacheConfig(
-        spatial_attention_block_skip_range=2,
-        spatial_attention_timestep_skip_range=(-1, 901),
-        unconditional_batch_skip_range=2,
-        attention_weight_callback=lambda _: 0.5,
-        is_guidance_distilled=True,
-    )
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -183,7 +165,7 @@ class HunyuanVideoFramepackPipelineFastTests(
         )
         image_encoder = SiglipVisionModel.from_pretrained("hf-internal-testing/tiny-random-SiglipVisionModel")
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
@@ -194,25 +176,19 @@ class HunyuanVideoFramepackPipelineFastTests(
             "feature_extractor": feature_extractor,
             "image_encoder": image_encoder,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
+    def get_dummy_inputs(self):
         image_height = 32
         image_width = 32
         image = Image.new("RGB", (image_width, image_height))
-        inputs = {
+        return {
             "image": image,
             "prompt": "dance monkey",
             "prompt_template": {
                 "template": "{}",
                 "crop_start": 0,
             },
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 4.5,
             "height": image_height,
@@ -220,22 +196,19 @@ class HunyuanVideoFramepackPipelineFastTests(
             "num_frames": 9,
             "latent_window_size": 3,
             "max_sequence_length": 256,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
-        return inputs
 
+
+class TestHunyuanVideoFramepackPipeline(HunyuanVideoFramepackPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        video = pipe(**inputs).frames
+        video = pipe(**self.get_dummy_inputs()).frames
         generated_video = video[0]
-        self.assertEqual(generated_video.shape, (13, 3, 32, 32))
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.3628, 0.3380, 0.3421, 0.3505, 0.3362, 0.3268, 0.4167, 0.4063, 0.5225, 0.4693, 0.4827, 0.4583, 0.4144, 0.3983, 0.4089, 0.4587])
@@ -243,58 +216,68 @@ class HunyuanVideoFramepackPipelineFastTests(
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(
-            torch.allclose(generated_slice, expected_slice, atol=1e-3),
-            "The generated video does not match the expected slice.",
+        assert_tensors_close(
+            generated_slice, expected_slice, atol=1e-3, msg="The generated video does not match the expected slice."
+        )
+
+    def test_vae_tiling(self, expected_diff_max: float = 0.6):
+        # Seems to require higher tolerance than the other tests
+        pipe = self.get_pipeline().to(torch_device)
+
+        # Without tiling
+        output_without_tiling = self.run_pipe(pipe, height=128, width=128)
+
+        # With tiling
+        pipe.vae.enable_tiling(
+            tile_sample_min_height=96,
+            tile_sample_min_width=96,
+            tile_sample_stride_height=64,
+            tile_sample_stride_width=64,
+        )
+        output_with_tiling = self.run_pipe(pipe, height=128, width=128)
+
+        assert (output_without_tiling - output_with_tiling).abs().max() < expected_diff_max, (
+            "VAE tiling should not affect the inference results."
         )
 
     def test_callback_inputs(self):
-        sig = inspect.signature(self.pipeline_class.__call__)
-        has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
-        has_callback_step_end = "callback_on_step_end" in sig.parameters
-
-        if not (has_callback_tensor_inputs and has_callback_step_end):
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        self.assertTrue(
-            hasattr(pipe, "_callback_tensor_inputs"),
-            f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
+        # Framepack does not fit the shared version of this test: with `output_type="latent"` it returns the
+        # accumulated history as a one-element list rather than a tensor, and that history keeps the leading
+        # image-conditioning latent frame the callback never sees. So zeroing `latents` in the callback zeroes
+        # every generated frame but not that first one — assert exactly that instead.
+        pipe = self.get_pipeline().to(torch_device)
+        assert hasattr(pipe, "_callback_tensor_inputs"), (
+            f"{self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables "
+            "its callback function can use as inputs"
         )
 
         def callback_inputs_subset(pipe, i, t, callback_kwargs):
-            # iterate over callback args
-            for tensor_name, tensor_value in callback_kwargs.items():
+            for tensor_name in callback_kwargs:
                 # check that we're only passing in allowed tensor inputs
                 assert tensor_name in pipe._callback_tensor_inputs
-
             return callback_kwargs
 
         def callback_inputs_all(pipe, i, t, callback_kwargs):
             for tensor_name in pipe._callback_tensor_inputs:
                 assert tensor_name in callback_kwargs
 
-            # iterate over callback args
-            for tensor_name, tensor_value in callback_kwargs.items():
+            for tensor_name in callback_kwargs:
                 # check that we're only passing in allowed tensor inputs
                 assert tensor_name in pipe._callback_tensor_inputs
-
             return callback_kwargs
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs["output_type"] = "latent"
 
         # Test passing in a subset
         inputs["callback_on_step_end"] = callback_inputs_subset
         inputs["callback_on_step_end_tensor_inputs"] = ["latents"]
-        output = pipe(**inputs)[0]
+        pipe(**inputs)
 
-        # Test passing in a everything
+        # Test passing in everything
         inputs["callback_on_step_end"] = callback_inputs_all
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
-        output = pipe(**inputs)[0]
+        pipe(**inputs)
 
         def callback_inputs_change_tensor(pipe, i, t, callback_kwargs):
             is_last = i == (pipe.num_timesteps - 1)
@@ -304,83 +287,28 @@ class HunyuanVideoFramepackPipelineFastTests(
 
         inputs["callback_on_step_end"] = callback_inputs_change_tensor
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
-        output = pipe(**inputs)[0]
-        assert output.abs().sum() < 1e10
+        latents = pipe(**inputs)[0][0]
+        # Frame 0 is the image-conditioning latent; the rest are what the denoising loop produced.
+        assert latents[:, :, 1:].abs().sum() == 0
 
-    def test_attention_slicing_forward_pass(
-        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
-    ):
-        if not self.test_attention_slicing:
-            return
+    # TODO(aryan): Create a dummy gemma model with smol vocab size
+    @pytest.mark.skip(
+        "A very small vocab size is used for fast tests. So, Any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+    )
+    def test_inference_batch_consistent(self):
+        pass
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+    @pytest.mark.skip(
+        "A very small vocab size is used for fast tests. So, Any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+    )
+    def test_inference_batch_single_identical(self):
+        pass
 
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        output_without_slicing = pipe(**inputs)[0]
 
-        pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing1 = pipe(**inputs)[0]
+class TestHunyuanVideoFramepackPipelineMemory(HunyuanVideoFramepackPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Framepack pipeline."""
 
-        pipe.enable_attention_slicing(slice_size=2)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing2 = pipe(**inputs)[0]
-
-        if test_max_difference:
-            max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
-            max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
-            self.assertLess(
-                max(max_diff1, max_diff2),
-                expected_max_diff,
-                "Attention slicing should not affect the inference results",
-            )
-
-    def test_vae_tiling(self, expected_diff_max: float = 0.2):
-        # Seems to require higher tolerance than the other tests
-        expected_diff_max = 0.6
-        generator_device = "cpu"
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe.to("cpu")
-        pipe.set_progress_bar_config(disable=None)
-
-        # Without tiling
-        inputs = self.get_dummy_inputs(generator_device)
-        inputs["height"] = inputs["width"] = 128
-        output_without_tiling = pipe(**inputs)[0]
-
-        # With tiling
-        pipe.vae.enable_tiling(
-            tile_sample_min_height=96,
-            tile_sample_min_width=96,
-            tile_sample_stride_height=64,
-            tile_sample_stride_width=64,
-        )
-        inputs = self.get_dummy_inputs(generator_device)
-        inputs["height"] = inputs["width"] = 128
-        output_with_tiling = pipe(**inputs)[0]
-
-        self.assertLess(
-            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
-            expected_diff_max,
-            "VAE tiling should not affect the inference results",
-        )
-
-    def test_float16_inference(self, expected_max_diff=0.2):
-        # NOTE: this test needs a higher tolerance because of multiple forwards through
-        # the model, which compounds the overall fp32 vs fp16 numerical differences. It
-        # shouldn't be expected that the results are the same, so we bump the tolerance.
-        return super().test_float16_inference(expected_max_diff)
-
-    @unittest.skip("The image_encoder uses SiglipVisionModel, which does not support sequential CPU offloading.")
+    @pytest.mark.skip("The image_encoder uses SiglipVisionModel, which does not support sequential CPU offloading.")
     def test_sequential_cpu_offload_forward_pass(self):
         # https://github.com/huggingface/transformers/blob/21cb353b7b4f77c6f5f5c3341d660f86ff416d04/src/transformers/models/siglip/modeling_siglip.py#L803
         # This is because it instantiates it's attention layer from torch.nn.MultiheadAttention, which calls to
@@ -389,7 +317,7 @@ class HunyuanVideoFramepackPipelineFastTests(
         # this test because of MHA (example: HunyuanDiT because of AttentionPooling layer).
         pass
 
-    @unittest.skip("The image_encoder uses SiglipVisionModel, which does not support sequential CPU offloading.")
+    @pytest.mark.skip("The image_encoder uses SiglipVisionModel, which does not support sequential CPU offloading.")
     def test_sequential_offload_forward_pass_twice(self):
         # https://github.com/huggingface/transformers/blob/21cb353b7b4f77c6f5f5c3341d660f86ff416d04/src/transformers/models/siglip/modeling_siglip.py#L803
         # This is because it instantiates it's attention layer from torch.nn.MultiheadAttention, which calls to
@@ -398,23 +326,29 @@ class HunyuanVideoFramepackPipelineFastTests(
         # this test because of MHA (example: HunyuanDiT because of AttentionPooling layer).
         pass
 
-    @unittest.skip("The image_encoder uses SiglipVisionModel, which does not support group offloading.")
-    def test_pipeline_level_group_offloading_inference(self):
-        # Same root cause as the sequential CPU offloading skips above: the attention layer is a
-        # torch.nn.MultiheadAttention, which passes `self.out_proj.weight` to
-        # `torch.nn.functional.multi_head_attention_forward` instead of calling `self.out_proj`. The leaf-level
-        # onload hook on `out_proj` is therefore never triggered and its weights stay on the CPU.
-        pass
 
-    # TODO(aryan): Create a dummy gemma model with smol vocab size
-    @unittest.skip(
-        "A very small vocab size is used for fast tests. So, Any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
-    )
-    def test_inference_batch_consistent(self):
-        pass
+class TestHunyuanVideoFramepackPipelinePyramidAttentionBroadcast(
+    HunyuanVideoFramepackPipelineTesterConfig, PyramidAttentionBroadcastTesterMixin
+):
+    """Pyramid Attention Broadcast cache tests for the Framepack pipeline."""
 
-    @unittest.skip(
-        "A very small vocab size is used for fast tests. So, Any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
-    )
-    def test_inference_batch_single_identical(self):
-        pass
+
+class TestHunyuanVideoFramepackPipelineFasterCache(HunyuanVideoFramepackPipelineTesterConfig, FasterCacheTesterMixin):
+    """FasterCache tests for the Framepack pipeline."""
+
+    # Framepack is guidance-distilled, so the FasterCache tester must skip the low/high-frequency-delta checks.
+    FASTER_CACHE_CONFIG = {
+        "spatial_attention_block_skip_range": 2,
+        "spatial_attention_timestep_skip_range": (-1, 901),
+        "unconditional_batch_skip_range": 2,
+        "attention_weight_callback": lambda _: 0.5,
+        "is_guidance_distilled": True,
+    }
+
+
+class TestHunyuanVideoFramepackPipelineLoRA(HunyuanVideoFramepackPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Framepack pipeline."""
+
+
+class TestHunyuanVideoFramepackPipelineLoRAMemory(HunyuanVideoFramepackPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Framepack pipeline."""
