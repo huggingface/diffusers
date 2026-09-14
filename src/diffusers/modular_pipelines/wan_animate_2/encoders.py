@@ -81,11 +81,19 @@ def clip_visual_encode(image_encoder, tensor, device, dtype):
     return out.hidden_states[-2]
 
 
-def get_i2v_mask(lat_t, lat_h, lat_w, mask_len=1, device="cuda"):
+def get_i2v_mask(lat_t, lat_h, lat_w, mask_len=1, device=None):
     """Create an i2v mask in latent space.
 
     mask_len is in PIXEL space. Returns [4, lat_t, lat_h, lat_w] (no batch dim).
+
+    Args:
+        device: device on which the mask is allocated. Must be passed explicitly by the caller.
     """
+    if device is None:
+        raise ValueError(
+            "`device` must be specified when calling `get_i2v_mask`. It used to default to 'cuda', which "
+            "silently allocated the mask on CUDA and broke every non-CUDA accelerator (NPU/XPU/MPS/CPU)."
+        )
     msk = torch.zeros(1, (lat_t - 1) * 4 + 1, lat_h, lat_w, device=device)
     msk[:, :mask_len] = 1
     msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
