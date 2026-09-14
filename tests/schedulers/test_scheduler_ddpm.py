@@ -220,3 +220,10 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 387.9466) < 1e-2, f" expected result sum 387.9466, but get {result_sum}"
         assert abs(result_mean.item() - 0.5051) < 1e-3, f" expected result mean 0.5051, but get {result_mean}"
+
+    def test_num_inference_steps_zero_raises(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler = scheduler_class(**self.get_scheduler_config())
+
+        with self.assertRaises(ValueError):
+            scheduler.set_timesteps(num_inference_steps=0)

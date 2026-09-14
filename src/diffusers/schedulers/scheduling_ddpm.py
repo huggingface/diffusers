@@ -292,6 +292,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 `num_inference_steps` must be `None`.
 
         """
+        if num_inference_steps is not None and num_inference_steps <= 0:
+            raise ValueError("num_inference_steps must be > 0")
         if num_inference_steps is not None and timesteps is not None:
             raise ValueError("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
 
