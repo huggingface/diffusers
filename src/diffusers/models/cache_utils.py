@@ -183,8 +183,8 @@ class CacheMixin:
         r"""Context manager that provides information for cache management.
 
         `name` is the name of the denoising call, usually `"cond"` or `"uncond"`. The keyword arguments describe where
-        the denoising loop is — see `CacheContext` for the accepted fields, e.g.
-        `cache_context("cond", step_index=i, sigma=sigma)`.
+        the denoising loop is — see `CacheContext` for the accepted fields, e.g. `cache_context("cond", step_index=i,
+        sigma=sigma)`.
         """
         from ..hooks.hooks import CacheContext, _set_cache_context
 
