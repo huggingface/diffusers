@@ -182,8 +182,8 @@ class QwenImage21SwiGLUFeedForward(nn.Module):
 
 class QwenImage21AdaLayerNormContinuous(nn.Module):
     r"""
-    Final adaptive norm. Scale only — this variant emits no shift, so `linear` maps to `embedding_dim` rather than
-    `2 * embedding_dim`.
+    Final adaptive norm. Scale only — this variant emits no shift, so `linear` maps to `embedding_dim` rather than `2 *
+    embedding_dim`.
     """
 
     def __init__(self, embedding_dim: int, conditioning_embedding_dim: int, eps: float = 1e-6):
@@ -686,8 +686,8 @@ class QwenImage21Transformer2DModel(
             img_mask (`torch.Tensor` of shape `(batch_size, vlm_sequence_length)`):
                 `True` at the vision-language encoder's image slots, each standing for a `2x2` group of latent tokens.
             encoder_hidden_states_mask (`torch.Tensor`, *optional*):
-                `(batch_size, text_sequence_length)` bool marking valid text tokens. Padded positions are excluded
-                from attention.
+                `(batch_size, text_sequence_length)` bool marking valid text tokens. Padded positions are excluded from
+                attention.
             kv_cache (`list[dict[str, torch.Tensor]]`, *optional*):
                 One dict per block. Empty dicts prefill the text and condition-image keys and values; populated dicts
                 switch to decode, where only the target image's tokens are recomputed. Requires `causal_condition`.

@@ -641,10 +641,10 @@
         title: PRX
       - local: api/pipelines/prx_pixel
         title: PRX Pixel
-      - local: api/pipelines/qwenimage
-        title: QwenImage
       - local: api/pipelines/qwenimage21
         title: Qwen-Image 2.1
+      - local: api/pipelines/qwenimage
+        title: QwenImage
       - local: api/pipelines/sana
         title: Sana
       - local: api/pipelines/sana_sprint

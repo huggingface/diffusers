@@ -230,9 +230,9 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     def _downsample_image_pad_tokens(hidden_states_list, image_pad_mask_list):
         """Collapse consecutive `<|image_pad|>` tokens into one per contiguous region.
 
-        The vision-language processor expands each condition image into many vision tokens, but the
-        transformer expects one token per image slot, which it then expands 4x. Keep the first token of
-        each contiguous image-pad region and drop the rest.
+        The vision-language processor expands each condition image into many vision tokens, but the transformer expects
+        one token per image slot, which it then expands 4x. Keep the first token of each contiguous image-pad region
+        and drop the rest.
         """
         out_hs, out_mask = [], []
         for hidden_state, pad_mask in zip(hidden_states_list, image_pad_mask_list):
@@ -569,10 +569,10 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 `causal_condition` modulates those tokens from `t = 0`, making their activations step-independent.
 
                 Toggling this does not reproduce the same image bit-for-bit in reduced precision. Caching makes the
-                decode step attend with a different sequence layout than the prefill step, so the two tile
-                differently and land on different rounding; both agree with an fp32 reference to the same tolerance.
-                A one-ULP difference at the first block is then amplified by 32 blocks and every sampler step, so the
-                two settings give equally valid but visibly distinct samples. Fix a sample by fixing this flag.
+                decode step attend with a different sequence layout than the prefill step, so the two tile differently
+                and land on different rounding; both agree with an fp32 reference to the same tolerance. A one-ULP
+                difference at the first block is then amplified by 32 blocks and every sampler step, so the two
+                settings give equally valid but visibly distinct samples. Fix a sample by fixing this flag.
 
         Examples:
 
