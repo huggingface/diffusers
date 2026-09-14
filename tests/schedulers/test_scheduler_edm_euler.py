@@ -80,6 +80,67 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 34.1855) < 1e-3
         assert abs(result_mean.item() - 0.044) < 1e-3
 
+    def test_add_noise_with_integer_timesteps(self):
+        """Test that add_noise works with integer timesteps (training case) - Issue #7406"""
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        batch_size = 4
+        channels = 3
+        height = width = 32
+
+        # Create dummy data
+        original_samples = torch.randn(batch_size, channels, height, width)
+        noise = torch.randn_like(original_samples)
+
+        # Test with integer timesteps (training case)
+        timesteps = torch.randint(0, scheduler_config["num_train_timesteps"], (batch_size,), dtype=torch.int64)
+
+        # This should not raise an error
+        noisy_samples = scheduler.add_noise(original_samples, noise, timesteps)
+
+        # Verify output shape
+        self.assertEqual(noisy_samples.shape, original_samples.shape)
+
+        # Verify that noise was actually added
+        self.assertFalse(torch.allclose(noisy_samples, original_samples))
+        
+        # Verify noise levels are correct (higher timestep = more noise)
+        t_low = torch.tensor([0], dtype=torch.int64)
+        t_high = torch.tensor([scheduler_config["num_train_timesteps"] - 1], dtype=torch.int64)
+        
+        noisy_low = scheduler.add_noise(original_samples[:1], noise[:1], t_low)
+        noisy_high = scheduler.add_noise(original_samples[:1], noise[:1], t_high)
+        
+        noise_low = (noisy_low - original_samples[:1]).abs().mean()
+        noise_high = (noisy_high - original_samples[:1]).abs().mean()
+        
+        # Higher timestep should have more noise
+        self.assertGreater(noise_high, noise_low)
+
+    def test_add_noise_with_float_timesteps(self):
+        """Test that add_noise still works with float timesteps (inference case)"""
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+        scheduler.set_timesteps(50)
+
+        batch_size = 2
+
+        # Create dummy data with correct shape
+        original_samples = torch.randn(batch_size, 3, 32, 32)
+        noise = torch.randn_like(original_samples)
+
+        # Use float timesteps from the scheduler
+        timesteps = scheduler.timesteps[:batch_size]
+
+        # This should not raise an error
+        noisy_samples = scheduler.add_noise(original_samples, noise, timesteps)
+
+        # Verify output shape
+        self.assertEqual(noisy_samples.shape, original_samples.shape)
+
     # Override test_from_save_pretrained to use EDMEulerScheduler-specific logic
     def test_from_save_pretrained(self):
         kwargs = dict(self.forward_default_kwargs)
@@ -115,7 +176,6 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    # Override test_from_save_pretrained to use EDMEulerScheduler-specific logic
     def test_step_shape(self):
         num_inference_steps = 10
 
@@ -137,7 +197,6 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
         self.assertEqual(output_0.shape, sample.shape)
         self.assertEqual(output_0.shape, output_1.shape)
 
-    # Override test_from_save_pretrained to use EDMEulerScheduler-specific logic
     def test_scheduler_outputs_equivalence(self):
         def set_nan_tensor_to_zero(t):
             t[t != t] = 0
