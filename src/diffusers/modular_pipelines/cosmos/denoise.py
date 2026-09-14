@@ -897,6 +897,15 @@ class Cosmos3TransferDenoiseStep(Cosmos3DenoiseLoopWrapper):
               The number of denoising steps.
           num_warmup_steps (`int`):
               Number of scheduler warmup steps.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           control_latents (`list`):
               Clean control latents for this chunk, one per hint in canonical order.
           latents (`Tensor`):
