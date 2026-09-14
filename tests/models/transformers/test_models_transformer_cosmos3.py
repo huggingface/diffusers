@@ -136,6 +136,7 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         model.enable_cache(config)
         assert set(model.state_dict()) == state_dict_keys
         assert model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK) is not None
+        assert "_run_decoder_stack" in model.__dict__
 
         inputs = self.get_dummy_inputs()
         with torch.no_grad(), model.cache_context("cond", **runtime):
@@ -154,11 +155,31 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
 
         model.disable_cache()
         assert set(model.state_dict()) == state_dict_keys
-        assert not hasattr(model, "_sea_cache_prepare_decoder_stack")
-        assert not hasattr(model, "_sea_cache_record_decoder_stack")
+        assert "_run_decoder_stack" not in model.__dict__
         with torch.no_grad():
             model(**self.get_dummy_inputs())
         assert norm_calls == {"und": 2, "gen": 2}
+
+    def test_cosmos3_sea_cache_restores_instance_decoder_stack_override(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        original_decoder_stack = model._run_decoder_stack
+        decoder_stack_calls = 0
+
+        def custom_decoder_stack(und_seq, gen_seq, rotary_emb):
+            nonlocal decoder_stack_calls
+            decoder_stack_calls += 1
+            return original_decoder_stack(und_seq, gen_seq, rotary_emb)
+
+        model._run_decoder_stack = custom_decoder_stack
+        model.enable_cache(SeaCacheConfig())
+        assert model.__dict__["_run_decoder_stack"] is not custom_decoder_stack
+
+        model.disable_cache()
+        assert model.__dict__["_run_decoder_stack"] is custom_decoder_stack
+
+        with torch.no_grad():
+            model(**self.get_dummy_inputs())
+        assert decoder_stack_calls == 1
 
     def test_cosmos3_sea_cache_post_norm_boundary_numeric_semantics(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
@@ -203,7 +224,8 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         model.proj_out.forward = counted_projection_forward
         model.enable_cache(config)
 
-        original_prepare_decoder_stack = model._sea_cache_prepare_decoder_stack
+        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+        original_prepare_decoder_stack = root_hook.prepare_decoder_stack
 
         def capture_prepare_decoder_stack(module, und_seq, gen_seq):
             decoder_gen_inputs.append(gen_seq.detach().clone())
@@ -213,12 +235,11 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
             )
             return prepared_und, prepared_gen, should_compute
 
-        model._sea_cache_prepare_decoder_stack = capture_prepare_decoder_stack
+        root_hook.prepare_decoder_stack = capture_prepare_decoder_stack
 
         with torch.no_grad(), model.cache_context("cond", **runtime):
             model(**self.get_dummy_inputs())
 
-        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
         state = root_hook.state_manager._state_cache["cond"]
         cached_step, cached_und_output, cached_gen_residual = state.history[-1]
         assert cached_step == 0

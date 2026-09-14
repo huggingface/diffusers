@@ -465,6 +465,8 @@ class SeaCacheRootHook(ModelHook):
         self.shared_state = shared_state
         self.raw_vision_callback = raw_vision_callback
         self.use_stack_boundary = use_stack_boundary
+        self._original_decoder_stack = None
+        self._installed_decoder_stack = None
 
     def initialize_hook(self, module: torch.nn.Module):
         if not self.use_stack_boundary:
@@ -473,16 +475,31 @@ class SeaCacheRootHook(ModelHook):
         unwrapped_module = unwrap_module(module)
         if not hasattr(unwrapped_module, "layers") or not unwrapped_module.layers:
             raise ValueError("SeaCache requires Cosmos 3 to expose a non-empty decoder stack.")
-        unwrapped_module._sea_cache_prepare_decoder_stack = self.prepare_decoder_stack
-        unwrapped_module._sea_cache_record_decoder_stack = self.record_decoder_stack
+        if not callable(getattr(unwrapped_module, "_run_decoder_stack", None)):
+            raise ValueError("SeaCache requires Cosmos 3 to expose a callable decoder stack.")
+
+        self._original_decoder_stack = (
+            unwrapped_module._run_decoder_stack,
+            "_run_decoder_stack" in unwrapped_module.__dict__,
+        )
+
+        def cached_decoder_stack(und_seq, gen_seq, rotary_emb):
+            return self._run_cached_decoder_stack(unwrapped_module, und_seq, gen_seq, rotary_emb)
+
+        self._installed_decoder_stack = cached_decoder_stack
+        unwrapped_module._run_decoder_stack = self._installed_decoder_stack
         return module
 
     def deinitalize_hook(self, module: torch.nn.Module):
         if self.use_stack_boundary:
             unwrapped_module = unwrap_module(module)
-            for name in ("_sea_cache_prepare_decoder_stack", "_sea_cache_record_decoder_stack"):
-                if hasattr(unwrapped_module, name):
-                    delattr(unwrapped_module, name)
+            if unwrapped_module.__dict__.get("_run_decoder_stack") is self._installed_decoder_stack:
+                if self._original_decoder_stack is not None and self._original_decoder_stack[1]:
+                    unwrapped_module._run_decoder_stack = self._original_decoder_stack[0]
+                else:
+                    delattr(unwrapped_module, "_run_decoder_stack")
+            self._original_decoder_stack = None
+            self._installed_decoder_stack = None
         return module
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
@@ -563,6 +580,26 @@ class SeaCacheRootHook(ModelHook):
             raw_vision=raw_vision,
         )
         return args, kwargs
+
+    def _run_cached_decoder_stack(
+        self,
+        module: torch.nn.Module,
+        und_seq: torch.Tensor,
+        gen_seq: torch.Tensor,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        original_decoder_stack_state = self._original_decoder_stack
+        if original_decoder_stack_state is None:
+            raise RuntimeError("SeaCache decoder stack hook is not initialized.")
+        original_decoder_stack = original_decoder_stack_state[0]
+
+        und_seq, gen_seq, should_compute = self.prepare_decoder_stack(module, und_seq, gen_seq)
+        if not should_compute:
+            return und_seq, gen_seq
+
+        und_out, gen_out = original_decoder_stack(und_seq, gen_seq, rotary_emb)
+        self.record_decoder_stack(module, und_out, gen_out)
+        return und_out, gen_out
 
     def prepare_decoder_stack(
         self,

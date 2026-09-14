@@ -647,6 +647,22 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             unpacked.append(output)
         return unpacked
 
+    def _run_decoder_stack(
+        self,
+        und_seq: torch.Tensor,
+        gen_seq: torch.Tensor,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        for decoder_layer in self.layers:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                und_seq, gen_seq = self._gradient_checkpointing_func(
+                    decoder_layer.__call__, und_seq, gen_seq, rotary_emb
+                )
+            else:
+                und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb)
+
+        return self.norm(und_seq), self.norm_moe_gen(gen_seq)
+
     # -------------------------------------------------------------------------
     # forward: full per-step pass — encode text/vision/sound/action → run layers →
     # decode vision/sound/action. Pipeline calls this once per CFG pass.
@@ -799,30 +815,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         if self._cp_shard_fn is not None:
             und_seq, gen_seq, rotary_emb = self._cp_shard_fn(und_seq, gen_seq, rotary_emb)
 
-        run_decoder_stack = True
-        sea_cache_prepare = getattr(self, "_sea_cache_prepare_decoder_stack", None)
-        if sea_cache_prepare is not None:
-            und_seq, gen_seq, run_decoder_stack = sea_cache_prepare(self, und_seq, gen_seq)
-
-        if run_decoder_stack:
-            for decoder_layer in self.layers:
-                if torch.is_grad_enabled() and self.gradient_checkpointing:
-                    und_seq, gen_seq = self._gradient_checkpointing_func(
-                        decoder_layer.__call__, und_seq, gen_seq, rotary_emb
-                    )
-                else:
-                    und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb)
-
-            und_out = self.norm(und_seq)
-            gen_out = self.norm_moe_gen(gen_seq)
-
-            sea_cache_record = getattr(self, "_sea_cache_record_decoder_stack", None)
-            if sea_cache_record is not None:
-                sea_cache_record(self, und_out, gen_out)
-        else:
-            # The SeaCache stack boundary returns cached post-normalization states.
-            und_out = und_seq
-            gen_out = gen_seq
+        und_out, gen_out = self._run_decoder_stack(und_seq, gen_seq, rotary_emb)
 
         # Optional context-parallelism gather seam: re-gather the full per-pathway
         # sequence on every rank (and drop the padding) before the global-index decode
