@@ -432,7 +432,7 @@ class ZImageDifferentialImg2ImgPipeline(DiffusionPipeline, ZImageLoraLoaderMixin
 
     @property
     def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1
+        return self._guidance_scale > 0
 
     @property
     def joint_attention_kwargs(self):
