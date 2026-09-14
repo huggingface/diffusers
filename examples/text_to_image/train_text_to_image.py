@@ -171,7 +171,13 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
             autocast_ctx = torch.autocast(accelerator.device.type)
 
         with autocast_ctx:
-            image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+            image = pipeline(
+                args.validation_prompts[i],
+                height=args.resolution,
+                width=args.resolution,
+                num_inference_steps=20,
+                generator=generator,
+            ).images[0]
 
         images.append(image)
 
@@ -1150,7 +1156,13 @@ def main():
 
             for i in range(len(args.validation_prompts)):
                 with torch.autocast("cuda"):
-                    image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+                    image = pipeline(
+                        args.validation_prompts[i],
+                        height=args.resolution,
+                        width=args.resolution,
+                        num_inference_steps=20,
+                        generator=generator,
+                    ).images[0]
                 images.append(image)
 
         if args.push_to_hub:
