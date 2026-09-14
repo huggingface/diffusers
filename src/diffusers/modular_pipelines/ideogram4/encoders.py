@@ -17,6 +17,9 @@ import torch
 from transformers import Qwen2Tokenizer, Qwen3VLModel
 from transformers.masking_utils import create_causal_mask
 
+from ...configuration_utils import FrozenDict
+from ...image_processor import InpaintProcessor, VaeImageProcessor
+from ...models import AutoencoderKLFlux2
 from ...pipelines.ideogram4.prompt_enhancer import (
     PROMPT_UPSAMPLE_TEMPERATURE,
     Ideogram4PromptEnhancerHead,
@@ -36,6 +39,278 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Hidden states of these Qwen3-VL decoder layers are concatenated to form the per-token
 # text conditioning consumed by the Ideogram4 transformer.
 QWEN3_VL_ACTIVATION_LAYERS = (0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 35)
+
+
+# auto_docstring
+class Ideogram4ProcessImageInputStep(ModularPipelineBlocks):
+    """
+    Preprocess an image for the Ideogram4 VAE and resolve the output height and width.
+
+      Components:
+          image_processor (`VaeImageProcessor`)
+
+      Inputs:
+          image (`Image | list`):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+      Outputs:
+          processed_image (`Tensor`):
+              The image tensor resized and normalized for VAE encoding.
+          height (`int`):
+              The resolved image height in pixels.
+          width (`int`):
+              The resolved image width in pixels.
+    """
+
+    model_name = "ideogram4"
+
+    @property
+    def description(self) -> str:
+        return "Preprocess an image for the Ideogram4 VAE and resolve the output height and width."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            )
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("image"),
+            InputParam.template("height"),
+            InputParam.template("width"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="processed_image",
+                type_hint=torch.Tensor,
+                description="The image tensor resized and normalized for VAE encoding.",
+            ),
+            OutputParam(name="height", type_hint=int, description="The resolved image height in pixels."),
+            OutputParam(name="width", type_hint=int, description="The resolved image width in pixels."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        block_state.processed_image = components.image_processor.preprocess(
+            image=block_state.image,
+            height=block_state.height,
+            width=block_state.width,
+        )
+        block_state.height, block_state.width = block_state.processed_image.shape[-2:]
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class Ideogram4InpaintProcessImagesInputStep(ModularPipelineBlocks):
+    """
+    Preprocess an image and mask together for Ideogram4 inpainting.
+
+      Components:
+          image_processor (`VaeImageProcessor`) image_mask_processor (`InpaintProcessor`)
+
+      Inputs:
+          image (`Image | list`):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          mask_image (`Image`):
+              Mask image for inpainting.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          padding_mask_crop (`int`, *optional*):
+              Padding for mask cropping in inpainting.
+
+      Outputs:
+          processed_image (`Tensor`):
+              The image tensor resized and normalized for VAE encoding.
+          processed_mask_image (`Tensor`):
+              The binary mask tensor resized to the generation resolution.
+          mask_overlay_kwargs (`dict`):
+              Arguments used to composite a cropped inpaint result over the source image.
+          height (`int`):
+              The resolved image height in pixels.
+          width (`int`):
+              The resolved image width in pixels.
+    """
+
+    model_name = "ideogram4"
+
+    @property
+    def description(self) -> str:
+        return "Preprocess an image and mask together for Ideogram4 inpainting."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec(
+                "image_mask_processor",
+                InpaintProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("image"),
+            InputParam.template("mask_image"),
+            InputParam.template("height"),
+            InputParam.template("width"),
+            InputParam.template("padding_mask_crop"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="processed_image",
+                type_hint=torch.Tensor,
+                description="The image tensor resized and normalized for VAE encoding.",
+            ),
+            OutputParam(
+                name="processed_mask_image",
+                type_hint=torch.Tensor,
+                description="The binary mask tensor resized to the generation resolution.",
+            ),
+            OutputParam(
+                name="mask_overlay_kwargs",
+                type_hint=dict,
+                description="Arguments used to composite a cropped inpaint result over the source image.",
+            ),
+            OutputParam(name="height", type_hint=int, description="The resolved image height in pixels."),
+            OutputParam(name="width", type_hint=int, description="The resolved image width in pixels."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        image = block_state.image[0] if isinstance(block_state.image, list) else block_state.image
+        block_state.height, block_state.width = components.image_processor.get_default_height_width(
+            image,
+            height=block_state.height,
+            width=block_state.width,
+        )
+        (
+            block_state.processed_image,
+            block_state.processed_mask_image,
+            block_state.mask_overlay_kwargs,
+        ) = components.image_mask_processor.preprocess(
+            image=block_state.image,
+            mask=block_state.mask_image,
+            height=block_state.height,
+            width=block_state.width,
+            padding_mask_crop=block_state.padding_mask_crop,
+        )
+        block_state.height, block_state.width = block_state.processed_image.shape[-2:]
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class Ideogram4VaeEncoderStep(ModularPipelineBlocks):
+    """
+    Encode a preprocessed image into normalized, packed Ideogram4 image latents.
+
+      Components:
+          vae (`AutoencoderKLFlux2`)
+
+      Inputs:
+          processed_image (`Tensor`):
+              The image tensor resized and normalized for VAE encoding.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+      Outputs:
+          image_latents (`Tensor`):
+              The latent representation of the input image.
+    """
+
+    model_name = "ideogram4"
+
+    @property
+    def description(self) -> str:
+        return "Encode a preprocessed image into normalized, packed Ideogram4 image latents."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("vae", AutoencoderKLFlux2)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                name="processed_image",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The image tensor resized and normalized for VAE encoding.",
+            ),
+            InputParam.template("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam.template("image_latents")]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        image = block_state.processed_image.to(device=components._execution_device, dtype=components.vae.dtype)
+        generator = block_state.generator
+        if isinstance(generator, list):
+            image_latents = [
+                components.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(image.shape[0])
+            ]
+            image_latents = torch.cat(image_latents)
+        else:
+            image_latents = components.vae.encode(image).latent_dist.sample(generator)
+
+        image_latents = image_latents.to(torch.float32)
+        patch = components.patch_size
+        latent_height, latent_width = image_latents.shape[-2:]
+        grid_h, grid_w = latent_height // patch, latent_width // patch
+        image_latents = image_latents.view(
+            image_latents.shape[0], image_latents.shape[1], grid_h, patch, grid_w, patch
+        )
+        image_latents = image_latents.permute(0, 2, 4, 3, 5, 1).reshape(image_latents.shape[0], grid_h * grid_w, -1)
+
+        bn_mean = components.vae.bn.running_mean.view(1, 1, -1).to(
+            device=image_latents.device, dtype=image_latents.dtype
+        )
+        bn_std = torch.sqrt(components.vae.bn.running_var + components.vae.config.batch_norm_eps).view(1, 1, -1)
+        block_state.image_latents = (image_latents - bn_mean) / bn_std.to(
+            device=image_latents.device, dtype=image_latents.dtype
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
 # auto_docstring
@@ -283,7 +558,8 @@ class Ideogram4TextEncoderStep(ModularPipelineBlocks):
     def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        device = components._execution_device
+        # The component-level offload hook does not run because the encoder submodules are called directly below.
+        device = components.text_encoder.device
         tokenizer = components.tokenizer
         max_text_tokens = block_state.max_sequence_length
 
@@ -319,6 +595,7 @@ class Ideogram4TextEncoderStep(ModularPipelineBlocks):
         )
         text_features = torch.stack(selected, dim=0).permute(1, 2, 3, 0).reshape(batch_size, max_text_tokens, -1)
         text_features = (text_features * attention_mask.to(text_features.dtype).unsqueeze(-1)).to(torch.float32)
+        text_features = text_features.to(components._execution_device)
 
         block_state.text_features = text_features
         block_state.text_lengths = text_lengths
