@@ -379,8 +379,8 @@ class Cosmos3DistilledTextEncoderStep(ModularPipelineBlocks):
             InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
             InputParam(
                 name="use_system_prompt",
-                type_hint=bool,
-                default=True,
+                type_hint=bool | None,
+                default=None,
                 description="Whether to prepend the Cosmos3 system prompt.",
             ),
             InputParam(
@@ -420,6 +420,8 @@ class Cosmos3DistilledTextEncoderStep(ModularPipelineBlocks):
             block_state.height = 720
         if block_state.width is None:
             block_state.width = 1280
+        if block_state.use_system_prompt is None:
+            block_state.use_system_prompt = components.config.default_use_system_prompt
 
         self._check_inputs(block_state)
         if components.requires_safety_checker:
