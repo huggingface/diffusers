@@ -31,6 +31,7 @@ if is_torch_available():
     from .transformer_cosmos import CosmosTransformer3DModel
     from .transformer_cosmos3 import Cosmos3OmniTransformer
     from .transformer_easyanimate import EasyAnimateTransformer3DModel
+    from .transformer_echo_wm import EchoWMTransformer3DModel
     from .transformer_ernie_image import ErnieImageTransformer2DModel
     from .transformer_flux import FluxTransformer2DModel
     from .transformer_flux2 import Flux2Transformer2DModel
