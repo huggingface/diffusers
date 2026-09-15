@@ -153,7 +153,6 @@ class QwenImageControlNetPipelineTesterConfig(BasePipelineTesterConfig):
             "max_sequence_length": 16,
             "control_image": control_image,
             "controlnet_conditioning_scale": 0.5,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

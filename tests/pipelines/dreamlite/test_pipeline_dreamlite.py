@@ -73,7 +73,6 @@ class DreamLitePipelineTesterConfig(DreamLiteBaseTesterConfig):
             "height": 64,
             "width": 64,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

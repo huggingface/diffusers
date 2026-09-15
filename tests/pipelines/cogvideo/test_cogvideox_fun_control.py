@@ -116,7 +116,6 @@ class CogVideoXFunControlPipelineTesterConfig(BasePipelineTesterConfig):
             "height": height,
             "width": width,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

@@ -123,7 +123,6 @@ class AnimateDiffControlNetPipelineTesterConfig(MotionPipelineTesterConfig):
             "num_inference_steps": 2,
             "num_frames": num_frames,
             "guidance_scale": 7.5,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
