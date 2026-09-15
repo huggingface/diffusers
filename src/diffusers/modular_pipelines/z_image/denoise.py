@@ -18,7 +18,7 @@ import torch
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
-from ...models import ZImageTransformer2DModel
+from ...models import ZImageControlNetModel, ZImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ..modular_pipeline import (
@@ -63,7 +63,13 @@ class ZImageLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: ZImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self,
+        components: ZImageModularPipeline,
+        block_state: BlockState,
+        i: int,
+        t: torch.Tensor,
+    ):
         latents = block_state.latents.unsqueeze(2).to(
             block_state.dtype
         )  # [batch_size, num_channels, 1, height, width]
@@ -151,7 +157,11 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: ZImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+        self,
+        components: ZImageModularPipeline,
+        block_state: BlockState,
+        i: int,
+        t: torch.Tensor,
     ) -> PipelineState:
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
@@ -219,7 +229,13 @@ class ZImageLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @torch.no_grad()
-    def __call__(self, components: ZImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self,
+        components: ZImageModularPipeline,
+        block_state: BlockState,
+        i: int,
+        t: torch.Tensor,
+    ):
         # Perform scheduler step using the predicted output
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
@@ -232,6 +248,94 @@ class ZImageLoopAfterDenoiser(ModularPipelineBlocks):
         if block_state.latents.dtype != latents_dtype:
             block_state.latents = block_state.latents.to(latents_dtype)
 
+        return components, block_state
+
+
+class ZImageInpaintLoopAfterDenoiser(ZImageLoopAfterDenoiser):
+    model_name = "z-image"
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("image_latents", required=True, type_hint=torch.Tensor),
+            InputParam("image_noise", required=True, type_hint=torch.Tensor),
+            InputParam("mask", required=True, type_hint=torch.Tensor),
+        ]
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        components: ZImageModularPipeline,
+        block_state: BlockState,
+        i: int,
+        t: torch.Tensor,
+    ):
+        components, block_state = super().__call__(components, block_state, i, t)
+        image_latents = block_state.image_latents
+        if i < len(block_state.timesteps) - 1:
+            image_latents = components.scheduler.scale_noise(
+                image_latents,
+                block_state.timesteps[i + 1].unsqueeze(0),
+                block_state.image_noise,
+            )
+        block_state.latents = (1 - block_state.mask) * image_latents + block_state.mask * block_state.latents
+        return components, block_state
+
+
+class ZImageControlNetLoopDenoiser(ZImageLoopDenoiser):
+    model_name = "z-image"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return super().expected_components + [ComponentSpec("controlnet", ZImageControlNetModel)]
+
+    @property
+    def inputs(self) -> list[tuple[str, Any]]:
+        return super().inputs + [
+            InputParam("control_image_latents", required=True, type_hint=torch.Tensor),
+            InputParam("controlnet_conditioning_scale", default=0.75, type_hint=float),
+            InputParam("controlnet_keep", required=True, type_hint=list[float]),
+        ]
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        components: ZImageModularPipeline,
+        block_state: BlockState,
+        i: int,
+        t: torch.Tensor,
+    ) -> PipelineState:
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+        guider_state = components.guider.prepare_inputs_from_block_state(block_state, self._guider_input_fields)
+
+        for guider_state_batch in guider_state:
+            components.guider.prepare_models(components.transformer)
+            cond_kwargs = guider_state_batch.as_dict()
+            cond_kwargs = {
+                key: [value.to(block_state.dtype) for value in values]
+                if isinstance(values, list)
+                else values.to(block_state.dtype)
+                for key, values in cond_kwargs.items()
+                if key in self._guider_input_fields
+            }
+            controlnet_block_samples = components.controlnet(
+                x=block_state.latent_model_input,
+                t=block_state.timestep,
+                cap_feats=cond_kwargs["cap_feats"],
+                control_context=list(block_state.control_image_latents.to(block_state.dtype).unbind(dim=0)),
+                conditioning_scale=block_state.controlnet_conditioning_scale * block_state.controlnet_keep[i],
+            )
+            model_out_list = components.transformer(
+                x=block_state.latent_model_input,
+                t=block_state.timestep,
+                controlnet_block_samples=controlnet_block_samples,
+                return_dict=False,
+                **cond_kwargs,
+            )[0]
+            guider_state_batch.noise_pred = -torch.stack(model_out_list, dim=0).squeeze(2)
+            components.guider.cleanup_models(components.transformer)
+
+        block_state.noise_pred = components.guider(guider_state)[0]
         return components, block_state
 
 
@@ -273,7 +377,8 @@ class ZImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         block_state = self.get_block_state(state)
 
         block_state.num_warmup_steps = max(
-            len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0
+            len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order,
+            0,
         )
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
@@ -312,3 +417,21 @@ class ZImageDenoiseStep(ZImageDenoiseLoopWrapper):
             " - `ZImageLoopAfterDenoiser`\n"
             "This block supports text-to-image and image-to-image tasks for Z-Image."
         )
+
+
+class ZImageInpaintDenoiseStep(ZImageDenoiseLoopWrapper):
+    block_classes = [
+        ZImageLoopBeforeDenoiser,
+        ZImageLoopDenoiser(guider_input_fields={"cap_feats": ("prompt_embeds", "negative_prompt_embeds")}),
+        ZImageInpaintLoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+
+class ZImageControlNetDenoiseStep(ZImageDenoiseLoopWrapper):
+    block_classes = [
+        ZImageLoopBeforeDenoiser,
+        ZImageControlNetLoopDenoiser(guider_input_fields={"cap_feats": ("prompt_embeds", "negative_prompt_embeds")}),
+        ZImageLoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
