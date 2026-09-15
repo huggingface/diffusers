@@ -21,7 +21,7 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-from diffusers.models._modeling_parallel import ContextParallelConfig, TensorParallelConfig
+from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig, TensorParallelConfig
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
 
 from ...testing_utils import (
@@ -295,6 +295,63 @@ def _tensor_parallel_worker(
             dist.destroy_process_group()
 
 
+def _hybrid_parallel_worker(
+    rank, world_size, master_port, model_class, init_dict, cp_dict, tp_degree, inputs_dict, return_dict, state_dict
+):
+    """Worker function for combined tensor + context parallel inference testing.
+
+    Both parallelisms are requested through a single `ParallelConfig`, which shares one device mesh between them, so
+    each rank holds `1 / tp_degree` of every sharded weight *and* `1 / (ring_degree * ulysses_degree)` of the
+    sequence. Rank 0 reports its output so the caller can compare it against a single-device reference: the
+    composition is mathematically equivalent to the unsharded model up to floating-point reduction order.
+    """
+    try:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = str(master_port)
+        os.environ["RANK"] = str(rank)
+        os.environ["WORLD_SIZE"] = str(world_size)
+
+        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
+        backend = device_config["backend"]
+        device_module = device_config["module"]
+
+        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+
+        device_module.set_device(rank)
+        device = torch.device(f"{torch_device}:{rank}")
+
+        model = model_class(**init_dict)
+        model.load_state_dict(state_dict)
+        model.to(device)
+        model.eval()
+
+        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+
+        model.enable_parallelism(
+            config=ParallelConfig(
+                tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
+                context_parallel_config=ContextParallelConfig(**cp_dict),
+            )
+        )
+
+        with torch.no_grad():
+            output = model(**inputs_on_device, return_dict=False)[0]
+
+        if rank == 0:
+            return_dict["status"] = "success"
+            return_dict["output_shape"] = list(output.shape)
+            # Serialise via nested list so the manager dict can transport it across processes.
+            return_dict["output"] = output.float().cpu().tolist()
+
+    except Exception as e:
+        if rank == 0:
+            return_dict["status"] = "error"
+            return_dict["error"] = str(e)
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
 @is_tensor_parallel
 @require_torch_multi_accelerator
 class TensorParallelTesterMixin:
@@ -343,6 +400,78 @@ class TensorParallelTesterMixin:
 
     def test_tensor_parallel_batch_inputs(self):
         self.test_tensor_parallel_inference(batch_size=2)
+
+
+@is_context_parallel
+@is_tensor_parallel
+@require_torch_multi_accelerator
+class HybridParallelTesterMixin:
+    """Tensor parallelism and context parallelism together, from one `ParallelConfig`.
+
+    Needs `tp_degree * ulysses_degree` accelerators (4 at the degrees used here), so it skips on a 2-device runner.
+    """
+
+    def test_hybrid_parallel_inference(self, batch_size: int = 1):
+        if not torch.distributed.is_available():
+            pytest.skip("torch.distributed is not available.")
+
+        for plan in ("_tp_plan", "_cp_plan"):
+            if getattr(self.model_class, plan, None) is None:
+                pytest.skip(f"Model does not define a `{plan}`, which hybrid parallelism requires.")
+
+        tp_degree, ulysses_degree = 2, 2
+        world_size = tp_degree * ulysses_degree
+        device_count = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])["module"].device_count()
+        if device_count < world_size:
+            pytest.skip(
+                f"tp_degree={tp_degree} x ulysses_degree={ulysses_degree} needs {world_size} accelerators, "
+                f"found {device_count}."
+            )
+
+        init_dict = self.get_init_dict()
+        num_heads = init_dict.get("num_attention_heads")
+        # Each rank keeps `num_heads // tp_degree` heads, which Ulysses splits again.
+        if num_heads is not None and num_heads % world_size != 0:
+            pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by {world_size}.")
+
+        inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
+
+        # Single-device reference
+        model = self.model_class(**init_dict).eval().to(torch_device)
+        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].float().cpu()
+
+        inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+
+        master_port = _find_free_port()
+        manager = mp.Manager()
+        return_dict = manager.dict()
+
+        mp.spawn(
+            _hybrid_parallel_worker,
+            args=(
+                world_size,
+                master_port,
+                self.model_class,
+                init_dict,
+                {"ulysses_degree": ulysses_degree},
+                tp_degree,
+                inputs_dict,
+                return_dict,
+                state_dict,
+            ),
+            nprocs=world_size,
+            join=True,
+        )
+
+        assert return_dict.get("status") == "success", (
+            f"Hybrid parallel inference failed: {return_dict.get('error', 'Unknown error')}"
+        )
+
+        output = torch.tensor(return_dict["output"])
+        # Sharded matmuls plus the Ulysses all-to-all reorder the summation, hence the tolerance.
+        torch.testing.assert_close(ref_output, output, atol=1e-3, rtol=1e-3)
 
 
 @is_context_parallel

@@ -1669,15 +1669,33 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 break
 
         mesh = None
-        if config.context_parallel_config is not None:
-            cp_config = config.context_parallel_config
+        cp_config, tp_config = config.context_parallel_config, config.tensor_parallel_config
+        if cp_config is not None and tp_config is not None:
+            # A single mesh spanning both parallelisms, with the context parallel dimensions varying fastest: a
+            # CP group is then a contiguous run of ranks and a TP group takes one rank out of each run.
+            #
+            # That order is a default, not a universal optimum. Some accelerator runtimes only accept contiguous
+            # replica groups for all-to-all -- which Ulysses needs -- while tolerating strided groups for
+            # all-reduce, which is all TP needs; since only one axis of a 2-D mesh can be contiguous, Ulysses
+            # gets it. On multi-node CUDA the opposite order is usually preferable, because TP is the most
+            # bandwidth-hungry collective and wants to stay within one NVLink domain. Pass `mesh=` on either
+            # config to choose the layout yourself.
+            mesh = (
+                cp_config.mesh
+                or tp_config.mesh
+                or torch.distributed.device_mesh.init_device_mesh(
+                    device_type=device_type,
+                    mesh_shape=(tp_config.tp_degree, *cp_config.mesh_shape),
+                    mesh_dim_names=("tp", *cp_config.mesh_dim_names),
+                )
+            )
+        elif cp_config is not None:
             mesh = cp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
                 device_type=device_type,
                 mesh_shape=cp_config.mesh_shape,
                 mesh_dim_names=cp_config.mesh_dim_names,
             )
-        elif config.tensor_parallel_config is not None:
-            tp_config = config.tensor_parallel_config
+        elif tp_config is not None:
             mesh = tp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
                 device_type=device_type,
                 mesh_shape=(tp_config.tp_degree,),
