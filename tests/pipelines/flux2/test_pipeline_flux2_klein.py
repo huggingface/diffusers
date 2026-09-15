@@ -23,6 +23,7 @@ from ...testing_utils import (
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    MagCacheTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
     check_qkv_fused_layers_exist,
@@ -283,3 +284,7 @@ class TestFlux2KleinPipelineIntegration:
         assert image.shape == (1, 128, 128, 3)
         assert not np.isnan(image).any(), "Output contains NaN values"
         assert (image >= 0.0).all() and (image <= 1.0).all(), "Output pixel values outside [0, 1]"
+
+
+class TestFlux2KleinPipelineMagCache(Flux2KleinPipelineTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for the Flux2 Klein pipeline."""

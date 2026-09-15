@@ -38,6 +38,7 @@ from ..testing_utils import (
     GGUFTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
+    MagCacheTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
@@ -713,3 +714,7 @@ class TestFlux2Transformer2DSingleFile(Flux2TransformerTesterConfig, SingleFileT
     @property
     def pretrained_model_kwargs(self):
         return {"subfolder": "transformer"}
+
+
+class TestFlux2TransformerMagCache(Flux2TransformerTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for Flux2 Transformer."""
