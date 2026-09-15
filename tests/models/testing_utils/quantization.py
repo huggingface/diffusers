@@ -1577,6 +1577,27 @@ class NunchakuLiteTesterMixin(NunchakuLiteConfigMixin, QuantizationTesterMixin):
     def test_nunchaku_lite_quantized_layers(self):
         self._test_quantized_layers(self.config_dict)
 
+    def test_nunchaku_lite_quantize_on_load(self):
+        """Quantize an unquantized checkpoint on load (`pre_quantized=False`) and run a forward pass."""
+
+        unquantized_path = getattr(self, "unquantized_model_name_or_path", None)
+        quantize_on_load_config = getattr(self, "quantize_on_load_config_dict", None)
+        if unquantized_path is None or quantize_on_load_config is None:
+            pytest.skip("Quantize-on-load attributes are not configured for this model.")
+
+        kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
+        kwargs["quantization_config"] = NunchakuLiteQuantizationConfig(**quantize_on_load_config, pre_quantized=False)
+        model = self.model_class.from_pretrained(unquantized_path, **kwargs)
+
+        num_quantized_layers = sum(1 for _, module in model.named_modules() if self._is_module_quantized(module))
+        expected = len(quantize_on_load_config["svdq_w4a4"]["targets"])
+        assert num_quantized_layers == expected, (
+            f"Quantize-on-load replaced {num_quantized_layers} layers, expected {expected}."
+        )
+
+        with torch.no_grad():
+            model(**self.get_dummy_inputs())
+
 
 @pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available.")
 @require_accelerate

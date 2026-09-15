@@ -228,6 +228,18 @@ def load_model_dict_into_meta(
 
     for param_name, param in state_dict.items():
         if param_name not in empty_state_dict:
+            # A quantize-on-load quantizer may claim checkpoint keys that no longer
+            # exist on the model (e.g. `weight` of a module replaced by a quantized
+            # linear) and materialize the module's packed parameters from them.
+            if (
+                is_quantized
+                and not hf_quantizer.pre_quantized
+                and hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict)
+            ):
+                param_device = _determine_param_device(param_name, device_map)
+                hf_quantizer.create_quantized_param(
+                    model, param, param_name, param_device, state_dict, unexpected_keys, dtype=dtype
+                )
             continue
 
         set_module_kwargs = {}
