@@ -220,6 +220,7 @@ _auto_round_available, _auto_round_version = _is_package_available("auto_round")
 _sdnq_available, _sdnq_version = _is_package_available("sdnq")
 _flashpack_available, _flashpack_version = _is_package_available("flashpack")
 _av_available, _av_version = _is_package_available("av")
+_comfy_kitchen_available, _comfy_kitchen_version = _is_package_available("comfy_kitchen")
 
 
 def is_torch_available():
@@ -422,6 +423,10 @@ def is_av_available():
     return _av_available
 
 
+def is_comfy_kitchen_available():
+    return _comfy_kitchen_available
+
+
 # docstyle-ignore
 INFLECT_IMPORT_ERROR = """
 {0} requires the inflect library but it was not found in your environment. You can install it with pip: `pip install
@@ -562,6 +567,11 @@ SDNQ_IMPORT_ERROR = """
 {0} requires the sdnq library but it was not found in your environment. You can install it with pip: `pip install sdnq`
 """
 
+COMFY_KITCHEN_IMPORT_ERROR = """
+{0} requires the comfy-kitchen library but it was not found in your environment. You can install it with pip: `pip
+install comfy-kitchen`
+"""
+
 # docstyle-ignore
 PYTORCH_RETINAFACE_IMPORT_ERROR = """
 {0} requires the pytorch_retinaface library but it was not found in your environment. You can install it with pip: `pip install pytorch_retinaface`
@@ -613,6 +623,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
         ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
         ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
+        ("comfy_kitchen", (is_comfy_kitchen_available, COMFY_KITCHEN_IMPORT_ERROR)),
         ("torch_neuronx", (is_torch_neuronx_available, TORCH_NEURONX_IMPORT_ERROR)),
     ]
 )
