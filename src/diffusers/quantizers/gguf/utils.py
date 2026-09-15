@@ -548,6 +548,16 @@ def dequantize_gguf_tensor(tensor):
 class GGUFParameter(torch.nn.Parameter):
     def __new__(cls, data, requires_grad=False, quant_type=None):
         data = data if data is not None else torch.empty(0)
+        if quant_type is None:
+            # Offloading rebuilds parameters as `param_cls(new_value, requires_grad=...)` without
+            # forwarding `quant_type` (see `accelerate.utils.set_module_tensor_to_device`), so
+            # inherit it from the tensor being wrapped instead of failing with `KeyError: None`.
+            quant_type = getattr(data, "quant_type", None)
+        if quant_type not in GGML_QUANT_SIZES:
+            raise ValueError(
+                f"`GGUFParameter` expects a valid `quant_type`, but got {quant_type}, and it could not "
+                "be inferred from the tensor being wrapped."
+            )
         self = torch.Tensor._make_subclass(cls, data, requires_grad)
         self.quant_type = quant_type
         block_size, type_size = GGML_QUANT_SIZES[quant_type]
