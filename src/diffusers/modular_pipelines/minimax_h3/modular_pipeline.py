@@ -113,6 +113,32 @@ def align_num_frames(num_frames: int, frames_per_chunk: int, latents_per_chunk: 
     return num_frames
 
 
+def frame_bounds(min_duration: float, max_duration: float, fps: int, frames_per_chunk: int, latents_per_chunk: int):
+    r"""
+    Carry a duration envelope onto the video VAE's `frames_per_chunk * n + latents_per_chunk` grid.
+
+    Both bounds are snapped the same way a request's `num_frames` is, because the grid — not the clock — decides what
+    the VAE can encode. Snapping only the floor and holding the ceiling in seconds makes the two ends inconsistent:
+    at 24 fps a 5.0 s floor admits 124 frames (5.167 s, above the floor it is checked against) while a 15.0 s ceiling
+    refuses 362 frames (15.083 s), and since the grid has no point at `15.0 * 24 = 360` that leaves a model documented
+    as generating up to 15 seconds unable to generate 15 seconds at all.
+
+    Args:
+        min_duration (`float`): Shortest duration the model generates, in seconds.
+        max_duration (`float`): Longest duration the model generates, in seconds.
+        fps (`int`): The model's frame rate.
+        frames_per_chunk (`int`): Pixel frames the video VAE encodes per chunk, its `clip_length`.
+        latents_per_chunk (`int`): Latent frames a chunk keeps, the VAE's `tokens_chunk_size`.
+
+    Returns:
+        `tuple[int, int]`: The smallest and largest frame counts on the grid.
+    """
+    return (
+        align_num_frames(int(min_duration * fps), frames_per_chunk, latents_per_chunk),
+        align_num_frames(int(max_duration * fps), frames_per_chunk, latents_per_chunk),
+    )
+
+
 def video_latent_num_frames(num_frames: int, frames_per_chunk: int, latents_per_chunk: int) -> int:
     r"""
     The number of latent frames the video VAE produces for a `17 * n + 5` frame count.
