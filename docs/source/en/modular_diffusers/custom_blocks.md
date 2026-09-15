@@ -319,7 +319,7 @@ This guide covered creating a single custom block. Learn how to compose multiple
 
 - [SequentialPipelineBlocks](./sequential_pipeline_blocks): Chain blocks to execute in sequence
 - [ConditionalPipelineBlocks](./auto_pipeline_blocks): Create conditional blocks that select different execution paths
-- [LoopSequentialPipelineBlocks](./loop_sequential_pipeline_blocks): Define an iterative workflows like the denoising loop
+- [IterativePipelineBlocks](./iterative_pipeline_blocks): Define an iterative workflow like the denoising loop
 
 </hfoption>
 <hfoption id="Use in Mellon">
