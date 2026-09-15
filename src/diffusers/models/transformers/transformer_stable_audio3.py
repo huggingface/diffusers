@@ -21,6 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -400,7 +401,7 @@ class StableAudio3DiTBlock(nn.Module):
         return hidden_states
 
 
-class StableAudio3DiTModel(ModelMixin, ConfigMixin, AttentionMixin):
+class StableAudio3DiTModel(ModelMixin, ConfigMixin, AttentionMixin, FromOriginalModelMixin):
     r"""
     The Diffusion Transformer (DiT) backbone of [Stable Audio 3](https://stability.ai/news/stable-audio-3).
 

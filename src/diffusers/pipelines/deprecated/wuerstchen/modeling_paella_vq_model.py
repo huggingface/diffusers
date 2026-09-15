@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 
 from ....configuration_utils import ConfigMixin, register_to_config
+from ....loaders import FromOriginalModelMixin
 from ....models.autoencoders.vae import DecoderOutput, VectorQuantizer
 from ....models.modeling_utils import ModelMixin
 from ....models.vq_model import VQEncoderOutput
@@ -54,7 +55,7 @@ class MixingResidualBlock(nn.Module):
         return x
 
 
-class PaellaVQModel(ModelMixin, ConfigMixin):
+class PaellaVQModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""VQ-VAE model from Paella model.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library

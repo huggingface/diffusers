@@ -20,11 +20,12 @@ import torch
 import torch.nn as nn
 
 from ....configuration_utils import ConfigMixin, register_to_config
+from ....loaders import FromOriginalModelMixin
 from ....models.modeling_utils import ModelMixin
 from .modeling_wuerstchen_common import AttnBlock, GlobalResponseNorm, TimestepBlock, WuerstchenLayerNorm
 
 
-class WuerstchenDiffNeXt(ModelMixin, ConfigMixin):
+class WuerstchenDiffNeXt(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @register_to_config
     def __init__(
         self,

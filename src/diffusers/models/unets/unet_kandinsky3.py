@@ -18,6 +18,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
 from ..attention import AttentionMixin
 from ..attention_processor import Attention, AttnProcessor
@@ -45,7 +46,7 @@ class Kandinsky3EncoderProj(nn.Module):
         return x
 
 
-class Kandinsky3UNet(ModelMixin, AttentionMixin, ConfigMixin):
+class Kandinsky3UNet(ModelMixin, AttentionMixin, ConfigMixin, FromOriginalModelMixin):
     @register_to_config
     def __init__(
         self,

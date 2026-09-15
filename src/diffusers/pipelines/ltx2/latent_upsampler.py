@@ -18,6 +18,7 @@ import torch
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...models.modeling_utils import ModelMixin
 
 
@@ -167,7 +168,7 @@ class SpatialRationalResampler(torch.nn.Module):
         return x
 
 
-class LTX2LatentUpsamplerModel(ModelMixin, ConfigMixin):
+class LTX2LatentUpsamplerModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     Model to spatially upsample VAE latents.
 

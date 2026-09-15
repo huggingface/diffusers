@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -498,7 +499,7 @@ class MiniMaxH3VideoViTDecoder3d(nn.Module):
         )
 
 
-class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, AutoencoderMixin):
+class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, AutoencoderMixin, FromOriginalModelMixin):
     r"""
     A VAE model with a causal 3D CNN encoder and a non-causal ViT decoder, used in
     [MiniMax-H3](https://huggingface.co/MiniMaxAI).

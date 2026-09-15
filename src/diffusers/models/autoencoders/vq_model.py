@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
 from ..autoencoders.vae import Decoder, DecoderOutput, Encoder, VectorQuantizer
@@ -37,7 +38,7 @@ class VQEncoderOutput(BaseOutput):
     latents: torch.Tensor
 
 
-class VQModel(ModelMixin, AutoencoderMixin, ConfigMixin):
+class VQModel(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VQ-VAE model for decoding latent representations.
 

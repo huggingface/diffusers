@@ -20,6 +20,7 @@ import torch.nn as nn
 from torch.nn.utils import weight_norm
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.torch_utils import randn_tensor
@@ -291,7 +292,7 @@ class OobleckDecoder(nn.Module):
         return hidden_state
 
 
-class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
+class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     An autoencoder for encoding waveforms into latents and decoding latent representations into waveforms. First
     introduced in Stable Audio.

@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ..attention import AttentionMixin, FeedForward
 from ..attention_processor import Attention, CogVideoXAttnProcessor2_0
@@ -123,7 +124,7 @@ class CogView3PlusTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class CogView3PlusTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin):
+class CogView3PlusTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     The Transformer model introduced in [CogView3: Finer and Faster Text-to-Image Generation via Relay
     Diffusion](https://huggingface.co/papers/2403.05121).

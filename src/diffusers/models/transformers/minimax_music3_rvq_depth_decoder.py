@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ..attention import AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_utils import ModelMixin
@@ -88,7 +89,7 @@ class MiniMaxMusic3DepthDecoderBlock(nn.Module):
         return hidden_states + self.down_proj(F.silu(self.gate_proj(norm_states)) * self.up_proj(norm_states))
 
 
-class MiniMaxMusic3RVQDepthDecoder(ModelMixin, ConfigMixin):
+class MiniMaxMusic3RVQDepthDecoder(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     The local language model of MiniMax Music 3. Within each audio frame it autoregressively predicts the seven
     residual RVQ codebooks (c1..c7) from the global language model's hidden state and the frame's semantic code, and

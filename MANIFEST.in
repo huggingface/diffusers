@@ -1,2 +1,4 @@
 include LICENSE
 include src/diffusers/utils/model_card_template.md
+recursive-include src/diffusers/loaders/conversion/configs *.json
+recursive-include src/diffusers/loaders/conversion/presets *.json

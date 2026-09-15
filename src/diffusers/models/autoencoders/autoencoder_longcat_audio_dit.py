@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from torch.nn.utils import weight_norm
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.torch_utils import randn_tensor
@@ -293,7 +294,7 @@ class LongCatAudioDiTVaeDecoderOutput(BaseOutput):
     sample: torch.Tensor
 
 
-class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
+class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     _supports_group_offloading = False
 
     @register_to_config

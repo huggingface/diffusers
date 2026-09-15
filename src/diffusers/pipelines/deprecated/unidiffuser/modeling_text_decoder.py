@@ -5,11 +5,12 @@ from transformers import GPT2Config, GPT2LMHeadModel
 from transformers.modeling_utils import ModuleUtilsMixin
 
 from ....configuration_utils import ConfigMixin, register_to_config
+from ....loaders import FromOriginalModelMixin
 from ....models import ModelMixin
 
 
 # Modified from ClipCaptionModel in https://github.com/thu-ml/unidiffuser/blob/main/libs/caption_decoder.py
-class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
+class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin, FromOriginalModelMixin):
     """
     Text decoder model for a image-text [UniDiffuser](https://huggingface.co/papers/2303.06555) model. This is used to
     generate text from the UniDiffuser image-text embedding.

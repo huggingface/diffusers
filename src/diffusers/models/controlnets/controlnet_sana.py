@@ -19,7 +19,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
 from ..attention import AttentionMixin
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
@@ -38,7 +38,7 @@ class SanaControlNetOutput(BaseOutput):
     controlnet_block_samples: tuple[torch.Tensor]
 
 
-class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
+class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
     _no_split_modules = ["SanaTransformerBlock", "PatchEmbed"]
     _skip_layerwise_casting_patterns = ["patch_embed", "norm"]
