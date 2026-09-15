@@ -241,8 +241,9 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             all_input_ids.append(inputs["input_ids"])
             all_attention_masks.append(inputs["attention_mask"])
 
-        input_ids = torch.cat(all_input_ids, dim=0).to(device)
-        attention_mask = torch.cat(all_attention_masks, dim=0).to(device)
+        model_device = text_encoder.device
+        input_ids = torch.cat(all_input_ids, dim=0).to(model_device)
+        attention_mask = torch.cat(all_attention_masks, dim=0).to(model_device)
 
         # Forward pass through the model
         output = text_encoder(
@@ -520,7 +521,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     ):
         image_latents = []
         for image in images:
-            image = image.to(device=device, dtype=dtype)
+            image = image.to(device=self.vae.device, dtype=dtype)
             imagge_latent = self._encode_vae_image(image=image, generator=generator)
             image_latents.append(imagge_latent)  # (1, 128, 32, 32)
 
@@ -539,6 +540,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latents = image_latents.unsqueeze(0)  # (1, N*1024, 128)
 
         image_latents = image_latents.repeat(batch_size, 1, 1)
+        image_latents = image_latents.to(device)
         image_latent_ids = image_latent_ids.repeat(batch_size, 1, 1)
         image_latent_ids = image_latent_ids.to(device)
 
@@ -915,6 +917,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         if output_type == "latent":
             image = latents
         else:
+            latents = latents.to(self.vae.device)
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 

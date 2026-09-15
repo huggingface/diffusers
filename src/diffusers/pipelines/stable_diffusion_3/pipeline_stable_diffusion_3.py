@@ -273,7 +273,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder_3(text_input_ids.to(device))[0]
+        model_device = self.text_encoder_3.device
+        prompt_embeds = self.text_encoder_3(text_input_ids.to(model_device))[0]
 
         dtype = self.text_encoder_3.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
@@ -321,7 +322,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer_max_length} tokens: {removed_text}"
             )
-        prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+        prompt_embeds = text_encoder(text_input_ids.to(text_encoder.device), output_hidden_states=True)
         pooled_prompt_embeds = prompt_embeds[0]
 
         if clip_skip is None:
@@ -708,7 +709,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
-        image = image.to(device=device, dtype=self.dtype)
+        image = image.to(device=self.image_encoder.device, dtype=self.dtype)
 
         return self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
 
@@ -1134,6 +1135,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
         else:
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
+            latents = latents.to(self.vae.device)
 
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)

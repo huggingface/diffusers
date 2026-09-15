@@ -473,7 +473,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
-        image = image.to(device=device, dtype=dtype)
+        image = image.to(device=self.image_encoder.device, dtype=dtype)
         if output_hidden_states:
             image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
             image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)

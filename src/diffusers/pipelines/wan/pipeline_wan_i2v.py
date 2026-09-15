@@ -223,7 +223,8 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
+        model_device = self.text_encoder.device
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), mask.to(model_device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
         prompt_embeds = torch.stack(
@@ -243,9 +244,9 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: torch.device | None = None,
     ):
         device = device or self._execution_device
-        image = self.image_processor(images=image, return_tensors="pt").to(device)
+        image = self.image_processor(images=image, return_tensors="pt").to(self.image_encoder.device)
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
-        return image_embeds.hidden_states[-2]
+        return image_embeds.hidden_states[-2].to(device)
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
@@ -435,7 +436,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 2, height, width), last_image],
                 dim=2,
             )
-        video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
+        video_condition = video_condition.to(device=self.vae.device, dtype=self.vae.dtype)
 
         latents_mean = (
             torch.tensor(self.vae.config.latents_mean)
@@ -455,7 +456,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
             latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
 
-        latent_condition = latent_condition.to(dtype)
+        latent_condition = latent_condition.to(device=device, dtype=dtype)
         latent_condition = (latent_condition - latents_mean) * latents_std
 
         if self.config.expand_timesteps:
@@ -817,7 +818,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents = (1 - first_frame_mask) * condition + first_frame_mask * latents
 
         if not output_type == "latent":
-            latents = latents.to(self.vae.dtype)
+            latents = latents.to(device=self.vae.device, dtype=self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)

@@ -661,7 +661,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     ):
         image_latents = []
         for image in images:
-            image = image.to(device=device, dtype=dtype)
+            image = image.to(device=self.vae.device, dtype=dtype)
             imagge_latent = self._encode_vae_image(image=image, generator=generator)
             image_latents.append(imagge_latent)  # (1, 128, 32, 32)
 
@@ -680,6 +680,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latents = image_latents.unsqueeze(0)  # (1, N*1024, 128)
 
         image_latents = image_latents.repeat(batch_size, 1, 1)
+        image_latents = image_latents.to(device)
         image_latent_ids = image_latent_ids.repeat(batch_size, 1, 1)
         image_latent_ids = image_latent_ids.to(device)
 
@@ -1021,6 +1022,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             )
             latents = latents * latents_bn_std + latents_bn_mean
             latents = self._unpatchify_latents(latents)
+            latents = latents.to(self.vae.device)
 
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)

@@ -299,17 +299,18 @@ class StableDiffusionUpscalePipeline(
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
+            model_device = self.text_encoder.device
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = text_inputs.attention_mask.to(device)
+                attention_mask = text_inputs.attention_mask.to(model_device)
             else:
                 attention_mask = None
 
             if clip_skip is None:
-                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+                prompt_embeds = self.text_encoder(text_input_ids.to(model_device), attention_mask=attention_mask)
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                    text_input_ids.to(model_device), attention_mask=attention_mask, output_hidden_states=True
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -369,13 +370,14 @@ class StableDiffusionUpscalePipeline(
                 return_tensors="pt",
             )
 
+            model_device = self.text_encoder.device
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = uncond_input.attention_mask.to(device)
+                attention_mask = uncond_input.attention_mask.to(model_device)
             else:
                 attention_mask = None
 
             negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
+                uncond_input.input_ids.to(model_device),
                 attention_mask=attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
