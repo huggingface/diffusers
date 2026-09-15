@@ -2,7 +2,7 @@
 from ..utils import DummyObject, requires_backends
 
 
-class Com(metaclass=DummyObject):
+class ComfyQuantConfig(metaclass=DummyObject):
     _backends = ["comfy_kitchen"]
 
     def __init__(self, *args, **kwargs):
