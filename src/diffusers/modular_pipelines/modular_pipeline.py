@@ -107,6 +107,10 @@ def _wan_i2v_map_fn(config_dict=None):
         return "WanImage2VideoModularPipeline"
 
 
+def _wan_v2v_map_fn(config_dict=None):
+    return "WanVideoToVideoModularPipeline"
+
+
 def _krea2_map_fn(config_dict=None):
     if config_dict is None:
         return "Krea2ModularPipeline"
@@ -135,6 +139,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("wan-animate-2", _create_default_map_fn("WanAnimate2ModularPipeline")),
         ("wan-animate-2-distilled", _create_default_map_fn("WanAnimate2DistilledModularPipeline")),
         ("wan-i2v", _wan_i2v_map_fn),
+        ("wan-v2v", _wan_v2v_map_fn),
         ("wan-vace", _create_default_map_fn("Wan22VaceModularPipeline")),
         ("flux", _create_default_map_fn("FluxModularPipeline")),
         ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),

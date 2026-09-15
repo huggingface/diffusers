@@ -579,6 +579,8 @@ else:
             "WanImage2VideoAutoBlocks",
             "WanImage2VideoModularPipeline",
             "WanModularPipeline",
+            "WanVideoToVideoBlocks",
+            "WanVideoToVideoModularPipeline",
             "ZImageAutoBlocks",
             "ZImageModularPipeline",
         ]
@@ -1435,6 +1437,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanImage2VideoAutoBlocks,
             WanImage2VideoModularPipeline,
             WanModularPipeline,
+            WanVideoToVideoBlocks,
+            WanVideoToVideoModularPipeline,
             ZImageAutoBlocks,
             ZImageModularPipeline,
         )

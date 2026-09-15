@@ -178,9 +178,9 @@ class WanTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("prompt"),
-            InputParam("negative_prompt"),
-            InputParam("max_sequence_length", default=512),
+            InputParam("prompt", description="The prompt or prompts to guide video generation."),
+            InputParam("negative_prompt", description="The prompt or prompts not to guide video generation."),
+            InputParam("max_sequence_length", default=512, description="Maximum sequence length for prompt encoding."),
         ]
 
     @property
@@ -872,6 +872,74 @@ class WanVaceEncoderStep(ModularPipelineBlocks):
                 )
             conditioning_scale = conditioning_scale.to(device=device)
         block_state.control_hidden_states_scale = conditioning_scale
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanVideoVaeEncoderStep(ModularPipelineBlocks):
+    model_name = "wan-v2v"
+
+    @property
+    def description(self) -> str:
+        return "Preprocess and encode the input video into normalized VAE latents for video-to-video generation."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 8}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("video", required=True, description="The input video to transform."),
+            InputParam("height", type_hint=int, description="The height in pixels of the generated video."),
+            InputParam("width", type_hint=int, description="The width in pixels of the generated video."),
+            InputParam("generator", description="Torch generator for deterministic latent generation."),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "video_latents",
+                type_hint=torch.Tensor,
+                description="Normalized VAE latents of the input video.",
+            )
+        ]
+
+    @staticmethod
+    def check_inputs(height: int, width: int):
+        if height % 16 != 0 or width % 16 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
+
+    @torch.no_grad()
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        block_state.height = block_state.height or components.default_height
+        block_state.width = block_state.width or components.default_width
+        self.check_inputs(block_state.height, block_state.width)
+
+        device = components._execution_device
+        video = components.video_processor.preprocess_video(
+            block_state.video, height=block_state.height, width=block_state.width
+        ).to(device=device, dtype=torch.float32)
+        block_state.video_latents = encode_vae_image(
+            video_tensor=video,
+            vae=components.vae,
+            generator=block_state.generator,
+            device=device,
+            dtype=components.vae.dtype,
+            latent_channels=components.num_channels_latents,
+        ).to(torch.float32)
 
         self.set_block_state(state, block_state)
         return components, state
