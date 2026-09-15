@@ -4090,6 +4090,18 @@ def convert_ltx2_transformer_to_diffusers(checkpoint, **kwargs):
         if ".weight" not in key and ".bias" not in key:
             return
 
+        if key.startswith("prompt_adaln_single."):
+            new_key = key.replace("prompt_adaln_single.", "prompt_adaln.")
+            param = state_dict.pop(key)
+            state_dict[new_key] = param
+            return
+
+        if key.startswith("audio_prompt_adaln_single."):
+            new_key = key.replace("audio_prompt_adaln_single.", "audio_prompt_adaln.")
+            param = state_dict.pop(key)
+            state_dict[new_key] = param
+            return
+
         if key.startswith("adaln_single."):
             new_key = key.replace("adaln_single.", "time_embed.")
             param = state_dict.pop(key)
@@ -4108,7 +4120,7 @@ def convert_ltx2_transformer_to_diffusers(checkpoint, **kwargs):
         "adaln_single": convert_ltx2_transformer_adaln_single,
     }
 
-    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys()) if key.startswith("model.diffusion_model.")}
 
     # Handle official code --> diffusers key remapping via the remap dict
     for key in list(converted_state_dict.keys()):
@@ -4151,6 +4163,8 @@ def convert_ltx2_vae_to_diffusers(checkpoint, **kwargs):
         "up_blocks.4": "up_blocks.1",
         "up_blocks.5": "up_blocks.2.upsamplers.0",
         "up_blocks.6": "up_blocks.2",
+        "up_blocks.7": "up_blocks.3.upsamplers.0",
+        "up_blocks.8": "up_blocks.3",
         # Common
         # For all 3D ResNets
         "res_blocks": "resnets",
@@ -4169,7 +4183,7 @@ def convert_ltx2_vae_to_diffusers(checkpoint, **kwargs):
         "per_channel_statistics.mean-of-stds": remove_keys_inplace,
     }
 
-    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys()) if key.startswith("vae.")}
 
     # Handle official code --> diffusers key remapping via the remap dict
     for key in list(converted_state_dict.keys()):
@@ -4201,7 +4215,7 @@ def convert_ltx2_audio_vae_to_diffusers(checkpoint, **kwargs):
     def update_state_dict_inplace(state_dict, old_key: str, new_key: str) -> None:
         state_dict[new_key] = state_dict.pop(old_key)
 
-    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys()) if key.startswith("audio_vae.")}
 
     # Handle official code --> diffusers key remapping via the remap dict
     for key in list(converted_state_dict.keys()):
