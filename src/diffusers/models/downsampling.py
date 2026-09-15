@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -227,7 +227,7 @@ class FirDownsample2D(nn.Module):
             stride_value = [factor, factor]
             upfirdn_input = upfirdn2d_native(
                 hidden_states,
-                torch.tensor(kernel, device=hidden_states.device),
+                kernel.to(device=hidden_states.device, dtype=hidden_states.dtype),
                 pad=((pad_value + 1) // 2, pad_value // 2),
             )
             output = F.conv2d(upfirdn_input, weight, stride=stride_value, padding=0)
@@ -235,7 +235,7 @@ class FirDownsample2D(nn.Module):
             pad_value = kernel.shape[0] - factor
             output = upfirdn2d_native(
                 hidden_states,
-                torch.tensor(kernel, device=hidden_states.device),
+                kernel.to(device=hidden_states.device, dtype=hidden_states.dtype),
                 down=factor,
                 pad=((pad_value + 1) // 2, pad_value // 2),
             )
@@ -392,7 +392,7 @@ def downsample_2d(
     pad_value = kernel.shape[0] - factor
     output = upfirdn2d_native(
         hidden_states,
-        kernel.to(device=hidden_states.device),
+        kernel.to(device=hidden_states.device, dtype=hidden_states.dtype),
         down=factor,
         pad=((pad_value + 1) // 2, pad_value // 2),
     )

@@ -34,7 +34,7 @@ import torch
 from diffusers import PixArtAlphaPipeline
 from tgate import TgatePixArtLoader
 
-pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
+pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", dtype=torch.float16)
 
 gate_step = 8
 inference_step = 25
@@ -42,7 +42,7 @@ pipe = TgatePixArtLoader(
        pipe,
        gate_step=gate_step,
        num_inference_steps=inference_step,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe.tgate(
        "An alpaca made of colorful building blocks, cyberpunk.",
@@ -63,7 +63,7 @@ from tgate import TgateSDXLLoader
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
             variant="fp16",
             use_safetensors=True,
 )
@@ -75,7 +75,7 @@ pipe = TgateSDXLLoader(
        pipe,
        gate_step=gate_step,
        num_inference_steps=inference_step,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe.tgate(
        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
@@ -96,7 +96,7 @@ from tgate import TgateSDXLDeepCacheLoader
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
             variant="fp16",
             use_safetensors=True,
 )
@@ -108,7 +108,7 @@ pipe = TgateSDXLDeepCacheLoader(
        pipe,
        cache_interval=3,
        cache_branch_id=0,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe.tgate(
        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
@@ -130,13 +130,13 @@ from tgate import TgateSDXLLoader
 
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 )
 pipe = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     unet=unet,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 )
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
@@ -148,7 +148,7 @@ pipe = TgateSDXLLoader(
        gate_step=gate_step,
        num_inference_steps=inference_step,
        lcm=True
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe.tgate(
        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",

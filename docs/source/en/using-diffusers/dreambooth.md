@@ -16,6 +16,8 @@ specific language governing permissions and limitations under the License.
 
 DreamBooth checkpoints are typically a few GBs in size because it contains the full model weights.
 
+To train one, see [Train DreamBooth](../training/dreambooth).
+
 Load the DreamBooth checkpoint with [`~DiffusionPipeline.from_pretrained`] and include the unique identifier in the prompt to activate its generation.
 
 ```py
@@ -24,8 +26,8 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "sd-dreambooth-library/herge-style",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 prompt = "A cute sks herge_style brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
 pipeline(prompt).images[0]
 ```

@@ -25,8 +25,8 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights(
     "ostris/super-cereal-sdxl-lora",
     weight_name="cereal_box_sdxl_v1.safetensors",
@@ -44,7 +44,7 @@ from diffusers import LTXConditionPipeline
 from diffusers.utils import export_to_video, load_image
 
 pipeline = LTXConditionPipeline.from_pretrained(
-    "Lightricks/LTX-Video-0.9.5", torch_dtype=torch.bfloat16
+    "Lightricks/LTX-Video-0.9.5", dtype=torch.bfloat16
 )
 
 pipeline.load_lora_weights(
@@ -89,8 +89,8 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.unet.load_lora_adapter(
     "jbilcke-hf/sdxl-cinematic-1",
     weight_name="pytorch_lora_weights.safetensors",
@@ -112,8 +112,8 @@ from diffusers import DiffusionPipeline
 # load base model and LoRA
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights(
     "ostris/ikea-instructions-lora-sdxl",
     weight_name="ikea_instructions_xl_v1_5.safetensors",
@@ -154,8 +154,8 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights(
     "ostris/super-cereal-sdxl-lora",
     weight_name="cereal_box_sdxl_v1.safetensors",
@@ -178,8 +178,8 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights(
     "ostris/super-cereal-sdxl-lora",
     weight_name="cereal_box_sdxl_v1.safetensors",
@@ -214,8 +214,8 @@ import torch
 from diffusers import FluxPipeline
 
 pipeline = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
-).to("cuda")
+    "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 pipelne.load_lora_weights("alvarobartt/ghibli-characters-flux-lora", "lora")
 
@@ -254,8 +254,8 @@ from diffusers import DiffusionPipeline
 # load base model and LoRAs
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights(
     "ostris/ikea-instructions-lora-sdxl",
     weight_name="ikea_instructions_xl_v1_5.safetensors",
@@ -292,8 +292,8 @@ from diffusers import DiffusionPipeline
 # load base model and LoRAs
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 # 1. enable_lora_hotswap
 pipeline.enable_lora_hotswap(target_rank=max_rank)
 pipeline.load_lora_weights(
@@ -349,8 +349,8 @@ from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights(
     "ostris/ikea-instructions-lora-sdxl",
     weight_name="ikea_instructions_xl_v1_5.safetensors",
@@ -393,11 +393,11 @@ from peft import get_peft_model, LoraConfig, PeftModel
 
 unet = AutoModel.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
     subfolder="unet",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Load a pipeline, pass the UNet to it, and load a LoRA.
@@ -406,9 +406,9 @@ Load a pipeline, pass the UNet to it, and load a LoRA.
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     variant="fp16",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     unet=unet
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights(
     "ostris/ikea-instructions-lora-sdxl",
     weight_name="ikea_instructions_xl_v1_5.safetensors",
@@ -464,11 +464,11 @@ Load a base UNet model and load the adapters.
 ```py
 base_unet = AutoModel.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
     subfolder="unet",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 model = PeftModel.from_pretrained(
     base_unet,
@@ -502,8 +502,8 @@ pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     unet=model,
     variant="fp16",
-    torch_dtype=torch.float16,
-).to("cuda")
+    dtype=torch.float16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline("A bowl of ramen shaped like a cute kawaii bear, by Feng Zikai").images[0]
 ```
 
@@ -521,8 +521,8 @@ from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights(
     "ostris/ikea-instructions-lora-sdxl",
     weight_name="ikea_instructions_xl_v1_5.safetensors",
@@ -567,8 +567,8 @@ The fused pipeline can now be quickly loaded for inference without requiring eac
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
-    "username/fused-ikea-feng", torch_dtype=torch.float16,
-).to("cuda")
+    "username/fused-ikea-feng", dtype=torch.float16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline("A bowl of ramen shaped like a cute kawaii bear, by Feng Zikai").images[0]
 ```
 
@@ -596,8 +596,8 @@ from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights(
     "ostris/ikea-instructions-lora-sdxl",
     weight_name="ikea_instructions_xl_v1_5.safetensors",
@@ -622,8 +622,8 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.unet.load_lora_adapter(
     "jbilcke-hf/sdxl-cinematic-1",
     weight_name="pytorch_lora_weights.safetensors",

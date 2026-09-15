@@ -1,0 +1,14 @@
+{
+  "name": "diffusers-skills",
+  "description": "Agent plugins published from the diffusers repository",
+  "owner": {
+    "name": "The Hugging Face team"
+  },
+  "plugins": [
+    {
+      "name": "diffusers",
+      "source": "./.ai",
+      "description": "Conventions and task skills for contributing to diffusers"
+    }
+  ]
+}

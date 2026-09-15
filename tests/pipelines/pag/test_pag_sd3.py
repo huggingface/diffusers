@@ -1,7 +1,3 @@
-import inspect
-import unittest
-
-import numpy as np
 import torch
 from transformers import (
     AutoConfig,
@@ -20,19 +16,19 @@ from diffusers import (
     StableDiffusion3Pipeline,
 )
 
-from ...testing_utils import (
-    torch_device,
-)
-from ..test_pipelines_common import (
-    PipelineTesterMixin,
+from ...testing_utils import assert_tensors_close, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,
 )
+from .testing_utils import PAGPipelineTesterMixin
 
 
-class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class StableDiffusion3PAGPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusion3PAGPipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
             "prompt",
             "height",
@@ -43,8 +39,8 @@ class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixi
             "negative_prompt_embeds",
         ]
     )
-    batch_params = frozenset(["prompt", "negative_prompt"])
-    test_xformers_attention = False
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -117,64 +113,50 @@ class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixi
             "vae": vae,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "pag_scale": 0.0,
         }
-        return inputs
+
+
+class TestStableDiffusion3PAGPipeline(StableDiffusion3PAGPipelineTesterConfig, PAGPipelineTesterMixin):
+    base_pipeline_class = StableDiffusion3Pipeline
+    # The dummy inputs disable PAG (`pag_scale=0.0`); only the "PAG off reproduces the base pipeline" leg is
+    # asserted here, as it was before the migration.
+    check_pag_changes_output = False
 
     def test_stable_diffusion_3_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
-        output_same_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["prompt_2"] = "a different prompt"
-        inputs["prompt_3"] = "another different prompt"
-        output_different_prompts = pipe(**inputs).images[0]
-
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+        output_same_prompt = self.run_pipe(pipe)[0]
+        output_different_prompts = self.run_pipe(
+            pipe, prompt_2="a different prompt", prompt_3="another different prompt"
+        )[0]
 
         # Outputs should be different here
-        assert max_diff > 1e-2
+        assert (output_same_prompt - output_different_prompts).abs().max() > 1e-2
 
     def test_stable_diffusion_3_different_negative_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
-        output_same_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["negative_prompt_2"] = "deformed"
-        inputs["negative_prompt_3"] = "blurry"
-        output_different_prompts = pipe(**inputs).images[0]
-
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+        output_same_prompt = self.run_pipe(pipe)[0]
+        output_different_prompts = self.run_pipe(pipe, negative_prompt_2="deformed", negative_prompt_3="blurry")[0]
 
         # Outputs should be different here
-        assert max_diff > 1e-2
+        assert (output_same_prompt - output_different_prompts).abs().max() > 1e-2
 
     def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        # Run on CPU to keep the device-dependent `torch.Generator` deterministic.
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        original_image_slice = image[0, -3:, -3:, -1]
+        original_output = self.run_pipe(pipe)
 
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
@@ -186,62 +168,31 @@ class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixi
             pipe.transformer, pipe.transformer.original_attn_processors
         ), "Something wrong with the attention processors concerning the fused QKV projections."
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
+        output_fused = self.run_pipe(pipe)
 
         pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
+        output_disabled = self.run_pipe(pipe)
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
-            "Fusion of QKV projections shouldn't affect the outputs."
+        assert_tensors_close(
+            output_fused, original_output, atol=1e-3, rtol=1e-3, msg="Fusion of QKV projections changed the outputs."
         )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert_tensors_close(
+            output_disabled,
+            output_fused,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Outputs changed after the fused QKV projections were disabled.",
         )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
+        assert_tensors_close(
+            output_disabled,
+            original_output,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Original outputs should match when fused QKV projections are disabled.",
         )
-
-    def test_pag_disable_enable(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-
-        # base pipeline (expect same output when pag is disabled)
-        pipe_sd = StableDiffusion3Pipeline(**components)
-        pipe_sd = pipe_sd.to(device)
-        pipe_sd.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        del inputs["pag_scale"]
-        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
-            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
-        )
-        out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
-
-        components = self.get_dummy_components()
-
-        # pag disabled with pag_scale=0.0
-        pipe_pag = self.pipeline_class(**components)
-        pipe_pag = pipe_pag.to(device)
-        pipe_pag.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["pag_scale"] = 0.0
-        out_pag_disabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
-
-        assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
 
     def test_pag_applied_layers(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-
-        # base pipeline
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
         all_self_attn_layers = [k for k in pipe.transformer.attn_processors.keys() if "attn" in k]
         original_attn_procs = pipe.transformer.attn_processors
@@ -270,3 +221,7 @@ class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixi
         pag_layers = ["blocks.0", r"blocks\.1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert len(pipe.pag_attn_processors) == 2
+
+
+class TestStableDiffusion3PAGPipelineMemory(StableDiffusion3PAGPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SD3 PAG pipeline."""

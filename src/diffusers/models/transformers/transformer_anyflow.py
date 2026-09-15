@@ -28,6 +28,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale, logging
+from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
@@ -41,9 +42,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
     # MPS / NPU backends do not support complex128 / float64; fall back to float32 on those devices.
-    is_mps = hidden_states.device.type == "mps"
-    is_npu = hidden_states.device.type == "npu"
-    rotary_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+    rotary_dtype = maybe_adjust_dtype_for_device(torch.float64, hidden_states.device)
     x_rotated = torch.view_as_complex(hidden_states.to(rotary_dtype).unflatten(3, (-1, 2)))
     x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4)
     return x_out.type_as(hidden_states)
@@ -341,9 +340,7 @@ class AnyFlowRotaryPosEmbed(nn.Module):
         if not is_compiling and self._freqs_cache is not None and self._freqs_cache[0] == cache_key:
             return self._freqs_cache[1]
 
-        is_mps = device.type == "mps"
-        is_npu = device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+        freqs_dtype = maybe_adjust_dtype_for_device(torch.float64, device)
 
         h_dim = w_dim = 2 * (self.attention_head_dim // 6)
         t_dim = self.attention_head_dim - h_dim - w_dim

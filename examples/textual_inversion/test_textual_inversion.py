@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,12 +30,12 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class TextualInversion(ExamplesTestsAccelerate):
+class TestTextualInversion(ExamplesTestsAccelerate):
     def test_textual_inversion(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
@@ -55,13 +55,13 @@ class TextualInversion(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "learned_embeds.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "learned_embeds.safetensors"))
 
     def test_textual_inversion_checkpointing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
@@ -84,16 +84,13 @@ class TextualInversion(ExamplesTestsAccelerate):
             run_command(self._launch_args + test_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-3"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-3"}
 
     def test_textual_inversion_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
@@ -115,14 +112,11 @@ class TextualInversion(ExamplesTestsAccelerate):
             run_command(self._launch_args + test_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-1", "checkpoint-2"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-1", "checkpoint-2"}
 
             resume_run_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
@@ -146,7 +140,4 @@ class TextualInversion(ExamplesTestsAccelerate):
             run_command(self._launch_args + resume_run_args)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-3"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-3"}

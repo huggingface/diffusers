@@ -14,6 +14,8 @@ specific language governing permissions and limitations under the License.
 
 [DreamBooth](https://huggingface.co/papers/2208.12242) is a training technique that updates the entire diffusion model by training on just a few images of a subject or style. It works by associating a special word in the prompt with the example images.
 
+To load a trained checkpoint for inference, see [Load a DreamBooth adapter for inference](../using-diffusers/dreambooth).
+
 If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers).
 
 This guide will explore the [train_dreambooth.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
@@ -335,7 +337,7 @@ Once training is complete, you can use your newly trained model for inference!
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("path_to_saved_model", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = DiffusionPipeline.from_pretrained("path_to_saved_model", dtype=torch.float16, use_safetensors=True).to("cuda")  # or "mps", "xpu", "cpu"
 image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
 image.save("dog-bucket.png")
 ```

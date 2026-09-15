@@ -61,13 +61,13 @@ transformer_8bit = EasyAnimateTransformer3DModel.from_pretrained(
     "alibaba-pai/EasyAnimateV5.1-12b-zh",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = EasyAnimatePipeline.from_pretrained(
     "alibaba-pai/EasyAnimateV5.1-12b-zh",
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 

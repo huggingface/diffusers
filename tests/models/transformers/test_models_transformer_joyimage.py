@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 
 from diffusers import JoyImageEditTransformer3DModel
@@ -86,9 +85,7 @@ class JoyImageEditTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestJoyImageEditTransformer(JoyImageEditTransformerTesterConfig, ModelTesterMixin):
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
-        pytest.skip("Tolerance requirements too high for meaningful test")
+    pass
 
 
 class TestJoyImageEditTransformerMemory(JoyImageEditTransformerTesterConfig, MemoryTesterMixin):

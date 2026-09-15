@@ -59,11 +59,11 @@ from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipelin
 import torch
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+    "stabilityai/stable-diffusion-xl-refiner-1.0", dtype=torch.float16, use_safetensors=True, variant="fp16"
 ).to("cuda")
 ```
 
@@ -75,11 +75,11 @@ import torch
 
 pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
-    "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors", torch_dtype=torch.float16
+    "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors", dtype=torch.float16
 ).to("cuda")
 ```
 
@@ -92,8 +92,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline_text2image = AutoPipelineForText2Image.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipeline_text2image(prompt=prompt).images[0]
@@ -113,7 +113,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import load_image, make_image_grid
 
 # use from_pipe to avoid consuming additional memory when loading a checkpoint
-pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_text2image).to("cuda")
+pipeline = AutoPipelineForImage2Image.from_pipe(pipeline_text2image).to("cuda")  # or "mps", "xpu", "cpu"
 
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 init_image = load_image(url)
@@ -135,7 +135,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 # use from_pipe to avoid consuming additional memory when loading a checkpoint
-pipeline = AutoPipelineForInpainting.from_pipe(pipeline_text2image).to("cuda")
+pipeline = AutoPipelineForInpainting.from_pipe(pipeline_text2image).to("cuda")  # or "mps", "xpu", "cpu"
 
 img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 mask_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-inpaint-mask.png"
@@ -170,14 +170,14 @@ from diffusers import DiffusionPipeline
 import torch
 
 base = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 refiner = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0",
     text_encoder_2=base.text_encoder_2,
     vae=base.vae,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
 ).to("cuda")
@@ -227,14 +227,14 @@ from diffusers.utils import load_image, make_image_grid
 import torch
 
 base = StableDiffusionXLInpaintPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 refiner = StableDiffusionXLInpaintPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0",
     text_encoder_2=base.text_encoder_2,
     vae=base.vae,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
 ).to("cuda")
@@ -280,14 +280,14 @@ from diffusers import DiffusionPipeline
 import torch
 
 base = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 refiner = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0",
     text_encoder_2=base.text_encoder_2,
     vae=base.vae,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
 ).to("cuda")
@@ -345,8 +345,8 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipe(
@@ -370,8 +370,8 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipeline(prompt=prompt, crops_coords_top_left=(256, 0)).images[0]
@@ -389,8 +389,8 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipe(
@@ -411,8 +411,8 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # prompt is passed to OAI CLIP-ViT/L-14
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
@@ -426,7 +426,7 @@ image
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-double-prompt.png" alt="generated image of an astronaut in a jungle in the style of a van gogh painting"/>
 </div>
 
-The dual text-encoders also support textual inversion embeddings that need to be loaded separately as explained in the [SDXL textual inversion](../../../using-diffusers/textual_inversion_inference#stable-diffusion-xl) section.
+The dual text-encoders also support textual inversion embeddings that need to be loaded separately as explained in the [textual inversion](../../../using-diffusers/textual_inversion_inference) guide.
 
 ## Optimizations
 
@@ -435,7 +435,7 @@ SDXL is a large model, and you may need to optimize memory to get it to run on y
 1. Offload the model to the CPU with [`~StableDiffusionXLPipeline.enable_model_cpu_offload`] for out-of-memory errors:
 
 ```diff
-- base.to("cuda")
+- base.to("cuda")  # or "mps", "xpu", "cpu"
 - refiner.to("cuda")
 + base.enable_model_cpu_offload()
 + refiner.enable_model_cpu_offload()

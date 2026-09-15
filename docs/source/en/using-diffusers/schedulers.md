@@ -29,7 +29,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, device_map="cuda"
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.scheduler
 ```
@@ -45,8 +45,8 @@ dpm = DPMSolverMultistepScheduler.from_pretrained(
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     scheduler=dpm,
-    torch_dtype=torch.float16,
-    device_map="cuda"
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.scheduler
 ```
@@ -73,8 +73,8 @@ print(sampling_schedule)
 
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0",
-    torch_dtype=torch.float16,
-    device_map="cuda"
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
   pipeline.scheduler.config, algorithm_type="sde-dpmsolver++"
@@ -118,7 +118,7 @@ To fix this, a model must be trained with `v_prediction`. If a model is trained 
 ```py
 from diffusers import DiffusionPipeline, DDIMScheduler
 
-pipeline = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", device_map="cuda")
+pipeline = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", device_map="cuda")  # or "mps", "xpu", "cpu"
 
 pipeline.scheduler = DDIMScheduler.from_config(
     pipeline.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
@@ -167,8 +167,8 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0",
-    torch_dtype=torch.float16,
-    device_map="cuda"
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
   pipeline.scheduler.config, timestep_spacing="trailing"
@@ -209,8 +209,8 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0",
-    torch_dtype=torch.float16,
-    device_map="cuda"
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
   pipeline.scheduler.config, algorithm_type="sde-dpmsolver++"
@@ -237,8 +237,8 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0",
-    torch_dtype=torch.float16,
-    device_map="cuda"
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
   pipeline.scheduler.config,

@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -483,9 +484,7 @@ class MotifVideoRotaryPosEmbed(nn.Module):
         grid = torch.stack(grid, dim=0)
 
         freqs = []
-        is_mps = hidden_states.device.type == "mps"
-        is_npu = hidden_states.device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+        freqs_dtype = maybe_adjust_dtype_for_device(torch.float64, hidden_states.device)
         for i in range(3):
             freq = get_1d_rotary_pos_embed(
                 dim=self.rope_dim[i],

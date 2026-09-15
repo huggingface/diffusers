@@ -48,11 +48,11 @@ The example below demonstrates how to use the text-to-video pipeline to generate
 ```python
 pipe = SanaVideoPipeline.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers", 
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.text_encoder.to(torch.bfloat16)
 pipe.vae.to(torch.float32)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
 negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
@@ -82,12 +82,12 @@ The example below demonstrates how to use the image-to-video pipeline to generat
 ```python
 pipe = SanaImageToVideoPipeline.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipe.scheduler.config, flow_shift=8.0)
 pipe.vae.to(torch.float32)
 pipe.text_encoder.to(torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = load_image("https://raw.githubusercontent.com/NVlabs/Sana/refs/heads/main/asset/samples/i2v-1.png")
 prompt = "A woman stands against a stunning sunset backdrop, her long, wavy brown hair gently blowing in the breeze. She wears a sleeveless, light-colored blouse with a deep V-neckline, which accentuates her graceful posture. The warm hues of the setting sun cast a golden glow across her face and hair, creating a serene and ethereal atmosphere. The background features a blurred landscape with soft, rolling hills and scattered clouds, adding depth to the scene. The camera remains steady, capturing the tranquil moment from a medium close-up angle."
@@ -133,7 +133,7 @@ text_encoder_8bit = AutoModel.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
     subfolder="text_encoder",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -141,14 +141,14 @@ transformer_8bit = SanaVideoTransformer3DModel.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = SanaVideoPipeline.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 

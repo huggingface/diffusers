@@ -50,7 +50,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     methods the library implements for all schedulers such as loading and saving.
 
     Args:
-        num_train_timesteps (`int`, defaults to 1000):
+        num_train_timesteps (`int`, defaults to 2000):
             The number of diffusion steps to train the model.
         snr (`float`, defaults to 0.15):
             A coefficient weighting the step from the `model_output` sample (from the network) to the random noise.
@@ -85,7 +85,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
         self.set_sigmas(num_train_timesteps, sigma_min, sigma_max, sampling_eps)
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: int = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -102,7 +102,9 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, sampling_eps: float = None, device: str | torch.device = None):
+    def set_timesteps(
+        self, num_inference_steps: int, sampling_eps: float | None = None, device: str | torch.device | None = None
+    ):
         """
         Sets the continuous timesteps used for the diffusion chain (to be run before inference).
 
@@ -120,7 +122,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.linspace(1, sampling_eps, num_inference_steps, device=device)
 
     def set_sigmas(
-        self, num_inference_steps: int, sigma_min: float = None, sigma_max: float = None, sampling_eps: float = None
+        self,
+        num_inference_steps: int,
+        sigma_min: float | None = None,
+        sigma_max: float | None = None,
+        sampling_eps: float | None = None,
     ):
         """
         Sets the noise scales used for the diffusion chain (to be run before inference). The sigmas control the weight
@@ -129,11 +135,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
-            sigma_min (`float`, optional):
+            sigma_min (`float`, *optional*):
                 The initial noise scale value (overrides value given during scheduler instantiation).
-            sigma_max (`float`, optional):
+            sigma_max (`float`, *optional*):
                 The final noise scale value (overrides value given during scheduler instantiation).
-            sampling_eps (`float`, optional):
+            sampling_eps (`float`, *optional*):
                 The final timestep value (overrides value given during scheduler instantiation).
 
         """
@@ -147,7 +153,21 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self.discrete_sigmas = torch.exp(torch.linspace(math.log(sigma_min), math.log(sigma_max), num_inference_steps))
         self.sigmas = torch.tensor([sigma_min * (sigma_max / sigma_min) ** t for t in self.timesteps])
 
-    def get_adjacent_sigma(self, timesteps, t):
+    def get_adjacent_sigma(self, timesteps: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the sigma value corresponding to the previous timestep index. When the timestep is zero (no previous
+        timestep), returns zero.
+
+        Args:
+            timesteps (`torch.Tensor`):
+                The tensor of discrete timestep indices.
+            t (`torch.Tensor`):
+                The tensor of continuous timestep values.
+
+        Returns:
+            `torch.Tensor`:
+                The sigma values for the adjacent (previous) timestep index.
+        """
         return torch.where(
             timesteps == 0,
             torch.zeros_like(t.to(timesteps.device)),
@@ -241,12 +261,12 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 A random number generator.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`.
+                Whether or not to return a [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`:
-                If return_dict is `True`, [`~schedulers.scheduling_sde_ve.SdeVeOutput`] is returned, otherwise a tuple
-                is returned where the first element is the sample tensor.
+            [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_utils.SchedulerOutput`] is returned, otherwise a
+                tuple is returned where the first element is the sample tensor.
 
         """
         if self.timesteps is None:
@@ -283,7 +303,22 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.Tensor,
     ) -> torch.Tensor:
-        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        """
+        Add noise to the original samples according to the noise schedule at the specified timesteps. This is the
+        forward diffusion process.
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to which noise will be added.
+            noise (`torch.Tensor`):
+                The noise tensor to add to the original samples.
+            timesteps (`torch.Tensor`):
+                The timesteps at which to add noise, determining the noise level from the schedule.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples with added noise scaled according to the timestep schedule.
+        """
         timesteps = timesteps.to(original_samples.device)
         sigmas = self.discrete_sigmas.to(original_samples.device)[timesteps]
         noise = (
@@ -294,5 +329,5 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = noise + original_samples
         return noisy_samples
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps

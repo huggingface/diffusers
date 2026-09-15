@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import CogView4Transformer2DModel
 
-transformer = CogView4Transformer2DModel.from_pretrained("THUDM/CogView4-6B", subfolder="transformer", torch_dtype=torch.bfloat16).to("cuda")
+transformer = CogView4Transformer2DModel.from_pretrained("THUDM/CogView4-6B", subfolder="transformer", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ## CogView4Transformer2DModel

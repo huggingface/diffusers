@@ -56,7 +56,7 @@ from pruna import PrunaModel, SmashConfig, smash
 # 使用小GPU内存尝试segmind/Segmind-Vega或black-forest-labs/FLUX.1-schnell
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 ).to("cuda")
 
 # 定义配置
@@ -163,7 +163,7 @@ from pruna import PrunaModel
 # 使用小GPU内存尝试 PrunaAI/Segmind-Vega-smashed 或 PrunaAI/FLUX.1-dev-smashed
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 ).to("cpu")
 wrapped_pipe = PrunaModel(model=pipe)
 ```

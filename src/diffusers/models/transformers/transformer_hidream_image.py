@@ -9,7 +9,7 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.modeling_outputs import Transformer2DModelOutput
 from ...models.modeling_utils import ModelMixin
 from ...utils import apply_lora_scale, deprecate, logging
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
 from ..attention import Attention
 from ..embeddings import TimestepEmbedding, Timesteps
 
@@ -95,10 +95,7 @@ class HiDreamImagePatchEmbed(nn.Module):
 def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     assert dim % 2 == 0, "The dimension must be even."
 
-    is_mps = pos.device.type == "mps"
-    is_npu = pos.device.type == "npu"
-
-    dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+    dtype = maybe_adjust_dtype_for_device(torch.float64, pos.device)
 
     scale = torch.arange(0, dim, 2, dtype=dtype, device=pos.device) / dim
     omega = 1.0 / (theta**scale)

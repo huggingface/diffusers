@@ -69,8 +69,8 @@ import torch
 from diffusers import VisualClozePipeline
 from diffusers.utils import load_image
 
-pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Load in-context images (make sure the paths are correct and accessible)
 image_paths = [
@@ -121,8 +121,8 @@ import torch
 from diffusers import VisualClozePipeline
 from diffusers.utils import load_image
 
-pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Load in-context images (make sure the paths are correct and accessible)
 image_paths = [
@@ -171,8 +171,8 @@ import torch
 from diffusers import VisualClozePipeline
 from diffusers.utils import load_image
 
-pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Load in-context images (make sure the paths are correct and accessible)
 image_paths = [
@@ -229,9 +229,9 @@ from diffusers.utils import load_image
 from PIL import Image
 
 pipe = VisualClozeGenerationPipeline.from_pretrained(
-    "VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16
+    "VisualCloze/VisualClozePipeline-384", resolution=384, dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image_paths = [
     # in-context examples

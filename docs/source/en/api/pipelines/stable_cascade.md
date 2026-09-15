@@ -57,8 +57,8 @@ from diffusers import StableCascadeDecoderPipeline, StableCascadePriorPipeline
 prompt = "an image of a shiba inu, donning a spacesuit and helmet"
 negative_prompt = ""
 
-prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", variant="bf16", torch_dtype=torch.bfloat16)
-decoder = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.float16)
+prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", variant="bf16", dtype=torch.bfloat16)
+decoder = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", variant="bf16", dtype=torch.float16)
 
 prior.enable_model_cpu_offload()
 prior_output = prior(
@@ -142,15 +142,15 @@ negative_prompt = ""
 
 prior_unet = StableCascadeUNet.from_single_file(
     "https://huggingface.co/stabilityai/stable-cascade/resolve/main/stage_c_bf16.safetensors",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 decoder_unet = StableCascadeUNet.from_single_file(
     "https://huggingface.co/stabilityai/stable-cascade/blob/main/stage_b_bf16.safetensors",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 
-prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", prior=prior_unet, torch_dtype=torch.bfloat16)
-decoder = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", decoder=decoder_unet, torch_dtype=torch.bfloat16)
+prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", prior=prior_unet, dtype=torch.bfloat16)
+decoder = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", decoder=decoder_unet, dtype=torch.bfloat16)
 
 prior.enable_model_cpu_offload()
 prior_output = prior(

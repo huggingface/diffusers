@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 import PIL.Image
 
-from ...utils import BaseOutput, is_flax_available
+from ...utils import BaseOutput
 
 
 @dataclass
@@ -18,19 +18,3 @@ class StableDiffusionXLPipelineOutput(BaseOutput):
     """
 
     images: list[PIL.Image.Image] | np.ndarray
-
-
-if is_flax_available():
-    import flax
-
-    @flax.struct.dataclass
-    class FlaxStableDiffusionXLPipelineOutput(BaseOutput):
-        """
-        Output class for Flax Stable Diffusion XL pipelines.
-
-        Args:
-            images (`np.ndarray`)
-                Array of shape `(batch_size, height, width, num_channels)` with images from the diffusion pipeline.
-        """
-
-        images: np.ndarray

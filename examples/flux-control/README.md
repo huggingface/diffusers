@@ -105,7 +105,7 @@ from PIL import Image
 import numpy as np
 import torch 
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to("cuda")
 pipe.load_lora_weights("...") # change this.
 
 open_pose = OpenposeDetector.from_pretrained("lllyasviel/Annotators")
@@ -174,7 +174,7 @@ import torch
 
 transformer = FluxTransformer2DModel.from_pretrained("...") # change this.
 pipe = FluxControlPipeline.from_pretrained(
-  "black-forest-labs/FLUX.1-dev",  transformer=transformer, torch_dtype=torch.bfloat16
+  "black-forest-labs/FLUX.1-dev",  transformer=transformer, dtype=torch.bfloat16
 ).to("cuda")
 
 open_pose = OpenposeDetector.from_pretrained("lllyasviel/Annotators")

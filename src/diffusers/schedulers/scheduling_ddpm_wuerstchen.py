@@ -17,6 +17,7 @@
 
 import math
 from dataclasses import dataclass
+from typing import Literal
 
 import torch
 
@@ -29,22 +30,22 @@ from .scheduling_utils import SchedulerMixin
 @dataclass
 class DDPMWuerstchenSchedulerOutput(BaseOutput):
     """
-    Output class for the scheduler's step function output.
+    Output class for the scheduler's `step` function output.
 
     Args:
         prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
-            denoising loop.
+            Computed sample `(x_{t-1})` of the previous timestep. `prev_sample` should be used as the next model input
+            in the denoising loop.
     """
 
     prev_sample: torch.Tensor
 
 
 def betas_for_alpha_bar(
-    num_diffusion_timesteps,
-    max_beta=0.999,
-    alpha_transform_type="cosine",
-):
+    num_diffusion_timesteps: int,
+    max_beta: float = 0.999,
+    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
+) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -52,16 +53,17 @@ def betas_for_alpha_bar(
     Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
     to that part of the diffusion process.
 
-
     Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
-                     Choose from `cosine` or `exp`
+        num_diffusion_timesteps (`int`):
+            The number of betas to produce.
+        max_beta (`float`, defaults to `0.999`):
+            The maximum beta to use. Use values lower than 1 to prevent singularities.
+        alpha_transform_type (`str`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine` or `exp`.
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        `torch.Tensor`:
+            The betas used by the scheduler to step the model outputs.
     """
     if alpha_transform_type == "cosine":
 
@@ -90,15 +92,17 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
     Langevin dynamics sampling.
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
+    function, such as `scaler`. They can be accessed via `scheduler.config.scaler`. [`SchedulerMixin`] provides general
+    loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and [`~SchedulerMixin.from_pretrained`]
+    functions.
 
     For more details, see the original paper: https://huggingface.co/papers/2006.11239
 
     Args:
-        scaler (`float`): ....
-        s (`float`): ....
+        scaler (`float`, defaults to `1.0`):
+            The scaling factor applied to the timesteps before computing the cumulative product of alphas.
+        s (`float`, defaults to `0.008`):
+            The offset added to the cosine noise schedule.
     """
 
     @register_to_config
@@ -106,7 +110,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         self,
         scaler: float = 1.0,
         s: float = 0.008,
-    ):
+    ) -> None:
         self.scaler = scaler
         self.s = torch.tensor([s])
         self._init_alpha_cumprod = torch.cos(self.s / (1 + self.s) * torch.pi * 0.5) ** 2
@@ -114,7 +118,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
 
-    def _alpha_cumprod(self, t, device):
+    def _alpha_cumprod(self, t: torch.Tensor, device: torch.device) -> torch.Tensor:
         if self.scaler > 1:
             t = 1 - (1 - t) ** self.scaler
         elif self.scaler < 1:
@@ -124,35 +128,40 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         ) ** 2 / self._init_alpha_cumprod.to(device)
         return alpha_cumprod.clamp(0.0001, 0.9999)
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: int = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: torch.Tensor | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.Tensor`): input sample
-            timestep (`int`, optional): current timestep
+            sample (`torch.Tensor`):
+                The input sample.
+            timestep (`torch.Tensor`, *optional*):
+                The current timestep in the diffusion chain.
 
         Returns:
-            `torch.Tensor`: scaled input sample
+            `torch.Tensor`:
+                A scaled input sample.
         """
         return sample
 
     def set_timesteps(
         self,
-        num_inference_steps: int = None,
-        timesteps: list[int] | None = None,
-        device: str | torch.device = None,
-    ):
+        num_inference_steps: int | None = None,
+        timesteps: list[float] | torch.Tensor | None = None,
+        device: str | torch.device | None = None,
+    ) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
-            num_inference_steps (`dict[float, int]`):
-                the number of diffusion steps used when generating samples with a pre-trained model. If passed, then
+            num_inference_steps (`int`, *optional*):
+                The number of diffusion steps used when generating samples with a pretrained model. If passed,
                 `timesteps` must be `None`.
-            device (`str` or `torch.device`, optional):
-                the device to which the timesteps are moved to. {2 / 3: 20, 0.0: 10}
+            timesteps (`list[float]` or `torch.Tensor`, *optional*):
+                Custom timesteps used for the diffusion chain. If passed, `num_inference_steps` must be `None`.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps are moved.
         """
         if timesteps is None:
             timesteps = torch.linspace(1.0, 0.0, num_inference_steps + 1, device=device)
@@ -163,27 +172,32 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: int,
+        timestep: torch.Tensor,
         sample: torch.Tensor,
-        generator=None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         return_dict: bool = True,
-    ) -> DDPMWuerstchenSchedulerOutput | tuple:
+    ) -> DDPMWuerstchenSchedulerOutput | tuple[torch.Tensor]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.Tensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
+            model_output (`torch.Tensor`):
+                The direct output from the learned diffusion model.
+            timestep (`torch.Tensor`):
+                The current discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
-                current instance of sample being created by diffusion process.
-            generator: random number generator.
-            return_dict (`bool`): option for returning tuple rather than DDPMWuerstchenSchedulerOutput class
+                A current instance of a sample created by the diffusion process.
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
+                A random number generator or a list of generators to make generation deterministic.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return a [`~schedulers.scheduling_ddpm_wuerstchen.DDPMWuerstchenSchedulerOutput`] or a
+                `tuple`.
 
         Returns:
-            [`DDPMWuerstchenSchedulerOutput`] or `tuple`: [`DDPMWuerstchenSchedulerOutput`] if `return_dict` is True,
-            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
-
+            [`~schedulers.scheduling_ddpm_wuerstchen.DDPMWuerstchenSchedulerOutput`] or `tuple`:
+                If `return_dict` is `True`, a [`~schedulers.scheduling_ddpm_wuerstchen.DDPMWuerstchenSchedulerOutput`]
+                is returned, otherwise a `tuple` is returned where the first element is the sample tensor.
         """
         dtype = model_output.dtype
         device = model_output.device
@@ -212,6 +226,21 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.Tensor,
     ) -> torch.Tensor:
+        """
+        Add noise to the original samples according to the noise magnitude at each timestep.
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to which noise is added.
+            noise (`torch.Tensor`):
+                The noise to add to the original samples.
+            timesteps (`torch.Tensor`):
+                The timesteps that determine the noise magnitude.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples.
+        """
         device = original_samples.device
         dtype = original_samples.dtype
         alpha_cumprod = self._alpha_cumprod(timesteps, device=device).view(
@@ -220,10 +249,21 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = alpha_cumprod.sqrt() * original_samples + (1 - alpha_cumprod).sqrt() * noise
         return noisy_samples.to(dtype=dtype)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps
 
-    def previous_timestep(self, timestep):
+    def previous_timestep(self, timestep: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the previous timestep in the diffusion chain.
+
+        Args:
+            timestep (`torch.Tensor`):
+                The current timestep.
+
+        Returns:
+            `torch.Tensor`:
+                The previous timestep.
+        """
         index = (self.timesteps - timestep[0]).abs().argmin().item()
         prev_t = self.timesteps[index + 1][None].expand(timestep.shape[0])
         return prev_t

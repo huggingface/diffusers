@@ -24,7 +24,6 @@ from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
-    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -176,6 +175,9 @@ class VisualClozeGenerationPipeline(
             transformer=transformer,
             scheduler=scheduler,
         )
+        # `resolution` is not a module, so it has to be registered explicitly to survive a
+        # `save_pretrained` / `from_pretrained` round-trip.
+        self.register_to_config(resolution=resolution)
         self.resolution = resolution
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
@@ -443,7 +445,7 @@ class VisualClozeGenerationPipeline(
                     f"got {type(task_prompt)} and {type(content_prompt)}"
                 )
             if len(content_prompt) != len(task_prompt):
-                raise ValueError("`task_prompt` and `content_prompt` must have the same length whe they are lists.")
+                raise ValueError("`task_prompt` and `content_prompt` must have the same length when they are lists.")
 
             for sample in image:
                 if not isinstance(sample, list) or not isinstance(sample[0], list):
@@ -519,59 +521,6 @@ class VisualClozeGenerationPipeline(
             start = end
 
         return unpacked_latents
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_tiling()
 
     def _prepare_latents(self, image, mask, gen, vae_scale_factor, device, dtype):
         """Helper function to prepare latents for a single batch."""
@@ -769,8 +718,9 @@ class VisualClozeGenerationPipeline(
                 Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
                 If not provided, pooled text embeddings will be generated from `prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                The output format of the generate image. Choose between `"pil"`
+                ([PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`), `"np"` (`np.array`) or `"pt"`
+                (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.flux.FluxPipelineOutput`] instead of a plain tuple.
             joint_attention_kwargs (`dict`, *optional*):
@@ -961,11 +911,17 @@ class VisualClozeGenerationPipeline(
                     if cur_target_position[i]:
                         if output_type == "pil":
                             cropped.append(cur_image.crop((start, 0, start + size[1], size[0])))
+                        elif output_type == "pt":
+                            # `"pt"` images are `(channels, height, width)`, unlike the `(height, width, channels)`
+                            # layout of `"np"`, so the spatial crop applies to the last two axes.
+                            cropped.append(cur_image[:, 0 : size[0], start : start + size[1]])
                         else:
                             cropped.append(cur_image[0 : size[0], start : start + size[1]])
                     start += size[1]
                 image.append(cropped)
-            if output_type != "pil":
+            if output_type == "pt":
+                image = torch.stack([arr for sub_image in image for arr in sub_image], dim=0)
+            elif output_type != "pil":
                 image = np.concatenate([arr[None] for sub_image in image for arr in sub_image], axis=0)
 
         # Offload all models

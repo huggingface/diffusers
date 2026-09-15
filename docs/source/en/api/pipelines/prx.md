@@ -43,8 +43,8 @@ Load the pipeline with [`~DiffusionPipeline.from_pretrained`].
 from diffusers.pipelines.prx import PRXPipeline
 
 # Load pipeline - VAE and text encoder will be loaded from HuggingFace
-pipe = PRXPipeline.from_pretrained("Photoroom/prx-512-t2i-sft", torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe = PRXPipeline.from_pretrained("Photoroom/prx-512-t2i-sft", dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A front-facing portrait of a lion the golden savanna at sunset."
 image = pipe(prompt, num_inference_steps=28, guidance_scale=5.0).images[0]
@@ -71,7 +71,7 @@ transformer = PRXTransformer2DModel.from_pretrained(
     "checkpoints/prx-512-t2i-sft",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 # Load scheduler
@@ -82,7 +82,7 @@ scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
 # Load T5Gemma text encoder
 t5gemma_model = T5GemmaModel.from_pretrained("google/t5gemma-2b-2b-ul2",
                                             quantization_config=quant_config,
-                                            torch_dtype=torch.bfloat16)
+                                            dtype=torch.bfloat16)
 text_encoder = t5gemma_model.encoder.to(dtype=torch.bfloat16)
 tokenizer = GemmaTokenizerFast.from_pretrained("google/t5gemma-2b-2b-ul2")
 tokenizer.model_max_length = 256
@@ -92,7 +92,7 @@ tokenizer.model_max_length = 256
 vae = AutoencoderKL.from_pretrained("black-forest-labs/FLUX.1-dev",
                                     subfolder="vae",
                                     quantization_config=quant_config,
-                                    torch_dtype=torch.bfloat16)
+                                    dtype=torch.bfloat16)
 
 pipe = PRXPipeline(
     transformer=transformer,
@@ -101,7 +101,7 @@ pipe = PRXPipeline(
     tokenizer=tokenizer,
     vae=vae
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 
@@ -113,7 +113,7 @@ For memory-constrained environments:
 import torch
 from diffusers.pipelines.prx import PRXPipeline
 
-pipe = PRXPipeline.from_pretrained("Photoroom/prx-512-t2i-sft", torch_dtype=torch.bfloat16)
+pipe = PRXPipeline.from_pretrained("Photoroom/prx-512-t2i-sft", dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()  # Offload components to CPU when not in use
 
 # Or use sequential CPU offload for even lower memory

@@ -56,7 +56,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 transformer = AutoModel.from_pretrained(
     "THUDM/CogVideoX-5b",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 transformer.enable_layerwise_casting(
     storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16
@@ -66,9 +66,9 @@ pipeline = CogVideoXPipeline.from_pretrained(
     "THUDM/CogVideoX-5b",
     transformer=transformer,
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 # model-offloading
 pipeline.enable_model_cpu_offload()
@@ -102,8 +102,8 @@ from diffusers.utils import export_to_video
 
 pipeline = CogVideoXPipeline.from_pretrained(
     "THUDM/CogVideoX-2b",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # torch.compile
 pipeline.transformer.to(memory_format=torch.channels_last)
@@ -144,9 +144,9 @@ export_to_video(video, "output.mp4", fps=8)
 
   pipeline = CogVideoXPipeline.from_pretrained(
       "THUDM/CogVideoX-5b",
-      torch_dtype=torch.bfloat16
+      dtype=torch.bfloat16
   )
-  pipeline.to("cuda")
+  pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
   # load LoRA weights
   pipeline.load_lora_weights("finetrainers/CogVideoX-1.5-crush-smol-v0", adapter_name="crush-lora")

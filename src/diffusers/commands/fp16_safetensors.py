@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,6 +33,13 @@ from . import BaseDiffusersCLICommand
 
 
 def conversion_command_factory(args: Namespace):
+    warnings.warn(
+        "`diffusers-cli fp16_safetensors` is deprecated and will be removed in a future version. "
+        "Convert weights to fp16 safetensors directly with `safetensors.torch.save_file` or via "
+        "`pipeline.save_pretrained(..., safe_serialization=True, variant='fp16')`.",
+        FutureWarning,
+        stacklevel=2,
+    )
     if args.use_auth_token:
         warnings.warn(
             "The `--use_auth_token` flag is deprecated and will be removed in a future version."
@@ -44,7 +51,12 @@ def conversion_command_factory(args: Namespace):
 class FP16SafetensorsCommand(BaseDiffusersCLICommand):
     @staticmethod
     def register_subcommand(parser: ArgumentParser):
-        conversion_parser = parser.add_parser("fp16_safetensors")
+        conversion_parser = parser.add_parser(
+            "fp16_safetensors",
+            help="[DEPRECATED] Convert a Hub checkpoint's weights to fp16 safetensors and push back as a PR.",
+            usage="\n  diffusers-cli fp16_safetensors [options]",
+        )
+        conversion_parser._optionals.title = "Options"
         conversion_parser.add_argument(
             "--ckpt_id",
             type=str,

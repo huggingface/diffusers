@@ -34,6 +34,7 @@ else:
     _import_structure["pipeline_cosmos_video2world"] = ["CosmosVideoToWorldPipeline"]
     _import_structure["pipeline_cosmos3_omni"] = [
         "Cosmos3OmniPipeline",
+        "CosmosActionCondition",
     ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -52,6 +53,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_cosmos2_video2world import Cosmos2VideoToWorldPipeline
         from .pipeline_cosmos3_omni import (
             Cosmos3OmniPipeline,
+            CosmosActionCondition,
         )
         from .pipeline_cosmos_text2world import CosmosTextToWorldPipeline
         from .pipeline_cosmos_video2world import CosmosVideoToWorldPipeline

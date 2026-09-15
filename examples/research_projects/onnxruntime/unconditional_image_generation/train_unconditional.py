@@ -277,9 +277,9 @@ def parse_args():
 
 
 def main(args):
-    if args.report_to == "wandb" and args.hub_token is not None:
+    if args.logger == "wandb" and args.hub_token is not None:
         raise ValueError(
-            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            "You cannot use both --logger=wandb and --hub_token due to a security risk of exposing your token."
             " Please use `hf auth login` to authenticate with the Hub."
         )
 
@@ -291,7 +291,7 @@ def main(args):
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
-        log_with=args.report_to,
+        log_with=args.logger,
         project_config=accelerator_project_config,
     )
 

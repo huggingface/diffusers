@@ -209,7 +209,7 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         )
 
         self.assertIsInstance(result, tuple)
-        self.assertEqual(len(result), 5)
+        self.assertEqual(len(result), 6)
 
     def test_step_batched(self):
         """Verify step works with batch_size > 1."""
@@ -464,6 +464,62 @@ class TestSampleFromLogits(unittest.TestCase):
                 generator=None,
                 use_multinomial=False,
             )
+
+
+class BlockRefinementSchedulerUniformTest(unittest.TestCase):
+    """Tests for the uniform corruption mode (`mask_token_id=None`), matching DiffusionGemma's block refinement."""
+
+    def get_scheduler(self, **kwargs):
+        config = {"block_length": 256, "num_inference_steps": 48, "threshold": 1.0, "editing_threshold": None}
+        config.update(kwargs)
+        scheduler = BlockRefinementScheduler(**config)
+        scheduler.set_timesteps(config["num_inference_steps"], block_length=config["block_length"])
+        return scheduler
+
+    def test_cumulative_quota_progression(self):
+        # threshold=1.0 disables threshold commits, so only the even per-step quota applies: ceil(256/48)=6, then 11.
+        scheduler = self.get_scheduler()
+        sample = torch.randint(0, 10000, (1, 256))
+        logits = torch.zeros(1, 256, 10000)
+        out0 = scheduler.step(logits, timestep=0, sample=sample, mask_token_id=None)
+        self.assertEqual(scheduler._committed.sum().item(), 6)
+        scheduler.step(logits, timestep=1, sample=out0.prev_sample, mask_token_id=None)
+        self.assertEqual(scheduler._committed.sum().item(), 11)
+
+    def test_last_step_commits_all(self):
+        scheduler = self.get_scheduler()
+        sample = torch.randint(0, 10000, (1, 256))
+        logits = torch.zeros(1, 256, 10000)
+        scheduler.step(logits, timestep=0, sample=sample, mask_token_id=None)
+        scheduler.step(logits, timestep=47, sample=sample, mask_token_id=None)
+        self.assertTrue(scheduler._committed.all())
+
+    def test_threshold_commits_beyond_quota(self):
+        scheduler = self.get_scheduler(threshold=0.5)
+        sample = torch.randint(0, 10000, (1, 256))
+        logits = torch.zeros(1, 256, 10000)
+        logits[0, torch.arange(20), 0] = 1e6  # 20 high-confidence positions (token 0)
+        scheduler.step(logits, timestep=0, sample=sample, mask_token_id=None, temperature=0.0)
+        # 20 positions exceed the threshold and get committed regardless of the quota
+        self.assertEqual(scheduler._committed.sum().item(), 20)
+
+    def test_editing_replaces_committed_token(self):
+        scheduler = self.get_scheduler(threshold=1.0, editing_threshold=0.5)
+        sample = torch.zeros(1, 256, dtype=torch.long)
+        scheduler._committed = torch.ones_like(sample, dtype=torch.bool)  # pretend all committed
+        logits = torch.zeros(1, 256, 10000)
+        logits[0, 0, 1] = 1e6  # confidently predicts token 1 at position 0 (differs from current token 0)
+        out = scheduler.step(logits, timestep=24, sample=sample, mask_token_id=None, temperature=0.0)
+        self.assertEqual(out.prev_sample[0, 0].item(), 1)
+        self.assertTrue((out.prev_sample[0, 1:] == 0).all())
+
+    def test_reset_on_new_block(self):
+        scheduler = self.get_scheduler()
+        sample = torch.randint(0, 10000, (1, 256))
+        logits = torch.zeros(1, 256, 10000)
+        scheduler.step(logits, timestep=5, sample=sample, mask_token_id=None)
+        scheduler.step(logits, timestep=0, sample=sample, mask_token_id=None)  # new block resets committed
+        self.assertEqual(scheduler._committed.sum().item(), 6)
 
 
 if __name__ == "__main__":
