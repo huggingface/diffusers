@@ -253,6 +253,9 @@ class TestModularPipelineInitFallback:
     def test_init_fallback_when_blocks_class_name_is_base_class(self, tmp_path):
         # 1. Load pipeline and get a workflow (returns a base SequentialPipelineBlocks)
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        assert pipe.__class__.__name__ == "StableDiffusionXLModularPipeline"
+        assert pipe.blocks.__class__.__name__ == "StableDiffusionXLAutoBlocks"
+
         t2i_blocks = pipe.blocks.get_workflow("text2image")
         assert t2i_blocks.__class__.__name__ == "SequentialPipelineBlocks"
 
@@ -268,3 +271,8 @@ class TestModularPipelineInitFallback:
         assert loaded_pipe.__class__.__name__ == pipe.__class__.__name__
         assert loaded_pipe._blocks.__class__.__name__ == pipe._blocks.__class__.__name__
         assert len(loaded_pipe._blocks.sub_blocks) == len(pipe._blocks.sub_blocks)
+
+    def test_init_raises_without_resolvable_blocks(self):
+        # The base class has no `default_blocks_name`, so with no `blocks` there is nothing to build from.
+        with pytest.raises(ValueError, match="No pipeline blocks could be resolved"):
+            ModularPipeline()
