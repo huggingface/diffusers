@@ -109,8 +109,11 @@ class Flux2ImageProcessor(VaeImageProcessor):
         image_width, image_height = image.size
 
         scale = math.sqrt(target_area / (image_width * image_height))
-        width = int(image_width * scale)
-        height = int(image_height * scale)
+        # Use `round` rather than `int`: truncation turns floating-point noise (e.g. 1023.999...) into a lost pixel,
+        # which callers then floor to a smaller multiple of the VAE scale factor. Rounding may exceed `target_area` by
+        # at most one pixel per side, which every caller floors away.
+        width = round(image_width * scale)
+        height = round(image_height * scale)
 
         return image.resize((width, height), PIL.Image.Resampling.LANCZOS)
 
