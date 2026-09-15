@@ -161,7 +161,7 @@ else:
     _import_structure["quantizers.quantization_config"].append("SDNQConfig")
 
 try:
-    if not is_torch_available() and not is_accelerate_available() and not is_comfy_kitchen_available():
+    if not is_comfy_kitchen_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils import dummy_comfy_kitchen_objects
