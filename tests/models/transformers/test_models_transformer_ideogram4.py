@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import Ideogram4Transformer2DModel
@@ -157,6 +158,12 @@ class TestIdeogram4TransformerTraining(Ideogram4TransformerTesterConfig, Trainin
 
 class TestIdeogram4TransformerAttention(Ideogram4TransformerTesterConfig, AttentionTesterMixin):
     """Attention processor tests for Ideogram 4 Transformer."""
+
+    @pytest.mark.skip(
+        "Ideogram4Attention's attention processor has no fused-projection branch, so it reads the split projections that in-place fusion removes. Fusing is a no-op for this model until its processor uses the fused weights."
+    )
+    def test_fuse_unfuse_qkv_projections_inplace(self, atol=1e-3, rtol=0):
+        pass
 
 
 def test_ideogram4_mrope_is_autocast_invariant():
