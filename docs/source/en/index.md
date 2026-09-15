@@ -18,18 +18,26 @@ specific language governing permissions and limitations under the License.
 
 # Diffusers
 
-Diffusers is a library of state-of-the-art pretrained diffusion models for generating videos, images, and audio.
+Diffusers provides pretrained diffusion models and the building blocks for custom image, video, and audio workflows.
 
-The library revolves around the [`DiffusionPipeline`], an API designed for:
+It has two main paths.
 
-- easy inference with only a few lines of code
-- flexibility to mix-and-match pipeline components (models, schedulers)
-- loading and using adapters like LoRA
+- [`DiffusionPipeline`] supports few-line inference with pretrained checkpoints, plus adapters like LoRA. This is the easy path for generation.
+- [Modular Diffusers](./modular_diffusers/overview) enables composable blocks and [`ModularPipeline`] for custom pipelines when you need more control.
 
-Diffusers also comes with optimizations - such as offloading and quantization - to ensure even the largest models are accessible on memory-constrained devices. If memory is not an issue, Diffusers supports torch.compile to boost inference speed.
+Optimizations such as offloading and quantization keep large models runnable on memory-constrained devices. If memory is not an issue, Diffusers also supports `torch.compile` for faster inference.
 
-Get started right away with a Diffusers model on the [Hub](https://huggingface.co/models?library=diffusers&sort=trending) today!
+Browse trending Diffusers models on the [Hub](https://huggingface.co/models?library=diffusers&sort=trending) now.
 
 ## Learn
 
-If you're a beginner, we recommend starting with the [Hugging Face Diffusion Models Course](https://huggingface.co/learn/diffusion-course/unit0/1). You'll learn the theory behind diffusion models, and learn how to use the Diffusers library to generate images, fine-tune your own models, and more.
+If you're a beginner, start with the [Hugging Face Diffusion Models Course](https://huggingface.co/learn/diffusion-course/unit0/1). It covers diffusion theory and how to generate images, fine-tune models, and more with Diffusers.
+
+The [Quickstart](./quicktour) also includes a copyable agent setup prompt for inference.
+
+## Where next
+
+- [Inference](./using-diffusers/loading) — load pipelines and run generation
+- [Optimize and scale](./stable_diffusion) — memory, speed, quantization, and serving
+- [Modular Diffusers](./modular_diffusers/overview) — build custom pipelines from blocks
+- [Train and fine-tune](./training/overview) — train diffusion models and adapters
