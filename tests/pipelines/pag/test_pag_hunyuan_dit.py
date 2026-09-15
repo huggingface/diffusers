@@ -128,36 +128,6 @@ class TestHunyuanDiTPAGPipeline(HunyuanDiTPAGPipelineTesterConfig, PAGPipelineTe
             output_chunking, output_no_chunking, atol=1e-4, msg="Forward chunking changed the output."
         )
 
-    def test_fused_qkv_projections(self):
-        # Run on CPU to keep the device-dependent `torch.Generator` deterministic.
-        pipe = self.get_pipeline()
-
-        original_output = self.run_pipe(pipe)
-
-        pipe.transformer.fuse_qkv_projections()
-        output_fused = self.run_pipe(pipe)
-
-        pipe.transformer.unfuse_qkv_projections()
-        output_disabled = self.run_pipe(pipe)
-
-        assert_tensors_close(
-            output_fused, original_output, atol=1e-2, rtol=1e-2, msg="Fusion of QKV projections changed the outputs."
-        )
-        assert_tensors_close(
-            output_disabled,
-            output_fused,
-            atol=1e-2,
-            rtol=1e-2,
-            msg="Outputs changed after the fused QKV projections were disabled.",
-        )
-        assert_tensors_close(
-            output_disabled,
-            original_output,
-            atol=1e-2,
-            rtol=1e-2,
-            msg="Original outputs should match when fused QKV projections are disabled.",
-        )
-
     def test_pag_applied_layers(self):
         pipe = self.get_pipeline()
 

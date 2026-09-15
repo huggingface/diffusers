@@ -173,11 +173,16 @@ class TestLTX2TransformerTraining(LTX2TransformerTesterConfig, TrainingTesterMix
 class TestLTX2TransformerAttention(LTX2TransformerTesterConfig, AttentionTesterMixin):
     """Attention processor tests for LTX2 Video Transformer."""
 
-    @pytest.mark.skip(
-        "LTX2Attention does not set is_cross_attention, so fuse_projections tries to fuse Q+K+V together even for cross-attention modules with different input dimensions."
+    @pytest.mark.xfail(
+        reason=(
+            "LTX2Attention does not set is_cross_attention, so fuse_projections tries to fuse Q+K+V together even "
+            "for cross-attention modules with different input dimensions."
+        ),
+        raises=RuntimeError,
+        strict=True,
     )
-    def test_fuse_unfuse_qkv_projections(self, atol=1e-3, rtol=0):
-        pass
+    def test_fuse_unfuse_qkv_projections(self, request, atol=1e-3, rtol=0):
+        super().test_fuse_unfuse_qkv_projections(request, atol=atol, rtol=rtol)
 
 
 class TestLTX2TransformerCompile(LTX2TransformerTesterConfig, TorchCompileTesterMixin):
