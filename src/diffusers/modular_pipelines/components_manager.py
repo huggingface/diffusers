@@ -707,7 +707,7 @@ class ComponentsManager:
 
     def enable_auto_cpu_offload(
         self,
-        device: str | int | torch.device = None,
+        device: str | int | torch.device | dict[str, str | int | torch.device] = None,
         memory_reserve_margin="3GB",
         offload_strategy=None,
     ):
@@ -721,16 +721,30 @@ class ComponentsManager:
         4. The system tries to offload the smallest combination of models that frees enough memory
         5. Models stay on the execution device until another model needs memory and forces them off
 
+        Passing a mapping instead of one device gives components different execution devices. Each device is then
+        accounted for on its own: a model only ever offloads models that share its device, and it only has to fit
+        beside those. A model whose device holds nothing else is never offloaded at all.
+
+        Build one pipeline per device to use it, rather than one pipeline spanning them. A pipeline creates its
+        latents, timesteps and noise on a single execution device, so one holding components from two devices mixes
+        them as soon as such a tensor meets a model's output. Split the workflow at a block boundary instead and
+        hand the outputs of one pipeline to the next: nothing needs moving, because each model's inputs follow it to
+        wherever the map placed it.
+
         A group offloaded model takes part in this but places itself: it can still make room by moving other models
         aside, and is never moved to make room for them. Either order works — group offload before or after enabling
         this. `AutoOffloadStrategy` sizes its decisions from model memory footprints, which do not describe a model
         holding one group at a time, so pass an `offload_strategy` that decides from the workflow instead.
 
         Args:
-            device (str | int | torch.device): The execution device where models are moved for forward passes
+            device (str | int | torch.device or dict): The execution device where models are moved for forward
+                                        passes. A dict maps component names to devices, e.g. `{"text_encoder":
+                                        "cuda:1", "default": "cuda:0"}`; components it does not name go to
+                                        `"default"`, or to the accelerator that would have been picked anyway.
             memory_reserve_margin (str): The memory reserve margin to use, default is 3GB. This is the amount of
                                         memory to keep free on the device to avoid running out of memory during model
-                                        execution (e.g., for intermediate activations, gradients, etc.)
+                                        execution (e.g., for intermediate activations, gradients, etc.). It is kept
+                                        free on each device a component executes on.
             offload_strategy: Any callable with the signature `(hooks, model_id, model, execution_device) -> hooks`,
                               returning which resident models to offload before the incoming one loads. Defaults to
                               `AutoOffloadStrategy`, which frees the smallest sufficient combination.
@@ -738,20 +752,33 @@ class ComponentsManager:
         if not is_accelerate_available():
             raise ImportError("Make sure to install accelerate to use auto_cpu_offload")
 
-        if device is None:
-            device = get_device()
-        if not isinstance(device, torch.device):
-            device = torch.device(device)
+        def _resolve_device(device_value):
+            if device_value is None:
+                device_value = get_device()
+            if not isinstance(device_value, torch.device):
+                device_value = torch.device(device_value)
 
-        device_type = device.type
-        device_module = getattr(torch, device_type, torch.cuda)
-        if not hasattr(device_module, "mem_get_info"):
-            raise NotImplementedError(
-                f"`enable_auto_cpu_offload() relies on the `mem_get_info()` method. It's not implemented for {str(device.type)}."
+            device_module = getattr(torch, device_value.type, torch.cuda)
+            if not hasattr(device_module, "mem_get_info"):
+                raise NotImplementedError(
+                    f"`enable_auto_cpu_offload() relies on the `mem_get_info()` method. It's not implemented for {str(device_value.type)}."
+                )
+            return torch.device(f"{device_value.type}:{0}") if device_value.index is None else device_value
+
+        # One device or a component name -> device mapping; the mapping is kept as passed so that re-enabling
+        # after a component is added or removed places everything the same way again. It is written in component
+        # names, while components are held under ids, so every lookup goes through `_id_to_name`.
+        device_map = device if isinstance(device, dict) else {"default": device}
+        default_device = _resolve_device(device_map.get("default"))
+        execution_devices = {}
+        for component_id in self.components:
+            name = self._id_to_name(component_id)
+            execution_devices[component_id] = (
+                _resolve_device(device_map[name]) if name in device_map else default_device
             )
-
-        if device.index is None:
-            device = torch.device(f"{device.type}:{0}")
+        unknown = set(device_map) - {self._id_to_name(component_id) for component_id in self.components} - {"default"}
+        if unknown:
+            logger.warning(f"Devices given for components that are not registered will be ignored: {sorted(unknown)}")
 
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module) and hasattr(component, "_hf_hook"):
@@ -773,7 +800,9 @@ class ComponentsManager:
         all_hooks = []
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module):
-                hook = custom_offload_with_hook(name, component, device, offload_strategy=offload_strategy)
+                hook = custom_offload_with_hook(
+                    name, component, execution_devices[name], offload_strategy=offload_strategy
+                )
                 all_hooks.append(hook)
 
         for hook in all_hooks:
