@@ -15,35 +15,12 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from typing import Optional, Union
 
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
-
-
-@dataclass
-class DiscreteDDIMSchedulerOutput(BaseOutput):
-    """
-    Output class for the discrete DDIM scheduler.
-
-    Args:
-        prev_sample (`torch.LongTensor` of shape `(batch_size, block_length)`):
-            Updated block tokens after the current denoising step.
-        sampled_tokens (`torch.LongTensor` of shape `(batch_size, block_length)`):
-            Token IDs sampled from the model logits, i.e. the predicted clean tokens `x0`.
-        sampled_probs (`torch.Tensor` of shape `(batch_size, block_length)`):
-            Probabilities of the sampled tokens.
-        pred_logits (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
-            The denoiser logits, passed through for self-conditioning the next step.
-    """
-
-    prev_sample: torch.LongTensor
-    sampled_tokens: torch.LongTensor
-    sampled_probs: torch.Tensor
-    pred_logits: torch.Tensor
+from .scheduling_utils import DiscreteSchedulerOutput, SchedulerMixin
 
 
 class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
@@ -67,6 +44,10 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
     Args:
         num_inference_steps (`int`, defaults to 32):
             The number of denoising steps, defining the linear time grid the posterior is evaluated on.
+        temperature (`float`, defaults to 0.0):
+            Sampling temperature applied to the logits when drawing the predicted clean tokens. `0.0` takes the argmax.
+            The reported `sampled_probs` are always measured on the unscaled distribution, so confidence thresholds do
+            not move with this value.
         corrector_steps (`int`, defaults to 0):
             Number of Gibbs corrector sweeps run after each predictor step. `0` recovers plain ancestral DDIM sampling.
         corrector_k (`int`, defaults to 1):
@@ -84,19 +65,115 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
         num_inference_steps: int = 32,
+        temperature: float = 0.0,
         corrector_steps: int = 0,
         corrector_k: int = 1,
         corrector_selection: str = "lowest_log_margin",
         corrector_selection_tau: float = 1.0,
     ):
-        self.num_inference_steps = num_inference_steps
-        self.timesteps = torch.arange(num_inference_steps, dtype=torch.long)
+        self._step_index = None
+        self._begin_index = None
+        self.set_timesteps(num_inference_steps)
+
+    @property
+    def step_index(self):
+        """
+        The index counter for current timestep. It will increase 1 after each scheduler step.
+        """
+        return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`, defaults to `0`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
+        """
+        Set the discrete timestep grid the posterior is evaluated on.
+
+        Discrete diffusion parametrizes time as the corruption level: `t = 1` is fully noised, `t = 0` is clean, and
+        `timesteps` decreases, matching both the discrete diffusion literature and the `sigmas` of the continuous
+        schedulers. The survival probability of a clean token is `alpha = 1 - t`.
+
+        `timesteps` runs from `1.0` down to `1 / num_inference_steps`, so that the step after the last one lands on the
+        clean end `t = 0` where `alpha_s = 1` and the predicted clean tokens are committed deterministically.
+
+        `timesteps` is the public loop variable — what a pipeline iterates and what a t-conditioned denoiser would
+        consume. The grid arithmetic itself is derived from `step_index` rather than from these floats: `alpha_t =
+        step_index / num_inference_steps`. That is not a micro-optimization but a correctness requirement, because `1 -
+        i / n` in float32 is not exactly `(n - i) / n` for an `n` that is not a power of two, and the commit quota
+        `ceil(alpha_s * block_length)` flips by one token when the product lands just above an integer (`n = 3`,
+        `block_length = 15` gives 6 instead of 5). Integer indices keep every boundary exact; the continuous schedulers
+        index `self.sigmas[self.step_index]` for the same reason.
+
+        Args:
+            num_inference_steps (`int`):
+                The number of denoising steps.
+            device (`str` or `torch.device`, *optional*):
+                The device the timesteps should be moved to.
+        """
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
         self.num_inference_steps = num_inference_steps
-        self.timesteps = torch.arange(num_inference_steps, device=device, dtype=torch.long)
+        self.timesteps = (
+            1.0 - torch.arange(num_inference_steps, device=device, dtype=torch.float32) / num_inference_steps
+        )
+        self._step_index = None
+        self._begin_index = None
+
+    # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler.index_for_timestep
+    def index_for_timestep(
+        self,
+        timestep: Union[float, torch.FloatTensor],
+        schedule_timesteps: Optional[torch.FloatTensor] = None,
+    ) -> int:
+        """
+        Get the index for the given timestep.
+
+        Args:
+            timestep (`float` or `torch.FloatTensor`):
+                The timestep to find the index for.
+            schedule_timesteps (`torch.FloatTensor`, *optional*):
+                The schedule timesteps to validate against. If `None`, the scheduler's timesteps are used.
+
+        Returns:
+            `int`:
+                The index of the timestep.
+        """
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
+
+        indices = (schedule_timesteps == timestep).nonzero()
+
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        pos = 1 if len(indices) > 1 else 0
+
+        return indices[pos].item()
+
+    # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler._init_step_index
+    def _init_step_index(self, timestep: Union[float, torch.FloatTensor]) -> None:
+        if self.begin_index is None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.to(self.timesteps.device)
+            self._step_index = self.index_for_timestep(timestep)
+        else:
+            self._step_index = self._begin_index
 
     @staticmethod
     def _sample_from_logits(
@@ -105,7 +182,12 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         temperature: float,
         generator: torch.Generator | None,
     ) -> tuple[torch.LongTensor, torch.Tensor]:
-        """Sample one token per position with optional temperature, returning tokens and their probabilities."""
+        """
+        Draw one token per position, returning the tokens and their probabilities.
+
+        The draw is temperature-scaled; the returned probabilities are gathered from the softmax of `logits` *before*
+        that scaling, so a confidence threshold does not move with `temperature`.
+        """
         if temperature < 0:
             raise ValueError(f"`temperature` must be >= 0, got {temperature}.")
 
@@ -121,10 +203,6 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         token_prob = torch.gather(probs, -1, token)
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
-
-    def _alpha(self, step_index: int) -> float:
-        """Survival probability `alpha = 1 - t` of a clean token at the time grid point `step_index`."""
-        return step_index / self.num_inference_steps
 
     @staticmethod
     def _to_loo_logits(logits: torch.Tensor, tokens: torch.LongTensor, alpha: float) -> torch.Tensor:
@@ -145,13 +223,12 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: int | torch.Tensor,
+        timestep: float | torch.Tensor,
         sample: torch.LongTensor,
         *,
-        temperature: float = 0.0,
         generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> DiscreteDDIMSchedulerOutput | tuple[torch.LongTensor, torch.LongTensor, torch.Tensor]:
+    ) -> DiscreteSchedulerOutput | tuple:
         """
         Sample the next block from the posterior `q(x_s | x_t, x0)` of the uniform corruption process.
 
@@ -165,32 +242,30 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
                 Raw logits from the model for the current block.
-            timestep (`int` or `torch.Tensor`):
-                Current step index within the denoising schedule, in `[0, num_inference_steps - 1]`.
+            timestep (`float` or `torch.Tensor`):
+                The current corruption level, one entry of [`~DiscreteDDIMScheduler.timesteps`].
             sample (`torch.LongTensor` of shape `(batch_size, block_length)`):
                 Current block token IDs `x_t`.
-            temperature (`float`):
-                Sampling temperature applied to the logits when drawing `x0`.
             generator (`torch.Generator`, *optional*):
                 RNG for sampling.
             return_dict (`bool`):
-                Whether to return a [`DiscreteDDIMSchedulerOutput`] or a plain tuple.
+                Whether to return a [`DiscreteSchedulerOutput`] or a plain tuple.
         """
-        if isinstance(timestep, torch.Tensor):
-            step_index = int(timestep.item())
-        else:
-            step_index = int(timestep)
+        if self.step_index is None:
+            self._init_step_index(timestep)
 
         sampled_tokens, sampled_probs = self._sample_from_logits(
-            model_output, temperature=temperature, generator=generator
+            model_output, temperature=float(self.config.temperature), generator=generator
         )
 
         vocab_size = model_output.shape[-1]
         num_steps = self.num_inference_steps
-        # `step_index` counts up from 0 to `num_inference_steps - 1`: alpha(t) = 1 - t increases towards the clean end,
-        # with alpha_s = 1 on the final step so the predicted clean tokens are committed deterministically.
-        alpha_t = step_index / num_steps
-        alpha_s = (step_index + 1) / num_steps
+        # `alpha = 1 - t` is the survival probability of a clean token, so it increases towards the clean end and
+        # reaches `alpha_s = 1` on the final step, committing the predicted clean tokens deterministically. Both
+        # alphas come from the integer `step_index` rather than from `timestep`: see `set_timesteps` for why the
+        # float form is not safe here.
+        alpha_t = self.step_index / num_steps
+        alpha_s = (self.step_index + 1) / num_steps
         survival = alpha_t / alpha_s
 
         same = (sample == sampled_tokens).float()
@@ -208,13 +283,20 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         prev_sample = torch.where(routes == 0, sampled_tokens, sample)
         prev_sample = torch.where(routes == 2, random_tokens, prev_sample)
 
+        # The clean route is the one that adopts the predicted token; on the final step (`alpha_s = 1`) it is the
+        # only route with mass, so every position commits.
+        committed_mask = routes == 0
+
+        self._step_index += 1
+
         if not return_dict:
-            return prev_sample, sampled_tokens, sampled_probs, model_output
-        return DiscreteDDIMSchedulerOutput(
+            return prev_sample, sampled_tokens, sampled_probs, model_output, committed_mask, None
+        return DiscreteSchedulerOutput(
             prev_sample=prev_sample,
-            sampled_tokens=sampled_tokens,
+            pred_original_sample=sampled_tokens,
             sampled_probs=sampled_probs,
             pred_logits=model_output,
+            committed_mask=committed_mask,
         )
 
     def _select_positions(
@@ -248,12 +330,12 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
     def step_correct(
         self,
         model_output: torch.Tensor,
-        timestep: int | torch.Tensor,
+        timestep: float | torch.Tensor,
         sample: torch.LongTensor,
         *,
         generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> DiscreteDDIMSchedulerOutput | tuple[torch.LongTensor, torch.LongTensor, torch.Tensor]:
+    ) -> DiscreteSchedulerOutput | tuple:
         """
         Run one Gibbs corrector sweep at the post-predictor time `s`, following the leave-one-out predictor-corrector
         of https://huggingface.co/papers/2605.22765.
@@ -266,22 +348,19 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
                 Raw logits from the model recomputed on the current (post-predictor) `sample`.
-            timestep (`int` or `torch.Tensor`):
-                The predictor step index just completed; the corrector runs at the following grid point `s`.
+            timestep (`float` or `torch.Tensor`):
+                The corruption level of the predictor step just completed; the corrector runs at the following grid
+                point `s`. Resolved through [`~DiscreteDDIMScheduler.index_for_timestep`] rather than read off
+                `step_index`, so the sweep does not depend on how many predictor steps have run.
             sample (`torch.LongTensor` of shape `(batch_size, block_length)`):
                 Current block token IDs to refine.
             generator (`torch.Generator`, *optional*):
                 RNG for sampling.
             return_dict (`bool`):
-                Whether to return a [`DiscreteDDIMSchedulerOutput`] or a plain tuple.
+                Whether to return a [`DiscreteSchedulerOutput`] or a plain tuple.
         """
-        if isinstance(timestep, torch.Tensor):
-            step_index = int(timestep.item())
-        else:
-            step_index = int(timestep)
-
-        # The corrector acts at the cleaner time `s` reached by the predictor.
-        alpha_s = self._alpha(step_index + 1)
+        # The corrector acts at the cleaner time `s` reached by the predictor, i.e. one grid point on.
+        alpha_s = (self.index_for_timestep(timestep) + 1) / self.num_inference_steps
         vocab_size = model_output.shape[-1]
 
         # Match the reference corrector, which forms the conditional in float64 (the LOO correction reaches ~log(K)).
@@ -301,16 +380,24 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         prev_sample = sample.clone()
         prev_sample[rows, positions] = resampled
-        sampled_probs = torch.gather(chosen_probs, -1, resampled.unsqueeze(-1)).squeeze(-1)
+
+        # A corrector sweep has no separate `x0` prediction — it resamples coordinates of `p_s` in place — so the
+        # refined tokens *are* the prediction. Both this and `sampled_probs` are reported at full sequence length,
+        # measured under the one-coordinate conditional, so they satisfy the `DiscreteSchedulerOutput` shape
+        # contract; the previous per-position variants were `(batch_size, corrector_k)` and disagreed with it.
+        sampled_probs = torch.gather(cond_log_probs, -1, prev_sample.unsqueeze(-1)).squeeze(-1).exp()
+        committed_mask = torch.zeros_like(sample, dtype=torch.bool)
+        committed_mask[rows, positions] = True
 
         if not return_dict:
-            return prev_sample, resampled, sampled_probs, model_output
-        return DiscreteDDIMSchedulerOutput(
+            return prev_sample, prev_sample, sampled_probs, model_output, committed_mask, None
+        return DiscreteSchedulerOutput(
             prev_sample=prev_sample,
-            sampled_tokens=resampled,
+            pred_original_sample=prev_sample,
             sampled_probs=sampled_probs,
             pred_logits=model_output,
+            committed_mask=committed_mask,
         )
 
 
-__all__ = ["DiscreteDDIMScheduler", "DiscreteDDIMSchedulerOutput"]
+__all__ = ["DiscreteDDIMScheduler"]
