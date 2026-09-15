@@ -352,13 +352,31 @@ class AttentionModuleMixin:
 
         # Try to get a compatible processor for sliced attention
         if slice_size is not None:
-            processor = self._get_compatible_processor("sliced")
+            processor = self._get_compatible_processor("sliced", slice_size=slice_size)
+            if processor is None:
+                logger.warning(
+                    f"Attention slicing was requested but `{type(self).__name__}` has no sliced attention "
+                    "processor in `_available_processors`. Falling back to the default processor, so attention "
+                    "will not be sliced for this module."
+                )
 
         # If no processor was found or slice_size is None, use default processor
         if processor is None:
-            processor = self.default_processor_cls()
+            processor = self._default_processor_cls()
 
         self.set_processor(processor)
+
+    def _get_compatible_processor(self, processor_type: str, **init_kwargs) -> "AttentionProcessor | None":
+        """
+        Instantiate the first processor in `_available_processors` whose class name contains `processor_type`
+        (case-insensitive), e.g. `"sliced"` for a `SlicedAttnProcessor`-style class. Returns `None` if the module lists
+        no such processor.
+        """
+        processor_type = processor_type.lower()
+        for processor_cls in self._available_processors:
+            if processor_type in processor_cls.__name__.lower():
+                return processor_cls(**init_kwargs)
+        return None
 
     def batch_to_head_dim(self, tensor: torch.Tensor) -> torch.Tensor:
         """
