@@ -1517,6 +1517,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         device = self._get_execution_device()
         dtype = self.transformer.dtype
+        sampling_dtype = torch.float32
 
         if enable_safety_check and isinstance(self.safety_checker, CosmosSafetyChecker):
             self.safety_checker.to(device)
@@ -1577,7 +1578,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             action_latents=action_latents,
             generator=generator,
             device=device,
-            dtype=dtype,
+            dtype=sampling_dtype,
             enable_sound=enable_sound,
             action=action,
         )
