@@ -714,6 +714,12 @@ def parse_args(input_args=None):
         if args.class_prompt is not None:
             warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
 
+    if args.cache_latents and args.with_prior_preservation:
+        raise ValueError(
+            "cache_latents + with_prior_preservation: not supported. "
+            "class images have no stable index for cache lookup. "
+        )
+    
     return args
 
 
@@ -861,6 +867,7 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
+        example["index"] = index
         instance_image = self.pixel_values[index % self.num_instance_images]
         example["instance_images"] = instance_image
 
@@ -889,6 +896,7 @@ class DreamBoothDataset(Dataset):
 def collate_fn(examples, with_prior_preservation=False):
     pixel_values = [example["instance_images"] for example in examples]
     prompts = [example["instance_prompt"] for example in examples]
+    indices = [example["index"] for example in examples]
 
     # Concat class and instance examples for prior preservation.
     # We do this to avoid doing two forward passes.
@@ -899,7 +907,7 @@ def collate_fn(examples, with_prior_preservation=False):
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    batch = {"pixel_values": pixel_values, "prompts": prompts}
+    batch = {"pixel_values": pixel_values, "prompts": prompts, "indices": indices}
     return batch
 
 
@@ -1590,13 +1598,15 @@ def main(args):
     vae_config_shift_factor = vae.config.shift_factor
     vae_config_scaling_factor = vae.config.scaling_factor
     if args.cache_latents:
-        latents_cache = []
+        latents_cache = {}
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
                 batch["pixel_values"] = batch["pixel_values"].to(
                     accelerator.device, non_blocking=True, dtype=weight_dtype
                 )
-                latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
+                sampled = vae.encode(batch["pixel_values"]).latent_dist.sample()
+                for i, idx in enumerate(batch["indices"]):
+                    latents_cache[idx] = sampled[i : i + 1].detach().cpu()
 
         if args.validation_prompt is None:
             del vae
@@ -1767,7 +1777,10 @@ def main(args):
 
                 # Convert images to latent space
                 if args.cache_latents:
-                    model_input = latents_cache[step].sample()
+                    model_input = torch.cat(
+                        [latents_cache[idx].to(accelerator.device, dtype=weight_dtype) for idx in batch["indices"]],
+                        dim=0,
+                    )
                 else:
                     pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                     model_input = vae.encode(pixel_values).latent_dist.sample()
