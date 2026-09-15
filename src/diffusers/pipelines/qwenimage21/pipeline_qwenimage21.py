@@ -131,7 +131,10 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-def retrieve_latents(encoder_output, generator=None, sample_mode="sample"):
+# Copied from diffusers.pipelines.flux.pipeline_flux_control_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
+):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
     elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
@@ -320,6 +323,8 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         }
         if not is_t2i and hasattr(model_inputs, "pixel_values"):
             forward_kwargs.update(pixel_values=model_inputs.pixel_values, image_grid_thw=model_inputs.image_grid_thw)
+        if hasattr(model_inputs, "mm_token_type_ids"):
+            forward_kwargs["mm_token_type_ids"] = model_inputs.mm_token_type_ids
 
         outputs = self.text_encoder(**forward_kwargs)
         hidden_states = outputs.hidden_states[-1]
@@ -332,11 +337,6 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             for sample_ids, sample_mask in zip(model_inputs.input_ids, model_inputs.attention_mask)
         ]
         image_pad_mask = [e[drop_idx:] for e in image_pad_mask]
-
-        if not is_t2i:
-            split_hidden_states, image_pad_mask = self._downsample_image_pad_tokens(
-                split_hidden_states, image_pad_mask
-            )
 
         attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
         max_seq_len = max(e.size(0) for e in split_hidden_states)
@@ -421,6 +421,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         latents = latents.transpose(1, 2).reshape(batch_size, channels, 1, height, width)
         return latents
 
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit.QwenImageEditPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
@@ -430,7 +431,6 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             image_latents = torch.cat(image_latents, dim=0)
         else:
             image_latents = retrieve_latents(self.vae.encode(image), generator=generator, sample_mode="argmax")
-
         latents_mean = (
             torch.tensor(self.vae.config.latents_mean)
             .view(1, self.latent_channels, 1, 1, 1)
@@ -441,7 +441,8 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             .view(1, self.latent_channels, 1, 1, 1)
             .to(image_latents.device, image_latents.dtype)
         )
-        return (image_latents - latents_mean) / latents_std
+        image_latents = (image_latents - latents_mean) / latents_std
+        return image_latents
 
     def prepare_latents(
         self, images, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None
@@ -616,6 +617,8 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             image = image if isinstance(image, list) else [image]
             input_images, vae_images = [], []
             for img in image:
+                if hasattr(img, "mode") and img.mode != "RGBA":
+                    img = img.convert("RGBA")
                 image_width, image_height = img.size
                 input_width, input_height = calculate_dimensions(
                     output_resolution * output_resolution, image_width / image_height
@@ -708,10 +711,12 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         # Text and condition-image keys and values are step-independent under `causal_condition`, so the first step
         # prefills them and later steps only recompute the target image's tokens.
+        from ...models.transformers.transformer_qwenimage21 import QwenImage21KVCache
+
         num_blocks = len(self.transformer.transformer_blocks)
         cache_enabled = use_kv_cache and self.transformer.config.causal_condition
-        cond_cache = [{} for _ in range(num_blocks)] if cache_enabled else None
-        neg_cache = [{} for _ in range(num_blocks)] if cache_enabled and do_true_cfg else None
+        cond_cache = QwenImage21KVCache(num_blocks) if cache_enabled else None
+        neg_cache = QwenImage21KVCache(num_blocks) if cache_enabled and do_true_cfg else None
 
         # 5. Denoising loop
         self.scheduler.set_begin_index(0)
@@ -721,6 +726,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     continue
 
                 self._current_timestep = t
+                kv_mode = "extract" if (cache_enabled and i == 0) else ("cached" if cache_enabled else None)
 
                 latent_model_input = latents
                 if input_images_latents is not None:
@@ -737,6 +743,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                         img_mask=image_pad_mask,
                         attention_kwargs=self.attention_kwargs,
                         kv_cache=cond_cache,
+                        kv_cache_mode=kv_mode,
                         return_dict=False,
                     )[0]
                 noise_pred = noise_pred[:, -latents.size(1) :]
@@ -752,6 +759,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                             img_mask=negative_image_pad_mask,
                             attention_kwargs=self.attention_kwargs,
                             kv_cache=neg_cache,
+                            kv_cache_mode=kv_mode,
                             return_dict=False,
                         )[0]
                     neg_noise_pred = neg_noise_pred[:, -latents.size(1) :]

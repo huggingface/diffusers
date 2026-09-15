@@ -13,23 +13,27 @@ specific language governing permissions and limitations under the License. -->
 
 Qwen-Image 2.1 encodes the prompt and any condition images together with a Qwen3-VL model, then denoises the target
 image with a single-stream block-causal transformer. See
-[`QwenImage21Transformer2DModel`](../models/qwenimage21_transformer2d) for what `causal_block` and `causal_condition`
-change.
+[`QwenImage21Transformer2DModel`](../models/qwenimage21_transformer2d) for details on block-causal attention and
+`causal_condition`.
 
-Because the text and condition-image prefix is modulated from `t = 0`, its keys and values do not change between
-denoising steps. The pipeline caches them after the first step by default; pass `use_kv_cache=False` to recompute the
-full sequence every step.
+The `flex` attention backend (`torch.nn.attention.flex_attention`) gives efficient single-pass block-causal attention.
+Without it, the model uses an exact multi-pass SDPA prefill that processes each image block with bidirectional
+attention and text with causal attention, matching the block-causal mask exactly. Both paths produce the same results.
 
-Toggling `use_kv_cache` does not reproduce the same image bit-for-bit in reduced precision. The cached decode step
-attends with a different sequence layout than the prefill step, so the two land on different rounding — both match an
-fp32 reference to the same tolerance — and a one-ULP difference at the first block is amplified by 32 blocks and every
-sampler step. Keep the flag fixed when you need a reproducible sample.
+```python
+import torch
+from diffusers import QwenImage21Pipeline
 
-<Tip>
+pipe = QwenImage21Pipeline.from_pretrained("Qwen/Qwen-Image-2.1", torch_dtype=torch.bfloat16).to("cuda")
 
-This pipeline requires the `flex` attention backend when `causal_block` is enabled.
+# Text-to-image
+image = pipe("A capybara wearing a wizard hat, oil painting", num_inference_steps=40).images[0]
+image.save("t2i.png")
 
-</Tip>
+# Image-conditioned editing
+edited = pipe("Move it to a snowy mountain top", image=image, num_inference_steps=40).images[0]
+edited.save("edit.png")
+```
 
 ## QwenImage21Pipeline
 

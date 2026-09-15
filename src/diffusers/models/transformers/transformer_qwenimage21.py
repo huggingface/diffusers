@@ -21,7 +21,8 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import logging
+from ...utils.peft_utils import apply_lora_scale
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -34,22 +35,80 @@ from ..normalization import RMSNorm
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+# Each vision-language image slot represents a 2×2 group of latent tokens.
+_IMG_TOKENS_PER_SLOT = 4
+
 # `create_block_mask` quantizes the mask to 128-token blocks.
 _FLEX_BLOCK_SIZE = 128
 
-# flex_attention is optional. When available and `causal_block=True`, we use a compiled
-# flex_attention with a BlockMask for efficient block-causal attention. When unavailable,
-# we fall back to a two-pass prefill: causal attention over the prefix, then full attention
-# over the target image attending to the cached prefix + itself.
+# flex_attention is optional. When available we use a compiled flex_attention with a BlockMask for
+# efficient single-pass block-causal attention. When unavailable, we fall back to an exact multi-pass
+# SDPA prefill that processes each image block with bidirectional attention and text segments with
+# causal attention, matching the block-causal mask exactly.
 _FLEX_AVAILABLE = False
 _compiled_flex_attention = None
 try:
     from torch.nn.attention.flex_attention import BlockMask, create_block_mask, flex_attention
 
-    _compiled_flex_attention = torch.compile(flex_attention)
     _FLEX_AVAILABLE = True
 except ImportError:
     BlockMask = None
+    flex_attention = None
+
+
+def _get_compiled_flex_attention():
+    """Return a compiled flex_attention, compiling on first call.
+
+    Compiling is required for the block-sparse kernel that avoids materializing the full Q@K^T matrix. Without it
+    flex_attention falls back to a dense fp32 math path that OOMs on long sequences.
+    """
+    global _compiled_flex_attention
+    if _compiled_flex_attention is None:
+        _compiled_flex_attention = torch.compile(flex_attention)
+    return _compiled_flex_attention
+
+
+class QwenImage21KVLayerCache:
+    """Per-layer KV cache for text and condition-image prefix tokens.
+
+    Stores K and V projections (post-RoPE) for the prefix extracted during the first denoising step. Tensor format:
+    ``(batch_size, num_prefix_tokens, num_heads, head_dim)``.
+    """
+
+    def __init__(self):
+        self.k: torch.Tensor | None = None
+        self.v: torch.Tensor | None = None
+
+    def store(self, k: torch.Tensor, v: torch.Tensor):
+        self.k = k
+        self.v = v
+
+    def get(self) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.k is None:
+            raise RuntimeError("KV cache has not been populated yet.")
+        return self.k, self.v
+
+    @property
+    def is_populated(self) -> bool:
+        return self.k is not None
+
+    def clear(self):
+        self.k = None
+        self.v = None
+
+
+class QwenImage21KVCache:
+    """Container for all transformer blocks' prefix KV caches."""
+
+    def __init__(self, num_layers: int):
+        self.layer_caches = [QwenImage21KVLayerCache() for _ in range(num_layers)]
+
+    def get_layer(self, layer_idx: int) -> QwenImage21KVLayerCache:
+        return self.layer_caches[layer_idx]
+
+    def clear(self):
+        for cache in self.layer_caches:
+            cache.clear()
 
 
 # Copied from diffusers.models.transformers.transformer_qwenimage.apply_rotary_emb_qwen
@@ -274,24 +333,65 @@ def build_qwenimage21_block_causal_mask(
     )
 
 
-class QwenImage21AttnProcessor:
+def _qwenimage21_prepare_qkv(
+    attn: "QwenImage21Attention",
+    hidden_states: torch.Tensor,
+    rotary_emb: torch.Tensor | None,
+    layer_cache: QwenImage21KVLayerCache | None,
+    kv_cache_mode: str | None,
+    cache_write_slice: slice | None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
+    """Shared QKV projection, norm, RoPE and KV-cache bookkeeping for both processors."""
+    query = attn.to_q(hidden_states)
+    key = attn.to_k(hidden_states)
+    value = attn.to_v(hidden_states)
+
+    query = query.unflatten(-1, (attn.heads, -1))
+    key = key.unflatten(-1, (attn.heads, -1))
+    value = value.unflatten(-1, (attn.heads, -1))
+
+    query = attn.norm_q(query).to(value.dtype)
+    key = attn.norm_k(key).to(value.dtype)
+
+    if rotary_emb is not None:
+        query = apply_rotary_emb_qwen(query, rotary_emb, use_real=False)
+        key = apply_rotary_emb_qwen(key, rotary_emb, use_real=False)
+
+    if layer_cache is not None:
+        if kv_cache_mode == "extract" and cache_write_slice is not None:
+            layer_cache.store(
+                key[:, cache_write_slice].contiguous(),
+                value[:, cache_write_slice].contiguous(),
+            )
+        elif kv_cache_mode == "cached":
+            cached_k, cached_v = layer_cache.get()
+            key = torch.cat([cached_k, key], dim=1)
+            value = torch.cat([cached_v, value], dim=1)
+        elif kv_cache_mode == "extend":
+            # Read existing cache (if any), prepend to current KV for attention, then store the full
+            # concatenated KV back. Used by the multi-pass SDPA prefill to accumulate segment-by-segment.
+            if layer_cache.is_populated:
+                cached_k, cached_v = layer_cache.get()
+                key = torch.cat([cached_k, key], dim=1)
+                value = torch.cat([cached_v, value], dim=1)
+            layer_cache.store(key.contiguous(), value.contiguous())
+
+    seq_len_q = query.shape[1]
+    return query, key, value, seq_len_q
+
+
+class QwenImage21FlexAttnProcessor:
     r"""
-    Single-stream attention processor for Qwen-Image 2.1. Text and image tokens share one sequence, so there is no
-    separate context projection.
+    Attention processor for Qwen-Image 2.1 using compiled `flex_attention` with a `BlockMask` for exact block-causal
+    attention. This is the recommended path and is required for high resolutions (2048²+) where a dense score matrix
+    would OOM.
 
-    Two attention paths are supported:
-
-    - **flex** (default when available): a compiled `flex_attention` with a `BlockMask` for efficient block-sparse
-      block-causal attention. Required for high resolutions (2048²+) where the dense score matrix would OOM.
-    - **SDPA fallback** (when flex is unavailable): the block-causal mask is implemented via a two-pass prefill
-      orchestrated by the model's `forward` — pass 1 runs the prefix with `is_causal=True`, pass 2 runs the target
-      image attending fully to the cached prefix + itself. The processor receives `is_causal` and a padding mask.
+    ``flex_attention`` is compiled on the first forward pass so the block-sparse kernel is used instead of the dense
+    fallback. The first call will be slower due to compilation.
     """
 
-    _attention_backend = "flex" if _FLEX_AVAILABLE else None
+    _attention_backend = "flex"
     _parallel_config = None
-
-    _SUPPORTED_FLEX_BACKENDS = ("flex", "_native_flex")
 
     def __call__(
         self,
@@ -299,45 +399,17 @@ class QwenImage21AttnProcessor:
         hidden_states: torch.Tensor,
         attention_mask: Any | None = None,
         rotary_emb: torch.Tensor | None = None,
-        kv_cache: dict[str, torch.Tensor] | None = None,
+        layer_cache: QwenImage21KVLayerCache | None = None,
+        kv_cache_mode: str | None = None,
         cache_write_slice: slice | None = None,
         is_causal: bool = False,
     ) -> torch.Tensor:
-        if (
-            _FLEX_AVAILABLE
-            and isinstance(attention_mask, BlockMask)
-            and self._attention_backend not in self._SUPPORTED_FLEX_BACKENDS
-        ):
-            raise ValueError(
-                f"QwenImage21AttnProcessor requires the 'flex' attention backend when a BlockMask is used "
-                f"(got {self._attention_backend!r})."
-            )
+        query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
+            attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
+        )
 
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-
-        query = query.unflatten(-1, (attn.heads, -1))
-        key = key.unflatten(-1, (attn.heads, -1))
-        value = value.unflatten(-1, (attn.heads, -1))
-
-        query = attn.norm_q(query).to(value.dtype)
-        key = attn.norm_k(key).to(value.dtype)
-
-        if rotary_emb is not None:
-            query = apply_rotary_emb_qwen(query, rotary_emb, use_real=False)
-            key = apply_rotary_emb_qwen(key, rotary_emb, use_real=False)
-
-        if kv_cache is not None:
-            if cache_write_slice is not None:
-                kv_cache["key"] = key[:, cache_write_slice].contiguous()
-                kv_cache["value"] = value[:, cache_write_slice].contiguous()
-            else:
-                key = torch.cat([kv_cache["key"], key], dim=1)
-                value = torch.cat([kv_cache["value"], value], dim=1)
-
-        seq_len_q, seq_len_kv = query.shape[1], key.shape[1]
-        if _FLEX_AVAILABLE and isinstance(attention_mask, BlockMask):
+        seq_len_kv = key.shape[1]
+        if isinstance(attention_mask, BlockMask):
             pad_q = int(math.ceil(seq_len_q / _FLEX_BLOCK_SIZE) * _FLEX_BLOCK_SIZE) - seq_len_q
             pad_kv = int(math.ceil(seq_len_kv / _FLEX_BLOCK_SIZE) * _FLEX_BLOCK_SIZE) - seq_len_kv
             if pad_q:
@@ -346,13 +418,14 @@ class QwenImage21AttnProcessor:
                 key = F.pad(key.transpose(1, 3), (0, pad_kv)).transpose(1, 3)
                 value = F.pad(value.transpose(1, 3), (0, pad_kv)).transpose(1, 3)
 
-            hidden_states = _compiled_flex_attention(
+            hidden_states = _get_compiled_flex_attention()(
                 query.transpose(1, 2).contiguous(),
                 key.transpose(1, 2).contiguous(),
                 value.transpose(1, 2).contiguous(),
                 block_mask=attention_mask,
             ).transpose(1, 2)
         else:
+            # Decode path or no BlockMask: full attention via SDPA.
             hidden_states = dispatch_attention_fn(
                 query,
                 key,
@@ -370,14 +443,59 @@ class QwenImage21AttnProcessor:
         return attn.to_out[1](hidden_states)
 
 
+class QwenImage21SDPAAttnProcessor:
+    r"""
+    SDPA attention processor for Qwen-Image 2.1. Use this when `flex_attention` is not available.
+
+    The block-causal mask is implemented exactly via a multi-pass prefill orchestrated by the model's `forward`: each
+    image block in the prefix is processed with bidirectional attention within the block and full attention to all
+    preceding segments, and text segments get a causal mask. The target image attends fully to the cached prefix +
+    itself. This matches the block-causal mask without requiring `flex_attention`.
+    """
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(
+        self,
+        attn: "QwenImage21Attention",
+        hidden_states: torch.Tensor,
+        attention_mask: Any | None = None,
+        rotary_emb: torch.Tensor | None = None,
+        layer_cache: QwenImage21KVLayerCache | None = None,
+        kv_cache_mode: str | None = None,
+        cache_write_slice: slice | None = None,
+        is_causal: bool = False,
+    ) -> torch.Tensor:
+        query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
+            attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
+        )
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask if not isinstance(attention_mask, type(None)) and not is_causal else None,
+            dropout_p=0.0,
+            is_causal=is_causal,
+            backend=None,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states[:, :seq_len_q]
+        hidden_states = hidden_states.flatten(2, 3).type_as(query)
+
+        hidden_states = attn.to_out[0](hidden_states)
+        return attn.to_out[1](hidden_states)
+
+
 class QwenImage21Attention(torch.nn.Module, AttentionModuleMixin):
     r"""
     Attention module for [`QwenImage21TransformerBlock`]. Projection layout matches the legacy
     [`~models.attention_processor.Attention`] so Qwen-Image 2.x checkpoints load into it unchanged.
     """
 
-    _default_processor_cls = QwenImage21AttnProcessor
-    _available_processors = [QwenImage21AttnProcessor]
+    _default_processor_cls = QwenImage21FlexAttnProcessor if _FLEX_AVAILABLE else QwenImage21SDPAAttnProcessor
+    _available_processors = [QwenImage21FlexAttnProcessor, QwenImage21SDPAAttnProcessor]
 
     def __init__(self, dim: int, heads: int, dim_head: int, eps: float = 1e-6, processor: Any | None = None):
         super().__init__()
@@ -438,7 +556,8 @@ class QwenImage21TransformerBlock(nn.Module):
         rotary_emb: torch.Tensor | None = None,
         attention_mask: Any | None = None,
         target_token_mask: torch.Tensor | None = None,
-        kv_cache: dict[str, torch.Tensor] | None = None,
+        layer_cache: QwenImage21KVLayerCache | None = None,
+        kv_cache_mode: str | None = None,
         cache_write_slice: slice | None = None,
         is_causal: bool = False,
     ) -> torch.Tensor:
@@ -449,7 +568,8 @@ class QwenImage21TransformerBlock(nn.Module):
             hidden_states=img_modulated,
             attention_mask=attention_mask,
             rotary_emb=rotary_emb,
-            kv_cache=kv_cache,
+            layer_cache=layer_cache,
+            kv_cache_mode=kv_cache_mode,
             cache_write_slice=cache_write_slice,
             is_causal=is_causal,
         )
@@ -535,10 +655,11 @@ class QwenImage21Transformer2DModel(
     positions the vision-language encoder reserved for them, and the target image's tokens are appended. A single
     shared `modulation` projection feeds every block, so blocks hold no modulation parameters of their own.
 
-    Two behaviours distinguish 2.1 from 2.0, both switched on by config and neither adding parameters:
+    Two behaviours distinguish 2.1:
 
-    - `causal_block` — attention follows `(q_idx >= kv_idx) or same_image_block`, so the sequence is causal while each
-      image block stays internally bidirectional. This requires the `flex` attention backend.
+    - **Block-causal attention** — attention follows `(q_idx >= kv_idx) or same_image_block`, so the sequence is causal
+      while each image block stays internally bidirectional. The `flex` attention backend gives efficient single-pass
+      attention; without it the model uses an exact multi-pass SDPA prefill that processes each block separately.
     - `causal_condition` — text and condition-image tokens are modulated from `t = 0` instead of the sampled timestep,
       which also makes their activations timestep-independent and so cacheable across denoising steps.
 
@@ -565,8 +686,6 @@ class QwenImage21Transformer2DModel(
             Epsilon for the norm layers.
         causal_condition (`bool`, defaults to `True`):
             Modulate text and condition-image tokens from `t = 0`. Required for KV caching.
-        causal_block (`bool`, defaults to `True`):
-            Use block-causal attention. Requires the `flex` attention backend.
     """
 
     _supports_gradient_checkpointing = True
@@ -589,7 +708,6 @@ class QwenImage21Transformer2DModel(
         axes_dims_rope: tuple[int, int, int] = (16, 56, 56),
         eps: float = 1e-6,
         causal_condition: bool = True,
-        causal_block: bool = True,
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -660,6 +778,7 @@ class QwenImage21Transformer2DModel(
         target_token_mask[image_positions[-block_lengths[-1] :]] = True
         return image_ids, target_token_mask
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -669,7 +788,8 @@ class QwenImage21Transformer2DModel(
         img_mask: torch.Tensor,
         encoder_hidden_states_mask: torch.Tensor | None = None,
         attention_kwargs: dict[str, Any] | None = None,
-        kv_cache: list[dict[str, torch.Tensor]] | None = None,
+        kv_cache: QwenImage21KVCache | None = None,
+        kv_cache_mode: str | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor | Transformer2DModelOutput:
         r"""
@@ -688,20 +808,12 @@ class QwenImage21Transformer2DModel(
             encoder_hidden_states_mask (`torch.Tensor`, *optional*):
                 `(batch_size, text_sequence_length)` bool marking valid text tokens. Padded positions are excluded from
                 attention.
-            kv_cache (`list[dict[str, torch.Tensor]]`, *optional*):
-                One dict per block. Empty dicts prefill the text and condition-image keys and values; populated dicts
-                switch to decode, where only the target image's tokens are recomputed. Requires `causal_condition`.
+            kv_cache (`QwenImage21KVCache`, *optional*):
+                Cache container. Pass together with `kv_cache_mode` to enable prefix KV caching.
+            kv_cache_mode (`str`, *optional*):
+                `"extract"` to prefill the cache (first denoising step), `"cached"` to decode from it (later steps).
+                Requires `causal_condition=True`.
         """
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            scale_lora_layers(self, lora_scale)
-        elif attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-            logger.warning("Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective.")
 
         batch_size = hidden_states.shape[0]
         hidden_states = self.img_in(hidden_states)
@@ -709,7 +821,7 @@ class QwenImage21Transformer2DModel(
 
         # Each vision-language image slot stands for 2x2 latent tokens, so expand those positions four-fold and drop
         # the actual latents into them. Samples share a layout, hence the single row.
-        repeats = torch.where(img_mask, 4, 1)[0]
+        repeats = torch.where(img_mask, _IMG_TOKENS_PER_SLOT, 1)[0]
         image_pad_mask = torch.repeat_interleave(img_mask[0], repeats)
 
         target_tokens = math.prod(img_shapes[0][-1])
@@ -742,6 +854,10 @@ class QwenImage21Transformer2DModel(
                 "kv_cache requires `causal_condition=True`. The cache is only valid because text and condition-image "
                 "tokens modulate from t=0, which makes their activations independent of the denoising step."
             )
+        if kv_cache is not None and kv_cache_mode not in ("extract", "cached"):
+            raise ValueError(
+                f"kv_cache_mode must be 'extract' or 'cached' when kv_cache is provided, got {kv_cache_mode!r}."
+            )
 
         # Right-padded prompt positions must never be attended to, on any path. Text positions of the joint sequence
         # line up, in order, with the non-image positions of the vision-language sequence — the two are interleaved,
@@ -756,8 +872,7 @@ class QwenImage21Transformer2DModel(
             joint_key_valid[:, text_positions] = encoder_hidden_states_mask.bool()[:, vlm_text_positions]
 
         prefix_len = int((~target_token_mask).sum())
-        is_decode = kv_cache is not None and len(kv_cache[0]) > 0
-        use_flex = _FLEX_AVAILABLE and self.config.causal_block
+        is_decode = kv_cache_mode == "cached"
 
         if is_decode:
             # Only the target image's queries are recomputed. The block-causal mask degenerates to full attention
@@ -767,74 +882,107 @@ class QwenImage21Transformer2DModel(
             modulation_mask = modulation_mask[prefix_len:]
             attention_mask = None if joint_key_valid is None else joint_key_valid[:, None, None, :]
             cache_write_slice = None
-            use_two_pass = False
-        elif use_flex:
+            use_multi_pass = False
+        elif _FLEX_AVAILABLE:
             # flex path: single-pass with a compiled BlockMask
-            cache_write_slice = slice(0, prefix_len) if kv_cache is not None else None
+            cache_write_slice = slice(0, prefix_len) if kv_cache_mode == "extract" else None
             attention_mask = build_qwenimage21_block_causal_mask(
                 image_ids, joint_key_valid, batch_size, hidden_states.device
             )
-            use_two_pass = False
-        elif self.config.causal_block:
-            # No flex_attention available: approximate the block-causal mask with a two-pass prefill.
-            # Pass 1 runs the prefix (text + condition images) causally and caches its keys and values;
-            # pass 2 runs the target image attending fully over that prefix plus itself.
-            #
-            # This is exact for the target image and for text, but not for condition images: under the real
-            # block-causal mask a condition image attends within its own block bidirectionally, whereas a
-            # single causal pass only lets each of its tokens see earlier ones. Text-only prompts are
-            # therefore unaffected; prompts with condition images differ slightly. Install a PyTorch build
-            # with flex_attention for the exact mask.
-            use_two_pass = True
-            cache_write_slice = slice(0, prefix_len) if kv_cache is not None else None
+            use_multi_pass = False
         else:
-            # causal_block disabled: full attention
-            cache_write_slice = slice(0, prefix_len) if kv_cache is not None else None
-            attention_mask = None if joint_key_valid is None else joint_key_valid[:, None, None, :]
-            use_two_pass = False
+            # Multi-pass SDPA: exact block-causal attention without flex_attention.
+            # The prefix is split into segments at image-block boundaries (using image_ids). Image-block
+            # segments get full (bidirectional) attention within themselves, and text segments get a causal
+            # mask within the segment. Both attend fully to all preceding segments via an accumulating KV
+            # cache ("extend" mode). This exactly matches the block-causal mask.
+            # The target image pass is unchanged: full attention over [cached prefix, target].
+            use_multi_pass = True
+            cache_write_slice = None
 
-        if use_two_pass:
-            # Two-pass prefill: split into prefix and target, run prefix causally then target fully.
+        if use_multi_pass:
             prefix_hs = joint_hidden_states[:, :prefix_len]
             target_hs = joint_hidden_states[:, prefix_len:]
             prefix_rope = rotary_emb[:prefix_len]
             target_rope = rotary_emb[prefix_len:]
             prefix_mod_mask = modulation_mask[:prefix_len] if modulation_mask is not None else None
             target_mod_mask = modulation_mask[prefix_len:] if modulation_mask is not None else None
+
+            # Build segment boundaries from image_ids in the prefix. Consecutive tokens with the same
+            # image_id form one segment (-1 = text, >=0 = image block).
+            prefix_ids = image_ids[:prefix_len]
+            segments = []
+            if prefix_len > 0:
+                seg_start = 0
+                for i in range(1, prefix_len):
+                    if prefix_ids[i] != prefix_ids[i - 1]:
+                        segments.append((seg_start, i))
+                        seg_start = i
+                segments.append((seg_start, prefix_len))
+
             for index_block, block in enumerate(self.transformer_blocks):
-                block_kv_cache = kv_cache[index_block] if kv_cache is not None else None
-                # Pass 1: prefix with causal attention. No padding mask — padded text tokens have zero embeddings
-                # from right-padding and is_causal handles the structural mask.
-                prefix_cache = {} if kv_cache is not None else None
-                prefix_hs = block(
-                    hidden_states=prefix_hs,
-                    modulation=modulation,
-                    rotary_emb=prefix_rope,
-                    attention_mask=None,
-                    target_token_mask=prefix_mod_mask,
-                    kv_cache=prefix_cache,
-                    cache_write_slice=slice(0, prefix_len),
-                    is_causal=True,
+                layer_cache = kv_cache.get_layer(index_block) if kv_cache is not None else None
+                accumulated_cache = QwenImage21KVLayerCache()
+                segment_outputs = []
+
+                for seg_start, seg_end in segments:
+                    seg_hs = prefix_hs[:, seg_start:seg_end]
+                    seg_rope = prefix_rope[seg_start:seg_end]
+                    seg_mod = prefix_mod_mask[seg_start:seg_end] if prefix_mod_mask is not None else None
+
+                    # Text segments (image_id == -1) get a causal mask within the segment so that
+                    # each text token only sees earlier text tokens + the full cached prefix. Image
+                    # blocks get None (full / bidirectional), which is exact for the block-causal mask.
+                    seg_mask = None
+                    seg_is_text = prefix_ids[seg_start].item() < 0
+                    seg_len = seg_end - seg_start
+                    if seg_is_text and seg_len > 1:
+                        cached_len = accumulated_cache.k.shape[1] if accumulated_cache.is_populated else 0
+                        prefix_visible = torch.ones(seg_len, cached_len, dtype=torch.bool, device=hidden_states.device)
+                        causal_part = torch.tril(
+                            torch.ones(seg_len, seg_len, dtype=torch.bool, device=hidden_states.device)
+                        )
+                        seg_mask = torch.cat([prefix_visible, causal_part], dim=1)[None, None]
+
+                    seg_hs = block(
+                        hidden_states=seg_hs,
+                        modulation=modulation,
+                        rotary_emb=seg_rope,
+                        attention_mask=seg_mask,
+                        target_token_mask=seg_mod,
+                        layer_cache=accumulated_cache,
+                        kv_cache_mode="extend",
+                        cache_write_slice=None,
+                    )
+                    segment_outputs.append(seg_hs)
+
+                prefix_hs = torch.cat(segment_outputs, dim=1) if segment_outputs else prefix_hs
+
+                # Store the accumulated prefix cache into the main cache for this layer.
+                if layer_cache is not None and accumulated_cache.is_populated:
+                    layer_cache.store(*accumulated_cache.get())
+
+                # Target: full attention over [cached prefix, target].
+                target_cache = (
+                    layer_cache
+                    if layer_cache is not None
+                    else (accumulated_cache if accumulated_cache.is_populated else None)
                 )
-                # Pass 2: target image with full attention over [cached prefix, target].
-                # No attention mask needed: the prefix cache already excludes padded positions, and the target
-                # image should see everything (block-causal degenerates to full attention for target rows).
-                if prefix_cache is not None and block_kv_cache is not None:
-                    block_kv_cache.update(prefix_cache)
                 target_hs = block(
                     hidden_states=target_hs,
                     modulation=modulation,
                     rotary_emb=target_rope,
                     attention_mask=None,
                     target_token_mask=target_mod_mask,
-                    kv_cache=block_kv_cache,
+                    layer_cache=target_cache,
+                    kv_cache_mode="cached" if target_cache is not None else None,
                     cache_write_slice=None,
                 )
 
             joint_hidden_states = torch.cat([prefix_hs, target_hs], dim=1)
         else:
             for index_block, block in enumerate(self.transformer_blocks):
-                block_kv_cache = kv_cache[index_block] if kv_cache is not None else None
+                layer_cache = kv_cache.get_layer(index_block) if kv_cache is not None else None
                 if torch.is_grad_enabled() and self.gradient_checkpointing:
                     joint_hidden_states = self._gradient_checkpointing_func(
                         block,
@@ -843,7 +991,8 @@ class QwenImage21Transformer2DModel(
                         rotary_emb,
                         attention_mask,
                         modulation_mask,
-                        block_kv_cache,
+                        layer_cache,
+                        kv_cache_mode,
                         cache_write_slice,
                     )
                 else:
@@ -853,15 +1002,13 @@ class QwenImage21Transformer2DModel(
                         rotary_emb=rotary_emb,
                         attention_mask=attention_mask,
                         target_token_mask=modulation_mask,
-                        kv_cache=block_kv_cache,
+                        layer_cache=layer_cache,
+                        kv_cache_mode=kv_cache_mode,
                         cache_write_slice=cache_write_slice,
                     )
 
         joint_hidden_states = self.norm_out(joint_hidden_states, temb, modulation_mask)
         output = self.proj_out(joint_hidden_states)
-
-        if USE_PEFT_BACKEND:
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

@@ -104,22 +104,6 @@ class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTester
     def test_model_parallelism(self):
         pass
 
-    def test_causal_block_changes_output(self):
-        """Block-causal attention must actually change the result relative to full attention."""
-        inputs = self.get_dummy_inputs()
-
-        torch.manual_seed(0)
-        causal = self.model_class(**self.get_init_dict(), causal_block=True).to(torch_device).eval()
-        torch.manual_seed(0)
-        full = self.model_class(**self.get_init_dict(), causal_block=False).to(torch_device).eval()
-
-        with torch.no_grad():
-            causal_out = causal(**inputs, return_dict=False)[0]
-            full_out = full(**inputs, return_dict=False)[0]
-
-        assert causal_out.shape == full_out.shape
-        assert not torch.allclose(causal_out, full_out, atol=1e-5)
-
     def test_kv_cache_matches_full_forward(self):
         """
         Decoding from a cache prefilled at a different timestep must match a full forward. This only holds because
@@ -129,25 +113,31 @@ class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTester
         inputs = self.get_dummy_inputs()
         target_tokens = inputs["hidden_states"].shape[1]
 
+        from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
+
         torch.manual_seed(0)
-        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        kv_cache = [{} for _ in range(self.get_init_dict()["num_layers"])]
+        init_dict = self.get_init_dict()
+        model = self.model_class(**init_dict).to(torch_device).eval()
+        kv_cache = QwenImage21KVCache(init_dict["num_layers"])
 
         prefill_inputs = dict(inputs, timestep=torch.tensor([0.9], device=torch_device))
         decode_inputs = dict(inputs, timestep=torch.tensor([0.4], device=torch_device))
         with torch.no_grad():
-            model(**prefill_inputs, kv_cache=kv_cache, return_dict=False)
-            decoded = model(**decode_inputs, kv_cache=kv_cache, return_dict=False)[0]
+            model(**prefill_inputs, kv_cache=kv_cache, kv_cache_mode="extract", return_dict=False)
+            decoded = model(**decode_inputs, kv_cache=kv_cache, kv_cache_mode="cached", return_dict=False)[0]
             reference = model(**decode_inputs, return_dict=False)[0]
 
         assert decoded.shape[1] == target_tokens
         torch.testing.assert_close(decoded, reference[:, -target_tokens:], atol=2e-5, rtol=2e-5)
 
     def test_kv_cache_requires_causal_condition(self):
+        from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
+
         init_dict = dict(self.get_init_dict(), causal_condition=False)
         model = self.model_class(**init_dict).to(torch_device).eval()
+        kv_cache = QwenImage21KVCache(init_dict["num_layers"])
         with pytest.raises(ValueError, match="causal_condition"):
-            model(**self.get_dummy_inputs(), kv_cache=[{} for _ in range(init_dict["num_layers"])])
+            model(**self.get_dummy_inputs(), kv_cache=kv_cache, kv_cache_mode="extract")
 
     def test_non_flex_backend_rejected_when_causal(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
