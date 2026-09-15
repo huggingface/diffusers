@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 import PIL
 import torch
-from transformers import AutoTokenizer, PreTrainedModel, Siglip2ImageProcessorFast, Siglip2VisionModel
+from transformers import AutoTokenizer, PreTrainedModel, Siglip2ImageProcessor, Siglip2VisionModel
 
 from ...loaders import FromSingleFileMixin, ZImageLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
@@ -153,7 +153,7 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
         tokenizer: AutoTokenizer,
         transformer: ZImageTransformer2DModel,
         siglip: Siglip2VisionModel,
-        siglip_processor: Siglip2ImageProcessorFast,
+        siglip_processor: Siglip2ImageProcessor,
     ):
         super().__init__()
 
