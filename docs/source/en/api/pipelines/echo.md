@@ -95,7 +95,13 @@ fresh Gaussian noise at the next sigma, so a seeded `torch.Generator` controls b
 intermediate re-noising.
 
 Raw audio-memory encoding requires `torchaudio`. For reference parity, keep `audio_vae` in FP32 as shown above.
-Modular workflows can cache and reuse the condition encoder's packed token outputs by running that block separately.
+Modular workflows can cache the VAE encoder's normalized, unpacked tensors: video latents have shape
+`(batch, channels, frames, height, width)` and audio latents have shape `(batch, channels, time, mel_bins)`.
+The core `denoise` block packs these tensors, expands conditioning for `num_videos_per_prompt`, and unpacks its
+denoised outputs back to the same VAE form. Pass initial `latents` and `audio_latents` in this unpacked form as well.
+Decoders accept normalized VAE tensors without separate geometry arguments and denormalize immediately before
+decoding. `output=["latents", "audio_latents"]` returns normalized VAE tensors; `output_type="latent"` with
+`output=["videos", "audio"]` returns the denormalized VAE tensors without decoding.
 
 ## EchoModularPipeline
 

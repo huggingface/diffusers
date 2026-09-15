@@ -72,10 +72,10 @@ class EchoModularPipeline(ModularPipeline, EchoLoraLoaderMixin):
         return 1
 
     @property
-    def audio_vae_mel_compression_ratio(self):
+    def audio_latent_mel_bins(self):
         if getattr(self, "audio_vae", None) is not None:
-            return self.audio_vae.mel_compression_ratio
-        return 4
+            return self.audio_vae.config.mel_bins // self.audio_vae.mel_compression_ratio
+        return 16
 
     @property
     def audio_vae_temporal_compression_ratio(self):

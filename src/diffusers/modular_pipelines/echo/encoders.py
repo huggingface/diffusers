@@ -199,25 +199,6 @@ class EchoTextConnectorStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.ltx2.before_denoise._pack_audio_latents
-def _pack_audio_latents(
-    latents: torch.Tensor, patch_size: int | None = None, patch_size_t: int | None = None
-) -> torch.Tensor:
-    # Audio latents of shape [B, C, L, M] (L = latent audio length, M = mel bins). With no patch sizes this packs to
-    # [B, L, C * M] (implicit mel patch_size of M, temporal patch_size of 1).
-    if patch_size is not None and patch_size_t is not None:
-        batch_size, num_channels, latent_length, latent_mel_bins = latents.shape
-        post_patch_latent_length = latent_length / patch_size_t
-        post_patch_mel_bins = latent_mel_bins / patch_size
-        latents = latents.reshape(
-            batch_size, -1, post_patch_latent_length, patch_size_t, post_patch_mel_bins, patch_size
-        )
-        latents = latents.permute(0, 2, 4, 1, 3, 5).flatten(3, 5).flatten(1, 2)
-    else:
-        latents = latents.transpose(1, 2).flatten(2, 3)  # [B, C, L, M] -> [B, L, C * M]
-    return latents
-
-
 # Copied from diffusers.modular_pipelines.ltx2.before_denoise._normalize_latents
 def _normalize_latents(
     latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
@@ -228,12 +209,13 @@ def _normalize_latents(
     return latents
 
 
-# Copied from diffusers.modular_pipelines.ltx2.before_denoise._normalize_audio_latents
 def _normalize_audio_latents(
     latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor
 ) -> torch.Tensor:
-    latents_mean = latents_mean.to(latents.device, latents.dtype)
-    latents_std = latents_std.to(latents.device, latents.dtype)
+    # Audio statistics are stored in flattened (channel, mel-bin) order. Broadcast them over the time axis
+    # without packing the VAE tensor, keeping the encoder independent of transformer tokenization.
+    latents_mean = latents_mean.view(1, latents.shape[1], 1, latents.shape[3]).to(latents.device, latents.dtype)
+    latents_std = latents_std.view(1, latents.shape[1], 1, latents.shape[3]).to(latents.device, latents.dtype)
     return (latents - latents_mean) / latents_std
 
 
@@ -360,7 +342,6 @@ def _encode_audio(
         mel = torch.log(torch.clamp(mel_transform(waveform), min=1e-5)).permute(0, 2, 1).unsqueeze(0)
 
     latents = audio_vae.encode(mel.to(audio_vae.dtype)).latent_dist.mode()
-    latents = _pack_audio_latents(latents)
     return _normalize_audio_latents(latents, audio_latents_mean, audio_latents_std).float()
 
 
@@ -426,7 +407,7 @@ class EchoVaeEncoderStep(ModularPipelineBlocks):
             OutputParam(
                 "memory_audio_latents",
                 type_hint=list,
-                description="Normalized packed audio VAE latents for each memory slot.",
+                description="Normalized audio VAE latents of shape (B, C, L, M) for each memory slot.",
             ),
         ]
 

@@ -36,43 +36,13 @@ def _denormalize_latents(
     return latents
 
 
-# Copied from diffusers.modular_pipelines.ltx2.decoders._unpack_latents
-def _unpack_latents(
-    latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
-) -> torch.Tensor:
-    # Packed video latents of shape [B, S, D] are unpacked into a video tensor of shape [B, C, F, H, W].
-    batch_size = latents.size(0)
-    latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
-    latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
-    return latents
-
-
-# Copied from diffusers.modular_pipelines.ltx2.decoders._denormalize_audio_latents
 def _denormalize_audio_latents(
     latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor
 ) -> torch.Tensor:
-    latents_mean = latents_mean.to(latents.device, latents.dtype)
-    latents_std = latents_std.to(latents.device, latents.dtype)
+    # Mirror the encoder's channel/mel statistics on unpacked VAE latents.
+    latents_mean = latents_mean.view(1, latents.shape[1], 1, latents.shape[3]).to(latents.device, latents.dtype)
+    latents_std = latents_std.view(1, latents.shape[1], 1, latents.shape[3]).to(latents.device, latents.dtype)
     return (latents * latents_std) + latents_mean
-
-
-# Copied from diffusers.modular_pipelines.ltx2.decoders._unpack_audio_latents
-def _unpack_audio_latents(
-    latents: torch.Tensor,
-    latent_length: int,
-    num_mel_bins: int,
-    patch_size: int | None = None,
-    patch_size_t: int | None = None,
-) -> torch.Tensor:
-    # Unpacks an audio patch sequence of shape [B, S, D] into a latent spectrogram tensor [B, C, L, M].
-    if patch_size is not None and patch_size_t is not None:
-        batch_size = latents.size(0)
-        latents = latents.reshape(batch_size, latent_length, num_mel_bins, -1, patch_size_t, patch_size)
-        latents = latents.permute(0, 3, 1, 4, 2, 5).flatten(4, 5).flatten(2, 3)
-    else:
-        # Assume [B, S, D] = [B, L, C * M], i.e. a (mel) patch_size of M and a patch_size_t of 1.
-        latents = latents.unflatten(2, (-1, num_mel_bins)).transpose(1, 2)
-    return latents
 
 
 class EchoVaeDecoderStep(ModularPipelineBlocks):
@@ -80,7 +50,7 @@ class EchoVaeDecoderStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Unpacks and decodes the denoised Echo video latents into videos or returns latents."
+        return "Denormalizes and decodes Echo video VAE latents into videos or returns denormalized latents."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -97,11 +67,13 @@ class EchoVaeDecoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         return [
-            InputParam.template("latents", required=True),
+            InputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Normalized video VAE latents of shape (B, C, F, H, W).",
+            ),
             InputParam.template("output_type", default="pil"),
-            InputParam.template("height", default=512),
-            InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=None, description="Number of generated video frames."),
             InputParam("decode_timestep", default=0.0, description="Timestep used to decode the final latents."),
             InputParam(
                 "decode_noise_scale",
@@ -120,17 +92,7 @@ class EchoVaeDecoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         vae = components.vae
 
-        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
-        latent_height = block_state.height // components.vae_spatial_compression_ratio
-        latent_width = block_state.width // components.vae_spatial_compression_ratio
-        latents = _unpack_latents(
-            block_state.latents,
-            latent_num_frames,
-            latent_height,
-            latent_width,
-            components.transformer_spatial_patch_size,
-            components.transformer_temporal_patch_size,
-        )
+        latents = block_state.latents
 
         if block_state.output_type == "latent":
             block_state.videos = _denormalize_latents(
@@ -197,12 +159,11 @@ class EchoAudioDecoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         return [
-            InputParam("audio_latents", type_hint=torch.Tensor, required=True, description="Denoised audio latents."),
             InputParam(
-                "audio_num_frames",
-                type_hint=int,
+                "audio_latents",
+                type_hint=torch.Tensor,
                 required=True,
-                description="Number of audio latent frames used to unpack the audio latent sequence.",
+                description="Normalized audio VAE latents of shape (B, C, L, M).",
             ),
             InputParam.template("output_type", default="pil"),
         ]
@@ -216,17 +177,10 @@ class EchoAudioDecoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         audio_vae = components.audio_vae
 
-        num_mel_bins = audio_vae.config.mel_bins
-        latent_mel_bins = num_mel_bins // components.audio_vae_mel_compression_ratio
         audio_latents = _denormalize_audio_latents(
             block_state.audio_latents,
             components.audio_latents_mean,
             components.audio_latents_std,
-        )
-        audio_latents = _unpack_audio_latents(
-            audio_latents,
-            block_state.audio_num_frames,
-            num_mel_bins=latent_mel_bins,
         )
 
         if block_state.output_type == "latent":

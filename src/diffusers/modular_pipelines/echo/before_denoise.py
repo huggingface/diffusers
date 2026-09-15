@@ -20,7 +20,6 @@ from ...models import LTX2VideoTransformer3DModel
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .encoders import _pack_audio_latents
 
 
 # Copied from diffusers.modular_pipelines.ltx2.before_denoise._pack_latents
@@ -41,6 +40,11 @@ def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int 
     )
     latents = latents.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
     return latents
+
+
+def _pack_audio_latents(latents: torch.Tensor) -> torch.Tensor:
+    # Echo packs the full mel axis into each audio token: [B, C, L, M] -> [B, L, C * M].
+    return latents.transpose(1, 2).flatten(2, 3)
 
 
 def _video_memory_coords(
@@ -113,10 +117,8 @@ class EchoPrepareConditioningStep(ModularPipelineBlocks):
                 "memory_audio_latents",
                 type_hint=list,
                 required=False,
-                description="Normalized packed audio VAE latents for each memory slot.",
+                description="Normalized audio VAE latents of shape (B, C, L, M) for each memory slot.",
             ),
-            InputParam.template("height", default=512),
-            InputParam.template("width", default=704),
             InputParam(
                 "model_frame_rate",
                 type_hint=float,
@@ -169,8 +171,7 @@ class EchoPrepareConditioningStep(ModularPipelineBlocks):
         memory_video_tokens = torch.cat(video_slots, dim=1) if video_slots else None
         memory_video_coords = None
         if video_slots:
-            latent_height = block_state.height // components.vae_spatial_compression_ratio
-            latent_width = block_state.width // components.vae_spatial_compression_ratio
+            latent_height, latent_width = memory_video_latents[0].shape[-2:]
             memory_video_coords = _video_memory_coords(
                 transformer,
                 len(video_slots),
@@ -188,7 +189,8 @@ class EchoPrepareConditioningStep(ModularPipelineBlocks):
         memory_audio_coords = None
         if template is not None:
             aligned_audio = [
-                value if value is not None else torch.zeros_like(template) for value in memory_audio_latents
+                _pack_audio_latents(value if value is not None else torch.zeros_like(template))
+                for value in memory_audio_latents
             ]
             lengths = [value.shape[1] for value in aligned_audio]
             memory_audio_tokens = torch.cat(aligned_audio, dim=1)
@@ -211,6 +213,75 @@ class EchoPrepareConditioningStep(ModularPipelineBlocks):
             None if memory_audio_tokens is None else memory_audio_tokens.to(device=device, dtype=dtype)
         )
         block_state.memory_audio_coords = memory_audio_coords
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class EchoInputsStep(ModularPipelineBlocks):
+    """Expand per-prompt text and shared or per-prompt memory conditioning once before denoising."""
+
+    model_name = "echo"
+
+    @property
+    def description(self) -> str:
+        return "Expands text, first-frame, and memory conditioning to the requested number of videos per prompt."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("num_videos_per_prompt", type_hint=int, default=1, description="Number of videos per prompt."),
+            InputParam(
+                "connector_prompt_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Per-prompt video-branch text conditioning.",
+            ),
+            InputParam(
+                "connector_audio_prompt_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Per-prompt audio-branch text conditioning.",
+            ),
+            InputParam(
+                "connector_attention_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Per-prompt binary text attention mask.",
+            ),
+            InputParam("first_frame_tokens", type_hint=torch.Tensor, description="Packed first-frame tokens."),
+            InputParam("memory_video_tokens", type_hint=torch.Tensor, description="Packed image-memory tokens."),
+            InputParam("memory_audio_tokens", type_hint=torch.Tensor, description="Packed audio-memory tokens."),
+            InputParam("memory_video_coords", type_hint=torch.Tensor, description="Image-memory RoPE coordinates."),
+            InputParam("memory_audio_coords", type_hint=torch.Tensor, description="Audio-memory RoPE coordinates."),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(param.name, type_hint=torch.Tensor, description=f"Batch-expanded {param.description}")
+            for param in self.inputs
+            if param.name != "num_videos_per_prompt"
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        prompt_batch_size = block_state.connector_prompt_embeds.shape[0]
+        num_videos_per_prompt = block_state.num_videos_per_prompt
+        if num_videos_per_prompt < 1:
+            raise ValueError("`num_videos_per_prompt` must be a positive integer.")
+        for param in self.intermediate_outputs:
+            value = getattr(block_state, param.name)
+            if value is None:
+                continue
+            if value.shape[0] == 1:
+                value = value.repeat_interleave(prompt_batch_size, dim=0)
+            elif value.shape[0] != prompt_batch_size:
+                raise ValueError(
+                    f"`{param.name}` must have batch size 1 or {prompt_batch_size}, got {value.shape[0]}."
+                )
+            setattr(block_state, param.name, value.repeat_interleave(num_videos_per_prompt, dim=0))
 
         self.set_block_state(state, block_state)
         return components, state
@@ -250,15 +321,18 @@ class EchoPrepareLatentsStep(ModularPipelineBlocks):
                 default=24.0,
                 description="Training-time frame rate used for video RoPE coordinates.",
             ),
-            InputParam.template("latents"),
+            InputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="Optional initial video noise in VAE form (B, C, F, H, W).",
+            ),
             InputParam(
                 "audio_latents",
                 type_hint=torch.Tensor,
                 default=None,
-                description="Optional packed initial audio noise latents.",
+                description="Optional initial audio noise in VAE form (B, C, L, M).",
             ),
             InputParam.template("generator"),
-            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam(
                 "connector_prompt_embeds",
                 type_hint=torch.Tensor,
@@ -288,6 +362,9 @@ class EchoPrepareLatentsStep(ModularPipelineBlocks):
             OutputParam("latent_width", type_hint=int, description="Target video latent width."),
             OutputParam("audio_num_frames", type_hint=int, description="Number of target audio latent frames."),
             OutputParam(
+                "audio_latent_mel_bins", type_hint=int, description="Number of mel bins in audio VAE latents."
+            ),
+            OutputParam(
                 "first_frame_token_count", type_hint=int, description="Number of clean first-frame video tokens."
             ),
             OutputParam(
@@ -298,20 +375,12 @@ class EchoPrepareLatentsStep(ModularPipelineBlocks):
             ),
         ]
 
-    @staticmethod
-    def _expand_batch(value: torch.Tensor | None, batch_size: int) -> torch.Tensor | None:
-        if value is None or value.shape[0] == batch_size:
-            return value
-        if value.shape[0] != 1:
-            raise ValueError(f"Cannot expand a condition batch of {value.shape[0]} to {batch_size}.")
-        return value.repeat_interleave(batch_size, dim=0)
-
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.transformer.dtype
-        batch_size = block_state.connector_prompt_embeds.shape[0] * block_state.num_videos_per_prompt
+        batch_size = block_state.connector_prompt_embeds.shape[0]
 
         if block_state.num_frames < 1 or (block_state.num_frames - 1) % components.vae_temporal_compression_ratio:
             raise ValueError(
@@ -344,12 +413,13 @@ class EchoPrepareLatentsStep(ModularPipelineBlocks):
             )
         else:
             latents = block_state.latents.to(device=device, dtype=dtype)
-            if latents.ndim == 5:
-                latents = _pack_latents(
-                    latents,
-                    components.transformer_spatial_patch_size,
-                    components.transformer_temporal_patch_size,
-                )
+            if latents.ndim != 5:
+                raise ValueError("Echo `latents` must be in VAE form (B, C, F, H, W).")
+            latents = _pack_latents(
+                latents,
+                components.transformer_spatial_patch_size,
+                components.transformer_temporal_patch_size,
+            )
             if latents.shape != (batch_size, video_token_count, components.transformer.config.in_channels):
                 raise ValueError(
                     "Unexpected Echo video latent shape: expected "
@@ -374,8 +444,9 @@ class EchoPrepareLatentsStep(ModularPipelineBlocks):
             )
         else:
             audio_latents = block_state.audio_latents.to(device=device, dtype=dtype)
-            if audio_latents.ndim == 4:
-                audio_latents = _pack_audio_latents(audio_latents)
+            if audio_latents.ndim != 4:
+                raise ValueError("Echo `audio_latents` must be in VAE form (B, C, L, M).")
+            audio_latents = _pack_audio_latents(audio_latents)
             if audio_latents.shape != (
                 batch_size,
                 audio_num_frames,
@@ -388,7 +459,7 @@ class EchoPrepareLatentsStep(ModularPipelineBlocks):
                 )
             block_state.audio_latents = audio_latents
 
-        first_frame_tokens = self._expand_batch(block_state.first_frame_tokens, batch_size)
+        first_frame_tokens = block_state.first_frame_tokens
         first_frame_token_count = 0
         if first_frame_tokens is not None:
             first_frame_token_count = first_frame_tokens.shape[1]
@@ -403,9 +474,6 @@ class EchoPrepareLatentsStep(ModularPipelineBlocks):
             block_state.latents = block_state.latents.clone()
             block_state.latents[:, :first_frame_token_count] = first_frame_tokens
 
-        block_state.first_frame_tokens = first_frame_tokens
-        block_state.memory_video_tokens = self._expand_batch(block_state.memory_video_tokens, batch_size)
-        block_state.memory_audio_tokens = self._expand_batch(block_state.memory_audio_tokens, batch_size)
         block_state.video_coords = components.transformer.rope.prepare_video_coords(
             batch_size,
             latent_num_frames,
@@ -417,12 +485,11 @@ class EchoPrepareLatentsStep(ModularPipelineBlocks):
         block_state.audio_coords = components.transformer.audio_rope.prepare_audio_coords(
             batch_size, audio_num_frames, device
         )
-        block_state.memory_video_coords = self._expand_batch(block_state.memory_video_coords, batch_size)
-        block_state.memory_audio_coords = self._expand_batch(block_state.memory_audio_coords, batch_size)
         block_state.latent_num_frames = latent_num_frames
         block_state.latent_height = latent_height
         block_state.latent_width = latent_width
         block_state.audio_num_frames = audio_num_frames
+        block_state.audio_latent_mel_bins = components.audio_latent_mel_bins
         block_state.first_frame_token_count = first_frame_token_count
         block_state.memory_video_token_count = (
             0 if block_state.memory_video_tokens is None else block_state.memory_video_tokens.shape[1]

@@ -20,9 +20,11 @@ from ...models import LTX2VideoTransformer3DModel
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import (
     BlockState,
+    LoopSequentialPipelineBlocks,
     ModularPipelineBlocks,
+    PipelineState,
 )
-from ..modular_pipeline_utils import ComponentSpec, InputParam
+from ..modular_pipeline_utils import ComponentSpec, InputParam, InsertableDict, OutputParam
 
 
 DEFAULT_ECHO_SIGMAS = (1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0)
@@ -219,21 +221,12 @@ class EchoLoopDenoiser(ModularPipelineBlocks):
             InputParam.template("attention_kwargs"),
         ]
 
-    @staticmethod
-    def _expand_batch(value: torch.Tensor, batch_size: int) -> torch.Tensor:
-        if value.shape[0] == batch_size:
-            return value
-        if value.shape[0] != 1:
-            raise ValueError(f"Cannot expand text conditioning batch {value.shape[0]} to {batch_size}.")
-        return value.repeat_interleave(batch_size, dim=0)
-
     @torch.no_grad()
     def __call__(self, components, block_state: BlockState, i: int, sigma: float):
-        batch_size = block_state.latents.shape[0]
         transformer_dtype = components.transformer.dtype
-        video_context = self._expand_batch(block_state.connector_prompt_embeds, batch_size).to(transformer_dtype)
-        audio_context = self._expand_batch(block_state.connector_audio_prompt_embeds, batch_size).to(transformer_dtype)
-        context_mask = self._expand_batch(block_state.connector_attention_mask, batch_size)
+        video_context = block_state.connector_prompt_embeds.to(transformer_dtype)
+        audio_context = block_state.connector_audio_prompt_embeds.to(transformer_dtype)
+        context_mask = block_state.connector_attention_mask
 
         velocity_video, velocity_audio = components.transformer(
             hidden_states=block_state.latent_model_input.to(transformer_dtype),
@@ -338,3 +331,187 @@ class EchoLoopAfterDenoiser(ModularPipelineBlocks):
             block_state.latents = block_state.predicted_video_x0
             block_state.audio_latents = block_state.predicted_audio_x0
         return components, block_state
+
+
+EchoDenoiseLoopBlocks = InsertableDict(
+    [
+        ("before_denoiser", EchoLoopBeforeDenoiser()),
+        ("denoiser", EchoLoopDenoiser()),
+        ("after_denoiser", EchoLoopAfterDenoiser()),
+    ]
+)
+
+
+# auto_docstring
+class EchoDenoiseLoopStep(LoopSequentialPipelineBlocks):
+    """
+    Iteratively predicts clean video/audio latents and re-noises them with fresh Gaussian noise according to Echo's DMD
+    sigma schedule.
+
+      Components:
+          transformer (`LTX2VideoTransformer3DModel`)
+
+      Inputs:
+          sigmas (`list | tuple`):
+              DMD sigma schedule, including the terminal zero.
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
+          audio_latents (`Tensor`):
+              Packed noisy target audio tokens.
+          first_frame_token_count (`int`):
+              Number of clean first-frame tokens.
+          memory_video_tokens (`Tensor`, *optional*):
+              Packed clean image-memory tokens.
+          memory_video_coords (`Tensor`, *optional*):
+              RoPE coordinates for image-memory tokens.
+          memory_audio_tokens (`Tensor`, *optional*):
+              Packed clean audio-memory tokens.
+          memory_audio_coords (`Tensor`, *optional*):
+              RoPE coordinates for audio-memory tokens.
+          video_coords (`Tensor`):
+              RoPE coordinates for target video tokens.
+          audio_coords (`Tensor`):
+              RoPE coordinates for target audio tokens.
+          connector_prompt_embeds (`Tensor`):
+              Positive video-branch text conditioning.
+          connector_audio_prompt_embeds (`Tensor`):
+              Positive audio-branch text conditioning.
+          connector_attention_mask (`Tensor`):
+              Binary attention mask for text conditioning.
+          latent_num_frames (`int`):
+              Number of target video latent frames.
+          latent_height (`int`):
+              Target video latent height.
+          latent_width (`int`):
+              Target video latent width.
+          audio_num_frames (`int`):
+              Number of target audio latent frames.
+          memory_video_token_count (`int`):
+              Number of prepended image-memory tokens.
+          memory_audio_token_count (`int`):
+              Number of prepended audio-memory tokens.
+          frame_rate (`float`, *optional*, defaults to 25.0):
+              Frame rate of the generated video.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          audio_latents (`Tensor`):
+              Packed target audio tokens.
+          sigmas (`list | tuple`):
+              DMD sigma schedule including the terminal zero.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          first_frame_tokens (`Tensor`, *optional*):
+              Packed clean first-frame tokens.
+    """
+
+    model_name = "echo"
+    block_classes = EchoDenoiseLoopBlocks.values()
+    block_names = EchoDenoiseLoopBlocks.keys()
+
+    @property
+    def description(self) -> str:
+        return (
+            "Iteratively predicts clean video/audio latents and re-noises them with fresh Gaussian noise according "
+            "to Echo's DMD sigma schedule."
+        )
+
+    @property
+    def loop_expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", LTX2VideoTransformer3DModel)]
+
+    @property
+    def loop_inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "sigmas",
+                type_hint=list | tuple,
+                default=DEFAULT_ECHO_SIGMAS,
+                description="DMD sigma schedule, including the terminal zero.",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        sigmas = [float(value) for value in block_state.sigmas]
+        if len(sigmas) < 2 or sigmas[-1] != 0.0:
+            raise ValueError("Echo `sigmas` must contain at least two values and end at 0.")
+        if any(left < right for left, right in zip(sigmas, sigmas[1:])):
+            raise ValueError("Echo `sigmas` must be monotonically non-increasing.")
+        block_state.sigmas = sigmas
+
+        with self.progress_bar(total=len(sigmas) - 1) as progress_bar:
+            for i, sigma in enumerate(sigmas[:-1]):
+                components, block_state = self.loop_step(components, block_state, i=i, sigma=sigma)
+                progress_bar.update()
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# Copied from diffusers.modular_pipelines.ltx2.decoders._unpack_latents
+def _unpack_latents(
+    latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
+) -> torch.Tensor:
+    # Packed video latents of shape [B, S, D] are unpacked into a video tensor of shape [B, C, F, H, W].
+    batch_size = latents.size(0)
+    latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
+    latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+    return latents
+
+
+class EchoUnpackLatentsStep(ModularPipelineBlocks):
+    """Return normalized video and audio VAE tensors at the core-denoise boundary."""
+
+    model_name = "echo"
+
+    @property
+    def description(self) -> str:
+        return "Unpacks denoised video and audio tokens while leaving VAE denormalization to the decoders."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", LTX2VideoTransformer3DModel)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("latents", required=True),
+            InputParam("audio_latents", type_hint=torch.Tensor, required=True, description="Denoised audio tokens."),
+            InputParam("latent_num_frames", type_hint=int, required=True, description="Video latent frame count."),
+            InputParam("latent_height", type_hint=int, required=True, description="Video latent height."),
+            InputParam("latent_width", type_hint=int, required=True, description="Video latent width."),
+            InputParam(
+                "audio_latent_mel_bins", type_hint=int, required=True, description="Audio VAE latent mel-bin count."
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents", type_hint=torch.Tensor, description="Normalized video VAE latents (B, C, F, H, W)."
+            ),
+            OutputParam(
+                "audio_latents", type_hint=torch.Tensor, description="Normalized audio VAE latents (B, C, L, M)."
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        patch_size = components.transformer_spatial_patch_size
+        patch_size_t = components.transformer_temporal_patch_size
+        block_state.latents = _unpack_latents(
+            block_state.latents,
+            block_state.latent_num_frames // patch_size_t,
+            block_state.latent_height // patch_size,
+            block_state.latent_width // patch_size,
+            patch_size,
+            patch_size_t,
+        )
+        block_state.audio_latents = block_state.audio_latents.unflatten(
+            2, (-1, block_state.audio_latent_mel_bins)
+        ).transpose(1, 2)
+        self.set_block_state(state, block_state)
+        return components, state
