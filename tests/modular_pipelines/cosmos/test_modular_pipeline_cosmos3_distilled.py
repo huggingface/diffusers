@@ -69,6 +69,7 @@ class Cosmos3DistilledModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     pipeline_class = Cosmos3DistilledModularPipeline
     pipeline_blocks_class = Cosmos3DistilledBlocks
     pretrained_model_name_or_path = TINY_DISTILLED_REPO
+    expected_latents_shape = (1, 4, 2, 4, 4)
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])

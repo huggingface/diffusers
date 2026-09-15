@@ -104,6 +104,8 @@ class LTX2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = LTX2ModularPipeline
     pipeline_blocks_class = LTX2AutoBlocks
     pretrained_model_name_or_path = LTX2_REPO_ID
+    # Still the packed `[B, S, C]` form: #14612 moves ltx2 to the VAE form and updates this.
+    expected_latents_shape = (1, 768, 4)
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
     expected_workflow_blocks = LTX2_WORKFLOWS

@@ -18,7 +18,7 @@ import torch
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLLTXVideo
-from ...utils import logging
+from ...utils import deprecate, logging
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -37,6 +37,65 @@ def _denormalize_latents(
     latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
     latents = latents * latents_std / scaling_factor + latents_mean
     return latents
+
+
+class LTXUnpackLatentsStep(ModularPipelineBlocks):
+    model_name = "ltx"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Unpacks the denoised latents from the transformer's token layout back into the `[B, C, F, H, W]` form "
+            "the VAE takes (still normalized). Closes the core denoise group, so the blocks that follow take the same "
+            "form the VAE encoder produces and need no geometry inputs."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "pachifier",
+                LTXVideoPachifier,
+                config=FrozenDict({"patch_size": 1, "patch_size_t": 1}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[tuple[str, Any]]:
+        return [
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The denoised latents from the denoising step, packed, of shape `[B, S, C]`.",
+            ),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
+            InputParam("num_frames", type_hint=int, default=161),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="The denoised latents of shape `[B, C, F, H, W]` (normalized, not packed).",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+        block_state.latents = components.pachifier.unpack_latents(
+            block_state.latents, latent_num_frames, latent_height, latent_width
+        )
+        self.set_block_state(state, block_state)
+        return components, state
 
 
 class LTXVaeDecoderStep(ModularPipelineBlocks):
@@ -69,14 +128,15 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
         return [
             InputParam.template("latents", required=True),
             InputParam.template("output_type", default="np"),
-            InputParam.template("height", default=512),
-            InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=161),
             InputParam("decode_timestep", default=0.0),
             InputParam("decode_noise_scale", default=None),
             InputParam.template("generator"),
             InputParam.template("batch_size"),
             InputParam.template("dtype", required=True),
+            # Only read on the deprecated path that still accepts packed `[B, S, C]` latents.
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
+            InputParam("num_frames", type_hint=int, default=161),
         ]
 
     @property
@@ -89,16 +149,18 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
         vae = components.vae
 
         latents = block_state.latents
+        if latents.ndim == 3:
+            deprecate(
+                "packed latents",
+                "1.0.0",
+                "Passing packed latents of shape `[B, S, C]` to the decode step is deprecated; the denoise group "
+                "now unpacks them. Pass latents of shape `[B, C, F, H, W]` instead.",
+            )
+            latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
+            latent_height = block_state.height // components.vae_spatial_compression_ratio
+            latent_width = block_state.width // components.vae_spatial_compression_ratio
+            latents = components.pachifier.unpack_latents(latents, latent_num_frames, latent_height, latent_width)
 
-        height = block_state.height
-        width = block_state.width
-        num_frames = block_state.num_frames
-
-        latent_num_frames = (num_frames - 1) // components.vae_temporal_compression_ratio + 1
-        latent_height = height // components.vae_spatial_compression_ratio
-        latent_width = width // components.vae_spatial_compression_ratio
-
-        latents = components.pachifier.unpack_latents(latents, latent_num_frames, latent_height, latent_width)
         latents = _denormalize_latents(latents, vae.latents_mean, vae.latents_std, vae.config.scaling_factor)
         latents = latents.to(block_state.dtype)
 

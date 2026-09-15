@@ -21,7 +21,7 @@ from .before_denoise import (
     LTXSetTimestepsStep,
     LTXTextInputStep,
 )
-from .decoders import LTXVaeDecoderStep
+from .decoders import LTXUnpackLatentsStep, LTXVaeDecoderStep
 from .denoise import LTXDenoiseStep, LTXImage2VideoDenoiseStep
 from .encoders import LTXTextEncoderStep, LTXVaeEncoderStep
 
@@ -81,8 +81,9 @@ class LTXCoreDenoiseStep(SequentialPipelineBlocks):
         LTXSetTimestepsStep,
         LTXPrepareLatentsStep,
         LTXDenoiseStep,
+        LTXUnpackLatentsStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "denoise"]
+    block_names = ["input", "set_timesteps", "prepare_latents", "denoise", "unpack_latents"]
 
     @property
     def description(self):
@@ -148,8 +149,9 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
         LTXPrepareLatentsStep,
         LTXImage2VideoPrepareLatentsStep,
         LTXImage2VideoDenoiseStep,
+        LTXUnpackLatentsStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_i2v_latents", "denoise"]
+    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_i2v_latents", "denoise", "unpack_latents"]
 
     @property
     def description(self):
