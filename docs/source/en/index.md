@@ -41,3 +41,5 @@ The [Quickstart](./quicktour) also includes a copyable agent setup prompt for in
 - [Optimize and scale](./stable_diffusion) — memory, speed, quantization, and serving
 - [Modular Diffusers](./modular_diffusers/overview) — build custom pipelines from blocks
 - [Train and fine-tune](./training/overview) — train diffusion models and adapters
+- [CLI](./using-diffusers/cli) - run and package pipelines from the command line
+ 

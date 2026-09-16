@@ -248,7 +248,7 @@ diffusers-cli run \
 
 Remote flags:
 
-- `--flavor <name>` — sandbox hardware (`a10g-small`, `h200`, `rtx-pro-6000`).
+- `--flavor <name>` — sandbox hardware (for example, `a10g-small`, `h200`, `rtx-pro-6000`).
 - `--timeout <duration>` — max wallclock for the run command inside the sandbox (default `10m`).
 - `--dependencies <pkg>` — extra pip deps (repeatable). Useful for pinning a diffusers branch tarball or
   adding pipeline-specific extras.

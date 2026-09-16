@@ -42,9 +42,9 @@ Help me get set up with Hugging Face Diffusers for inference.
 [`DiffusionPipeline`] packages the pieces of a diffusion model (text encoder, scheduler, UNet or DiT, and VAE) into one class for inference. Load with [`~DiffusionPipeline.from_pretrained`], then call the pipeline.
 
 ```text
-prompt -> text encoder -> embeddings -+-> UNet/DiT <- scheduler  ====xN====
-noise --------------------------------+        |
-                                            latents -> VAE -> image
+prompt -> text encoder -> embeddings -+-> [ UNet/DiT <-> scheduler ] × N steps
+noise --------------------------------+              |
+                                                  latents -> VAE -> image
 ```
 
 Arguments on [`~DiffusionPipeline.__call__`] such as `num_inference_steps` change quality and speed. For loading details and mix-and-match components, see [Load pipelines](./using-diffusers/loading). To swap the scheduler, see [Schedulers](./using-diffusers/schedulers).
