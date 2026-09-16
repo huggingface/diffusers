@@ -323,8 +323,8 @@ def _warn_if_flex_attention_is_uncompiled():
     """Warn once per process when `flex_attention` has not been compiled.
 
     `dispatch_attention_fn` reaches `flex_attention` through its module, so a user who compiles it — directly or by
-    compiling the model — is picked up here. Uncompiled, flex_attention falls back to a dense fp32 score matrix,
-    which is far slower and runs out of memory at high resolution, so say so rather than let it happen quietly.
+    compiling the model — is picked up here. Uncompiled, flex_attention falls back to a dense fp32 score matrix, which
+    is far slower and runs out of memory at high resolution, so say so rather than let it happen quietly.
     """
     if not hasattr(flex_attention_module.flex_attention, "_torchdynamo_orig_callable"):
         logger.warning(
@@ -338,8 +338,8 @@ def _qwenimage21_prefix_segments(image_ids: torch.Tensor, prefix_len: int) -> li
     """Split the prefix into `(start, end, is_text)` runs of equal `image_ids`.
 
     This is the block-causal structure in the form [`QwenImage21AttnProcessor`] consumes it, the way
-    [`~build_qwenimage21_block_causal_mask`] is the form [`QwenImage21FlexAttnProcessor`] consumes. It only depends
-    on `image_ids` and `prefix_len`, so the model derives it once per forward rather than in every processor call —
+    [`~build_qwenimage21_block_causal_mask`] is the form [`QwenImage21FlexAttnProcessor`] consumes. It only depends on
+    `image_ids` and `prefix_len`, so the model derives it once per forward rather than in every processor call —
     `tolist()` is a device sync, and there is one processor call per layer.
     """
     prefix_ids = image_ids[:prefix_len].tolist()
@@ -396,8 +396,8 @@ def _qwenimage21_prepare_qkv(
 
 class QwenImage21FlexAttnProcessor:
     r"""
-    Attention processor for Qwen-Image 2.1 that runs the block-causal prefill as one `flex_attention` call driven by
-    a `BlockMask`, and the cached decode steps through the configured attention backend.
+    Attention processor for Qwen-Image 2.1 that runs the block-causal prefill as one `flex_attention` call driven by a
+    `BlockMask`, and the cached decode steps through the configured attention backend.
 
     Compile the model before using it, as the docs show. An uncompiled `flex_attention` falls back to a dense fp32
     score matrix, which is far slower and runs out of memory at high resolution. Use `QwenImage21AttnProcessor` when

@@ -13,18 +13,14 @@ specific language governing permissions and limitations under the License. -->
 
 Qwen-Image 2.1 encodes the prompt and any condition images together with a Qwen3-VL model, then denoises the target
 image with a single-stream block-causal transformer. See
-[`QwenImage21Transformer2DModel`](../models/qwenimage21_transformer2d) for details on block-causal attention and
-`causal_condition`.
-
-The `flex` attention backend (`torch.nn.attention.flex_attention`) gives efficient single-pass block-causal attention.
-Without it, the model uses an exact multi-pass SDPA prefill that processes each image block with bidirectional
-attention and text with causal attention, matching the block-causal mask exactly. Both paths produce the same results.
+[`QwenImage21Transformer2DModel`](../models/qwenimage21_transformer2d) for block-causal attention, the attention
+processors, and `causal_condition`.
 
 ```python
 import torch
 from diffusers import QwenImage21Pipeline
 
-pipe = QwenImage21Pipeline.from_pretrained("Qwen/Qwen-Image-2.1", torch_dtype=torch.bfloat16).to("cuda")
+pipe = QwenImage21Pipeline.from_pretrained("Qwen/Qwen-Image-2.1", dtype=torch.bfloat16).to("cuda")
 
 # Text-to-image
 image = pipe("A capybara wearing a wizard hat, oil painting", num_inference_steps=40).images[0]
@@ -33,6 +29,23 @@ image.save("t2i.png")
 # Image-conditioned editing
 edited = pipe("Move it to a snowy mountain top", image=image, num_inference_steps=40).images[0]
 edited.save("edit.png")
+```
+
+## Faster attention with flex_attention
+
+The default `QwenImage21AttnProcessor` runs the block-causal prefill as one attention call per prefix segment. It
+needs no compilation and works on any PyTorch build. `QwenImage21FlexAttnProcessor` expresses the same mask as a
+single `flex_attention` call, which is faster once the model is compiled.
+
+> [!TIP]
+> Compile the model when you switch to the flex processor. An uncompiled `flex_attention` materializes the full
+> attention score matrix in fp32, which is much slower and runs out of memory at high resolution.
+
+```python
+from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21FlexAttnProcessor
+
+pipe.transformer.set_attn_processor(QwenImage21FlexAttnProcessor())
+pipe.transformer.compile()
 ```
 
 ## QwenImage21Pipeline

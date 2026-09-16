@@ -30,7 +30,7 @@ vae = AutoencoderKLQwenImage21.from_pretrained("Qwen/Qwen-Image-2.1", subfolder=
 
 ## AutoencoderKLOutput
 
-[[autodoc]] models.autoencoders.vae.AutoencoderKLOutput
+[[autodoc]] models.autoencoders.autoencoder_kl.AutoencoderKLOutput
 
 ## DecoderOutput
 

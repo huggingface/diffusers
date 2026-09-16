@@ -40,14 +40,19 @@ class QwenImage21AvgDown3D(nn.Module):
         factor_s=1,
     ):
         super().__init__()
+        factor = factor_t * factor_s * factor_s
+        if in_channels * factor % out_channels != 0:
+            raise ValueError(
+                f"`in_channels` ({in_channels}) times the downsampling factor ({factor}) must be divisible by "
+                f"`out_channels` ({out_channels})."
+            )
+
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.factor_t = factor_t
         self.factor_s = factor_s
-        self.factor = self.factor_t * self.factor_s * self.factor_s
-
-        assert in_channels * self.factor % out_channels == 0
-        self.group_size = in_channels * self.factor // out_channels
+        self.factor = factor
+        self.group_size = in_channels * factor // out_channels
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         pad_t = (self.factor_t - x.shape[2] % self.factor_t) % self.factor_t
@@ -84,6 +89,7 @@ class QwenImage21AvgDown3D(nn.Module):
         return x
 
 
+# Copied from diffusers.models.autoencoders.autoencoder_kl_wan.DupUp3D with DupUp3D->QwenImage21DupUp3D
 class QwenImage21DupUp3D(nn.Module):
     def __init__(
         self,
@@ -173,6 +179,7 @@ class QwenImage21CausalConv3d(nn.Conv2d):
         return x
 
 
+# Copied from diffusers.models.autoencoders.autoencoder_kl_wan.WanRMS_norm with Wan->QwenImage21
 class QwenImage21RMS_norm(nn.Module):
     r"""
     A custom RMS normalization layer.
@@ -196,9 +203,17 @@ class QwenImage21RMS_norm(nn.Module):
         self.bias = nn.Parameter(torch.zeros(shape)) if bias else 0.0
 
     def forward(self, x):
-        return F.normalize(x, dim=(1 if self.channel_first else -1)) * self.scale * self.gamma + self.bias
+        needs_fp32_normalize = x.dtype in (torch.float16, torch.bfloat16) or any(
+            t in str(x.dtype) for t in ("float4_", "float8_")
+        )
+        normalized = F.normalize(x.float() if needs_fp32_normalize else x, dim=(1 if self.channel_first else -1)).to(
+            x.dtype
+        )
+
+        return normalized * self.scale * self.gamma + self.bias
 
 
+# Copied from diffusers.models.autoencoders.autoencoder_kl_wan.WanUpsample with Wan->QwenImage21
 class QwenImage21Upsample(nn.Upsample):
     r"""
     Perform upsampling while ensuring the output tensor has the same data type as the input.
@@ -315,7 +330,6 @@ class QwenImage21ResidualBlock(nn.Module):
         in_dim (int): Number of input channels.
         out_dim (int): Number of output channels.
         dropout (float, optional): Dropout rate for the dropout layer. Default is 0.0.
-        non_linearity (str, optional): Type of non-linearity to use. Default is "silu".
     """
 
     def __init__(
@@ -323,12 +337,11 @@ class QwenImage21ResidualBlock(nn.Module):
         in_dim: int,
         out_dim: int,
         dropout: float = 0.0,
-        non_linearity: str = "silu",
     ) -> None:
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
-        self.nonlinearity = get_activation(non_linearity)
+        self.nonlinearity = get_activation("silu")
 
         # layers
         self.norm1 = QwenImage21RMS_norm(in_dim, images=False)
@@ -383,6 +396,7 @@ class QwenImage21ResidualBlock(nn.Module):
         return x + h
 
 
+# Copied from diffusers.models.autoencoders.autoencoder_kl_wan.WanAttentionBlock with Wan->QwenImage21
 class QwenImage21AttentionBlock(nn.Module):
     r"""
     Causal self-attention with a single head.
@@ -435,19 +449,18 @@ class QwenImage21MidBlock(nn.Module):
     Args:
         dim (int): Number of input/output channels.
         dropout (float): Dropout rate.
-        non_linearity (str): Type of non-linearity to use.
     """
 
-    def __init__(self, dim: int, dropout: float = 0.0, non_linearity: str = "silu", num_layers: int = 1):
+    def __init__(self, dim: int, dropout: float = 0.0, num_layers: int = 1):
         super().__init__()
         self.dim = dim
 
         # Create the components
-        resnets = [QwenImage21ResidualBlock(dim, dim, dropout, non_linearity)]
+        resnets = [QwenImage21ResidualBlock(dim, dim, dropout)]
         attentions = []
         for _ in range(num_layers):
             attentions.append(QwenImage21AttentionBlock(dim))
-            resnets.append(QwenImage21ResidualBlock(dim, dim, dropout, non_linearity))
+            resnets.append(QwenImage21ResidualBlock(dim, dim, dropout))
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
@@ -519,7 +532,6 @@ class QwenImage21Encoder3d(nn.Module):
         attn_scales (list of float): Scales at which to apply attention mechanisms.
         temperal_downsample (list of bool): Whether to downsample temporally in each block.
         dropout (float): Dropout rate for the dropout layers.
-        non_linearity (str): Type of non-linearity to use.
     """
 
     def __init__(
@@ -532,7 +544,6 @@ class QwenImage21Encoder3d(nn.Module):
         attn_scales=[],
         temperal_downsample=[True, True, False],
         dropout=0.0,
-        non_linearity: str = "silu",
         is_residual: bool = False,
     ):
         super().__init__()
@@ -542,7 +553,7 @@ class QwenImage21Encoder3d(nn.Module):
         self.num_res_blocks = num_res_blocks
         self.attn_scales = attn_scales
         self.temperal_downsample = temperal_downsample
-        self.nonlinearity = get_activation(non_linearity)
+        self.nonlinearity = get_activation("silu")
 
         # dimensions
         dims = [dim * u for u in [1] + dim_mult]
@@ -580,7 +591,7 @@ class QwenImage21Encoder3d(nn.Module):
                     scale /= 2.0
 
         # middle blocks
-        self.mid_block = QwenImage21MidBlock(out_dim, dropout, non_linearity, num_layers=1)
+        self.mid_block = QwenImage21MidBlock(out_dim, dropout, num_layers=1)
 
         # output blocks
         self.norm_out = QwenImage21RMS_norm(out_dim, images=False)
@@ -642,7 +653,6 @@ class QwenImage21ResidualUpBlock(nn.Module):
         dropout (float): Dropout rate
         temperal_upsample (bool): Whether to upsample on temporal dimension
         up_flag (bool): Whether to upsample or not
-        non_linearity (str): Type of non-linearity to use
     """
 
     def __init__(
@@ -653,7 +663,6 @@ class QwenImage21ResidualUpBlock(nn.Module):
         dropout: float = 0.0,
         temperal_upsample: bool = False,
         up_flag: bool = False,
-        non_linearity: str = "silu",
     ):
         super().__init__()
         self.in_dim = in_dim
@@ -673,7 +682,7 @@ class QwenImage21ResidualUpBlock(nn.Module):
         resnets = []
         current_dim = in_dim
         for _ in range(num_res_blocks + 1):
-            resnets.append(QwenImage21ResidualBlock(current_dim, out_dim, dropout, non_linearity))
+            resnets.append(QwenImage21ResidualBlock(current_dim, out_dim, dropout))
             current_dim = out_dim
 
         self.resnets = nn.ModuleList(resnets)
@@ -731,7 +740,6 @@ class QwenImage21UpBlock(nn.Module):
         num_res_blocks (int): Number of residual blocks
         dropout (float): Dropout rate
         upsample_mode (str, optional): Mode for upsampling ('upsample2d' or 'upsample3d')
-        non_linearity (str): Type of non-linearity to use
     """
 
     def __init__(
@@ -741,7 +749,6 @@ class QwenImage21UpBlock(nn.Module):
         num_res_blocks: int,
         dropout: float = 0.0,
         upsample_mode: str | None = None,
-        non_linearity: str = "silu",
     ):
         super().__init__()
         self.in_dim = in_dim
@@ -752,7 +759,7 @@ class QwenImage21UpBlock(nn.Module):
         # Add residual blocks and attention if needed
         current_dim = in_dim
         for _ in range(num_res_blocks + 1):
-            resnets.append(QwenImage21ResidualBlock(current_dim, out_dim, dropout, non_linearity))
+            resnets.append(QwenImage21ResidualBlock(current_dim, out_dim, dropout))
             current_dim = out_dim
 
         self.resnets = nn.ModuleList(resnets)
@@ -804,7 +811,6 @@ class QwenImage21Decoder3d(nn.Module):
         attn_scales (list of float): Scales at which to apply attention mechanisms.
         temperal_upsample (list of bool): Whether to upsample temporally in each block.
         dropout (float): Dropout rate for the dropout layers.
-        non_linearity (str): Type of non-linearity to use.
     """
 
     def __init__(
@@ -816,7 +822,6 @@ class QwenImage21Decoder3d(nn.Module):
         attn_scales=[],
         temperal_upsample=[False, True, True],
         dropout=0.0,
-        non_linearity: str = "silu",
         out_channels: int = 3,
         is_residual: bool = False,
     ):
@@ -828,7 +833,7 @@ class QwenImage21Decoder3d(nn.Module):
         self.attn_scales = attn_scales
         self.temperal_upsample = temperal_upsample
 
-        self.nonlinearity = get_activation(non_linearity)
+        self.nonlinearity = get_activation("silu")
 
         # dimensions
         dims = [dim * u for u in [dim_mult[-1]] + dim_mult[::-1]]
@@ -837,7 +842,7 @@ class QwenImage21Decoder3d(nn.Module):
         self.conv_in = QwenImage21CausalConv3d(z_dim, dims[0], 3, padding=1)
 
         # middle blocks
-        self.mid_block = QwenImage21MidBlock(dims[0], dropout, non_linearity, num_layers=1)
+        self.mid_block = QwenImage21MidBlock(dims[0], dropout, num_layers=1)
 
         # upsample blocks
         self.up_blocks = nn.ModuleList([])
@@ -863,7 +868,6 @@ class QwenImage21Decoder3d(nn.Module):
                     dropout=dropout,
                     temperal_upsample=temperal_upsample[i] if up_flag else False,
                     up_flag=up_flag,
-                    non_linearity=non_linearity,
                 )
             else:
                 up_block = QwenImage21UpBlock(
@@ -872,7 +876,6 @@ class QwenImage21Decoder3d(nn.Module):
                     num_res_blocks=num_res_blocks,
                     dropout=dropout,
                     upsample_mode=upsample_mode,
-                    non_linearity=non_linearity,
                 )
             self.up_blocks.append(up_block)
 
@@ -922,6 +925,7 @@ class QwenImage21Decoder3d(nn.Module):
         return x
 
 
+# Copied from diffusers.models.autoencoders.autoencoder_kl_wan.patchify with patchify->_patchify
 def _patchify(x, patch_size):
     if patch_size == 1:
         return x
@@ -945,6 +949,7 @@ def _patchify(x, patch_size):
     return x
 
 
+# Copied from diffusers.models.autoencoders.autoencoder_kl_wan.unpatchify with unpatchify->_unpatchify
 def _unpatchify(x, patch_size):
     if patch_size == 1:
         return x

@@ -17,14 +17,15 @@ The single-stream transformer used by Qwen-Image 2.1. Text and image latents sha
 Two behaviours distinguish 2.1 from earlier QwenImage transformers:
 
 - **Block-causal attention** — attention follows `(q_idx >= kv_idx) or same_image_block`, so the joint sequence is
-  causal while each image block stays internally bidirectional. The `flex` attention backend gives efficient
-  single-pass attention; without it the model uses an exact multi-pass SDPA prefill that processes each block
-  separately. Both paths produce the same results.
+  causal while each image block stays internally bidirectional. `QwenImage21AttnProcessor` implements it as one
+  attention call per prefix segment and is the default. `QwenImage21FlexAttnProcessor` implements it as a single
+  `flex_attention` call driven by a `BlockMask`, which is faster once the model is compiled. Both produce the same
+  results.
 - `causal_condition` — text and condition-image tokens are modulated from `t = 0` rather than the sampled timestep.
-  Their activations are therefore independent of the denoising step, which is what makes the keys and values of that
-  prefix cacheable across steps via the `kv_cache` argument.
+  Their activations are independent of the denoising step, so the keys and values of that prefix are cacheable
+  across steps via the `kv_cache` argument.
 
-The model can be loaded with the following code snippet.
+Load it with:
 
 ```python
 import torch

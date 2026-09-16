@@ -25,6 +25,7 @@ from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import QwenImageLoraLoaderMixin
 from ...models import AutoencoderKLQwenImage21, QwenImage21Transformer2DModel
+from ...models.transformers.transformer_qwenimage21 import QwenImage21KVCache
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -145,10 +146,15 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
+# Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit.calculate_dimensions
 def calculate_dimensions(target_area, ratio):
     width = math.sqrt(target_area * ratio)
     height = width / ratio
-    return round(width / 32) * 32, round(height / 32) * 32
+
+    width = round(width / 32) * 32
+    height = round(height / 32) * 32
+
+    return width, height, None
 
 
 class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
@@ -442,6 +448,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             .to(image_latents.device, image_latents.dtype)
         )
         image_latents = (image_latents - latents_mean) / latents_std
+
         return image_latents
 
     def prepare_latents(
@@ -584,7 +591,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         """
         if image is not None:
             image_size = image[-1].size if isinstance(image, list) else image.size
-            calculated_width, calculated_height = calculate_dimensions(
+            calculated_width, calculated_height, _ = calculate_dimensions(
                 output_resolution * output_resolution, image_size[0] / image_size[1]
             )
             height = height or calculated_height
@@ -620,7 +627,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 if hasattr(img, "mode") and img.mode != "RGBA":
                     img = img.convert("RGBA")
                 image_width, image_height = img.size
-                input_width, input_height = calculate_dimensions(
+                input_width, input_height, _ = calculate_dimensions(
                     output_resolution * output_resolution, image_width / image_height
                 )
                 input_image_sizes.append((input_width, input_height))
@@ -711,8 +718,6 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         # Text and condition-image keys and values are step-independent under `causal_condition`, so the first step
         # prefills them and later steps only recompute the target image's tokens.
-        from ...models.transformers.transformer_qwenimage21 import QwenImage21KVCache
-
         num_blocks = len(self.transformer.transformer_blocks)
         cache_enabled = use_kv_cache and self.transformer.config.causal_condition
         cond_cache = QwenImage21KVCache(num_blocks) if cache_enabled else None
