@@ -1020,6 +1020,9 @@ class ComfyQuantConfig(QuantizationConfigMixin):
         modules_to_not_convert: list[str] | None = None,
         **kwargs,
     ):
+        supported_formats = {"fp8","nvfp4", "mxfp8", "int8", "int4_svd", "int4_awq"}
+        if quant_format not in supported_formats:
+            raise ValueError(f"Unsupported quant_format: {quant_format}. Supported formats are: {sorted(supported_formats)}")
         self.quant_method = QuantizationMethod.COMFY_QUANT
         self.quant_format = quant_format
         self.compute_dtype = compute_dtype
