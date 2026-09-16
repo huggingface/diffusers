@@ -25,18 +25,19 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal, NamedTuple
 
-import av
 import numpy as np
 import torch
 from ..pipeline_utils import DiffusionPipeline
-from diffusers.utils import replace_example_docstring
-from pydantic import BaseModel, ConfigDict, Field
+from diffusers.utils import logging, replace_example_docstring
 from ...schedulers.scheduling_piflow import DXPolicy, policy_rollout_fm, shift_timesteps
 from torch import Tensor, nn
 from torch.distributed import all_gather
 from torch.nn import functional
 
 from .pipeline_output import Kandinsky6SRPipelineOutput
+
+logger = logging.get_logger(__name__)
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -1421,19 +1422,32 @@ def piflow_generate(
     return x[..., :out_dim]
 
 
-class RunConfig(BaseModel):
+@dataclass
+class RunConfig:
     """Parameters for one tiled SR run."""
 
-    model_config = ConfigDict(extra="forbid")
-
     device: str
-    num_steps: int = Field(default=5, ge=2)
+    num_steps: int = 5
     seed: int = 42
-    overlap: float = Field(default=0.25, ge=0.0, lt=1.0)
-    tiles_batch_size: int = Field(default=1, gt=0)
+    overlap: float = 0.25
+    tiles_batch_size: int = 1
     resolution_scale: ResolutionScale = 4
     tile_grid_mode: TileGridMode = "even"
-    tile_grid_min_overlap: float = Field(default=0.20, ge=0.0, lt=1.0)
+    tile_grid_min_overlap: float = 0.20
+
+    def __post_init__(self) -> None:
+        if self.num_steps < 2:
+            raise ValueError("num_steps must be at least 2")
+        if not 0.0 <= self.overlap < 1.0:
+            raise ValueError("overlap must satisfy 0 <= overlap < 1")
+        if self.tiles_batch_size <= 0:
+            raise ValueError("tiles_batch_size must be positive")
+        if self.resolution_scale not in (2, 4):
+            raise ValueError("resolution_scale must be 2 or 4")
+        if self.tile_grid_mode not in ("legacy", "even"):
+            raise ValueError("tile_grid_mode must be 'legacy' or 'even'")
+        if not 0.0 <= self.tile_grid_min_overlap < 1.0:
+            raise ValueError("tile_grid_min_overlap must satisfy 0 <= value < 1")
 
 
 @dataclass
@@ -2060,6 +2074,17 @@ def _run_tile_batches(
     return outputs
 
 
+def _require_av():
+    """Load PyAV only for file-based video input."""
+    try:
+        import av
+    except (ImportError, OSError) as exc:
+        raise RuntimeError(
+            "SR file-based video input requires PyAV and FFmpeg. Install with `pip install av`."
+        ) from exc
+    return av
+
+
 def align_to_vae_stride(t: int) -> int:
     """Round ``t`` to the nearest valid pixel-frame count ``1 + 8·k`` (ties up).
 
@@ -2131,8 +2156,8 @@ def resample_to_target_fps(
     if src_fps > target_fps:
         indices = select_frame_indices(video.shape[0], src_fps, target_fps)
         logger.warning(
-            "Source fps {:.2f} > target {}fps: downsampling {} frames -> {} (fixed-stride); "
-            "source temporal detail beyond {}fps is discarded.",
+            "Source fps %.2f > target %sfps: downsampling %s frames -> %s (fixed-stride); "
+            "source temporal detail beyond %sfps is discarded.",
             src_fps,
             target_fps,
             video.shape[0],
@@ -2141,7 +2166,7 @@ def resample_to_target_fps(
         )
         return video[indices], target_fps
     logger.warning(
-        "Source fps {:.2f} < target {}fps: keeping native frames (no minterpolate upsample); "
+        "Source fps %.2f < target %sfps: keeping native frames (no minterpolate upsample); "
         "output is mildly out of distribution.",
         src_fps,
         target_fps,
@@ -2186,6 +2211,7 @@ def read_video_tchw_uint8(path: Path) -> tuple[torch.Tensor, float]:
     Raises:
         ValueError: If the file has no readable frames or reports no fps.
     """
+    av = _require_av()
     with av.open(str(path), mode="r") as container:
         stream = container.streams.video[0]
         src_fps = float(stream.average_rate or stream.base_rate or 0.0)
@@ -2222,8 +2248,17 @@ def load_lr_latent(path: Path) -> torch.Tensor:
         shape = getattr(obj, "shape", type(obj).__name__)
         msg = f"Expected a rank-4 [T, C, H, W] latent tensor in {path}, got {shape}."
         raise ValueError(msg)
-    logger.info("Loaded LR latent {} from {}", tuple(obj.shape), path)
+    logger.info("Loaded LR latent %s from %s", tuple(obj.shape), path)
     return obj.float()
+
+
+def _require_av():
+    """Load PyAV only when video or audio output is requested."""
+    try:
+        import av
+    except (ImportError, OSError) as exc:
+        raise RuntimeError("SR video/audio output requires PyAV and FFmpeg. Install with `pip install av`.") from exc
+    return av
 
 
 def _video_np(frames: Tensor) -> np.ndarray:
@@ -2253,6 +2288,7 @@ def extract_audio_from_video(
     if audio_sample_rate <= 0:
         raise ValueError("audio_sample_rate must be positive")
 
+    av = _require_av()
     chunks: list[np.ndarray] = []
     with av.open(str(source_video), mode="r") as container:
         audio_streams = list(container.streams.audio)
@@ -2290,6 +2326,7 @@ def mux_video_audio(  # noqa: PLR0913
         extracted from a generated T2VA video.
     lossless: encode video as FFV1 instead of libx264. Audio remains AAC.
     """
+    av = _require_av()
     if audio is not None and source_video is not None:
         raise ValueError("pass either audio or source_video, not both")
     if source_video is not None:

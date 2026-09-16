@@ -29,8 +29,6 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
-from einops import rearrange
-from safetensors.torch import load_file as safetensors_load_file
 from torch.utils.checkpoint import checkpoint
 
 
@@ -434,7 +432,7 @@ class CachedPXSDownsample(nn.Module):
 
     def spatial_downsample(self, input_):
         # PixelShuffle part
-        pxs_input = rearrange(input_, "b c t h w -> (b t) c h w")
+        pxs_input = input_.permute(0, 2, 1, 3, 4).reshape(-1, input_.shape[1], input_.shape[3], input_.shape[4])
         pxs_interm = self.unshuffle(pxs_input)
         b, c, h, w = pxs_interm.shape
         if self.version > 1:
@@ -442,7 +440,9 @@ class CachedPXSDownsample(nn.Module):
         else:  #
             pxs_interm_view = pxs_interm.view(b, c // self.factor**2, self.factor**2, h, w)
         pxs_out = torch.mean(pxs_interm_view, dim=2)
-        pxs_out = rearrange(pxs_out, "(b t) c h w -> b c t h w", t=input_.size(2))
+        pxs_out = pxs_out.reshape(
+            input_.shape[0], input_.size(2), pxs_out.shape[1], pxs_out.shape[2], pxs_out.shape[3]
+        ).permute(0, 2, 1, 3, 4)
 
         # Downsampling by 3D-convolution
         conv_out = self.spatial_conv(input_)
@@ -452,7 +452,7 @@ class CachedPXSDownsample(nn.Module):
 
     def temporal_downsample(self, input_, cache):
         # Interpolation part
-        permuted = rearrange(input_, "b c t h w -> (b h w) c t")
+        permuted = input_.permute(0, 3, 4, 1, 2).reshape(-1, input_.shape[1], input_.shape[2])
         if cache[0]["padding"] is None:
             first, rest = permuted[..., :1], permuted[..., 1:]
 
@@ -466,7 +466,9 @@ class CachedPXSDownsample(nn.Module):
             if rest.size(-1) > 0:
                 full_interp = F.avg_pool1d(rest, kernel_size=2, stride=2)
 
-        full_interp = rearrange(full_interp, "(b h w) c t -> b c t h w", h=input_.size(-2), w=input_.size(-1))
+        full_interp = full_interp.reshape(
+            input_.shape[0], input_.size(-2), input_.size(-1), full_interp.shape[1], full_interp.shape[2]
+        ).permute(0, 3, 4, 1, 2)
 
         # Downsampling by convolution
         if self.version == 1:

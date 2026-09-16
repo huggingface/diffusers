@@ -22,8 +22,3 @@ with a vocoder for synchronized audio generation.
   - encode
   - decode
 
-## MMAudioVAE
-
-[[autodoc]] MMAudioVAE
-  - wrapped_encode
-  - wrapped_decode

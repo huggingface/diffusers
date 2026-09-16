@@ -654,7 +654,12 @@ def resize_image(
     k = sqrt(max_area / area) / div
     new_h = int(round(h * k) * div)
     new_w = int(round(w * k) * div)
-    import torchvision.transforms.functional as TF
+    try:
+        import torchvision.transforms.functional as TF
+    except (ImportError, OSError) as exc:
+        raise RuntimeError(
+            "I2VA image processing requires torchvision. Install it with `pip install torchvision`."
+        ) from exc
 
     return TF.resize(image, (new_h, new_w)), k
 
@@ -688,7 +693,12 @@ def encode_i2va_first_frame(
     world_size: int = 1,
 ) -> tuple[Tensor, int, int]:
     """Encode one image into the K6 packed first-frame latent layout."""
-    import torchvision.transforms.functional as TF
+    try:
+        import torchvision.transforms.functional as TF
+    except (ImportError, OSError) as exc:
+        raise RuntimeError(
+            "I2VA image processing requires torchvision. Install it with `pip install torchvision`."
+        ) from exc
 
     pil_image = _load_pil_rgb(image)
     tensor = TF.pil_to_tensor(pil_image).unsqueeze(0)

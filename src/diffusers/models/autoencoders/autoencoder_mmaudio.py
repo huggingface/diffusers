@@ -13,8 +13,6 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
-from einops import rearrange
-from librosa.filters import mel as librosa_mel_fn
 from torch import pow, sin
 from torch.nn import Conv1d, ConvTranspose1d, Parameter
 from torch.nn.utils.parametrizations import weight_norm
@@ -281,12 +279,12 @@ class AttnBlock1D(nn.Module):
         y = y.reshape(y.shape[0], self.num_heads, -1, 3, y.shape[-1])
         q, k, v = normalize(y, dim=2).unbind(3)
 
-        q = rearrange(q, "b h c l -> b h l c")
-        k = rearrange(k, "b h c l -> b h l c")
-        v = rearrange(v, "b h c l -> b h l c")
+        q = q.permute(0, 1, 3, 2)
+        k = k.permute(0, 1, 3, 2)
+        v = v.permute(0, 1, 3, 2)
 
         h = F.scaled_dot_product_attention(q, k, v)
-        h = rearrange(h, "b h l c -> b (h c) l")
+        h = h.permute(0, 1, 3, 2).reshape(h.shape[0], -1, h.shape[2])
 
         h = self.proj_out(h)
 
@@ -1120,7 +1118,7 @@ class AMPBlock2(torch.nn.Module):
 
     def remove_weight_norm(self):
         for l in self.convs:
-            remove_weight_norm(l)
+            remove_parametrizations(l, "weight")
 
 
 TorchActivation1d = Activation1d
@@ -1332,8 +1330,19 @@ class MelConverter(nn.Module):
         self.fmax = fmax
         self.norm_fn = norm_fn
 
+        try:
+            from librosa.filters import mel as librosa_mel_fn
+        except (ImportError, OSError) as exc:
+            raise RuntimeError(
+                "MMAudio audio features require librosa. Install it with `pip install librosa`."
+            ) from exc
+
         mel = librosa_mel_fn(
-            sr=self.sampling_rate, n_fft=self.n_fft, n_mels=self.num_mels, fmin=self.fmin, fmax=self.fmax
+            sr=self.sampling_rate,
+            n_fft=self.n_fft,
+            n_mels=self.num_mels,
+            fmin=self.fmin,
+            fmax=self.fmax,
         )
         mel_basis = torch.from_numpy(mel).float()
         hann_window = torch.hann_window(self.win_size)
