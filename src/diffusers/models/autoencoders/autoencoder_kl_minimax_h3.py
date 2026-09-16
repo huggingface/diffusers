@@ -531,13 +531,10 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
     _repeated_blocks = ["MiniMaxH3VideoTransformerBlock"]
     _skip_layerwise_casting_patterns = ["norm"]
     # The released checkpoint is float32; only the cast-sensitive modules are pinned so `torch_dtype` still reaches
-    # the decoder block stack. `proj_out` is left out on purpose: it sets the dtype of the decoded pixels, and
-    # pinning it holds the whole video in float32. Entries match whole segments of the parameter name.
+    # the decoder block stack.
     _keep_in_fp32_modules = [
         "encoder",
         "quant_conv",
-        "post_quant_conv",
-        "proj_in",
         "norm1",
         "norm2",
         "norm_out",
