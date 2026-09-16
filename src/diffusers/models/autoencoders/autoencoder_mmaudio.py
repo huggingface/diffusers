@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import math
-import os
-import shutil
 from os import PathLike
-from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Literal, Optional
 
 import numpy as np
 import torch
@@ -18,11 +14,9 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
 from einops import rearrange
-from huggingface_hub import PyTorchModelHubMixin, hf_hub_download
 from librosa.filters import mel as librosa_mel_fn
 from torch import pow, sin
 from torch.nn import Conv1d, ConvTranspose1d, Parameter
-from torch.nn.utils import weight_norm as legacy_weight_norm
 from torch.nn.utils.parametrizations import weight_norm
 from torch.nn.utils.parametrize import remove_parametrizations
 
@@ -933,13 +927,6 @@ class AttrDict(dict):
         self.__dict__ = self
 
 
-def build_env(config, config_name, path):
-    t_path = os.path.join(path, config_name)
-    if config != t_path:
-        os.makedirs(path, exist_ok=True)
-        shutil.copyfile(config, os.path.join(path, config_name))
-
-
 # Adapted from https://github.com/jik876/hifi-gan under the MIT license.
 #   LICENSE is in incl_licenses directory.
 
@@ -950,22 +937,8 @@ def init_weights(m, mean=0.0, std=0.01):
         m.weight.data.normal_(mean, std)
 
 
-def apply_weight_norm(m):
-    classname = m.__class__.__name__
-    if classname.find("Conv") != -1:
-        legacy_weight_norm(m)
-
-
 def get_padding(kernel_size, dilation=1):
     return int((kernel_size * dilation - dilation) / 2)
-
-
-def load_checkpoint(filepath, device):
-    assert os.path.isfile(filepath)
-    print(f"Loading '{filepath}'")
-    checkpoint_dict = torch.load(filepath, map_location=device)
-    print("Complete.")
-    return checkpoint_dict
 
 
 # Copyright (c) 2024 NVIDIA CORPORATION.
@@ -973,12 +946,6 @@ def load_checkpoint(filepath, device):
 
 # Adapted from https://github.com/jik876/hifi-gan under the MIT license.
 #   LICENSE is in incl_licenses directory.
-
-
-def load_hparams_from_json(path) -> AttrDict:
-    with open(path) as f:
-        data = f.read()
-    return AttrDict(json.loads(data))
 
 
 class AMPBlock1(torch.nn.Module):
@@ -1159,16 +1126,7 @@ class AMPBlock2(torch.nn.Module):
 TorchActivation1d = Activation1d
 
 
-class BigVGANv2(
-    torch.nn.Module,
-    PyTorchModelHubMixin,
-    library_name="bigvgan",
-    repo_url="https://github.com/NVIDIA/BigVGAN",
-    docs_url="https://github.com/NVIDIA/BigVGAN/blob/main/README.md",
-    pipeline_tag="audio-to-audio",
-    license="mit",
-    tags=["neural-vocoder", "audio-generation", "arxiv:2206.04658"],
-):
+class BigVGANv2(torch.nn.Module):
     """
     BigVGAN is a neural vocoder model that applies anti-aliased periodic activation for residual blocks (resblocks).
 
@@ -1290,118 +1248,11 @@ class BigVGANv2(
             print("[INFO] Model already removed weight norm. Skipping!")
             pass
 
-    # Additional methods for huggingface_hub support
-    def _save_pretrained(self, save_directory: Path) -> None:
-        """Save weights and config.json from a Pytorch model to a local directory."""
 
-        model_path = save_directory / "bigvgan_generator.pt"
-        torch.save({"generator": self.state_dict()}, model_path)
-
-        config_path = save_directory / "config.json"
-        with open(config_path, "w") as config_file:
-            json.dump(self.h, config_file, indent=4)
-
-    @classmethod
-    def _from_pretrained(
-        cls,
-        *,
-        model_id: str,
-        revision: str,
-        cache_dir: str,
-        force_download: bool,
-        proxies: Optional[Dict],
-        resume_download: bool,
-        local_files_only: bool,
-        token: Union[str, bool, None],
-        map_location: str = "cpu",  # Additional argument
-        strict: bool = False,  # Additional argument
-        **model_kwargs,
-    ):
-        """Load Pytorch pretrained weights and return the loaded model."""
-
-        # Download and load hyperparameters (h) used by BigVGAN
-        if os.path.isdir(model_id):
-            # print("Loading config.json from local directory")
-            config_file = os.path.join(model_id, "config.json")
-        else:
-            config_file = hf_hub_download(
-                repo_id=model_id,
-                filename="config.json",
-                revision=revision,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                resume_download=resume_download,
-                token=token,
-                local_files_only=local_files_only,
-            )
-        h = load_hparams_from_json(config_file)
-
-        model = cls(h)
-
-        # Download and load pretrained generator weight
-        if os.path.isdir(model_id):
-            # print("Loading weights from local directory")
-            model_file = os.path.join(model_id, "bigvgan_generator.pt")
-        else:
-            print(f"Loading weights from {model_id}")
-            model_file = hf_hub_download(
-                repo_id=model_id,
-                filename="bigvgan_generator.pt",
-                revision=revision,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                resume_download=resume_download,
-                token=token,
-                local_files_only=local_files_only,
-            )
-
-        checkpoint_dict = torch.load(model_file, map_location=map_location, weights_only=True)
-
-        try:
-            model.load_state_dict(checkpoint_dict["generator"])
-        except RuntimeError:
-            print(
-                f"[INFO] the pretrained checkpoint does not contain weight norm. Loading the checkpoint after removing weight norm!"
-            )
-            model.remove_weight_norm()
-            model.load_state_dict(checkpoint_dict["generator"])
-
-        return model
-
-
-def _load_bigvgan_v2(
-    vocoder_ckpt_path: str | None = None,
-    *,
-    vocoder_config: dict | None = None,
-) -> BigVGANv2:
-    """Load BigVGAN-v2 from a local directory (avoids HubMixin/huggingface_hub API drift)."""
-    model_file = None if vocoder_ckpt_path is None else os.path.join(vocoder_ckpt_path, "bigvgan_generator.pt")
-    if vocoder_config is None:
-        if vocoder_ckpt_path is None:
-            raise ValueError("Either vocoder_ckpt_path or vocoder_config is required")
-        config_file = os.path.join(vocoder_ckpt_path, "config.json")
-        if not os.path.isfile(config_file) or not os.path.isfile(model_file):
-            raise FileNotFoundError(f"Expected config.json and bigvgan_generator.pt under {vocoder_ckpt_path}")
-        h = load_hparams_from_json(config_file)
-    else:
-        if model_file is not None and not os.path.isfile(model_file):
-            raise FileNotFoundError(f"BigVGAN checkpoint does not exist: {model_file}")
-        h = AttrDict(vocoder_config)
-
-    model = BigVGANv2(h)
-    if vocoder_ckpt_path is not None:
-        assert model_file is not None
-        checkpoint_dict = torch.load(model_file, map_location="cpu", weights_only=True)
-        try:
-            model.load_state_dict(checkpoint_dict["generator"])
-        except RuntimeError:
-            model.remove_weight_norm()
-            model.load_state_dict(checkpoint_dict["generator"])
-        model.remove_weight_norm()
-    else:
-        model.remove_weight_norm()
+def build_bigvgan_v2(vocoder_config: dict | AttrDict) -> BigVGANv2:
+    """Build an inference-ready BigVGAN-v2 from its serialized configuration."""
+    model = BigVGANv2(vocoder_config if isinstance(vocoder_config, AttrDict) else AttrDict(vocoder_config))
+    model.remove_weight_norm()
     return model
 
 
@@ -1426,10 +1277,7 @@ class AutoEncoderModule(nn.Module):
         self.vae.remove_weight_norm()
 
         if need_vae_decoder:
-            self.vocoder = _load_bigvgan_v2(
-                vocoder_ckpt_path,
-                vocoder_config=vocoder_config,
-            ).eval()
+            self.vocoder = build_bigvgan_v2(vocoder_config).eval()
         else:
             del self.vae.decoder
 
