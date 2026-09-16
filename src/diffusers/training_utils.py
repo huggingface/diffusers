@@ -33,8 +33,8 @@ from .utils import (
     deprecate,
     is_accelerate_available,
     is_peft_available,
-    is_torch_npu_available,
     is_torch_mlu_available,
+    is_torch_npu_available,
     is_torchvision_available,
     is_transformers_available,
 )
