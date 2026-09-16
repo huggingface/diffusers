@@ -159,6 +159,36 @@ class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTester
         with pytest.raises(ValueError, match="causal_condition"):
             model(**self.get_dummy_inputs(), kv_cache=kv_cache, kv_cache_mode="extract")
 
+    @pytest.mark.parametrize("pad_prompt", [False, True])
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_sdpa_processor_matches_flex(self, pad_prompt, batch_size):
+        # both processors implement the same block-causal attention: prefill and decode must agree, with and
+        # without right-padded text
+        from diffusers.models.transformers.transformer_qwenimage21 import (
+            QwenImage21FlexAttnProcessor,
+            QwenImage21KVCache,
+            QwenImage21SDPAAttnProcessor,
+        )
+
+        init_dict = self.get_init_dict()
+        model = self.model_class(**init_dict).to(torch_device).eval()
+        inputs = self.get_dummy_inputs(batch_size=batch_size)
+        if pad_prompt:
+            inputs["encoder_hidden_states_mask"][:, -1] = 0
+
+        outputs = {}
+        for processor_cls in (QwenImage21FlexAttnProcessor, QwenImage21SDPAAttnProcessor):
+            model.set_attn_processor(processor_cls())
+            kv_cache = QwenImage21KVCache(init_dict["num_layers"])
+            with torch.no_grad():
+                prefill = model(**inputs, kv_cache=kv_cache, kv_cache_mode="extract", return_dict=False)[0]
+                decode = model(**inputs, kv_cache=kv_cache, kv_cache_mode="cached", return_dict=False)[0]
+            outputs[processor_cls] = (prefill[:, -decode.shape[1] :], decode)
+
+        (flex_prefill, flex_decode), (sdpa_prefill, sdpa_decode) = outputs.values()
+        assert torch.allclose(flex_prefill, sdpa_prefill, atol=1e-5)
+        assert torch.allclose(flex_decode, sdpa_decode, atol=1e-5)
+
     def test_non_flex_backend_rejected_when_causal(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         model.set_attention_backend("native")

@@ -370,14 +370,6 @@ def _qwenimage21_prepare_qkv(
             cached_k, cached_v = layer_cache.get()
             key = torch.cat([cached_k, key], dim=1)
             value = torch.cat([cached_v, value], dim=1)
-        elif kv_cache_mode == "extend":
-            # Read existing cache (if any), prepend to current KV for attention, then store the full
-            # concatenated KV back. Used by the multi-pass SDPA prefill to accumulate segment-by-segment.
-            if layer_cache.is_populated:
-                cached_k, cached_v = layer_cache.get()
-                key = torch.cat([cached_k, key], dim=1)
-                value = torch.cat([cached_v, value], dim=1)
-            layer_cache.store(key.contiguous(), value.contiguous())
 
     seq_len_q = query.shape[1]
     return query, key, value, seq_len_q
@@ -405,7 +397,9 @@ class QwenImage21FlexAttnProcessor:
         layer_cache: QwenImage21KVLayerCache | None = None,
         kv_cache_mode: str | None = None,
         cache_write_slice: slice | None = None,
-        is_causal: bool = False,
+        image_ids: torch.Tensor | None = None,
+        key_valid: torch.Tensor | None = None,
+        prefix_len: int | None = None,
     ) -> torch.Tensor:
         query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
             attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
@@ -413,6 +407,7 @@ class QwenImage21FlexAttnProcessor:
 
         seq_len_kv = key.shape[1]
         if isinstance(attention_mask, BlockMask):
+            # prefill: the BlockMask expresses the block-causal structure in one flex call
             pad_q = int(math.ceil(seq_len_q / _FLEX_BLOCK_SIZE) * _FLEX_BLOCK_SIZE) - seq_len_q
             pad_kv = int(math.ceil(seq_len_kv / _FLEX_BLOCK_SIZE) * _FLEX_BLOCK_SIZE) - seq_len_kv
             if pad_q:
@@ -428,14 +423,13 @@ class QwenImage21FlexAttnProcessor:
                 block_mask=attention_mask,
             ).transpose(1, 2)
         else:
-            # Decode path or no BlockMask: full attention via SDPA.
+            # decode: full attention over [cached prefix, target] via SDPA
             hidden_states = dispatch_attention_fn(
                 query,
                 key,
                 value,
-                attn_mask=attention_mask if not isinstance(attention_mask, type(None)) and not is_causal else None,
+                attn_mask=attention_mask,
                 dropout_p=0.0,
-                is_causal=is_causal,
                 backend=None,
                 parallel_config=self._parallel_config,
             )
@@ -468,22 +462,76 @@ class QwenImage21SDPAAttnProcessor:
         layer_cache: QwenImage21KVLayerCache | None = None,
         kv_cache_mode: str | None = None,
         cache_write_slice: slice | None = None,
-        is_causal: bool = False,
+        image_ids: torch.Tensor | None = None,
+        key_valid: torch.Tensor | None = None,
+        prefix_len: int | None = None,
     ) -> torch.Tensor:
         query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
             attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
         )
 
-        hidden_states = dispatch_attention_fn(
-            query,
-            key,
-            value,
-            attn_mask=attention_mask if not isinstance(attention_mask, type(None)) and not is_causal else None,
-            dropout_p=0.0,
-            is_causal=is_causal,
-            backend=None,
-            parallel_config=self._parallel_config,
-        )
+        if image_ids is None:
+            # decode: full attention over [cached prefix, target]
+            hidden_states = dispatch_attention_fn(
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                backend=None,
+                parallel_config=self._parallel_config,
+            )
+        else:
+            # prefill: the block-causal mask decomposes into one attention call per prefix segment plus one for the
+            # target image. Every segment attends to the keys `[0, end)` (everything before it plus its own block);
+            # text segments additionally get a causal triangle over their own keys; padded text keys are dropped.
+            # `attention_mask` is the flex BlockMask of the same structure, meant for `QwenImage21FlexAttnProcessor`;
+            # it is not used here.
+            prefix_ids = image_ids[:prefix_len].tolist()
+            segments = []
+            start = 0
+            for i in range(1, prefix_len + 1):
+                if i == prefix_len or prefix_ids[i] != prefix_ids[start]:
+                    segments.append((start, i, prefix_ids[start] < 0))
+                    start = i
+            outputs = []
+            for start, end, is_text in segments:
+                seg_mask = None
+                if is_text:
+                    seg_len = end - start
+                    seg_mask = torch.cat(
+                        [
+                            torch.ones(seg_len, start, dtype=torch.bool, device=query.device),
+                            torch.tril(torch.ones(seg_len, seg_len, dtype=torch.bool, device=query.device)),
+                        ],
+                        dim=1,
+                    )[None, None]
+                if key_valid is not None:
+                    seg_key_valid = key_valid[:, None, None, :end]
+                    seg_mask = seg_key_valid if seg_mask is None else (seg_mask & seg_key_valid)
+                outputs.append(
+                    dispatch_attention_fn(
+                        query[:, start:end],
+                        key[:, :end],
+                        value[:, :end],
+                        attn_mask=seg_mask,
+                        dropout_p=0.0,
+                        backend=None,
+                        parallel_config=self._parallel_config,
+                    )
+                )
+            outputs.append(
+                dispatch_attention_fn(
+                    query[:, prefix_len:],
+                    key,
+                    value,
+                    attn_mask=None if key_valid is None else key_valid[:, None, None, :],
+                    dropout_p=0.0,
+                    backend=None,
+                    parallel_config=self._parallel_config,
+                )
+            )
+            hidden_states = torch.cat(outputs, dim=1)
         hidden_states = hidden_states[:, :seq_len_q]
         hidden_states = hidden_states.flatten(2, 3).type_as(query)
 
@@ -562,7 +610,9 @@ class QwenImage21TransformerBlock(nn.Module):
         layer_cache: QwenImage21KVLayerCache | None = None,
         kv_cache_mode: str | None = None,
         cache_write_slice: slice | None = None,
-        is_causal: bool = False,
+        image_ids: torch.Tensor | None = None,
+        key_valid: torch.Tensor | None = None,
+        prefix_len: int | None = None,
     ) -> torch.Tensor:
         mod1, mod2 = modulation.chunk(2, dim=-1)
 
@@ -574,7 +624,9 @@ class QwenImage21TransformerBlock(nn.Module):
             layer_cache=layer_cache,
             kv_cache_mode=kv_cache_mode,
             cache_write_slice=cache_write_slice,
-            is_causal=is_causal,
+            image_ids=image_ids,
+            key_valid=key_valid,
+            prefix_len=prefix_len,
         )
         hidden_states = hidden_states + img_gate1.tanh() * attn_output
 
@@ -875,140 +927,58 @@ class QwenImage21Transformer2DModel(
             joint_key_valid[:, text_positions] = encoder_hidden_states_mask.bool()[:, vlm_text_positions]
 
         prefix_len = int((~target_token_mask).sum())
-        is_decode = kv_cache_mode == "cached"
 
-        if is_decode:
-            # Only the target image's queries are recomputed. The block-causal mask degenerates to full attention
-            # for target rows (they can see the entire prefix + their own block), so no structural mask is needed.
+        if kv_cache_mode == "cached":
+            # decode: only the target image's queries are recomputed. The block-causal mask degenerates to full
+            # attention for target rows (they see the entire prefix + their own block), so only the padding mask is
+            # needed.
             joint_hidden_states = joint_hidden_states[:, prefix_len:]
             rotary_emb = rotary_emb[prefix_len:]
             modulation_mask = modulation_mask[prefix_len:]
             attention_mask = None if joint_key_valid is None else joint_key_valid[:, None, None, :]
             cache_write_slice = None
-            use_multi_pass = False
-        elif _FLEX_AVAILABLE:
-            # flex path: single-pass with a compiled BlockMask
-            cache_write_slice = slice(0, prefix_len) if kv_cache_mode == "extract" else None
+            block_image_ids, block_key_valid, block_prefix_len = None, None, None
+        else:
+            # prefill: the whole joint sequence. The block-causal structure is passed down both as a flex
+            # `BlockMask` (used by `QwenImage21FlexAttnProcessor`) and as its ingredients (`image_ids`,
+            # `key_valid`, `prefix_len`, used by `QwenImage21SDPAAttnProcessor`); the processor picks.
             attention_mask = build_qwenimage21_block_causal_mask(
                 image_ids, joint_key_valid, batch_size, hidden_states.device
             )
-            use_multi_pass = False
-        else:
-            # Multi-pass SDPA: exact block-causal attention without flex_attention.
-            # The prefix is split into segments at image-block boundaries (using image_ids). Image-block
-            # segments get full (bidirectional) attention within themselves, and text segments get a causal
-            # mask within the segment. Both attend fully to all preceding segments via an accumulating KV
-            # cache ("extend" mode). This exactly matches the block-causal mask.
-            # The target image pass is unchanged: full attention over [cached prefix, target].
-            use_multi_pass = True
-            cache_write_slice = None
+            cache_write_slice = slice(0, prefix_len) if kv_cache_mode == "extract" else None
+            block_image_ids, block_key_valid, block_prefix_len = image_ids, joint_key_valid, prefix_len
 
-        if use_multi_pass:
-            prefix_hs = joint_hidden_states[:, :prefix_len]
-            target_hs = joint_hidden_states[:, prefix_len:]
-            prefix_rope = rotary_emb[:prefix_len]
-            target_rope = rotary_emb[prefix_len:]
-            prefix_mod_mask = modulation_mask[:prefix_len] if modulation_mask is not None else None
-            target_mod_mask = modulation_mask[prefix_len:] if modulation_mask is not None else None
-
-            # Build segment boundaries from image_ids in the prefix. Consecutive tokens with the same
-            # image_id form one segment (-1 = text, >=0 = image block).
-            prefix_ids = image_ids[:prefix_len]
-            segments = []
-            if prefix_len > 0:
-                seg_start = 0
-                for i in range(1, prefix_len):
-                    if prefix_ids[i] != prefix_ids[i - 1]:
-                        segments.append((seg_start, i))
-                        seg_start = i
-                segments.append((seg_start, prefix_len))
-
-            for index_block, block in enumerate(self.transformer_blocks):
-                layer_cache = kv_cache.get_layer(index_block) if kv_cache is not None else None
-                accumulated_cache = QwenImage21KVLayerCache()
-                segment_outputs = []
-
-                for seg_start, seg_end in segments:
-                    seg_hs = prefix_hs[:, seg_start:seg_end]
-                    seg_rope = prefix_rope[seg_start:seg_end]
-                    seg_mod = prefix_mod_mask[seg_start:seg_end] if prefix_mod_mask is not None else None
-
-                    # Text segments (image_id == -1) get a causal mask within the segment so that
-                    # each text token only sees earlier text tokens + the full cached prefix. Image
-                    # blocks get None (full / bidirectional), which is exact for the block-causal mask.
-                    seg_mask = None
-                    seg_is_text = prefix_ids[seg_start].item() < 0
-                    seg_len = seg_end - seg_start
-                    if seg_is_text and seg_len > 1:
-                        cached_len = accumulated_cache.k.shape[1] if accumulated_cache.is_populated else 0
-                        prefix_visible = torch.ones(seg_len, cached_len, dtype=torch.bool, device=hidden_states.device)
-                        causal_part = torch.tril(
-                            torch.ones(seg_len, seg_len, dtype=torch.bool, device=hidden_states.device)
-                        )
-                        seg_mask = torch.cat([prefix_visible, causal_part], dim=1)[None, None]
-
-                    seg_hs = block(
-                        hidden_states=seg_hs,
-                        modulation=modulation,
-                        rotary_emb=seg_rope,
-                        attention_mask=seg_mask,
-                        target_token_mask=seg_mod,
-                        layer_cache=accumulated_cache,
-                        kv_cache_mode="extend",
-                        cache_write_slice=None,
-                    )
-                    segment_outputs.append(seg_hs)
-
-                prefix_hs = torch.cat(segment_outputs, dim=1) if segment_outputs else prefix_hs
-
-                # Store the accumulated prefix cache into the main cache for this layer.
-                if layer_cache is not None and accumulated_cache.is_populated:
-                    layer_cache.store(*accumulated_cache.get())
-
-                # Target: full attention over [cached prefix, target].
-                target_cache = (
-                    layer_cache
-                    if layer_cache is not None
-                    else (accumulated_cache if accumulated_cache.is_populated else None)
+        for index_block, block in enumerate(self.transformer_blocks):
+            layer_cache = kv_cache.get_layer(index_block) if kv_cache is not None else None
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                joint_hidden_states = self._gradient_checkpointing_func(
+                    block,
+                    joint_hidden_states,
+                    modulation,
+                    rotary_emb,
+                    attention_mask,
+                    modulation_mask,
+                    layer_cache,
+                    kv_cache_mode,
+                    cache_write_slice,
+                    block_image_ids,
+                    block_key_valid,
+                    block_prefix_len,
                 )
-                target_hs = block(
-                    hidden_states=target_hs,
+            else:
+                joint_hidden_states = block(
+                    hidden_states=joint_hidden_states,
                     modulation=modulation,
-                    rotary_emb=target_rope,
-                    attention_mask=None,
-                    target_token_mask=target_mod_mask,
-                    layer_cache=target_cache,
-                    kv_cache_mode="cached" if target_cache is not None else None,
-                    cache_write_slice=None,
+                    rotary_emb=rotary_emb,
+                    attention_mask=attention_mask,
+                    target_token_mask=modulation_mask,
+                    layer_cache=layer_cache,
+                    kv_cache_mode=kv_cache_mode,
+                    cache_write_slice=cache_write_slice,
+                    image_ids=block_image_ids,
+                    key_valid=block_key_valid,
+                    prefix_len=block_prefix_len,
                 )
-
-            joint_hidden_states = torch.cat([prefix_hs, target_hs], dim=1)
-        else:
-            for index_block, block in enumerate(self.transformer_blocks):
-                layer_cache = kv_cache.get_layer(index_block) if kv_cache is not None else None
-                if torch.is_grad_enabled() and self.gradient_checkpointing:
-                    joint_hidden_states = self._gradient_checkpointing_func(
-                        block,
-                        joint_hidden_states,
-                        modulation,
-                        rotary_emb,
-                        attention_mask,
-                        modulation_mask,
-                        layer_cache,
-                        kv_cache_mode,
-                        cache_write_slice,
-                    )
-                else:
-                    joint_hidden_states = block(
-                        hidden_states=joint_hidden_states,
-                        modulation=modulation,
-                        rotary_emb=rotary_emb,
-                        attention_mask=attention_mask,
-                        target_token_mask=modulation_mask,
-                        layer_cache=layer_cache,
-                        kv_cache_mode=kv_cache_mode,
-                        cache_write_slice=cache_write_slice,
-                    )
 
         joint_hidden_states = self.norm_out(joint_hidden_states, temb, modulation_mask)
         output = self.proj_out(joint_hidden_states)
