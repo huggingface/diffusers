@@ -1414,6 +1414,7 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
     """
 
     ignore_for_config = ["tod_vae_ckpt", "bigvgan_vocoder_ckpt", "device"]
+    _no_split_modules = ["AutoEncoderModule", "BigVGANv2"]
 
     @register_to_config
     def __init__(

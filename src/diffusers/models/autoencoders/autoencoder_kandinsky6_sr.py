@@ -1046,6 +1046,8 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
             factor of the VAE.
     """
 
+    _no_split_modules = ["CachedEncoder3D", "CachedDecoder3D"]
+
     @staticmethod
     def normalize_data(data):
         """Normalize pixel values to the KVAE input range."""

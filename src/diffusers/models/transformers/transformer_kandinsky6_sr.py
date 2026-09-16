@@ -2155,6 +2155,8 @@ class Kandinsky6SRTransformer3DModel(ModelMixin, ConfigMixin):
     with RoPE, adaptive modulation, and optional fractal attention sparsity.
     """
 
+    _no_split_modules = ["TransformerEncoderBlock", "TransformerDecoderBlock"]
+
     @register_to_config
     def __init__(
         self,

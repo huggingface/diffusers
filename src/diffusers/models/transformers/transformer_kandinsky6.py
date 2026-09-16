@@ -1125,6 +1125,7 @@ class Kandinsky6Transformer3DModel(
         "Kandinsky6TransformerDecoderBlock",
         "Kandinsky6FusedTransformerDecoderBlock",
     ]
+    _no_split_modules = _repeated_blocks
     _keep_in_fp32_modules = ["time_embeddings", "modulation", "visual_modulation", "text_modulation"]
     _supports_gradient_checkpointing = True
 
