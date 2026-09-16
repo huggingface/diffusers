@@ -128,6 +128,10 @@ if is_torch_available():
     _import_structure["transformers.transformer_ideogram4"] = ["Ideogram4Transformer2DModel"]
     _import_structure["transformers.transformer_joyimage"] = ["JoyImageEditTransformer3DModel"]
     _import_structure["transformers.transformer_joyimage_edit_plus"] = ["JoyImageEditPlusTransformer3DModel"]
+    _import_structure["autoencoders.autoencoder_mmaudio"] = ["MMAudioVAE"]
+    _import_structure["autoencoders.autoencoder_kandinsky6_sr"] = ["Kandinsky6SRVAE"]
+    _import_structure["transformers.transformer_kandinsky6_sr"] = ["Kandinsky6SRTransformer3DModel"]
+    _import_structure["transformers.transformer_kandinsky6"] = ["Kandinsky6Transformer3DModel"]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_krea2"] = ["Krea2Transformer2DModel"]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
@@ -183,6 +187,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLFlux2,
             AutoencoderKLHunyuanImage,
             AutoencoderKLHunyuanImageRefiner,
+            MMAudioVAE,
+            Kandinsky6SRVAE,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
             AutoencoderKLKVAE,
@@ -267,6 +273,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Ideogram4Transformer2DModel,
             JoyImageEditPlusTransformer3DModel,
             JoyImageEditTransformer3DModel,
+            Kandinsky6SRTransformer3DModel,
+            Kandinsky6Transformer3DModel,
             Kandinsky5Transformer3DModel,
             Krea2Transformer2DModel,
             LatteTransformer3DModel,

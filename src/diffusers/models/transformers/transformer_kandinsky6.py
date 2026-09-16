@@ -1,0 +1,1448 @@
+"""Kandinsky 6 Diffusers transformer."""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+import torch
+import torch.nn.functional as functional
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...hooks import MagCacheConfig
+from ...hooks.hooks import HookRegistry, ModelHook, StateManager
+from ...hooks.mag_cache import MagCacheState
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ..attention import AttentionMixin, AttentionModuleMixin
+from ..attention_dispatch import (
+    _CAN_USE_FLEX_ATTN,
+    AttentionBackendName,
+    dispatch_attention_fn,
+)
+from ..cache_utils import CacheMixin
+from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
+from torch import Tensor, nn
+from torch.nn.attention.flex_attention import BlockMask
+
+
+def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
+    return torch.exp(-math.log(max_period) * torch.arange(start=0, end=dim, dtype=torch.float32) / dim)
+
+
+def apply_scale_shift_norm(norm, x: Tensor, scale: Tensor, shift: Tensor) -> Tensor:
+    """AdaLN-style affine in fp32, cast back to ``x.dtype``."""
+    if x.ndim > 2 and scale.ndim == 2:
+        shape = (scale.shape[0],) + (1,) * (x.ndim - 2) + (scale.shape[-1],)
+        scale, shift = scale.reshape(shape), shift.reshape(shape)
+    return (norm(x.float()) * (scale.float() + 1.0) + shift.float()).to(dtype=x.dtype)
+
+
+def apply_gate_sum(x: Tensor, out: Tensor, gate: Tensor) -> Tensor:
+    """Residual gate in fp32, cast back to ``x.dtype``."""
+    if x.ndim > 2 and gate.ndim == 2:
+        gate = gate.reshape((gate.shape[0],) + (1,) * (x.ndim - 2) + (gate.shape[-1],))
+    return (x.float() + gate.float() * out.float()).to(dtype=x.dtype)
+
+
+def apply_rotary(x: Tensor, rope: Tensor) -> Tensor:
+    """RoPE apply in fp32 (rope tables are fp32), cast back to ``x.dtype``."""
+    x_ = x.reshape(*x.shape[:-1], -1, 1, 2).float()
+    return (rope.float() * x_).sum(dim=-1).reshape(*x.shape).to(dtype=x.dtype)
+
+
+def _local_patch(x: Tensor, shape: tuple, group_size: tuple, dim: int = 0) -> Tensor:
+    T, H, W = shape
+    g1, g2, g3 = group_size
+    x = x.reshape(*x.shape[:dim], T // g1, g1, H // g2, g2, W // g3, g3, *x.shape[dim + 3 :])
+    d = len(x.shape[:dim])
+    x = x.permute(*range(d), d, d + 2, d + 4, d + 1, d + 3, d + 5, *range(d + 6, len(x.shape)))
+    return x.flatten(dim, dim + 2).flatten(dim + 1, dim + 3)
+
+
+def _local_merge(x: Tensor, shape: tuple, group_size: tuple, dim: int = 0) -> Tensor:
+    T, H, W = shape
+    g1, g2, g3 = group_size
+    x = x.reshape(*x.shape[:dim], T // g1, H // g2, W // g3, g1, g2, g3, *x.shape[dim + 2 :])
+    d = len(x.shape[:dim])
+    x = x.permute(*range(d), d, d + 3, d + 1, d + 4, d + 2, d + 5, *range(d + 6, len(x.shape)))
+    return x.flatten(dim, dim + 1).flatten(dim + 1, dim + 2).flatten(dim + 2, dim + 3)
+
+
+def fractal_flatten(x: Tensor, rope: Tensor, shape: tuple, block_mask: bool = False):
+    if block_mask:
+        ps = 8
+        x = _local_patch(x, shape, (1, ps, ps), dim=0)
+        rope = _local_patch(rope, shape, (1, ps, ps), dim=0)
+        return x.flatten(0, 1), rope.flatten(0, 1)
+    return x.flatten(0, 2), rope.flatten(0, 2)
+
+
+def fractal_unflatten(x: Tensor, shape: tuple, block_mask: bool = False) -> Tensor:
+    if block_mask:
+        ps = 8
+        x = x.reshape(-1, ps * ps, x.shape[-1])
+        return _local_merge(x, shape, (1, ps, ps), dim=0)
+    return x.reshape(*shape, x.shape[-1])
+
+
+def fast_sta_nabla(
+    T: int,
+    H: int,
+    W: int,
+    wT: int = 3,
+    wH: int = 3,
+    wW: int = 3,
+    device: str | torch.device = "cuda",
+) -> Tensor:
+    """Precomputes the Sliding Tile Attention (STA) boolean mask for nabla attention."""
+    l = max(T, H, W)
+    r = torch.arange(l, dtype=torch.int16, device=device)
+    mat = (r.unsqueeze(1) - r.unsqueeze(0)).abs()
+
+    sta_t = mat[:T, :T].flatten() <= wT // 2
+    sta_h = mat[:H, :H].flatten() <= wH // 2
+    sta_w = mat[:W, :W].flatten() <= wW // 2
+
+    sta_hw = (sta_h.unsqueeze(1) * sta_w.unsqueeze(0)).reshape(H, H, W, W).transpose(1, 2).flatten()
+    sta = (sta_t.unsqueeze(1) * sta_hw.unsqueeze(0)).reshape(T, T, H * W, H * W).transpose(1, 2)
+    return sta.reshape(T * H * W, T * H * W)
+
+
+def nabla_block_mask(
+    q: Tensor,
+    k: Tensor,
+    sta: Tensor,
+    thr: float = 0.9,
+    block_size: int = 64,
+) -> BlockMask:
+    """Builds a dynamic nabla BlockMask from query/key statistics + STA prior."""
+    B, h, S, D = q.shape
+    s1 = S // block_size
+    qa = q.reshape(B, h, s1, block_size, D).mean(-2)
+    ka = k.reshape(B, h, s1, block_size, D).mean(-2).transpose(-2, -1)
+    attn_map = torch.softmax((qa @ ka) / math.sqrt(D), dim=-1)
+
+    vals, inds = attn_map.sort(-1)
+    mask = (vals.cumsum_(-1) >= 1 - thr).int().gather(-1, inds.argsort(-1))
+    mask = torch.logical_or(mask, sta)
+
+    kv_nb = mask.sum(-1).to(torch.int32)
+    kv_inds = mask.argsort(dim=-1, descending=True).to(torch.int32)
+    return BlockMask.from_kv_blocks(
+        torch.zeros_like(kv_nb),
+        kv_inds,
+        kv_nb,
+        kv_inds,
+        BLOCK_SIZE=block_size,
+        mask_mod=None,
+    )
+
+
+class RoPE1D(nn.Module):
+    """1-D Rotary Position Embedding — used for text and audio sequences."""
+
+    def __init__(
+        self,
+        dim: int,
+        max_pos: int = 2048,
+        max_period: float = 10000.0,
+        freqs_scaling: float = 1.0,
+    ):
+        super().__init__()
+        self.dim = dim
+        self.max_pos = max_pos
+        self.max_period = max_period
+        self.freqs_scaling = freqs_scaling
+        freq = get_freqs(dim // 2, max_period) * freqs_scaling
+        self.register_buffer("args", torch.outer(torch.arange(max_pos, dtype=freq.dtype), freq), persistent=False)
+
+    def forward(self, pos: Tensor) -> Tensor:
+        # RoPE tables are fp32; keep trig in fp32.
+        args = self.args[pos]  # (seq_len, dim//2)
+        rope = torch.stack([torch.cos(args), -torch.sin(args), torch.sin(args), torch.cos(args)], dim=-1)
+        return rope.view(*rope.shape[:-1], 2, 2).unsqueeze(-4)
+
+    def reset_parameters(self) -> None:
+        freq = get_freqs(self.dim // 2, self.max_period).to(self.args.device) * self.freqs_scaling
+        self.args = torch.outer(torch.arange(self.max_pos, dtype=freq.dtype, device=freq.device), freq)
+
+
+class RoPE3D(nn.Module):
+    """3-D Rotary Position Embedding — used for video spatial-temporal tokens (T, H, W)."""
+
+    def __init__(
+        self,
+        axes_dims: tuple[int, int, int],
+        max_pos: tuple[int, int, int] = (128, 128, 128),
+        max_period: float = 10000.0,
+    ):
+        super().__init__()
+        self.axes_dims = axes_dims
+        self.max_pos = max_pos
+        self.max_period = max_period
+        for i, (d, mp) in enumerate(zip(axes_dims, max_pos)):
+            freq = get_freqs(d // 2, max_period)
+            self.register_buffer(f"args_{i}", torch.outer(torch.arange(mp, dtype=freq.dtype), freq), persistent=False)
+
+    def forward(
+        self,
+        shape: tuple,
+        pos: list[Tensor],
+        scale_factor: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    ) -> Tensor:
+        T, H, W = shape
+        args_t = getattr(self, "args_0")[pos[0]] / scale_factor[0]  # (T, d//2)
+        args_h = getattr(self, "args_1")[pos[1]] / scale_factor[1]  # (H, d//2)
+        args_w = getattr(self, "args_2")[pos[2]] / scale_factor[2]  # (W, d//2)
+
+        args = torch.cat(
+            [
+                args_t.view(T, 1, 1, -1).expand(T, H, W, -1),
+                args_h.view(1, H, 1, -1).expand(T, H, W, -1),
+                args_w.view(1, 1, W, -1).expand(T, H, W, -1),
+            ],
+            dim=-1,
+        )
+        cos, sin = torch.cos(args), torch.sin(args)
+        rope = torch.stack([cos, -sin, sin, cos], dim=-1)  # (T, H, W, total_dim, 4)
+        rope = rope.view(*rope.shape[:-1], 2, 2)  # (T, H, W, total_dim, 2, 2)
+        return rope.unsqueeze(-4)  # (T, H, W, 1, total_dim, 2, 2)
+
+    def reset_parameters(self) -> None:
+        for i, (d, mp) in enumerate(zip(self.axes_dims, self.max_pos)):
+            freq = get_freqs(d // 2, self.max_period).to(getattr(self, f"args_{i}").device)
+            setattr(self, f"args_{i}", torch.outer(torch.arange(mp, dtype=freq.dtype, device=freq.device), freq))
+
+
+"""Diffusers MagCache adapter for the K6 multimodal transformer.
+
+Diffusers provides the public :class:`MagCacheConfig` and the stateful hook
+infrastructure.  K6's fused visual blocks carry video and audio streams
+together, so the stock hook needs a small adapter to preserve both tensors
+when a block is skipped.  The adapter keeps the Diffusers ``enable_cache`` /
+``disable_cache`` API and uses the Diffusers MagCache state and configuration.
+"""
+
+
+_HEAD_HOOK = "kandinsky6_mag_cache_head"
+_BLOCK_HOOK = "kandinsky6_mag_cache_block"
+
+
+def _streams_from_args(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Tensor | None, Tensor | None]:
+    video = kwargs.get("vis", args[0] if args else None)
+    audio = kwargs.get("aud", args[1] if len(args) > 1 else None)
+    return video, audio
+
+
+def _pack_streams(video: Tensor | None, audio: Tensor | None) -> Tensor | tuple[Tensor | None, Tensor | None]:
+    return video if audio is None else (video, audio)
+
+
+def _add_residual(
+    video: Tensor | None,
+    audio: Tensor | None,
+    residual: Tensor | tuple[Tensor | None, Tensor | None],
+) -> Tensor | tuple[Tensor | None, Tensor | None]:
+    if audio is None:
+        if not isinstance(residual, Tensor):
+            raise RuntimeError("K6 MagCache residual does not match a video-only block")
+        return video + residual if video is not None else video
+    if not isinstance(residual, tuple):
+        raise RuntimeError("K6 MagCache residual does not contain an audio stream")
+    video_residual, audio_residual = residual
+    return (
+        video + video_residual if video is not None and video_residual is not None else video,
+        audio + audio_residual if audio_residual is not None else audio,
+    )
+
+
+def _residual(
+    output: Tensor | tuple[Tensor | None, Tensor | None],
+    input_video: Tensor | None,
+    input_audio: Tensor | None,
+) -> Tensor | tuple[Tensor | None, Tensor | None]:
+    output_video, output_audio = _streams_from_args((output,), {}) if isinstance(output, Tensor) else output
+    if input_audio is None:
+        if output_video is None or input_video is None:
+            return output_video
+        return output_video - input_video
+    return (
+        output_video - input_video if output_video is not None and input_video is not None else None,
+        output_audio - input_audio if output_audio is not None else None,
+    )
+
+
+def _should_compute(state: MagCacheState, config: MagCacheConfig, *, lane: int, num_steps: int) -> bool:
+    if config.calibrate:
+        return True
+
+    ratio_index = state.step_index * 2 + lane
+    if config.mag_ratios is None or ratio_index >= len(config.mag_ratios):
+        current_scale = 1.0
+    else:
+        current_scale = float(config.mag_ratios[ratio_index])
+
+    retention_step = int(config.retention_ratio * num_steps + 0.5)
+    if state.step_index < retention_step:
+        return True
+
+    state.accumulated_ratio *= current_scale
+    state.accumulated_steps += 1
+    state.accumulated_err += abs(1.0 - state.accumulated_ratio)
+    if (
+        state.previous_residual is not None
+        and state.accumulated_err <= config.threshold
+        and state.accumulated_steps <= config.max_skip_steps
+    ):
+        return False
+
+    state.accumulated_ratio = 1.0
+    state.accumulated_steps = 0
+    state.accumulated_err = 0.0
+    return True
+
+
+def _advance(state: MagCacheState, config: MagCacheConfig, num_steps: int) -> None:
+    state.step_index += 1
+    if state.step_index < num_steps:
+        return
+    state.step_index = 0
+    state.accumulated_ratio = 1.0
+    state.accumulated_steps = 0
+    state.accumulated_err = 0.0
+    state.previous_residual = None
+    state.head_block_input = None
+    state.should_compute = True
+    state.calibration_ratios = []
+
+
+class _Kandinsky6MagCacheHeadHook(ModelHook):
+    _is_stateful = True
+
+    def __init__(self, state_manager: StateManager, config: MagCacheConfig, num_steps: int):
+        super().__init__()
+        self.state_manager = state_manager
+        self.config = config
+        self.num_steps = num_steps
+
+    @torch.compiler.disable
+    def new_forward(self, module: nn.Module, *args, **kwargs):
+        if self.state_manager._current_context is None:
+            self.state_manager.set_context("inference")
+        state: MagCacheState = self.state_manager.get_state()
+        video, audio = _streams_from_args(args, kwargs)
+        state.head_block_input = (video, audio)
+        lane = 1 if self.state_manager._current_context in {"uncond", "negative"} else 0
+        state.should_compute = _should_compute(state, self.config, lane=lane, num_steps=self.num_steps)
+
+        if not state.should_compute:
+            if state.previous_residual is None:
+                raise RuntimeError("K6 MagCache requested a skip before a residual was computed")
+            return _add_residual(video, audio, state.previous_residual)
+        return self.fn_ref.original_forward(*args, **kwargs)
+
+    def reset_state(self, module: nn.Module):
+        self.state_manager.reset()
+        return module
+
+
+class _Kandinsky6MagCacheBlockHook(ModelHook):
+    def __init__(self, state_manager: StateManager, config: MagCacheConfig, num_steps: int, is_tail: bool):
+        super().__init__()
+        self.state_manager = state_manager
+        self.config = config
+        self.num_steps = num_steps
+        self.is_tail = is_tail
+
+    @torch.compiler.disable
+    def new_forward(self, module: nn.Module, *args, **kwargs):
+        if self.state_manager._current_context is None:
+            self.state_manager.set_context("inference")
+        state: MagCacheState = self.state_manager.get_state()
+        video, audio = _streams_from_args(args, kwargs)
+
+        if not state.should_compute:
+            if self.is_tail:
+                _advance(state, self.config, self.num_steps)
+            return _pack_streams(video, audio)
+
+        output = self.fn_ref.original_forward(*args, **kwargs)
+        if self.is_tail:
+            input_video, input_audio = state.head_block_input
+            state.previous_residual = _residual(output, input_video, input_audio)
+            _advance(state, self.config, self.num_steps)
+        return output
+
+    def reset_state(self, module: nn.Module):
+        self.state_manager.reset()
+        return module
+
+
+def _apply_kandinsky6_mag_cache(module: nn.Module, config: MagCacheConfig) -> None:
+    blocks = getattr(module, "visual_transformer_blocks", None)
+    if not isinstance(blocks, nn.ModuleList) or len(blocks) == 0:
+        raise ValueError("K6 MagCache requires a non-empty transformer.visual_transformer_blocks ModuleList")
+
+    registry = HookRegistry.check_if_exists_or_initialize(module)
+    registry.remove_hook(_HEAD_HOOK, recurse=True)
+    registry.remove_hook(_BLOCK_HOOK, recurse=True)
+    state_manager = StateManager(MagCacheState, (), {})
+    # K6 stores conditional and unconditional coefficients interleaved. The
+    # Diffusers pipeline sets separate cache contexts for the two CFG passes.
+    num_steps = config.num_inference_steps // 2
+
+    head_registry = HookRegistry.check_if_exists_or_initialize(blocks[0])
+    head_registry.register_hook(
+        _Kandinsky6MagCacheHeadHook(state_manager, config, num_steps),
+        _HEAD_HOOK,
+    )
+    for block in blocks[1:-1]:
+        block_registry = HookRegistry.check_if_exists_or_initialize(block)
+        block_registry.register_hook(
+            _Kandinsky6MagCacheBlockHook(state_manager, config, num_steps, is_tail=False),
+            _BLOCK_HOOK,
+        )
+    if len(blocks) > 1:
+        tail_registry = HookRegistry.check_if_exists_or_initialize(blocks[-1])
+        tail_registry.register_hook(
+            _Kandinsky6MagCacheBlockHook(state_manager, config, num_steps, is_tail=True),
+            _BLOCK_HOOK,
+        )
+
+
+class Kandinsky6MagCacheMixin(CacheMixin):
+    """Expose Diffusers' cache API for K6's dual-stream visual blocks."""
+
+    def enable_cache(self, config) -> None:
+        if not isinstance(config, MagCacheConfig):
+            return super().enable_cache(config)
+        if self.is_cache_enabled:
+            raise ValueError(f"Caching has already been enabled with {type(self._cache_config)}")
+        if config.num_inference_steps % 2 != 0:
+            raise ValueError(
+                "K6 MagCacheConfig.num_inference_steps must count interleaved CFG forwards (an even number)"
+            )
+        _apply_kandinsky6_mag_cache(self, config)
+        self._cache_config = config
+
+    def disable_cache(self) -> None:
+        if not isinstance(self._cache_config, MagCacheConfig):
+            return super().disable_cache()
+        registry = HookRegistry.check_if_exists_or_initialize(self)
+        registry.remove_hook(_HEAD_HOOK, recurse=True)
+        registry.remove_hook(_BLOCK_HOOK, recurse=True)
+        self._cache_config = None
+
+
+"""Diffusers-style K6 transformer components for the source port.
+
+The assembler inlines this module after the portable attention, RoPE, and
+tensor helpers.  The classes use the same inner-module vocabulary as the
+Diffusers Kandinsky5 transformer (for example ``in_layer``, ``modulation``,
+``self_attention`` and ``feed_forward``).  Checkpoint conversion maps the
+native K6 names to this public Diffusers layout.
+"""
+
+
+_MASKED_ATTENTION_BACKENDS = {
+    "flash": "flash_varlen",
+    "_flash_3": "_flash_varlen_3",
+    "sage": "sage_varlen",
+    "native": "native",
+}
+
+
+class Kandinsky6TimeEmbeddings(nn.Module):
+    """Sinusoidal timestep embedding with a K6-compatible parameter layout."""
+
+    def __init__(self, model_dim: int, time_dim: int, max_period: float = 10000.0):
+        super().__init__()
+        if model_dim % 2:
+            raise ValueError("model_dim must be even")
+        self.register_buffer("freqs", get_freqs(model_dim // 2, max_period), persistent=False)
+        self.in_layer = nn.Linear(model_dim, time_dim)
+        self.activation = nn.SiLU()
+        self.out_layer = nn.Linear(time_dim, time_dim)
+
+    def forward(self, time: Tensor) -> Tensor:
+        freqs = self.freqs.to(device=time.device, dtype=torch.float32)
+        args = torch.outer(time.float(), freqs)
+        embed = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        h = functional.linear(embed, self.in_layer.weight.float(), self.in_layer.bias.float())
+        out = functional.linear(self.activation(h), self.out_layer.weight.float(), self.out_layer.bias.float())
+        return out.to(dtype=self.out_layer.weight.dtype)
+
+
+class Kandinsky6TextEmbeddings(nn.Module):
+    """Text projection and normalization used by K6 text branches."""
+
+    def __init__(self, text_dim: int, model_dim: int):
+        super().__init__()
+        self.in_layer = nn.Linear(text_dim, model_dim)
+        self.norm = nn.LayerNorm(model_dim, elementwise_affine=True)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.in_layer(x.to(dtype=self.in_layer.weight.dtype))
+        return self.norm(x).to(dtype=x.dtype)
+
+
+class Kandinsky6VisualEmbeddings(nn.Module):
+    """Patch projection for ``[T,H,W,C]`` or ``[B,T,H,W,C]`` visual tokens."""
+
+    def __init__(self, visual_dim: int, model_dim: int, patch_size: tuple[int, int, int]):
+        super().__init__()
+        self.patch_size = patch_size
+        self.in_layer = nn.Linear(math.prod(patch_size) * visual_dim, model_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        batched = bool(x.ndim == 5)
+        offset = 1 if batched else 0
+        if not batched and x.ndim != 4:
+            raise ValueError("visual input must have shape (T,H,W,C) or (B,T,H,W,C)")
+
+        shape = x.shape
+        duration, height, width, channels = shape[offset:]
+        p_t, p_h, p_w = self.patch_size
+        if batched:
+            x = (
+                x.view(
+                    shape[0],
+                    duration // p_t,
+                    p_t,
+                    height // p_h,
+                    p_h,
+                    width // p_w,
+                    p_w,
+                    channels,
+                )
+                .permute(0, 1, 3, 5, 2, 4, 6, 7)
+                .flatten(4, 7)
+            )
+        else:
+            x = (
+                x.view(duration // p_t, p_t, height // p_h, p_h, width // p_w, p_w, channels)
+                .permute(0, 2, 4, 1, 3, 5, 6)
+                .flatten(3, 6)
+            )
+        return self.in_layer(x.to(dtype=self.in_layer.weight.dtype))
+
+
+class Kandinsky6Modulation(nn.Module):
+    """Zero-initialized AdaLN modulation projection."""
+
+    def __init__(self, time_dim: int, model_dim: int, num_params: int):
+        super().__init__()
+        self.activation = nn.SiLU()
+        self.out_layer = nn.Linear(time_dim, num_params * model_dim)
+        nn.init.zeros_(self.out_layer.weight)
+        nn.init.zeros_(self.out_layer.bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        out = functional.linear(self.activation(x.float()), self.out_layer.weight.float(), self.out_layer.bias.float())
+        return out.to(dtype=x.dtype)
+
+
+class Kandinsky6FeedForward(nn.Module):
+    """K6 bias-free GELU feed-forward network."""
+
+    def __init__(self, dim: int, ff_dim: int):
+        super().__init__()
+        self.in_layer = nn.Linear(dim, ff_dim, bias=False)
+        self.activation = nn.GELU()
+        self.out_layer = nn.Linear(ff_dim, dim, bias=False)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.out_layer(self.activation(self.in_layer(x)))
+
+
+class Kandinsky6AttnProcessor:
+    """Diffusers attention-processor boundary for K6 QKV projections."""
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __init__(self, attention_backend=None, parallel_config=None):
+        if not hasattr(functional, "scaled_dot_product_attention"):
+            raise ImportError(f"{self.__class__.__name__} requires PyTorch 2.0 or newer.")
+        self._masked = False
+        self._attention_backend = attention_backend
+        self._parallel_config = parallel_config
+
+    @property
+    def _attention_backend(self):
+        return self.__attention_backend
+
+    @_attention_backend.setter
+    def _attention_backend(self, backend):
+        if self._masked and backend is not None:
+            name = getattr(backend, "value", backend).lower()
+            backend = _MASKED_ATTENTION_BACKENDS.get(name, name)
+            backend = AttentionBackendName(backend)
+        self.__attention_backend = backend
+
+    def __call__(
+        self,
+        attn: Kandinsky6Attention,
+        hidden_states: Tensor,
+        encoder_hidden_states: Tensor | None = None,
+        rotary_emb: Tensor | None = None,
+        rotary_emb_kv: Tensor | None = None,
+        sparse_params: dict[str, Any] | None = None,
+        attn_mask: Tensor | None = None,
+    ) -> Tensor:
+        query = attn.to_query(hidden_states)
+        if encoder_hidden_states is None:
+            key = attn.to_key(hidden_states)
+            value = attn.to_value(hidden_states)
+        else:
+            key = attn.to_key(encoder_hidden_states)
+            value = attn.to_value(encoder_hidden_states)
+
+        query = query.reshape(*query.shape[:-1], attn.num_heads, -1)
+        key = key.reshape(*key.shape[:-1], attn.num_heads, -1)
+        value = value.reshape(*value.shape[:-1], attn.num_heads, -1)
+        query = attn.query_norm(query)
+        key = attn.key_norm(key)
+
+        if rotary_emb is not None:
+            query = apply_rotary(query, rotary_emb).to(dtype=query.dtype)
+        if rotary_emb_kv is not None:
+            key = apply_rotary(key, rotary_emb_kv).to(dtype=key.dtype)
+
+        # Diffusers attention kernels use [B,S,H,D]. Text and unbatched
+        # cross-attention conditions are promoted to a singleton batch while
+        # packed visual streams already carry their batch dimension.
+        query_was_batched = query.dim() == 4
+        if not query_was_batched:
+            query, key, value = query.unsqueeze(0), key.unsqueeze(0), value.unsqueeze(0)
+        elif key.dim() == 3:
+            key, value = key.unsqueeze(0), value.unsqueeze(0)
+
+        if sparse_params is not None:
+            q = query.transpose(1, 2).contiguous()
+            k = key.transpose(1, 2).contiguous()
+            v = value.transpose(1, 2).contiguous()
+            block_mask = nabla_block_mask(
+                q,
+                k,
+                sparse_params["sta_mask"],
+                thr=sparse_params["P"],
+            )
+            if not _CAN_USE_FLEX_ATTN:
+                raise ValueError("Nabla attention requires PyTorch 2.5 or newer")
+            output = (
+                torch.nn.attention.flex_attention.flex_attention(
+                    q,
+                    k,
+                    v,
+                    block_mask=block_mask,
+                )
+                .transpose(1, 2)
+                .contiguous()
+            )
+        else:
+            output = dispatch_attention_fn(
+                query,
+                key,
+                value,
+                attn_mask=attn_mask,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
+            )
+
+        if not query_was_batched:
+            output = output[0]
+        return attn.out_layer(output.flatten(-2, -1))
+
+
+class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
+    """K6 attention with the Diffusers ``set_processor`` contract."""
+
+    _default_processor_cls = Kandinsky6AttnProcessor
+    _available_processors = [Kandinsky6AttnProcessor]
+
+    def __init__(
+        self,
+        num_channels: int,
+        head_dim: int,
+        kv_dim: int | None = None,
+        text_token_padding: bool = False,
+        visual: bool = False,
+        processor: Kandinsky6AttnProcessor | None = None,
+    ):
+        super().__init__()
+        if num_channels % head_dim:
+            raise ValueError("num_channels must be divisible by head_dim")
+        kv_dim = kv_dim or num_channels
+        self.num_heads = num_channels // head_dim
+        self.to_query = nn.Linear(num_channels, num_channels)
+        self.to_key = nn.Linear(kv_dim, num_channels)
+        self.to_value = nn.Linear(kv_dim, num_channels)
+        self.query_norm = nn.RMSNorm(head_dim)
+        self.key_norm = nn.RMSNorm(head_dim)
+        self.out_layer = nn.Linear(num_channels, num_channels)
+        self.visual = visual
+        self.text_token_padding = text_token_padding
+        self.set_processor(processor or self._default_processor_cls())
+        if self.text_token_padding:
+            self.processor._masked = True
+            self.processor._attention_backend = AttentionBackendName.NATIVE
+
+    def forward(
+        self,
+        hidden_states: Tensor,
+        encoder_hidden_states: Tensor | None = None,
+        attn_mask: Tensor | None = None,
+        rotary_emb: Tensor | None = None,
+        sparse_params: dict[str, Any] | None = None,
+        rope_q: Tensor | None = None,
+        rope_kv: Tensor | None = None,
+        **kwargs: Any,
+    ) -> Tensor:
+        # Native K6 blocks pass ``(hidden, rope, mask_or_sparse)`` for
+        # self-attention. Keep that call shape while exposing Diffusers'
+        # encoder_hidden_states/rotary_emb keyword boundary.
+        if attn_mask is None:
+            attn_mask = kwargs.get("attention_mask")
+        rotary_emb = rope_q if rope_q is not None else rotary_emb
+        rotary_emb_kv = rope_kv if rope_kv is not None else rotary_emb
+        return self.processor(
+            self,
+            hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            rotary_emb=rotary_emb,
+            rotary_emb_kv=rotary_emb_kv,
+            sparse_params=sparse_params,
+            attn_mask=attn_mask,
+        )
+
+
+class Kandinsky6OutLayer(nn.Module):
+    """Projects visual hidden states back to packed latent patches."""
+
+    def __init__(self, model_dim: int, time_dim: int, visual_dim: int, patch_size: tuple[int, int, int]):
+        super().__init__()
+        self.patch_size = patch_size
+        self.modulation = Kandinsky6Modulation(time_dim, model_dim, 2)
+        self.norm = nn.LayerNorm(model_dim, elementwise_affine=False)
+        self.out_layer = nn.Linear(model_dim, math.prod(patch_size) * visual_dim)
+
+    def forward(self, visual_embed: Tensor, time_embed: Tensor) -> Tensor:
+        shift, scale = torch.chunk(self.modulation(time_embed), 2, dim=-1)
+        condition_shape = (scale.shape[0],) + (1,) * (visual_embed.ndim - 2) + (scale.shape[-1],)
+        x = apply_scale_shift_norm(
+            self.norm,
+            visual_embed,
+            scale.reshape(condition_shape),
+            shift.reshape(condition_shape),
+        )
+        x = self.out_layer(x)
+
+        # batch_dim variant
+        if x.ndim == 5:
+            batch, duration, height, width = x.shape[:4]
+            p_t, p_h, p_w = self.patch_size
+            return (
+                x.view(batch, duration, height, width, -1, p_t, p_h, p_w)
+                .permute(0, 1, 5, 2, 6, 3, 7, 4)
+                .flatten(1, 2)
+                .flatten(2, 3)
+                .flatten(3, 4)
+            )
+
+        duration, height, width, _ = x.shape
+        p_t, p_h, p_w = self.patch_size
+        return (
+            x.view(duration, height, width, -1, p_t, p_h, p_w)
+            .permute(0, 4, 1, 5, 2, 6, 3)
+            .flatten(0, 1)
+            .flatten(1, 2)
+            .flatten(2, 3)
+        )
+
+
+class Kandinsky6OutLayerAudio(nn.Module):
+    """Projects audio hidden states back to audio latent channels."""
+
+    def __init__(self, model_dim: int, time_dim: int, audio_dim: int):
+        super().__init__()
+        self.modulation = Kandinsky6Modulation(time_dim, model_dim, 2)
+        self.norm = nn.LayerNorm(model_dim, elementwise_affine=False)
+        self.out_layer = nn.Linear(model_dim, audio_dim)
+
+    def forward(self, audio_embed: Tensor, time_embed: Tensor) -> Tensor:
+        shift, scale = torch.chunk(self.modulation(time_embed), 2, dim=-1)
+        x = apply_scale_shift_norm(self.norm, audio_embed, scale, shift)
+        x = self.norm(x)
+        return self.out_layer(x)
+
+
+class Kandinsky6TransformerEncoderBlock(nn.Module):
+    """Text self-attention + feed-forward block in Diffusers style."""
+
+    def __init__(
+        self,
+        model_dim: int,
+        time_dim: int,
+        ff_dim: int,
+        head_dim: int,
+        text_token_padding: bool = False,
+    ):
+        super().__init__()
+        self.text_modulation = Kandinsky6Modulation(time_dim, model_dim, 6)
+        self.self_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
+        self.self_attention = Kandinsky6Attention(model_dim, head_dim, text_token_padding=text_token_padding)
+        self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
+        self.feed_forward = Kandinsky6FeedForward(model_dim, ff_dim)
+
+    def forward(self, x: Tensor, time_embed: Tensor, rope: Tensor, attn_mask: Tensor | None = None) -> Tensor:
+        sa_params, ff_params = torch.chunk(self.text_modulation(time_embed), 2, dim=-1)
+        shift, scale, gate = torch.chunk(sa_params, 3, dim=-1)
+        x = apply_gate_sum(
+            x,
+            self.self_attention(
+                apply_scale_shift_norm(self.self_attention_norm, x, scale, shift),
+                rotary_emb=rope,
+                attn_mask=attn_mask,
+            ),
+            gate,
+        )
+        shift, scale, gate = torch.chunk(ff_params, 3, dim=-1)
+        return apply_gate_sum(
+            x, self.feed_forward(apply_scale_shift_norm(self.feed_forward_norm, x, scale, shift)), gate
+        )
+
+
+class Kandinsky6TransformerDecoderBlock(nn.Module):
+    """Visual self-attention, text cross-attention, and feed-forward block."""
+
+    def __init__(
+        self,
+        model_dim: int,
+        time_dim: int,
+        ff_dim: int,
+        head_dim: int,
+        text_token_padding: bool = False,
+    ):
+        super().__init__()
+        self.visual_modulation = Kandinsky6Modulation(time_dim, model_dim, 9)
+        self.self_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
+        self.self_attention = Kandinsky6Attention(model_dim, head_dim, visual=True)
+        self.cross_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
+        self.cross_attention = Kandinsky6Attention(
+            model_dim,
+            head_dim,
+            kv_dim=model_dim,
+            text_token_padding=text_token_padding,
+        )
+        self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
+        self.feed_forward = Kandinsky6FeedForward(model_dim, ff_dim)
+
+    def forward(
+        self, vis: Tensor, text: Tensor, time_embed: Tensor, rope: Tensor, sparse_params: dict | None, attn_mask=None
+    ) -> Tensor:
+        sa_params, ca_params, ff_params = torch.chunk(self.visual_modulation(time_embed), 3, dim=-1)
+        shift, scale, gate = torch.chunk(sa_params, 3, dim=-1)
+        vis = apply_gate_sum(
+            vis,
+            self.self_attention(
+                apply_scale_shift_norm(self.self_attention_norm, vis, scale, shift),
+                rotary_emb=rope,
+                sparse_params=sparse_params,
+            ),
+            gate,
+        )
+        shift, scale, gate = torch.chunk(ca_params, 3, dim=-1)
+        vis = apply_gate_sum(
+            vis,
+            self.cross_attention(
+                apply_scale_shift_norm(self.cross_attention_norm, vis, scale, shift),
+                encoder_hidden_states=text,
+                attn_mask=attn_mask,
+            ),
+            gate,
+        )
+        shift, scale, gate = torch.chunk(ff_params, 3, dim=-1)
+        return apply_gate_sum(
+            vis, self.feed_forward(apply_scale_shift_norm(self.feed_forward_norm, vis, scale, shift)), gate
+        )
+
+
+class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
+    """Fused K6 video/audio block with cross-modal attention."""
+
+    def __init__(
+        self,
+        model_dim: int,
+        time_dim: int,
+        ff_dim: int,
+        head_dim: int,
+        model_dim_a: int,
+        time_dim_a: int,
+        ff_dim_a: int,
+        head_dim_a: int,
+        text_token_padding: bool = False,
+        ca_rope: bool = False,
+        cross_gates: bool = False,
+        fix_modulation: bool = False,
+    ):
+        super().__init__()
+        self.videoT = Kandinsky6TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim, text_token_padding)
+        self.audioT = Kandinsky6TransformerDecoderBlock(
+            model_dim_a, time_dim_a, ff_dim_a, head_dim_a, text_token_padding
+        )
+        self.va_cross_attention = Kandinsky6Attention(
+            model_dim,
+            head_dim,
+            kv_dim=model_dim_a,
+        )
+        self.av_cross_attention = Kandinsky6Attention(
+            model_dim_a,
+            head_dim_a,
+            kv_dim=model_dim,
+        )
+        self.va_modulation = Kandinsky6Modulation(
+            time_dim,
+            model_dim if not cross_gates else model_dim * 2 + model_dim_a,
+            1 if cross_gates else 3,
+        )
+        self.av_modulation = Kandinsky6Modulation(
+            time_dim_a,
+            model_dim_a if not cross_gates else model_dim_a * 2 + model_dim,
+            1 if cross_gates else 3,
+        )
+        self.va_normalization = nn.LayerNorm(model_dim, elementwise_affine=False)
+        self.av_normalization = nn.LayerNorm(model_dim_a, elementwise_affine=False)
+        self.ca_rope = ca_rope
+        self.cross_gates = cross_gates
+        self.fix_modulation = fix_modulation
+        self.model_dim = model_dim
+        self.model_dim_a = model_dim_a
+
+    def forward(
+        self,
+        vis: Tensor | None,
+        aud: Tensor | None,
+        text_v: Tensor,
+        text_a: Tensor,
+        time_embed: tuple[Tensor, Tensor],
+        vis_rope: Tensor | None,
+        aud_rope: Tensor | None,
+        sparse_params: dict | None,
+        attn_mask=None,
+        modality_mask=None,
+        av_gate_scale: float = 1.0,
+        va_gate_scale: float = 1.0,
+    ) -> tuple[Tensor | None, Tensor | None]:
+        fake_audio = modality_mask[0] if modality_mask is not None else 0
+        fake_video = modality_mask[1] if modality_mask is not None else 0
+        t_v, t_a = time_embed
+        if vis is not None:
+            sa_p, ca_p, ff_p = torch.chunk(self.videoT.visual_modulation(t_v), 3, dim=-1)
+            shift, scale, gate = torch.chunk(sa_p, 3, dim=-1)
+            vis = apply_gate_sum(
+                vis,
+                self.videoT.self_attention(
+                    apply_scale_shift_norm(self.videoT.self_attention_norm, vis, scale, shift),
+                    rotary_emb=vis_rope,
+                    sparse_params=sparse_params,
+                ),
+                gate,
+            ).type_as(vis)
+            shift, scale, gate_v = torch.chunk(ca_p, 3, dim=-1)
+            vis_pre_ca = apply_scale_shift_norm(self.videoT.cross_attention_norm, vis, scale, shift)
+            vis_out_t = self.videoT.cross_attention(
+                vis_pre_ca,
+                encoder_hidden_states=text_v,
+                attn_mask=attn_mask,
+            )
+
+        if aud is not None:
+            sa_p, ca_p, ff_p_a = torch.chunk(self.audioT.visual_modulation(t_a), 3, dim=-1)
+            shift, scale, gate = torch.chunk(sa_p, 3, dim=-1)
+            aud = apply_gate_sum(
+                aud,
+                self.audioT.self_attention(
+                    apply_scale_shift_norm(self.audioT.self_attention_norm, aud, scale, shift),
+                    rotary_emb=aud_rope,
+                ),
+                gate,
+            ).type_as(aud)
+            shift, scale, gate_a = torch.chunk(ca_p, 3, dim=-1)
+            aud_pre_ca = apply_scale_shift_norm(self.audioT.cross_attention_norm, aud, scale, shift)
+            aud_out_t = self.audioT.cross_attention(
+                aud_pre_ca,
+                encoder_hidden_states=text_a,
+                attn_mask=attn_mask,
+            )
+            aud = apply_gate_sum(aud, aud_out_t, gate_a).type_as(aud)
+
+            if vis is not None:
+                t_va_mod = t_a if not self.fix_modulation else t_v
+                t_av_mod = t_v if not self.fix_modulation else t_a
+                va_params = self.va_modulation(t_va_mod)
+                av_params = self.av_modulation(t_av_mod)
+                if self.cross_gates:
+                    va_shift, va_scale, va_gate = torch.split(
+                        va_params, [self.model_dim, self.model_dim, self.model_dim_a], dim=-1
+                    )
+                    av_shift, av_scale, av_gate = torch.split(
+                        av_params, [self.model_dim_a, self.model_dim_a, self.model_dim], dim=-1
+                    )
+                else:
+                    va_shift, va_scale, va_gate = torch.chunk(va_params, 3, dim=-1)
+                    av_shift, av_scale, av_gate = torch.chunk(av_params, 3, dim=-1)
+                vis = apply_gate_sum(vis, vis_out_t, gate_v).type_as(vis)
+                vis_for_va = apply_scale_shift_norm(self.va_normalization, vis, va_scale, va_shift)
+                aud_for_av = apply_scale_shift_norm(self.av_normalization, aud, av_scale, av_shift)
+                rq_v = vis_rope if self.ca_rope else None
+                rk_a = aud_rope if self.ca_rope else None
+                vis_from_aud = (
+                    self.va_cross_attention(
+                        vis_for_va,
+                        encoder_hidden_states=aud_pre_ca,
+                        rope_q=rq_v,
+                        rope_kv=rk_a,
+                    )
+                    * (1 - fake_audio)
+                    * (1 - fake_video)
+                )
+                aud_from_vis = (
+                    self.av_cross_attention(
+                        aud_for_av,
+                        encoder_hidden_states=vis_pre_ca,
+                        rope_q=rk_a,
+                        rope_kv=rq_v,
+                    )
+                    * (1 - fake_audio)
+                    * (1 - fake_video)
+                )
+                vis = apply_gate_sum(
+                    vis, vis_from_aud, (va_gate if not self.cross_gates else av_gate) * va_gate_scale
+                ).type_as(vis)
+                aud = apply_gate_sum(
+                    aud, aud_from_vis, (av_gate if not self.cross_gates else va_gate) * av_gate_scale
+                ).type_as(aud)
+        elif vis is not None:
+            vis = apply_gate_sum(vis, vis_out_t, gate_v).type_as(vis)
+
+        if vis is not None:
+            shift, scale, gate = torch.chunk(ff_p, 3, dim=-1)
+            vis = apply_gate_sum(
+                vis,
+                self.videoT.feed_forward(apply_scale_shift_norm(self.videoT.feed_forward_norm, vis, scale, shift)),
+                gate,
+            ).type_as(vis)
+        if aud is not None:
+            shift, scale, gate = torch.chunk(ff_p_a, 3, dim=-1)
+            aud = apply_gate_sum(
+                aud,
+                self.audioT.feed_forward(apply_scale_shift_norm(self.audioT.feed_forward_norm, aud, scale, shift)),
+                gate,
+            ).type_as(aud)
+        return vis, aud
+
+
+class Kandinsky6RoPE1D(RoPE1D):
+    """Diffusers-exported name for the K6 one-dimensional RoPE."""
+
+
+class Kandinsky6RoPE3D(RoPE3D):
+    """Diffusers-exported name for the K6 three-dimensional RoPE."""
+
+
+class Kandinsky6Transformer3DModel(
+    Kandinsky6MagCacheMixin,
+    ModelMixin,
+    ConfigMixin,
+    PeftAdapterMixin,
+    FromOriginalModelMixin,
+    CacheMixin,
+    AttentionMixin,
+):
+    """Standalone K6 T2V/T2VA transformer with Diffusers model mixins."""
+
+    _repeated_blocks = ["Kandinsky6TransformerEncoderBlock", "Kandinsky6TransformerDecoderBlock"]
+    _keep_in_fp32_modules = ["time_embeddings", "modulation", "visual_modulation", "text_modulation"]
+    _supports_gradient_checkpointing = True
+
+    @register_to_config
+    def __init__(
+        self,
+        in_visual_dim: int = 16,
+        out_visual_dim: int = 16,
+        in_text_dim: int = 3584,
+        in_text_dim2: int = 768,
+        time_dim: int = 1024,
+        patch_size: tuple = (1, 2, 2),
+        model_dim: int = 4096,
+        ff_dim: int = 16384,
+        num_text_blocks: int = 4,
+        num_visual_blocks: int = 60,
+        axes_dims: tuple = (32, 48, 48),
+        visual_cond: bool = True,
+        is_multimodal: bool = False,
+        in_audio_dim: int = 20,
+        out_audio_dim: int = 20,
+        model_dim_a: int | None = None,
+        time_dim_a: int | None = None,
+        ff_dim_a: int | None = None,
+        axes_dims_a: tuple | None = None,
+        audio_freqs_scaling: float = 1.0,
+        text_token_padding: bool = False,
+        scale_factor: tuple | list[float] = (1.0, 2.0, 2.0),
+        ca_rope: bool = False,
+        cross_gates: bool = False,
+        fix_modulation: bool = False,
+        visual_token_type_num_embeddings: int = 0,
+        magcache: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__()
+        self.patch_size = patch_size
+        self.visual_cond = visual_cond
+        self.is_multimodal = is_multimodal
+        self.in_visual_dim = in_visual_dim
+        self.in_audio_dim = in_audio_dim
+        self.text_token_padding = text_token_padding
+        self.scale_factor = tuple(float(value) for value in scale_factor)
+        self.visual_token_type_num_embeddings = int(visual_token_type_num_embeddings or 0)
+        self._text_proj_cache: dict[tuple, object] = {}
+        head_dim = sum(axes_dims)
+        model_dim_a = model_dim_a or model_dim
+        time_dim_a = time_dim_a or time_dim
+        ff_dim_a = ff_dim_a or ff_dim
+        axes_dims_a = axes_dims_a or axes_dims
+        head_dim_a = sum(axes_dims_a)
+
+        vis_in_dim = (2 * in_visual_dim + 1) if visual_cond else in_visual_dim
+        self.visual_embeddings = Kandinsky6VisualEmbeddings(vis_in_dim, model_dim, patch_size)
+        if self.visual_token_type_num_embeddings > 0:
+            self.visual_token_type_embeddings = nn.Embedding(self.visual_token_type_num_embeddings, model_dim)
+        self.visual_rope_embeddings = Kandinsky6RoPE3D(axes_dims)
+        self.out_layer = Kandinsky6OutLayer(model_dim, time_dim, out_visual_dim, patch_size)
+
+        if not is_multimodal:
+            self.time_embeddings = Kandinsky6TimeEmbeddings(model_dim, time_dim)
+            self.text_embeddings = Kandinsky6TextEmbeddings(in_text_dim, model_dim)
+            self.pooled_text_embeddings = Kandinsky6TextEmbeddings(in_text_dim2, time_dim)
+            self.text_rope_embeddings = Kandinsky6RoPE1D(head_dim)
+            self.text_transformer_blocks = nn.ModuleList(
+                [
+                    Kandinsky6TransformerEncoderBlock(model_dim, time_dim, ff_dim, head_dim, text_token_padding)
+                    for _ in range(num_text_blocks)
+                ]
+            )
+            self.visual_transformer_blocks = nn.ModuleList(
+                [
+                    Kandinsky6TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim, text_token_padding)
+                    for _ in range(num_visual_blocks)
+                ]
+            )
+        else:
+            self.audio_embeddings = Kandinsky6TextEmbeddings(in_audio_dim, model_dim_a)
+            self.audio_rope_embeddings = Kandinsky6RoPE1D(head_dim_a, freqs_scaling=audio_freqs_scaling)
+            self.audio_out_layer = Kandinsky6OutLayerAudio(model_dim_a, time_dim_a, out_audio_dim)
+            for prefix, md, td, fd, hd in (
+                ("video", model_dim, time_dim, ff_dim, head_dim),
+                ("audio", model_dim_a, time_dim_a, ff_dim_a, head_dim_a),
+            ):
+                setattr(self, f"{prefix}_time_embeddings", Kandinsky6TimeEmbeddings(md, td))
+                setattr(self, f"{prefix}_text_embeddings", Kandinsky6TextEmbeddings(in_text_dim, md))
+                setattr(self, f"{prefix}_pooled_text_embeddings", Kandinsky6TextEmbeddings(in_text_dim2, td))
+                setattr(self, f"{prefix}_text_rope_embeddings", Kandinsky6RoPE1D(hd))
+                setattr(
+                    self,
+                    f"{prefix}_text_transformer_blocks",
+                    nn.ModuleList(
+                        [
+                            Kandinsky6TransformerEncoderBlock(md, td, fd, hd, text_token_padding)
+                            for _ in range(num_text_blocks)
+                        ]
+                    ),
+                )
+            self.visual_transformer_blocks = nn.ModuleList(
+                [
+                    Kandinsky6FusedTransformerDecoderBlock(
+                        model_dim,
+                        time_dim,
+                        ff_dim,
+                        head_dim,
+                        model_dim_a,
+                        time_dim_a,
+                        ff_dim_a,
+                        head_dim_a,
+                        text_token_padding,
+                        ca_rope,
+                        cross_gates,
+                        fix_modulation,
+                    )
+                    for _ in range(num_visual_blocks)
+                ]
+            )
+
+    def clear_text_proj_cache(self) -> None:
+        self._text_proj_cache.clear()
+
+    def _project_pooled(self, prefix: str | None, pooled: Tensor) -> Tensor:
+        key = ("pe", prefix, pooled.data_ptr(), tuple(pooled.shape))
+        hit = self._text_proj_cache.get(key)
+        if hit is not None:
+            return hit  # type: ignore[return-value]
+        pe = (
+            self.pooled_text_embeddings(pooled)
+            if prefix is None
+            else getattr(self, f"{prefix}_pooled_text_embeddings")(pooled)
+        )
+        self._text_proj_cache[key] = pe
+        return pe
+
+    def _project_text_tokens(self, prefix: str | None, text_embed: Tensor, pooled: Tensor) -> tuple[Tensor, Tensor]:
+        key = ("te", prefix, text_embed.data_ptr(), pooled.data_ptr(), tuple(text_embed.shape), tuple(pooled.shape))
+        hit = self._text_proj_cache.get(key)
+        if hit is not None:
+            return hit  # type: ignore[return-value]
+        te = (
+            self.text_embeddings(text_embed)
+            if prefix is None
+            else getattr(self, f"{prefix}_text_embeddings")(text_embed)
+        )
+        pe = self._project_pooled(prefix, pooled)
+        self._text_proj_cache[key] = (te, pe)
+        return te, pe
+
+    def _time_embed(self, prefix: str | None, time: Tensor, pooled_proj: Tensor) -> Tensor:
+        return (
+            self.time_embeddings(time) if prefix is None else getattr(self, f"{prefix}_time_embeddings")(time)
+        ) + pooled_proj
+
+    @staticmethod
+    def _normalize_attn_mask(attn_mask: Tensor | None) -> Tensor | None:
+        if attn_mask is None:
+            return None
+        return attn_mask.unsqueeze(0) if attn_mask.dim() == 1 else attn_mask
+
+    def _run_text_blocks(
+        self, prefix: str | None, te: Tensor, tm: Tensor, text_rope: Tensor, attn_mask: Tensor | None = None
+    ) -> Tensor:
+        blocks = self.text_transformer_blocks if prefix is None else getattr(self, f"{prefix}_text_transformer_blocks")
+        for block in blocks:
+            te = block(te, tm, text_rope, attn_mask)
+        return te
+
+    def _encode_text(
+        self,
+        prefix: str,
+        text_embed: Tensor,
+        pooled: Tensor,
+        time: Tensor,
+        text_rope: Tensor,
+        attn_mask: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor]:
+        te, pe = self._project_text_tokens(prefix, text_embed, pooled)
+        tm = self._time_embed(prefix, time, pe)
+        return self._run_text_blocks(prefix, te, tm, text_rope, attn_mask), tm
+
+    def _encode_t2v(
+        self, text_embed: Tensor, pooled: Tensor, time: Tensor, text_rope: Tensor, attn_mask: Tensor | None = None
+    ) -> tuple[Tensor, Tensor]:
+        te, pe = self._project_text_tokens(None, text_embed, pooled)
+        tm = self._time_embed(None, time, pe)
+        return self._run_text_blocks(None, te, tm, text_rope, attn_mask), tm
+
+    def _time_only(self, prefix: str | None, pooled: Tensor, time: Tensor) -> Tensor:
+        return self._time_embed(prefix, time, self._project_pooled(prefix, pooled))
+
+    def _embed_visual(
+        self,
+        x_video: Tensor,
+        visual_rope: Tensor,
+        sparse_params: dict | None,
+        *,
+        apply_fractal: bool = True,
+        visual_token_type_ids: Tensor | None = None,
+    ) -> tuple[Tensor, tuple, Tensor]:
+        if x_video.ndim == 4:
+            x_video = x_video.unsqueeze(0)
+
+        visual_embed = self.visual_embeddings(x_video)
+        if hasattr(self, "visual_token_type_embeddings") and visual_token_type_ids is not None:
+            if visual_token_type_ids.ndim == 1:
+                visual_token_type_ids = visual_token_type_ids.unsqueeze(0)
+            token_types = self.visual_token_type_embeddings(visual_token_type_ids.to(device=visual_embed.device))
+            token_types = token_types[:, :, None, None, :]
+            visual_embed = visual_embed + token_types
+        visual_shape = visual_embed.shape[-4:-1]
+        to_fractal = sparse_params["to_fractal"] if sparse_params and apply_fractal else False
+        if to_fractal:
+            visual_embed = _local_patch(visual_embed, visual_shape, (1, 8, 8), dim=1).flatten(1, 2)
+            visual_rope = _local_patch(visual_rope, visual_shape, (1, 8, 8), dim=0).flatten(0, 1)
+        else:
+            visual_embed = visual_embed.flatten(1, 3)
+            visual_rope = visual_rope.flatten(0, 2)
+        return visual_embed, visual_shape, visual_rope
+
+    def _embed_audio(self, x_audio: Tensor, audio_rope: Tensor) -> tuple[Tensor, Tensor]:
+        if x_audio.ndim == 2:
+            x_audio = x_audio.unsqueeze(0)
+        embed = self.audio_embeddings(x_audio)
+        return embed, audio_rope
+
+    def _run_visual_blocks_single(
+        self,
+        vis_embed: Tensor | None,
+        aud_embed: Tensor | None,
+        te: Tensor,
+        tm: Tensor,
+        vis_rope: Tensor | None,
+        aud_rope: Tensor | None,
+        sparse_params: dict | None,
+        attn_mask: Tensor | None = None,
+    ) -> tuple[Tensor | None, Tensor | None]:
+        for block in self.visual_transformer_blocks:
+            if self.is_multimodal:
+                if vis_embed is not None and aud_embed is None:
+                    vis_embed, _ = block(vis_embed, None, te, te, (tm, tm), vis_rope, None, sparse_params, attn_mask)
+                elif aud_embed is not None and vis_embed is None:
+                    _, aud_embed = block(None, aud_embed, te, te, (tm, tm), None, aud_rope, None, attn_mask)
+                else:
+                    raise RuntimeError("single-modality fused path expects exactly one of video/audio")
+            elif vis_embed is not None:
+                vis_embed = block(vis_embed, te, tm, vis_rope, sparse_params, attn_mask)
+            else:
+                aud_embed = block(aud_embed, te, tm, aud_rope, None, attn_mask)
+        return vis_embed, aud_embed
+
+    def _run_visual_blocks_fused(
+        self,
+        vis_embed: Tensor,
+        aud_embed: Tensor,
+        video_te: Tensor,
+        audio_te: Tensor,
+        video_tm: Tensor,
+        audio_tm: Tensor,
+        vis_rope: Tensor,
+        aud_rope: Tensor,
+        sparse_params: dict | None,
+        attn_mask: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor]:
+        for block in self.visual_transformer_blocks:
+            vis_embed, aud_embed = block(
+                vis_embed,
+                aud_embed,
+                video_te,
+                audio_te,
+                (video_tm, audio_tm),
+                vis_rope,
+                aud_rope,
+                sparse_params,
+                attn_mask,
+            )
+        return vis_embed, aud_embed
+
+    def _project_video(self, vis_embed: Tensor, vis_shape: tuple, tm: Tensor, sparse_params: dict | None) -> Tensor:
+        if sparse_params and sparse_params.get("to_fractal"):
+            vis_embed = _local_merge(
+                vis_embed.reshape(vis_embed.shape[0], -1, 64, vis_embed.shape[-1]),
+                vis_shape,
+                (1, 8, 8),
+                dim=1,
+            )
+        else:
+            vis_embed = vis_embed.reshape(-1, *vis_shape, vis_embed.shape[-1])
+        return self.out_layer(vis_embed, tm)
+
+    def _project_audio(self, aud_embed: Tensor, tm: Tensor) -> Tensor:
+        return self.audio_out_layer(aud_embed, tm)
+
+    def _project_fused(
+        self, vis_embed: Tensor, aud_embed: Tensor, vis_shape: tuple, video_tm: Tensor, audio_tm: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        video = self.out_layer(vis_embed.reshape(-1, *vis_shape, vis_embed.shape[-1]), video_tm)
+        return video, self.audio_out_layer(aud_embed, audio_tm)
+
+    def forward(
+        self,
+        x_video: Tensor | None = None,
+        x_audio: Tensor | None = None,
+        text_embed: Tensor | list[Tensor] | None = None,
+        pooled_text_embed: Tensor | list[Tensor] | None = None,
+        time: Tensor | list[Tensor] | None = None,
+        visual_rope: Tensor | None = None,
+        audio_rope: Tensor | None = None,
+        text_rope: Tensor | list[Tensor] | None = None,
+        sparse_params: dict | None = None,
+        attention_mask: Tensor | None = None,
+        visual_token_type_ids: Tensor | None = None,
+        return_dict: bool = False,
+        **kwargs: Any,
+    ) -> Tensor | tuple[Tensor, Tensor] | Transformer2DModelOutput:
+        if text_embed is None or pooled_text_embed is None or time is None or text_rope is None:
+            raise ValueError("text_embed, pooled_text_embed, time, and text_rope are required")
+        both = x_video is not None and x_audio is not None and self.is_multimodal
+        attn_mask = self._normalize_attn_mask(attention_mask)
+        if not both:
+            te_in = text_embed[0] if isinstance(text_embed, list) else text_embed
+            pe_in = pooled_text_embed[0] if isinstance(pooled_text_embed, list) else pooled_text_embed
+            rope_in = text_rope[0] if isinstance(text_rope, list) else text_rope
+            t_in = time[0] if isinstance(time, list) else time
+            if self.is_multimodal:
+                prefix = "audio" if x_audio is not None else "video"
+                if isinstance(text_rope, list):
+                    rope_in = text_rope[1] if prefix == "audio" else text_rope[0]
+                te, tm = self._encode_text(prefix, te_in, pe_in, t_in, rope_in, attn_mask)
+            else:
+                te, tm = self._encode_t2v(te_in, pe_in, t_in, rope_in, attn_mask)
+            if x_video is not None:
+                vis_embed, vis_shape, vis_rope = self._embed_visual(
+                    x_video, visual_rope, sparse_params, visual_token_type_ids=visual_token_type_ids
+                )
+                vis_embed, _ = self._run_visual_blocks_single(
+                    vis_embed, None, te, tm, vis_rope, None, sparse_params, attn_mask
+                )
+                result: Tensor | tuple[Tensor, Tensor] = self._project_video(vis_embed, vis_shape, tm, sparse_params)
+            else:
+                aud_embed, aud_rope = self._embed_audio(x_audio, audio_rope)
+                _, aud_embed = self._run_visual_blocks_single(None, aud_embed, te, tm, None, aud_rope, None, attn_mask)
+                result = self._project_audio(aud_embed, tm)
+        else:
+            te_v, pe_v = (
+                (text_embed[0], pooled_text_embed[0])
+                if isinstance(text_embed, list)
+                else (text_embed, pooled_text_embed)
+            )
+            te_a, pe_a = (
+                (text_embed[1], pooled_text_embed[1])
+                if isinstance(text_embed, list)
+                else (text_embed, pooled_text_embed)
+            )
+            rope_v, rope_a = (text_rope[0], text_rope[1]) if isinstance(text_rope, list) else (text_rope, text_rope)
+            t_v, t_a = (time[0], time[1]) if isinstance(time, list) else (time, time)
+            video_te, video_tm = self._encode_text("video", te_v, pe_v, t_v, rope_v, attn_mask)
+            audio_te, audio_tm = self._encode_text("audio", te_a, pe_a, t_a, rope_a, attn_mask)
+            vis_embed, vis_shape, vis_rope = self._embed_visual(
+                x_video, visual_rope, sparse_params, apply_fractal=False, visual_token_type_ids=visual_token_type_ids
+            )
+            aud_embed, aud_rope = self._embed_audio(x_audio, audio_rope)
+            vis_embed, aud_embed = self._run_visual_blocks_fused(
+                vis_embed,
+                aud_embed,
+                video_te,
+                audio_te,
+                video_tm,
+                audio_tm,
+                vis_rope,
+                aud_rope,
+                sparse_params,
+                attn_mask,
+            )
+            result = self._project_fused(vis_embed, aud_embed, vis_shape, video_tm, audio_tm)
+
+        return Transformer2DModelOutput(sample=result) if return_dict else result
+
+
+__all__ = [
+    "Kandinsky6Transformer3DModel",
+    "Kandinsky6TransformerEncoderBlock",
+    "Kandinsky6TransformerDecoderBlock",
+    "Kandinsky6FusedTransformerDecoderBlock",
+]

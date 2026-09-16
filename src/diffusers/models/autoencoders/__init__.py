@@ -6,6 +6,8 @@ from .autoencoder_kl_allegro import AutoencoderKLAllegro
 from .autoencoder_kl_cogvideox import AutoencoderKLCogVideoX
 from .autoencoder_kl_cosmos import AutoencoderKLCosmos
 from .autoencoder_kl_flux2 import AutoencoderKLFlux2
+from .autoencoder_mmaudio import MMAudioVAE
+from .autoencoder_kandinsky6_sr import Kandinsky6SRVAE
 from .autoencoder_kl_hunyuan_video import AutoencoderKLHunyuanVideo
 from .autoencoder_kl_hunyuanimage import AutoencoderKLHunyuanImage
 from .autoencoder_kl_hunyuanimage_refiner import AutoencoderKLHunyuanImageRefiner
