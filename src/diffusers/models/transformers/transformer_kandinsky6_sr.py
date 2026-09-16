@@ -19,16 +19,17 @@ from __future__ import annotations
 import dataclasses
 import math
 from collections.abc import Mapping
-from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import torch
 from ...configuration_utils import ConfigMixin, register_to_config
+from ..attention import AttentionModuleMixin
 from ..modeling_utils import ModelMixin
 from diffusers.utils import logging
-from flash_attn import flash_attn_varlen_func, flash_attn_varlen_qkvpacked_func
 from torch import Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, flex_attention
+
+from ..attention_processor import Kandinsky6SRAttentionProcessor
 
 # Side of the local 8x8 token block used by fractal (NABLA) attention.
 # Independent of the VAE spatial compression — do not swap for VAE_SPATIAL_FACTOR.
@@ -435,264 +436,10 @@ def framewise_causal_dense(
     return block_mask_from_bool(doc[None, None])
 
 
-# Pure-torch helpers for the streaming KV-cache in self-attention.
-#
-# Kept free of ``flash_attn`` imports so the cache bookkeeping is importable and
-# testable on CPU. The actual attention kernel call lives in
-# ``kandinsky_sr.model.nn``; this module only assembles its packed inputs.
-
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-
-    from torch import nn
-
-
-def assemble_cached_attention_inputs(
-    new_key: Tensor,
-    new_value: Tensor,
-    cached_key: Tensor,
-    cached_value: Tensor,
-    cu_seqlens_new: Tensor,
-    cached_cu_seqlens: Tensor,
-) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-    """Merge cached and new K/V into packed varlen attention inputs.
-
-    For each packed sequence ``i`` the keys/values become ``[cache_i | new_i]``;
-    the query packing stays the new-token packing (queries are the freshly
-    arrived tokens that attend back over the cache plus themselves).
-
-    Args:
-        new_key: New keys, packed ``(sum(new_lens), num_heads, head_dim)``.
-        new_value: New values, same packing as ``new_key``.
-        cached_key: Cached keys, packed ``(sum(cache_lens), num_heads, head_dim)``.
-        cached_value: Cached values, same packing as ``cached_key``.
-        cu_seqlens_new: Cumulative sequence lengths of the new tokens, ``(num_seqs + 1,)``.
-        cached_cu_seqlens: Cumulative sequence lengths of the cache, ``(num_seqs + 1,)``.
-
-    Returns:
-        Tuple ``(key, value, cu_seqlens_q, cu_seqlens_k)`` where ``key``/``value``
-        are the merged packed tensors, ``cu_seqlens_q`` is the query packing
-        (``= cu_seqlens_new``) and ``cu_seqlens_k`` the merged key packing.
-    """
-    num_seqs = cu_seqlens_new.numel() - 1
-    key_parts: list[Tensor] = []
-    value_parts: list[Tensor] = []
-    for i in range(num_seqs):
-        cache_start, cache_end = int(cached_cu_seqlens[i]), int(cached_cu_seqlens[i + 1])
-        new_start, new_end = int(cu_seqlens_new[i]), int(cu_seqlens_new[i + 1])
-        key_parts.append(cached_key[cache_start:cache_end])
-        key_parts.append(new_key[new_start:new_end])
-        value_parts.append(cached_value[cache_start:cache_end])
-        value_parts.append(new_value[new_start:new_end])
-
-    key = torch.cat(key_parts, dim=0)
-    value = torch.cat(value_parts, dim=0)
-
-    merged_lens = torch.diff(cached_cu_seqlens) + torch.diff(cu_seqlens_new)
-    cu_seqlens_k = torch.cat([cu_seqlens_new.new_zeros(1), torch.cumsum(merged_lens, dim=0)]).to(cu_seqlens_new.dtype)
-    cu_seqlens_q = cu_seqlens_new
-    return key, value, cu_seqlens_q, cu_seqlens_k
-
-
-def evict_cached_kv(
-    cached_key: Tensor,
-    cached_value: Tensor,
-    cached_cu_seqlens: Tensor,
-    max_tokens_per_seq: int,
-) -> tuple[Tensor, Tensor, Tensor]:
-    """Trim a packed KV-cache to its last ``max_tokens_per_seq`` tokens per sequence.
-
-    Implements the fixed-length rolling window: for each packed sequence the
-    oldest tokens are dropped so at most ``max_tokens_per_seq`` most-recent ones
-    remain. Sequences already within the limit are kept whole. ``cu_seqlens`` is
-    rebuilt over the trimmed packing. Pure torch (no ``flash_attn``) so it stays
-    CPU-testable.
-
-    Args:
-        cached_key: Cached keys, packed ``(sum(cache_lens), num_heads, head_dim)``.
-        cached_value: Cached values, same packing as ``cached_key``.
-        cached_cu_seqlens: Cumulative sequence lengths of the cache, ``(num_seqs + 1,)``.
-        max_tokens_per_seq: Maximum tokens to keep per packed sequence (the rolling
-            window length in tokens, i.e. ``cache_frames * H * W``).
-
-    Returns:
-        Tuple ``(key, value, cu_seqlens)`` of the trimmed packed tensors and the
-        rebuilt cumulative sequence lengths.
-    """
-    num_seqs = cached_cu_seqlens.numel() - 1
-    key_parts: list[Tensor] = []
-    value_parts: list[Tensor] = []
-    kept_lens: list[int] = []
-    for i in range(num_seqs):
-        start, end = int(cached_cu_seqlens[i]), int(cached_cu_seqlens[i + 1])
-        keep_start = max(start, end - max_tokens_per_seq)
-        key_parts.append(cached_key[keep_start:end])
-        value_parts.append(cached_value[keep_start:end])
-        kept_lens.append(end - keep_start)
-
-    key = torch.cat(key_parts, dim=0)
-    value = torch.cat(value_parts, dim=0)
-    lens = torch.tensor(kept_lens, device=cached_cu_seqlens.device)
-    cu_seqlens = torch.cat([cached_cu_seqlens.new_zeros(1), torch.cumsum(lens, dim=0)]).to(cached_cu_seqlens.dtype)
-    return key, value, cu_seqlens
-
-
-def iter_self_attentions(model: nn.Module) -> Iterator[nn.Module]:
-    """Yield every submodule exposing the streaming KV-cache API.
-
-    Duck-typed on the presence of ``reset_kv_cache`` so this module stays free of
-    ``flash_attn`` (which importing ``MultiheadSelfAttention`` would pull in) and
-    avoids a circular import with ``kandinsky_sr.model.nn``.
-
-    Args:
-        model: Module to scan recursively.
-
-    Yields:
-        Each self-attention submodule with a rolling KV-cache.
-    """
-    for module in model.modules():
-        if callable(getattr(module, "reset_kv_cache", None)):
-            yield module
-
-
-def set_return_kv(model: nn.Module, *, flag: bool) -> None:
-    """Toggle ``return_kv`` on every self-attention submodule.
-
-    Args:
-        model: Model whose self-attention layers to update.
-        flag: When ``True`` the next forward writes its merged K/V into the cache.
-    """
-    for attn in iter_self_attentions(model):
-        attn.return_kv = flag
-
-
-def reset_kv_caches(model: nn.Module) -> None:
-    """Clear the rolling KV-cache on every self-attention submodule.
-
-    Args:
-        model: Model whose self-attention caches to reset.
-    """
-    for attn in iter_self_attentions(model):
-        attn.reset_kv_cache()
-
-
-@contextmanager
-def kv_cache_session(model: nn.Module) -> Iterator[None]:
-    """Scope a streaming generation: caches are guaranteed clean before and after.
-
-    Entry reset protects against state leaked by a previously crashed session;
-    the ``finally`` reset guarantees that even if generation dies mid-clip (e.g.
-    OOM) no layer keeps stale ``cached_k`` or a dangling ``return_kv=True``, so
-    subsequent non-streaming calls on the same model stay correct.
-
-    Args:
-        model: Model whose self-attention caches to scope.
-
-    Yields:
-        Nothing; run the chunked generation loop inside the block.
-    """
-    reset_kv_caches(model)
-    try:
-        yield
-    finally:
-        reset_kv_caches(model)
-
-
-@contextmanager
-def kv_writer(model: nn.Module) -> Iterator[None]:
-    """Mark the enclosed forward as the cache writer (``return_kv=True``).
-
-    ``return_kv`` is switched off in a ``finally`` so a crash inside the writer
-    forward cannot leave the model silently appending K/V on later calls.
-
-    Args:
-        model: Model whose self-attention layers write K/V inside the block.
-
-    Yields:
-        Nothing; run the writer forward (and its state capture) inside the block.
-    """
-    set_return_kv(model, flag=True)
-    try:
-        yield
-    finally:
-        set_return_kv(model, flag=False)
-
-
-# A captured per-step cache "slot": one ``(key, value, cu_seqlens)`` triple per
-# self-attention layer (aligned with ``iter_self_attentions`` order), or ``None``
-# for an empty slot (no past frames cached yet at that denoising step).
-LayerCache = tuple["Tensor | None", "Tensor | None", "Tensor | None"]
-KVSlot = "list[LayerCache] | None"
-
-
-def capture_kv_state(model: nn.Module) -> list[LayerCache]:
-    """Snapshot every self-attention's rolling KV-cache.
-
-    Stores the current ``(cached_k, cached_v, cached_cu_seqlens)`` references for
-    each self-attention layer. The references are safe to hold: the attention
-    forward reassigns these attributes to freshly concatenated tensors rather
-    than mutating them in place, so a snapshot never aliases future writes.
-
-    Args:
-        model: Model whose self-attention caches to snapshot.
-
-    Returns:
-        Per-layer ``(key, value, cu_seqlens)`` triples in ``iter_self_attentions`` order.
-    """
-    return [(attn.cached_k, attn.cached_v, attn.cached_cu_seqlens) for attn in iter_self_attentions(model)]
-
-
-def restore_kv_state(model: nn.Module, slot: KVSlot) -> None:
-    """Load a captured slot (or clear) into every self-attention's cache.
-
-    Args:
-        model: Model whose self-attention caches to overwrite.
-        slot: Per-layer ``(key, value, cu_seqlens)`` triples from
-            :func:`capture_kv_state`, or ``None`` to clear all caches (an empty
-            slot — no past frames yet).
-    """
-    attns = list(iter_self_attentions(model))
-    if slot is None:
-        for attn in attns:
-            attn.cached_k, attn.cached_v, attn.cached_cu_seqlens = None, None, None
-        return
-    for attn, (key, value, cu_seqlens) in zip(attns, slot, strict=True):
-        attn.cached_k, attn.cached_v, attn.cached_cu_seqlens = key, value, cu_seqlens
-
-
-def evict_kv_slot(slot: KVSlot, max_tokens_per_seq: int) -> KVSlot:
-    """Apply fixed-length rolling eviction to a captured slot, per layer.
-
-    Args:
-        slot: A captured per-step slot, or ``None`` (empty slot passes through).
-        max_tokens_per_seq: Rolling window length in tokens (``cache_frames * H * W``).
-
-    Returns:
-        The evicted slot, or ``None`` if the input was ``None``.
-    """
-    if slot is None:
-        return None
-    evicted: list[LayerCache] = []
-    for key, value, cu_seqlens in slot:
-        if key is None:
-            evicted.append((None, None, None))
-        else:
-            evicted.append(evict_cached_kv(key, value, cu_seqlens, max_tokens_per_seq))
-    return evicted
-
-
 # Neural network building blocks for the diffusion transformer.
 
 
 logger = logging.get_logger(__name__)
-
-try:
-    import flash_attn_interface  # pyright: ignore
-
-    FA3 = True
-except ImportError:
-    FA3 = False
 
 
 def _ensure_nabla_compatible_flex_bwd_configs() -> None:
@@ -777,7 +524,6 @@ flex = torch.compile(flex_attention, mode="max-autotune-no-cudagraphs", dynamic=
 # only the FA call runs in eager.  When FA3 is available the dedicated
 # ``flash_attn_interface.flash_attn_varlen_func`` does register a custom op
 # and traces cleanly, so this decorator becomes a no-op.
-_disable_dynamo_if_fa2 = (lambda fn: fn) if FA3 else torch.compiler.disable
 
 
 @torch.autocast(device_type="cuda", dtype=torch.float32)
@@ -1257,7 +1003,9 @@ class ModulationLQ(nn.Module):
         self.out_layer.bias.data.zero_()
 
 
-class MultiheadSelfAttention(nn.Module):
+class MultiheadSelfAttention(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = Kandinsky6SRAttentionProcessor
+    _available_processors = [Kandinsky6SRAttentionProcessor]
     """Multi-head self-attention with flash attention and optional sparse flex attention."""
 
     def __init__(self, num_channels: int, head_dim: int) -> None:
@@ -1285,6 +1033,7 @@ class MultiheadSelfAttention(nn.Module):
         self.cached_v: Tensor | None = None
         self.cached_cu_seqlens: Tensor | None = None
         self.return_kv = False
+        self.set_processor(self._default_processor_cls())
 
     def get_qkv(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Project input into query, key, and value tensors.
@@ -1319,125 +1068,6 @@ class MultiheadSelfAttention(nn.Module):
         q = self.query_norm(q.float()).type_as(q)
         k = self.key_norm(k.float()).type_as(k)
         return q, k
-
-    @_disable_dynamo_if_fa2
-    def scaled_dot_product_attention(
-        self,
-        query: Tensor,
-        key: Tensor,
-        value: Tensor,
-        cu_seqlens: Tensor,
-        *,
-        return_attn_probs: bool = False,
-    ) -> Tensor | tuple[Tensor, Tensor, None]:
-        """Compute self-attention using flash attention.
-
-        When a KV-cache is present (``cached_k is not None``) the queries are the
-        new tokens and attention runs over ``[cache | new]`` keys/values via
-        :meth:`attend_with_kv_cache`. When ``return_kv`` is set, the (merged) K/V
-        are stored as the cache for the next streaming step.
-
-        Args:
-            query: Query tensor.
-            key: Key tensor.
-            value: Value tensor.
-            cu_seqlens: Cumulative sequence lengths for packed sequences.
-            return_attn_probs: Whether to return attention log-sum-exp values.
-
-        Returns:
-            Attention output, or tuple of (output, softmax_lse, None) if returning probs.
-        """
-        if self.cached_k is not None:
-            return self.attend_with_kv_cache(query, key, value, cu_seqlens, return_attn_probs=return_attn_probs)
-
-        if self.return_kv:
-            self.cached_k, self.cached_v, self.cached_cu_seqlens = key, value, cu_seqlens
-
-        max_seqlen = torch.diff(cu_seqlens).max()
-        if FA3:
-            out, softmax_lse = flash_attn_interface.flash_attn_varlen_func(
-                q=query,
-                k=key,
-                v=value,
-                cu_seqlens_q=cu_seqlens,
-                cu_seqlens_k=cu_seqlens,
-                max_seqlen_q=max_seqlen,
-                max_seqlen_k=max_seqlen,
-            )
-        else:
-            query_key_value = torch.stack([query, key, value], dim=-3)
-            out, softmax_lse, _ = flash_attn_varlen_qkvpacked_func(
-                query_key_value, cu_seqlens, max_seqlen, return_attn_probs=True
-            )
-        out = out.flatten(-2, -1)
-
-        if return_attn_probs:
-            return out, softmax_lse, None
-        return out
-
-    @torch.compiler.disable
-    def attend_with_kv_cache(
-        self,
-        query: Tensor,
-        key: Tensor,
-        value: Tensor,
-        cu_seqlens: Tensor,
-        *,
-        return_attn_probs: bool = False,
-    ) -> Tensor | tuple[Tensor, Tensor, None]:
-        """Dense flash attention consuming the rolling KV-cache.
-
-        Queries are the new tokens; keys/values are the per-sequence concatenation
-        ``[cache | new]`` (with absolute RoPE already applied upstream). When
-        ``return_kv`` is set, the merged K/V become the cache for the next
-        streaming step. Kept out of ``torch.compile`` because the cache assembly
-        indexes ``cu_seqlens`` host-side; it only runs during streaming inference.
-
-        Args:
-            query: New-token query tensor.
-            key: New-token key tensor (post-RoPE).
-            value: New-token value tensor.
-            cu_seqlens: Cumulative sequence lengths of the new tokens.
-            return_attn_probs: Whether to return attention log-sum-exp values.
-
-        Returns:
-            Attention output for the new tokens, or tuple of (output, softmax_lse,
-            None) if returning probs.
-        """
-        key, value, cu_seqlens_q, cu_seqlens_k = assemble_cached_attention_inputs(
-            key, value, self.cached_k, self.cached_v, cu_seqlens, self.cached_cu_seqlens
-        )
-        if self.return_kv:
-            self.cached_k, self.cached_v, self.cached_cu_seqlens = key, value, cu_seqlens_k
-
-        max_seqlen_q = torch.diff(cu_seqlens_q).max()
-        max_seqlen_k = torch.diff(cu_seqlens_k).max()
-        if FA3:
-            out, softmax_lse = flash_attn_interface.flash_attn_varlen_func(
-                q=query,
-                k=key,
-                v=value,
-                cu_seqlens_q=cu_seqlens_q,
-                cu_seqlens_k=cu_seqlens_k,
-                max_seqlen_q=max_seqlen_q,
-                max_seqlen_k=max_seqlen_k,
-            )
-        else:
-            out, softmax_lse, _ = flash_attn_varlen_func(
-                q=query,
-                k=key,
-                v=value,
-                cu_seqlens_q=cu_seqlens_q,
-                cu_seqlens_k=cu_seqlens_k,
-                max_seqlen_q=max_seqlen_q,
-                max_seqlen_k=max_seqlen_k,
-                return_attn_probs=True,
-            )
-        out = out.flatten(-2, -1)
-
-        if return_attn_probs:
-            return out, softmax_lse, None
-        return out
 
     def reset_kv_cache(self) -> None:
         """Clear the rolling KV-cache and stop emitting K/V."""
@@ -1559,10 +1189,7 @@ class MultiheadSelfAttention(nn.Module):
         query = apply_rotary(query, rope).type_as(query)
         key = apply_rotary(key, rope).type_as(key)
 
-        if sparse_params is not None:
-            out = self.attention_flex(query, key, value, sparse_params=sparse_params)
-        else:
-            out = self.scaled_dot_product_attention(query, key, value, cu_seqlens)
+        out = self.processor(self, query, key, value, cu_seqlens, cu_seqlens, sparse_params=sparse_params)
 
         return self.out_layer(out)
 
@@ -1578,7 +1205,9 @@ class MultiheadSelfAttention(nn.Module):
         self.key_norm.reset_parameters()
 
 
-class MultiheadCrossAttention(nn.Module):
+class MultiheadCrossAttention(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = Kandinsky6SRAttentionProcessor
+    _available_processors = [Kandinsky6SRAttentionProcessor]
     """Multi-head cross-attention with flash attention."""
 
     def __init__(self, num_channels: int, head_dim: int) -> None:
@@ -1601,6 +1230,7 @@ class MultiheadCrossAttention(nn.Module):
         self.key_norm = nn.RMSNorm(head_dim)
 
         self.out_layer = nn.Linear(num_channels, num_channels, bias=True)
+        self.set_processor(self._default_processor_cls())
 
     def get_qkv(self, x: Tensor, cond: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Project input and condition into query, key, and value tensors.
@@ -1637,41 +1267,6 @@ class MultiheadCrossAttention(nn.Module):
         k = self.key_norm(k.float()).type_as(k)
         return q, k
 
-    @_disable_dynamo_if_fa2
-    def scaled_dot_product_attention(
-        self,
-        query: Tensor,
-        key: Tensor,
-        value: Tensor,
-        cu_seqlens: Tensor,
-        cond_cu_seqlens: Tensor,
-        *,
-        return_attn_probs: bool = False,
-    ) -> Tensor | tuple[Tensor, Tensor, None]:
-        """Compute cross-attention using flash attention.
-
-        Args:
-            query: Query tensor.
-            key: Key tensor from conditioning input.
-            value: Value tensor from conditioning input.
-            cu_seqlens: Cumulative sequence lengths for query sequences.
-            cond_cu_seqlens: Cumulative sequence lengths for conditioning sequences.
-            return_attn_probs: Whether to return attention log-sum-exp values.
-
-        Returns:
-            Attention output, or tuple of (output, softmax_lse, None) if returning probs.
-        """
-        max_seqlen = torch.diff(cu_seqlens).max()
-        cond_max_seqlen = torch.diff(cond_cu_seqlens).max()
-        out, softmax_lse, _ = flash_attn_varlen_func(
-            query, key, value, cu_seqlens, cond_cu_seqlens, max_seqlen, cond_max_seqlen, return_attn_probs=True
-        )
-        out = out.flatten(-2, -1)
-
-        if return_attn_probs:
-            return out, softmax_lse, None
-        return out
-
     def forward(self, x: Tensor, cond: Tensor, cu_seqlens: Tensor, cond_cu_seqlens: Tensor) -> Tensor:
         """Run cross-attention between input and conditioning.
 
@@ -1687,7 +1282,7 @@ class MultiheadCrossAttention(nn.Module):
         query, key, value = self.get_qkv(x, cond)
         query, key = self.norm_qk(query, key)
 
-        out = self.scaled_dot_product_attention(query, key, value, cu_seqlens, cond_cu_seqlens)
+        out = self.processor(self, query, key, value, cu_seqlens, cond_cu_seqlens)
         return self.out_layer(out)
 
     def reset_parameters(self) -> None:
@@ -2156,6 +1751,7 @@ class Kandinsky6SRTransformer3DModel(ModelMixin, ConfigMixin):
     """
 
     _no_split_modules = ["TransformerEncoderBlock", "TransformerDecoderBlock"]
+    _repeated_blocks = ["TransformerEncoderBlock", "TransformerDecoderBlock"]
 
     @register_to_config
     def __init__(
