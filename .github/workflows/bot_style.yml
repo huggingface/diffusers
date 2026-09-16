@@ -1,0 +1,308 @@
+name: "Bot: Style"
+
+# Reusable workflow called by diffusers_bot.yml for `/diffusers-bot style`.
+# Runs `make style && make quality` on the PR branch, then pushes the fixes.
+#
+# Security model: the `run` job checks out and executes untrusted fork code with
+# a read-only token. Style fixes are exported as a patch artifact. The `push`
+# job re-validates the PR head SHA, downloads the patch, and pushes via a
+# GitHub App token — never exposing write credentials to untrusted code.
+
+on:
+  workflow_call:
+    secrets:
+      HF_BOT_STYLE_APP_ID:
+        required: true
+      HF_BOT_STYLE_SECRET_PEM:
+        required: true
+
+jobs:
+  run:
+    name: Run style
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      headRepoFullName: ${{ steps.pr_info.outputs.headRepoFullName }}
+      headRef: ${{ steps.pr_info.outputs.headRef }}
+      headSha: ${{ steps.pr_info.outputs.headSha }}
+      prNumber: ${{ steps.pr_info.outputs.prNumber }}
+    steps:
+      - name: Extract PR details
+        id: pr_info
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const prNumber = context.payload.issue.number;
+            console.log(`PR number: "${prNumber}"`);
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            core.setOutput('headRepoFullName', pr.head.repo.full_name);
+            core.setOutput('headRef', pr.head.ref);
+            core.setOutput('headSha', pr.head.sha);
+            core.setOutput('baseRef', pr.base.ref);
+            core.setOutput('prNumber', prNumber);
+
+            console.log('PR Details:', {
+              number: prNumber,
+              headRepo: pr.head.repo.full_name,
+              headRef: pr.head.ref,
+              headSha: pr.head.sha,
+              baseRef: pr.base.ref
+            });
+
+      - name: Check out PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: ${{ steps.pr_info.outputs.headRepoFullName }}
+          ref: ${{ steps.pr_info.outputs.headSha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify checked-out SHA
+        env:
+          HEAD_SHA: ${{ steps.pr_info.outputs.headSha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            echo "❌ Checked-out SHA does not match expected HEAD SHA! Abort!";
+            exit 1;
+          fi
+
+      - name: Verify PR head SHA is unchanged before running untrusted code
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        env:
+          EXPECTED_HEAD_SHA: ${{ steps.pr_info.outputs.headSha }}
+        with:
+          script: |
+            const prNumber = context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            if (pr.head.sha !== process.env.EXPECTED_HEAD_SHA) {
+              core.setFailed(
+                `❌ PR head changed during the workflow bootstrap. Expected ${process.env.EXPECTED_HEAD_SHA}, got ${pr.head.sha}. Aborting.`
+              );
+            }
+
+      - name: Check commit was pushed before the triggering comment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        env:
+          HEAD_SHA: ${{ steps.pr_info.outputs.headSha }}
+          HEAD_REPO_FULL_NAME: ${{ steps.pr_info.outputs.headRepoFullName }}
+          COMMENT_DATE: ${{ github.event.comment.created_at }}
+        with:
+          script: |
+            const headSha = process.env.HEAD_SHA;
+            const [headOwner, headRepo] = process.env.HEAD_REPO_FULL_NAME.split('/');
+            const commentTimestamp = new Date(process.env.COMMENT_DATE).getTime();
+
+            const query = `
+              query($owner: String!, $repo: String!, $sha: GitObjectID!) {
+                repository(owner: $owner, name: $repo) {
+                  object(oid: $sha) {
+                    ... on Commit {
+                      pushedDate
+                    }
+                  }
+                }
+              }
+            `;
+            const result = await github.graphql(query, { owner: headOwner, repo: headRepo, sha: headSha });
+
+            const pushedDate = result.repository.object?.pushedDate;
+            if (!pushedDate) {
+              core.warning(`⚠️ pushedDate unavailable for commit ${headSha} (likely created via API/web UI). Skipping timestamp check.`);
+              return;
+            }
+
+            const pushTimestamp = new Date(pushedDate).getTime();
+            console.log(`Push timestamp (server-side): ${pushedDate}, Comment date: ${process.env.COMMENT_DATE}`);
+            if (pushTimestamp >= commentTimestamp) {
+              core.setFailed(`❌ Commit ${headSha} was pushed at or after the /diffusers-bot style comment. Aborting.`);
+            } else {
+              console.log('✅ Push timestamp check passed.');
+            }
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[quality]"
+
+      - name: Run style and quality checks
+        run: make style && make quality
+
+      - name: Export style fixes as patch artifact
+        env:
+          STYLE_BOT_OUTPUT_DIR: ${{ runner.temp }}/style-bot-output
+        run: |
+          mkdir -p "$STYLE_BOT_OUTPUT_DIR"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git diff --cached --binary > "$STYLE_BOT_OUTPUT_DIR/style-fixes.patch"
+            echo "changes_present=true" > "$STYLE_BOT_OUTPUT_DIR/metadata.env"
+          else
+            echo "changes_present=false" > "$STYLE_BOT_OUTPUT_DIR/metadata.env"
+          fi
+
+      - name: Upload style fixes artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: style-bot-output-${{ github.run_id }}
+          path: ${{ runner.temp }}/style-bot-output
+          if-no-files-found: error
+
+  push:
+    name: Push style fixes
+    needs: run
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Generate bot token
+        id: generate_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v1
+        with:
+          app-id: ${{ secrets.HF_BOT_STYLE_APP_ID }}
+          private-key: ${{ secrets.HF_BOT_STYLE_SECRET_PEM }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          # Scope the app token down to the minimum permissions needed
+          # (pushing style-fix commits to the PR branch).
+          permission-contents: write
+
+      - name: Re-validate PR head SHA before trusted steps
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        env:
+          EXPECTED_HEAD_SHA: ${{ needs.run.outputs.headSha }}
+        with:
+          script: |
+            const prNumber = context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            if (pr.head.sha !== process.env.EXPECTED_HEAD_SHA) {
+              core.setFailed(
+                `❌ PR head changed after the untrusted style run. Expected ${process.env.EXPECTED_HEAD_SHA}, got ${pr.head.sha}. Aborting.`
+              );
+            }
+
+      - name: Check out reviewed PR SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: ${{ needs.run.outputs.headRepoFullName }}
+          ref: ${{ needs.run.outputs.headSha }}
+          fetch-depth: 0
+          token: ${{ steps.generate_token.outputs.token }}
+          persist-credentials: false
+
+      - name: Verify checked-out SHA
+        env:
+          HEAD_SHA: ${{ needs.run.outputs.headSha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            echo "❌ Checked-out SHA does not match expected HEAD SHA! Abort!"
+            exit 1
+          fi
+
+      - name: Download style fixes artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: style-bot-output-${{ github.run_id }}
+          path: ${{ runner.temp }}/style-bot-output
+
+      - name: Comment on PR with workflow run link
+        id: init_comment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        env:
+          prNumber: ${{ needs.run.outputs.prNumber }}
+        with:
+          script: |
+            const prNumber = parseInt(process.env.prNumber, 10);
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+
+            const { data: botComment } = await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `Style fix is beginning .... [View the workflow run here](${runUrl}).`
+            });
+            core.setOutput('comment_id', botComment.id);
+
+      - name: Apply style fixes patch
+        id: apply_patch
+        env:
+          STYLE_BOT_OUTPUT_DIR: ${{ runner.temp }}/style-bot-output
+        run: |
+          if grep -qx 'changes_present=true' "$STYLE_BOT_OUTPUT_DIR/metadata.env"; then
+            git apply --binary "$STYLE_BOT_OUTPUT_DIR/style-fixes.patch"
+            echo "changes_present=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes to apply."
+            echo "changes_present=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changes
+        id: commit_and_push
+        env:
+          HEADREPOFULLNAME: ${{ needs.run.outputs.headRepoFullName }}
+          HEADREF: ${{ needs.run.outputs.headRef }}
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+          CHANGES_PRESENT: ${{ steps.apply_patch.outputs.changes_present }}
+        run: |
+          echo "HEADREPOFULLNAME: $HEADREPOFULLNAME, HEADREF: $HEADREF"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 'origin' must point at the contributor's fork so the push lands on the PR branch.
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$HEADREPOFULLNAME.git"
+
+          if [ "$CHANGES_PRESENT" = "true" ] && [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Apply style fixes"
+            git -c lfs.locksverify=false push origin HEAD:$HEADREF
+            echo "changes_pushed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes to commit."
+            echo "changes_pushed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Prepare final comment message
+        id: prepare_final_comment
+        env:
+          CHANGES_PUSHED: ${{ steps.commit_and_push.outputs.changes_pushed }}
+        run: |
+          if [ "$CHANGES_PUSHED" = 'true' ]; then
+            echo "final_comment=Style bot fixed some files and pushed the changes." >> $GITHUB_OUTPUT
+          else
+            echo "final_comment=Style fix runs successfully without any file modified." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        env:
+          COMMENT_ID: ${{ steps.init_comment.outputs.comment_id }}
+          FINAL_COMMENT: ${{ steps.prepare_final_comment.outputs.final_comment }}
+        with:
+          script: |
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: parseInt(process.env.COMMENT_ID, 10),
+              body: process.env.FINAL_COMMENT
+            });
