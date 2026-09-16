@@ -34,26 +34,27 @@ class ComfyQuantizer(DiffusersQuantizer):
         if not isinstance(self.modules_to_not_convert, list):
             self.modules_to_not_convert = [self.modules_to_not_convert]
 
-        # Resolve the layout class once since quant_format is constant.
-        layout_map = {
-            "fp8": getattr(ck_tensor, "TensorCoreFP8Layout", None),
-            "nvfp4": getattr(ck_tensor, "TensorCoreNVFP4Layout", None),
-            "mxfp8": getattr(ck_tensor, "TensorCoreMXFP8Layout", None),
-            "int8": getattr(ck_tensor, "TensorWiseINT8Layout", None),
-            "int4_svd": getattr(ck_tensor, "TensorCoreSVDQuantW4A4Layout", None),
-            "int4_awq": getattr(ck_tensor, "TensorCoreAWQW4A16Layout", None),
-        }
-        self.layout = layout_map.get(self.quant_format.lower())
-        if self.layout is None:
-            supported = list(layout_map.keys())
-            raise ValueError(
-                f"The layout for '{self.quant_format}' was not found in `comfy_kitchen`. "
-                f"Supported formats are: {supported}."
-            )
+        if is_comfy_kitchen_available():
+            # Resolve the layout class once since quant_format is constant.
+            layout_map = {
+                "fp8": getattr(ck_tensor, "TensorCoreFP8Layout", None),
+                "nvfp4": getattr(ck_tensor, "TensorCoreNVFP4Layout", None),
+                "mxfp8": getattr(ck_tensor, "TensorCoreMXFP8Layout", None),
+                "int8": getattr(ck_tensor, "TensorWiseINT8Layout", None),
+                "int4_svd": getattr(ck_tensor, "TensorCoreSVDQuantW4A4Layout", None),
+                "int4_awq": getattr(ck_tensor, "TensorCoreAWQW4A16Layout", None),
+            }
+            self.layout = layout_map.get(self.quant_format.lower())
+            if self.layout is None:
+                supported = list(layout_map.keys())
+                raise ValueError(
+                    f"The layout for '{self.quant_format}' was not found in `comfy_kitchen`. "
+                    f"Supported formats are: {supported}."
+                )
+        else:
+            self.layout = None
 
     def validate_environment(self, *args, **kwargs):
-        from ...utils.import_utils import is_comfy_kitchen_available
-
         if not is_comfy_kitchen_available():
             raise ImportError(
                 "Loading Comfy Quant weights requires `comfy-kitchen`. "
