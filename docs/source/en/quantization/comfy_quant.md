@@ -68,10 +68,10 @@ image.save("flux-comfy-quant.png")
 Diffusers currently maps the following Comfy Quant formats to `comfy-kitchen` layouts:
 
 - **FP8** (`fp8`): Maps to `TensorCoreFP8Layout` (E4M3/E5M2)
-- **INT8** (`int8`): Maps to `TensorCoreInt8Layout` (W8A8, tensorwise)
+- **INT8** (`int8`): Maps to `TensorWiseINT8Layout` (W8A8, tensorwise)
 - **MXFP8** (`mxfp8`): Maps to `TensorCoreMXFP8Layout`
 - **NVFP4** (`nvfp4`): Maps to `TensorCoreNVFP4Layout`
-- **INT4 SVD** (`int4_svd`): Maps to `SVDQuantW4A4Layout` (SVDQuant W4A4)
-- **INT4 AWQ** (`int4_awq`): Maps to `AWQW4A16Layout` (AWQ W4A16)
+- **INT4 SVD** (`int4_svd`): Maps to `TensorCoreSVDQuantW4A4Layout` (SVDQuant W4A4)
+- **INT4 AWQ** (`int4_awq`): Maps to `TensorCoreAWQW4A16Layout` (AWQ W4A16)
 
 When using optimized layouts, `comfy-kitchen` automatically dispatches the operations to the best available backend (HIP, CUDA, Triton, or Eager).

@@ -38,6 +38,23 @@ class ComfyQuantizer(DiffusersQuantizer):
         if not isinstance(self.modules_to_not_convert, list):
             self.modules_to_not_convert = [self.modules_to_not_convert]
 
+        # Resolve the layout class once since quant_format is constant.
+        layout_map = {
+            "fp8": getattr(ck_tensor, "TensorCoreFP8Layout", None),
+            "nvfp4": getattr(ck_tensor, "TensorCoreNVFP4Layout", None),
+            "mxfp8": getattr(ck_tensor, "TensorCoreMXFP8Layout", None),
+            "int8": getattr(ck_tensor, "TensorWiseINT8Layout", None),
+            "int4_svd": getattr(ck_tensor, "TensorCoreSVDQuantW4A4Layout", None),
+            "int4_awq": getattr(ck_tensor, "TensorCoreAWQW4A16Layout", None),
+        }
+        self.layout = layout_map.get(self.quant_format.lower())
+        if self.layout is None:
+            supported = list(layout_map.keys())
+            raise ValueError(
+                f"The layout for '{self.quant_format}' was not found in `comfy_kitchen`. "
+                f"Supported formats are: {supported}."
+            )
+
     def validate_environment(self, *args, **kwargs):
         from ...utils.import_utils import is_comfy_kitchen_available
 
@@ -74,28 +91,9 @@ class ComfyQuantizer(DiffusersQuantizer):
     ):
         module, tensor_name = get_module_from_name(model, param_name)
 
-
-        layout_map = {
-            "fp8": getattr(ck_tensor, "TensorCoreFP8Layout", None),
-            "nvfp4": getattr(ck_tensor, "TensorCoreNVFP4Layout", None),
-            "mxfp8": getattr(ck_tensor, "TensorCoreMXFP8Layout", None),
-            "int8": getattr(ck_tensor, "Int8Layout", None),
-            "int4_svd": getattr(ck_tensor, "SVDQuantW4A4Layout", None),
-            "int4_awq": getattr(ck_tensor, "AWQW4A16Layout", None),
-        }
-
-        # Check if it's already a QuantizedTensor (e.g., if loaded directly from a custom loader)
-        if isinstance(param_value, ck_tensor.QuantizedTensor):
-            quantized_weight = param_value
-        else:
-            layout = layout_map.get(self.quant_format.lower())
-            if layout is None:
-                raise ValueError(f"The layout for '{self.quant_format}' was not found in `comfy_kitchen`.")
-
-            # comfy-kitchen natively handles wrapping standard float tensors via from_float
-            # If the tensor is pre-quantized raw bytes, comfy-kitchen exposes `.from_quantized(...)` or similar internally,
-            # but `.from_float` guarantees we intercept float weights (e.g. standard safetensors float weights).
-            quantized_weight = ck_tensor.QuantizedTensor.from_float(param_value.to(target_device), layout.__name__)
+        quantized_weight = ck_tensor.QuantizedTensor.from_float(
+            param_value.to(target_device), self.layout.__name__
+        )
 
         if tensor_name in module._parameters:
             module._parameters[tensor_name] = quantized_weight.to(target_device)
