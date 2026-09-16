@@ -114,6 +114,15 @@ class Cosmos3DistilledVisionCoreDenoiseStep(SequentialPipelineBlocks):
           guidance_scale (`float`, *optional*):
               Unused for distilled checkpoints; classifier-free guidance is baked into the weights and the scale is
               forced to 1.0. Passing a value other than 1.0 raises an error.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
@@ -206,6 +215,15 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
           guidance_scale (`float`, *optional*):
               Unused for distilled checkpoints; classifier-free guidance is baked into the weights and the scale is
               forced to 1.0. Passing a value other than 1.0 raises an error.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           output_type (`str`, *optional*, defaults to pil):
