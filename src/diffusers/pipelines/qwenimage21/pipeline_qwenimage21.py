@@ -599,11 +599,11 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         height = height or output_resolution
         width = width or output_resolution
 
+        self.check_inputs(prompt, height, width, prompt_embeds, callback_on_step_end_tensor_inputs)
+
         multiple_of = self.vae_scale_factor * 2
         width = width // multiple_of * multiple_of
         height = height // multiple_of * multiple_of
-
-        self.check_inputs(prompt, height, width, prompt_embeds, callback_on_step_end_tensor_inputs)
 
         self._attention_kwargs = attention_kwargs or {}
         self._current_timestep = None

@@ -897,6 +897,16 @@ class QwenImage21Transformer2DModel(
         """
 
         batch_size = hidden_states.shape[0]
+        if kv_cache is not None and not self.config.causal_condition:
+            raise ValueError(
+                "kv_cache requires `causal_condition=True`. The cache is only valid because text and condition-image "
+                "tokens modulate from t=0, which makes their activations independent of the denoising step."
+            )
+        if kv_cache is not None and kv_cache_mode not in ("extract", "cached"):
+            raise ValueError(
+                f"kv_cache_mode must be 'extract' or 'cached' when kv_cache is provided, got {kv_cache_mode!r}."
+            )
+
         hidden_states = self.img_in(hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
@@ -929,16 +939,6 @@ class QwenImage21Transformer2DModel(
             modulation_mask = None
         temb = self.time_text_embed(timestep, hidden_states)
         modulation = self.modulation(temb)
-
-        if kv_cache is not None and not self.config.causal_condition:
-            raise ValueError(
-                "kv_cache requires `causal_condition=True`. The cache is only valid because text and condition-image "
-                "tokens modulate from t=0, which makes their activations independent of the denoising step."
-            )
-        if kv_cache is not None and kv_cache_mode not in ("extract", "cached"):
-            raise ValueError(
-                f"kv_cache_mode must be 'extract' or 'cached' when kv_cache is provided, got {kv_cache_mode!r}."
-            )
 
         # Right-padded prompt positions must never be attended to, on any path. Text positions of the joint sequence
         # line up, in order, with the non-image positions of the vision-language sequence — the two are interleaved,
