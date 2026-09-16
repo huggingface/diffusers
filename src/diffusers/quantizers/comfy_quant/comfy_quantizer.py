@@ -1,12 +1,8 @@
 from typing import TYPE_CHECKING, Any
 
-from ...utils import (
-    get_module_from_name,
-    is_torch_available,
-    is_comfy_kitchen_available,
-    logging
-)
+from ...utils import get_module_from_name, is_comfy_kitchen_available, is_torch_available, logging
 from ..base import DiffusersQuantizer
+
 
 if is_comfy_kitchen_available():
     import comfy_kitchen.tensor as ck_tensor
@@ -91,9 +87,7 @@ class ComfyQuantizer(DiffusersQuantizer):
     ):
         module, tensor_name = get_module_from_name(model, param_name)
 
-        quantized_weight = ck_tensor.QuantizedTensor.from_float(
-            param_value.to(target_device), self.layout.__name__
-        )
+        quantized_weight = ck_tensor.QuantizedTensor.from_float(param_value.to(target_device), self.layout.__name__)
 
         if tensor_name in module._parameters:
             module._parameters[tensor_name] = quantized_weight.to(target_device)
