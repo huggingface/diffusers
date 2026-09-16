@@ -49,10 +49,10 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import QwenImage21Pipeline
 
-        >>> pipe = QwenImage21Pipeline.from_pretrained("Qwen/Qwen-Image-2.1", torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImage21Pipeline.from_pretrained("Qwen/Qwen-Image-2.1", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A capybara wearing a wizard hat, reading a book by candlelight, oil painting"
-        >>> image = pipe(prompt, num_inference_steps=50).images[0]
+        >>> image = pipe(prompt).images[0]
         >>> image.save("qwenimage21.png")
         ```
 """
@@ -515,10 +515,10 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         prompt: str | list[str] = None,
         image: PipelineImageInput | None = None,
         negative_prompt: str | list[str] = None,
-        true_cfg_scale: float = 4.0,
+        true_cfg_scale: float = 1.0,
         height: int | None = None,
         width: int | None = None,
-        num_inference_steps: int = 50,
+        num_inference_steps: int = 40,
         sigmas: list[float] | None = None,
         num_images_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
@@ -546,13 +546,14 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 into latent tokens prepended to the noise.
             negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt not to guide image generation. Ignored when `true_cfg_scale` is not greater than 1.
-            true_cfg_scale (`float`, *optional*, defaults to 4.0):
+            true_cfg_scale (`float`, *optional*, defaults to 1.0):
                 Classifier-free guidance scale. Enabled by `true_cfg_scale > 1` together with a negative prompt.
+                Qwen-Image 2.1 is meant to be sampled without guidance, hence the default of 1.0.
             height (`int`, *optional*):
                 Height in pixels of the generated image. Derived from the condition image's aspect ratio if omitted.
             width (`int`, *optional*):
                 Width in pixels of the generated image. Derived from the condition image's aspect ratio if omitted.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 40):
                 Number of denoising steps.
             sigmas (`list[float]`, *optional*):
                 Custom sigmas for the denoising schedule.

@@ -16,6 +16,9 @@ image with a single-stream block-causal transformer. See
 [`QwenImage21Transformer2DModel`](../models/qwenimage21_transformer2d) for block-causal attention, the attention
 processors, and `causal_condition`.
 
+The defaults are the values Qwen recommends: 40 steps and no guidance. Pass a `negative_prompt` together with
+`true_cfg_scale > 1` to turn classifier-free guidance on, which doubles the work per step.
+
 ```python
 import torch
 from diffusers import QwenImage21Pipeline
@@ -23,11 +26,11 @@ from diffusers import QwenImage21Pipeline
 pipe = QwenImage21Pipeline.from_pretrained("Qwen/Qwen-Image-2.1", dtype=torch.bfloat16).to("cuda")
 
 # Text-to-image
-image = pipe("A capybara wearing a wizard hat, oil painting", num_inference_steps=40).images[0]
+image = pipe("A capybara wearing a wizard hat, oil painting").images[0]
 image.save("t2i.png")
 
 # Image-conditioned editing
-edited = pipe("Move it to a snowy mountain top", image=image, num_inference_steps=40).images[0]
+edited = pipe("Move it to a snowy mountain top", image=image).images[0]
 edited.save("edit.png")
 ```
 
