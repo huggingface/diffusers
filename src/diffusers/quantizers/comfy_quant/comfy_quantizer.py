@@ -3,10 +3,13 @@ from typing import TYPE_CHECKING, Any
 from ...utils import (
     get_module_from_name,
     is_torch_available,
-    logging,
+    is_comfy_kitchen_available,
+    logging
 )
 from ..base import DiffusersQuantizer
 
+if is_comfy_kitchen_available():
+    import comfy_kitchen.tensor as ck_tensor
 
 if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
@@ -71,7 +74,6 @@ class ComfyQuantizer(DiffusersQuantizer):
     ):
         module, tensor_name = get_module_from_name(model, param_name)
 
-        import comfy_kitchen.tensor as ck_tensor
 
         layout_map = {
             "fp8": getattr(ck_tensor, "TensorCoreFP8Layout", None),
