@@ -709,12 +709,14 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         self._num_timesteps = len(timesteps)
 
         # The transformer's `img_mask` spans the joint sequence, so append one slot per 2x2 group of target latents.
-        target_slots = torch.ones(
-            [latents.shape[0], latents.shape[1] // 4], dtype=image_pad_mask.dtype, device=image_pad_mask.device
-        )
-        image_pad_mask = torch.cat([image_pad_mask, target_slots], dim=1)
+        # The slots follow each mask's own batch size: `latents` is already expanded by `num_images_per_prompt`
+        # while the masks are not, and the transformer reads the layout from row 0 because samples share it.
+        def append_target_slots(mask):
+            return torch.cat([mask, mask.new_ones(mask.shape[0], latents.shape[1] // 4)], dim=1)
+
+        image_pad_mask = append_target_slots(image_pad_mask)
         if do_true_cfg:
-            negative_image_pad_mask = torch.cat([negative_image_pad_mask, target_slots], dim=1)
+            negative_image_pad_mask = append_target_slots(negative_image_pad_mask)
 
         # Text and condition-image keys and values are step-independent under `causal_condition`, so the first step
         # prefills them and later steps only recompute the target image's tokens.
