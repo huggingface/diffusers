@@ -30,12 +30,12 @@ else:
     _import_structure["pipeline_ltx2_condition"] = ["LTX2ConditionPipeline", "LTX2VideoCondition"]
     _import_structure["pipeline_ltx2_dfr"] = ["LTX2DFRPipeline"]
     _import_structure["pipeline_ltx2_dfr_temporal_refine"] = ["LTX2DFRTemporalRefinePipeline"]
-    _import_structure["pipeline_output"] = ["LTX2DFRPipelineOutput", "LTX2PipelineOutput", "LTX2VideoDecodeOutput"]
     _import_structure["pipeline_ltx2_diffusion_decode"] = ["LTX2VideoDiffusionDecodePipeline"]
     _import_structure["pipeline_ltx2_hdr_lora"] = ["LTX2HDRPipeline", "LTX2HDRReferenceCondition"]
     _import_structure["pipeline_ltx2_ic_lora"] = ["LTX2InContextPipeline", "LTX2ReferenceCondition"]
     _import_structure["pipeline_ltx2_image2video"] = ["LTX2ImageToVideoPipeline"]
     _import_structure["pipeline_ltx2_latent_upsample"] = ["LTX2LatentUpsamplePipeline"]
+    _import_structure["pipeline_output"] = ["LTX2DFRPipelineOutput", "LTX2PipelineOutput", "LTX2VideoDecodeOutput"]
     _import_structure["vocoder"] = ["LTX2Vocoder", "LTX2VocoderWithBWE"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
