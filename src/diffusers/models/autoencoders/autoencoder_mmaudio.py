@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-from os import PathLike
 from typing import Any, Literal, Optional
 
 import numpy as np
@@ -1254,47 +1253,6 @@ def build_bigvgan_v2(vocoder_config: dict | AttrDict) -> BigVGANv2:
     return model
 
 
-class AutoEncoderModule(nn.Module):
-    def __init__(
-        self,
-        *,
-        vae_ckpt_path: str | None = None,
-        vocoder_ckpt_path: str | None = None,
-        vocoder_config: dict | None = None,
-        mode: Literal["44k"],
-        need_vae_encoder: bool = True,
-        need_vae_decoder: bool = True,
-    ):
-        super().__init__()
-        if mode != "44k":
-            raise ValueError(f"Unknown model: {mode}")
-        self.vae: VAE = VAE(data_dim=128, embed_dim=40, hidden_dim=512).eval()
-        if vae_ckpt_path is not None:
-            vae_state_dict = torch.load(vae_ckpt_path, weights_only=True, map_location="cpu")
-            self.vae.load_state_dict(vae_state_dict)
-        self.vae.remove_weight_norm()
-
-        if need_vae_decoder:
-            self.vocoder = build_bigvgan_v2(vocoder_config).eval()
-        else:
-            del self.vae.decoder
-
-        if not need_vae_encoder:
-            del self.vae.encoder
-
-        for param in self.parameters():
-            param.requires_grad = False
-
-    def encode(self, x: torch.Tensor) -> DiagonalGaussianDistribution:
-        return self.vae.encode(x)
-
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        return self.vae.decode(z)
-
-    def vocode(self, spec: torch.Tensor) -> torch.Tensor:
-        return self.vocoder(spec)
-
-
 # Reference: # https://github.com/bytedance/Make-An-Audio-2
 
 
@@ -1410,51 +1368,35 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
     BigVGAN vocoder.
 
     Args:
-        tod_vae_ckpt (`str` or `os.PathLike`, *optional*): Path to the audio VAE checkpoint.
-        bigvgan_vocoder_ckpt (`str` or `os.PathLike`, *optional*): Path to the BigVGAN checkpoint.
-        vocoder_config (`dict`, *optional*): BigVGAN configuration when no checkpoint directory is supplied.
+        vocoder_config (`dict`): BigVGAN configuration.
         mode (`str`, *optional*, defaults to ``"44k"``): Audio operating mode.
-        need_vae_encoder (`bool`, *optional*, defaults to True): Whether to load the VAE encoder.
-        need_vae_decoder (`bool`, *optional*, defaults to True): Whether to load the VAE decoder and vocoder.
         scaling_factor (`float`, *optional*, defaults to 1.0): Latent scaling factor.
         sample_rate (`int`, *optional*, defaults to 44100): Audio sample rate.
         downsample_factor (`int`, *optional*, defaults to 1024): Audio latent downsampling factor.
-        device (`str` or `torch.device`, *optional*): Device on which to place the component.
     """
 
-    ignore_for_config = ["tod_vae_ckpt", "bigvgan_vocoder_ckpt", "device"]
-    _no_split_modules = ["AutoEncoderModule", "BigVGANv2"]
+    _no_split_modules = ["VAE", "BigVGANv2"]
 
     @register_to_config
     def __init__(
         self,
         *,
-        tod_vae_ckpt: str | PathLike[str] | None = None,
-        bigvgan_vocoder_ckpt: str | PathLike[str] | None = None,
-        vocoder_config: dict[str, Any] | None = None,
+        vocoder_config: dict[str, Any],
         mode: str = "44k",
-        need_vae_encoder: bool = True,
-        need_vae_decoder: bool = True,
         scaling_factor: float = 1.0,
         sample_rate: int = 44_100,
         downsample_factor: int = 1_024,
-        device: str | torch.device | None = None,
     ) -> None:
         super().__init__()
         self.mel_converter = get_mel_converter(mode)
-        self.tod = AutoEncoderModule(
-            vae_ckpt_path=tod_vae_ckpt,
-            vocoder_ckpt_path=bigvgan_vocoder_ckpt,
-            vocoder_config=vocoder_config,
-            mode=mode,
-            need_vae_encoder=need_vae_encoder,
-            need_vae_decoder=need_vae_decoder,
-        )
+        self.vae: VAE = VAE(data_dim=128, embed_dim=40, hidden_dim=512).eval()
+        self.vae.remove_weight_norm()
+        self.vocoder = build_bigvgan_v2(vocoder_config).eval()
+        for param in self.parameters():
+            param.requires_grad = False
         self.scaling_factor = float(scaling_factor)
         self.sample_rate = int(sample_rate)
         self.downsample_factor = int(downsample_factor)
-        if device is not None:
-            self.to(device)
 
     def compile(self):
         """Compile the decode and vocode methods with ``torch.compile``."""
@@ -1467,19 +1409,16 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
 
     def encode_audio(self, x) -> DiagonalGaussianDistribution:
         """Encode a waveform into an audio latent distribution."""
-        assert self.tod is not None, "VAE is not loaded"
         mel = self.mel_converter(x)
-        return self.tod.encode(mel)
+        return self.vae.encode(mel)
 
     def vocode(self, mel: torch.Tensor) -> torch.Tensor:
         """Convert a decoded mel-spectrogram into a waveform."""
-        assert self.tod is not None, "VAE is not loaded"
-        return self.tod.vocode(mel)
+        return self.vocoder(mel)
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         """Decode audio latents into a mel-spectrogram."""
-        assert self.tod is not None, "VAE is not loaded"
-        return self.tod.decode(z)
+        return self.vae.decode(z)
 
     @property
     def device(self):

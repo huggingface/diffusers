@@ -1080,45 +1080,6 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         self.spatial_factor = int(spatial_factor)
         self.temporal_factor = int(temporal_factor)
 
-    def init_from_ckpt(self, path):
-        """Load a KVAE checkpoint in safetensors or training-checkpoint format."""
-        if str(path).endswith(".safetensors"):
-            # Release checkpoints are flat safetensors state dicts already in
-            # the new-style key naming.
-            self.load_state_dict(safetensors_load_file(str(path)), strict=True)
-            return
-        sd = torch.load(path, map_location="cpu")["state_dict"]
-
-        # Fix checkpoint if starting from new style
-        replace_keys = dict()
-        delete_keys = list()
-        for k in sd:
-            if k.startswith("loss."):
-                delete_keys.append(k)
-                continue
-            if "encoder.down" in k and "downsample.temporal_conv.conv" in k:
-                continue
-
-            if k.startswith("decoder"):
-                if "upsample" in k:
-                    continue
-                elif ".conv_b.conv" in k:
-                    replace_keys[k] = k.replace(".conv_b.conv", ".conv_b")
-                    continue
-                elif ".conv_y.conv" in k:
-                    replace_keys[k] = k.replace(".conv_y.conv", ".conv_y")
-                    continue
-
-            if k.endswith("sample.temporal_conv.conv.weight") or k.endswith("sample.temporal_conv.conv.bias"):
-                replace_keys[k] = k.replace(".temporal_conv.conv.", ".temporal_conv.")
-        for old_k, new_k in replace_keys.items():
-            sd[new_k] = sd[old_k]
-            del sd[old_k]
-        for k in delete_keys:
-            del sd[k]
-
-        self.load_state_dict(sd, strict=True)
-
     def make_empty_cache(self, block: str):
         """Create empty causal-convolution and normalization caches."""
 
