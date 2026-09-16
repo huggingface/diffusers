@@ -23,7 +23,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import logging
 from ...utils.peft_utils import apply_lora_scale
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -41,31 +41,16 @@ _IMG_TOKENS_PER_SLOT = 4
 # `create_block_mask` quantizes the mask to 128-token blocks.
 _FLEX_BLOCK_SIZE = 128
 
-# flex_attention is optional. When available we use a compiled flex_attention with a BlockMask for
-# efficient single-pass block-causal attention. When unavailable, we fall back to an exact multi-pass
-# SDPA prefill that processes each image block with bidirectional attention and text segments with
-# causal attention, matching the block-causal mask exactly.
+# flex_attention is optional: `QwenImage21FlexAttnProcessor` needs it, `QwenImage21AttnProcessor` does not.
 _FLEX_AVAILABLE = False
-_compiled_flex_attention = None
 try:
-    from torch.nn.attention.flex_attention import BlockMask, create_block_mask, flex_attention
+    import torch.nn.attention.flex_attention as flex_attention_module
+    from torch.nn.attention.flex_attention import BlockMask, create_block_mask
 
     _FLEX_AVAILABLE = True
 except ImportError:
     BlockMask = None
-    flex_attention = None
-
-
-def _get_compiled_flex_attention():
-    """Return a compiled flex_attention, compiling on first call.
-
-    Compiling is required for the block-sparse kernel that avoids materializing the full Q@K^T matrix. Without it
-    flex_attention falls back to a dense fp32 math path that OOMs on long sequences.
-    """
-    global _compiled_flex_attention
-    if _compiled_flex_attention is None:
-        _compiled_flex_attention = torch.compile(flex_attention)
-    return _compiled_flex_attention
+    flex_attention_module = None
 
 
 class QwenImage21KVLayerCache:
@@ -333,6 +318,40 @@ def build_qwenimage21_block_causal_mask(
     )
 
 
+@lru_cache_unless_export(maxsize=1)
+def _warn_if_flex_attention_is_uncompiled():
+    """Warn once per process when `flex_attention` has not been compiled.
+
+    `dispatch_attention_fn` reaches `flex_attention` through its module, so a user who compiles it — directly or by
+    compiling the model — is picked up here. Uncompiled, flex_attention falls back to a dense fp32 score matrix,
+    which is far slower and runs out of memory at high resolution, so say so rather than let it happen quietly.
+    """
+    if not hasattr(flex_attention_module.flex_attention, "_torchdynamo_orig_callable"):
+        logger.warning(
+            "`QwenImage21FlexAttnProcessor` is running an uncompiled `flex_attention`, which materializes the full "
+            "attention score matrix in fp32 and will run out of memory at high resolution. Compile the model with "
+            "`transformer.compile()`, or switch to `QwenImage21AttnProcessor`."
+        )
+
+
+def _qwenimage21_prefix_segments(image_ids: torch.Tensor, prefix_len: int) -> list[tuple[int, int, bool]]:
+    """Split the prefix into `(start, end, is_text)` runs of equal `image_ids`.
+
+    This is the block-causal structure in the form [`QwenImage21AttnProcessor`] consumes it, the way
+    [`~build_qwenimage21_block_causal_mask`] is the form [`QwenImage21FlexAttnProcessor`] consumes. It only depends
+    on `image_ids` and `prefix_len`, so the model derives it once per forward rather than in every processor call —
+    `tolist()` is a device sync, and there is one processor call per layer.
+    """
+    prefix_ids = image_ids[:prefix_len].tolist()
+    segments = []
+    start = 0
+    for index in range(1, prefix_len + 1):
+        if index == prefix_len or prefix_ids[index] != prefix_ids[start]:
+            segments.append((start, index, prefix_ids[start] < 0))
+            start = index
+    return segments
+
+
 def _qwenimage21_prepare_qkv(
     attn: "QwenImage21Attention",
     hidden_states: torch.Tensor,
@@ -377,16 +396,25 @@ def _qwenimage21_prepare_qkv(
 
 class QwenImage21FlexAttnProcessor:
     r"""
-    Attention processor for Qwen-Image 2.1 using compiled `flex_attention` with a `BlockMask` for exact block-causal
-    attention. This is the recommended path and is required for high resolutions (2048²+) where a dense score matrix
-    would OOM.
+    Attention processor for Qwen-Image 2.1 that runs the block-causal prefill as one `flex_attention` call driven by
+    a `BlockMask`, and the cached decode steps through the configured attention backend.
 
-    ``flex_attention`` is compiled on the first forward pass so the block-sparse kernel is used instead of the dense
-    fallback. The first call will be slower due to compilation.
+    Compile the model before using it, as the docs show. An uncompiled `flex_attention` falls back to a dense fp32
+    score matrix, which is far slower and runs out of memory at high resolution. Use `QwenImage21AttnProcessor` when
+    you do not want to compile.
     """
 
-    _attention_backend = "flex"
+    # Set by `set_attention_backend()` and only meaningful for the decode steps; the prefill needs the flex kernel
+    # for its `BlockMask` and is not configurable.
+    _attention_backend = None
     _parallel_config = None
+
+    def __init__(self):
+        if not _FLEX_AVAILABLE:
+            raise ImportError(
+                "`QwenImage21FlexAttnProcessor` requires `torch.nn.attention.flex_attention`, which needs "
+                "torch>=2.5. Use `QwenImage21AttnProcessor` instead."
+            )
 
     def __call__(
         self,
@@ -397,9 +425,8 @@ class QwenImage21FlexAttnProcessor:
         layer_cache: QwenImage21KVLayerCache | None = None,
         kv_cache_mode: str | None = None,
         cache_write_slice: slice | None = None,
-        image_ids: torch.Tensor | None = None,
+        segments: list[tuple[int, int, bool]] | None = None,
         key_valid: torch.Tensor | None = None,
-        prefix_len: int | None = None,
     ) -> torch.Tensor:
         query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
             attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
@@ -407,30 +434,38 @@ class QwenImage21FlexAttnProcessor:
 
         seq_len_kv = key.shape[1]
         if isinstance(attention_mask, BlockMask):
-            # prefill: the BlockMask expresses the block-causal structure in one flex call
+            # prefill: the BlockMask expresses the block-causal structure in one flex call. Query and key are
+            # padded up to the mask's block-quantized length.
+            if not torch.compiler.is_compiling():
+                _warn_if_flex_attention_is_uncompiled()
             pad_q = int(math.ceil(seq_len_q / _FLEX_BLOCK_SIZE) * _FLEX_BLOCK_SIZE) - seq_len_q
             pad_kv = int(math.ceil(seq_len_kv / _FLEX_BLOCK_SIZE) * _FLEX_BLOCK_SIZE) - seq_len_kv
+            # Pad the sequence axis. `F.pad` counts from the last dimension, so the head and channel axes are
+            # padded by zero first. The result stays contiguous, which the compiled flex kernel requires.
             if pad_q:
-                query = F.pad(query.transpose(1, 3), (0, pad_q)).transpose(1, 3)
+                query = F.pad(query, (0, 0, 0, 0, 0, pad_q))
             if pad_kv:
-                key = F.pad(key.transpose(1, 3), (0, pad_kv)).transpose(1, 3)
-                value = F.pad(value.transpose(1, 3), (0, pad_kv)).transpose(1, 3)
+                key = F.pad(key, (0, 0, 0, 0, 0, pad_kv))
+                value = F.pad(value, (0, 0, 0, 0, 0, pad_kv))
 
-            hidden_states = _get_compiled_flex_attention()(
-                query.transpose(1, 2).contiguous(),
-                key.transpose(1, 2).contiguous(),
-                value.transpose(1, 2).contiguous(),
-                block_mask=attention_mask,
-            ).transpose(1, 2)
-        else:
-            # decode: full attention over [cached prefix, target] via SDPA
             hidden_states = dispatch_attention_fn(
                 query,
                 key,
                 value,
                 attn_mask=attention_mask,
                 dropout_p=0.0,
-                backend=None,
+                backend="flex",
+                parallel_config=self._parallel_config,
+            )
+        else:
+            # decode: full attention over [cached prefix, target]
+            hidden_states = dispatch_attention_fn(
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                backend=self._attention_backend,
                 parallel_config=self._parallel_config,
             )
         hidden_states = hidden_states[:, :seq_len_q]
@@ -440,14 +475,13 @@ class QwenImage21FlexAttnProcessor:
         return attn.to_out[1](hidden_states)
 
 
-class QwenImage21SDPAAttnProcessor:
+class QwenImage21AttnProcessor:
     r"""
-    SDPA attention processor for Qwen-Image 2.1. Use this when `flex_attention` is not available.
+    Attention processor for Qwen-Image 2.1 that needs neither `flex_attention` nor a compiled model.
 
-    The block-causal mask is implemented exactly via a multi-pass prefill orchestrated by the model's `forward`: each
-    image block in the prefix is processed with bidirectional attention within the block and full attention to all
-    preceding segments, and text segments get a causal mask. The target image attends fully to the cached prefix +
-    itself. This matches the block-causal mask without requiring `flex_attention`.
+    The prefill decomposes the block-causal mask into one attention call per prefix segment plus one for the target
+    image, which is exact but slower than [`QwenImage21FlexAttnProcessor`]. The segment boundaries are computed once
+    per forward by the model and passed in as `segments`.
     """
 
     _attention_backend = None
@@ -462,15 +496,14 @@ class QwenImage21SDPAAttnProcessor:
         layer_cache: QwenImage21KVLayerCache | None = None,
         kv_cache_mode: str | None = None,
         cache_write_slice: slice | None = None,
-        image_ids: torch.Tensor | None = None,
+        segments: list[tuple[int, int, bool]] | None = None,
         key_valid: torch.Tensor | None = None,
-        prefix_len: int | None = None,
     ) -> torch.Tensor:
         query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
             attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
         )
 
-        if image_ids is None:
+        if segments is None:
             # decode: full attention over [cached prefix, target]
             hidden_states = dispatch_attention_fn(
                 query,
@@ -478,22 +511,14 @@ class QwenImage21SDPAAttnProcessor:
                 value,
                 attn_mask=attention_mask,
                 dropout_p=0.0,
-                backend=None,
+                backend=self._attention_backend,
                 parallel_config=self._parallel_config,
             )
         else:
-            # prefill: the block-causal mask decomposes into one attention call per prefix segment plus one for the
-            # target image. Every segment attends to the keys `[0, end)` (everything before it plus its own block);
-            # text segments additionally get a causal triangle over their own keys; padded text keys are dropped.
-            # `attention_mask` is the flex BlockMask of the same structure, meant for `QwenImage21FlexAttnProcessor`;
-            # it is not used here.
-            prefix_ids = image_ids[:prefix_len].tolist()
-            segments = []
-            start = 0
-            for i in range(1, prefix_len + 1):
-                if i == prefix_len or prefix_ids[i] != prefix_ids[start]:
-                    segments.append((start, i, prefix_ids[start] < 0))
-                    start = i
+            # prefill: every segment attends to the keys `[0, end)` (everything before it plus its own block); text
+            # segments additionally get a causal triangle over their own keys; padded text keys are dropped.
+            # `attention_mask` may hold the flex `BlockMask` of the same structure, which is not used here.
+            prefix_len = segments[-1][1] if segments else 0
             outputs = []
             for start, end, is_text in segments:
                 seg_mask = None
@@ -545,8 +570,11 @@ class QwenImage21Attention(torch.nn.Module, AttentionModuleMixin):
     [`~models.attention_processor.Attention`] so Qwen-Image 2.x checkpoints load into it unchanged.
     """
 
-    _default_processor_cls = QwenImage21FlexAttnProcessor if _FLEX_AVAILABLE else QwenImage21SDPAAttnProcessor
-    _available_processors = [QwenImage21FlexAttnProcessor, QwenImage21SDPAAttnProcessor]
+    # The default must not depend on the caller having compiled the model: an uncompiled `flex_attention` falls
+    # back to a dense fp32 score matrix and runs out of memory at high resolution. `QwenImage21FlexAttnProcessor`
+    # is the faster path once compiled, and the docs show how to opt into it.
+    _default_processor_cls = QwenImage21AttnProcessor
+    _available_processors = [QwenImage21AttnProcessor, QwenImage21FlexAttnProcessor]
 
     def __init__(self, dim: int, heads: int, dim_head: int, eps: float = 1e-6, processor: Any | None = None):
         super().__init__()
@@ -610,9 +638,8 @@ class QwenImage21TransformerBlock(nn.Module):
         layer_cache: QwenImage21KVLayerCache | None = None,
         kv_cache_mode: str | None = None,
         cache_write_slice: slice | None = None,
-        image_ids: torch.Tensor | None = None,
+        segments: list[tuple[int, int, bool]] | None = None,
         key_valid: torch.Tensor | None = None,
-        prefix_len: int | None = None,
     ) -> torch.Tensor:
         mod1, mod2 = modulation.chunk(2, dim=-1)
 
@@ -624,9 +651,8 @@ class QwenImage21TransformerBlock(nn.Module):
             layer_cache=layer_cache,
             kv_cache_mode=kv_cache_mode,
             cache_write_slice=cache_write_slice,
-            image_ids=image_ids,
+            segments=segments,
             key_valid=key_valid,
-            prefix_len=prefix_len,
         )
         hidden_states = hidden_states + img_gate1.tanh() * attn_output
 
@@ -937,16 +963,25 @@ class QwenImage21Transformer2DModel(
             modulation_mask = modulation_mask[prefix_len:]
             attention_mask = None if joint_key_valid is None else joint_key_valid[:, None, None, :]
             cache_write_slice = None
-            block_image_ids, block_key_valid, block_prefix_len = None, None, None
+            block_segments, block_key_valid = None, None
         else:
-            # prefill: the whole joint sequence. The block-causal structure is passed down both as a flex
-            # `BlockMask` (used by `QwenImage21FlexAttnProcessor`) and as its ingredients (`image_ids`,
-            # `key_valid`, `prefix_len`, used by `QwenImage21SDPAAttnProcessor`); the processor picks.
-            attention_mask = build_qwenimage21_block_causal_mask(
-                image_ids, joint_key_valid, batch_size, hidden_states.device
+            # prefill: the whole joint sequence. The block-causal structure goes down in whichever form the
+            # installed processors read it — a flex `BlockMask`, per-segment boundaries, or both for a mixed set —
+            # so neither path pays for building the other's metadata.
+            processors = [block.attn.processor for block in self.transformer_blocks]
+            needs_block_mask = any(isinstance(processor, QwenImage21FlexAttnProcessor) for processor in processors)
+            attention_mask = (
+                build_qwenimage21_block_causal_mask(image_ids, joint_key_valid, batch_size, hidden_states.device)
+                if needs_block_mask
+                else None
+            )
+            block_segments = (
+                None
+                if all(isinstance(processor, QwenImage21FlexAttnProcessor) for processor in processors)
+                else _qwenimage21_prefix_segments(image_ids, prefix_len)
             )
             cache_write_slice = slice(0, prefix_len) if kv_cache_mode == "extract" else None
-            block_image_ids, block_key_valid, block_prefix_len = image_ids, joint_key_valid, prefix_len
+            block_key_valid = joint_key_valid
 
         for index_block, block in enumerate(self.transformer_blocks):
             layer_cache = kv_cache.get_layer(index_block) if kv_cache is not None else None
@@ -961,9 +996,8 @@ class QwenImage21Transformer2DModel(
                     layer_cache,
                     kv_cache_mode,
                     cache_write_slice,
-                    block_image_ids,
+                    block_segments,
                     block_key_valid,
-                    block_prefix_len,
                 )
             else:
                 joint_hidden_states = block(
@@ -975,9 +1009,8 @@ class QwenImage21Transformer2DModel(
                     layer_cache=layer_cache,
                     kv_cache_mode=kv_cache_mode,
                     cache_write_slice=cache_write_slice,
-                    image_ids=block_image_ids,
+                    segments=block_segments,
                     key_valid=block_key_valid,
-                    prefix_len=block_prefix_len,
                 )
 
         joint_hidden_states = self.norm_out(joint_hidden_states, temb, modulation_mask)

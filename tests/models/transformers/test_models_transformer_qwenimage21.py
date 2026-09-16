@@ -165,9 +165,9 @@ class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTester
         # both processors implement the same block-causal attention: prefill and decode must agree, with and
         # without right-padded text
         from diffusers.models.transformers.transformer_qwenimage21 import (
+            QwenImage21AttnProcessor,
             QwenImage21FlexAttnProcessor,
             QwenImage21KVCache,
-            QwenImage21SDPAAttnProcessor,
         )
 
         init_dict = self.get_init_dict()
@@ -177,7 +177,7 @@ class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTester
             inputs["encoder_hidden_states_mask"][:, -1] = 0
 
         outputs = {}
-        for processor_cls in (QwenImage21FlexAttnProcessor, QwenImage21SDPAAttnProcessor):
+        for processor_cls in (QwenImage21FlexAttnProcessor, QwenImage21AttnProcessor):
             model.set_attn_processor(processor_cls())
             kv_cache = QwenImage21KVCache(init_dict["num_layers"])
             with torch.no_grad():
@@ -189,11 +189,30 @@ class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTester
         assert torch.allclose(flex_prefill, sdpa_prefill, atol=1e-5)
         assert torch.allclose(flex_decode, sdpa_decode, atol=1e-5)
 
-    def test_non_flex_backend_rejected_when_causal(self):
-        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        model.set_attention_backend("native")
-        with pytest.raises(ValueError, match="flex"):
-            model(**self.get_dummy_inputs())
+    @pytest.mark.parametrize("processor_name", ["QwenImage21FlexAttnProcessor", "QwenImage21AttnProcessor"])
+    def test_attention_backend_applies_to_decode_only(self, processor_name):
+        """
+        `set_attention_backend` configures the cached decode steps. The prefill picks its own path from the installed
+        processor, so setting a non-flex backend must not change or reject it.
+        """
+        import diffusers.models.transformers.transformer_qwenimage21 as transformer_module
+        from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
+
+        init_dict = self.get_init_dict()
+        inputs = self.get_dummy_inputs()
+        outputs = []
+        for backend in (None, "native"):
+            torch.manual_seed(0)
+            model = self.model_class(**init_dict).to(torch_device).eval()
+            model.set_attn_processor(getattr(transformer_module, processor_name)())
+            if backend is not None:
+                model.set_attention_backend(backend)
+            kv_cache = QwenImage21KVCache(init_dict["num_layers"])
+            with torch.no_grad():
+                model(**inputs, kv_cache=kv_cache, kv_cache_mode="extract", return_dict=False)
+                outputs.append(model(**inputs, kv_cache=kv_cache, kv_cache_mode="cached", return_dict=False)[0])
+
+        torch.testing.assert_close(outputs[0], outputs[1])
 
 
 class TestQwenImage21BlockCausalMask:
