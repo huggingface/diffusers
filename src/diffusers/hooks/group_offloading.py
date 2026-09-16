@@ -23,6 +23,7 @@ import safetensors.torch
 import torch
 
 from ..utils import get_logger, is_accelerate_available, is_torchao_available
+from ..utils.torch_utils import TorchDeviceBackend
 from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
@@ -166,11 +167,7 @@ class ModuleGroup:
         else:
             self.cpu_param_dict = self._init_cpu_param_dict()
 
-        self._torch_accelerator_module = (
-            getattr(torch, torch.accelerator.current_accelerator().type)
-            if hasattr(torch, "accelerator")
-            else torch.cuda
-        )
+        self._torch_accelerator_module = TorchDeviceBackend(self.onload_device)
 
     @staticmethod
     def _to_cpu(tensor, low_cpu_mem_usage):
@@ -664,14 +661,9 @@ def apply_group_offloading(
     offload_device = torch.device(offload_device) if isinstance(offload_device, str) else offload_device
     offload_type = GroupOffloadingType(offload_type)
 
-    stream = None
-    if use_stream:
-        if torch.cuda.is_available():
-            stream = torch.cuda.Stream()
-        elif hasattr(torch, "xpu") and torch.xpu.is_available():
-            stream = torch.Stream()
-        else:
-            raise ValueError("Using streams for data transfer requires a CUDA device, or an Intel XPU device.")
+    if use_stream and onload_device.type == "cpu":
+        raise ValueError("Using streams for data transfer requires an accelerator onload device, got `cpu`.")
+    stream = TorchDeviceBackend(onload_device).Stream() if use_stream else None
 
     if not use_stream and record_stream:
         raise ValueError("`record_stream` cannot be True when `use_stream=False`.")

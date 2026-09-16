@@ -1287,7 +1287,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return
 
         # make sure the model is in the same state as before calling it
-        self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
+        self.enable_model_cpu_offload(device=getattr(self, "_offload_device", get_device()))
 
     def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
         r"""
