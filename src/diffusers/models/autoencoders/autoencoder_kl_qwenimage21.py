@@ -1124,11 +1124,11 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
             3.8161,
         ],
         is_residual: bool = True,
-        in_channels: int = 3,
-        out_channels: int = 3,
+        in_channels: int = 4,
+        out_channels: int = 4,
         patch_size: int | None = None,
         scale_factor_temporal: int | None = 8,
-        scale_factor_spatial: int | None = 8,
+        scale_factor_spatial: int | None = 16,
     ) -> None:
         super().__init__()
 
