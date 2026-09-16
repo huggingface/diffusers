@@ -130,6 +130,26 @@ class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTester
         assert decoded.shape[1] == target_tokens
         torch.testing.assert_close(decoded, reference[:, -target_tokens:], atol=2e-5, rtol=2e-5)
 
+    def test_kv_cache_owns_its_memory(self):
+        """
+        The cached prefix must own its storage. At batch size 1 the prefix slice already counts as contiguous, so
+        storing `key[:, :prefix].contiguous()` hands the cache a view that pins the whole prefill K/V — 8 GiB at
+        2048² — for every step of the denoising loop.
+        """
+        from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
+
+        init_dict = self.get_init_dict()
+        model = self.model_class(**init_dict).to(torch_device).eval()
+        kv_cache = QwenImage21KVCache(init_dict["num_layers"])
+        with torch.no_grad():
+            model(**self.get_dummy_inputs(batch_size=1), kv_cache=kv_cache, kv_cache_mode="extract")
+
+        for index in range(init_dict["num_layers"]):
+            for cached in kv_cache.get_layer(index).get():
+                assert cached.untyped_storage().nbytes() == cached.numel() * cached.element_size(), (
+                    f"layer {index} cached a view into the full prefill K/V instead of a copy"
+                )
+
     def test_kv_cache_requires_causal_condition(self):
         from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
 

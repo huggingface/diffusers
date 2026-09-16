@@ -359,9 +359,12 @@ def _qwenimage21_prepare_qkv(
 
     if layer_cache is not None:
         if kv_cache_mode == "extract" and cache_write_slice is not None:
+            # `clone()`, not `contiguous()`: at batch size 1 the prefix slice already counts as contiguous
+            # (size-1 dims are ignored), so `contiguous()` returns the same view and the cache would pin the
+            # whole prefill K/V for every step of the denoising loop.
             layer_cache.store(
-                key[:, cache_write_slice].contiguous(),
-                value[:, cache_write_slice].contiguous(),
+                key[:, cache_write_slice].clone(),
+                value[:, cache_write_slice].clone(),
             )
         elif kv_cache_mode == "cached":
             cached_k, cached_v = layer_cache.get()
