@@ -313,3 +313,26 @@ class TestLoadFromLocalCopy:
             pipe._component_specs["vae"].pretrained_model_name_or_path == "hf-internal-testing/tiny-anima-modular-pipe"
         )
         assert pipe._component_specs["text_encoder"].pretrained_model_name_or_path == local_dir
+
+    def test_local_copy_loads_components_at_root(self, tmp_path):
+        """A component recorded without a subfolder is at the root of its repo; when the local copy has its files
+        there it is loaded from the copy: weights for a model, the saved config file for anything else."""
+        local_dir = str(tmp_path / "local-copy")
+        snapshot_download("hf-internal-testing/tiny-cosmos3-modular-pipe", local_dir=local_dir)
+        index_path = os.path.join(local_dir, "modular_model_index.json")
+        with open(index_path) as f:
+            index = json.load(f)
+        root_components = ["transformer", "scheduler", "text_tokenizer"]
+        for name in root_components:
+            for filename in os.listdir(os.path.join(local_dir, name)):
+                shutil.move(os.path.join(local_dir, name, filename), os.path.join(local_dir, filename))
+            index[name][2]["subfolder"] = None
+        with open(index_path, "w") as f:
+            json.dump(index, f)
+
+        pipe = ModularPipeline.from_pretrained(local_dir)
+        for name in root_components:
+            assert pipe._component_specs[name].pretrained_model_name_or_path == local_dir, f"{name} not local"
+        pipe.load_components(names=root_components, dtype=torch.float32, local_files_only=True)
+        for name in root_components:
+            assert getattr(pipe, name) is not None, f"{name} did not load from the local copy"
