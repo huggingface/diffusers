@@ -34,6 +34,7 @@ from ..pipelines.pipeline_loading_utils import (
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
     _unwrap_model,
+    filter_model_files,
     simple_get_class_obj,
 )
 from ..utils import PushToHubMixin, deprecate, is_accelerate_available, logging
@@ -63,6 +64,28 @@ if is_accelerate_available():
     import accelerate
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _has_local_component(
+    pretrained_model_name_or_path: str | os.PathLike | None, component_spec: ComponentSpec
+) -> bool:
+    """
+    Whether `pretrained_model_name_or_path` is a local directory that contains the component's `subfolder`, with weight
+    files in it for a model. Tokenizers, schedulers, processors, ... have no weights, so their folder is enough.
+    """
+    if pretrained_model_name_or_path is None or not component_spec.subfolder:
+        return False
+    component_dir = os.path.join(pretrained_model_name_or_path, component_spec.subfolder)
+    if not os.path.isdir(component_dir):
+        return False
+
+    from diffusers import AutoModel
+
+    type_hint = component_spec.type_hint
+    is_model = type_hint is None or issubclass(type_hint, (torch.nn.Module, AutoModel))
+    if not is_model:
+        return True
+    return len(filter_model_files(os.listdir(component_dir))) > 0
 
 
 # map regular pipeline to modular pipeline class name
@@ -1764,6 +1787,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     library, class_name, component_spec_dict = value
                     component_spec = self._dict_to_component_spec(name, component_spec_dict)
                     component_spec.default_creation_method = "from_pretrained"
+                    # a local copy of the repo (e.g. `hf download --local-dir`) keeps the original index, which
+                    # points at the Hub; load the components whose files are present locally from the copy
+                    if _has_local_component(pretrained_model_name_or_path, component_spec):
+                        component_spec.pretrained_model_name_or_path = pretrained_model_name_or_path
+                        component_spec.revision = None
                     self._component_specs[name] = component_spec
 
                 elif name in self._config_specs:

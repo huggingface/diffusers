@@ -15,9 +15,11 @@
 
 import json
 import os
+import shutil
 
 import pytest
 import torch
+from huggingface_hub import snapshot_download
 
 from diffusers import AutoModel, ControlNetModel, ModularPipeline, UNet2DConditionModel
 from diffusers.modular_pipelines.modular_pipeline_utils import ComponentSpec
@@ -268,3 +270,46 @@ class TestModularPipelineInitFallback:
         assert loaded_pipe.__class__.__name__ == pipe.__class__.__name__
         assert loaded_pipe._blocks.__class__.__name__ == pipe._blocks.__class__.__name__
         assert len(loaded_pipe._blocks.sub_blocks) == len(pipe._blocks.sub_blocks)
+
+
+class TestLoadFromLocalCopy:
+    def test_local_copy_loads_present_components_locally(self, tmp_path):
+        """`hf download --local-dir` keeps the index pointing at the Hub; components whose subfolder is present in
+        the local copy load from it, the rest keep their recorded spec."""
+        local_dir = str(tmp_path / "local-copy")
+        cache_dir = str(tmp_path / "cache")
+        snapshot_download("hf-internal-testing/tiny-anima-modular-pipe", local_dir=local_dir)
+
+        pipe = ModularPipeline.from_pretrained(local_dir)
+        for name in ("vae", "transformer", "text_encoder", "scheduler"):
+            spec = pipe._component_specs[name]
+            assert spec.pretrained_model_name_or_path == local_dir, f"{name} should load from the local copy"
+            assert spec.revision is None
+        assert (
+            pipe._component_specs["t5_tokenizer"].pretrained_model_name_or_path == "hf-internal-testing/tiny-random-t5"
+        )
+
+        pipe.load_components(names=["vae"], dtype=torch.float32, local_files_only=True, cache_dir=cache_dir)
+        assert pipe.vae is not None
+        cached_weights = [p for p in (tmp_path / "cache").rglob("*") if p.suffix in (".safetensors", ".bin")]
+        assert cached_weights == [], f"weights should not be in the Hub cache: {cached_weights}"
+
+    def test_local_copy_missing_files_keeps_recorded_spec(self, tmp_path):
+        """A missing subfolder, or a model subfolder without weight files (e.g. a partial download), keeps the
+        recorded spec instead of shadowing it with an unloadable folder."""
+        local_dir = str(tmp_path / "local-copy")
+        snapshot_download("hf-internal-testing/tiny-anima-modular-pipe", local_dir=local_dir)
+        shutil.rmtree(os.path.join(local_dir, "transformer"))
+        for filename in os.listdir(os.path.join(local_dir, "vae")):
+            if filename.endswith((".safetensors", ".bin")):
+                os.remove(os.path.join(local_dir, "vae", filename))
+
+        pipe = ModularPipeline.from_pretrained(local_dir)
+        assert (
+            pipe._component_specs["transformer"].pretrained_model_name_or_path
+            == "hf-internal-testing/tiny-anima-modular-pipe"
+        )
+        assert (
+            pipe._component_specs["vae"].pretrained_model_name_or_path == "hf-internal-testing/tiny-anima-modular-pipe"
+        )
+        assert pipe._component_specs["text_encoder"].pretrained_model_name_or_path == local_dir
