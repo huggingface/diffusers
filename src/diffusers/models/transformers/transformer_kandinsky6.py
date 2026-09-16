@@ -1,3 +1,17 @@
+# Copyright 2025 The Kandinsky Team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Kandinsky 6 Diffusers transformer."""
 
 from __future__ import annotations
@@ -26,6 +40,16 @@ from torch.nn.attention.flex_attention import BlockMask
 
 
 def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
+    """Return inverse frequencies for rotary position embeddings.
+
+    Args:
+        dim (`int`): Number of frequency values to generate.
+        max_period (`float`, *optional*, defaults to 10000.0): Maximum period
+            used by the frequency schedule.
+
+    Returns:
+        `torch.Tensor`: Frequency values in float32.
+    """
     return torch.exp(-math.log(max_period) * torch.arange(start=0, end=dim, dtype=torch.float32) / dim)
 
 
@@ -69,6 +93,7 @@ def _local_merge(x: Tensor, shape: tuple, group_size: tuple, dim: int = 0) -> Te
 
 
 def fractal_flatten(x: Tensor, rope: Tensor, shape: tuple, block_mask: bool = False):
+    """Flatten visual tokens, optionally arranging them into local fractal blocks."""
     if block_mask:
         ps = 8
         x = _local_patch(x, shape, (1, ps, ps), dim=0)
@@ -78,6 +103,7 @@ def fractal_flatten(x: Tensor, rope: Tensor, shape: tuple, block_mask: bool = Fa
 
 
 def fractal_unflatten(x: Tensor, shape: tuple, block_mask: bool = False) -> Tensor:
+    """Restore the spatial layout produced by :func:`fractal_flatten`."""
     if block_mask:
         ps = 8
         x = x.reshape(-1, ps * ps, x.shape[-1])
@@ -94,7 +120,7 @@ def fast_sta_nabla(
     wW: int = 3,
     device: str | torch.device = "cuda",
 ) -> Tensor:
-    """Precomputes the Sliding Tile Attention (STA) boolean mask for nabla attention."""
+    """Precompute the Sliding Tile Attention (STA) boolean mask for NABLA attention."""
     l = max(T, H, W)
     r = torch.arange(l, dtype=torch.int16, device=device)
     mat = (r.unsqueeze(1) - r.unsqueeze(0)).abs()
@@ -115,7 +141,7 @@ def nabla_block_mask(
     thr: float = 0.9,
     block_size: int = 64,
 ) -> BlockMask:
-    """Builds a dynamic nabla BlockMask from query/key statistics + STA prior."""
+    """Build a dynamic NABLA block mask from query/key statistics and an STA prior."""
     B, h, S, D = q.shape
     s1 = S // block_size
     qa = q.reshape(B, h, s1, block_size, D).mean(-2)
@@ -214,14 +240,13 @@ class RoPE3D(nn.Module):
             setattr(self, f"args_{i}", torch.outer(torch.arange(mp, dtype=freq.dtype, device=freq.device), freq))
 
 
-"""Diffusers MagCache adapter for the K6 multimodal transformer.
-
-Diffusers provides the public :class:`MagCacheConfig` and the stateful hook
-infrastructure.  K6's fused visual blocks carry video and audio streams
-together, so the stock hook needs a small adapter to preserve both tensors
-when a block is skipped.  The adapter keeps the Diffusers ``enable_cache`` /
-``disable_cache`` API and uses the Diffusers MagCache state and configuration.
-"""
+# Diffusers MagCache adapter for the K6 multimodal transformer.
+#
+# Diffusers provides the public :class:`MagCacheConfig` and the stateful hook
+# infrastructure. K6's fused visual blocks carry video and audio streams
+# together, so the stock hook needs a small adapter to preserve both tensors
+# when a block is skipped. The adapter keeps the Diffusers ``enable_cache`` /
+# ``disable_cache`` API and uses the Diffusers MagCache state and configuration.
 
 
 _HEAD_HOOK = "kandinsky6_mag_cache_head"
@@ -434,14 +459,13 @@ class Kandinsky6MagCacheMixin(CacheMixin):
         self._cache_config = None
 
 
-"""Diffusers-style K6 transformer components for the source port.
-
-The assembler inlines this module after the portable attention, RoPE, and
-tensor helpers.  The classes use the same inner-module vocabulary as the
-Diffusers Kandinsky5 transformer (for example ``in_layer``, ``modulation``,
-``self_attention`` and ``feed_forward``).  Checkpoint conversion maps the
-native K6 names to this public Diffusers layout.
-"""
+# Diffusers-style K6 transformer components for the source port.
+#
+# The assembler inlines this module after the portable attention, RoPE, and
+# tensor helpers. The classes use the same inner-module vocabulary as the
+# Diffusers Kandinsky5 transformer (for example ``in_layer``, ``modulation``,
+# ``self_attention`` and ``feed_forward``). Checkpoint conversion maps the
+# native K6 names to this public Diffusers layout.
 
 
 _MASKED_ATTENTION_BACKENDS = {
@@ -1060,9 +1084,47 @@ class Kandinsky6Transformer3DModel(
     CacheMixin,
     AttentionMixin,
 ):
-    """Standalone K6 T2V/T2VA transformer with Diffusers model mixins."""
+    """Kandinsky 6 transformer for text-to-video and text-to-video-and-audio generation.
 
-    _repeated_blocks = ["Kandinsky6TransformerEncoderBlock", "Kandinsky6TransformerDecoderBlock"]
+    The model uses separate text and visual transformer blocks for video-only
+    generation and fused video/audio blocks for multimodal generation. Inputs
+    and outputs use packed token layouts compatible with the native K6 model.
+
+    Args:
+        in_visual_dim (`int`, *optional*, defaults to 16): Number of input video latent channels.
+        out_visual_dim (`int`, *optional*, defaults to 16): Number of output video latent channels.
+        in_text_dim (`int`, *optional*, defaults to 3584): Text token embedding dimension.
+        in_text_dim2 (`int`, *optional*, defaults to 768): Pooled text embedding dimension.
+        time_dim (`int`, *optional*, defaults to 1024): Time embedding dimension.
+        patch_size (`tuple[int, int, int]`, *optional*, defaults to ``(1, 2, 2)``): Video patch size.
+        model_dim (`int`, *optional*, defaults to 4096): Video transformer hidden dimension.
+        ff_dim (`int`, *optional*, defaults to 16384): Video feed-forward hidden dimension.
+        num_text_blocks (`int`, *optional*, defaults to 4): Number of text blocks.
+        num_visual_blocks (`int`, *optional*, defaults to 60): Number of visual blocks.
+        axes_dims (`tuple[int, int, int]`, *optional*, defaults to ``(32, 48, 48)``): RoPE dimensions for video.
+        visual_cond (`bool`, *optional*, defaults to True): Whether video conditioning channels are present.
+        is_multimodal (`bool`, *optional*, defaults to False): Whether to construct fused video/audio blocks.
+        in_audio_dim (`int`, *optional*, defaults to 20): Number of input audio latent channels.
+        out_audio_dim (`int`, *optional*, defaults to 20): Number of output audio latent channels.
+        model_dim_a (`int`, *optional*): Audio transformer hidden dimension. Defaults to `model_dim`.
+        time_dim_a (`int`, *optional*): Audio time embedding dimension. Defaults to `time_dim`.
+        ff_dim_a (`int`, *optional*): Audio feed-forward hidden dimension. Defaults to `ff_dim`.
+        axes_dims_a (`tuple[int, int, int]`, *optional*): Audio RoPE dimensions. Defaults to `axes_dims`.
+        audio_freqs_scaling (`float`, *optional*, defaults to 1.0): Audio RoPE frequency scaling.
+        text_token_padding (`bool`, *optional*, defaults to False): Whether text sequences are padded.
+        scale_factor (`tuple[float]`, *optional*): Per-axis RoPE frequency scaling.
+        ca_rope (`bool`, *optional*, defaults to False): Whether to use cross-modal audio RoPE.
+        cross_gates (`bool`, *optional*, defaults to False): Whether to use cross-modal residual gates.
+        fix_modulation (`bool`, *optional*, defaults to False): Whether to use the fixed modulation variant.
+        visual_token_type_num_embeddings (`int`, *optional*, defaults to 0): Number of visual token type embeddings.
+        magcache (`dict`, *optional*): MagCache configuration.
+    """
+
+    _repeated_blocks = [
+        "Kandinsky6TransformerEncoderBlock",
+        "Kandinsky6TransformerDecoderBlock",
+        "Kandinsky6FusedTransformerDecoderBlock",
+    ]
     _keep_in_fp32_modules = ["time_embeddings", "modulation", "visual_modulation", "text_modulation"]
     _supports_gradient_checkpointing = True
 
@@ -1181,6 +1243,7 @@ class Kandinsky6Transformer3DModel(
             )
 
     def clear_text_proj_cache(self) -> None:
+        """Clear cached projected text embeddings."""
         self._text_proj_cache.clear()
 
     def _project_pooled(self, prefix: str | None, pooled: Tensor) -> Tensor:
@@ -1376,6 +1439,28 @@ class Kandinsky6Transformer3DModel(
         return_dict: bool = False,
         **kwargs: Any,
     ) -> Tensor | tuple[Tensor, Tensor] | Transformer2DModelOutput:
+        """Run the K6 transformer on video, audio, or fused video/audio latents.
+
+        Args:
+            x_video (`torch.Tensor`, *optional*): Packed video latent tokens.
+            x_audio (`torch.Tensor`, *optional*): Packed audio latent tokens.
+            text_embed (`torch.Tensor` or `list[torch.Tensor]`): Text token embeddings.
+            pooled_text_embed (`torch.Tensor` or `list[torch.Tensor]`): Pooled text embeddings.
+            time (`torch.Tensor` or `list[torch.Tensor]`): Diffusion timesteps.
+            visual_rope (`torch.Tensor`): Video rotary position embeddings.
+            audio_rope (`torch.Tensor`, *optional*): Audio rotary position embeddings.
+            text_rope (`torch.Tensor` or `list[torch.Tensor]`): Text rotary position embeddings.
+            sparse_params (`dict`, *optional*): NABLA sparse-attention configuration.
+            attention_mask (`torch.Tensor`, *optional*): Text attention mask.
+            visual_token_type_ids (`torch.Tensor`, *optional*): Video token type IDs.
+            return_dict (`bool`, *optional*, defaults to False): Whether to return a
+                [`Transformer2DModelOutput`] instead of tensors.
+
+        Returns:
+            `torch.Tensor`, `tuple[torch.Tensor, torch.Tensor]`, or
+            [`Transformer2DModelOutput`]: Denoised video output, audio and video
+            outputs, or a model output object.
+        """
         if text_embed is None or pooled_text_embed is None or time is None or text_rope is None:
             raise ValueError("text_embed, pooled_text_embed, time, and text_rope are required")
         both = x_video is not None and x_audio is not None and self.is_multimodal

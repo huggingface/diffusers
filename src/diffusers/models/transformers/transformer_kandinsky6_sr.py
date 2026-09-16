@@ -1,3 +1,17 @@
+# Copyright 2025 The Kandinsky Team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Kandinsky 6 SR transformer Diffusers component."""
 
 from __future__ import annotations
@@ -421,12 +435,11 @@ def framewise_causal_dense(
     return block_mask_from_bool(doc[None, None])
 
 
-"""Pure-torch helpers for the streaming KV-cache in self-attention.
-
-Kept free of ``flash_attn`` imports so the cache bookkeeping is importable and
-testable on CPU. The actual attention kernel call lives in
-``kandinsky_sr.model.nn``; this module only assembles its packed inputs.
-"""
+# Pure-torch helpers for the streaming KV-cache in self-attention.
+#
+# Kept free of ``flash_attn`` imports so the cache bookkeeping is importable and
+# testable on CPU. The actual attention kernel call lives in
+# ``kandinsky_sr.model.nn``; this module only assembles its packed inputs.
 
 
 if TYPE_CHECKING:
@@ -669,7 +682,7 @@ def evict_kv_slot(slot: KVSlot, max_tokens_per_seq: int) -> KVSlot:
     return evicted
 
 
-"""Neural network building blocks for the diffusion transformer."""
+# Neural network building blocks for the diffusion transformer.
 
 
 logger = logging.get_logger(__name__)
@@ -1796,7 +1809,7 @@ class OutLayer(nn.Module):
         self.modulation.reset_parameters()
 
 
-"""Diffusion transformer architecture for text-conditioned visual generation."""
+# Diffusion transformer architecture for text-conditioned visual generation.
 
 
 class TransformerEncoderBlock(nn.Module):

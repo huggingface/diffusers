@@ -1,3 +1,17 @@
+# Copyright 2025 The Kandinsky Team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Kandinsky 6 SR KVAE Diffusers component."""
 
 from __future__ import annotations
@@ -77,7 +91,7 @@ class SafeConv3d(nn.Conv3d):
 
 
 def nonlinearity(x):
-    # swish
+    # Apply the SiLU activation.
     return x * torch.sigmoid(x)
 
 
@@ -1014,12 +1028,32 @@ class DecoderOutput:
 
 
 class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
+    """Causal 3D VAE used by the Kandinsky 6 video super-resolution pipeline.
+
+    The encoder and decoder process videos in temporal segments while reusing
+    their causal convolution state between segments. This keeps memory usage
+    bounded for long videos and preserves the checkpoint layout of the KVAE.
+
+    Args:
+        vae_type (`str`): VAE architecture identifier. Must be ``"video-kvae"``.
+        encoder_config (`dict`): Configuration for the cached 3D encoder.
+        decoder_config (`dict`): Configuration for the cached 3D decoder.
+        scaling_factor (`float`, *optional*, defaults to 1.0): Latent scaling
+            factor stored in the component configuration.
+        spatial_factor (`int`, *optional*, defaults to 16): Spatial compression
+            factor of the VAE.
+        temporal_factor (`int`, *optional*, defaults to 4): Temporal compression
+            factor of the VAE.
+    """
+
     @staticmethod
     def normalize_data(data):
+        """Normalize pixel values to the KVAE input range."""
         return data / 128 - 1.0
 
     @staticmethod
     def denormalize_data(data):
+        """Convert normalized KVAE outputs back to pixel values."""
         return (data + 1) * 128
 
     @register_to_config
@@ -1043,6 +1077,7 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         self.temporal_factor = int(temporal_factor)
 
     def init_from_ckpt(self, path):
+        """Load a KVAE checkpoint in safetensors or training-checkpoint format."""
         if str(path).endswith(".safetensors"):
             # Release checkpoints are flat safetensors state dicts already in
             # the new-style key naming.
@@ -1081,6 +1116,8 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         self.load_state_dict(sd, strict=True)
 
     def make_empty_cache(self, block: str):
+        """Create empty causal-convolution and normalization caches."""
+
         def make_dict(name, p=None):
             if name == "conv":
                 return {"padding": None}
@@ -1119,9 +1156,20 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def encode(self, x, seg_len=16):
+        """Encode a video in temporal segments and return latents and segment sizes.
+
+        Args:
+            x (`torch.Tensor`): Video tensor in ``(batch, channels, frames, height, width)`` format.
+            seg_len (`int`, *optional*, defaults to 16): Number of non-initial
+                frames processed in each segment.
+
+        Returns:
+            `tuple[torch.Tensor, list[int]]`: Encoded latents and the pixel-space
+            segment sizes needed by :meth:`decode`.
+        """
         cache = self.make_empty_cache("enc")
 
-        ## get segments size
+        # Compute segment sizes.
         split_list = [seg_len + 1]
         n_frames = x.size(2) - (seg_len + 1)
         while n_frames > 0:
@@ -1130,7 +1178,7 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
 
         split_list[-1] += n_frames
 
-        ## encode by segments
+        # Encode each segment.
         latent = []
         for chunk in torch.split(x, split_list, dim=2):
             l = self.encoder(chunk, cache)
@@ -1142,9 +1190,19 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def decode(self, z, split_list=None):
+        """Decode latent segments while reusing the causal decoder cache.
+
+        Args:
+            z (`torch.Tensor`): Latent tensor in ``(batch, channels, frames, height, width)`` format.
+            split_list (`list[int]`, *optional*): Pixel-space segment sizes
+                returned by :meth:`encode`.
+
+        Returns:
+            `DecoderOutput`: Decoded video in ``sample``.
+        """
         cache = self.make_empty_cache("dec")
 
-        ## get segments size
+        # Compute latent segment sizes.
         if split_list is None:
             default_split_size = 16 // self.conf["enc"]["temporal_compress_times"]
             time_dim = z.shape[2]
@@ -1160,7 +1218,7 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         else:
             split_list = [math.ceil(size / self.conf["enc"]["temporal_compress_times"]) for size in split_list]
 
-        ## decode by segments
+        # Decode each segment.
         recs = []
         for chunk in torch.split(z, split_list, dim=2):
             out = self.decoder(chunk, cache)
@@ -1170,6 +1228,16 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=recs)
 
     def forward(self, x, seg_len: int = 16):
+        """Encode and decode a video in one call.
+
+        Args:
+            x (`torch.Tensor`): Video tensor in ``(batch, channels, frames, height, width)`` format.
+            seg_len (`int`, *optional*, defaults to 16): Number of non-initial
+                frames processed in each segment.
+
+        Returns:
+            `DecoderOutput`: Reconstructed video in ``sample``.
+        """
         latent, split_list = self.encode(x, seg_len)
         recs = self.decode(latent, split_list)
         return recs

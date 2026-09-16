@@ -1,3 +1,17 @@
+# Copyright 2025 The Kandinsky Team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Kandinsky 6 super-resolution Diffusers pipeline."""
 
 from __future__ import annotations
@@ -15,6 +29,7 @@ import av
 import numpy as np
 import torch
 from ..pipeline_utils import DiffusionPipeline
+from diffusers.utils import replace_example_docstring
 from pydantic import BaseModel, ConfigDict, Field
 from ...schedulers.scheduling_piflow import DXPolicy, policy_rollout_fm, shift_timesteps
 from torch import Tensor, nn
@@ -22,6 +37,28 @@ from torch.distributed import all_gather
 from torch.nn import functional
 
 from .pipeline_output import Kandinsky6SRPipelineOutput
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+
+        ```python
+        >>> import torch
+        >>> from diffusers import Kandinsky6SRPipeline
+
+        >>> model_id = "kandinskylab/Kandinsky-6.0-VSR-5s-Diffusers"
+        >>> pipe = Kandinsky6SRPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = pipe.to("cuda")
+
+        >>> output = pipe.from_video(
+        ...     "input.mp4",
+        ...     resolution_scale=2.25,
+        ...     save_path="output.mp4",
+        ... )
+        >>> output.path
+        'output.mp4'
+        ```
+"""
+
 
 # These values are the SR data contract and must stay local to this pipeline.
 VAE_SPATIAL_FACTOR = 16
@@ -61,7 +98,7 @@ def _execution_device_context(device: torch.device | str):
         yield
 
 
-"""Shared tiling utilities for spatial video tiling with Hanning-window blending."""
+# Shared tiling utilities for spatial video tiling with Hanning-window blending.
 
 
 class TileGrid(NamedTuple):
@@ -1577,15 +1614,14 @@ def _upsample_tiles_to_base(raw_tiles: list[torch.Tensor], base_h: int, base_w: 
     ]
 
 
-"""Reusable Kandinsky SR inference stages and tiled orchestration.
-
-The functions in this module deliberately do not depend on a benchmark
-runner.  A framework can call ``text_encode`` / ``prepare_latents`` /
-``denoise`` / ``vae_decode`` directly, or use the tiled functions for the
-scale-aware path.  Native benchmark integrations may add timing contexts to
-the tiled calls; the public :class:`Kandinsky6SRPipeline` does not expose
-those callbacks.
-"""
+# Reusable Kandinsky SR inference stages and tiled orchestration.
+#
+# The functions in this module deliberately do not depend on a benchmark
+# runner. A framework can call ``text_encode`` / ``prepare_latents`` /
+# ``denoise`` / ``vae_decode`` directly, or use the tiled functions for the
+# scale-aware path. Native benchmark integrations may add timing contexts to
+# the tiled calls; the public :class:`Kandinsky6SRPipeline` does not expose
+# those callbacks.
 
 
 @dataclass(frozen=True)
@@ -2576,6 +2612,7 @@ class Kandinsky6SRPipeline(DiffusionPipeline):
     Args:
         transformer: SR transformer used to denoise latent tiles.
         vae: Video VAE used for pixel-input encoding.
+        scheduler: Scheduler used for SR denoising.
         latent_upscaler: Optional x2/x4 latent upscaler bank.
         source_vae: Optional source VAE used only by the KVAE latent bridge.
     """
@@ -2980,6 +3017,7 @@ class Kandinsky6SRPipeline(DiffusionPipeline):
             )
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         video: SRBatchInput | None = None,
@@ -3006,6 +3044,15 @@ class Kandinsky6SRPipeline(DiffusionPipeline):
                 in a supported rank-5 layout, or local video paths.
             latents: Raw latent tensor, a supported rank-5 latent batch, or
                 local ``.pt`` files.
+            resolution_scale: Total spatial upscale factor. Supported values
+                are ``2``, ``4``, and ``2.25``.
+            num_inference_steps: Number of denoising steps for the SR model.
+            generator: Optional random generator used to derive the sampling seed.
+            overlap: Fraction of overlap between adjacent tiles.
+            tiles_batch_size: Number of tiles processed in one sampler batch.
+            kvae_bridge: Whether latent inputs come from a base VAE and need to
+                be decoded before SR.
+            cached_text_embeds: Optional cached empty-caption embeddings.
             save_path: Optional output video path or one path per input.
             fps: Optional output video frame rate.
             audio: Optional audio waveform to mux.
@@ -3013,6 +3060,8 @@ class Kandinsky6SRPipeline(DiffusionPipeline):
             audio_sample_rate: Sample rate used when muxing audio.
             output_type: ``pt``/``torch`` or ``np``/``numpy``.
             return_dict: Whether to return ``Kandinsky6SRPipelineOutput``.
+
+        Examples:
 
         Returns:
             ``Kandinsky6SRPipelineOutput`` or its tuple representation when

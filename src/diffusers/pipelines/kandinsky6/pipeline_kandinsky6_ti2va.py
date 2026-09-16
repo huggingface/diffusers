@@ -1,3 +1,17 @@
+# Copyright 2025 The Kandinsky Team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Kandinsky 6 TI2VA Diffusers pipeline."""
 
 from __future__ import annotations
@@ -14,9 +28,44 @@ from typing import Any, TypedDict
 import numpy as np
 import torch
 from ..pipeline_utils import DiffusionPipeline
+from diffusers.utils import replace_example_docstring
 from torch import Tensor, nn
 
 from .pipeline_output import Kandinsky6TI2VAPipelineOutput
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+
+        ```python
+        >>> import torch
+        >>> from diffusers import Kandinsky6TI2VAPipeline
+        >>> from diffusers.utils import encode_video
+
+        >>> model_id = "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers"
+        >>> pipe = Kandinsky6TI2VAPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe.enable_model_cpu_offload()
+
+        >>> output = pipe(
+        ...     prompt="A cat and a dog baking a cake together in a kitchen.",
+        ...     height=480,
+        ...     width=864,
+        ...     num_frames=121,
+        ...     num_inference_steps=16,
+        ...     guidance_scale=1.0,
+        ...     sample_audio=True,
+        ... )
+
+        >>> video = output.frames[0].permute(1, 2, 3, 0)
+        >>> audio = torch.as_tensor(output.audio[0])[:, None].repeat(1, 2)
+        >>> encode_video(
+        ...     video,
+        ...     fps=24,
+        ...     output_path="output.mp4",
+        ...     audio=audio,
+        ...     audio_sample_rate=pipe.audio_sample_rate,
+        ... )
+        ```
+"""
 
 
 @dataclass
@@ -927,6 +976,16 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
     def encode_prompt(
         self, text: str | list[str], max_sequence_length: int
     ) -> tuple[TextEmbeds, Tensor, Tensor | None]:
+        """Encode text with Qwen2.5-VL and CLIP and build packed token metadata.
+
+        Args:
+            text (`str` or `list[str]`): Prompt or prompts to encode.
+            max_sequence_length (`int`): Maximum number of Qwen text tokens.
+
+        Returns:
+            `tuple`: Text embeddings, cumulative sequence lengths, and an
+            optional Qwen attention mask.
+        """
         texts = [text] if isinstance(text, str) else text
         full_texts = [_PROMPT_TEMPLATE.format(item) for item in texts]
         qwen_device = next(self.text_encoder.parameters()).device
@@ -1302,6 +1361,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         raise ValueError("output_type must be 'pt', 'torch', 'np', 'numpy', or 'latent'")
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: str | list[str] | None = None,
@@ -1350,6 +1410,10 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             prompt_embeds: Optional precomputed positive embeddings.
             negative_prompt_embeds: Optional precomputed negative embeddings.
             cu_seqlens: Optional positive/negative cumulative sequence lengths.
+            prompt_cu_seqlens: Optional cumulative sequence lengths for
+                precomputed positive prompt embeddings.
+            negative_prompt_cu_seqlens: Optional cumulative sequence lengths
+                for precomputed negative prompt embeddings.
             sample_audio: Whether to generate synchronized audio.
             expand_prompts: Whether to use the built-in Qwen video+audio prompt expander before encoding.
             output_type: ``pt``/``torch`` for tensors, ``np``/``numpy`` for
@@ -1360,6 +1424,8 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             visual_cond_scheme: Optional image-conditioning scheme. Defaults to
                 ``pretrain`` without ``image`` and ``tail_cond_first_frame``
                 with ``image``.
+
+        Examples:
 
         Returns:
             ``Kandinsky6TI2VAPipelineOutput`` containing video frames and int16 NumPy

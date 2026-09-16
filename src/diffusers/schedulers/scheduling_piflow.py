@@ -1,3 +1,17 @@
+# Copyright 2025 The Kandinsky Team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Diffusers scheduler for distilled Kandinsky 6 PiFlow checkpoints."""
 
 from __future__ import annotations
@@ -122,7 +136,27 @@ def policy_rollout_fm(  # noqa: PLR0913
 
 
 class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
-    """Few-step flow-matching scheduler for widened-output DiTs."""
+    """Few-step PiFlow scheduler for widened-output diffusion transformers.
+
+    PiFlow evaluates the denoising model at a small number of grid points and
+    integrates a network-free policy between those evaluations. The scheduler
+    is intended for distilled Kandinsky 6 checkpoints, including the main
+    video/audio model and the video super-resolution model. Their model output
+    contains ``n_grid`` predictions per sample channel.
+
+    Args:
+        num_train_timesteps (`int`, *optional*, defaults to 1000): Number of
+            training diffusion steps.
+        shift (`float`, *optional*, defaults to 5.0): Flow-matching timestep shift.
+        n_grid (`int`, *optional*, defaults to 10): Number of predictions in the
+            widened model output.
+        nfe (`int`, *optional*): Number of model evaluations used at inference.
+        eps (`float`, *optional*, defaults to 1e-6): Minimum timestep and policy denominator.
+        final_step_size_scale (`float`, *optional*, defaults to 0.5): Relative
+            size of the final raw-timestep segment.
+        num_policy_substeps (`int`, *optional*, defaults to 128): Maximum policy
+            integration substeps per raw-timestep unit.
+    """
 
     is_piflow = True
 
@@ -163,6 +197,15 @@ class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
         mu: float | None = None,
         timesteps: list[float] | None = None,
     ) -> None:
+        """Set the distilled PiFlow timestep schedule.
+
+        Args:
+            num_inference_steps (`int`): Number of model evaluations.
+            device (`str` or `torch.device`, *optional*): Device for the schedule.
+            sigmas (`list[float]`, *optional*): Unsupported custom sigma schedule.
+            mu (`float`, *optional*): Unsupported dynamic-shift parameter.
+            timesteps (`list[float]`, *optional*): Unsupported custom timestep schedule.
+        """
         if sigmas is not None or mu is not None or timesteps is not None:
             raise ValueError("PiflowScheduler only supports its configured distilled timestep schedule")
         if num_inference_steps is None or num_inference_steps < 1:
@@ -256,6 +299,19 @@ class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
         sample: torch.FloatTensor,
         return_dict: bool = True,
     ) -> FlowMatchEulerDiscreteSchedulerOutput | tuple:
+        """Advance one step by integrating the PiFlow policy.
+
+        Args:
+            model_output (`torch.FloatTensor`): Widened model output containing
+                ``n_grid`` predictions per sample channel.
+            timestep (`float` or `torch.FloatTensor`): Current scheduler timestep.
+            sample (`torch.FloatTensor`): Current noisy sample.
+            return_dict (`bool`, *optional*, defaults to True): Whether to return
+                a [`FlowMatchEulerDiscreteSchedulerOutput`].
+
+        Returns:
+            [`FlowMatchEulerDiscreteSchedulerOutput`] or `tuple`: Updated sample.
+        """
         if isinstance(timestep, int) or isinstance(timestep, (torch.IntTensor, torch.LongTensor)):
             raise ValueError(
                 "Passing integer indices as timesteps to PiflowScheduler.step() is not supported; "

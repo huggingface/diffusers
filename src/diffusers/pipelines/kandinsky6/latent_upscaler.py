@@ -1,3 +1,17 @@
+# Copyright 2025 The Kandinsky Team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Kandinsky 6 SR latent-upscaler bank Diffusers component."""
 
 from __future__ import annotations
@@ -28,7 +42,7 @@ def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
     return torch.exp(-math.log(max_period) * torch.arange(start=0, end=dim, dtype=torch.float32) / dim)
 
 
-"""Convolution primitives shared by the latent upsampler architectures."""
+# Convolution primitives shared by the latent upsampler architectures.
 
 
 DIMS_2 = 2
@@ -161,7 +175,7 @@ def make_conv(dims: int, temporal_padding: TemporalPadding) -> type[nn.Module]:
     return nn.Conv3d
 
 
-"""Reusable building blocks for latent upsampler architectures."""
+# Reusable building blocks for latent upsampler architectures.
 
 
 class RMSNorm(nn.Module):
@@ -499,7 +513,7 @@ class ResidualBlock(nn.Module):
             nn.init.zeros_(final_conv.bias)  # type: ignore[arg-type]
 
 
-"""Exact merging of flash-style attention branches with a closed-form null branch."""
+# Exact merging of flash-style attention branches with a closed-form null branch.
 
 
 if TYPE_CHECKING:
@@ -618,7 +632,7 @@ def merge_attention_branches(
     return MergeWithNullBranch.apply(null_value, null_logits, len(outputs), torch_compile, *outputs, *lses)
 
 
-"""Runtime helpers shared by latent-upscaler model components."""
+# Runtime helpers shared by latent-upscaler model components.
 
 
 if TYPE_CHECKING:
@@ -636,7 +650,7 @@ def forward_with_checkpointing(
     return module(*inputs)
 
 
-"""Spatial upsampling operations: pixel-shuffle, bilinear, and K-VAE PXS v2."""
+# Spatial upsampling operations: pixel-shuffle, bilinear, and K-VAE PXS v2.
 
 
 if TYPE_CHECKING:
@@ -925,7 +939,7 @@ class PXSv2HybridUpsampleND(nn.Module):
         return self.linear(self.pxs(x) + self.v3(x))
 
 
-"""Motion-correspondence attention for latent video features."""
+# Motion-correspondence attention for latent video features.
 
 
 if TYPE_CHECKING:
@@ -1228,7 +1242,7 @@ def load_natten() -> ModuleType:
     return natten
 
 
-"""Construction and execution helpers for the cascaded multi-scale model."""
+# Construction and execution helpers for the cascaded multi-scale model.
 
 
 STAGE_FACTOR = 2
@@ -1399,7 +1413,7 @@ def apply_block_sequence(
     return x
 
 
-"""Convolutional latent-space spatial upsampler with configurable upsampling strategy."""
+# Convolutional latent-space spatial upsampler with configurable upsampling strategy.
 
 
 class ConvLatentUpsampler(nn.Module):
@@ -1680,7 +1694,7 @@ class ConvLatentUpsampler(nn.Module):
         return rearrange(x, "(b t) c h w -> b c t h w", b=b, t=t) if self.dims == 2 else x
 
 
-"""Scale-specific x2 adaptation modules for the cascaded latent upscaler."""
+# Scale-specific x2 adaptation modules for the cascaded latent upscaler.
 
 
 X2TailMode = Literal["shared", "scale_specific_norm", "private", "private_full"]
@@ -1902,7 +1916,7 @@ class X2Branch(nn.Module):
         return x
 
 
-"""Multi-scale cascaded upsampler: two 2x stages with intermediate supervision."""
+# Multi-scale cascaded upsampler: two 2x stages with intermediate supervision.
 
 
 # The two projections back to latent space. They are scale-specific, so a warm
@@ -2274,7 +2288,7 @@ class MultiScaleUpsampler(nn.Module):
         return out + spatial_nearest_2x(z, DIMS_3, self.upscale_factor)
 
 
-"""Configuration models for the latent upscaler."""
+# Configuration models for the latent upscaler.
 
 
 UpsampleMode = Literal["pixel_shuffle", "bilinear", "pxs_v2", "pxs_v2_hybrid"]
@@ -2544,7 +2558,7 @@ ModelConfig = Annotated[
     FlatModelConfig | MultiScaleModelConfig,
     Field(discriminator="architecture"),
 ]
-"""Factory functions for building upsampler models."""
+# Factory functions for building upsampler models.
 
 
 if TYPE_CHECKING:
@@ -2660,7 +2674,14 @@ _MODEL_CONFIG_ADAPTER = TypeAdapter(ModelConfig)
 
 
 class Kandinsky6SRLatentUpscalerBank(ModelMixin, ConfigMixin):
-    """Diffusers wrapper around the self-contained x2/x4 upscaler bank."""
+    """Diffusers wrapper around the self-contained x2/x4 latent-upscaler bank.
+
+    Args:
+        models (`list[dict]`): Serialized upscaler definitions. Each definition
+            contains a ``target_scale`` and a validated ``model`` configuration.
+        scaling_factor (`float`, *optional*, defaults to 1.0): Factor applied to
+            latents before they are passed to an upscaler.
+    """
 
     @register_to_config
     def __init__(
@@ -2699,7 +2720,19 @@ class Kandinsky6SRLatentUpscalerBank(ModelMixin, ConfigMixin):
         entry: str | None = None,
         return_intermediates: bool | None = None,
     ) -> Any:
-        """Forward one bank entry, primarily for direct component use."""
+        """Forward one bank entry, primarily for direct component use.
+
+        Args:
+            latent (`torch.Tensor`): Latent tensor to upscale.
+            entry (`str`, *optional*): Entry name such as ``"x2"`` or ``"2x"``.
+                Required when the bank contains multiple scales.
+            return_intermediates (`bool`, *optional*): Whether to return
+                intermediate upscaler outputs when supported by the entry.
+
+        Returns:
+            `torch.Tensor` or `dict`: Upscaled latent, or the selected entry's
+            intermediate-output structure.
+        """
         if entry is None:
             if len(self._models) != 1:
                 raise ValueError("entry is required when the latent-upscaler bank has multiple scales")

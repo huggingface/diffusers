@@ -20,9 +20,8 @@ from ...utils.accelerate_utils import apply_forward_hook
 from einops import rearrange
 from huggingface_hub import PyTorchModelHubMixin, hf_hub_download
 from librosa.filters import mel as librosa_mel_fn
-from torch import nn, pow, sin
+from torch import pow, sin
 from torch.nn import Conv1d, ConvTranspose1d, Parameter
-from torch.nn import functional as F
 from torch.nn.utils import weight_norm as legacy_weight_norm
 from torch.nn.utils.parametrizations import weight_norm
 from torch.nn.utils.parametrize import remove_parametrizations
@@ -33,8 +32,8 @@ from torch.nn.utils.parametrize import remove_parametrizations
 # Attribution-NonCommercial-ShareAlike 4.0 International License.
 # You should have received a copy of the license along with this
 # work. If not, see http://creativecommons.org/licenses/by-nc-sa/4.0/
-"""Improved diffusion model architecture proposed in the paper
-"Analyzing and Improving the Training Dynamics of Diffusion Models"."""
+# Improved diffusion model architecture proposed in the paper
+# "Analyzing and Improving the Training Dynamics of Diffusion Models".
 
 
 # ----------------------------------------------------------------------------
@@ -1530,6 +1529,7 @@ class MelConverter(nn.Module):
 
 
 def get_mel_converter(mode: Literal["44k"]) -> MelConverter:
+    """Create the 44.1 kHz mel-spectrogram converter used by MMAudio."""
     return MelConverter(
         sampling_rate=44_100,
         n_fft=2048,
@@ -1542,10 +1542,29 @@ def get_mel_converter(mode: Literal["44k"]) -> MelConverter:
     )
 
 
-"""Audio feature / VAE facade."""
+# Audio feature / VAE facade.
 
 
 class MMAudioVAE(ModelMixin, ConfigMixin):
+    """Audio VAE and vocoder used to encode and decode audio latents.
+
+    The component converts waveforms to mel-spectrograms, encodes them into
+    latent representations, and decodes latents back to waveforms through a
+    BigVGAN vocoder.
+
+    Args:
+        tod_vae_ckpt (`str` or `os.PathLike`, *optional*): Path to the audio VAE checkpoint.
+        bigvgan_vocoder_ckpt (`str` or `os.PathLike`, *optional*): Path to the BigVGAN checkpoint.
+        vocoder_config (`dict`, *optional*): BigVGAN configuration when no checkpoint directory is supplied.
+        mode (`str`, *optional*, defaults to ``"44k"``): Audio operating mode.
+        need_vae_encoder (`bool`, *optional*, defaults to True): Whether to load the VAE encoder.
+        need_vae_decoder (`bool`, *optional*, defaults to True): Whether to load the VAE decoder and vocoder.
+        scaling_factor (`float`, *optional*, defaults to 1.0): Latent scaling factor.
+        sample_rate (`int`, *optional*, defaults to 44100): Audio sample rate.
+        downsample_factor (`int`, *optional*, defaults to 1024): Audio latent downsampling factor.
+        device (`str` or `torch.device`, *optional*): Device on which to place the component.
+    """
+
     ignore_for_config = ["tod_vae_ckpt", "bigvgan_vocoder_ckpt", "device"]
 
     @register_to_config
@@ -1580,22 +1599,27 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
             self.to(device)
 
     def compile(self):
+        """Compile the decode and vocode methods with ``torch.compile``."""
         self.decode = torch.compile(self.decode)
         self.vocode = torch.compile(self.vocode)
 
     def train(self, mode: bool = True) -> MMAudioVAE:
+        """Keep the inference-only audio component in evaluation mode."""
         return super().train(False)
 
     def encode_audio(self, x) -> DiagonalGaussianDistribution:
+        """Encode a waveform into an audio latent distribution."""
         assert self.tod is not None, "VAE is not loaded"
         mel = self.mel_converter(x)
         return self.tod.encode(mel)
 
     def vocode(self, mel: torch.Tensor) -> torch.Tensor:
+        """Convert a decoded mel-spectrogram into a waveform."""
         assert self.tod is not None, "VAE is not loaded"
         return self.tod.vocode(mel)
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
+        """Decode audio latents into a mel-spectrogram."""
         assert self.tod is not None, "VAE is not loaded"
         return self.tod.decode(z)
 
@@ -1609,11 +1633,13 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def wrapped_decode(self, z):
+        """Decode latents and vocode them through the Diffusers forward hook."""
         mel_decoded = self.decode(z.to(dtype=self.dtype))
         return self.vocode(mel_decoded)
 
     @apply_forward_hook
     def wrapped_encode(self, audio):
+        """Encode audio and return the mean latent through the forward hook."""
         dist = self.encode_audio(audio.to(dtype=self.dtype))
         return dist.mean
 
