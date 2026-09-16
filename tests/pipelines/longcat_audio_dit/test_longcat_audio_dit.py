@@ -13,9 +13,9 @@
 # limitations under the License.
 
 import os
-import unittest
 from pathlib import Path
 
+import pytest
 import torch
 from transformers import AutoTokenizer, UMT5Config, UMT5EncoderModel
 
@@ -26,24 +26,33 @@ from diffusers import (
     LongCatAudioDiTVae,
 )
 
-from ...testing_utils import enable_full_determinism, require_torch_accelerator, slow, torch_device
+from ...testing_utils import (
+    assert_tensors_close,
+    enable_full_determinism,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class LongCatAudioDiTPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = LongCatAudioDiTPipeline
-    params = (
+    # This pipeline sizes its output with `audio_duration_s` and takes no precomputed prompt embeddings.
+    required_input_params_in_call_signature = (
         TEXT_TO_AUDIO_PARAMS
         - {"audio_length_in_s", "prompt_embeds", "negative_prompt_embeds", "cross_attention_kwargs"}
     ) | {"audio_duration_s"}
-    batch_params = TEXT_TO_AUDIO_BATCH_PARAMS
-    required_optional_params = PipelineTesterMixin.required_optional_params - {"num_images_per_prompt"}
-    test_attention_slicing = False
-    test_xformers_attention = False
+    batch_input_params = TEXT_TO_AUDIO_BATCH_PARAMS
+    # Waveform length for `audio_duration_s=0.1` at the tiny VAE's 24 kHz sample rate, as one mono channel.
+    output_shape = (1, 4800)
+    # An audio pipeline: `__call__` has no `num_images_per_prompt`, and the noise is always sampled internally
+    # rather than passed in as `latents`.
+    optional_input_params = frozenset(["num_inference_steps", "generator", "output_type", "return_dict"])
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -77,85 +86,32 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "transformer": transformer,
         }
 
-    def get_dummy_inputs(self, device, seed=0, prompt="soft ocean ambience"):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
+    def get_dummy_inputs(self):
         return {
-            "prompt": prompt,
+            "prompt": "soft ocean ambience",
             "audio_duration_s": 0.1,
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
-            "generator": generator,
+            "generator": self.get_generator(0),
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
+
+class TestLongCatAudioDiTPipeline(LongCatAudioDiTPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
-        pipe = self.pipeline_class(**self.get_dummy_components())
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
-        output = pipe(**self.get_dummy_inputs(device)).audios
+        audios = pipe(**self.get_dummy_inputs()).audios
 
-        self.assertEqual(output.ndim, 3)
-        self.assertEqual(output.shape[0], 1)
-        self.assertEqual(output.shape[1], 1)
-        self.assertGreater(output.shape[-1], 0)
+        assert audios.shape == (1, *self.output_shape)
 
-    def test_save_load_local(self):
-        import tempfile
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=2e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-        device = "cpu"
-        pipe = self.pipeline_class(**self.get_dummy_components())
-        pipe.to(device)
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            pipe.save_pretrained(tmp_dir)
-            reloaded = self.pipeline_class.from_pretrained(tmp_dir, local_files_only=True)
-            output = reloaded(**self.get_dummy_inputs(device, seed=0)).audios
-
-        self.assertIsInstance(reloaded, LongCatAudioDiTPipeline)
-        self.assertEqual(output.ndim, 3)
-        self.assertGreater(output.shape[-1], 0)
-
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=2e-3)
-
-    def test_model_cpu_offload_forward_pass(self):
-        self.skipTest(
-            "LongCatAudioDiTPipeline offload coverage is not ready for the standard PipelineTesterMixin test."
-        )
-
-    def test_cpu_offload_forward_pass_twice(self):
-        self.skipTest(
-            "LongCatAudioDiTPipeline offload coverage is not ready for the standard PipelineTesterMixin test."
-        )
-
-    def test_sequential_cpu_offload_forward_pass(self):
-        self.skipTest(
-            "LongCatAudioDiTPipeline uses `torch.nn.utils.weight_norm`, which is not compatible with "
-            "sequential offloading."
-        )
-
-    def test_sequential_offload_forward_pass_twice(self):
-        self.skipTest(
-            "LongCatAudioDiTPipeline uses `torch.nn.utils.weight_norm`, which is not compatible with "
-            "sequential offloading."
-        )
-
-    def test_pipeline_level_group_offloading_inference(self):
-        self.skipTest(
-            "LongCatAudioDiTPipeline group offloading coverage is not ready for the standard PipelineTesterMixin test."
-        )
-
-    def test_num_images_per_prompt(self):
-        self.skipTest("LongCatAudioDiTPipeline does not support num_images_per_prompt.")
-
+    @pytest.mark.skip("`LongCatAudioDiTPipeline.encode_prompt` has a custom signature.")
     def test_encode_prompt_works_in_isolation(self):
-        self.skipTest("LongCatAudioDiTPipeline.encode_prompt has a custom signature.")
+        pass
 
     def test_uniform_flow_match_scheduler_grid_matches_manual_updates(self):
         num_inference_steps = 6
@@ -165,7 +121,7 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         expected_grid = torch.linspace(0, 1, num_inference_steps + 1, dtype=torch.float32)
         actual_timesteps = scheduler.timesteps / scheduler.config.num_train_timesteps
-        self.assertTrue(torch.allclose(actual_timesteps, expected_grid[:-1], atol=1e-6, rtol=0))
+        assert_tensors_close(actual_timesteps, expected_grid[:-1], atol=1e-6, rtol=0)
 
         sample = torch.zeros(1, 2, 3)
         model_output = torch.ones_like(sample)
@@ -174,7 +130,31 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected = expected + model_output * (t1 - t0)
             sample = scheduler.step(model_output, scheduler_t, sample, return_dict=False)[0]
 
-        self.assertTrue(torch.allclose(sample, expected, atol=1e-6, rtol=0))
+        assert_tensors_close(sample, expected, atol=1e-6, rtol=0)
+
+
+class TestLongCatAudioDiTPipelineMemory(LongCatAudioDiTPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LongCat AudioDiT pipeline."""
+
+    @pytest.mark.skip("Offload coverage is not ready for this pipeline.")
+    def test_model_cpu_offload_forward_pass(self):
+        pass
+
+    @pytest.mark.skip("Offload coverage is not ready for this pipeline.")
+    def test_cpu_offload_forward_pass_twice(self):
+        pass
+
+    @pytest.mark.skip("The pipeline uses `torch.nn.utils.weight_norm`, incompatible with sequential offloading.")
+    def test_sequential_cpu_offload_forward_pass(self):
+        pass
+
+    @pytest.mark.skip("The pipeline uses `torch.nn.utils.weight_norm`, incompatible with sequential offloading.")
+    def test_sequential_offload_forward_pass_twice(self):
+        pass
+
+    @pytest.mark.skip("Group offloading coverage is not ready for this pipeline.")
+    def test_pipeline_level_group_offloading_inference(self):
+        pass
 
 
 def test_longcat_audio_top_level_imports():
@@ -185,22 +165,20 @@ def test_longcat_audio_top_level_imports():
 
 @slow
 @require_torch_accelerator
-class LongCatAudioDiTPipelineSlowTests(unittest.TestCase):
-    pipeline_class = LongCatAudioDiTPipeline
-
+class TestLongCatAudioDiTPipelineIntegration:
     def test_longcat_audio_pipeline_from_pretrained_real_local_weights(self):
         model_path = Path(
             os.getenv("LONGCAT_AUDIO_DIT_MODEL_PATH", "/data/models/meituan-longcat/LongCat-AudioDiT-1B")
         )
         tokenizer_path_env = os.getenv("LONGCAT_AUDIO_DIT_TOKENIZER_PATH")
         if tokenizer_path_env is None:
-            raise unittest.SkipTest("LONGCAT_AUDIO_DIT_TOKENIZER_PATH is not set")
+            pytest.skip("LONGCAT_AUDIO_DIT_TOKENIZER_PATH is not set")
         tokenizer_path = Path(tokenizer_path_env)
 
         if not model_path.exists():
-            raise unittest.SkipTest(f"LongCat-AudioDiT model path not found: {model_path}")
+            pytest.skip(f"LongCat-AudioDiT model path not found: {model_path}")
         if not tokenizer_path.exists():
-            raise unittest.SkipTest(f"LongCat-AudioDiT tokenizer path not found: {tokenizer_path}")
+            pytest.skip(f"LongCat-AudioDiT tokenizer path not found: {tokenizer_path}")
 
         pipe = LongCatAudioDiTPipeline.from_pretrained(
             model_path,

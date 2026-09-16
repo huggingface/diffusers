@@ -653,6 +653,13 @@ class QuantoConfig(QuantizationConfigMixin):
     This is a wrapper class about all possible attributes and features that you can play with a model that has been
     loaded using `quanto`.
 
+    <Tip warning={true}>
+
+    `QuantoConfig` is deprecated and will be removed in version 1.0.0. Consider switching to one of the other supported
+    quantization backends, such as [`BitsAndBytesConfig`] or [`TorchAoConfig`].
+
+    </Tip>
+
     Args:
         weights_dtype (`str`, *optional*, defaults to `"int8"`):
             The target dtype for the weights after quantization. Supported values are ("float8","int8","int4","int2")

@@ -29,6 +29,7 @@ from ...testing_utils import (
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
@@ -625,6 +626,10 @@ class TestFluxControlPipelineLoRA(FluxControlPipelineTesterConfig, LoraTesterMix
         assert not torch.allclose(no_lora_out, lora_out, atol=1e-4, rtol=1e-4)
         assert pipe.transformer.x_embedder.weight.data.shape[1] == in_features * 2
         assert pipe.transformer.config.in_channels == in_features * 2
+
+
+class TestFluxControlPipelineLoRAMemory(FluxControlPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Flux Control pipeline."""
 
 
 @nightly

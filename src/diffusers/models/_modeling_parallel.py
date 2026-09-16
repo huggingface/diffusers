@@ -220,6 +220,13 @@ class ParallelConfig:
     _device: torch.device = None
     _mesh: torch.distributed.device_mesh.DeviceMesh = None
 
+    def __post_init__(self):
+        if self.context_parallel_config is None and self.tensor_parallel_config is None:
+            raise ValueError(
+                "A `ParallelConfig` must specify at least one of `context_parallel_config` or "
+                "`tensor_parallel_config`."
+            )
+
     @property
     def _is_combined(self) -> bool:
         """Whether both context and tensor parallelism are requested, i.e. they must share one mesh."""

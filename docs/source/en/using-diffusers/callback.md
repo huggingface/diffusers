@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 A callback is a function that modifies [`DiffusionPipeline`] behavior and it is executed at the end of a denoising step. The changes are propagated to subsequent steps in the denoising process. It is useful for adjusting pipeline attributes or tensor variables to support new features without rewriting the underlying pipeline code.
 
-Diffusers provides several callbacks in the pipeline [overview](../api/pipelines/overview#callbacks).
+Diffusers provides several callbacks in the pipeline [overview](../api/pipelines/overview#diffusers.callbacks.PipelineCallback).
 
 To enable a callback, configure when the callback is executed after a certain number of denoising steps with one of the following arguments.
 

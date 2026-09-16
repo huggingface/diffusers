@@ -29,7 +29,9 @@ from diffusers.models.transformers.transformer_bria_fibo import BriaFiboTransfor
 from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
-    PipelineOffloadTesterMixin,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
     PipelineTesterMixin,
 )
 
@@ -73,7 +75,17 @@ class BriaFiboEditPipelineTesterConfig(BasePipelineTesterConfig):
             z_dim=16,
         )
         scheduler = FlowMatchEulerDiscreteScheduler()
-        text_encoder = SmolLM3ForCausalLM(SmolLM3Config(hidden_size=32))
+        text_encoder = SmolLM3ForCausalLM(
+            SmolLM3Config(
+                hidden_size=32,
+                intermediate_size=64,
+                num_hidden_layers=2,
+                num_attention_heads=2,
+                num_key_value_heads=1,
+                # `vocab_size` stays at the SmolLM3 default: the pipeline hardcodes the beginning-of-text id
+                # (128000) for empty prompts, so a smaller vocabulary would not be a valid text encoder here.
+            )
+        )
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         return {
@@ -111,7 +123,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         assert generated_image.shape == self.output_shape
 
         # fmt: off
-        expected_slice = torch.tensor([0.5615, 0.4469, 0.4043, 0.4312, 0.3783, 0.4426, 0.4081, 0.4446, 0.6549, 0.6302, 0.6324, 0.5871, 0.6117, 0.6647, 0.5871, 0.6246])
+        expected_slice = torch.tensor([0.5594, 0.4469, 0.4011, 0.4329, 0.3747, 0.4408, 0.4074, 0.4452, 0.6472, 0.6353, 0.6258, 0.5867, 0.6104, 0.6624, 0.5824, 0.6277])
         # fmt: on
 
         generated_slice = generated_image.flatten()
@@ -131,7 +143,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         pass
 
     def test_bria_fibo_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
         inputs = self.get_dummy_inputs()
         output_same_prompt = pipe(**inputs).images[0]
@@ -144,7 +156,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         assert max_diff > 1e-6
 
     def test_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (64, 64), (32, 64)]
@@ -155,7 +167,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
             assert (output_height, output_width) == (height, width)
 
     def test_bria_fibo_multi_reference_uses_distinct_rope_time_planes(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
         references = [
             Image.new("RGB", (336, 192), (255, 255, 255)),
@@ -180,7 +192,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         assert image.shape == self.output_shape
 
     def test_batched_prompts_with_multiple_references(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
         inputs.update(
             prompt=[inputs["prompt"], inputs["prompt"].replace("squirrel", "robot")],
@@ -192,7 +204,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         assert (images[0] - images[1]).abs().max() > 1e-4
 
     def test_multi_reference_mask_requires_single_reference(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
         inputs["image"] = [inputs["image"], Image.new("RGB", (160, 96), (0, 0, 0))]
         inputs["mask"] = Image.new("L", (336, 192), 255)
@@ -200,7 +212,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
             pipe(**inputs)
 
     def test_bria_fibo_edit_mask(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
 
         mask = Image.fromarray((np.ones((192, 336)) * 255).astype(np.uint8), mode="L")
@@ -211,7 +223,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
         assert output.shape == (3, 192, 336)
 
     def test_bria_fibo_edit_mask_image_size_mismatch(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
 
         mask = Image.fromarray((np.ones((64, 64)) * 255).astype(np.uint8), mode="L")
@@ -221,7 +233,7 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
             pipe(**inputs)
 
     def test_bria_fibo_edit_mask_no_image(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
 
         mask = Image.fromarray((np.ones((32, 32)) * 255).astype(np.uint8), mode="L")
@@ -233,5 +245,22 @@ class TestBriaFiboEditPipeline(BriaFiboEditPipelineTesterConfig, PipelineTesterM
             pipe(**inputs)
 
 
-class TestBriaFiboEditPipelineMemory(BriaFiboEditPipelineTesterConfig, PipelineOffloadTesterMixin):
-    pass
+class TestBriaFiboEditPipelineMemory(BriaFiboEditPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Bria FIBO Edit pipeline."""
+
+
+class TestBriaFiboEditPipelineLoRA(BriaFiboEditPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Bria FIBO Edit pipeline."""
+
+    @pytest.mark.skip(
+        "`_load_lora_into_text_encoder` only infers per-module ranks for CLIP-style names "
+        "(`.q_proj`/`.k_proj`/`.v_proj`/`.out_proj`/`.fc1`/`.fc2`, see `src/diffusers/loaders/lora_base.py`), so the "
+        "LLaMA-style `.o_proj` on the SmolLM3 text encoder falls back to the default rank and the non-uniform "
+        "`rank_pattern` this test builds cannot round-trip."
+    )
+    def test_simple_inference_with_partial_text_lora(self):
+        pass
+
+
+class TestBriaFiboEditPipelineLoRAMemory(BriaFiboEditPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Bria FIBO Edit pipeline."""

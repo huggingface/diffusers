@@ -1,7 +1,5 @@
 import random
-import unittest
 
-import numpy as np
 import torch
 from transformers import (
     AutoConfig,
@@ -20,31 +18,31 @@ from diffusers import (
 )
 
 from ...testing_utils import (
+    assert_tensors_close,
     enable_full_determinism,
     floats_tensor,
-    torch_device,
 )
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unittest.TestCase, PipelineTesterMixin):
+class StableDiffusion3InpaintPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusion3InpaintPipeline
-    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
-    required_optional_params = PipelineTesterMixin.required_optional_params
-    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset(
-        []
-    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
-    image_latents_params = frozenset([])
-    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"mask", "masked_image_latents"})
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_input_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -119,45 +117,40 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
             "feature_extractor": None,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        mask_image = torch.ones((1, 1, 32, 32)).to(device)
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0))
+        mask_image = torch.ones((1, 1, 32, 32))
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "image": image,
             "mask_image": mask_image,
             "height": 32,
             "width": 32,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "strength": 0.8,
         }
-        return inputs
 
+
+class TestStableDiffusion3InpaintPipeline(StableDiffusion3InpaintPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(torch_device)
-        image = pipe(**inputs).images[0]
+        image = pipe(**self.get_dummy_inputs()).images[0]
         generated_slice = image.flatten()
-        generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
 
         # fmt: off
-        expected_slice = np.array([0.5076, 0.6669, 0.5967, 0.4238, 0.3966, 0.4218, 0.7243, 0.4943, 0.5130, 0.7069, 0.5334, 0.5743, 0.6149, 0.5476, 0.5295, 0.6009])
+        expected_slice = torch.tensor([0.5076, 0.4238, 0.7243, 0.4664, 0.3933, 0.5421, 0.4952, 0.5001, 0.5716, 0.5092, 0.5091, 0.7205, 0.5442, 0.7069, 0.6149, 0.6009])
         # fmt: on
 
-        self.assertTrue(
-            np.allclose(generated_slice, expected_slice, atol=1e-3), "Output does not match expected slice."
-        )
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3, msg="Output does not match expected slice.")
 
-    @unittest.skip("Skip for now.")
-    def test_multi_vae(self):
-        pass
+
+class TestStableDiffusion3InpaintPipelineMemory(StableDiffusion3InpaintPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SD3 inpaint pipeline."""

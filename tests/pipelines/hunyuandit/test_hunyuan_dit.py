@@ -14,16 +14,16 @@
 # limitations under the License.
 
 import gc
-import tempfile
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoConfig, AutoTokenizer, BertModel, T5EncoderModel
 
 from diffusers import AutoencoderKL, DDPMScheduler, HunyuanDiT2DModel, HunyuanDiTPipeline
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -31,27 +31,24 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import (
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
     PipelineTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,
-    to_np,
 )
 
 
 enable_full_determinism()
 
 
-class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class HunyuanDiTPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = HunyuanDiTPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-
-    required_optional_params = PipelineTesterMixin.required_optional_params
-    test_layerwise_casting = True
+    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    output_shape = (3, 16, 16)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -79,7 +76,7 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder_2 = T5EncoderModel(config)
         tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
-        components = {
+        return {
             "transformer": transformer.eval(),
             "vae": vae.eval(),
             "scheduler": scheduler,
@@ -90,43 +87,36 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "safety_checker": None,
             "feature_extractor": None,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "np",
             "use_resolution_binning": False,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestHunyuanDiTPipeline(HunyuanDiTPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        image = pipe(**self.get_dummy_inputs()).images
+        generated_image = image[0]
+        assert generated_image.shape == self.output_shape
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
+        # fmt: off
+        expected_slice = torch.tensor([0.56939435, 0.34541583, 0.35915792, 0.46489206, 0.38775963, 0.45004836, 0.5957267, 0.59481275, 0.33287364])
+        # fmt: on
 
-        self.assertEqual(image.shape, (1, 16, 16, 3))
-        expected_slice = np.array(
-            [0.56939435, 0.34541583, 0.35915792, 0.46489206, 0.38775963, 0.45004836, 0.5957267, 0.59481275, 0.33287364]
-        )
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        generated_slice = generated_image[-1, -3:, -3:].flatten()
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
-    @unittest.skip("The HunyuanDiT Attention pooling layer does not support sequential CPU offloading.")
+    @pytest.mark.skip("The HunyuanDiT Attention pooling layer does not support sequential CPU offloading.")
     def test_sequential_cpu_offload_forward_pass(self):
         # TODO(YiYi) need to fix later
         # This is because it instantiates it's attention layer from torch.nn.MultiheadAttention, which calls to
@@ -135,7 +125,7 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # this test because of MHA (example: HunyuanVideo Framepack)
         pass
 
-    @unittest.skip("The HunyuanDiT Attention pooling layer does not support sequential CPU offloading.")
+    @pytest.mark.skip("The HunyuanDiT Attention pooling layer does not support sequential CPU offloading.")
     def test_sequential_offload_forward_pass_twice(self):
         # TODO(YiYi) need to fix later
         # This is because it instantiates it's attention layer from torch.nn.MultiheadAttention, which calls to
@@ -144,42 +134,26 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # this test because of MHA (example: HunyuanVideo Framepack)
         pass
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(
-            expected_max_diff=1e-3,
-        )
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def test_feed_forward_chunking(self):
-        device = "cpu"
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_no_chunking = image[0, -3:, -3:, -1]
+        image_no_chunking = pipe(**self.get_dummy_inputs()).images
 
         pipe.transformer.enable_forward_chunking(chunk_size=1, dim=0)
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_chunking = image[0, -3:, -3:, -1]
+        image_chunking = pipe(**self.get_dummy_inputs()).images
 
-        max_diff = np.abs(to_np(image_slice_no_chunking) - to_np(image_slice_chunking)).max()
-        self.assertLess(max_diff, 1e-4)
+        assert_tensors_close(
+            image_chunking, image_no_chunking, atol=1e-4, msg="Feed forward chunking should not affect the outputs."
+        )
 
     def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        # Run on CPU to ensure determinism for the device-dependent torch.Generator.
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image = pipe(**inputs)[0]
-        original_image_slice = image[0, -3:, -3:, -1]
+        original_image = pipe(**self.get_dummy_inputs(), return_dict=False)[0]
 
         pipe.transformer.fuse_qkv_projections()
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
@@ -192,52 +166,50 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             pipe.transformer, pipe.transformer.original_attn_processors
         ), "Something wrong with the attention processors concerning the fused QKV projections."
 
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image_fused = pipe(**inputs)[0]
-        image_slice_fused = image_fused[0, -3:, -3:, -1]
+        image_fused = pipe(**self.get_dummy_inputs(), return_dict=False)[0]
 
         pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image_disabled = pipe(**inputs)[0]
-        image_slice_disabled = image_disabled[0, -3:, -3:, -1]
+        image_disabled = pipe(**self.get_dummy_inputs(), return_dict=False)[0]
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
-            "Fusion of QKV projections shouldn't affect the outputs."
+        assert_tensors_close(
+            image_fused,
+            original_image,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Fusion of QKV projections shouldn't affect the outputs.",
         )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert_tensors_close(
+            image_disabled,
+            image_fused,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
         )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
+        assert_tensors_close(
+            image_disabled,
+            original_image,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Original outputs should match when fused QKV projections are disabled.",
         )
 
-    @unittest.skip(
+    @pytest.mark.skip(
         "Test not supported as `encode_prompt` is called two times separately which deivates from about 99% of the pipelines we have."
     )
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    def test_save_load_optional_components(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+    def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
-
-        prompt = inputs["prompt"]
-        generator = inputs["generator"]
-        num_inference_steps = inputs["num_inference_steps"]
-        output_type = inputs["output_type"]
+        inputs = self.get_dummy_inputs()
 
         (
             prompt_embeds,
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
-        ) = pipe.encode_prompt(prompt, device=torch_device, dtype=torch.float32, text_encoder_index=0)
+        ) = pipe.encode_prompt(inputs["prompt"], device=torch_device, dtype=torch.float32, text_encoder_index=0)
 
         (
             prompt_embeds_2,
@@ -245,86 +217,74 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             prompt_attention_mask_2,
             negative_prompt_attention_mask_2,
         ) = pipe.encode_prompt(
-            prompt,
+            inputs["prompt"],
             device=torch_device,
             dtype=torch.float32,
             text_encoder_index=1,
         )
 
-        # inputs with prompt converted to embeddings
-        inputs = {
-            "prompt_embeds": prompt_embeds,
-            "prompt_attention_mask": prompt_attention_mask,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "negative_prompt_attention_mask": negative_prompt_attention_mask,
-            "prompt_embeds_2": prompt_embeds_2,
-            "prompt_attention_mask_2": prompt_attention_mask_2,
-            "negative_prompt_embeds_2": negative_prompt_embeds_2,
-            "negative_prompt_attention_mask_2": negative_prompt_attention_mask_2,
-            "generator": generator,
-            "num_inference_steps": num_inference_steps,
-            "output_type": output_type,
-            "use_resolution_binning": False,
-        }
+        def embedded_inputs():
+            # Inputs with the prompt already converted to embeddings.
+            return {
+                "prompt_embeds": prompt_embeds,
+                "prompt_attention_mask": prompt_attention_mask,
+                "negative_prompt_embeds": negative_prompt_embeds,
+                "negative_prompt_attention_mask": negative_prompt_attention_mask,
+                "prompt_embeds_2": prompt_embeds_2,
+                "prompt_attention_mask_2": prompt_attention_mask_2,
+                "negative_prompt_embeds_2": negative_prompt_embeds_2,
+                "negative_prompt_attention_mask_2": negative_prompt_attention_mask_2,
+                "generator": self.get_generator(0),
+                "num_inference_steps": inputs["num_inference_steps"],
+                "output_type": inputs["output_type"],
+                "use_resolution_binning": False,
+            }
 
         # set all optional components to None
         for optional_component in pipe._optional_components:
             setattr(pipe, optional_component, None)
 
-        output = pipe(**inputs)[0]
+        output = pipe(**embedded_inputs())[0]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(torch_device)
-            pipe_loaded.set_progress_bar_config(disable=None)
+        pipe.save_pretrained(tmp_path)
+        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path)
+        pipe_loaded.to(torch_device)
+        pipe_loaded.set_progress_bar_config(disable=None)
 
         for optional_component in pipe._optional_components:
-            self.assertTrue(
-                getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
+            assert getattr(pipe_loaded, optional_component) is None, (
+                f"`{optional_component}` did not stay set to None after loading."
             )
 
-        inputs = self.get_dummy_inputs(torch_device)
+        output_loaded = pipe_loaded(**embedded_inputs())[0]
 
-        generator = inputs["generator"]
-        num_inference_steps = inputs["num_inference_steps"]
-        output_type = inputs["output_type"]
+        assert_tensors_close(
+            output_loaded, output, atol=expected_max_difference, msg="Reloaded pipeline output differs."
+        )
 
-        # inputs with prompt converted to embeddings
-        inputs = {
-            "prompt_embeds": prompt_embeds,
-            "prompt_attention_mask": prompt_attention_mask,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "negative_prompt_attention_mask": negative_prompt_attention_mask,
-            "prompt_embeds_2": prompt_embeds_2,
-            "prompt_attention_mask_2": prompt_attention_mask_2,
-            "negative_prompt_embeds_2": negative_prompt_embeds_2,
-            "negative_prompt_attention_mask_2": negative_prompt_attention_mask_2,
-            "generator": generator,
-            "num_inference_steps": num_inference_steps,
-            "output_type": output_type,
-            "use_resolution_binning": False,
-        }
 
-        output_loaded = pipe_loaded(**inputs)[0]
+class TestHunyuanDiTPipelineMemory(HunyuanDiTPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the HunyuanDiT pipeline."""
 
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1e-4)
+    @pytest.mark.skip("The HunyuanDiT Attention pooling layer does not support sequential CPU offloading.")
+    def test_sequential_cpu_offload_forward_pass(self):
+        pass
+
+    @pytest.mark.skip("The HunyuanDiT Attention pooling layer does not support sequential CPU offloading.")
+    def test_sequential_offload_forward_pass_twice(self):
+        pass
 
 
 @slow
 @require_torch_accelerator
-class HunyuanDiTPipelineIntegrationTests(unittest.TestCase):
+class TestHunyuanDiTPipelineIntegration:
     prompt = "一个宇航员在骑马"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
