@@ -28,8 +28,10 @@ from diffusers import (
     MagiEulerScheduler,
     MagiModularPipeline,
     MagiTextConditioningModel,
+    MagiTextEncoderStep,
     MagiTextToVideoBlocks,
     MagiTransformer3DModel,
+    MagiVaeDecoderStep,
     ModularPipeline,
 )
 
@@ -204,6 +206,36 @@ class TestMagiPipelineFast(MagiPipelineTesterConfig, ModularPipelineTesterMixin)
         expected = pipe.video_processor.postprocess_video(torch.cat(chunks, dim=2).float(), output_type="pt")
         torch.testing.assert_close(actual, expected, atol=0, rtol=0)
 
+    def test_decoder_validation(self):
+        decoder = MagiVaeDecoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        decoder.load_components()
+        latents = torch.randn(1, 4, 2, 4, 4)
+
+        invalid_latents = [
+            "invalid",
+            torch.zeros(1),
+            torch.zeros(1, 3, 2, 4, 4),
+            torch.zeros(1, 4, 0, 4, 4),
+            torch.zeros(1, 4, 2, 4, 4, dtype=torch.int64),
+            torch.full((1, 4, 2, 4, 4), float("nan")),
+        ]
+        for invalid in invalid_latents:
+            with pytest.raises(ValueError, match="latents must be a finite floating-point tensor"):
+                decoder(latents=invalid, chunk_width=2, output_type="latent", output="videos")
+
+        for chunk_width in (True, 0, 1.5):
+            with pytest.raises(ValueError, match="chunk_width must be a positive integer"):
+                decoder(latents=latents, chunk_width=chunk_width, output_type="latent", output="videos")
+
+        for scaling_factor in (True, "0.18215", 0, -1, float("nan"), float("inf")):
+            decoder.update_components(latent_scaling_factor=scaling_factor)
+            with pytest.raises(ValueError, match="latent_scaling_factor must be a finite positive real number"):
+                decoder(latents=latents, chunk_width=2, output_type="latent", output="videos")
+
+        decoder.update_components(latent_scaling_factor=0.18215)
+        actual = decoder(latents=latents, chunk_width=2, output_type="latent", output="videos")
+        torch.testing.assert_close(actual, latents, atol=0, rtol=0)
+
     def test_single_latent_frame_is_video(self):
         pipe = self.get_pipeline()
         video = self.run_pipe(pipe, num_frames=4, chunk_width=1)
@@ -221,6 +253,44 @@ class TestMagiPipelineFast(MagiPipelineTesterConfig, ModularPipelineTesterMixin)
         first = self.run_pipe(pipe, prompt="<p>A CAT runs</p> https://example.com @someone", clean_caption=True)
         second = self.run_pipe(pipe, prompt="a cat runs", clean_caption=False)
         torch.testing.assert_close(first, second, atol=0, rtol=0)
+
+    def test_text_encoder_standalone(self):
+        encoder = MagiTextEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        encoder.load_components()
+        prompts = ["a cat", "a cat runs"]
+        result = encoder(
+            prompt=prompts,
+            max_sequence_length=8,
+            clean_caption=False,
+            output=["text_embeds", "text_attention_mask"],
+        )
+        singles = [
+            encoder(
+                prompt=prompt,
+                max_sequence_length=8,
+                clean_caption=False,
+                output=["text_embeds", "text_attention_mask"],
+            )
+            for prompt in prompts
+        ]
+        torch.testing.assert_close(
+            result["text_embeds"], torch.cat([single["text_embeds"] for single in singles]), atol=0, rtol=0
+        )
+        torch.testing.assert_close(
+            result["text_attention_mask"],
+            torch.cat([single["text_attention_mask"] for single in singles]),
+            atol=0,
+            rtol=0,
+        )
+        assert result["text_embeds"].dtype == torch.float32
+        assert result["text_attention_mask"].dtype == torch.bool
+
+        for max_sequence_length in (True, 0, 1.5):
+            with pytest.raises(ValueError, match="max_sequence_length must be a positive integer"):
+                encoder(prompt="a cat", max_sequence_length=max_sequence_length, clean_caption=False)
+        for clean_caption in (1, "true", []):
+            with pytest.raises(ValueError, match="clean_caption must be a boolean"):
+                encoder(prompt="a cat", max_sequence_length=8, clean_caption=clean_caption)
 
     def test_duration_saturates(self):
         pipe = self.get_pipeline()
@@ -242,6 +312,35 @@ class TestMagiPipelineFast(MagiPipelineTesterConfig, ModularPipelineTesterMixin)
         )
         assert result["latents"].shape[2] == 20
 
+    def test_prepare_latents_component_compatibility(self):
+        pipe = self.get_pipeline()
+        prepare = pipe.blocks.sub_blocks["prepare_latents"].init_pipeline(self.pretrained_model_name_or_path)
+        prepare.load_components()
+        inputs = {
+            "text_embeds": torch.randn(1, 8, 16),
+            "text_attention_mask": torch.ones(1, 8, dtype=torch.bool),
+            "num_frames": 8,
+            "height": 8,
+            "width": 8,
+            "chunk_width": 2,
+        }
+        with pytest.raises(ValueError, match="Latent dimensions and chunk width"):
+            prepare(**(inputs | {"height": 10}), output="latents")
+
+        incompatible_conditioning = MagiTextConditioningModel(
+            caption_channels=8, caption_max_length=8, null_token_length=4
+        )
+        prepare.update_components(text_conditioning=incompatible_conditioning)
+        with pytest.raises(ValueError, match="Text conditioning dimensions"):
+            prepare(**inputs, output="latents")
+
+    def test_text_to_video_does_not_expose_prefix_latents(self):
+        pipe = self.get_pipeline()
+        expected = self.run_pipe(pipe)
+        with pytest.warns(UserWarning, match="Unexpected input"):
+            actual = self.run_pipe(pipe, prefix_latents=torch.zeros(1))
+        torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+
     def test_output_formats_and_latent(self):
         pipe = self.get_pipeline()
         latent = self.run_pipe(pipe, output_type="latent")
@@ -261,7 +360,8 @@ class TestMagiPipelineFast(MagiPipelineTesterConfig, ModularPipelineTesterMixin)
             {"num_frames": 7},
             {"num_images_per_prompt": 0},
             {"latents": torch.zeros(1)},
-            {"prefix_latents": torch.zeros(1)},
+            {"latents": torch.zeros(1, 4, 4, 4, 4, dtype=torch.int64)},
+            {"latents": torch.full((1, 4, 4, 4, 4), float("nan"))},
             {"max_sequence_length": 7},
             {"output_type": "invalid"},
         ],

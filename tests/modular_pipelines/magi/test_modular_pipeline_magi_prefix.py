@@ -16,6 +16,7 @@ import pytest
 import torch
 
 from diffusers import MagiImageToVideoBlocks, MagiModularPipeline, MagiVideoToVideoBlocks, ModularPipeline
+from diffusers.modular_pipelines.magi.before_denoise import MagiPrepareConditionedLatentsStep
 from diffusers.modular_pipelines.magi.decoders import MagiPrefixVaeDecoderStep
 from diffusers.modular_pipelines.magi.encoders import MagiImageVaeEncoderStep, MagiVideoVaeEncoderStep
 
@@ -102,6 +103,36 @@ class TestMagiImagePipelineFast(MagiImagePipelineTesterConfig, ModularPipelineTe
         assert not torch.equal(prefix[0], prefix[2])
         torch.testing.assert_close(pixels, original, atol=0, rtol=0)
 
+    def test_conditioned_prepare_latents_validation(self):
+        prepare = MagiPrepareConditionedLatentsStep().init_pipeline(self.pretrained_model_name_or_path)
+        prepare.load_components()
+        prefix = torch.randn(1, 4, 1, 4, 4)
+        noise = torch.randn(1, 4, 4, 4, 4, dtype=torch.float16)
+        inputs = {
+            "text_embeds": torch.randn(1, 8, 16),
+            "text_attention_mask": torch.ones(1, 8, dtype=torch.bool),
+            "conditioning_latents": prefix,
+            "num_frames": 8,
+            "height": 8,
+            "width": 8,
+            "chunk_width": 2,
+        }
+        result = prepare(**inputs, latents=noise, output="latents")
+        assert result.dtype == torch.float32
+        torch.testing.assert_close(result, noise.float(), atol=0, rtol=0)
+
+        for invalid_noise in [
+            torch.zeros(1, 4, 4, 4, 4, dtype=torch.int64),
+            torch.full((1, 4, 4, 4, 4), float("nan")),
+        ]:
+            with pytest.raises(ValueError, match="Initial latents must be a finite floating-point tensor"):
+                prepare(**inputs, latents=invalid_noise, output="latents")
+
+        invalid_prefix = prefix.clone()
+        invalid_prefix[0, 0, 0, 0, 0] = float("nan")
+        with pytest.raises(ValueError, match="conditioning_latents must match"):
+            prepare(**(inputs | {"conditioning_latents": invalid_prefix}), output="latents")
+
     def test_prefix_reinjected_for_every_branch(self):
         pipe = self.get_pipeline()
         calls = []
@@ -124,10 +155,36 @@ class TestMagiImagePipelineFast(MagiImagePipelineTesterConfig, ModularPipelineTe
         with pytest.raises(ValueError):
             self.run_pipe(self.get_pipeline(), image=bad)
 
+    def test_image_encoder_validation(self):
+        encoder = MagiImageVaeEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        encoder.load_components()
+        image = self.get_dummy_inputs()["image"]
+        invalid_images = [
+            "invalid",
+            torch.zeros(1, 3, 8, 8),
+            torch.zeros(3, 8, 8, dtype=torch.uint8),
+            torch.zeros(1, 1, 8, 8, dtype=torch.uint8),
+            torch.empty(0, 3, 8, 8, dtype=torch.uint8),
+        ]
+        for invalid in invalid_images:
+            with pytest.raises(ValueError):
+                encoder(image=invalid, output="conditioning_latents")
+
+        for scaling_factor in (True, "0.18215", 0, -1, float("nan"), float("inf")):
+            encoder.update_components(latent_scaling_factor=scaling_factor)
+            with pytest.raises(ValueError, match="latent_scaling_factor must be a finite positive real number"):
+                encoder(image=image, output="conditioning_latents")
+
+        encoder.update_components(latent_scaling_factor=0.18215)
+        assert encoder(image=image, output="conditioning_latents").isfinite().all()
+
+    @pytest.mark.parametrize("tiling", [False, True])
     @torch.no_grad()
-    def test_encoder_matches_posterior_mode(self):
+    def test_encoder_matches_posterior_mode(self, tiling):
         pipe = MagiImageVaeEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
         pipe.load_components()
+        if tiling:
+            pipe.vae.enable_tiling(tile_sample_min_length=8)
         image = self.get_dummy_inputs()["image"]
         actual = pipe(image=image, output="conditioning_latents")
         expected = pipe.vae.encode(image.unsqueeze(2).float() / 127.5 - 1).latent_dist.mode() * 0.18215
@@ -198,6 +255,42 @@ class TestMagiVideoPipelineFast(MagiVideoPipelineTesterConfig, ModularPipelineTe
         )
         assert video.shape == (1, 37, 3, 8, 8)
 
+    def test_prefix_decoder_validation(self):
+        decoder = MagiPrefixVaeDecoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        decoder.load_components()
+        latents = torch.randn(1, 4, 6, 4, 4)
+
+        invalid_prefixes = [
+            "invalid",
+            torch.zeros(1),
+            torch.randn(2, 4, 1, 4, 4),
+            torch.randn(1, 3, 1, 4, 4),
+            torch.randn(1, 4, 1, 5, 4),
+            torch.randn(1, 4, 1, 4, 5),
+        ]
+        for invalid in invalid_prefixes:
+            with pytest.raises(
+                ValueError,
+                match="conditioning_latents must match the batch, channel, height, and width dimensions of latents",
+            ):
+                decoder(
+                    latents=latents,
+                    conditioning_latents=invalid,
+                    chunk_width=2,
+                    output_type="latent",
+                    output="videos",
+                )
+
+        for invalid in (latents[:, :, :0], latents):
+            with pytest.raises(ValueError, match="The prefix must leave at least one generated latent frame"):
+                decoder(
+                    latents=latents,
+                    conditioning_latents=invalid,
+                    chunk_width=2,
+                    output_type="latent",
+                    output="videos",
+                )
+
     def test_partial_prefix_reinjected(self):
         pipe = self.get_pipeline()
         calls = []
@@ -216,10 +309,27 @@ class TestMagiVideoPipelineFast(MagiVideoPipelineTesterConfig, ModularPipelineTe
             torch.testing.assert_close(states[:1, :, :1], prefix[:, :, 2:3], atol=0, rtol=0)
         assert not torch.equal(result["latents"][:, :, 2:3].cpu(), prefix[:, :, 2:3])
 
+    def test_video_encoder_validation(self):
+        encoder = MagiVideoVaeEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        encoder.load_components()
+        invalid_videos = [
+            "invalid",
+            torch.zeros(1, 3, 8, 8, dtype=torch.uint8),
+            torch.zeros(1, 3, 8, 8, 8),
+            torch.zeros(1, 1, 8, 8, 8, dtype=torch.uint8),
+            torch.empty(1, 3, 0, 8, 8, dtype=torch.uint8),
+        ]
+        for invalid in invalid_videos:
+            with pytest.raises(ValueError):
+                encoder(video=invalid, output="conditioning_latents")
+
+    @pytest.mark.parametrize("tiling", [False, True])
     @torch.no_grad()
-    def test_encoder_reusable(self):
+    def test_encoder_reusable(self, tiling):
         pipe = MagiVideoVaeEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
         pipe.load_components()
+        if tiling:
+            pipe.vae.enable_tiling(tile_sample_min_length=8)
         video = self.get_dummy_inputs()["video"]
         actual = pipe(video=video, output="conditioning_latents")
         expected = pipe.vae.encode(video.float() / 127.5 - 1).latent_dist.mode() * 0.18215

@@ -34,12 +34,16 @@ class TestMagiEulerScheduler:
         torch.testing.assert_close(scheduler.timesteps, grid[:-1], atol=0, rtol=0)
 
     @pytest.mark.parametrize(
-        "mode,first", [("8,16,16", [0, 0.125, 0.1875, 0.25]), ("16,16,8", [0, 0.0625, 0.125, 0.25])]
+        "mode,expected",
+        [
+            ("8,16,16", [0, 0.125, 0.1875, 0.25, 0.375, 0.4375, 0.5, 0.625, 0.6875, 0.75, 0.875, 0.9375]),
+            ("16,16,8", [0, 0.0625, 0.125, 0.25, 0.3125, 0.375, 0.5, 0.5625, 0.625, 0.75, 0.8125, 0.875]),
+        ],
     )
-    def test_twelve_step_shortcut(self, mode, first):
+    def test_twelve_step_shortcut(self, mode, expected):
         scheduler = MagiEulerScheduler(time_schedule="linear", shortcut_mode=mode)
         scheduler.set_timesteps(12)
-        torch.testing.assert_close(scheduler.timesteps[:4], torch.tensor(first), atol=0, rtol=0)
+        torch.testing.assert_close(scheduler.timesteps, torch.tensor(expected), atol=0, rtol=0)
 
     def test_sd3_operation_order_and_endpoint(self):
         scheduler = MagiEulerScheduler()
@@ -128,7 +132,15 @@ class TestMagiEulerScheduler:
         assert scheduler.step_index == 1
 
     @pytest.mark.parametrize(
-        "config", [{"shift": 0}, {"shift": float("nan")}, {"time_schedule": "unknown"}, {"shortcut_mode": "unknown"}]
+        "config",
+        [
+            {"shift": 0},
+            {"shift": True},
+            {"shift": "3"},
+            {"shift": float("nan")},
+            {"time_schedule": "unknown"},
+            {"shortcut_mode": "unknown"},
+        ],
     )
     def test_invalid_config(self, config):
         with pytest.raises(ValueError):

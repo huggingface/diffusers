@@ -23,6 +23,33 @@ from ..modular_pipeline import ModularPipelineBlocks
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
 
+def _validate_component_compatibility(
+    transformer, text_conditioning, height, width, chunk_width, spatial_compression_ratio
+):
+    patch_t, patch_h, patch_w = transformer.config.patch_size
+    if (
+        chunk_width % patch_t
+        or (height // spatial_compression_ratio) % patch_h
+        or (width // spatial_compression_ratio) % patch_w
+    ):
+        raise ValueError("Latent dimensions and chunk width must be divisible by the Transformer patch size.")
+    if (
+        text_conditioning.config.caption_channels != transformer.config.caption_channels
+        or text_conditioning.config.caption_max_length != transformer.config.caption_max_length
+    ):
+        raise ValueError("Text conditioning dimensions must match the Transformer caption dimensions.")
+
+
+def _prepare_initial_latents(latents, shape, generator, device):
+    if latents is None:
+        return randn_tensor(shape, generator=generator, device=device, dtype=torch.float32)
+    if not isinstance(latents, torch.Tensor) or tuple(latents.shape) != shape:
+        raise ValueError(f"Initial latents must have shape {shape}.")
+    if not latents.is_floating_point() or not latents.isfinite().all():
+        raise ValueError("Initial latents must be a finite floating-point tensor.")
+    return latents.to(device=device, dtype=torch.float32)
+
+
 class MagiPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "magi"
 
@@ -64,12 +91,6 @@ class MagiPrepareLatentsStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Optional initial FP32 noise for all generated chunks.",
             ),
-            InputParam(
-                "prefix_latents",
-                default=None,
-                type_hint=torch.Tensor,
-                description="Not supported by this text-to-video preparation block.",
-            ),
         ]
 
     @property
@@ -88,10 +109,6 @@ class MagiPrepareLatentsStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
-        if block_state.prefix_latents is not None:
-            raise ValueError(
-                "This workflow is text-to-video; use MagiDenoiseStep for prepared full-chunk prefix latents."
-            )
         for name in ("height", "width", "num_frames", "chunk_width", "num_images_per_prompt"):
             value = getattr(block_state, name)
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
@@ -101,6 +118,14 @@ class MagiPrepareLatentsStep(ModularPipelineBlocks):
             raise ValueError("Video dimensions must be divisible by the VAE compression ratios.")
         if components.vae.config.latent_channels != components.transformer.config.in_channels:
             raise ValueError("VAE latent channels must match the Transformer input channels.")
+        _validate_component_compatibility(
+            components.transformer,
+            components.text_conditioning,
+            block_state.height,
+            block_state.width,
+            block_state.chunk_width,
+            spatial,
+        )
         num_chunks = math.ceil(block_state.num_frames // temporal / block_state.chunk_width)
         count = block_state.num_images_per_prompt
         device = components._execution_device
@@ -118,14 +143,7 @@ class MagiPrepareLatentsStep(ModularPipelineBlocks):
             block_state.height // spatial,
             block_state.width // spatial,
         )
-        if block_state.latents is None:
-            block_state.latents = randn_tensor(
-                shape, generator=block_state.generator, device=device, dtype=torch.float32
-            )
-        elif tuple(block_state.latents.shape) != shape:
-            raise ValueError(f"Initial latents must have shape {shape}.")
-        else:
-            block_state.latents = block_state.latents.to(device=device, dtype=torch.float32)
+        block_state.latents = _prepare_initial_latents(block_state.latents, shape, block_state.generator, device)
         self.set_block_state(state, block_state)
         return components, state
 
@@ -138,16 +156,8 @@ class MagiPrepareConditionedLatentsStep(MagiPrepareLatentsStep):
         return "Prepare prefix-aware FP32 noise and duration conditioning for newly generated chunks."
 
     @property
-    def expected_components(self):
-        return [
-            ComponentSpec("transformer", MagiTransformer3DModel),
-            ComponentSpec("vae", AutoencoderKLMagi),
-            ComponentSpec("text_conditioning", MagiTextConditioningModel),
-        ]
-
-    @property
     def inputs(self):
-        return [param for param in super().inputs if param.name not in ("prefix_latents", "num_frames")] + [
+        return [param for param in super().inputs if param.name != "num_frames"] + [
             InputParam(
                 "conditioning_latents",
                 required=True,
@@ -188,6 +198,14 @@ class MagiPrepareConditionedLatentsStep(MagiPrepareLatentsStep):
             raise ValueError("Video dimensions must be divisible by the VAE compression ratios.")
         if components.vae.config.latent_channels != components.transformer.config.in_channels:
             raise ValueError("VAE latent channels must match the Transformer input channels.")
+        _validate_component_compatibility(
+            components.transformer,
+            components.text_conditioning,
+            block_state.height,
+            block_state.width,
+            block_state.chunk_width,
+            spatial,
+        )
         prefix = block_state.conditioning_latents
         expected = (block_state.height // spatial, block_state.width // spatial)
         if (
@@ -242,13 +260,6 @@ class MagiPrepareConditionedLatentsStep(MagiPrepareLatentsStep):
             block_state.height // spatial,
             block_state.width // spatial,
         )
-        if block_state.latents is None:
-            block_state.latents = randn_tensor(
-                shape, generator=block_state.generator, device=device, dtype=torch.float32
-            )
-        elif tuple(block_state.latents.shape) != shape:
-            raise ValueError(f"Initial latents must have shape {shape}.")
-        else:
-            block_state.latents = block_state.latents.to(device=device, dtype=torch.float32)
+        block_state.latents = _prepare_initial_latents(block_state.latents, shape, block_state.generator, device)
         self.set_block_state(state, block_state)
         return components, state

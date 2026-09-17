@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+from numbers import Real
+
 import torch
 
 from ...guiders.magi_classifier_free_guidance import MagiClassifierFreeGuidance
@@ -44,7 +47,10 @@ _STATE_FIELDS = {
         tuple,
         "Positive attention-window lengths in chunks, from early to late denoising stages.",
     ),
-    "clean_chunk_kvrange": (int, "Positive attention-window length used when recomputing clean chunks."),
+    "clean_chunk_kvrange": (
+        int,
+        "Attention-window length used when recomputing clean chunks; `-1` uses the final noise-to-clean range.",
+    ),
     "clean_t": (float, "Model evaluation time for clean-prefix cache extraction."),
     "cache_device": (
         str,
@@ -149,18 +155,47 @@ class MagiPrepareDenoiseStep(ModularPipelineBlocks):
         config = components.transformer.config
         if config.distilled:
             raise ValueError("MagiDenoiseStep supports base models only, not distilled models.")
-        for name in ("chunk_width", "window_size", "num_inference_steps", "clean_chunk_kvrange"):
+        for name in ("chunk_width", "window_size", "num_inference_steps"):
             value = getattr(s, name)
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer.")
-        if not s.noise2clean_kvrange or any(not isinstance(x, int) or x <= 0 for x in s.noise2clean_kvrange):
-            raise ValueError("noise2clean_kvrange must contain positive chunk counts.")
+        if (
+            not isinstance(s.noise2clean_kvrange, (tuple, list))
+            or not s.noise2clean_kvrange
+            or any(
+                not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in s.noise2clean_kvrange
+            )
+        ):
+            raise ValueError("noise2clean_kvrange must be a nonempty sequence of positive integers.")
+        if (
+            not isinstance(s.clean_chunk_kvrange, int)
+            or isinstance(s.clean_chunk_kvrange, bool)
+            or (s.clean_chunk_kvrange != -1 and s.clean_chunk_kvrange <= 0)
+        ):
+            raise ValueError("clean_chunk_kvrange must be a positive integer or -1.")
+        if s.clean_chunk_kvrange == -1:
+            s.clean_chunk_kvrange = s.noise2clean_kvrange[-1]
         if s.num_inference_steps % s.window_size or s.num_inference_steps % len(s.noise2clean_kvrange):
             raise ValueError("num_inference_steps must be divisible by window_size and the number of KV ranges.")
-        if not 0 <= s.clean_t <= 1:
-            raise ValueError("clean_t must be in [0, 1].")
-        if s.latents.ndim != 5 or min(s.latents.shape) <= 0 or s.latents.shape[1] != config.in_channels:
-            raise ValueError("latents must have shape (batch, in_channels, frames, height, width).")
+        if (
+            not isinstance(s.clean_t, Real)
+            or isinstance(s.clean_t, bool)
+            or not math.isfinite(s.clean_t)
+            or not 0 <= s.clean_t <= 1
+        ):
+            raise ValueError("clean_t must be a finite number in [0, 1].")
+        if (
+            not isinstance(s.latents, torch.Tensor)
+            or not s.latents.is_floating_point()
+            or s.latents.ndim != 5
+            or min(s.latents.shape) <= 0
+            or s.latents.shape[1] != config.in_channels
+            or not s.latents.isfinite().all()
+        ):
+            raise ValueError(
+                "latents must be a nonempty finite floating-point tensor with shape "
+                "(batch, in_channels, frames, height, width)."
+            )
         batch, channels, frames, height, width = s.latents.shape
         pt, ph, pw = config.patch_size
         if frames % s.chunk_width or s.chunk_width % pt or height % ph or width % pw:
@@ -192,13 +227,17 @@ class MagiPrepareDenoiseStep(ModularPipelineBlocks):
         if s.prefix_latents is not None:
             prefix = s.prefix_latents
             if (
-                prefix.ndim != 5
+                not isinstance(prefix, torch.Tensor)
+                or not prefix.is_floating_point()
+                or prefix.ndim != 5
                 or prefix.shape[:2] != (batch, channels)
                 or prefix.shape[3:] != (height, width)
                 or prefix.device != s.latents.device
+                or not prefix.isfinite().all()
             ):
                 raise ValueError(
-                    "prefix_latents must match the latent batch, channels, spatial dimensions, and device."
+                    "prefix_latents must be a finite floating-point tensor matching the latent batch, channels, "
+                    "spatial dimensions, and device."
                 )
             if prefix.shape[2] <= 0 or prefix.shape[2] % s.chunk_width or prefix.shape[2] >= frames:
                 raise ValueError("prefix_latents must contain full chunks and leave at least one chunk to generate.")
@@ -469,7 +508,9 @@ class MagiDenoiseLoop(LoopSequentialPipelineBlocks):
     Run the asynchronous MAGI chunk-denoising window with a clean-prefix cache.
 
       Components:
-          transformer (`MagiTransformer3DModel`) guider (`MagiClassifierFreeGuidance`) scheduler (`MagiEulerScheduler`)
+          transformer (`MagiTransformer3DModel`)
+          guider (`MagiClassifierFreeGuidance`)
+          scheduler (`MagiEulerScheduler`)
 
       Inputs:
           num_window_steps (`int`):
@@ -501,14 +542,13 @@ class MagiDenoiseLoop(LoopSequentialPipelineBlocks):
           noise2clean_kvrange (`tuple`):
               Positive attention-window lengths in chunks, from early to late denoising stages.
           clean_chunk_kvrange (`int`):
-              Positive attention-window length used when recomputing clean chunks.
+              Attention-window length used when recomputing clean chunks; `-1` uses the final noise-to-clean range.
           clean_t (`float`):
               Model evaluation time for clean-prefix cache extraction.
           timestep_schedule (`Tensor`):
               FP32 schedule including the final Euler integration endpoint.
           clean_kv_cache (`tuple`, *optional*):
-              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final
-              generated chunk.
+              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final generated chunk.
           attention_kwargs (`dict`, *optional*):
               Optional keyword arguments passed to Transformer attention.
           cache_device (`str`, *optional*):
@@ -519,8 +559,6 @@ class MagiDenoiseLoop(LoopSequentialPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               FP32 latent state shaped (batch, channels, frames, height, width), including prefix slots.
-          completed_chunks (`list`):
-              Indices of supplied prefix chunks and finalized generated chunks.
     """
 
     model_name = "magi"
@@ -535,9 +573,22 @@ class MagiDenoiseLoop(LoopSequentialPipelineBlocks):
     def loop_inputs(self):
         return [_input("num_window_steps", required=True)]
 
+    @property
+    def outputs(self):
+        return [_output("latents")]
+
     @torch.no_grad()
     def __call__(self, components, state):
         s = self.get_block_state(state)
+        scheduler = components.scheduler
+        if (
+            scheduler.num_inference_steps != s.num_inference_steps
+            or scheduler.timestep_schedule is None
+            or scheduler.timestep_schedule.device != s.latents.device
+        ):
+            scheduler.set_timesteps(s.num_inference_steps, device=s.latents.device)
+        if not torch.equal(s.timestep_schedule, scheduler.timestep_schedule):
+            raise ValueError("timestep_schedule must match the configured scheduler and num_inference_steps.")
         with self.progress_bar(total=s.num_window_steps) as progress:
             for i in range(s.num_window_steps):
                 components, s = self.loop_step(components, s, i=i)
@@ -552,7 +603,9 @@ class MagiDenoiseStep(SequentialPipelineBlocks):
     MAGI base-model latent generation; text encoding, partial-chunk prefixes, and VAE decoding are not included.
 
       Components:
-          transformer (`MagiTransformer3DModel`) scheduler (`MagiEulerScheduler`) guider (`MagiClassifierFreeGuidance`)
+          transformer (`MagiTransformer3DModel`)
+          scheduler (`MagiEulerScheduler`)
+          guider (`MagiClassifierFreeGuidance`)
 
       Inputs:
           latents (`Tensor`):
@@ -576,7 +629,7 @@ class MagiDenoiseStep(SequentialPipelineBlocks):
           noise2clean_kvrange (`tuple`, *optional*, defaults to (5, 4, 3, 2)):
               Positive attention-window lengths in chunks, from early to late denoising stages.
           clean_chunk_kvrange (`int`, *optional*, defaults to 1):
-              Positive attention-window length used when recomputing clean chunks.
+              Attention-window length used when recomputing clean chunks; `-1` uses the final noise-to-clean range.
           clean_t (`float`, *optional*, defaults to 0.9999):
               Model evaluation time for clean-prefix cache extraction.
           attention_kwargs (`dict`, *optional*):
@@ -585,47 +638,6 @@ class MagiDenoiseStep(SequentialPipelineBlocks):
               Optional device for clean-prefix KV storage; use cpu to offload between layer evaluations.
 
       Outputs:
-          num_chunks (`int`):
-              Total number of latent chunks, including the supplied prefix.
-          prefix_chunks (`int`):
-              Number of supplied full-chunk prefix chunks.
-          chunk_tokens (`int`):
-              Number of Transformer tokens per latent chunk.
-          steps_per_stage (`int`):
-              Number of iterations before the active chunk window moves forward.
-          num_window_steps (`int`):
-              Total number of asynchronous window iterations.
-          timestep_schedule (`Tensor`):
-              FP32 schedule including the final Euler integration endpoint.
-          clean_kv_cache (`tuple`):
-              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final
-              generated chunk.
-          completed_chunks (`list`):
-              Indices of supplied prefix chunks and finalized generated chunks.
-          chunk_start (`int`):
-              First active chunk index.
-          chunk_end (`int`):
-              Exclusive end index of the active chunk window.
-          refresh_cache (`bool`):
-              Whether this iteration prepends a finalized chunk to refresh its clean KV.
-          chunk_step_indices (`list`):
-              Denoising step indices for active chunks, ordered from oldest to newest.
-          chunk_times (`Tensor`):
-              Current per-chunk model times shaped (batch, active_chunks).
-          next_chunk_times (`Tensor`):
-              Next Euler endpoints shaped (batch, active_chunks).
-          model_times (`Tensor`):
-              Model times including an optional clean-refresh chunk.
-          latent_model_input (`Tensor`):
-              Current latent window including an optional clean-refresh chunk.
-          window_prompt_embeds (`Tensor`):
-              Conditional features for the current window, with null features for a clean-refresh chunk.
-          window_prompt_attention_mask (`Tensor`):
-              Boolean keep-mask matching the current window text features.
-          kv_ranges (`tuple`):
-              Exclusive token attention ranges indexing the cached prefix plus the current window.
-          velocity (`Tensor`):
-              Three-way guided FP32 velocities for active chunks only.
           latents (`Tensor`):
               FP32 latent state shaped (batch, channels, frames, height, width), including prefix slots.
     """
@@ -637,6 +649,10 @@ class MagiDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return "MAGI base-model latent generation; text encoding, partial-chunk prefixes, and VAE decoding are not included."
+
+    @property
+    def outputs(self):
+        return [_output("latents")]
 
 
 class MagiPreparePrefixStep(ModularPipelineBlocks):
@@ -669,9 +685,19 @@ class MagiPreparePrefixStep(ModularPipelineBlocks):
         if not isinstance(s.chunk_width, int) or isinstance(s.chunk_width, bool) or s.chunk_width <= 0:
             raise ValueError("chunk_width must be a positive integer.")
         if (
+            not isinstance(s.latents, torch.Tensor)
+            or not s.latents.is_floating_point()
+            or s.latents.ndim != 5
+            or min(s.latents.shape) <= 0
+            or not s.latents.isfinite().all()
+        ):
+            raise ValueError(
+                "latents must be a nonempty finite floating-point tensor with shape "
+                "(batch, channels, frames, height, width)."
+            )
+        if (
             not isinstance(prefix, torch.Tensor)
             or prefix.ndim != 5
-            or s.latents.ndim != 5
             or prefix.shape[:2] != s.latents.shape[:2]
             or prefix.shape[3:] != s.latents.shape[3:]
             or not 0 < prefix.shape[2] < s.latents.shape[2]
@@ -724,7 +750,9 @@ class MagiPrefixDenoiseLoop(MagiDenoiseLoop):
     Denoise with per-evaluation prefix injection and separate clean-prefix cache refresh.
 
       Components:
-          transformer (`MagiTransformer3DModel`) guider (`MagiClassifierFreeGuidance`) scheduler (`MagiEulerScheduler`)
+          transformer (`MagiTransformer3DModel`)
+          guider (`MagiClassifierFreeGuidance`)
+          scheduler (`MagiEulerScheduler`)
 
       Inputs:
           num_window_steps (`int`):
@@ -756,7 +784,7 @@ class MagiPrefixDenoiseLoop(MagiDenoiseLoop):
           noise2clean_kvrange (`tuple`):
               Positive attention-window lengths in chunks, from early to late denoising stages.
           clean_chunk_kvrange (`int`):
-              Positive attention-window length used when recomputing clean chunks.
+              Attention-window length used when recomputing clean chunks; `-1` uses the final noise-to-clean range.
           clean_t (`float`):
               Model evaluation time for clean-prefix cache extraction.
           timestep_schedule (`Tensor`):
@@ -764,8 +792,7 @@ class MagiPrefixDenoiseLoop(MagiDenoiseLoop):
           conditioning_latents (`Tensor`):
               Original scaled prefix, reinjected before every model evaluation.
           clean_kv_cache (`tuple`, *optional*):
-              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final
-              generated chunk.
+              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final generated chunk.
           attention_kwargs (`dict`, *optional*):
               Optional keyword arguments passed to Transformer attention.
           cache_device (`str`, *optional*):
@@ -776,8 +803,6 @@ class MagiPrefixDenoiseLoop(MagiDenoiseLoop):
       Outputs:
           latents (`Tensor`):
               FP32 latent state shaped (batch, channels, frames, height, width), including prefix slots.
-          completed_chunks (`list`):
-              Indices of supplied prefix chunks and finalized generated chunks.
     """
 
     model_name = "magi"
@@ -795,7 +820,9 @@ class MagiPrefixDenoiseStep(SequentialPipelineBlocks):
     Generate latent continuations from complete or partial-chunk prefixes.
 
       Components:
-          transformer (`MagiTransformer3DModel`) scheduler (`MagiEulerScheduler`) guider (`MagiClassifierFreeGuidance`)
+          transformer (`MagiTransformer3DModel`)
+          scheduler (`MagiEulerScheduler`)
+          guider (`MagiClassifierFreeGuidance`)
 
       Inputs:
           latents (`Tensor`):
@@ -819,7 +846,7 @@ class MagiPrefixDenoiseStep(SequentialPipelineBlocks):
           noise2clean_kvrange (`tuple`, *optional*, defaults to (5, 4, 3, 2)):
               Positive attention-window lengths in chunks, from early to late denoising stages.
           clean_chunk_kvrange (`int`, *optional*, defaults to 1):
-              Positive attention-window length used when recomputing clean chunks.
+              Attention-window length used when recomputing clean chunks; `-1` uses the final noise-to-clean range.
           clean_t (`float`, *optional*, defaults to 0.9999):
               Model evaluation time for clean-prefix cache extraction.
           attention_kwargs (`dict`, *optional*):
@@ -828,51 +855,8 @@ class MagiPrefixDenoiseStep(SequentialPipelineBlocks):
               Optional device for clean-prefix KV storage; use cpu to offload between layer evaluations.
 
       Outputs:
-          prefix_latents (`Tensor`):
-              Optional full-chunk clean prefix; replaces the leading latent slots and remains unchanged.
-          num_chunks (`int`):
-              Total number of latent chunks, including the supplied prefix.
-          prefix_chunks (`int`):
-              Number of supplied full-chunk prefix chunks.
-          chunk_tokens (`int`):
-              Number of Transformer tokens per latent chunk.
-          steps_per_stage (`int`):
-              Number of iterations before the active chunk window moves forward.
-          num_window_steps (`int`):
-              Total number of asynchronous window iterations.
-          timestep_schedule (`Tensor`):
-              FP32 schedule including the final Euler integration endpoint.
-          clean_kv_cache (`tuple`):
-              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final
-              generated chunk.
-          completed_chunks (`list`):
-              Indices of supplied prefix chunks and finalized generated chunks.
-          chunk_start (`int`):
-              First active chunk index.
-          chunk_end (`int`):
-              Exclusive end index of the active chunk window.
-          refresh_cache (`bool`):
-              Whether this iteration prepends a finalized chunk to refresh its clean KV.
-          chunk_step_indices (`list`):
-              Denoising step indices for active chunks, ordered from oldest to newest.
-          chunk_times (`Tensor`):
-              Current per-chunk model times shaped (batch, active_chunks).
-          next_chunk_times (`Tensor`):
-              Next Euler endpoints shaped (batch, active_chunks).
-          model_times (`Tensor`):
-              Model times including an optional clean-refresh chunk.
-          latent_model_input (`Tensor`):
-              Current latent window including an optional clean-refresh chunk.
-          window_prompt_embeds (`Tensor`):
-              Conditional features for the current window, with null features for a clean-refresh chunk.
-          window_prompt_attention_mask (`Tensor`):
-              Boolean keep-mask matching the current window text features.
-          kv_ranges (`tuple`):
-              Exclusive token attention ranges indexing the cached prefix plus the current window.
           latents (`Tensor`):
               FP32 latent state shaped (batch, channels, frames, height, width), including prefix slots.
-          velocity (`Tensor`):
-              Three-way guided FP32 velocities for active chunks only.
     """
 
     model_name = "magi"
@@ -882,3 +866,7 @@ class MagiPrefixDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return "Generate latent continuations from complete or partial-chunk prefixes."
+
+    @property
+    def outputs(self):
+        return [_output("latents")]

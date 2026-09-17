@@ -14,6 +14,7 @@
 
 import math
 from dataclasses import dataclass
+from numbers import Integral
 
 import torch
 from torch import nn
@@ -508,7 +509,12 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
         patch_t, patch_h, patch_w = self.config.patch_size
         if frames % patch_t or height % patch_h or width % patch_w:
             raise ValueError("Video dimensions must be divisible by the patch dimensions.")
-        timestep = timestep.reshape(batch_size, -1)
+        if timestep.ndim == 1:
+            if timestep.shape[0] != batch_size:
+                raise ValueError("timestep must have shape (batch,) or (batch, chunks) with at least one chunk.")
+            timestep = timestep[:, None]
+        elif timestep.ndim != 2 or timestep.shape[0] != batch_size or timestep.shape[1] == 0:
+            raise ValueError("timestep must have shape (batch,) or (batch, chunks) with at least one chunk.")
         num_chunks = timestep.shape[1]
         if frames // patch_t % num_chunks:
             raise ValueError("Temporal patches must divide evenly into timestep chunks.")
@@ -518,18 +524,56 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
             timestep_delta = torch.broadcast_to(timestep_delta, timestep.shape)
         if encoder_hidden_states.ndim == 3:
             encoder_hidden_states = encoder_hidden_states[:, None].expand(-1, num_chunks, -1, -1)
-        if encoder_hidden_states.shape[:2] != (batch_size, num_chunks):
-            raise ValueError("Text features must match the batch and timestep chunk dimensions.")
+        if (
+            encoder_hidden_states.ndim != 4
+            or encoder_hidden_states.shape[:2] != (batch_size, num_chunks)
+            or encoder_hidden_states.shape[2] == 0
+            or encoder_hidden_states.shape[3] != self.config.caption_channels
+        ):
+            raise ValueError(
+                "Text features must have shape (batch, length, caption_channels) or "
+                "(batch, chunks, length, caption_channels)."
+            )
         if encoder_attention_mask is not None:
             if encoder_attention_mask.ndim == 2:
                 encoder_attention_mask = encoder_attention_mask[:, None].expand(-1, num_chunks, -1)
+            if encoder_attention_mask.ndim != 3 or encoder_attention_mask.shape != encoder_hidden_states.shape[:-1]:
+                raise ValueError(
+                    "Text masks must match the batch, chunk, and sequence dimensions of the text features."
+                )
             encoder_attention_mask = encoder_attention_mask.bool()
         if caption_dropout_mask is None:
             caption_dropout_mask = torch.zeros(batch_size, device=hidden_states.device, dtype=torch.bool)
+        elif caption_dropout_mask.ndim != 1 or caption_dropout_mask.shape[0] not in (1, batch_size):
+            raise ValueError("caption_dropout_mask must have shape (1,) or (batch,).")
+        else:
+            caption_dropout_mask = caption_dropout_mask.bool()
         spatial_tokens = (height // patch_h) * (width // patch_w)
-        if kv_cache is not None and len(kv_cache) != len(self.transformer_blocks):
-            raise ValueError("kv_cache must contain one key/value pair per Transformer block.")
-        cached_tokens = 0 if kv_cache is None else kv_cache[0][0].shape[1]
+        cached_tokens = 0
+        if kv_cache is not None:
+            if not isinstance(kv_cache, (tuple, list)) or len(kv_cache) != len(self.transformer_blocks):
+                raise ValueError("kv_cache must contain one key/value pair per Transformer block.")
+            expected_cache_shape = (batch_size, self.config.num_key_value_heads, self.config.attention_head_dim)
+            expected_cached_tokens = None
+            for layer_cache in kv_cache:
+                if (
+                    not isinstance(layer_cache, (tuple, list))
+                    or len(layer_cache) != 2
+                    or not all(torch.is_tensor(tensor) for tensor in layer_cache)
+                    or layer_cache[0].ndim != 4
+                    or layer_cache[0].shape != layer_cache[1].shape
+                    or (layer_cache[0].shape[0], *layer_cache[0].shape[2:]) != expected_cache_shape
+                ):
+                    raise ValueError(
+                        "Each kv_cache entry must contain matching key/value tensors shaped "
+                        "(batch, cached_tokens, key_value_heads, head_dim)."
+                    )
+                layer_cached_tokens = layer_cache[0].shape[1]
+                if expected_cached_tokens is not None and layer_cached_tokens != expected_cached_tokens:
+                    raise ValueError("All kv_cache entries must contain the same number of cached tokens.")
+                expected_cached_tokens = layer_cached_tokens
+            if expected_cached_tokens is not None:
+                cached_tokens = expected_cached_tokens
         if cached_tokens % spatial_tokens:
             raise ValueError("The cached prefix must contain complete temporal patches at the current resolution.")
         sequence_length = frames // patch_t * spatial_tokens
@@ -545,10 +589,25 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
         chunk_length = sequence_length // num_chunks
         if kv_ranges is None:
             kv_ranges = tuple((0, cached_tokens + (chunk + 1) * chunk_length) for chunk in range(num_chunks))
-        if len(kv_ranges) != num_chunks or any(
-            not 0 <= start < end <= cached_tokens + sequence_length for start, end in kv_ranges
-        ):
-            raise ValueError("Each chunk must have a nonempty key/value range within the available tokens.")
+        else:
+            valid_kv_ranges = isinstance(kv_ranges, (tuple, list)) and len(kv_ranges) == num_chunks
+            if valid_kv_ranges:
+                for bounds in kv_ranges:
+                    if not isinstance(bounds, (tuple, list)) or len(bounds) != 2:
+                        valid_kv_ranges = False
+                        break
+                    start, end = bounds
+                    if (
+                        not isinstance(start, Integral)
+                        or isinstance(start, bool)
+                        or not isinstance(end, Integral)
+                        or isinstance(end, bool)
+                        or not 0 <= start < end <= cached_tokens + sequence_length
+                    ):
+                        valid_kv_ranges = False
+                        break
+            if not valid_kv_ranges:
+                raise ValueError("Each chunk must have a nonempty key/value range within the available tokens.")
         hidden_states = hidden_states * self.config.x_rescale_factor
         if self.config.duplicate_channels:
             hidden_states = torch.cat([hidden_states, hidden_states], dim=1)

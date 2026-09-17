@@ -62,14 +62,71 @@ class MagiTextConditioningTesterConfig(BaseModelTesterConfig):
 
     @property
     def input_shape(self) -> tuple[int, ...]:
-        return (2, 8, 16)
+        return (8, 16)
 
     @property
     def output_shape(self) -> tuple[int, ...]:
-        return (2, 2, 8, 16)
+        return (2, 8, 16)
 
 
 class TestMagiTextConditioningModel(MagiTextConditioningTesterConfig, ModelTesterMixin):
+    @torch.no_grad()
+    def test_special_token_layout_and_duration_clamping(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model.special_embedding.weight.copy_(
+            torch.arange(9, device=torch_device, dtype=torch.float32)[:, None].expand(-1, 16)
+        )
+        model.null_embedding.weight.copy_(
+            torch.arange(8, device=torch_device, dtype=torch.float32)[:, None].expand(-1, 16)
+        )
+        inputs = self.get_dummy_inputs()
+        inputs["attention_mask"][:, -3:] = False
+        inputs["num_chunks"] = 10
+        output = model(**inputs)
+
+        duration_indices = torch.tensor([8, 8, 8, 7, 6, 5, 4, 3, 2, 1], device=torch_device)
+        expected_duration = model.special_embedding.weight[duration_indices][None].expand(2, -1, -1)
+        expected_hq = model.special_embedding.weight[0][None, None].expand(2, 10, -1)
+        expected_text = inputs["hidden_states"][:, None, :-2].expand(-1, 10, -1, -1)
+        expected_mask = inputs["attention_mask"][:, None, :-2].expand(-1, 10, -1)
+        torch.testing.assert_close(output.sample[:, :, 0], expected_duration, atol=0, rtol=0)
+        torch.testing.assert_close(output.sample[:, :, 1], expected_hq, atol=0, rtol=0)
+        torch.testing.assert_close(output.sample[:, :, 2:], expected_text, atol=0, rtol=0)
+        torch.testing.assert_close(output.attention_mask[:, :, 2:], expected_mask, atol=0, rtol=0)
+        assert output.attention_mask[:, :, :2].all()
+        torch.testing.assert_close(
+            output.negative_prompt_embeds,
+            model.null_embedding.weight[None].expand(2, -1, -1),
+            atol=0,
+            rtol=0,
+        )
+        expected_null_mask = (torch.arange(8, device=torch_device) < 4)[None].expand(2, -1)
+        torch.testing.assert_close(output.negative_prompt_attention_mask, expected_null_mask, atol=0, rtol=0)
+
+    @torch.no_grad()
+    def test_batch_outputs_do_not_alias(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        output = model(**self.get_dummy_inputs())
+        second_null = output.negative_prompt_embeds[1].clone()
+        second_mask = output.negative_prompt_attention_mask[1].clone()
+        output.negative_prompt_embeds[0].zero_()
+        output.negative_prompt_attention_mask[0].zero_()
+        torch.testing.assert_close(output.negative_prompt_embeds[1], second_null, atol=0, rtol=0)
+        torch.testing.assert_close(output.negative_prompt_attention_mask[1], second_mask, atol=0, rtol=0)
+
+    def test_invalid_inputs(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
+        with pytest.raises(ValueError, match="floating-point tensor shaped"):
+            model(inputs["hidden_states"][0], inputs["attention_mask"])
+        with pytest.raises(ValueError, match="floating-point tensor shaped"):
+            model(inputs["hidden_states"].long(), inputs["attention_mask"])
+        with pytest.raises(ValueError, match="attention_mask must match"):
+            model(inputs["hidden_states"], inputs["attention_mask"][:1])
+        for num_chunks in (0, 1.5, True):
+            with pytest.raises(ValueError, match="positive integer"):
+                model(inputs["hidden_states"], inputs["attention_mask"], num_chunks=num_chunks)
+
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
     def test_from_save_pretrained_dtype(self, tmp_path, dtype):
         self.check_conditioning_dtype(tmp_path, torch_dtype=dtype)

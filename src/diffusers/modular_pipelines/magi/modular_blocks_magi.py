@@ -26,9 +26,14 @@ class MagiTextToVideoBlocks(SequentialPipelineBlocks):
     Generate videos with a MAGI base model, using official HQ and duration conditioning.
 
       Components:
-          text_encoder (`T5EncoderModel`) tokenizer (`AutoTokenizer`) transformer (`MagiTransformer3DModel`) vae
-          (`AutoencoderKLMagi`) text_conditioning (`MagiTextConditioningModel`) scheduler (`MagiEulerScheduler`) guider
-          (`MagiClassifierFreeGuidance`) video_processor (`VideoProcessor`)
+          text_encoder (`T5EncoderModel`)
+          tokenizer (`AutoTokenizer`)
+          transformer (`MagiTransformer3DModel`)
+          vae (`AutoencoderKLMagi`)
+          text_conditioning (`MagiTextConditioningModel`)
+          scheduler (`MagiEulerScheduler`)
+          guider (`MagiClassifierFreeGuidance`)
+          video_processor (`VideoProcessor`)
 
       Configs:
           latent_scaling_factor (default: 0.18215)
@@ -54,8 +59,6 @@ class MagiTextToVideoBlocks(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           latents (`Tensor`, *optional*):
               Optional initial FP32 noise for all generated chunks.
-          prefix_latents (`Tensor`, *optional*):
-              Not supported by this text-to-video preparation block.
           num_inference_steps (`int`, *optional*, defaults to 64):
               Number of Euler updates per generated chunk.
           window_size (`int`, *optional*, defaults to 4):
@@ -63,7 +66,7 @@ class MagiTextToVideoBlocks(SequentialPipelineBlocks):
           noise2clean_kvrange (`tuple`, *optional*, defaults to (5, 4, 3, 2)):
               Positive attention-window lengths in chunks, from early to late denoising stages.
           clean_chunk_kvrange (`int`, *optional*, defaults to 1):
-              Positive attention-window length used when recomputing clean chunks.
+              Attention-window length used when recomputing clean chunks; `-1` uses the final noise-to-clean range.
           clean_t (`float`, *optional*, defaults to 0.9999):
               Model evaluation time for clean-prefix cache extraction.
           attention_kwargs (`dict`, *optional*):
@@ -101,8 +104,7 @@ class MagiTextToVideoBlocks(SequentialPipelineBlocks):
           timestep_schedule (`Tensor`):
               FP32 schedule including the final Euler integration endpoint.
           clean_kv_cache (`tuple`):
-              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final
-              generated chunk.
+              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final generated chunk.
           completed_chunks (`list`):
               Indices of supplied prefix chunks and finalized generated chunks.
           chunk_start (`int`):
@@ -138,6 +140,10 @@ class MagiTextToVideoBlocks(SequentialPipelineBlocks):
     block_names = ["text_encoder", "prepare_latents", "denoise", "decode"]
 
     @property
+    def inputs(self):
+        return [param for param in super().inputs if param.name != "prefix_latents"]
+
+    @property
     def outputs(self):
         return [OutputParam.template("latents") if param.name == "latents" else param for param in super().outputs]
 
@@ -152,9 +158,14 @@ class MagiImageToVideoBlocks(MagiTextToVideoBlocks):
     Generate a MAGI base-model video conditioned on a pre-resized uint8 RGB image.
 
       Components:
-          text_encoder (`T5EncoderModel`) tokenizer (`AutoTokenizer`) vae (`AutoencoderKLMagi`) transformer
-          (`MagiTransformer3DModel`) text_conditioning (`MagiTextConditioningModel`) scheduler (`MagiEulerScheduler`)
-          guider (`MagiClassifierFreeGuidance`) video_processor (`VideoProcessor`)
+          text_encoder (`T5EncoderModel`)
+          tokenizer (`AutoTokenizer`)
+          vae (`AutoencoderKLMagi`)
+          transformer (`MagiTransformer3DModel`)
+          text_conditioning (`MagiTextConditioningModel`)
+          scheduler (`MagiEulerScheduler`)
+          guider (`MagiClassifierFreeGuidance`)
+          video_processor (`VideoProcessor`)
 
       Configs:
           latent_scaling_factor (default: 0.18215)
@@ -189,7 +200,7 @@ class MagiImageToVideoBlocks(MagiTextToVideoBlocks):
           noise2clean_kvrange (`tuple`, *optional*, defaults to (5, 4, 3, 2)):
               Positive attention-window lengths in chunks, from early to late denoising stages.
           clean_chunk_kvrange (`int`, *optional*, defaults to 1):
-              Positive attention-window length used when recomputing clean chunks.
+              Attention-window length used when recomputing clean chunks; `-1` uses the final noise-to-clean range.
           clean_t (`float`, *optional*, defaults to 0.9999):
               Model evaluation time for clean-prefix cache extraction.
           attention_kwargs (`dict`, *optional*):
@@ -231,8 +242,7 @@ class MagiImageToVideoBlocks(MagiTextToVideoBlocks):
           timestep_schedule (`Tensor`):
               FP32 schedule including the final Euler integration endpoint.
           clean_kv_cache (`tuple`):
-              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final
-              generated chunk.
+              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final generated chunk.
           completed_chunks (`list`):
               Indices of supplied prefix chunks and finalized generated chunks.
           chunk_start (`int`):
@@ -284,9 +294,14 @@ class MagiVideoToVideoBlocks(MagiImageToVideoBlocks):
     Continue pre-resized uint8 RGB video frames with a MAGI base model.
 
       Components:
-          text_encoder (`T5EncoderModel`) tokenizer (`AutoTokenizer`) vae (`AutoencoderKLMagi`) transformer
-          (`MagiTransformer3DModel`) text_conditioning (`MagiTextConditioningModel`) scheduler (`MagiEulerScheduler`)
-          guider (`MagiClassifierFreeGuidance`) video_processor (`VideoProcessor`)
+          text_encoder (`T5EncoderModel`)
+          tokenizer (`AutoTokenizer`)
+          vae (`AutoencoderKLMagi`)
+          transformer (`MagiTransformer3DModel`)
+          text_conditioning (`MagiTextConditioningModel`)
+          scheduler (`MagiEulerScheduler`)
+          guider (`MagiClassifierFreeGuidance`)
+          video_processor (`VideoProcessor`)
 
       Configs:
           latent_scaling_factor (default: 0.18215)
@@ -321,7 +336,7 @@ class MagiVideoToVideoBlocks(MagiImageToVideoBlocks):
           noise2clean_kvrange (`tuple`, *optional*, defaults to (5, 4, 3, 2)):
               Positive attention-window lengths in chunks, from early to late denoising stages.
           clean_chunk_kvrange (`int`, *optional*, defaults to 1):
-              Positive attention-window length used when recomputing clean chunks.
+              Attention-window length used when recomputing clean chunks; `-1` uses the final noise-to-clean range.
           clean_t (`float`, *optional*, defaults to 0.9999):
               Model evaluation time for clean-prefix cache extraction.
           attention_kwargs (`dict`, *optional*):
@@ -363,8 +378,7 @@ class MagiVideoToVideoBlocks(MagiImageToVideoBlocks):
           timestep_schedule (`Tensor`):
               FP32 schedule including the final Euler integration endpoint.
           clean_kv_cache (`tuple`):
-              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final
-              generated chunk.
+              Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final generated chunk.
           completed_chunks (`list`):
               Indices of supplied prefix chunks and finalized generated chunks.
           chunk_start (`int`):

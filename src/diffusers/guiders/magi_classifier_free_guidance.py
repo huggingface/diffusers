@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from numbers import Real
 
 import torch
 
@@ -31,9 +32,11 @@ class MagiClassifierFreeGuidance(BaseGuidance):
             Prefix guidance scales, one per timestep interval.
         text_scales (`tuple[float]`, defaults to `(7.5, 7.5, 7.5, 0.0, 0.0)`):
             Text guidance scales, one per timestep interval.
+        enabled (`bool`, defaults to `True`):
+            Whether to apply three-way guidance. When disabled, the text-and-prefix prediction is returned unchanged.
 
     Call `set_state` with times shaped `(batch, chunks)` before applying guidance. All three branches remain available
-    for clean-cache management, even when a guidance coefficient is zero.
+    for clean-cache management, including when guidance is disabled or a guidance coefficient is zero.
     """
 
     _input_predictions = ["pred_cond", "pred_prefix", "pred_uncond"]
@@ -44,20 +47,30 @@ class MagiClassifierFreeGuidance(BaseGuidance):
         timestep_thresholds=(0.0, 0.0217, 0.1, 0.3, 0.999),
         prefix_scales=(1.5, 1.5, 1.5, 1.0, 1.0),
         text_scales=(7.5, 7.5, 7.5, 0.0, 0.0),
+        enabled: bool = True,
     ):
-        super().__init__()
+        super().__init__(enabled=enabled)
         if (
-            not timestep_thresholds
+            not isinstance(timestep_thresholds, (tuple, list))
+            or not isinstance(prefix_scales, (tuple, list))
+            or not isinstance(text_scales, (tuple, list))
+            or not timestep_thresholds
             or len(prefix_scales) != len(timestep_thresholds)
             or len(text_scales) != len(timestep_thresholds)
         ):
             raise ValueError("Thresholds and guidance scales must have the same nonzero length.")
         if not all(
-            math.isfinite(value) for values in (timestep_thresholds, prefix_scales, text_scales) for value in values
+            isinstance(value, Real) and not isinstance(value, bool) and math.isfinite(value)
+            for values in (timestep_thresholds, prefix_scales, text_scales)
+            for value in values
         ):
-            raise ValueError("Thresholds and guidance scales must be finite.")
-        if timestep_thresholds[0] != 0 or any(a >= b for a, b in zip(timestep_thresholds, timestep_thresholds[1:])):
-            raise ValueError("Timestep thresholds must start at zero and increase strictly.")
+            raise ValueError("Thresholds and guidance scales must contain finite real numbers.")
+        if (
+            timestep_thresholds[0] != 0
+            or timestep_thresholds[-1] > 1
+            or any(a >= b for a, b in zip(timestep_thresholds, timestep_thresholds[1:]))
+        ):
+            raise ValueError("Timestep thresholds must start at zero, stay in [0, 1], and increase strictly.")
 
     @property
     def num_conditions(self):
@@ -76,10 +89,14 @@ class MagiClassifierFreeGuidance(BaseGuidance):
             for i, name in enumerate(self._input_predictions)
         ]
 
-    def forward(self, pred_cond, pred_prefix, pred_uncond):
+    def forward(self, pred_cond: torch.Tensor, pred_prefix: torch.Tensor, pred_uncond: torch.Tensor) -> GuiderOutput:
         if self._timestep is None:
             raise ValueError("Set the current chunk timesteps with set_state before applying guidance.")
+        if pred_cond.ndim != 5 or pred_prefix.shape != pred_cond.shape or pred_uncond.shape != pred_cond.shape:
+            raise ValueError("Guidance predictions must have the same five-dimensional shape.")
         times = self._timestep.to(device=pred_cond.device, dtype=torch.float32)
+        if not torch.isfinite(times).all() or (times < 0).any() or (times > 1).any():
+            raise ValueError("Guidance timesteps must be finite and in [0, 1].")
         if times.ndim == 1:
             times = times[None].expand(pred_cond.shape[0], -1)
         if (
@@ -91,7 +108,6 @@ class MagiClassifierFreeGuidance(BaseGuidance):
             raise ValueError("Guidance timesteps must match the batch and divide the latent frames into chunks.")
         thresholds = torch.tensor(self.config.timestep_thresholds, device=times.device, dtype=torch.float32)
         indices = torch.searchsorted(thresholds - 1e-7, times.contiguous()) - 1
-        indices = indices.clamp(0, len(thresholds) - 1)
         frames_per_chunk = pred_cond.shape[2] // times.shape[1]
         prefix_scale = torch.tensor(self.config.prefix_scales, device=times.device, dtype=torch.float32)[indices]
         text_scale = torch.tensor(self.config.text_scales, device=times.device, dtype=torch.float32)[indices]

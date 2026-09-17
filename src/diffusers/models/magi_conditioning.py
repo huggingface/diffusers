@@ -60,13 +60,29 @@ class MagiTextConditioningModel(ModelMixin, ConfigMixin):
             `MagiTextConditioningOutput` or `tuple`: Conditional features and masks, followed by null features and
             masks.
         """
+        if (
+            not isinstance(hidden_states, torch.Tensor)
+            or hidden_states.ndim != 3
+            or not hidden_states.is_floating_point()
+        ):
+            raise ValueError(
+                "hidden_states must be a floating-point tensor shaped (batch, caption_max_length, caption_channels)."
+            )
         batch, length, channels = hidden_states.shape
         if (length, channels) != (self.config.caption_max_length, self.config.caption_channels):
-            raise ValueError("T5 features must match the conditioning model's caption length and channels.")
-        if attention_mask.shape != (batch, length) or num_chunks < 1:
-            raise ValueError("Expected a matching text mask and at least one chunk.")
+            raise ValueError(
+                "hidden_states must be a floating-point tensor shaped (batch, caption_max_length, caption_channels)."
+            )
+        if (
+            not isinstance(attention_mask, torch.Tensor)
+            or attention_mask.shape != (batch, length)
+            or attention_mask.device != hidden_states.device
+        ):
+            raise ValueError("attention_mask must match the text batch and length and be on the same device.")
+        if isinstance(num_chunks, bool) or not isinstance(num_chunks, int) or num_chunks < 1:
+            raise ValueError("num_chunks must be a positive integer.")
         indices = torch.arange(length, device=hidden_states.device)
-        null = self.null_embedding(indices).to(hidden_states.dtype)[None].expand(batch, -1, -1)
+        null = self.null_embedding(indices).to(hidden_states.dtype)[None].repeat(batch, 1, 1)
         hq = self.special_embedding(torch.zeros(1, device=hidden_states.device, dtype=torch.long))
         duration_indices = torch.arange(num_chunks, 0, -1, device=hidden_states.device).clamp(max=8)
         duration = self.special_embedding(duration_indices).to(hidden_states.dtype)
@@ -85,7 +101,7 @@ class MagiTextConditioningModel(ModelMixin, ConfigMixin):
             ],
             dim=2,
         )[:, :, :length]
-        null_mask = (indices < self.config.null_token_length)[None].expand(batch, -1)
+        null_mask = (indices < self.config.null_token_length)[None].repeat(batch, 1)
         if not return_dict:
             return conditional, mask, null, null_mask
         return MagiTextConditioningOutput(conditional, mask, null, null_mask)

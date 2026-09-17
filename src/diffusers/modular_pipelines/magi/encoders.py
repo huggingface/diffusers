@@ -13,8 +13,10 @@
 # limitations under the License.
 
 import html
+import math
 import re
 import urllib.parse as ul
+from numbers import Real
 
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
@@ -70,13 +72,19 @@ class MagiTextEncoderStep(ModularPipelineBlocks):
         prompts = [block_state.prompt] if isinstance(block_state.prompt, str) else block_state.prompt
         if not isinstance(prompts, list) or not prompts or not all(isinstance(prompt, str) for prompt in prompts):
             raise ValueError("prompt must be a string or a nonempty list of strings.")
+        if (
+            not isinstance(block_state.max_sequence_length, int)
+            or isinstance(block_state.max_sequence_length, bool)
+            or block_state.max_sequence_length < 1
+        ):
+            raise ValueError("max_sequence_length must be a positive integer.")
+        if not isinstance(block_state.clean_caption, bool):
+            raise ValueError("clean_caption must be a boolean.")
         if block_state.clean_caption:
             requires_backends(self, ["bs4", "ftfy"])
             prompts = [self.clean_caption(self.clean_caption(prompt)) for prompt in prompts]
         else:
             prompts = [prompt.lower().strip() for prompt in prompts]
-        if not isinstance(block_state.max_sequence_length, int) or block_state.max_sequence_length < 1:
-            raise ValueError("max_sequence_length must be a positive integer.")
         embeddings, masks = [], []
         for prompt in prompts:
             tokens = components.tokenizer(
@@ -223,8 +231,13 @@ def encode_magi_prefix(vae, video, scaling_factor, device):
         raise ValueError("Prefix pixels must be a uint8 tensor shaped (batch, 3, frames, height, width).")
     if min(video.shape) <= 0 or video.shape[1] != 3:
         raise ValueError("Prefix pixels must be nonempty RGB frames.")
-    if scaling_factor <= 0:
-        raise ValueError("latent_scaling_factor must be positive.")
+    if (
+        not isinstance(scaling_factor, Real)
+        or isinstance(scaling_factor, bool)
+        or not math.isfinite(scaling_factor)
+        or scaling_factor <= 0
+    ):
+        raise ValueError("latent_scaling_factor must be a finite positive real number.")
     pixels = (video.to(device=device, dtype=torch.float32) / 127.5 - 1).to(vae.dtype)
     return vae.encode(pixels).latent_dist.mode() * scaling_factor
 

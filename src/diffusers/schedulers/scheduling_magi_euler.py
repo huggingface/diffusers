@@ -14,6 +14,7 @@
 
 import math
 from dataclasses import dataclass
+from numbers import Real
 
 import torch
 
@@ -49,7 +50,7 @@ class MagiEulerScheduler(SchedulerMixin, ConfigMixin):
 
     @register_to_config
     def __init__(self, shift: float = 3.0, time_schedule: str = "sd3", shortcut_mode: str = "8,16,16"):
-        if not math.isfinite(shift) or shift < 1:
+        if not isinstance(shift, Real) or isinstance(shift, bool) or not math.isfinite(shift) or shift < 1:
             raise ValueError("shift must be finite and at least 1.")
         if time_schedule not in {"sd3", "square", "piecewise", "linear"}:
             raise ValueError("time_schedule must be sd3, square, piecewise, or linear.")

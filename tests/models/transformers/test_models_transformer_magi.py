@@ -266,6 +266,51 @@ class TestMagiTransformerModel(MagiTransformerTesterConfig, ModelTesterMixin):
             model(**inputs)
 
     @torch.no_grad()
+    def test_invalid_conditioning_shapes(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
+        with pytest.raises(ValueError, match="timestep"):
+            model(**{**inputs, "timestep": inputs["timestep"][None]})
+        with pytest.raises(ValueError, match="Text features"):
+            model(**{**inputs, "encoder_hidden_states": inputs["encoder_hidden_states"][..., :-1]})
+        with pytest.raises(ValueError, match="Text masks"):
+            model(**inputs, encoder_attention_mask=torch.ones(2, 7, device=torch_device))
+        with pytest.raises(ValueError, match="caption_dropout_mask"):
+            model(**inputs, caption_dropout_mask=torch.zeros(2, 1, device=torch_device))
+
+    @torch.no_grad()
+    def test_invalid_cache_contents(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
+        cache = model(**inputs, use_cache=True).kv_cache
+
+        mismatched_key_value = list(cache)
+        mismatched_key_value[0] = (cache[0][0], cache[0][1][:, :-4])
+        with pytest.raises(ValueError, match="matching key/value"):
+            model(**inputs, kv_cache=tuple(mismatched_key_value))
+
+        inconsistent_length = list(cache)
+        inconsistent_length[1] = tuple(tensor[:, :-4] for tensor in cache[1])
+        with pytest.raises(ValueError, match="same number"):
+            model(**inputs, kv_cache=tuple(inconsistent_length))
+
+        empty_first_layer = list(cache)
+        empty_first_layer[0] = tuple(tensor[:, :0] for tensor in cache[0])
+        with pytest.raises(ValueError, match="same number"):
+            model(**inputs, kv_cache=tuple(empty_first_layer))
+
+        invalid_dimensions = list(cache)
+        invalid_dimensions[0] = tuple(tensor[:, :, :, :-1] for tensor in cache[0])
+        with pytest.raises(ValueError, match="matching key/value"):
+            model(**inputs, kv_cache=tuple(invalid_dimensions))
+
+    def test_invalid_kv_range_types(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
+        with pytest.raises(ValueError, match="range"):
+            model(**inputs, kv_ranges=((0.0, 16.0),))
+
+    @torch.no_grad()
     def test_chunk_causality(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         inputs = self.get_dummy_inputs()

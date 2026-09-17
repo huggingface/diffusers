@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+from numbers import Real
+
 import torch
 
 from ...configuration_utils import FrozenDict
@@ -19,6 +22,30 @@ from ...models import AutoencoderKLMagi
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
+
+
+def _validate_decoder_inputs(latents, vae, chunk_width, latent_scaling_factor):
+    if (
+        not isinstance(latents, torch.Tensor)
+        or latents.ndim != 5
+        or latents.shape[1] != vae.config.latent_channels
+        or any(size <= 0 for size in latents.shape)
+        or not latents.is_floating_point()
+        or not torch.isfinite(latents).all()
+    ):
+        raise ValueError(
+            "latents must be a finite floating-point tensor with shape "
+            "(batch, latent_channels, frames, height, width)."
+        )
+    if not isinstance(chunk_width, int) or isinstance(chunk_width, bool) or chunk_width < 1:
+        raise ValueError("chunk_width must be a positive integer.")
+    if (
+        not isinstance(latent_scaling_factor, Real)
+        or isinstance(latent_scaling_factor, bool)
+        or not math.isfinite(latent_scaling_factor)
+        or latent_scaling_factor <= 0
+    ):
+        raise ValueError("latent_scaling_factor must be a finite positive real number.")
 
 
 class MagiVaeDecoderStep(ModularPipelineBlocks):
@@ -61,15 +88,17 @@ class MagiVaeDecoderStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
+        _validate_decoder_inputs(
+            block_state.latents,
+            components.vae,
+            block_state.chunk_width,
+            components.config.latent_scaling_factor,
+        )
         if block_state.output_type == "latent":
             block_state.videos = block_state.latents
         else:
             if block_state.output_type not in ("pt", "np", "pil"):
                 raise ValueError("output_type must be pt, np, pil, or latent.")
-            if not isinstance(block_state.chunk_width, int) or block_state.chunk_width < 1:
-                raise ValueError("chunk_width must be a positive integer.")
-            if components.config.latent_scaling_factor <= 0:
-                raise ValueError("latent_scaling_factor must be positive.")
             chunks = []
             for chunk in block_state.latents.split(block_state.chunk_width, dim=2):
                 chunk = (chunk.float() / components.config.latent_scaling_factor).to(components.vae.dtype)
@@ -109,6 +138,21 @@ class MagiPrefixVaeDecoderStep(MagiVaeDecoderStep):
     @torch.no_grad()
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
+        _validate_decoder_inputs(
+            block_state.latents,
+            components.vae,
+            block_state.chunk_width,
+            components.config.latent_scaling_factor,
+        )
+        if (
+            not isinstance(block_state.conditioning_latents, torch.Tensor)
+            or block_state.conditioning_latents.ndim != 5
+            or block_state.conditioning_latents.shape[:2] != block_state.latents.shape[:2]
+            or block_state.conditioning_latents.shape[3:] != block_state.latents.shape[3:]
+        ):
+            raise ValueError(
+                "conditioning_latents must match the batch, channel, height, and width dimensions of latents."
+            )
         prefix_length = block_state.conditioning_latents.shape[2]
         if not 0 < prefix_length < block_state.latents.shape[2]:
             raise ValueError("The prefix must leave at least one generated latent frame.")
@@ -118,10 +162,6 @@ class MagiPrefixVaeDecoderStep(MagiVaeDecoderStep):
         else:
             if block_state.output_type not in ("pt", "np", "pil"):
                 raise ValueError("output_type must be pt, np, pil, or latent.")
-            if not isinstance(block_state.chunk_width, int) or block_state.chunk_width < 1:
-                raise ValueError("chunk_width must be a positive integer.")
-            if components.config.latent_scaling_factor <= 0:
-                raise ValueError("latent_scaling_factor must be positive.")
             chunks = []
             for start in range(0, block_state.latents.shape[2], block_state.chunk_width):
                 end = start + block_state.chunk_width
