@@ -2469,29 +2469,6 @@ def build_motion_attention_spec(config: MultiScaleModelConfig) -> MotionAttentio
     )
 
 
-# Published Diffusers configs may omit the optional motion-attention section.
-# Keep the native factory unchanged while accepting the same config shape in
-# the serialized Diffusers adapter.
-def build_motion_attention_spec(config: MultiScaleModelConfig) -> MotionAttentionSpec | None:
-    """Resolve optional motion-attention settings from a serialized config."""
-    motion = getattr(config, "motion_attention", None)
-    if motion is None:
-        return None
-    return MotionAttentionSpec(
-        after_mid_blocks=motion.after_mid_blocks,
-        block=MotionCorrespondenceSpec(
-            channels=config.hidden_channels,
-            spatial_kernel_size=motion.spatial_kernel_size,
-            temporal_offsets=motion.temporal_offsets,
-            num_heads=motion.num_heads,
-            head_dim=config.hidden_channels // motion.num_heads,
-            backend=motion.backend,
-            natten_backend=motion.natten_backend,
-            merge_compile=motion.merge_compile,
-        ),
-    )
-
-
 class Kandinsky6SRLatentUpscalerBank(ModelMixin, ConfigMixin):
     """Diffusers wrapper around the self-contained x2/x4 latent-upscaler bank.
 
