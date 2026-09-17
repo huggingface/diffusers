@@ -1233,21 +1233,21 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         pred_v = preds_vision[0]
         m_v = vision_condition_mask[0]
         noisy_mask_v = (1.0 - m_v).to(dtype=pred_v.dtype, device=pred_v.device)
-        velocity_vision = pred_v * noisy_mask_v if noisy_mask_v.sum() > 0 else torch.zeros_like(pred_v)
+        velocity_vision = pred_v * noisy_mask_v
 
         velocity_sound: torch.Tensor | None = None
         if preds_sound is not None and sound_condition_mask is not None:
             pred_s = preds_sound[0]
             cond_mask_s = sound_condition_mask[0]
             noisy_mask_s = (1.0 - cond_mask_s).T.to(dtype=pred_s.dtype, device=pred_s.device)
-            velocity_sound = pred_s * noisy_mask_s if noisy_mask_s.sum() > 0 else torch.zeros_like(pred_s)
+            velocity_sound = pred_s * noisy_mask_s
 
         velocity_action: torch.Tensor | None = None
         if preds_action is not None and action_condition_mask is not None:
             pred_a = preds_action[0]
             cond_mask_a = action_condition_mask[0]
             noisy_mask_a = (1.0 - cond_mask_a).to(dtype=pred_a.dtype, device=pred_a.device)
-            velocity_action = pred_a * noisy_mask_a if noisy_mask_a.sum() > 0 else torch.zeros_like(pred_a)
+            velocity_action = pred_a * noisy_mask_a
             if raw_action_dim is not None:
                 velocity_action[:, raw_action_dim:] = 0
 
