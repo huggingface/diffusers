@@ -278,6 +278,6 @@ pipeline = StableDiffusionXLPipeline.from_single_file(
 pipeline.save_pretrained("path/to/save/model")
 ```
 
-## Resources
+## Next steps
 
 - Learn more about the design decisions and why safetensor files are preferred for saving and loading model weights in the [Safetensors audited as really safe and becoming the default](https://blog.eleuther.ai/safetensors-security-audit/) blog post.
