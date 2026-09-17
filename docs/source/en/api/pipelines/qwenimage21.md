@@ -34,11 +34,22 @@ edited = pipe("Move it to a snowy mountain top", image=image).images[0]
 edited.save("edit.png")
 ```
 
+## Multiple condition images
+
+Pass a list to `image` and every entry becomes its own block in the joint sequence: the Qwen3-VL encoder sees them as
+vision context and the VAE contributes their latent tokens. Block-causal attention keeps each block internally
+bidirectional while letting later blocks and the target image attend to the earlier ones, so the order you pass them
+in is the order the model reads them.
+
+```python
+edited = pipe("Put the flowers from the first image into the second scene", image=[flowers, scene]).images[0]
+```
+
 ## Faster attention with flex_attention
 
 The default `QwenImage21AttnProcessor` runs the block-causal prefill as one attention call per prefix segment. It
 needs no compilation and works on any PyTorch build. `QwenImage21FlexAttnProcessor` expresses the same mask as a
-single `flex_attention` call, which is faster once the model is compiled.
+single `flex_attention` call, which is faster once the model is **_compiled_**.
 
 > [!TIP]
 > Compile the model when you switch to the flex processor. An uncompiled `flex_attention` materializes the full

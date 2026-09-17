@@ -23,7 +23,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import logging
 from ...utils.peft_utils import apply_lora_scale
-from ...utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
+from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -318,22 +318,6 @@ def build_qwenimage21_block_causal_mask(
     )
 
 
-@lru_cache_unless_export(maxsize=1)
-def _warn_if_flex_attention_is_uncompiled():
-    """Warn once per process when `flex_attention` has not been compiled.
-
-    `dispatch_attention_fn` reaches `flex_attention` through its module, so a user who compiles it — directly or by
-    compiling the model — is picked up here. Uncompiled, flex_attention falls back to a dense fp32 score matrix, which
-    is far slower and runs out of memory at high resolution, so say so rather than let it happen quietly.
-    """
-    if not hasattr(flex_attention_module.flex_attention, "_torchdynamo_orig_callable"):
-        logger.warning(
-            "`QwenImage21FlexAttnProcessor` is running an uncompiled `flex_attention`, which materializes the full "
-            "attention score matrix in fp32 and will run out of memory at high resolution. Compile the model with "
-            "`transformer.compile()`, or switch to `QwenImage21AttnProcessor`."
-        )
-
-
 def _qwenimage21_prefix_segments(image_ids: torch.Tensor, prefix_len: int) -> list[tuple[int, int, bool]]:
     """Split the prefix into `(start, end, is_text)` runs of equal `image_ids`.
 
@@ -408,6 +392,7 @@ class QwenImage21FlexAttnProcessor:
     # for its `BlockMask` and is not configurable.
     _attention_backend = None
     _parallel_config = None
+    _warned_uncompiled = False
 
     def __init__(self):
         if not _FLEX_AVAILABLE:
@@ -436,8 +421,19 @@ class QwenImage21FlexAttnProcessor:
         if isinstance(attention_mask, BlockMask):
             # prefill: the BlockMask expresses the block-causal structure in one flex call. Query and key are
             # padded up to the mask's block-quantized length.
-            if not torch.compiler.is_compiling():
-                _warn_if_flex_attention_is_uncompiled()
+            # `dispatch_attention_fn` reaches flex_attention through its module, so a user who compiled it — directly
+            # or by compiling the model — is picked up here. Tracing means the model is compiled.
+            if (
+                not self._warned_uncompiled
+                and not torch.compiler.is_compiling()
+                and not hasattr(flex_attention_module.flex_attention, "_torchdynamo_orig_callable")
+            ):
+                logger.warning(
+                    "`QwenImage21FlexAttnProcessor` is running an uncompiled `flex_attention`, which materializes the "
+                    "full attention score matrix in fp32 and will run out of memory at high resolution. Compile the "
+                    "model with `transformer.compile()`, or switch to `QwenImage21AttnProcessor`."
+                )
+                QwenImage21FlexAttnProcessor._warned_uncompiled = True
             pad_q = int(math.ceil(seq_len_q / _FLEX_BLOCK_SIZE) * _FLEX_BLOCK_SIZE) - seq_len_q
             pad_kv = int(math.ceil(seq_len_kv / _FLEX_BLOCK_SIZE) * _FLEX_BLOCK_SIZE) - seq_len_kv
             # Pad the sequence axis. `F.pad` counts from the last dimension, so the head and channel axes are
