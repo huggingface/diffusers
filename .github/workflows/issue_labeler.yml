@@ -4,12 +4,14 @@ on:
   issues:
     types: [opened]
 
-permissions:
-  contents: read
-  issues: write
+
+permissions: {}
 
 jobs:
   label:
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -22,7 +24,14 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          LABELS=$(python utils/label_issues.py)
+          # Issue title/body are untrusted user input: bound their length before
+          # they are handed to the LLM. utils/label_issues.py must wrap them in a
+          # clearly delimited user-content block and instruct the model to never
+          # follow instructions contained inside that block.
+          ISSUE_TITLE=$(printf '%s' "$ISSUE_TITLE" | head -c 500)
+          ISSUE_BODY=$(printf '%s' "$ISSUE_BODY" | head -c 4000)
+          export ISSUE_TITLE ISSUE_BODY
+          LABELS=$(python utils/label_issues.py | tr -d '\r\n')
           echo "labels=$LABELS" >> "$GITHUB_OUTPUT"
       - name: Apply labels
         if: steps.get-labels.outputs.labels != ''
@@ -31,6 +40,17 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           LABELS: ${{ steps.get-labels.outputs.labels }}
         run: |
-          for label in $(echo "$LABELS" | python -c "import json,sys; print('\n'.join(json.load(sys.stdin)))"); do
-            gh issue edit "$ISSUE_NUMBER" --add-label "$label"
-          done
+          # The model output is untrusted (it can be steered by the issue author).
+          # Validate every returned label against a fixed server-side allowlist
+          # before mutating the issue with the write-scoped token.
+          ALLOWED_LABELS=$'bug\nenhancement\ndocumentation\nquestion\nfeature request\ngood first issue\nhelp wanted'
+          printf '%s' "$LABELS" \
+            | python -c "import json,sys; data=json.load(sys.stdin); data=data if isinstance(data,list) else []; print('\n'.join(str(x) for x in data[:10]))" \
+            | while IFS= read -r label; do
+                [ -n "$label" ] || continue
+                if ! printf '%s\n' "$ALLOWED_LABELS" | grep -Fxq -- "$label"; then
+                  echo "Skipping label not in allowlist: $label"
+                  continue
+                fi
+                gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+              done

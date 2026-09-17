@@ -18,7 +18,25 @@ jobs:
       pull-requests: write
     outputs:
       comment_id: ${{ steps.comment.outputs.comment_id }}
+      authorized: ${{ steps.auth.outputs.authorized }}
     steps:
+      - name: Authorize commenter
+        id: auth
+        env:
+          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          case "$AUTHOR_ASSOCIATION" in
+            OWNER|MEMBER|COLLABORATOR)
+              echo "authorized=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::User '${ACTOR}' (association: ${AUTHOR_ASSOCIATION}) is not authorized to trigger this workflow."
+              echo "authorized=false" >> "$GITHUB_OUTPUT"
+              exit 1
+              ;;
+          esac
+
       - name: Acknowledge with 👀
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -46,6 +64,7 @@ jobs:
   gpu:
     name: Run pytest on GPU
     needs: gate
+    if: ${{ needs.gate.outputs.authorized == 'true' }}
     # A newer command on the same PR supersedes an in-flight one. Scoped to this job
     # only so the superseded run's `report` still updates its comment.
     concurrency:
@@ -75,7 +94,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Works for forks too — no fork credentials needed.
           ref: refs/pull/${{ github.event.issue.number }}/head
@@ -116,7 +135,7 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bot_gpu_test_reports
           path: reports
@@ -126,7 +145,7 @@ jobs:
     needs: [gate, gpu]
     # Always run so the comment is updated on success, failure, or cancellation —
     # but only if `gate` actually posted a comment to update.
-    if: ${{ always() && needs.gate.outputs.comment_id != '' }}
+    if: ${{ always() && needs.gate.outputs.authorized == 'true' && needs.gate.outputs.comment_id != '' }}
     runs-on: ubuntu-22.04
     permissions:
       pull-requests: write
