@@ -602,8 +602,9 @@ def _prepare_for_flash_attn_or_sage_varlen_without_mask(
     # Built with arange instead of cumsum(full(...)): inductor rewrites that pattern into
     # `arange * fill_value`, which raises under dynamic shapes because the fill value is a
     # symbolic sequence length. The lengths are uniform here, so arange is also cheaper.
-    cu_seqlens_q = torch.arange(0, (batch_size + 1) * seq_len_q, seq_len_q, dtype=torch.int32, device=device)
-    cu_seqlens_k = torch.arange(0, (batch_size + 1) * seq_len_kv, seq_len_kv, dtype=torch.int32, device=device)
+    offsets = torch.arange(0, batch_size + 1, dtype=torch.int32, device=device)
+    cu_seqlens_q = offsets * seq_len_q
+    cu_seqlens_k = offsets * seq_len_kv
     return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (seq_len_q, seq_len_kv)
 
 
@@ -617,7 +618,7 @@ def _prepare_for_flash_attn_or_sage_varlen_with_mask(
     seqlens_k = attn_mask.sum(dim=1, dtype=torch.int32)
     # Queries are uniform, so arange (see the no-mask helper: cumsum(full(...)) breaks inductor
     # under dynamic shapes). Keys are data-dependent and keep the cumsum.
-    cu_seqlens_q = torch.arange(0, (batch_size + 1) * seq_len_q, seq_len_q, dtype=torch.int32, device=device)
+    cu_seqlens_q = torch.arange(0, batch_size + 1, dtype=torch.int32, device=device) * seq_len_q
     cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
     max_seqlen_k = seqlens_k.max().item()
