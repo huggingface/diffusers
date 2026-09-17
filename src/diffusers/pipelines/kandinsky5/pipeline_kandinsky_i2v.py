@@ -195,7 +195,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 "<|im_start|>user\n{}<|im_end|>",
             ]
         )
-        self.prompt_template_encode_start_idx = 129
+        self.prompt_template_encode_start_idx = 128
 
         self.vae_scale_factor_temporal = (
             self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
