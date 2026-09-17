@@ -24,12 +24,112 @@ from typing import Any
 import torch
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..attention import AttentionModuleMixin
+from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_utils import ModelMixin
 from diffusers.utils import logging
 from torch import Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, flex_attention
 
-from ..attention_processor import Kandinsky6SRAttentionProcessor
+from .transformer_kandinsky6 import Kandinsky6AttnProcessor
+
+
+class Kandinsky6SRAttentionProcessor(Kandinsky6AttnProcessor):
+    """Diffusers attention processor used by the SR transformer."""
+
+    def __call__(
+        self,
+        attn: Any,
+        query: Tensor,
+        key: Tensor,
+        value: Tensor,
+        cu_seqlens_q: Tensor,
+        cu_seqlens_k: Tensor,
+        *,
+        sparse_params: dict[str, Any] | None = None,
+        attn_mask: Tensor | None = None,
+    ) -> Tensor:
+        if sparse_params is not None:
+            return attn.attention_flex(query, key, value, sparse_params=sparse_params)
+
+        if getattr(attn, "cached_k", None) is not None:
+            key, value, cu_seqlens_q, cu_seqlens_k = self.assemble_cached_attention_inputs(
+                key, value, attn.cached_k, attn.cached_v, cu_seqlens_q, attn.cached_cu_seqlens
+            )
+        if getattr(attn, "return_kv", False):
+            attn.cached_k, attn.cached_v, attn.cached_cu_seqlens = key, value, cu_seqlens_k
+
+        outputs = []
+        batch_size = cu_seqlens_q.numel() - 1
+        for index in range(batch_size):
+            query_start, query_end = int(cu_seqlens_q[index]), int(cu_seqlens_q[index + 1])
+            key_start, key_end = int(cu_seqlens_k[index]), int(cu_seqlens_k[index + 1])
+            outputs.append(
+                dispatch_attention_fn(
+                    query[query_start:query_end].unsqueeze(0),
+                    key[key_start:key_end].unsqueeze(0),
+                    value[key_start:key_end].unsqueeze(0),
+                    attn_mask=self._packed_attention_mask(
+                        attn_mask,
+                        index,
+                        batch_size,
+                        query_end - query_start,
+                        key_end - key_start,
+                    ),
+                    backend=self._attention_backend,
+                    parallel_config=self._parallel_config,
+                )[0]
+            )
+        return torch.cat(outputs, dim=0)
+
+    @staticmethod
+    def assemble_cached_attention_inputs(
+        new_key: Tensor,
+        new_value: Tensor,
+        cached_key: Tensor,
+        cached_value: Tensor,
+        cu_seqlens_new: Tensor,
+        cached_cu_seqlens: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Merge cached and new K/V into packed varlen attention inputs."""
+        num_seqs = cu_seqlens_new.numel() - 1
+        key_parts: list[Tensor] = []
+        value_parts: list[Tensor] = []
+        for index in range(num_seqs):
+            cache_start, cache_end = int(cached_cu_seqlens[index]), int(cached_cu_seqlens[index + 1])
+            new_start, new_end = int(cu_seqlens_new[index]), int(cu_seqlens_new[index + 1])
+            key_parts.append(cached_key[cache_start:cache_end])
+            key_parts.append(new_key[new_start:new_end])
+            value_parts.append(cached_value[cache_start:cache_end])
+            value_parts.append(new_value[new_start:new_end])
+
+        key = torch.cat(key_parts, dim=0)
+        value = torch.cat(value_parts, dim=0)
+        merged_lens = torch.diff(cached_cu_seqlens) + torch.diff(cu_seqlens_new)
+        cu_seqlens_k = torch.cat([cu_seqlens_new.new_zeros(1), torch.cumsum(merged_lens, dim=0)]).to(
+            cu_seqlens_new.dtype
+        )
+        return key, value, cu_seqlens_new, cu_seqlens_k
+
+    @staticmethod
+    def _packed_attention_mask(
+        attn_mask: Tensor | None,
+        index: int,
+        batch_size: int,
+        query_length: int,
+        key_length: int,
+    ) -> Tensor | None:
+        if attn_mask is None:
+            return None
+        if attn_mask.ndim == 1:
+            return attn_mask[:key_length].unsqueeze(0)
+        if attn_mask.ndim == 2:
+            if attn_mask.shape[0] in (1, batch_size):
+                return attn_mask[index : index + 1, :key_length]
+            return attn_mask[:query_length, :key_length]
+        if attn_mask.shape[0] in (1, batch_size):
+            attn_mask = attn_mask[index : index + 1]
+        return attn_mask[..., :query_length, :key_length]
+
 
 # Side of the local 8x8 token block used by fractal (NABLA) attention.
 # Independent of the VAE spatial compression — do not swap for VAE_SPATIAL_FACTOR.

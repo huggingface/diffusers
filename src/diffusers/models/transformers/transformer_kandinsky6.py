@@ -27,13 +27,16 @@ from ...hooks.hooks import HookRegistry, ModelHook, StateManager
 from ...hooks.mag_cache import MagCacheState
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ..attention import AttentionMixin, AttentionModuleMixin
-from ..attention_dispatch import AttentionBackendName
+from ..attention_dispatch import (
+    _CAN_USE_FLEX_ATTN,
+    AttentionBackendName,
+    dispatch_attention_fn,
+)
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from torch import Tensor, nn
-
-from ..attention_processor import Kandinsky6AttnProcessor
+from torch.nn.attention.flex_attention import BlockMask
 
 
 def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
@@ -106,6 +109,36 @@ def fractal_unflatten(x: Tensor, shape: tuple, block_mask: bool = False) -> Tens
         x = x.reshape(-1, ps * ps, x.shape[-1])
         return _local_merge(x, shape, (1, ps, ps), dim=0)
     return x.reshape(*shape, x.shape[-1])
+
+
+def nabla_block_mask(
+    q: Tensor,
+    k: Tensor,
+    sta: Tensor,
+    thr: float = 0.9,
+    block_size: int = 64,
+) -> BlockMask:
+    """Build a dynamic NABLA block mask from query/key statistics and an STA prior."""
+    B, h, S, D = q.shape
+    s1 = S // block_size
+    qa = q.reshape(B, h, s1, block_size, D).mean(-2)
+    ka = k.reshape(B, h, s1, block_size, D).mean(-2).transpose(-2, -1)
+    attn_map = torch.softmax((qa @ ka) / math.sqrt(D), dim=-1)
+
+    vals, inds = attn_map.sort(-1)
+    mask = (vals.cumsum_(-1) >= 1 - thr).int().gather(-1, inds.argsort(-1))
+    mask = torch.logical_or(mask, sta)
+
+    kv_nb = mask.sum(-1).to(torch.int32)
+    kv_inds = mask.argsort(dim=-1, descending=True).to(torch.int32)
+    return BlockMask.from_kv_blocks(
+        torch.zeros_like(kv_nb),
+        kv_inds,
+        kv_nb,
+        kv_inds,
+        BLOCK_SIZE=block_size,
+        mask_mod=None,
+    )
 
 
 class RoPE1D(nn.Module):
@@ -410,6 +443,111 @@ class Kandinsky6MagCacheMixin(CacheMixin):
 # Diffusers Kandinsky5 transformer (for example ``in_layer``, ``modulation``,
 # ``self_attention`` and ``feed_forward``). Checkpoint conversion maps the
 # native K6 names to this public Diffusers layout.
+
+
+_MASKED_ATTENTION_BACKENDS = {
+    "flash": "flash_varlen",
+    "_flash_3": "_flash_varlen_3",
+    "sage": "sage_varlen",
+    "native": "native",
+}
+
+
+class Kandinsky6AttnProcessor:
+    """Diffusers attention processor used by the TI2VA transformer."""
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __init__(self, attention_backend=None, parallel_config=None):
+        if not hasattr(functional, "scaled_dot_product_attention"):
+            raise ImportError(f"{self.__class__.__name__} requires PyTorch 2.0 or newer.")
+        self._masked = False
+        self._attention_backend = attention_backend
+        self._parallel_config = parallel_config
+
+    @property
+    def _attention_backend(self):
+        return self.__attention_backend
+
+    @_attention_backend.setter
+    def _attention_backend(self, backend):
+        if self._masked and backend is not None:
+            name = getattr(backend, "value", backend).lower()
+            backend = _MASKED_ATTENTION_BACKENDS.get(name, name)
+            backend = AttentionBackendName(backend)
+        self.__attention_backend = backend
+
+    def __call__(
+        self,
+        attn: Any,
+        hidden_states: Tensor,
+        encoder_hidden_states: Tensor | None = None,
+        rotary_emb: Tensor | None = None,
+        rotary_emb_kv: Tensor | None = None,
+        sparse_params: dict[str, Any] | None = None,
+        attn_mask: Tensor | None = None,
+    ) -> Tensor:
+        query = attn.to_query(hidden_states)
+        if encoder_hidden_states is None:
+            key = attn.to_key(hidden_states)
+            value = attn.to_value(hidden_states)
+        else:
+            key = attn.to_key(encoder_hidden_states)
+            value = attn.to_value(encoder_hidden_states)
+
+        query = query.reshape(*query.shape[:-1], attn.num_heads, -1)
+        key = key.reshape(*key.shape[:-1], attn.num_heads, -1)
+        value = value.reshape(*value.shape[:-1], attn.num_heads, -1)
+        query = attn.query_norm(query)
+        key = attn.key_norm(key)
+
+        if rotary_emb is not None:
+            query = apply_rotary(query, rotary_emb).to(dtype=query.dtype)
+        if rotary_emb_kv is not None:
+            key = apply_rotary(key, rotary_emb_kv).to(dtype=key.dtype)
+
+        query_was_batched = query.dim() == 4
+        if not query_was_batched:
+            query, key, value = query.unsqueeze(0), key.unsqueeze(0), value.unsqueeze(0)
+        elif key.dim() == 3:
+            key, value = key.unsqueeze(0), value.unsqueeze(0)
+
+        if sparse_params is not None:
+            q = query.transpose(1, 2).contiguous()
+            k = key.transpose(1, 2).contiguous()
+            v = value.transpose(1, 2).contiguous()
+            block_mask = nabla_block_mask(
+                q,
+                k,
+                sparse_params["sta_mask"],
+                thr=sparse_params["P"],
+            )
+            if not _CAN_USE_FLEX_ATTN:
+                raise ValueError("Nabla attention requires PyTorch 2.5 or newer")
+            output = (
+                torch.nn.attention.flex_attention.flex_attention(
+                    q,
+                    k,
+                    v,
+                    block_mask=block_mask,
+                )
+                .transpose(1, 2)
+                .contiguous()
+            )
+        else:
+            output = dispatch_attention_fn(
+                query,
+                key,
+                value,
+                attn_mask=attn_mask,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
+            )
+
+        if not query_was_batched:
+            output = output[0]
+        return attn.out_layer(output.flatten(-2, -1))
 
 
 class Kandinsky6TimeEmbeddings(nn.Module):
