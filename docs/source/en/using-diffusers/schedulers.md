@@ -10,19 +10,28 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-[[open-in-colab]]
-
 # Schedulers
 
-A scheduler is an algorithm that provides instructions to the denoising process such as how much noise to remove at a certain step. It takes the model prediction from step *t* and applies an update for how to compute the next sample at step *t-1*. Different schedulers produce different results; some are faster while others are more accurate.
+A scheduler tells the denoising loop how much noise to remove at each step. Different schedulers trade speed for quality.
 
-Diffusers supports many schedulers and allows you to modify their timestep schedules, timestep spacing, and more, to generate high-quality images in fewer steps.
+This guide shows how to load a scheduler and customize its timestep schedule, spacing, and sigmas.
 
-This guide will show you how to load and customize schedulers.
+## Choosing a scheduler
+
+Start from the checkpoint default. Swap only if you need a different speed or quality tradeoff.
+
+- DPM++ 2M SDE Karras is a strong all-purpose option for many latent diffusion checkpoints.
+- [`TCDScheduler`] works well for distilled models.
+- Use [`FlowMatchEulerDiscreteScheduler`] or [`FlowMatchHeunDiscreteScheduler`] for FlowMatch models (Qwen-Image, Flux, and similar).
+- [`EulerDiscreteScheduler`] or [`EulerAncestralDiscreteScheduler`] often work well for anime-style images.
+- [`LCMScheduler`] with an LCM UNet or LoRA for few-step generation when the checkpoint supports it.
 
 ## Loading schedulers
 
-Schedulers don't have any parameters and are defined in a configuration file. Access the `.scheduler` attribute of a pipeline to view the configuration.
+> [!TIP]
+> Flow-matching models such as Qwen-Image and Flux ship [`FlowMatchEulerDiscreteScheduler`] as their default. Keep that scheduler unless you are intentionally experimenting. Swap with [`~SchedulerMixin.from_config`] only when the replacement is compatible with the checkpoint.
+
+Schedulers are config-only. They do not ship weight tensors. Access the `.scheduler` attribute on a pipeline to inspect the loaded config.
 
 ```py
 import torch
@@ -34,10 +43,18 @@ pipeline = DiffusionPipeline.from_pretrained(
 pipeline.scheduler
 ```
 
-Load a different scheduler with [`~SchedulerMixin.from_pretrained`] and specify the `subfolder` argument to load the configuration file into the correct subfolder of the pipeline repository. Pass the new scheduler to the existing pipeline.
+To swap schedulers on a loaded pipeline, use [`~SchedulerMixin.from_config`] with the existing scheduler config so `num_train_timesteps` and related fields stay aligned. For FlowMatch checkpoints (Qwen-Image, Flux, and similar), keep [`FlowMatchEulerDiscreteScheduler`] unless you are intentionally experimenting with a compatible replacement.
 
 ```py
 from diffusers import DPMSolverMultistepScheduler
+
+pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+```
+
+You can also load a scheduler config from the Hub with [`~SchedulerMixin.from_pretrained`] and pass it into [`~DiffusionPipeline.from_pretrained`] through `scheduler=`.
+
+```py
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 dpm = DPMSolverMultistepScheduler.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler"
@@ -46,7 +63,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     scheduler=dpm,
     dtype=torch.float16,
-    device_map="cuda"  # or "mps", "xpu", "cpu"
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 pipeline.scheduler
 ```
@@ -55,8 +72,20 @@ pipeline.scheduler
 
 Timestep or noise schedule decides how noise is distributed over the denoising process. The schedule can be linear or more concentrated toward the beginning or end. It is a precomputed sequence of noise levels generated from the scheduler's default configuration, but it can be customized to use other schedules.
 
+```text
+linear (even steps)                 AYS (denser where it matters)
+noise                               noise
+  ^                                   ^
+  | *                                 | *
+  |   *                               |  *
+  |     *  *                          |   *  *
+  |          *  *                     |       *    *
+  |               *                   |              *
+  +-----------------> step            +-----------------> step
+```
+
 > [!TIP]
-> The `timesteps` argument is only supported for a select list of schedulers and pipelines. Feel free to open a feature request if you want to extend these parameters to a scheduler and pipeline that does not currently support it!
+> Custom `timesteps` only work if that scheduler’s `set_timesteps` accepts the argument (pipelines check the signature via `retrieve_timesteps` and raise `ValueError` otherwise). Check the scheduler’s API page or `set_timesteps` signature before passing them.
 
 The example below uses the [Align Your Steps (AYS)](https://research.nvidia.com/labs/toronto-ai/AlignYourSteps/) schedule which can generate a high-quality image in 10 steps, significantly speeding up generation and reducing computation time.
 
@@ -69,7 +98,7 @@ from diffusers.schedulers import AysSchedules
 
 sampling_schedule = AysSchedules["StableDiffusionXLTimesteps"]
 print(sampling_schedule)
-"[999, 845, 730, 587, 443, 310, 193, 116, 53, 13]"
+# [999, 845, 730, 587, 443, 310, 193, 116, 53, 13]
 
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0",
@@ -105,7 +134,7 @@ image = pipeline(
 
 ### Rescaling schedules
 
-Denoising should begin with pure noise and the signal-to-noise (SNR) ration should be zero. However, some models don't actually start from pure noise which makes it difficult to generate images at brightness extremes.
+Denoising should begin with pure noise and the signal-to-noise (SNR) ratio should be zero. However, some models don't actually start from pure noise which makes it difficult to generate images at brightness extremes.
 
 > [!TIP]
 > Train your own model with `v_prediction` by adding the `--prediction_type="v_prediction"` flag to your training script. You can also [search](https://huggingface.co/search/full-text?q=v_prediction&type=model) for existing models trained with `v_prediction`.
@@ -148,7 +177,7 @@ image = pipeline(prompt, guidance_rescale=0.7).images[0]
 
 ## Timestep spacing
 
-Timestep spacing refers to the specific steps *t* to sample from from the schedule. Diffusers provides three spacing types as shown below.
+Timestep spacing refers to the specific steps *t* to sample from the schedule. Diffusers provides three spacing types as shown below.
 
 | spacing strategy | spacing calculation | example timesteps |
 |---|---|---|
@@ -198,25 +227,30 @@ image
 
 Sigmas is a measure of how noisy a sample is at a certain step as defined by the schedule. When using custom `sigmas`, the `timesteps` are calculated from these values instead of the default scheduler configuration.
 
-> [!TIP]
-> The `sigmas` argument is only supported for a select list of schedulers and pipelines. Feel free to open a feature request if you want to extend these parameters to a scheduler and pipeline that does not currently support it!
+```text
+step:   0    1    2    3    4
+sigma:  σ0 > σ1 > σ2 > σ3 > σ4 ≈ 0
+        high noise  --->  clean sample
+```
 
-Pass the custom sigmas to the `sigmas` argument in the pipeline. The example below uses the [sigmas](https://github.com/huggingface/diffusers/blob/6529ee67ec02fcf58d2fd9242164ea002b351d75/src/diffusers/schedulers/scheduling_utils.py#L55) from the 10-step AYS schedule.
+> [!TIP]
+> Custom `sigmas` only work if that scheduler’s `set_timesteps` accepts the argument (pipelines check the signature via `retrieve_timesteps` and raise `ValueError` otherwise). Check the scheduler’s API page or `set_timesteps` signature before passing them.
+
+Pass the custom sigmas to the `sigmas` argument in the pipeline. The example below uses the [sigmas](https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_utils.py) from the 10-step AYS schedule.
 
 ```py
 import torch
-from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+from diffusers import DiffusionPipeline, EulerDiscreteScheduler
+from diffusers.schedulers import AysSchedules
 
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0",
     dtype=torch.float16,
-    device_map="cuda"  # or "mps", "xpu", "cpu"
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
-pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
-  pipeline.scheduler.config, algorithm_type="sde-dpmsolver++"
-)
+pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 
-sigmas = [14.615, 6.315, 3.771, 2.181, 1.342, 0.862, 0.555, 0.380, 0.234, 0.113, 0.0]
+sigmas = AysSchedules["StableDiffusionXLSigmas"]
 prompt = "A cinematic shot of a cute little rabbit wearing a jacket and doing a thumbs up"
 image = pipeline(
     prompt=prompt,
@@ -228,6 +262,12 @@ image = pipeline(
 ### Karras sigmas
 
 [Karras sigmas](https://huggingface.co/papers/2206.00364) resamples the noise schedule for more efficient sampling by clustering sigmas more densely in the middle of the sequence where structure reconstruction is critical, while using fewer sigmas at the beginning and end where noise changes have less impact. This can increase the level of details in a generated image.
+
+```text
+default σ:  *  *  *  *  *  *  *  *     even-ish
+Karras σ:   *   * * * * *   *          denser mid, sparser ends
+            |---structure---|
+```
 
 Set `use_karras_sigmas=True` in the scheduler to enable it.
 
@@ -250,7 +290,7 @@ prompt = "A cinematic shot of a cute little rabbit wearing a jacket and doing a 
 image = pipeline(
     prompt=prompt,
     negative_prompt="",
-    sigmas=sigmas,
+    num_inference_steps=20,
 ).images[0]
 ```
 
@@ -266,16 +306,6 @@ image = pipeline(
 </div>
 
 Refer to the scheduler API [overview](../api/schedulers/overview) for a list of schedulers that support Karras sigmas. It should only be used for models trained with Karras sigmas.
-
-## Choosing a scheduler
-
-It's important to try different schedulers to find the best one for your use case. Here are a few recommendations to help you get started.
-
-- DPM++ 2M SDE Karras is generally a good all-purpose option.
-- [`TCDScheduler`] works well for distilled models.
-- [`FlowMatchEulerDiscreteScheduler`] and [`FlowMatchHeunDiscreteScheduler`] for FlowMatch models.
-- [`EulerDiscreteScheduler`] or [`EulerAncestralDiscreteScheduler`] for generating anime style images.
-- DPM++ 2M paired with [`LCMScheduler`] on SDXL for generating realistic images.
 
 ## Resources
 
