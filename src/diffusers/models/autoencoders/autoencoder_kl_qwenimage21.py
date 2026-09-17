@@ -1525,8 +1525,16 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
         """
         Args:
             sample (`torch.Tensor`): Input sample.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the posterior instead of taking its mode.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                Generator used when `sample_posterior` is `True`.
+
+        Returns:
+            [`~models.autoencoders.vae.DecoderOutput`] or `tuple`:
+                [`~models.autoencoders.vae.DecoderOutput`] if `return_dict` is True, otherwise a plain `tuple`.
         """
         x = sample
         posterior = self.encode(x).latent_dist

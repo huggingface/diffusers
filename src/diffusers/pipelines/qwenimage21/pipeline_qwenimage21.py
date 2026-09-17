@@ -563,6 +563,15 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 Generator(s) to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents.
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings, which skip prompt encoding. Pass `prompt_embeds_mask` with them.
+            prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Bool mask marking the valid positions of `prompt_embeds`.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings, used in place of `negative_prompt`. Pass
+                `negative_prompt_embeds_mask` with them.
+            negative_prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Bool mask marking the valid positions of `negative_prompt_embeds`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 Output format, `"pil"`, `"np"`, `"pt"` or `"latent"`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -571,6 +580,9 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 Passed through to the attention processor.
             callback_on_step_end (`Callable`, *optional*):
                 Called at the end of each denoising step.
+            callback_on_step_end_tensor_inputs (`list[str]`, *optional*, defaults to `["latents"]`):
+                Tensors from the denoising loop to hand to `callback_on_step_end`. They must be listed in the
+                pipeline's `_callback_tensor_inputs`.
             output_resolution (`int`, *optional*, defaults to 1024):
                 Target side length used to derive `height`/`width` and to resize condition images.
             use_kv_cache (`bool`, *optional*, defaults to `True`):

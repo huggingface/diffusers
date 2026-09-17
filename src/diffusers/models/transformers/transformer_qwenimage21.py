@@ -894,6 +894,16 @@ class QwenImage21Transformer2DModel(
             kv_cache_mode (`str`, *optional*):
                 `"extract"` to prefill the cache (first denoising step), `"cached"` to decode from it (later steps).
                 Requires `causal_condition=True`.
+            attention_kwargs (`dict`, *optional*):
+                Forwarded to the attention processors, and carries `scale` for the LoRA layers.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.modeling_outputs.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            [`~models.modeling_outputs.Transformer2DModelOutput`] or `tuple`:
+                [`~models.modeling_outputs.Transformer2DModelOutput`] if `return_dict` is True, otherwise a plain
+                `tuple` whose first element is the denoised latents.
         """
 
         batch_size = hidden_states.shape[0]
