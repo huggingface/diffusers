@@ -242,8 +242,12 @@ the media itself. Written images are always PNG, videos MP4, audio WAV.
 ### Remote execution (`--remote`)
 
 Run the same call inside a [Hugging Face Sandbox](https://huggingface.co/docs/huggingface_hub/en/guides/sandbox)
-— an isolated cloud VM the CLI drives over HTTP: it uploads inputs, installs deps, runs the pipeline, downloads
-outputs, then terminates the sandbox. Requires `huggingface_hub>=1.23`.
+— an isolated cloud VM the CLI drives over HTTP: it uploads inputs, runs the pipeline, downloads outputs, then
+terminates the sandbox. Requires `huggingface_hub>=1.23`.
+
+The sandbox boots from [`diffusers/diffusers-cli-cuda`](https://hub.docker.com/r/diffusers/diffusers-cli-cuda), a
+prebuilt image that already ships torch, CUDA, and the CLI's dependencies, so a cold run starts generating instead
+of installing first.
 
 ```bash
 diffusers-cli run \
@@ -256,11 +260,12 @@ Remote flags:
 
 - `--flavor <name>` — sandbox hardware (e.g. `a10g-small`, `h200`, `rtx-pro-6000`).
 - `--timeout <duration>` — max wallclock for the run command inside the sandbox (default `10m`).
-- `--dependencies <pkg>` — extra pip deps (repeatable). Useful for pinning a diffusers branch tarball or
-  adding pipeline-specific extras.
+- `--dependencies <pkg>` — extra pip deps (repeatable), installed on top of the image. Useful for pinning a
+  diffusers branch tarball or adding pipeline-specific extras.
 - `--namespace <name>` — create the sandbox under a different HF org/account.
 - `--image <ref>` — override the sandbox image. Must ship torch + CUDA compatible with your `--flavor`'s
-  driver.
+  driver. The CLI then installs its own dependencies on top on every cold sandbox, which the default image
+  avoids.
 - `--volume <bucket-id>[:<mount-path>]` — mount an [HF storage bucket](https://huggingface.co/docs/hub/en/storage-buckets)
   into the sandbox as a read-write directory. Repeatable. Default mount path is
   `/mnt/buckets/<bucket-id>`. Reference mounted files from `--pipeline-kwargs` like any other local path.
