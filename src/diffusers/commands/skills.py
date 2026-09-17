@@ -28,8 +28,8 @@ import textwrap
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from pathlib import Path
 
-import httpx
 from huggingface_hub.cli._output import out
+from huggingface_hub.utils import httpx
 
 from ..utils import logging
 from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
