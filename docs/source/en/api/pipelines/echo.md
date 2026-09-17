@@ -14,11 +14,12 @@
 
 # Echo
 
-[Echo](https://github.com/jd-opensource/JoyAI-Echo) is a long-video generation model. It adds an optional clean first
-frame, ordered image/audio memory slots, and a stochastic few-step Distribution Matching Distillation (DMD) sampler.
+[Echo](https://github.com/jd-opensource/JoyAI-Echo) is a long-video generation model. It supports an optional clean
+first frame, ordered image/audio memory slots, and a stochastic few-step Distribution Matching Distillation (DMD)
+sampler.
 The pipeline generates synchronized video and audio.
 
-Echo is implemented as a Modular Pipeline so its text encoding, memory conditioning, stochastic DMD denoising, and
+Echo is implemented as a [`ModularPipeline`] so its text encoding, memory conditioning, stochastic DMD denoising, and
 decoding blocks can be run as a complete workflow or composed independently.
 
 ## Convert the checkpoint
@@ -50,7 +51,6 @@ from PIL import Image
 
 from diffusers import ComponentsManager, ModularPipeline
 from diffusers.utils import encode_video
-
 
 model_path = "/path/to/Echo-Diffusers"
 manager = ComponentsManager()
@@ -90,18 +90,18 @@ encode_video(
 )
 ```
 
-The default DMD sigma schedule is the released eight-step schedule. It predicts x0 at every step and re-noises with
+The default DMD sigma schedule is the released eight-step schedule. It predicts `x0` at every step and re-noises with
 fresh Gaussian noise at the next sigma, so a seeded `torch.Generator` controls both the initial noise and all
 intermediate re-noising.
 
 Raw audio-memory encoding requires `torchaudio`. For reference parity, keep `audio_vae` in FP32 as shown above.
-Modular workflows can cache the VAE encoder's normalized, unpacked tensors: video latents have shape
+Modular workflows can cache the VAE encoder's normalized, unpacked tensors. Video latents have shape
 `(batch, channels, frames, height, width)` and audio latents have shape `(batch, channels, time, mel_bins)`.
-The core `denoise` block packs these tensors, expands conditioning for `num_videos_per_prompt`, and unpacks its
-denoised outputs back to the same VAE form. Pass initial `latents` and `audio_latents` in this unpacked form as well.
-Decoders accept normalized VAE tensors without separate geometry arguments and denormalize immediately before
-decoding. `output=["latents", "audio_latents"]` returns normalized VAE tensors; `output_type="latent"` with
-`output=["videos", "audio"]` returns the denormalized VAE tensors without decoding.
+The core `denoise` block packs those tensors, expands conditioning for `num_videos_per_prompt`, and unpacks
+denoised outputs back to the same VAE form. Pass initial `latents` and `audio_latents` in that unpacked form too.
+Decoders take normalized VAE tensors and denormalize immediately before
+decoding. `output=["latents", "audio_latents"]` returns normalized VAE tensors. With `output_type="latent"` and
+`output=["videos", "audio"]`, you get the denormalized VAE tensors without decoding.
 
 ## EchoModularPipeline
 
