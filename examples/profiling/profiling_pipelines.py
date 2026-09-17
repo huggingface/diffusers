@@ -30,7 +30,14 @@ PROMPT = "A cat holding a sign that says hello world"
 
 def build_registry():
     """Build the pipeline config registry. Imports are deferred to avoid loading all pipelines upfront."""
-    from diffusers import Flux2KleinPipeline, FluxPipeline, LTX2Pipeline, QwenImagePipeline, WanPipeline
+    from diffusers import (
+        CogVideoXPipeline,
+        Flux2KleinPipeline,
+        FluxPipeline,
+        LTX2Pipeline,
+        QwenImagePipeline,
+        WanPipeline,
+    )
 
     return {
         "flux": PipelineProfilingConfig(
@@ -100,6 +107,24 @@ def build_registry():
                 "output_type": "latent",
             },
         ),
+        "cogvideox": PipelineProfilingConfig(
+            name="cogvideox",
+            pipeline_cls=CogVideoXPipeline,
+            pipeline_init_kwargs={
+                "pretrained_model_name_or_path": "THUDM/CogVideoX-2b",
+                "dtype": torch.float16,
+            },
+            pipeline_call_kwargs={
+                "prompt": PROMPT,
+                "height": 480,
+                "width": 720,
+                "num_frames": 49,
+                "num_inference_steps": 4,
+                "guidance_scale": 6.0,
+                "use_dynamic_cfg": True,
+                "output_type": "latent",
+            },
+        ),
         "qwenimage": PipelineProfilingConfig(
             name="qwenimage",
             pipeline_cls=QwenImagePipeline,
@@ -124,7 +149,7 @@ def main():
     parser = argparse.ArgumentParser(description="Profile diffusers pipelines with torch.profiler")
     parser.add_argument(
         "--pipeline",
-        choices=["flux", "flux2", "wan", "ltx2", "qwenimage", "all"],
+        choices=["flux", "flux2", "wan", "ltx2", "qwenimage", "cogvideox", "all"],
         required=True,
         help="Which pipeline to profile",
     )
