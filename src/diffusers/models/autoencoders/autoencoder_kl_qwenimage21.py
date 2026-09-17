@@ -31,6 +31,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 CACHE_T = 2
 
 
+# Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AvgDown3D with AvgDown3D->QwenImage21AvgDown3D
 class QwenImage21AvgDown3D(nn.Module):
     def __init__(
         self,
@@ -1199,6 +1200,7 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
             else 0,
         }
 
+    # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan.enable_tiling
     def enable_tiling(
         self,
         tile_sample_min_height: int | None = None,
@@ -1229,6 +1231,7 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
         self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
 
+    # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan.clear_cache
     def clear_cache(self):
         # Use cached conv counts for decoder and encoder to avoid re-iterating modules each call
         self._conv_num = self._cached_conv_counts["decoder"]
@@ -1239,6 +1242,7 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
         self._enc_conv_idx = [0]
         self._enc_feat_map = [None] * self._enc_conv_num
 
+    # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan._encode with patchify->_patchify
     def _encode(self, x: torch.Tensor):
         _, _, num_frame, height, width = x.shape
 
@@ -1267,6 +1271,7 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
         return enc
 
     @apply_forward_hook
+    # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan.encode
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
     ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
@@ -1293,6 +1298,7 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
+    # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan._decode with unpatchify->_unpatchify
     def _decode(self, z: torch.Tensor, return_dict: bool = True):
         _, _, num_frame, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
@@ -1325,6 +1331,7 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
         return DecoderOutput(sample=out)
 
     @apply_forward_hook
+    # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan.decode
     def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images.
@@ -1349,6 +1356,7 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
             return (decoded,)
         return DecoderOutput(sample=decoded)
 
+    # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan.blend_v
     def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[-2], b.shape[-2], blend_extent)
         for y in range(blend_extent):
@@ -1357,6 +1365,7 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
             )
         return b
 
+    # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan.blend_h
     def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[-1], b.shape[-1], blend_extent)
         for x in range(blend_extent):
@@ -1365,6 +1374,7 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
             )
         return b
 
+    # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan.tiled_encode
     def tiled_encode(self, x: torch.Tensor) -> AutoencoderKLOutput:
         r"""Encode a batch of images using a tiled encoder.
 
@@ -1437,6 +1447,7 @@ class AutoencoderKLQwenImage21(ModelMixin, AutoencoderMixin, ConfigMixin, FromOr
         enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
         return enc
 
+    # Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AutoencoderKLWan.tiled_decode with unpatchify->_unpatchify
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images using a tiled decoder.
