@@ -287,7 +287,9 @@ class TestQwenImage21TransformerMemory(QwenImage21TransformerTesterConfig, Memor
 
 
 class TestQwenImage21TransformerTraining(QwenImage21TransformerTesterConfig, TrainingTesterMixin):
-    pass
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"QwenImage21Transformer2DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class TestQwenImage21TransformerAttention(QwenImage21TransformerTesterConfig, AttentionTesterMixin):
