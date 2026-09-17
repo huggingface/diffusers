@@ -31,7 +31,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 CACHE_T = 2
 
 
-# Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AvgDown3D with AvgDown3D->QwenImage21AvgDown3D
 class QwenImage21AvgDown3D(nn.Module):
     def __init__(
         self,
