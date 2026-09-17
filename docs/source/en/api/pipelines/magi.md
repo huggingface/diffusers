@@ -1,4 +1,4 @@
-# MAGI-1 base generation
+# MAGI-1
 
 `MagiTextToVideoBlocks` connects T5 text encoding, official HQ/duration conditioning, chunk denoising, and chunk-wise
 VAE decoding. Separate `MagiImageToVideoBlocks` and `MagiVideoToVideoBlocks` support image/video prefixes with the
@@ -78,6 +78,18 @@ running large videos. Outputs follow Diffusers conventions: `pt` is normalized f
 `(batch, frames, channels, height, width)`, `np` uses channels last, `pil` is a list of frame lists, and
 `latent` bypasses decoding. Standard PIL conversion is not the original MAGI uint8 truncation path; compressed
 video bytes are not a parity target.
+
+## MagiModularPipeline
+
+[[autodoc]] MagiModularPipeline
+
+## MagiTextToVideoBlocks
+
+[[autodoc]] MagiTextToVideoBlocks
+
+## MagiTextConditioningModel
+
+[[autodoc]] MagiTextConditioningModel
 
 ## Prepared-latent denoising
 

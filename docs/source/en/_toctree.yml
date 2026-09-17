@@ -260,8 +260,6 @@
       title: Components and configs
     - local: api/modular_diffusers/guiders
       title: Guiders
-    - local: api/modular_diffusers/magi
-      title: MAGI chunk denoising
     title: Modular
   - sections:
     - local: api/loaders/ip_adapter
@@ -713,6 +711,8 @@
         title: LTX-2
       - local: api/pipelines/ltx_video
         title: LTXVideo
+      - local: api/pipelines/magi
+        title: MAGI-1
       - local: api/pipelines/minimax_music3
         title: MiniMax Music 3
       - local: api/pipelines/minimax_h3
