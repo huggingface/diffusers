@@ -222,7 +222,7 @@ class TestQwenImage21Pipeline(QwenImage21PipelineTesterConfig, PipelineTesterMix
 
         text_norm = pipe.transformer.txt_in.text_norm
         with torch.no_grad():
-            expected = text_norm(pre_norm["value"][:, pipe._drop_idx_t2i :])
+            expected = text_norm(pre_norm["value"][:, pipe._drop_idx :])
             fixed = text_norm(prompt_embeds)
             # what the pipeline would read if the post-norm hidden state went through unchanged
             unfixed = text_norm(prompt_embeds * text_model.norm.weight)

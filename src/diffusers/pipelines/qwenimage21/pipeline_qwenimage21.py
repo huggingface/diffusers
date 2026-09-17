@@ -14,7 +14,6 @@
 
 import inspect
 import math
-import random
 from typing import Any, Callable
 
 import numpy as np
@@ -216,91 +215,21 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         )
         self.prompt_template_ti2i = (
             f"<|im_start|>system\n{self.sys_prompt}<|im_end|>\n"
-            f"<|im_start|>user\nPicture 1: <|vision_start|><|image_pad|><|vision_end|>{{}}<|im_end|>\n"
+            f"<|im_start|>user\n<image1><|vision_start|><|image_pad|><|vision_end|>{{}}<|im_end|>\n"
             f"<|im_start|>assistant\n"
         )
-        self.ref_token_list = ["Picture ", "Image ", "图 ", "图片 "]
         # Number of leading system-role tokens to drop from the hidden states. Derived from the
         # tokenized system message rather than hardcoded, so it tracks the processor's template.
         sys_message = [{"role": "system", "content": [{"type": "text", "text": self.sys_prompt}]}]
         sys_tokens = self.processor.apply_chat_template(sys_message, tokenize=True, return_dict=False)
-        self._drop_idx_t2i = len(sys_tokens[0])
-        self._drop_idx_ti2i = self._drop_idx_t2i
+        self._drop_idx = len(sys_tokens[0])
         self._img_token_id = self.processor.tokenizer.encode("<|image_pad|>")[0]
-        self._max_length = 8192
 
     def _extract_masked_hidden(self, hidden_states: torch.Tensor, mask: torch.Tensor):
         bool_mask = mask.bool()
         valid_lengths = bool_mask.sum(dim=1)
         selected = hidden_states[bool_mask]
         return torch.split(selected, valid_lengths.tolist(), dim=0)
-
-    @staticmethod
-    def _downsample_image_pad_tokens(hidden_states_list, image_pad_mask_list):
-        """Collapse consecutive `<|image_pad|>` tokens into one per contiguous region.
-
-        The vision-language processor expands each condition image into many vision tokens, but the transformer expects
-        one token per image slot, which it then expands 4x. Keep the first token of each contiguous image-pad region
-        and drop the rest.
-        """
-        out_hs, out_mask = [], []
-        for hidden_state, pad_mask in zip(hidden_states_list, image_pad_mask_list):
-            non_pad = ~pad_mask
-            non_pad_tokens = hidden_state[non_pad]
-            non_pad_mask = pad_mask[non_pad]
-
-            pad_indices = torch.where(pad_mask)[0]
-            insert_tokens, insert_positions = [], []
-            if len(pad_indices) > 0:
-                region_starts = [pad_indices[0].item()]
-                if len(pad_indices) > 1:
-                    diff = torch.diff(pad_indices)
-                    for j, d in enumerate(diff):
-                        if d > 1:
-                            region_starts.append(pad_indices[j + 1].item())
-
-                for start_idx in region_starts:
-                    insert_pos = non_pad[:start_idx].sum().item()
-                    insert_tokens.append(hidden_state[start_idx])
-                    insert_positions.append(insert_pos)
-
-            result_tokens = non_pad_tokens
-            result_mask = non_pad_mask
-            if insert_positions:
-                for idx in sorted(range(len(insert_positions)), key=lambda i: insert_positions[i], reverse=True):
-                    pos = insert_positions[idx]
-                    result_tokens = torch.cat(
-                        [result_tokens[:pos], insert_tokens[idx].unsqueeze(0), result_tokens[pos:]]
-                    )
-                    result_mask = torch.cat(
-                        [
-                            result_mask[:pos],
-                            torch.tensor([True], dtype=torch.bool, device=result_mask.device),
-                            result_mask[pos:],
-                        ]
-                    )
-
-            out_hs.append(result_tokens)
-            out_mask.append(result_mask)
-        return out_hs, out_mask
-
-    def _encode_text(self, forward_kwargs: dict) -> Any:
-        """
-        Run the text encoder so that `hidden_states[-1]` is the last decoder layer's output, before the encoder's
-        final RMSNorm. That is what the transformer was trained on.
-
-        Up to transformers 4.x it is what `hidden_states[-1]` already holds. From transformers 5.0 the output
-        capturing ties that entry to `last_hidden_state`, so it comes back normalized instead — a third of the signal
-        the transformer reads, which shows up first in rendered text. A forward hook returning the module's input
-        replaces its output, which neutralizes the norm for this call and leaves the behaviour the same on either
-        version.
-        """
-        text_model = getattr(self.text_encoder.model, "language_model", self.text_encoder.model)
-        handle = text_model.norm.register_forward_hook(lambda module, args, output: args[0])
-        try:
-            return self.text_encoder(**forward_kwargs)
-        finally:
-            handle.remove()
 
     def _get_qwen_prompt_embeds(
         self,
@@ -310,31 +239,46 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     ):
         device = device or self._execution_device
         prompt = [prompt] if isinstance(prompt, str) else prompt
+        # Qwen has no bos token, so an empty string leaves the encoder with nothing to read.
+        prompt = [" " if not p else p for p in prompt]
         is_t2i = image is None
 
         if is_t2i:
             prompts = [self.prompt_template_t2i.format(t) for t in prompt]
-            drop_idx = self._drop_idx_t2i
         else:
             prompts = []
             condition_pil_list = []
             for t in prompt:
                 n_imgs = len(image)
-                replace = "Picture 1: <|vision_start|><|image_pad|><|vision_end|>"
+                replace = "<image1><|vision_start|><|image_pad|><|vision_end|>"
                 for i in range(2, n_imgs + 1):
-                    replace += f" Picture {i}: <|vision_start|><|image_pad|><|vision_end|>"
+                    replace += f" <image{i}><|vision_start|><|image_pad|><|vision_end|>"
                 template = self.prompt_template_ti2i.replace(
-                    "Picture 1: <|vision_start|><|image_pad|><|vision_end|>",
-                    replace.replace("Picture ", random.choice(self.ref_token_list)),
+                    "<image1><|vision_start|><|image_pad|><|vision_end|>", replace
                 )
                 prompts.append(template.format(t))
-            for img in image:
-                if not isinstance(img, PILImage.Image):
-                    img = PILImage.fromarray(img)
-                condition_pil_list.append(img)
-            drop_idx = self._drop_idx_ti2i
+            # Each prompt's template repeats the `<|image_pad|>` placeholders, so hand the processor one set of
+            # images per prompt, in the order the placeholders appear.
+            for _ in prompt:
+                for img in image:
+                    if not isinstance(img, PILImage.Image):
+                        img = PILImage.fromarray(img)
+                    if img.mode == "RGBA":
+                        # The checkpoint was trained with the alpha composited over white for the vision encoder.
+                        # Only this copy is flattened; the VAE still reads all four channels.
+                        white = PILImage.new("RGB", img.size, (255, 255, 255))
+                        white.paste(img, mask=img.getchannel("A"))
+                        img = white
+                    condition_pil_list.append(img)
 
-        processor_kwargs = {"text": prompts, "padding": True, "return_tensors": "pt"}
+        # Left padding, as the checkpoint was trained with. `_extract_masked_hidden` drops the padding either way,
+        # but the side decides the positions the encoder sees for a batch of prompts of different lengths.
+        processor_kwargs = {
+            "text": prompts,
+            "padding": True,
+            "padding_side": "left",
+            "return_tensors": "pt",
+        }
         if not is_t2i:
             processor_kwargs["images"] = condition_pil_list
 
@@ -350,17 +294,29 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if hasattr(model_inputs, "mm_token_type_ids"):
             forward_kwargs["mm_token_type_ids"] = model_inputs.mm_token_type_ids
 
-        outputs = self._encode_text(forward_kwargs)
+        # `hidden_states[-1]` has to be the last decoder layer's output, before the text encoder's final RMSNorm:
+        # that is what the transformer was trained on. It is what transformers 4.x returns there, but from
+        # transformers 5.0 the output capturing ties that entry to `last_hidden_state`, so it comes back normalized
+        # instead — a third of the signal the transformer reads, which shows up first in rendered text. A forward hook
+        # returning the module's input replaces its output, which neutralizes the norm for this call on either version.
+        # transformers 5.18 will accept `tie_last_hidden_states=False` in the text encoder's config
+        # (huggingface/transformers#48087); this can go once that is the floor.
+        text_model = getattr(self.text_encoder.model, "language_model", self.text_encoder.model)
+        handle = text_model.norm.register_forward_hook(lambda module, args, output: args[0])
+        try:
+            outputs = self.text_encoder(**forward_kwargs)
+        finally:
+            handle.remove()
         hidden_states = outputs.hidden_states[-1]
 
         split_hidden_states = list(self._extract_masked_hidden(hidden_states, model_inputs.attention_mask))
-        split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
+        split_hidden_states = [e[self._drop_idx :] for e in split_hidden_states]
 
         image_pad_mask = [
             (sample_ids[sample_mask.bool()] == self._img_token_id)
             for sample_ids, sample_mask in zip(model_inputs.input_ids, model_inputs.attention_mask)
         ]
-        image_pad_mask = [e[drop_idx:] for e in image_pad_mask]
+        image_pad_mask = [e[self._drop_idx :] for e in image_pad_mask]
 
         attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
         max_seq_len = max(e.size(0) for e in split_hidden_states)
@@ -404,12 +360,30 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         if prompt_embeds is None:
             prompt_embeds, prompt_embeds_mask, image_pad_mask = self._get_qwen_prompt_embeds(prompt, image, device)
+        elif image_pad_mask is None:
+            if image is not None:
+                raise ValueError(
+                    "Pass `image_pad_mask` alongside `prompt_embeds` when the embeddings cover condition images, so "
+                    "the transformer knows which positions hold image tokens."
+                )
+            # Embeddings supplied without a mask can only be text, so no position holds an image token.
+            image_pad_mask = prompt_embeds.new_zeros(prompt_embeds.shape[:2], dtype=torch.bool)
 
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
+        # `repeat(1, n)` on the 2D mask, so its rows interleave the same way the 3D embeddings' do. With
+        # `repeat(1, n, 1)` the mask picks up a leading axis and the rows come out tiled instead, which pairs each
+        # sample with another prompt's padding.
+        if prompt_embeds_mask is not None:
+            prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt)
+            prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
+
+        # Without padding there is nothing to mask, and a mask that carries no information costs the attention
+        # backends that reject one outright.
+        if prompt_embeds_mask is not None and prompt_embeds_mask.all():
+            prompt_embeds_mask = None
+
         return prompt_embeds, prompt_embeds_mask, image_pad_mask
 
     def check_inputs(self, prompt, height, width, prompt_embeds, callback_on_step_end_tensor_inputs):
@@ -475,12 +449,18 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         height = 2 * (int(height) // (self.vae_scale_factor * 2))
         width = 2 * (int(width) // (self.vae_scale_factor * 2))
 
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
         image_latents = None
         if images is not None:
             all_image_latents = []
             for image in images:
                 image = image.to(device=device, dtype=dtype)
-                encoded = image if image.shape[1] == self.latent_channels else self._encode_vae_image(image, generator)
+                encoded = self._encode_vae_image(image, generator)
                 if batch_size > encoded.shape[0]:
                     if batch_size % encoded.shape[0] != 0:
                         raise ValueError(
@@ -494,12 +474,6 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     )
                 )
             image_latents = torch.cat(all_image_latents, dim=1)
-
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
 
         if latents is None:
             shape = (batch_size, 1, num_channels_latents, height, width)
@@ -560,8 +534,9 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             prompt (`str` or `list[str]`, *optional*):
                 The prompt to guide image generation. Pass `prompt_embeds` instead to supply embeddings directly.
             image (`PipelineImageInput`, *optional*):
-                One or more condition images. They are encoded by the text encoder as vision context and by the VAE
-                into latent tokens prepended to the noise.
+                One or more condition images, as a PIL image or a numpy array. They are encoded by the text encoder as
+                vision context and by the VAE into latent tokens prepended to the noise. A list is one set of images
+                shared by every prompt in the batch, not one entry per prompt.
             negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt not to guide image generation. Ignored when `true_cfg_scale` is not greater than 1.
             true_cfg_scale (`float`, *optional*, defaults to 1.0):
@@ -621,9 +596,30 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             element is a list with the generated images.
         """
         if image is not None:
-            image_size = image[-1].size if isinstance(image, list) else image.size
+            # The text encoder reads each condition image as vision context, so the pixels have to be there. Normalize
+            # to PIL up front, and everything downstream — the aspect ratio below, the resize, the VAE — sees one type.
+            image = image if isinstance(image, list) else [image]
+            condition_images = []
+            for img in image:
+                if isinstance(img, PILImage.Image):
+                    condition_images.append(img)
+                elif isinstance(img, np.ndarray):
+                    condition_images.append(PILImage.fromarray(img))
+                elif isinstance(img, (list, tuple)):
+                    raise ValueError(
+                        "`image` is one flat set of condition images that applies to every prompt in the batch, so it "
+                        "cannot be nested per prompt. Call the pipeline once per prompt when they need different "
+                        "condition images."
+                    )
+                else:
+                    raise ValueError(
+                        f"`image` accepts a PIL image or a numpy array, or a list of either, but got "
+                        f"{type(img).__name__}. Latents cannot stand in for a condition image here, because the text "
+                        f"encoder has to see the image itself."
+                    )
+            image = condition_images
             calculated_width, calculated_height, _ = calculate_dimensions(
-                output_resolution * output_resolution, image_size[0] / image_size[1]
+                output_resolution * output_resolution, image[-1].size[0] / image[-1].size[1]
             )
             height = height or calculated_height
             width = width or calculated_width
@@ -651,8 +647,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         # 1. Preprocess condition images: one resize feeds both the text encoder and the VAE.
         input_image_sizes, input_images, vae_images = [], None, None
-        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
-            image = image if isinstance(image, list) else [image]
+        if image is not None:
             input_images, vae_images = [], []
             for img in image:
                 if hasattr(img, "mode") and img.mode != "RGBA":
@@ -668,9 +663,9 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 )
 
         # 2. Encode prompt
-        has_neg_prompt = negative_prompt is not None or (
-            negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
-        )
+        # The mask is not part of the condition: `encode_prompt` returns `None` for it when nothing is padded, so
+        # requiring it here would turn guidance off for a caller who passes that output straight back in.
+        has_neg_prompt = negative_prompt is not None or negative_prompt_embeds is not None
         do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
         if true_cfg_scale > 1 and not has_neg_prompt:
             logger.warning(
@@ -761,7 +756,9 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
-                    continue
+                    # `continue` would skip the step that prefills the cache and leave the next one decoding from an
+                    # empty one, so stop the loop instead.
+                    break
 
                 self._current_timestep = t
                 kv_mode = "extract" if (cache_enabled and i == 0) else ("cached" if cache_enabled else None)

@@ -73,14 +73,6 @@ class QwenImage21KVLayerCache:
             raise RuntimeError("KV cache has not been populated yet.")
         return self.k, self.v
 
-    @property
-    def is_populated(self) -> bool:
-        return self.k is not None
-
-    def clear(self):
-        self.k = None
-        self.v = None
-
 
 class QwenImage21KVCache:
     """Container for all transformer blocks' prefix KV caches."""
@@ -90,10 +82,6 @@ class QwenImage21KVCache:
 
     def get_layer(self, layer_idx: int) -> QwenImage21KVLayerCache:
         return self.layer_caches[layer_idx]
-
-    def clear(self):
-        for cache in self.layer_caches:
-            cache.clear()
 
 
 # Copied from diffusers.models.transformers.transformer_qwenimage.apply_rotary_emb_qwen
@@ -912,6 +900,8 @@ class QwenImage21Transformer2DModel(
             raise ValueError(
                 f"kv_cache_mode must be 'extract' or 'cached' when kv_cache is provided, got {kv_cache_mode!r}."
             )
+        if kv_cache is None and kv_cache_mode is not None:
+            raise ValueError(f"kv_cache_mode is {kv_cache_mode!r} but no kv_cache was passed to hold the prefix.")
 
         hidden_states = self.img_in(hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)

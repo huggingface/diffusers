@@ -171,7 +171,11 @@ class QwenImage21CausalConv3d(nn.Conv2d):
 
     def forward(self, x, cache_x=None):
         padding = list(self._padding)
-        assert cache_x is None
+        if cache_x is not None:
+            raise ValueError(
+                "This convolution is the image specialization of Wan's causal 3D one: it folds the single frame away "
+                "and has no temporal context to prepend, so it cannot take a feature cache."
+            )
         x = x.squeeze(2)  # Remove the temporal dimension
         x = F.pad(x, padding)
         x = super().forward(x)
