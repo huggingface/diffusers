@@ -284,6 +284,24 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             out_mask.append(result_mask)
         return out_hs, out_mask
 
+    def _encode_text(self, forward_kwargs: dict) -> Any:
+        """
+        Run the text encoder so that `hidden_states[-1]` is the last decoder layer's output, before the encoder's
+        final RMSNorm. That is what the transformer was trained on.
+
+        Up to transformers 4.x it is what `hidden_states[-1]` already holds. From transformers 5.0 the output
+        capturing ties that entry to `last_hidden_state`, so it comes back normalized instead — a third of the signal
+        the transformer reads, which shows up first in rendered text. A forward hook returning the module's input
+        replaces its output, which neutralizes the norm for this call and leaves the behaviour the same on either
+        version.
+        """
+        text_model = getattr(self.text_encoder.model, "language_model", self.text_encoder.model)
+        handle = text_model.norm.register_forward_hook(lambda module, args, output: args[0])
+        try:
+            return self.text_encoder(**forward_kwargs)
+        finally:
+            handle.remove()
+
     def _get_qwen_prompt_embeds(
         self,
         prompt: str | list[str] = None,
@@ -332,7 +350,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if hasattr(model_inputs, "mm_token_type_ids"):
             forward_kwargs["mm_token_type_ids"] = model_inputs.mm_token_type_ids
 
-        outputs = self.text_encoder(**forward_kwargs)
+        outputs = self._encode_text(forward_kwargs)
         hidden_states = outputs.hidden_states[-1]
 
         split_hidden_states = list(self._extract_masked_hidden(hidden_states, model_inputs.attention_mask))

@@ -192,6 +192,45 @@ class TestQwenImage21Pipeline(QwenImage21PipelineTesterConfig, PipelineTesterMix
         # batching.
         super().test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    def test_prompt_embeds_are_pre_norm(self):
+        """
+        The transformer was trained on the last decoder layer's output before the text encoder's final RMSNorm, and
+        `hidden_states[-1]` stopped being that value in transformers 5.0. What the transformer's text projection reads
+        has to match the pre-norm value on either version.
+
+        The comparison is after `txt_in.text_norm`, which is where the two forms become equivalent: it cancels the
+        per-token scale the text encoder's norm applied, leaving only that norm's weight to undo. They agree to a
+        fraction of a percent rather than exactly, because neither RMSNorm's epsilon cancels.
+        """
+        pipe = self.get_pipeline()
+        text_model = getattr(pipe.text_encoder.model, "language_model", pipe.text_encoder.model)
+        # A freshly initialized RMSNorm weight is all ones, which is exactly the case where the two forms agree by
+        # accident. The released text encoder's weight is not, so give the dummy one some spread.
+        with torch.no_grad():
+            text_model.norm.weight.copy_(torch.linspace(0.5, 2.0, text_model.norm.weight.numel()))
+
+        pre_norm = {}
+        handle = text_model.layers[-1].register_forward_hook(
+            lambda module, args, output: pre_norm.__setitem__(
+                "value", output[0] if isinstance(output, tuple) else output
+            )
+        )
+        try:
+            prompt_embeds, _, _ = pipe.encode_prompt(prompt="a cat")
+        finally:
+            handle.remove()
+
+        text_norm = pipe.transformer.txt_in.text_norm
+        with torch.no_grad():
+            expected = text_norm(pre_norm["value"][:, pipe._drop_idx_t2i :])
+            fixed = text_norm(prompt_embeds)
+            # what the pipeline would read if the post-norm hidden state went through unchanged
+            unfixed = text_norm(prompt_embeds * text_model.norm.weight)
+
+        scale = expected.abs().mean()
+        assert (fixed - expected).abs().mean() / scale < 0.01
+        assert (unfixed - expected).abs().mean() / scale > 0.1
+
     def test_inference(self):
         # Run on CPU: the expected slice below is CPU-specific.
         pipe = self.get_pipeline()
