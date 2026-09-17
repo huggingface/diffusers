@@ -620,6 +620,8 @@ class ZImageControlNetPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSin
         self._num_timesteps = len(timesteps)
 
         # 6. Denoising loop
+        # read the normalised timesteps on the host; indexing a device scalar syncs every step
+        t_norm_cpu = ((1000 - timesteps) / 1000).tolist()
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -629,7 +631,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSin
                 timestep = t.expand(latents.shape[0])
                 timestep = (1000 - timestep) / 1000
                 # Normalized time for time-aware config (0 at start, 1 at end)
-                t_norm = timestep[0].item()
+                t_norm = t_norm_cpu[i]
 
                 # Handle cfg truncation
                 current_guidance_scale = self.guidance_scale

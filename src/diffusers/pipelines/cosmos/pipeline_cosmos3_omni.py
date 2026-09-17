@@ -1686,12 +1686,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
+            # read timesteps on the host; a device scalar would sync every step
+            timesteps_cpu = timesteps.tolist()
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
                 self._current_timestep = t
-                timestep = t.item()
+                timestep = timesteps_cpu[i]
 
                 # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
                 # noisy tokens before packing so the modality tokens enter the model in the right dtype.
