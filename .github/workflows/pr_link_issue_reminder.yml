@@ -23,7 +23,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_PR_LINK_ISSUE }}
       # Comma-separated Slack member IDs pinged in the Slack rescue messages
-      # (Sayak Paul, YiYi Xu, Dhruv Nair, Daniel Gu).
+      # (Sayak Paul, YiYi Xu, Dhruv Nair).
       SLACK_MENTION_IDS: ${{ secrets.SLACK_PR_LINK_ISSUE_MENTION_IDS }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
