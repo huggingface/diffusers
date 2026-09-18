@@ -14,6 +14,19 @@ specific language governing permissions and limitations under the License.
 
 The single-stream MMDiT flow-matching transformer used by [Krea 2](https://github.com/krea-ai/krea-2).
 
+## Loading single-file checkpoints
+
+`Krea2Transformer2DModel` supports loading from single-file checkpoints via [`~loaders.FromOriginalModelMixin.from_single_file`]:
+
+```python
+from diffusers import Krea2Transformer2DModel
+
+transformer = Krea2Transformer2DModel.from_single_file(
+    "path/to/krea2_transformer.safetensors",
+    torch_dtype=torch.bfloat16,
+)
+```
+
 ## Krea2Transformer2DModel
 
 [[autodoc]] Krea2Transformer2DModel
