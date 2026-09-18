@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    uses: huggingface/doc-builder/.github/workflows/upload_pr_documentation.yml@9ad2de8582b56c017cb530c1165116d40433f1c6  # main
+    uses: huggingface/doc-builder/.github/workflows/upload_pr_documentation.yml@47c6b5880f408881e68ca60fed8c1de1e454eb01  # main
     with:
       package_name: diffusers
     secrets:
