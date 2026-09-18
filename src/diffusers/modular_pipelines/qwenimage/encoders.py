@@ -764,12 +764,11 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
 
         block_state.negative_prompt_embeds = None
         block_state.negative_prompt_embeds_mask = None
-        if components.requires_unconditional_embeds:
-            negative_prompt = block_state.negative_prompt or ""
+        if components.requires_unconditional_embeds and block_state.negative_prompt is not None:
             block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds(
                 components.text_encoder,
                 components.tokenizer,
-                prompt=negative_prompt,
+                prompt=block_state.negative_prompt,
                 prompt_template_encode=self.prompt_template_encode,
                 prompt_template_encode_start_idx=self.prompt_template_encode_start_idx,
                 tokenizer_max_length=self.tokenizer_max_length,
@@ -893,12 +892,11 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
 
         block_state.negative_prompt_embeds = None
         block_state.negative_prompt_embeds_mask = None
-        if components.requires_unconditional_embeds:
-            negative_prompt = block_state.negative_prompt or " "
+        if components.requires_unconditional_embeds and block_state.negative_prompt is not None:
             block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds_edit(
                 components.text_encoder,
                 components.processor,
-                prompt=negative_prompt,
+                prompt=block_state.negative_prompt,
                 image=block_state.resized_image,
                 prompt_template_encode=self.prompt_template_encode,
                 prompt_template_encode_start_idx=self.prompt_template_encode_start_idx,
@@ -1022,13 +1020,12 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
 
         block_state.negative_prompt_embeds = None
         block_state.negative_prompt_embeds_mask = None
-        if components.requires_unconditional_embeds:
-            negative_prompt = block_state.negative_prompt or " "
+        if components.requires_unconditional_embeds and block_state.negative_prompt is not None:
             block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = (
                 get_qwen_prompt_embeds_edit_plus(
                     components.text_encoder,
                     components.processor,
-                    prompt=negative_prompt,
+                    prompt=block_state.negative_prompt,
                     image=block_state.resized_cond_image,
                     prompt_template_encode=self.prompt_template_encode,
                     img_template_encode=self.img_template_encode,
