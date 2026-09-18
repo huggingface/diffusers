@@ -30,6 +30,7 @@ from ..utils import (
     logging,
     require_peft_backend,
 )
+from ..utils.torch_utils import get_device
 from .lora_base import (  # noqa
     LORA_WEIGHT_NAME,
     LORA_WEIGHT_NAME_SAFE,
@@ -109,7 +110,7 @@ def _maybe_dequantize_weight_for_expanded_lora(model, module):
     if module.weight.device.type == "cpu":
         weight_on_cpu = True
 
-    device = torch.accelerator.current_accelerator().type if hasattr(torch, "accelerator") else "cuda"
+    device = get_device()
     if is_bnb_4bit_quantized or is_bnb_8bit_quantized:
         module_weight = dequantize_bnb_weight(
             module.weight.to(device) if weight_on_cpu else module.weight,
