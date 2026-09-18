@@ -119,6 +119,11 @@ class QwenImage21ValidationPipeline(QwenImage21Pipeline):
     cached_image_pad_mask = None
 
     def encode_prompt(self, *args, **kwargs):
+        # The mask goes in before the call, not after it. Handed `prompt_embeds` together with a condition image,
+        # the base `encode_prompt` raises for a missing mask rather than returning `None` in its place, so a
+        # substitution made on the way out never runs.
+        if kwargs.get("image_pad_mask") is None and self.cached_image_pad_mask is not None:
+            kwargs["image_pad_mask"] = self.cached_image_pad_mask
         prompt_embeds, prompt_embeds_mask, image_pad_mask = super().encode_prompt(*args, **kwargs)
         if image_pad_mask is None:
             image_pad_mask = self.cached_image_pad_mask
@@ -215,9 +220,10 @@ def log_validation(
     is_final_validation=False,
 ):
     args.num_validation_images = args.num_validation_images if args.num_validation_images else 1
+    # `--final_validation_prompt` stands in when only the final pass is asked for.
+    validation_prompt = args.validation_prompt or args.final_validation_prompt
     logger.info(
-        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-        f" {args.validation_prompt}."
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt: {validation_prompt}."
     )
     pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
     pipeline.set_progress_bar_config(disable=True)
@@ -250,7 +256,7 @@ def log_validation(
             tracker.log(
                 {
                     phase_name: [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                        wandb.Image(image, caption=f"{i}: {validation_prompt}") for i, image in enumerate(images)
                     ]
                 }
             )
@@ -1638,9 +1644,15 @@ def main(args):
 
     validation_pipeline_args = {}
     validation_image_pad_mask = None
-    if args.validation_prompt is not None:
+    # The final pass runs on `--final_validation_prompt` when `--validation_prompt` is absent, so the embeddings
+    # have to be built for whichever one is set - the text encoder is freed before that pass reaches the pipeline.
+    effective_validation_prompt = args.validation_prompt or args.final_validation_prompt
+    if effective_validation_prompt is not None:
         if args.validation_image is None:
-            raise ValueError("`--validation_prompt` needs `--validation_image`, the image the edit is applied to.")
+            raise ValueError(
+                "A validation prompt needs `--validation_image`, the image the edit is applied to. Pass it "
+                "alongside `--validation_prompt` or `--final_validation_prompt`."
+            )
         validation_image = load_image(args.validation_image)
         # Encoded at the size the pipeline will resize to, so vision tokens and latents line up.
         width, height, _ = calculate_dimensions(
@@ -1649,7 +1661,7 @@ def main(args):
         resized_validation_image = validation_image.resize((width, height))
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
             embeds, embeds_mask, image_pad_mask = compute_text_embeddings(
-                args.validation_prompt, text_encoding_pipeline, resized_validation_image
+                effective_validation_prompt, text_encoding_pipeline, resized_validation_image
             )
         validation_pipeline_args = {
             "prompt_embeds": embeds,
