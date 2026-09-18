@@ -661,9 +661,15 @@ def apply_group_offloading(
     offload_device = torch.device(offload_device) if isinstance(offload_device, str) else offload_device
     offload_type = GroupOffloadingType(offload_type)
 
-    if use_stream and onload_device.type == "cpu":
-        raise ValueError("Using streams for data transfer requires an accelerator onload device, got `cpu`.")
-    stream = TorchDeviceBackend(onload_device).Stream() if use_stream else None
+    stream = None
+    if use_stream:
+        backend = TorchDeviceBackend(onload_device)
+        if onload_device.type == "cpu" or not hasattr(backend, "Stream"):
+            raise ValueError(
+                "Using streams for data transfer requires an onload device whose backend implements streams, "
+                f"got `{onload_device.type}`. Pass `use_stream=False`."
+            )
+        stream = backend.Stream()
 
     if not use_stream and record_stream:
         raise ValueError("`record_stream` cannot be True when `use_stream=False`.")

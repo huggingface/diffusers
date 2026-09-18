@@ -18,11 +18,13 @@ import os
 import warnings
 
 import pytest
+import torch
 
 from diffusers import __version__
-from diffusers.utils import deprecate
+from diffusers.utils import deprecate, torch_utils
+from diffusers.utils.torch_utils import TorchDeviceBackend, empty_device_cache, get_device
 
-from ..testing_utils import Expectations, str_to_bool
+from ..testing_utils import CaptureLogger, Expectations, str_to_bool
 
 
 # Used to test the hub
@@ -273,44 +275,24 @@ class TestTorchDeviceBackend:
     """Tests for :class:`diffusers.utils.torch_utils.TorchDeviceBackend` on the CPU backend."""
 
     def test_module_resolves_from_str_and_torch_device(self):
-        import torch
-
-        from diffusers.utils.torch_utils import TorchDeviceBackend
-
         assert TorchDeviceBackend("cpu").module is torch.cpu, "str device type should resolve to torch.cpu"
         assert TorchDeviceBackend(torch.device("cpu")).module is torch.cpu, "torch.device should resolve to torch.cpu"
         assert TorchDeviceBackend("cuda:1").module is torch.cuda, "device index should be ignored for the module"
 
     def test_get_device_matches_torch_accelerator(self):
-        import torch
-
-        from diffusers.utils.torch_utils import get_device
-
         expected = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
         assert get_device() == expected, "get_device() should report what torch.accelerator reports"
 
     def test_default_device_is_the_detected_accelerator(self):
-        import torch
-
-        from diffusers.utils.torch_utils import TorchDeviceBackend, get_device
-
         backend = TorchDeviceBackend()
         assert backend.device == torch.device(get_device()), "no-arg backend should target get_device()"
         assert backend.module is getattr(torch, get_device()), "module should be the torch namespace of that device"
 
     def test_unknown_backend_raises_instead_of_falling_back_to_cuda(self):
-        import pytest
-
-        from diffusers.utils.torch_utils import TorchDeviceBackend
-
         with pytest.raises(RuntimeError, match="does not have a corresponding module"):
             TorchDeviceBackend("privateuseone")
 
     def test_cpu_operations_without_a_caching_allocator(self):
-        import torch
-
-        from diffusers.utils.torch_utils import TorchDeviceBackend, empty_device_cache
-
         empty_device_cache("cpu")
         backend = TorchDeviceBackend("cpu")
         backend.empty_cache()
@@ -318,8 +300,6 @@ class TestTorchDeviceBackend:
         assert torch.initial_seed() == 1234, "cpu manual_seed should fall back to torch.manual_seed"
 
     def test_function_style_backend_helpers_on_cpu(self):
-        from diffusers.utils import torch_utils
-
         torch_utils.backend_manual_seed("cpu", 0)
         torch_utils.backend_synchronize("cpu")
         torch_utils.backend_empty_cache("cpu")
@@ -328,14 +308,6 @@ class TestTorchDeviceBackend:
         assert torch_utils.backend_supports_training("mps") is False
 
     def test_unsupported_operations_raise_naming_the_backend(self):
-        import pytest
-        import torch
-
-        from diffusers.utils import torch_utils
-        from diffusers.utils.torch_utils import TorchDeviceBackend
-
-        from ..testing_utils import CaptureLogger
-
         backend = TorchDeviceBackend("cpu")
         with pytest.raises(NotImplementedError, match="torch.cpu"):
             backend.mem_get_info()
@@ -349,10 +321,6 @@ class TestTorchDeviceBackend:
         assert "no memory statistics" in cl.out, f"no-op memory calls should warn, got: {cl.out}"
 
     def test_memory_statistics_on_the_host_accelerator(self):
-        import pytest
-
-        from diffusers.utils.torch_utils import TorchDeviceBackend, get_device
-
         if get_device() == "cpu":
             pytest.skip("memory statistics need an accelerator")
         backend = TorchDeviceBackend()

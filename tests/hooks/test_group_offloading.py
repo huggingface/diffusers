@@ -334,9 +334,15 @@ class TestGroupOffload:
         assert f"The module '{self.model.__class__.__name__}' is group offloaded" in caplog.text
 
     def test_error_raised_if_streams_used_and_no_accelerator_device(self):
-        with pytest.raises(ValueError, match="requires an accelerator onload device"):
+        with pytest.raises(ValueError, match="backend implements streams, got `cpu`"):
             self.model.enable_group_offload(
                 onload_device=torch.device("cpu"), offload_type="leaf_level", use_stream=True
+            )
+
+    def test_error_raised_if_streams_used_and_backend_has_no_streams(self):
+        with pytest.raises(ValueError, match="backend implements streams, got `mps`"):
+            self.model.enable_group_offload(
+                onload_device=torch.device("mps"), offload_type="leaf_level", use_stream=True
             )
 
     def test_error_raised_if_supports_group_offloading_false(self):
