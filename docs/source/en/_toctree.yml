@@ -407,6 +407,8 @@
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
         title: PriorTransformer
+      - local: api/models/qwenimage21_transformer2d
+        title: QwenImage21Transformer2DModel
       - local: api/models/qwenimage_transformer2d
         title: QwenImageTransformer2DModel
       - local: api/models/sana_transformer2d
@@ -491,6 +493,8 @@
         title: AutoencoderKLMochi
       - local: api/models/autoencoderkl_qwenimage
         title: AutoencoderKLQwenImage
+      - local: api/models/autoencoderkl_qwenimage21
+        title: AutoencoderKLQwenImage21
       - local: api/models/autoencoder_kl_wan
         title: AutoencoderKLWan
       - local: api/models/autoencoder_rae
@@ -639,6 +643,8 @@
         title: PRX
       - local: api/pipelines/prx_pixel
         title: PRX Pixel
+      - local: api/pipelines/qwenimage21
+        title: Qwen-Image 2.1
       - local: api/pipelines/qwenimage
         title: QwenImage
       - local: api/pipelines/sana
