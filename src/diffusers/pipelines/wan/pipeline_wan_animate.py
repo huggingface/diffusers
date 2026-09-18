@@ -465,8 +465,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         mask_len: int = 1,
         mask_pixel_values: torch.Tensor | None = None,
         dtype: torch.dtype | None = None,
-        device: str | torch.device = "cuda",
+        device: str | torch.device | None = None,
     ) -> torch.Tensor:
+        device = device or self._execution_device
+
         # mask_pixel_values shape (if supplied): [B, C = 1, T, latent_h, latent_w]
         if mask_pixel_values is None:
             mask_lat_size = torch.zeros(
