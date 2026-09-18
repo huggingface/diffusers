@@ -143,6 +143,13 @@ def _gaussian_blur_2d(query: torch.Tensor, kernel_size: int, sigma: float, sigma
     query_slice = query_slice.reshape(batch_size, embed_dim, seq_len_sqrt, seq_len_sqrt)
 
     if is_inf:
+        # Infinite blur: the Gaussian kernel degenerates to a uniform kernel, i.e. every query is
+        # replaced by the spatial average of the queries ("uniform queries"). Computed directly as
+        # the mean for exactness/efficiency.
+        query_slice[:] = query_slice.mean(dim=(-2, -1), keepdim=True)
+    else:
+        # Finite sigma: apply an actual 2D Gaussian blur of standard deviation `sigma` to the query
+        # grid, so that different (finite) sigmas produce different amounts of smoothing.
         kernel_size = min(kernel_size, seq_len_sqrt - (seq_len_sqrt % 2 - 1))
         kernel_size_half = (kernel_size - 1) / 2
 
@@ -156,8 +163,6 @@ def _gaussian_blur_2d(query: torch.Tensor, kernel_size: int, sigma: float, sigma
         padding = [kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2]
         query_slice = F.pad(query_slice, padding, mode="reflect")
         query_slice = F.conv2d(query_slice, kernel2d, groups=embed_dim)
-    else:
-        query_slice[:] = query_slice.mean(dim=(-2, -1), keepdim=True)
 
     query_slice = query_slice.reshape(batch_size, embed_dim, num_square_tokens)
     query_slice = query_slice.permute(0, 2, 1)
