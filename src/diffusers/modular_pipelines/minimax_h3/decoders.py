@@ -184,7 +184,7 @@ class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
         latents_std = torch.tensor(components.vae.config.latents_std, device=device).view(1, -1, 1, 1, 1)
         latents = block_state.latents * latents_std + latents_mean
 
-        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type == "cuda"):
+        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type != "cpu"):
             video = components.vae.decode(latents, return_dict=False)[0]
         pixel_mean = torch.tensor(components.pixel_mean, device=device).view(1, -1, 1, 1, 1)
         pixel_std = torch.tensor(components.pixel_std, device=device).view(1, -1, 1, 1, 1)
