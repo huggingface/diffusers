@@ -276,6 +276,47 @@ class TestModelUtils:
 
         SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
 
+    @require_torch_accelerator
+    @pytest.mark.parametrize("parallel_loading", [False, True])
+    def test_sharded_checkpoint_device_map_matches_cpu_load(self, parallel_loading, monkeypatch):
+        # Loading a sharded checkpoint directly onto an accelerator with a dtype conversion must
+        # produce exactly the same weights as loading on CPU. Regression test for silent weight
+        # corruption on MPS with torch < 2.13, where the loader's non-blocking copies could read
+        # already-released source memory (https://github.com/huggingface/diffusers/issues/13227,
+        # https://github.com/pytorch/pytorch/issues/189690). Runs against both the serial and the
+        # threadpool shard loaders, which share the same per-parameter device placement.
+        if parallel_loading:
+            import diffusers.models.modeling_utils as modeling_utils
+
+            monkeypatch.setattr(modeling_utils, "HF_ENABLE_PARALLEL_LOADING", True)
+        torch.manual_seed(0)
+        config = {
+            "block_out_channels": (32, 64),
+            "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
+            "up_block_types": ("UpBlock2D", "CrossAttnUpBlock2D"),
+            "cross_attention_dim": 32,
+            "attention_head_dim": 8,
+            "out_channels": 4,
+            "in_channels": 4,
+            "layers_per_block": 1,
+            "sample_size": 16,
+        }
+        model = UNet2DConditionModel(**config).to(torch.bfloat16)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # several shards so the loader frees per-shard state dicts while copies are queued
+            model.save_pretrained(tmpdir, max_shard_size="200KB")
+            del model
+
+            reference = UNet2DConditionModel.from_pretrained(tmpdir, torch_dtype=torch.float32)
+            reference_sd = reference.state_dict()
+
+            loaded = UNet2DConditionModel.from_pretrained(tmpdir, torch_dtype=torch.float32, device_map=torch_device)
+            for name, value in loaded.state_dict().items():
+                assert torch.equal(value.detach().cpu(), reference_sd[name]), (
+                    f"{name} differs between device_map={torch_device} load and CPU load"
+                )
+
 
 class UNetTesterMixin:
     @staticmethod
@@ -403,3 +444,56 @@ class TestModelPushToHub:
 
         # Reset repo
         delete_repo(repo_id, token=TOKEN)
+
+
+class TestLoadModelDictIntoMetaNonBlocking:
+    # Companion to test_sharded_checkpoint_device_map_matches_cpu_load, which needs a
+    # real accelerator and is therefore skipped on CPU CI. This pins the same decision
+    # without touching a device: accelerate's setter is stubbed out, so the only thing
+    # under test is which copies load_model_dict_into_meta asks for.
+
+    @pytest.mark.parametrize(
+        ("device", "torch_below_213", "expected_non_blocking"),
+        [
+            ("mps", True, False),  # the unsafe combination -- must fall back to blocking copies
+            ("mps", False, True),  # fixed upstream in torch 2.13, so non-blocking is safe again
+            ("mps:0", True, False),  # indexed form of the same device must not slip through
+            ("cpu", True, True),  # unrelated devices keep the fast path
+            ("cuda", True, True),
+        ],
+    )
+    def test_non_blocking_disabled_only_for_unsafe_mps(
+        self, device, torch_below_213, expected_non_blocking, monkeypatch
+    ):
+        from diffusers.models import model_loading_utils
+
+        if not model_loading_utils.is_accelerate_version(">", "1.8.1"):
+            pytest.skip("non_blocking is only passed on accelerate > 1.8.1")
+
+        real_is_torch_version = model_loading_utils.is_torch_version
+
+        def fake_is_torch_version(operation, version):
+            if (operation, version) == ("<", "2.13"):
+                return torch_below_213
+            return real_is_torch_version(operation, version)
+
+        recorded = {}
+
+        def fake_set_module_tensor_to_device(model, param_name, param_device, value=None, **kwargs):
+            recorded[param_name] = (param_device, kwargs)
+
+        monkeypatch.setattr(model_loading_utils, "is_torch_version", fake_is_torch_version)
+        monkeypatch.setattr(model_loading_utils, "set_module_tensor_to_device", fake_set_module_tensor_to_device)
+
+        model = torch.nn.Linear(4, 4)
+        state_dict = {"weight": torch.randn(4, 4), "bias": torch.randn(4)}
+
+        model_loading_utils.load_model_dict_into_meta(model, state_dict, device_map={"": device})
+
+        assert set(recorded) == {"weight", "bias"}
+        for param_name, (param_device, kwargs) in recorded.items():
+            assert param_device == device, param_name
+            assert kwargs["non_blocking"] is expected_non_blocking, (
+                f"{param_name} on {device} (torch<2.13={torch_below_213}) asked for "
+                f"non_blocking={kwargs['non_blocking']}, expected {expected_non_blocking}"
+            )
