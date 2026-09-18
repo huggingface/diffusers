@@ -1776,9 +1776,12 @@ def main(args):
                             dim=0,
                         )
                 else:
+                    # `vae.encode` belongs inside the context manager: on the way out it puts the VAE back
+                    # on the CPU, and encoding a batch the prepared dataloader has already placed on the
+                    # accelerator would then raise.
                     with offload_models(vae, device=accelerator.device, offload=args.offload):
                         pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
-                    model_input = vae.encode(pixel_values).latent_dist.sample()
+                        model_input = vae.encode(pixel_values).latent_dist.sample()
 
                 model_input = (model_input - latents_mean) * latents_std
                 model_input = model_input.to(dtype=weight_dtype)

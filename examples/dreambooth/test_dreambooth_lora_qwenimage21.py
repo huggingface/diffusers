@@ -75,6 +75,30 @@ class TestDreamBoothLoRAQwenImage21(ExamplesTestsAccelerate):
             starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
             assert starts_with_transformer
 
+    def test_dreambooth_lora_offload_without_latent_caching(self):
+        # `--offload` without `--cache_latents` is the one path that encodes pixels inside the training
+        # loop while the VAE is being moved on and off the accelerator. It regressed once, by encoding
+        # after the offload context had already put the VAE back on the CPU.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                {self.script_path}
+                --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
+                --instance_data_dir {self.instance_data_dir}
+                --instance_prompt {self.instance_prompt}
+                --resolution 64
+                --offload
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+
     def test_dreambooth_lora_latent_caching(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
