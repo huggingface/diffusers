@@ -15,6 +15,7 @@
 
 import PIL
 import torch
+import torch.nn.functional as F
 from transformers import Qwen2Tokenizer, Qwen3Model
 
 from ...configuration_utils import FrozenDict
@@ -81,7 +82,9 @@ def get_qwen_prompt_embeds(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor,
+    generator: torch.Generator | None = None,
+    sample_mode: str = "sample",
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -100,6 +103,7 @@ def encode_vae_image(
     device: torch.device,
     dtype: torch.dtype,
     latent_channels: int = 16,
+    sample_mode: str = "sample",
 ):
     if not isinstance(image_tensor, torch.Tensor):
         raise ValueError(f"Expected image_tensor to be a tensor, got {type(image_tensor)}.")
@@ -113,12 +117,16 @@ def encode_vae_image(
 
     if isinstance(generator, list):
         image_latents = [
-            retrieve_latents(vae.encode(image_tensor[i : i + 1]), generator=generator[i])
+            retrieve_latents(
+                vae.encode(image_tensor[i : i + 1]),
+                generator=generator[i],
+                sample_mode=sample_mode,
+            )
             for i in range(image_tensor.shape[0])
         ]
         image_latents = torch.cat(image_latents, dim=0)
     else:
-        image_latents = retrieve_latents(vae.encode(image_tensor), generator=generator)
+        image_latents = retrieve_latents(vae.encode(image_tensor), generator=generator, sample_mode=sample_mode)
 
     image_latents = (image_latents - vae.config.shift_factor) * vae.config.scaling_factor
 
@@ -339,5 +347,210 @@ class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
             latent_channels=components.num_channels_latents,
         )
 
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ZImageInpaintVaeImageEncoderStep(ModularPipelineBlocks):
+    model_name = "z-image"
+
+    @property
+    def description(self) -> str:
+        return "Encodes an inpaint image and preprocesses its binary mask."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKL),
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 8 * 2}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec(
+                "mask_processor",
+                VaeImageProcessor,
+                config=FrozenDict(
+                    {
+                        "vae_scale_factor": 8 * 2,
+                        "do_normalize": False,
+                        "do_binarize": True,
+                        "do_convert_grayscale": True,
+                    }
+                ),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("image", type_hint=PIL.Image.Image, required=True),
+            InputParam("mask_image", type_hint=PIL.Image.Image, required=True),
+            InputParam("height"),
+            InputParam("width"),
+            InputParam.template("padding_mask_crop"),
+            InputParam("control_image"),
+            InputParam("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                description="Latents of the source image.",
+            ),
+            OutputParam("mask", type_hint=torch.Tensor, description="Binary inpainting mask."),
+            OutputParam(
+                "crops_coords",
+                type_hint=tuple[int, int, int, int] | None,
+                description="Crop coordinates used to process and overlay the inpaint result.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        height, width = components.image_processor.get_default_height_width(
+            block_state.image, block_state.height, block_state.width
+        )
+        block_state.height = height
+        block_state.width = width
+        if block_state.padding_mask_crop is not None:
+            block_state.crops_coords = components.mask_processor.get_crop_region(
+                block_state.mask_image, width, height, pad=block_state.padding_mask_crop
+            )
+            resize_mode = "fill"
+        else:
+            block_state.crops_coords = None
+            resize_mode = "default"
+        image = components.image_processor.preprocess(
+            block_state.image,
+            height=height,
+            width=width,
+            crops_coords=block_state.crops_coords,
+            resize_mode=resize_mode,
+        ).to(device=components._execution_device, dtype=torch.float32)
+        block_state.mask = components.mask_processor.preprocess(
+            block_state.mask_image,
+            height=image.shape[-2],
+            width=image.shape[-1],
+            crops_coords=block_state.crops_coords,
+            resize_mode=resize_mode,
+        )
+        block_state.image_latents = encode_vae_image(
+            image_tensor=image,
+            vae=components.vae,
+            generator=block_state.generator,
+            device=components._execution_device,
+            dtype=components.vae.dtype,
+            sample_mode="argmax" if block_state.control_image is not None else "sample",
+        )
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ZImageControlNetInpaintVaeEncoderStep(ModularPipelineBlocks):
+    model_name = "z-image"
+
+    @property
+    def description(self) -> str:
+        return "Encodes the ControlNet inpaint condition from the control image, source image, and mask."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKL),
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 8 * 2}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec(
+                "mask_processor",
+                VaeImageProcessor,
+                config=FrozenDict(
+                    {
+                        "vae_scale_factor": 8,
+                        "do_normalize": False,
+                        "do_binarize": True,
+                        "do_convert_grayscale": True,
+                    }
+                ),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("image", type_hint=PIL.Image.Image, required=True),
+            InputParam("mask_image", type_hint=PIL.Image.Image, required=True),
+            InputParam("control_image", type_hint=PIL.Image.Image, required=True),
+            InputParam("height"),
+            InputParam("width"),
+            InputParam("crops_coords", type_hint=tuple[int, int, int, int] | None),
+            InputParam("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "control_image_latents",
+                type_hint=torch.Tensor,
+                description="Latent ControlNet inpaint condition.",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        resize_mode = "fill" if block_state.crops_coords is not None else "default"
+        image = components.image_processor.preprocess(
+            block_state.image,
+            height=block_state.height,
+            width=block_state.width,
+            crops_coords=block_state.crops_coords,
+            resize_mode=resize_mode,
+        ).to(device=components._execution_device, dtype=components.vae.dtype)
+        control_image = components.image_processor.preprocess(
+            block_state.control_image,
+            height=image.shape[-2],
+            width=image.shape[-1],
+            crops_coords=block_state.crops_coords,
+            resize_mode=resize_mode,
+        ).to(device=components._execution_device, dtype=components.vae.dtype)
+        mask = components.mask_processor.preprocess(
+            block_state.mask_image,
+            height=image.shape[-2],
+            width=image.shape[-1],
+            crops_coords=block_state.crops_coords,
+            resize_mode=resize_mode,
+        ).to(device=components._execution_device, dtype=components.vae.dtype)
+        mask = torch.tile(mask, [1, 3, 1, 1])
+
+        control_image_latents = encode_vae_image(
+            image_tensor=control_image,
+            vae=components.vae,
+            generator=block_state.generator,
+            device=components._execution_device,
+            dtype=components.vae.dtype,
+            sample_mode="argmax",
+        ).unsqueeze(2)
+        image_latents = encode_vae_image(
+            image_tensor=image * (mask < 0.5),
+            vae=components.vae,
+            generator=block_state.generator,
+            device=components._execution_device,
+            dtype=components.vae.dtype,
+            sample_mode="argmax",
+        ).unsqueeze(2)
+        mask = F.interpolate(1 - mask[:, :1], size=image_latents.shape[-2:], mode="nearest").unsqueeze(2)
+        block_state.control_image_latents = torch.cat([control_image_latents, mask, image_latents], dim=1)
         self.set_block_state(state, block_state)
         return components, state
