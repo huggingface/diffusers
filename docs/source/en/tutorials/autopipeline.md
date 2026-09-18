@@ -74,9 +74,7 @@ pipeline_i2i = AutoPipelineForImage2Image.from_pipe(pipeline_t2i)
 
 See [Reusing models in multiple pipelines](../using-diffusers/loading#reusing-models-in-multiple-pipelines) for more details.
 
-Check the [mappings](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/auto_pipeline.py) to see whether a model is supported or not.
-
-Trying to load an unsupported model returns an error.
+Check the [mappings](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/auto_pipeline.py) to see whether a model is supported or not. Trying to load an unsupported model returns an error.
 
 ```py
 import torch

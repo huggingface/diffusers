@@ -29,9 +29,9 @@ Start from the checkpoint default. Swap only if you need a different speed or qu
 ## Loading schedulers
 
 > [!TIP]
-> Flow-matching models such as Qwen-Image and Flux ship [`FlowMatchEulerDiscreteScheduler`] as their default. Keep that scheduler unless you are intentionally experimenting. Swap with [`~SchedulerMixin.from_config`] only when the replacement is compatible with the checkpoint.
+> Flow-matching models such as Qwen-Image and Flux ship [`FlowMatchEulerDiscreteScheduler`] as their default. Keep that scheduler unless you are intentionally experimenting. Swap with [`~ConfigMixin.from_config`] only when the replacement is compatible with the checkpoint.
 
-Schedulers are config-only. They do not ship weight tensors. Access the `.scheduler` attribute on a pipeline to inspect the loaded config.
+Schedulers are config-only and they do not ship weight tensors. Access the `.scheduler` attribute on a pipeline to inspect the loaded config.
 
 ```py
 import torch
@@ -43,7 +43,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 pipeline.scheduler
 ```
 
-To swap schedulers on a loaded pipeline, use [`~SchedulerMixin.from_config`] with the existing scheduler config so `num_train_timesteps` and related fields stay aligned. For FlowMatch checkpoints (Qwen-Image, Flux, and similar), keep [`FlowMatchEulerDiscreteScheduler`] unless you are intentionally experimenting with a compatible replacement.
+To swap schedulers on a loaded pipeline, use [`~ConfigMixin.from_config`] with the existing scheduler config so `num_train_timesteps` and related fields stay aligned. For FlowMatch checkpoints (Qwen-Image, Flux, and similar), keep [`FlowMatchEulerDiscreteScheduler`] unless you are intentionally experimenting with a compatible replacement.
 
 ```py
 from diffusers import DPMSolverMultistepScheduler
@@ -51,7 +51,7 @@ from diffusers import DPMSolverMultistepScheduler
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 ```
 
-You can also load a scheduler config from the Hub with [`~SchedulerMixin.from_pretrained`] and pass it into [`~DiffusionPipeline.from_pretrained`] through `scheduler=`.
+You can also load a scheduler config from the Hub with [`~SchedulerMixin.from_pretrained`] and pass it into [`~DiffusionPipeline.from_pretrained`] through `scheduler`.
 
 ```py
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
@@ -77,10 +77,12 @@ linear (even steps)                 AYS (denser where it matters)
 noise                               noise
   ^                                   ^
   | *                                 | *
-  |   *                               |  *
-  |     *  *                          |   *  *
-  |          *  *                     |       *    *
-  |               *                   |              *
+  |  *                                |   *
+  |   *                               |    **
+  |    *                              |     ***
+  |     *                             |      **
+  |      *                            |        *
+  |       *                           |          *
   +-----------------> step            +-----------------> step
 ```
 
