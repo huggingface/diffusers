@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import os
 
 import pytest
@@ -22,13 +23,15 @@ import torch.multiprocessing as mp
 import torch.nn.functional as F
 
 from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
+from diffusers.models.attention_dispatch import _prepare_for_flash_attn_or_sage_varlen, dispatch_attention_fn
 from diffusers.models.attention_dispatch import attention_backend as attention_backend_ctx
-from diffusers.models.attention_dispatch import dispatch_attention_fn
 
 from ..testing_utils import (
     is_attention,
     is_context_parallel,
     is_kernels_available,
+    is_torch_compile,
+    require_torch_accelerator,
     require_torch_multi_accelerator,
     torch_device,
 )
@@ -170,3 +173,57 @@ class TestContextParallelAttentionBackward:
                 f"{attention_backend} {cp_type} gradient `{name}` rel_err={rel:.3e} "
                 f"exceeds tol={GRAD_RTOL:.1e}: {rel_errs}"
             )
+
+
+@is_attention
+class TestVarlenAttentionCompile:
+    """Op-level tests for the varlen backends under `torch.compile` with dynamic shapes, model independent."""
+
+    @pytest.mark.parametrize(
+        "attention_backend",
+        [
+            pytest.param(
+                "flash_varlen_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+            pytest.param(
+                "_flash_3_varlen_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+        ],
+    )
+    @is_torch_compile
+    @require_torch_accelerator
+    def test_dynamic_shapes(self, attention_backend):
+        def make_qkv(seq_len):
+            torch.manual_seed(0)
+            return tuple(torch.randn(2, seq_len, 4, 64, device=torch_device, dtype=torch.bfloat16) for _ in range(3))
+
+        with contextlib.ExitStack() as stack, torch.no_grad():
+            try:
+                stack.enter_context(attention_backend_ctx(attention_backend))
+                dispatch_attention_fn(*make_qkv(128))
+            except Exception as e:
+                pytest.skip(f"Skipping test for backend '{attention_backend}': {e}")
+
+            torch.compiler.reset()
+            compiled_attention = torch.compile(dispatch_attention_fn, dynamic=True, fullgraph=True)
+            try:
+                with (
+                    torch._inductor.utils.fresh_inductor_cache(),
+                    torch._dynamo.config.patch(error_on_recompile=True),
+                ):
+                    for seq_len in (128, 256, 256):
+                        q, k, v = make_qkv(seq_len)
+                        torch.testing.assert_close(
+                            compiled_attention(q, k, v), dispatch_attention_fn(q, k, v), atol=1e-3, rtol=1e-3
+                        )
+            finally:
+                torch.compiler.reset()
+
+    def test_zero_length_sequence(self):
+        _, (cu_seqlens_q, cu_seqlens_k), max_seqlens = _prepare_for_flash_attn_or_sage_varlen(
+            2, 0, 0, device=torch_device
+        )
+        assert cu_seqlens_q.tolist() == cu_seqlens_k.tolist() == [0, 0, 0]
+        assert max_seqlens == (0, 0)
