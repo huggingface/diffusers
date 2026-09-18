@@ -413,14 +413,14 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--rank",
         type=int,
-        default=4,
+        default=16,
         help=("The dimension of the LoRA update matrices."),
     )
     parser.add_argument(
         "--lora_alpha",
         type=int,
-        default=4,
-        help="LoRA alpha to be used for additional scaling.",
+        default=16,
+        help="LoRA alpha. The update is scaled by `lora_alpha / rank`, so keep the two in step.",
     )
     parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
 

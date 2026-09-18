@@ -111,6 +111,24 @@ To better track our training experiments, we're using the following flags in the
 * `report_to="wandb` will ensure the training runs are tracked on [Weights and Biases](https://wandb.ai/site). To use it, be sure to install `wandb` with `pip install wandb`. Don't forget to call `wandb login <your_api_key>` before training if you haven't done it before.
 * `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
+### LoRA rank and alpha
+
+`--rank` sets the dimension of the trainable LoRA matrices, and `--lora_alpha` scales what they contribute:
+PEFT multiplies the LoRA update by `lora_alpha / rank`. Both default to 16 here, so the update is applied at
+full strength out of the box.
+
+Change one and the ratio moves with it:
+
+* `lora_alpha == rank` - scale 1, the LoRA is applied at the strength it learned.
+* `lora_alpha < rank` - scale below 1, a weaker LoRA. `--rank 16` on its own with `--lora_alpha 4` is scale
+  0.25, which mostly shows up as a run that looks undertrained at a step count that should have been enough.
+* `lora_alpha > rank` - scale above 1, a stronger effect without adding parameters.
+
+> [!TIP]
+> Raise `--rank` for capacity, and raise `--lora_alpha` with it unless you mean to change the strength.
+> If the style takes but subjects start losing their shape, the run is overcooked: cut the steps or the
+> learning rate before reaching for a smaller alpha.
+
 ## Model specifics
 
 A few things differ from the other DreamBooth LoRA trainers, all of them following the model rather than a choice made here:
