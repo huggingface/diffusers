@@ -13,13 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import subprocess
+import sys
+
 import torch
 
 from diffusers import MiniMaxH3Transformer3DModel
 from diffusers.models.transformers.transformer_minimax_h3 import MiniMaxH3TransformerOutput
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -27,6 +31,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TensorParallelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -84,7 +89,7 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
             "rope_freq_dim": 2,
         }
 
-    def get_packed_layout(self, num_video_tokens: int = NUM_VIDEO_TOKENS) -> dict:
+    def get_packed_layout(self, num_video_tokens: int = NUM_VIDEO_TOKENS, device: str | torch.device = None) -> dict:
         r"""
         Build the structural arguments of one packed sequence.
 
@@ -92,29 +97,33 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
         modality and its noise level, and hands over the `(t, h, w)` grid plus the three index tensors. The layout
         here mirrors what the pipelines pack, with two distinct timesteps so the `(timestep, modality)` AdaLN table
         is addressed on more than one row.
+
+        `device` defaults to the test device; the Neuron TP spec asks for CPU because its worker builds the model on
+        CPU and moves it only after sharding.
         """
+        device = torch_device if device is None else device
         sequence_length = NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS + num_video_tokens
-        text_indices = torch.arange(NUM_TEXT_TOKENS, device=torch_device)
-        audio_indices = torch.arange(NUM_TEXT_TOKENS, NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS, device=torch_device)
-        video_indices = torch.arange(NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS, sequence_length, device=torch_device)
+        text_indices = torch.arange(NUM_TEXT_TOKENS, device=device)
+        audio_indices = torch.arange(NUM_TEXT_TOKENS, NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS, device=device)
+        video_indices = torch.arange(NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS, sequence_length, device=device)
 
         # 0 = video, 1 = text, 2 = audio.
-        token_tags = torch.empty(sequence_length, dtype=torch.long, device=torch_device)
+        token_tags = torch.empty(sequence_length, dtype=torch.long, device=device)
         token_tags[text_indices] = 1
         token_tags[audio_indices] = 2
         token_tags[video_indices] = 0
 
         # The conditioning-free rows share the video timestep; the audio rows step down their own schedule.
-        timestep_indices = torch.zeros(sequence_length, dtype=torch.long, device=torch_device)
+        timestep_indices = torch.zeros(sequence_length, dtype=torch.long, device=device)
         timestep_indices[audio_indices] = 1
 
-        position_ids = torch.zeros(sequence_length, 3, dtype=torch.float32, device=torch_device)
-        position_ids[:, 0] = torch.arange(sequence_length, dtype=torch.float32, device=torch_device)
-        position_ids[video_indices, 1] = torch.arange(num_video_tokens, dtype=torch.float32, device=torch_device) % 4
-        position_ids[video_indices, 2] = torch.arange(num_video_tokens, dtype=torch.float32, device=torch_device) % 2
+        position_ids = torch.zeros(sequence_length, 3, dtype=torch.float32, device=device)
+        position_ids[:, 0] = torch.arange(sequence_length, dtype=torch.float32, device=device)
+        position_ids[video_indices, 1] = torch.arange(num_video_tokens, dtype=torch.float32, device=device) % 4
+        position_ids[video_indices, 2] = torch.arange(num_video_tokens, dtype=torch.float32, device=device) % 2
 
         return {
-            "timestep": torch.tensor([0.7, 0.3], device=torch_device),
+            "timestep": torch.tensor([0.7, 0.3], device=device),
             "timestep_indices": timestep_indices,
             "token_tags": token_tags,
             "position_ids": position_ids,
@@ -123,7 +132,10 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
             "text_indices": text_indices,
         }
 
-    def get_dummy_inputs(self, num_video_tokens: int = NUM_VIDEO_TOKENS, batch_size: int = 2) -> dict:
+    def get_dummy_inputs(
+        self, num_video_tokens: int = NUM_VIDEO_TOKENS, batch_size: int = 2, device: str | torch.device = None
+    ) -> dict:
+        device = torch_device if device is None else device
         generator = self.generator
         init_dict = self.get_init_dict()
         patch_size = init_dict["patch_size"]
@@ -131,17 +143,17 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
 
         return {
             "hidden_states": randn_tensor(
-                (batch_size, num_video_tokens, video_patch_dim), generator=generator, device=torch_device
+                (batch_size, num_video_tokens, video_patch_dim), generator=generator, device=device
             ),
             "audio_hidden_states": randn_tensor(
                 (batch_size, NUM_AUDIO_TOKENS, init_dict["audio_in_channels"]),
                 generator=generator,
-                device=torch_device,
+                device=device,
             ),
             "encoder_hidden_states": randn_tensor(
-                (batch_size, NUM_TEXT_TOKENS, init_dict["text_dim"]), generator=generator, device=torch_device
+                (batch_size, NUM_TEXT_TOKENS, init_dict["text_dim"]), generator=generator, device=device
             ),
-            **self.get_packed_layout(num_video_tokens),
+            **self.get_packed_layout(num_video_tokens, device=device),
         }
 
 
@@ -189,3 +201,40 @@ class TestMiniMaxH3TransformerContextParallel(MiniMaxH3TransformerTesterConfig, 
 
 class TestMiniMaxH3TransformerLoRA(MiniMaxH3TransformerTesterConfig, LoraTesterMixin):
     """LoRA tests for the MiniMax-H3 transformer."""
+
+
+class TestMiniMaxH3TransformerTensorParallel(MiniMaxH3TransformerTesterConfig, TensorParallelTesterMixin):
+    """Tensor Parallel inference tests for the MiniMax-H3 transformer (CUDA/XPU multi-accelerator)."""
+
+
+def make_neuron_tp_spec():
+    """Model spec consumed by the generic Neuron TP worker (`_neuron_tp_worker.py`).
+
+    Returns `(model_class, init_dict, cpu_inputs)`. Defined here so all MiniMax-H3-specific test data lives in this
+    file while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the
+    rest of the MiniMax-H3 tests.
+    """
+    config = MiniMaxH3TransformerTesterConfig()
+    return MiniMaxH3Transformer3DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+@is_tensor_parallel
+@require_torch_neuron
+class TestMiniMaxH3TransformerTensorParallelNeuron:
+    """Tensor Parallel inference test for the MiniMax-H3 transformer on AWS Neuron.
+
+    Neuron TP runs through `torchrun` with the `"neuron"` distributed backend, so it cannot use the
+    `torch.multiprocessing`/NCCL spawn path of `TensorParallelTesterMixin`. This launches the generic worker with
+    the MiniMax-H3 model spec (`make_neuron_tp_spec`); the worker asserts the sharded output matches a
+    single-device reference, and the test checks its exit code.
+    """
+
+    def test_tensor_parallel_neuron_inference(self):
+        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
+        spec = "tests.models.transformers.test_models_transformer_minimax_h3:make_neuron_tp_spec"
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )

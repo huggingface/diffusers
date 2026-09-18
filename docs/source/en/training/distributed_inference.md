@@ -436,43 +436,42 @@ pipeline = DiffusionPipeline.from_pretrained(
 
 [Tensor parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=tensor_parallelism) shards the weight matrices of a model across devices. Each device holds a column-wise (`"colwise"`) or row-wise (`"rowwise"`) slice of each layer, computes a partial result, and an `AllReduce`/`AllGather` at the layer boundary reconstructs the full output. Unlike context parallelism, it reduces the per-device *weight* memory, which is useful for models that do not fit on a single device.
 
-Pass a [`TensorParallelConfig`] to [`~ModelMixin.enable_parallelism`]. `tp_degree` is the number of devices to shard across and must divide the model's number of attention heads. The model must define a `_tp_plan` (a flat mapping of module-name globs to a `"colwise"`/`"rowwise"` style).
+Pass a [`TensorParallelConfig`] to the `parallel_config` argument of the model's [`~ModelMixin.from_pretrained`]. `tp_degree` is the number of devices to shard across and must divide the model's number of attention heads. The model must define a `_tp_plan` (a flat mapping of module-name globs to a `"colwise"`/`"rowwise"` style).
+
+Loading this way shards the checkpoint *while reading it*: each rank reads only its own slice of each sharded weight and places it straight onto its own device. Nothing full-size is ever materialized, so per-rank memory falls as `tp_degree` rises.
 
 ```py
 import torch
 from torch import distributed as dist
-from diffusers import DiffusionPipeline, TensorParallelConfig
-
-def setup_distributed():
-    if not dist.is_initialized():
-        dist.init_process_group(backend="nccl")
-    rank = dist.get_rank()
-    device = torch.device(f"cuda:{rank}")
-    torch.cuda.set_device(device)
-    return device
+from diffusers import DiffusionPipeline, Flux2Transformer2DModel, TensorParallelConfig
 
 def main():
-    device = setup_distributed()
-    world_size = dist.get_world_size()
+    dist.init_process_group(backend="nccl")
+    rank, world_size = dist.get_rank(), dist.get_world_size()
+    device = torch.device(f"cuda:{rank}")
+    torch.cuda.set_device(device)
+
+    # Each rank reads only its own shard of every planned weight, straight onto `cuda:rank`.
+    transformer = Flux2Transformer2DModel.from_pretrained(
+        "black-forest-labs/FLUX.2-dev",
+        subfolder="transformer",
+        torch_dtype=torch.bfloat16,
+        parallel_config=TensorParallelConfig(tp_degree=world_size),
+    )
 
     pipeline = DiffusionPipeline.from_pretrained(
-        "black-forest-labs/FLUX.2-dev", torch_dtype=torch.bfloat16
-    )  # weights stay on CPU
-
-    # Shard the transformer first, then move only each rank's slice onto the accelerator.
-    pipeline.transformer.enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))
-    pipeline.transformer.to(device)
-
-    # Move the remaining, non-sharded components onto the accelerator individually.
+        "black-forest-labs/FLUX.2-dev", transformer=transformer, torch_dtype=torch.bfloat16
+    )
+    # The transformer is already on its device; move the remaining components individually. Do not call
+    # `pipeline.to(device)` — that would move every rank's shards onto the same device.
     pipeline.text_encoder.to(device)
     pipeline.vae.to(device)
 
     generator = torch.Generator().manual_seed(42)
     image = pipeline(prompt="a cat holding a sign that says hello", generator=generator).images[0]
-    if dist.get_rank() == 0:
+    if rank == 0:
         image.save("output.png")
-    if dist.is_initialized():
-        dist.destroy_process_group()
+    dist.destroy_process_group()
 
 if __name__ == "__main__":
     main()
@@ -483,6 +482,25 @@ torchrun --nproc-per-node 4 tensor_parallel_flux.py
 ```
 
 `tp_degree` is taken from `world_size` above, so `--nproc-per-node 4` shards the transformer across 4 devices.
+
+A tensor-parallel `parallel_config` cannot be combined with `device_map`, `quantization_config`, `low_cpu_mem_usage=False`, `use_flashpack=True`, DDUF checkpoints, or non-safetensors weights; each raises rather than quietly falling back to loading the full checkpoint. Tensor parallelism also cannot be combined with quantization, offloading, or LoRA adapters at all — the parameters it shards have to be plain parameters owned by the model — so those raise however the model is sharded. To shard a model that is already in memory, call [`~ModelMixin.enable_parallelism`] with the same config instead — that loads everything first and reshards it, so it costs full checkpoint memory on every rank.
+
+### Saving a tensor-parallel model
+
+[`~ModelMixin.save_pretrained`] gathers the shards back into ordinary full tensors, so the result is a normal checkpoint that loads with or without tensor parallelism. Gathering is a collective, so call it on **every** rank; only rank 0 writes.
+
+```py
+# on all ranks
+pipeline.transformer.save_pretrained("flux2-transformer")
+```
+
+For a model too large to gather onto a single rank, pass `dcp=True` to write a [distributed checkpoint](https://pytorch.org/docs/stable/distributed.checkpoint.html) instead. Every rank writes its own shards, so no full tensor is ever formed.
+
+```py
+pipeline.transformer.save_pretrained("flux2-transformer-dcp", dcp=True)
+```
+
+`from_pretrained` detects such a directory automatically, and reads it back with the same `parallel_config` you saved it under. Because a packed projection's shards are stored interleaved by the writing degree, the checkpoint only loads at that same `tp_degree`, and only with tensor parallelism — anything else raises rather than silently returning wrong weights. It is also local-only: a distributed checkpoint is recognized by the `.metadata` file in its directory, so it cannot be pushed to or loaded from the Hub. To lift any of these restrictions, re-save with the default (gathered) path, which produces an ordinary checkpoint.
 
 ### Writing a tensor parallelism plan
 

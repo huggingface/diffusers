@@ -30,6 +30,7 @@ from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
+    ContextAndTensorParallelTesterMixin,
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     LoraHotSwappingForModelTesterMixin,
@@ -305,6 +306,25 @@ class TestQwenImageTransformerContextParallelAttnBackends(
 
 class TestQwenImageTransformerTensorParallel(QwenImageTransformerTesterConfig, TensorParallelTesterMixin):
     """Tensor Parallel inference tests for QwenImage Transformer (CUDA/XPU multi-accelerator)."""
+
+
+class TestQwenImageTransformerContextAndTensorParallel(
+    QwenImageTransformerTesterConfig, ContextAndTensorParallelTesterMixin
+):
+    """Context Parallel x Tensor Parallel inference tests for QwenImage Transformer (4 accelerators).
+
+    QwenImage is the model this runs on because its dummy config has four attention heads, and Ulysses splits the
+    heads TP already sharded — so `ulysses_degree` x `tp_degree` has to divide the head count.
+    """
+
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"]
+        encoder_hidden_states_mask[:, 1] = 0
+        encoder_hidden_states_mask[:, 3] = 0
+        encoder_hidden_states_mask[:, 5:] = 0
+        inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
+        return inputs
 
 
 def make_neuron_tp_spec():

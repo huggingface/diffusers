@@ -27,7 +27,13 @@ from diffusers.models.embeddings import ImageProjection
 from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
+from ...testing_utils import (
+    enable_full_determinism,
+    is_context_parallel,
+    is_tensor_parallel,
+    require_torch_neuron,
+    torch_device,
+)
 from ..testing_utils import (
     AttentionBackendTesterMixin,
     AttentionTesterMixin,
@@ -40,6 +46,7 @@ from ..testing_utils import (
     FirstBlockCacheTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
+    HybridParallelTesterMixin,
     IPAdapterTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
@@ -268,6 +275,23 @@ class TestFluxTransformerTensorParallel(FluxTransformerTesterConfig, TensorParal
     """Tensor Parallel inference tests for Flux Transformer (CUDA/XPU multi-accelerator)."""
 
 
+class TestFluxTransformerHybridParallel(FluxTransformerTesterConfig, HybridParallelTesterMixin):
+    """Tensor Parallel x Context Parallel inference tests for Flux Transformer (needs 4 accelerators)."""
+
+
+def make_neuron_hybrid_spec():
+    """Model spec consumed by the generic Neuron hybrid worker (`_neuron_hybrid_worker.py`).
+
+    Same contract as `make_neuron_tp_spec`, but `num_attention_heads` is raised to 8 so the head count survives
+    being divided twice: `tp_degree=2` leaves 4 heads per rank and `ulysses_degree=4` splits those into 1 each.
+    (`ulysses_degree` cannot be 2 on Neuron, whose all-to-all only accepts group sizes of 4, 8, 16 or multiples
+    of 32.)
+    """
+    config = FluxTransformerTesterConfig()
+    init_dict = config.get_init_dict() | {"num_attention_heads": 8}
+    return FluxTransformer2DModel, init_dict, config.get_dummy_inputs(device="cpu")
+
+
 def make_neuron_tp_spec():
     """Model spec consumed by the generic Neuron TP worker (`_neuron_tp_worker.py`).
 
@@ -297,6 +321,28 @@ class TestFluxTransformerTensorParallelNeuron:
         result = subprocess.run(cmd, capture_output=True, text=True)
         assert result.returncode == 0, (
             f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )
+
+
+@is_context_parallel
+@is_tensor_parallel
+@require_torch_neuron
+class TestFluxTransformerHybridParallelNeuron:
+    """Tensor Parallel x Context Parallel inference test for Flux Transformer on AWS Neuron.
+
+    Same launching pattern as `TestFluxTransformerTensorParallelNeuron`: Neuron needs `torchrun` with the
+    `"neuron"` distributed backend, so it cannot use the `torch.multiprocessing`/NCCL spawn path of
+    `HybridParallelTesterMixin`. Runs at `tp_degree=2 x ulysses_degree=4`, i.e. 8 ranks.
+    """
+
+    def test_hybrid_parallel_neuron_inference(self):
+        worker = os.path.join(os.path.dirname(__file__), "_neuron_hybrid_worker.py")
+        spec = "tests.models.transformers.test_models_transformer_flux:make_neuron_hybrid_spec"
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=8", worker, spec]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"Neuron hybrid-parallel worker failed (exit {result.returncode}).\n"
             f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
         )
 
