@@ -575,6 +575,8 @@
         title: DreamLite
       - local: api/pipelines/easyanimate
         title: EasyAnimate
+      - local: api/pipelines/echo
+        title: Echo
       - local: api/pipelines/ernie_image
         title: ERNIE-Image
       - local: api/pipelines/flux
