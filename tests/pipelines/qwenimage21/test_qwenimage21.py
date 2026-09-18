@@ -36,6 +36,8 @@ from diffusers import (
 from ...testing_utils import assert_tensors_close
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -260,3 +262,11 @@ class TestQwenImage21Pipeline(QwenImage21PipelineTesterConfig, PipelineTesterMix
 
 class TestQwenImage21PipelineMemory(QwenImage21PipelineTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestQwenImage21PipelineLoRA(QwenImage21PipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Qwen-Image 2.1 pipeline."""
+
+
+class TestQwenImage21PipelineLoRAMemory(QwenImage21PipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests for the Qwen-Image 2.1 pipeline."""
