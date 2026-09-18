@@ -299,8 +299,8 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         # transformers 5.0 the output capturing ties that entry to `last_hidden_state`, so it comes back normalized
         # instead — a third of the signal the transformer reads, which shows up first in rendered text. A forward hook
         # returning the module's input replaces its output, which neutralizes the norm for this call on either version.
-        # transformers 5.18 will accept `tie_last_hidden_states=False` in the text encoder's config
-        # (huggingface/transformers#48087); this can go once that is the floor.
+        # TODO: replace this with `tie_last_hidden_states=False` in the text encoder's config, which
+        # huggingface/transformers#48087 adds, once that ships in a stable transformers release (5.18).
         text_model = getattr(self.text_encoder.model, "language_model", self.text_encoder.model)
         handle = text_model.norm.register_forward_hook(lambda module, args, output: args[0])
         try:
