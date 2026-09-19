@@ -46,12 +46,27 @@ The [`~loaders.FromSingleFileMixin.from_single_file`] method allows you to load:
 
 ## Supported models
 
-- [`UNet2DConditionModel`]
-- [`StableCascadeUNet`]
-- [`AutoencoderKL`]
-- [`ControlNetModel`]
-- [`SD3Transformer2DModel`]
-- [`FluxTransformer2DModel`]
+Diffusers model components with a registered bidirectional conversion expose
+[`~loaders.FromOriginalModelMixin.from_single_file`], including transformers, UNets, autoencoders, ControlNets,
+adapters, and audio components. See the [component registry](https://github.com/huggingface/diffusers/tree/main/src/diffusers/loaders/conversion)
+for the supported classes and original format variants.
+
+Pass the matching Diffusers component configuration explicitly when loading a component whose architecture cannot
+be inferred from its checkpoint. Existing Stable Diffusion and other established checkpoint detection paths remain
+available.
+
+```python
+from diffusers import DiTTransformer2DModel
+
+transformer = DiTTransformer2DModel.from_single_file(
+    "./original-transformer.safetensors",
+    config="./dit/transformer",
+    local_files_only=True,
+)
+```
+
+Component support does not add single-file loading to its full pipeline. Transformers-owned text/vision encoders and
+LoRA layouts use the conversion API or their existing pipeline loaders.
 
 ## FromSingleFileMixin
 

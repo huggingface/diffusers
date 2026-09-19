@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
@@ -665,7 +666,7 @@ class LTX2AudioDecoder(nn.Module):
         return decoded_output
 
 
-class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
+class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     LTX2 audio VAE for encoding and decoding audio latent representations.
     """

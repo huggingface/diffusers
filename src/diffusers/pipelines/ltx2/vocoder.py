@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...models.modeling_utils import ModelMixin
 
 
@@ -276,7 +277,7 @@ class ResBlock(nn.Module):
         return x
 
 
-class LTX2Vocoder(ModelMixin, ConfigMixin):
+class LTX2Vocoder(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     LTX 2.0 vocoder for converting generated mel spectrograms back to audio waveforms.
     """
@@ -476,7 +477,7 @@ class MelSTFT(nn.Module):
         return log_mel, magnitude, phase, energy
 
 
-class LTX2VocoderWithBWE(ModelMixin, ConfigMixin):
+class LTX2VocoderWithBWE(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     LTX-2.X vocoder with bandwidth extension (BWE) upsampling. The vocoder and the BWE module run in sequence, with the
     BWE module upsampling the vocoder output waveform to a higher sampling rate. The BWE module itself has the same

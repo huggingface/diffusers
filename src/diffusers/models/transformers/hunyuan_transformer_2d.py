@@ -15,6 +15,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, FeedForward
@@ -198,7 +199,7 @@ class HunyuanDiTBlock(nn.Module):
         return hidden_states
 
 
-class HunyuanDiT2DModel(ModelMixin, AttentionMixin, ConfigMixin):
+class HunyuanDiT2DModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginalModelMixin):
     """
     HunYuanDiT: Diffusion model with a Transformer backbone.
 

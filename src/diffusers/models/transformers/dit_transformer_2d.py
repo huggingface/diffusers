@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ..attention import BasicTransformerBlock
 from ..embeddings import PatchEmbed
@@ -28,7 +29,7 @@ from ..modeling_utils import ModelMixin
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class DiTTransformer2DModel(ModelMixin, ConfigMixin):
+class DiTTransformer2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A 2D Transformer model as introduced in DiT (https://huggingface.co/papers/2212.09748).
 

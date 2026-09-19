@@ -1,0 +1,145 @@
+{
+  "anima": [
+    "infer_qwen3_config",
+    "infer_text_conditioner_config"
+  ],
+  "audioldm": [
+    "DEFAULT_CONFIG",
+    "create_transformers_vocoder_config",
+    "create_unet_diffusers_config",
+    "create_vae_diffusers_config"
+  ],
+  "audioldm2": [
+    "DEFAULT_CONFIG",
+    "create_transformers_vocoder_config",
+    "create_unet_diffusers_config",
+    "create_vae_diffusers_config"
+  ],
+  "blip_diffusion": [
+    "BLIP2_CONFIG"
+  ],
+  "consistency": [
+    "CD_SCHEDULER_CONFIG",
+    "CT_IMAGENET_64_SCHEDULER_CONFIG",
+    "CT_LSUN_256_SCHEDULER_CONFIG",
+    "IMAGENET_64_UNET_CONFIG",
+    "LSUN_256_UNET_CONFIG",
+    "TEST_UNET_CONFIG"
+  ],
+  "cosmos": [
+    "CONTROLNET_CONFIGS",
+    "TRANSFORMER_CONFIGS",
+    "VAE_CONFIGS"
+  ],
+  "deepfloyd_if": [
+    "create_unet_diffusers_config",
+    "superres_create_unet_diffusers_config"
+  ],
+  "flux2": [
+    "get_flux2_transformer_config"
+  ],
+  "gligen": [
+    "create_unet_config",
+    "create_vae_config"
+  ],
+  "hunyuan_video": [
+    "TRANSFORMER_CONFIGS"
+  ],
+  "hunyuan_video15": [
+    "GUIDANCE_CONFIGS",
+    "SCHEDULER_CONFIGS",
+    "TRANSFORMER_CONFIGS"
+  ],
+  "joyimage": [
+    "TRANSFORMER_CONFIG"
+  ],
+  "kandinsky": [
+    "INPAINT_UNET_CONFIG",
+    "MOVQ_CONFIG",
+    "PRIOR_CONFIG",
+    "UNET_CONFIG"
+  ],
+  "ltx": [
+    "get_spatial_latent_upsampler_config",
+    "get_transformer_config",
+    "get_vae_config"
+  ],
+  "ltx2": [
+    "get_ltx2_audio_vae_config",
+    "get_ltx2_connectors_config",
+    "get_ltx2_diffusion_video_vae_config",
+    "get_ltx2_spatial_latent_upsampler_config",
+    "get_ltx2_temporal_latent_upsampler_config",
+    "get_ltx2_transformer_config",
+    "get_ltx2_video_vae_config",
+    "get_ltx2_vocoder_config"
+  ],
+  "minimax_h3": [
+    "MINIMAX_H3_AUDIO_VAE_FIXED_CONFIG",
+    "MINIMAX_H3_TEST_TRANSFORMER_CONFIG",
+    "MINIMAX_H3_TEST_VIDEO_VAE_CONFIG",
+    "MINIMAX_H3_TRANSFORMER_CONFIG",
+    "MINIMAX_H3_VIDEO_VAE_CONFIG",
+    "get_audio_vae_config"
+  ],
+  "musicldm": [
+    "DEFAULT_CONFIG",
+    "create_transformers_vocoder_config",
+    "create_unet_diffusers_config",
+    "create_vae_diffusers_config"
+  ],
+  "prx": [
+    "build_config",
+    "create_scheduler_config"
+  ],
+  "rae": [
+    "DECODER_CONFIGS"
+  ],
+  "shap_e": [
+    "PRIOR_CONFIG",
+    "PRIOR_IMAGE_CONFIG",
+    "RENDERER_CONFIG"
+  ],
+  "skyreels_v2": [
+    "get_transformer_config"
+  ],
+  "stable_audio3": [
+    "_infer_dit_config",
+    "_infer_duration_embedder_config",
+    "_infer_vae_config"
+  ],
+  "unclip": [
+    "DECODER_CONFIG",
+    "PRIOR_CONFIG",
+    "SUPER_RES_UNET_FIRST_STEPS_CONFIG",
+    "SUPER_RES_UNET_LAST_STEP_CONFIG"
+  ],
+  "unidiffuser": [
+    "SCHEDULER_CONFIG",
+    "create_text_decoder_config",
+    "create_text_decoder_config_big",
+    "create_text_decoder_config_test",
+    "create_unidiffuser_unet_config",
+    "create_unidiffuser_unet_config_big",
+    "create_unidiffuser_unet_config_test",
+    "create_vae_diffusers_config",
+    "create_vae_diffusers_config_big",
+    "create_vae_diffusers_config_test"
+  ],
+  "versatile_diffusion": [
+    "AUTOENCODER_CONFIG",
+    "IMAGE_UNET_CONFIG",
+    "SCHEDULER_CONFIG",
+    "TEXT_UNET_CONFIG",
+    "create_image_unet_diffusers_config",
+    "create_text_unet_diffusers_config",
+    "create_vae_diffusers_config"
+  ],
+  "wan": [
+    "get_transformer_config"
+  ],
+  "zero123": [
+    "create_unet_diffusers_config",
+    "create_vae_diffusers_config"
+  ]
+}

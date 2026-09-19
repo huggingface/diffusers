@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -373,7 +373,9 @@ class MiniMaxH3TransformerBlock(nn.Module):
         return hidden_states
 
 
-class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin, CacheMixin):
+class MiniMaxH3Transformer3DModel(
+    ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin, CacheMixin, FromOriginalModelMixin
+):
     r"""
     A Transformer model for joint video + audio generation, introduced in MiniMax-H3.
 

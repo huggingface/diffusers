@@ -21,6 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.import_utils import is_transformers_available
@@ -110,8 +111,10 @@ def _build_encoder(
         )
         model = SiglipVisionModel(config)
         # See dinov2 comment above.
-        model.vision_model.post_layernorm.weight = None
-        model.vision_model.post_layernorm.bias = None
+        # Transformers 5 exposes the vision backbone directly on SiglipVisionModel.
+        vision_model = getattr(model, "vision_model", model)
+        vision_model.post_layernorm.weight = None
+        vision_model.post_layernorm.bias = None
     elif encoder_type == "mae":
         config = ViTMAEConfig(
             hidden_size=hidden_size,
@@ -390,7 +393,7 @@ class RAEDecoder(nn.Module):
         return RAEDecoderOutput(logits=logits)
 
 
-class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
+class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     Representation Autoencoder (RAE) model for encoding images to latents and decoding latents to images.
 

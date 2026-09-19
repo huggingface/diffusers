@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...schedulers import ConsistencyDecoderScheduler
 from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
@@ -48,7 +49,7 @@ class ConsistencyDecoderVAEOutput(BaseOutput):
     latent_dist: "DiagonalGaussianDistribution"
 
 
-class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
+class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     The consistency decoder used with DALL-E 3.
 

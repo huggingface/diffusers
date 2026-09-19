@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin, UNet2DConditionLoadersMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, UNet2DConditionLoadersMixin
 from ...utils import BaseOutput
 from ..attention import AttentionMixin, BasicTransformerBlock
 from ..attention_processor import (
@@ -31,7 +31,9 @@ class PriorTransformerOutput(BaseOutput):
     predicted_image_embedding: torch.Tensor
 
 
-class PriorTransformer(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin):
+class PriorTransformer(
+    ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin, FromOriginalModelMixin
+):
     """
     A Prior Transformer model.
 

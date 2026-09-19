@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...models.attention import AttentionModuleMixin
 from ...models.attention_dispatch import dispatch_attention_fn
 from ...models.modeling_utils import ModelMixin
@@ -78,7 +79,7 @@ class LTX2DurationAttentionPooler(nn.Module, AttentionModuleMixin):
         return self.processor(self, tokens)
 
 
-class LTX2DurationHead(ModelMixin, ConfigMixin):
+class LTX2DurationHead(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     Predicts the natural duration of the shot implied by a caption, from the LTX-2 text connector outputs.
 

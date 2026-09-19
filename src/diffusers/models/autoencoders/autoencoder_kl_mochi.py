@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
@@ -652,7 +653,7 @@ class MochiDecoder3D(nn.Module):
         return hidden_states, new_conv_cache
 
 
-class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
+class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images. Used in
     [Mochi 1 preview](https://github.com/genmoai/models).

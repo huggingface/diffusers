@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
 from ..embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
@@ -36,7 +37,7 @@ class UNet2DOutput(BaseOutput):
     sample: torch.Tensor
 
 
-class UNet2DModel(ModelMixin, ConfigMixin):
+class UNet2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A 2D UNet model that takes a noisy sample and a timestep and returns a sample shaped output.
 
