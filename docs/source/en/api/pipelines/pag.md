@@ -407,6 +407,11 @@ images[0]
 	- all
 	- __call__
 
+## StableDiffusionControlNetPAGImg2ImgPipeline
+[[autodoc]] StableDiffusionControlNetPAGImg2ImgPipeline
+	- all
+	- __call__
+
 ## StableDiffusionXLPAGImg2ImgPipeline
 [[autodoc]] StableDiffusionXLPAGImg2ImgPipeline
 	- all
