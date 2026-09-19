@@ -187,10 +187,12 @@ class TestStableDiffusion3Pipeline(StableDiffusion3PipelineTesterConfig, Pipelin
         inputs = self.get_dummy_inputs()
 
         output_full = pipe(**inputs)[0]
+        assert pipe.skip_guidance_layers is None
 
         inputs_with_skip = inputs.copy()
         inputs_with_skip["skip_guidance_layers"] = [0]
         output_skip = pipe(**inputs_with_skip)[0]
+        assert pipe.skip_guidance_layers == [0]
 
         assert not torch.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
         assert output_full.shape == output_skip.shape, "Outputs should have the same shape"
