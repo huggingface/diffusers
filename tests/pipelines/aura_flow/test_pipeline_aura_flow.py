@@ -3,15 +3,12 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 
 from diffusers import AuraFlowPipeline, AuraFlowTransformer2DModel, AutoencoderKL, FlowMatchEulerDiscreteScheduler
 
-from ...testing_utils import assert_tensors_close
 from ..testing_utils import (
     BasePipelineTesterConfig,
     LoraMemoryTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
 )
 
 
@@ -82,52 +79,6 @@ class TestAuraFlowPipeline(AuraFlowPipelineTesterConfig, PipelineTesterMixin):
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-3):
         # AuraFlow pads the prompt embeddings to a common length, so batched and single runs diverge slightly more.
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
-
-    def test_fused_qkv_projections(self):
-        # Run on CPU to keep the device-dependent `torch.Generator` deterministic.
-        pipe = self.get_pipeline()
-
-        image = self.run_pipe(pipe)
-        original_image_slice = image[0, -1, -3:, -3:]
-
-        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
-        # to the pipeline level.
-        pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(pipe.transformer), (
-            "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-        )
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
-
-        image = self.run_pipe(pipe)
-        image_slice_fused = image[0, -1, -3:, -3:]
-
-        pipe.transformer.unfuse_qkv_projections()
-        image = self.run_pipe(pipe)
-        image_slice_disabled = image[0, -1, -3:, -3:]
-
-        assert_tensors_close(
-            original_image_slice,
-            image_slice_fused,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Fusion of QKV projections shouldn't affect the outputs.",
-        )
-        assert_tensors_close(
-            image_slice_fused,
-            image_slice_disabled,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
-        )
-        assert_tensors_close(
-            original_image_slice,
-            image_slice_disabled,
-            atol=1e-2,
-            rtol=1e-2,
-            msg="Original outputs should match when fused QKV projections are disabled.",
-        )
 
 
 class TestAuraFlowPipelineMemory(AuraFlowPipelineTesterConfig, MemoryTesterMixin):

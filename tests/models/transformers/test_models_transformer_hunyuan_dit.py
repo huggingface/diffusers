@@ -20,6 +20,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionTesterMixin,
     BaseModelTesterConfig,
     ModelTesterMixin,
     TrainingTesterMixin,
@@ -123,6 +124,10 @@ class TestHunyuanDiT(HunyuanDiTTesterConfig, ModelTesterMixin):
     def test_output(self, base_model_output):
         batch_size = self.get_dummy_inputs()[self.main_input_name].shape[0]
         super().test_output(base_model_output, expected_output_shape=(batch_size,) + self.output_shape)
+
+
+class TestHunyuanDiTAttention(HunyuanDiTTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for HunyuanDiT."""
 
 
 class TestHunyuanDiTTraining(HunyuanDiTTesterConfig, TrainingTesterMixin):
