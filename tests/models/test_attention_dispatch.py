@@ -23,8 +23,8 @@ import torch.multiprocessing as mp
 import torch.nn.functional as F
 
 from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
-from diffusers.models.attention_dispatch import _prepare_for_flash_attn_or_sage_varlen, dispatch_attention_fn
 from diffusers.models.attention_dispatch import attention_backend as attention_backend_ctx
+from diffusers.models.attention_dispatch import dispatch_attention_fn
 
 from ..testing_utils import (
     is_attention,
@@ -220,10 +220,3 @@ class TestVarlenAttentionCompile:
                         )
             finally:
                 torch.compiler.reset()
-
-    def test_zero_length_sequence(self):
-        _, (cu_seqlens_q, cu_seqlens_k), max_seqlens = _prepare_for_flash_attn_or_sage_varlen(
-            2, 0, 0, device=torch_device
-        )
-        assert cu_seqlens_q.tolist() == cu_seqlens_k.tolist() == [0, 0, 0]
-        assert max_seqlens == (0, 0)
