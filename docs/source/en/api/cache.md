@@ -46,3 +46,9 @@ Cache methods speedup diffusion transformers by storing and reusing intermediate
 [[autodoc]] MagCacheConfig
 
 [[autodoc]] apply_mag_cache
+
+## SeaCacheConfig
+
+[[autodoc]] SeaCacheConfig
+
+[[autodoc]] apply_sea_cache

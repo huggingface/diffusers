@@ -20,6 +20,7 @@ from .autoencoder_kl_minimax_h3 import AutoencoderKLMiniMaxH3
 from .autoencoder_kl_minimax_h3_audio import AutoencoderKLMiniMaxH3Audio
 from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
+from .autoencoder_kl_qwenimage21 import AutoencoderKLQwenImage21
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
 from .autoencoder_kl_wan import AutoencoderKLWan
 from .autoencoder_longcat_audio_dit import LongCatAudioDiTVae
