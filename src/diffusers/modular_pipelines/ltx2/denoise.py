@@ -14,7 +14,6 @@
 
 
 import inspect
-from typing import Any
 
 import torch
 
@@ -184,7 +183,7 @@ class LTX2ConditionLoopBeforeDenoiser(ModularPipelineBlocks):
 # Default per-pass conditioning map for `LTX2LoopDenoiser`: transformer argument -> block-state attribute names
 # indexed [cond, uncond, stg, modality]. STG and modality-isolation reuse the conditional (positive) tensors and
 # differ only in their per-pass model flags, which the denoiser sets after preparation.
-_DEFAULT_GUIDER_INPUT_FIELDS = {
+_GUIDER_INPUT_FIELDS = {
     "encoder_hidden_states": (
         "connector_prompt_embeds",
         "negative_connector_prompt_embeds",
@@ -215,36 +214,12 @@ _DEFAULT_GUIDER_INPUT_FIELDS = {
 class LTX2LoopDenoiser(ModularPipelineBlocks):
     model_name = "ltx2"
 
-    def __init__(self, guider_input_fields: dict[str, Any] = _DEFAULT_GUIDER_INPUT_FIELDS):
-        """Initialize the joint video+audio denoiser block for LTX-2.X.
-
-        Args:
-            guider_input_fields: Maps each transformer argument (e.g. "encoder_hidden_states") to the block-state
-                attribute names the guiders read for each guidance pass. Each value is a 4-tuple of names indexed
-                [cond, uncond, stg, modality] -- for example {"encoder_hidden_states": ("connector_prompt_embeds",
-                "negative_connector_prompt_embeds", "connector_prompt_embeds", "connector_prompt_embeds")} reads the
-                positive embeds for the conditional/STG/modality passes and the negative embeds for the unconditional
-                pass. A guider builds only the passes it declares active, so a swapped-in guider that uses fewer passes
-                (e.g. `ClassifierFreeGuidance` -> cond/uncond) reads only the first two slots.
-
-        Note:
-            `audio_num_frames`, `video_coords`, and `audio_coords` reach this block via the `denoiser_input_fields` tag
-            (their producer blocks declare `kwargs_type="denoiser_input_fields"`), not as named inputs. In a full
-            pipeline they arrive automatically; when running this block standalone (without those upstream blocks) they
-            must be passed through `denoiser_input_fields={...}` -- passing them as plain named kwargs is silently
-            ignored (modular.md's `kwargs_type` standalone gotcha).
-        """
-        if not isinstance(guider_input_fields, dict):
-            raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
-        self._guider_input_fields = guider_input_fields
-        super().__init__()
-
     @property
     def description(self) -> str:
         return (
             "Joint video+audio denoiser. Runs the transformer once per guidance pass (each a single batch), with "
             "each pass's conditioning assembled by the guiders via `prepare_inputs_from_block_state` (driven by "
-            "`guider_input_fields`) and unioned across the video `guider` and audio `audio_guider`; the per-pass "
+            "`_GUIDER_INPUT_FIELDS`) and unioned across the video `guider` and audio `audio_guider`; the per-pass "
             "model flags (STG blocks, modality isolation) are set by identifier afterwards. Converts each pass's "
             "velocity to x0 and delegates the per-modality CFG + STG + modality-isolation combine to the two guiders."
         )
@@ -303,37 +278,51 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
             ),
-            InputParam(
-                "use_cross_timestep",
-                type_hint=bool,
-                default=True,
-                description="Whether to condition the transformer on a separate per-token cross timestep (LTX-2.3+).",
-            ),
             InputParam.template("attention_kwargs"),
         ]
-        # The per-pass conditioning tensors the guiders read off block_state, declared from the field map so a
-        # custom `guider_input_fields` stays self-describing.
-        guider_input_names = []
-        for value in self._guider_input_fields.values():
-            guider_input_names.extend(value if isinstance(value, tuple) else (value,))
-        for name in dict.fromkeys(guider_input_names):
-            inputs.append(
-                InputParam(
-                    name,
-                    type_hint=torch.Tensor,
-                    required=True,
-                    description="Per-pass text conditioning read by the guiders via `guider_input_fields`.",
-                )
-            )
+        # The text conditioning the guiders read off block_state, per `_GUIDER_INPUT_FIELDS`. The negative tensors
+        # exist only under classifier-free guidance.
+        inputs += [
+            InputParam(
+                "connector_prompt_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Video-branch text conditioning (cond), expanded per prompt.",
+            ),
+            InputParam(
+                "connector_audio_prompt_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Audio-branch text conditioning (cond), expanded per prompt.",
+            ),
+            InputParam(
+                "connector_attention_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Binary text attention mask (cond), expanded per prompt.",
+            ),
+            InputParam(
+                "negative_connector_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Video-branch text conditioning (uncond); read only under classifier-free guidance.",
+            ),
+            InputParam(
+                "negative_connector_audio_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Audio-branch text conditioning (uncond); read only under classifier-free guidance.",
+            ),
+            InputParam(
+                "negative_connector_attention_mask",
+                type_hint=torch.Tensor,
+                description="Binary text attention mask (uncond); read only under classifier-free guidance.",
+            ),
+        ]
         return inputs
 
     @torch.no_grad()
@@ -353,7 +342,7 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             height=latent_height,
             width=latent_width,
             fps=block_state.frame_rate,
-            use_cross_timestep=block_state.use_cross_timestep,
+            use_cross_timestep=components.use_cross_timestep,
             attention_kwargs=block_state.attention_kwargs,
             perturbation_mask=None,
         )
@@ -362,13 +351,31 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
         components.audio_guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
         # Each guider maps block-state conditioning into one identifier-tagged batch per active pass via
-        # `_guider_input_fields` (transformer arg -> per-pass block-state attribute names, indexed
+        # `_GUIDER_INPUT_FIELDS` (transformer arg -> per-pass block-state attribute names, indexed
         # [cond, uncond, stg, modality]). A pass runs if *either* modality wants it, so union both guiders' batches
         # by identifier (same identifier => identical conditioning, built from the same map).
         identifier_key = LTX2Guidance._identifier_key
+        if any(
+            "pred_uncond" in guider.active_predictions() for guider in (components.guider, components.audio_guider)
+        ):
+            missing = [
+                name
+                for name in (
+                    "negative_connector_prompt_embeds",
+                    "negative_connector_audio_prompt_embeds",
+                    "negative_connector_attention_mask",
+                )
+                if getattr(block_state, name, None) is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"The guider runs classifier-free guidance but the unconditional conditioning {missing} is "
+                    "missing. The text encoder produces it when the pipeline's guider has classifier-free guidance "
+                    "enabled; when running the blocks separately, pass a `negative_prompt` to the text encoder."
+                )
         batches_by_id = {}
         for guider in (components.guider, components.audio_guider):
-            for batch in guider.prepare_inputs_from_block_state(block_state, self._guider_input_fields):
+            for batch in guider.prepare_inputs_from_block_state(block_state, _GUIDER_INPUT_FIELDS):
                 batches_by_id.setdefault(getattr(batch, identifier_key), batch)
         guider_state = list(batches_by_id.values())
 
@@ -401,7 +408,7 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
         # against `LTX2Pipeline` on fp32 and treat bf16 as close-but-not-bitwise.
         for batch in guider_state:
             components.guider.prepare_models(components.transformer)
-            cond_kwargs = {name: getattr(batch, name) for name in self._guider_input_fields}
+            cond_kwargs = {name: getattr(batch, name) for name in _GUIDER_INPUT_FIELDS}
             cond_kwargs["spatio_temporal_guidance_blocks"] = batch.spatio_temporal_guidance_blocks
             cond_kwargs["isolate_modalities"] = batch.isolate_modalities
             with components.transformer.cache_context(getattr(batch, identifier_key)):
@@ -505,11 +512,8 @@ class LTX2Image2VideoLoopAfterDenoiser(ModularPipelineBlocks):
             InputParam(
                 "num_frames",
                 type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                required=True,
+                description="The number of frames in the generated video.",
             ),
         ]
 
