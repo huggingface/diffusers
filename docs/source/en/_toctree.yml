@@ -389,6 +389,8 @@
         title: Lumina2Transformer2DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/magi_transformer3d
+        title: MagiTransformer3DModel
       - local: api/models/minimax_h3_transformer3d
         title: MiniMaxH3Transformer3DModel
       - local: api/models/minimax_music3_transformer
@@ -481,6 +483,8 @@
         title: AutoencoderKLLTX2Video
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
+      - local: api/models/autoencoderkl_magi
+        title: AutoencoderKLMagi
       - local: api/models/autoencoderkl_magvit
         title: AutoencoderKLMagvit
       - local: api/models/autoencoderkl_minimax_h3
@@ -729,6 +733,8 @@
         title: LTX-2
       - local: api/pipelines/ltx_video
         title: LTXVideo
+      - local: api/pipelines/magi
+        title: MAGI-1
       - local: api/pipelines/minimax_music3
         title: MiniMax Music 3
       - local: api/pipelines/minimax_h3
@@ -812,6 +818,8 @@
       title: LCMScheduler
     - local: api/schedulers/lms_discrete
       title: LMSDiscreteScheduler
+    - local: api/schedulers/magi_euler
+      title: MagiEulerScheduler
     - local: api/schedulers/minimax_h3
       title: MiniMaxH3Scheduler
     - local: api/schedulers/pndm

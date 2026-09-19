@@ -131,6 +131,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
         ("stable-diffusion-3", _create_default_map_fn("StableDiffusion3ModularPipeline")),
+        ("magi", _create_default_map_fn("MagiModularPipeline")),
         ("wan", _wan_map_fn),
         ("wan-animate-2", _create_default_map_fn("WanAnimate2ModularPipeline")),
         ("wan-animate-2-distilled", _create_default_map_fn("WanAnimate2DistilledModularPipeline")),
