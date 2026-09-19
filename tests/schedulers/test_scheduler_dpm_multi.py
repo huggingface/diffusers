@@ -366,3 +366,27 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+    def test_squaredcos_cap_v2(self):
+        scheduler_class = self.scheduler_classes[0]
+        num_inference_steps = 20
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+
+        for sigma_key in ["use_karras_sigmas", "use_lu_lambdas", "use_exponential_sigmas", "use_beta_sigmas"]:
+            scheduler_config = self.get_scheduler_config(
+                beta_schedule="squaredcos_cap_v2",
+                **{sigma_key: True},
+            )
+            scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(num_inference_steps)
+
+            assert scheduler.timesteps.dtype == torch.float32
+            assert len(scheduler.timesteps.unique()) == num_inference_steps
+
+            prev_sample = sample
+            for t in scheduler.timesteps:
+                residual = model(prev_sample, t)
+                prev_sample = scheduler.step(residual, t, prev_sample).prev_sample
+
+            assert prev_sample is not None
