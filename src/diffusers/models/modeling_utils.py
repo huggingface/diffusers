@@ -138,6 +138,37 @@ if is_accelerate_available():
     from accelerate.utils import load_offloaded_weights, save_offload_index
 
 
+def _get_superseded_checkpoint_files(save_directory: str, weights_name_pattern: str) -> list[str]:
+    """List checkpoint files left by an earlier save that the current one supersedes.
+
+    A save writes either `.bin` or `.safetensors`, as a single file or as shards plus an index.
+    Re-saving into the same directory with a different container or layout must remove the previous
+    artifacts: `from_pretrained` prefers sharded and safetensors checkpoints, so survivors shadow
+    the freshly written weights and get loaded silently.
+
+    Only files belonging to the same variant are returned -- checkpoints of other variants (e.g.
+    `ema`) coexist in the same directory and must be preserved.
+    """
+    # `weights_name_pattern` looks like "diffusion_pytorch_model{suffix}.safetensors" or
+    # "...ema{suffix}.bin"; stripping the container and the shard placeholder leaves the stem every
+    # artifact of this save shares, e.g. "diffusion_pytorch_model" or "diffusion_pytorch_model.ema".
+    stem = weights_name_pattern.replace(".bin", "").replace(".safetensors", "").replace("{suffix}", "")
+    superseded = []
+    for filename in os.listdir(save_directory):
+        if not os.path.isfile(os.path.join(save_directory, filename)) or not filename.startswith(stem):
+            continue
+        suffix = filename[len(stem) :]
+        # Single-file weights and sharded indexes of this variant are always superseded. Shards are
+        # recognized by the same `-00001-of-00005` marker used when splitting the state dict.
+        if suffix in (".bin", ".safetensors", ".bin.index.json", ".safetensors.index.json"):
+            superseded.append(filename)
+        elif suffix.endswith((".bin", ".safetensors")):
+            stem_without_ext = suffix[: -len(".bin")] if suffix.endswith(".bin") else suffix[: -len(".safetensors")]
+            if _REGEX_SHARD.fullmatch(stem_without_ext) is not None:
+                superseded.append(filename)
+    return superseded
+
+
 def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
     from ..hooks.group_offloading import _get_group_onload_device
 
@@ -803,21 +834,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             # Clean the folder from a previous save
             if is_main_process:
-                for filename in os.listdir(save_directory):
+                for filename in _get_superseded_checkpoint_files(save_directory, weights_name_pattern):
                     if filename in state_dict_split.filename_to_tensors.keys():
                         continue
-                    full_filename = os.path.join(save_directory, filename)
-                    if not os.path.isfile(full_filename):
-                        continue
-                    weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
-                    weights_without_ext = weights_without_ext.replace("{suffix}", "")
-                    filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
-                    # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                    if (
-                        filename.startswith(weights_without_ext)
-                        and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
-                    ):
-                        os.remove(full_filename)
+                    os.remove(os.path.join(save_directory, filename))
 
             for filename, tensors in state_dict_split.filename_to_tensors.items():
                 shard = {tensor: state_dict[tensor].contiguous() for tensor in tensors}
