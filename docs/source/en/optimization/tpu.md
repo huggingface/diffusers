@@ -126,8 +126,7 @@ image.save("output.png")
 
 ## Tensor parallelism
 
-Shard a model too large for one chip across several with [`~ModelMixin.enable_parallelism`], see [Tensor parallelism](../training/distributed_inference#tensor-parallelism) for the full
-guide.
+Shard a transformer too large for one chip across several with [`~ModelMixin.enable_parallelism`]. Pass a `TensorParallelConfig` with a TPU `DeviceMesh`. For general TP details, (`_tp_plan`, colwise/rowwise), see the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide. Set `backend="tpu_dist"` and `DeviceMesh("tpu", ...)` here to enable tensor parallelism.
 
 ```python
 import torch
