@@ -273,8 +273,8 @@ fsdp_config:
   fsdp_version: 2
   fsdp_offload_params: false
   fsdp_sharding_strategy: HYBRID_SHARD
-  fsdp_auto_wrap_policy: TRANSFOMER_BASED_WRAP
-  fsdp_transformer_layer_cls_to_wrap: Flux2TransformerBlock, Flux2SingleTransformerBlock
+  fsdp_auto_wrap_policy: TRANSFORMER_BASED_WRAP
+  fsdp_transformer_layer_cls_to_wrap: Flux2TransformerBlock,Flux2SingleTransformerBlock
   fsdp_forward_prefetch: true
   fsdp_sync_module_states: false
   fsdp_state_dict_type: FULL_STATE_DICT
