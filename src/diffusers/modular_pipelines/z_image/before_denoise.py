@@ -97,7 +97,7 @@ def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor_spa
     Args:
         latents (torch.Tensor): The latent tensor. Must have 4 dimensions.
             Expected shapes: [batch, channels, height, width]
-        vae_scale_factor (int): The scale factor used by the VAE to compress image spatial dimension.
+        vae_scale_factor_spatial (int): The scale factor used by the VAE to compress image spatial dimension.
             By default, it is 16
     Returns:
         tuple[int, int]: The calculated image dimensions as (height, width)
