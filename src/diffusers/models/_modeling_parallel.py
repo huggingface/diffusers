@@ -186,6 +186,8 @@ class TensorParallelConfig:
             raise ValueError("`tp_degree` must be >= 1.")
 
     def setup(self, rank: int, world_size: int, device: torch.device, mesh: torch.distributed.device_mesh.DeviceMesh):
+        if mesh.size() > world_size:
+            raise ValueError(f"Tensor parallel degree ({mesh.size()}) cannot exceed the world size ({world_size}).")
         self._rank = rank
         self._world_size = world_size
         self._device = device

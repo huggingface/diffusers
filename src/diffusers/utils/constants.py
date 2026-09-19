@@ -35,6 +35,7 @@ SAFE_WEIGHTS_INDEX_NAME = "diffusion_pytorch_model.safetensors.index.json"
 SAFETENSORS_FILE_EXTENSION = "safetensors"
 FLASHPACK_WEIGHTS_NAME = "model.flashpack"
 FLASHPACK_FILE_EXTENSION = "flashpack"
+DCP_CONFIG_NAME = "dcp_config.json"
 GGUF_FILE_EXTENSION = "gguf"
 ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HF_ENDPOINT", "https://huggingface.co")
