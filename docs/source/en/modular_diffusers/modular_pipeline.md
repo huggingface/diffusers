@@ -441,7 +441,7 @@ pipe.save_pretrained("local/path", repo_id="my-username/flux2-custom-transformer
 
 Pass `overwrite_modular_index=False` to keep the loading specs in `modular_model_index.json` as they are. A saved component whose loading spec is empty is still filled in with the destination, since there is nothing to preserve.
 
-Note that moving the files any other way (uploading with `hf upload`, downloading a repository with `hf download --local-dir`) doesn't rewrite the index, so the copy still points to the old location; update the index manually in that case.
+Moving the files any other way doesn't rewrite the index. A copy downloaded with `hf download --local-dir` still works: when a pipeline is loaded from a local directory, every component whose files are present in that directory is loaded from it instead of the recorded repository. A copy uploaded with `hf upload` keeps pointing at the old location, so update the index manually in that case.
 
 A modular repository can also include custom pipeline blocks as Python code. This allows you to share specialized blocks that aren't native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
 

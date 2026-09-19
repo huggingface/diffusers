@@ -30,13 +30,23 @@ from tqdm.auto import tqdm
 from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin, FrozenDict
+from ..models.auto_model import AutoModel
+from ..models.modeling_utils import ModelMixin
 from ..pipelines.pipeline_loading_utils import (
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
     _unwrap_model,
+    filter_model_files,
     simple_get_class_obj,
 )
-from ..utils import PushToHubMixin, deprecate, is_accelerate_available, logging
+from ..utils import (
+    TRANSFORMERS_COMPONENT_AUX_FILES,
+    PushToHubMixin,
+    deprecate,
+    is_accelerate_available,
+    is_transformers_available,
+    logging,
+)
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 from ..utils.hub_utils import _resolve_revision, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache, is_compiled_module
@@ -59,10 +69,44 @@ from .modular_pipeline_utils import (
 )
 
 
+# classes whose components are loaded from weight files; a component without a type hint is loaded with `AutoModel`
+_MODEL_CLASSES = (ModelMixin, AutoModel)
+if is_transformers_available():
+    from transformers import PreTrainedModel
+
+    _MODEL_CLASSES = (*_MODEL_CLASSES, PreTrainedModel)
+
 if is_accelerate_available():
     import accelerate
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _is_local_component(
+    pretrained_model_name_or_path: str | os.PathLike | None, component_spec: ComponentSpec
+) -> bool:
+    """
+    Whether the component's files are in `pretrained_model_name_or_path`, a local pipeline directory: weight files for
+    a model, the config file its class saves for a diffusers component without weights (schedulers, guiders, ...), one
+    of `TRANSFORMERS_COMPONENT_AUX_FILES` for a transformers one (tokenizers, processors, ...).
+    """
+    if pretrained_model_name_or_path is None:
+        return False
+    component_dir = os.path.join(pretrained_model_name_or_path, component_spec.subfolder or "")
+    if not os.path.isdir(component_dir):
+        return False
+    filenames = os.listdir(component_dir)
+
+    class_obj = component_spec.type_hint
+    is_model = class_obj is None or issubclass(class_obj, _MODEL_CLASSES)
+
+    if is_model:
+        return len(filter_model_files(filenames)) > 0
+
+    if issubclass(class_obj, ConfigMixin):
+        return class_obj.config_name in filenames
+
+    return any(filename in filenames for filename in TRANSFORMERS_COMPONENT_AUX_FILES)
 
 
 # map regular pipeline to modular pipeline class name
@@ -1765,6 +1809,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     library, class_name, component_spec_dict = value
                     component_spec = self._dict_to_component_spec(name, component_spec_dict)
                     component_spec.default_creation_method = "from_pretrained"
+                    # a local copy of the repo (e.g. `hf download --local-dir`) keeps the original index, which
+                    # points at the Hub; load the components whose files are present locally from the copy
+                    if _is_local_component(pretrained_model_name_or_path, component_spec):
+                        component_spec.pretrained_model_name_or_path = pretrained_model_name_or_path
+                        component_spec.revision = None
                     self._component_specs[name] = component_spec
 
                 elif name in self._config_specs:
