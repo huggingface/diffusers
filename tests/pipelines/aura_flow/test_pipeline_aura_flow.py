@@ -72,8 +72,6 @@ class AuraFlowPipelineTesterConfig(BasePipelineTesterConfig):
             "guidance_scale": 5.0,
             "height": None,
             "width": None,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
-            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
             "output_type": "pt",
         }
 

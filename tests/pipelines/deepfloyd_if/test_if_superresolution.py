@@ -133,7 +133,6 @@ class IFSuperResolutionPipelineTesterConfig(BasePipelineTesterConfig):
             "image": image,
             "generator": self.get_generator(0),
             "num_inference_steps": 2,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

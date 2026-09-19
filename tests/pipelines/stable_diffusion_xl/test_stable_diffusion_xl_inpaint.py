@@ -179,8 +179,6 @@ class StableDiffusionXLInpaintPipelineTesterConfig(BasePipelineTesterConfig):
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "strength": 1.0,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
-            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
             "output_type": "pt",
         }
         return inputs
