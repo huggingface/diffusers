@@ -24,7 +24,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Union, get_args, get_origin, get_type_hints
 
-import httpx
 import numpy as np
 import PIL.Image
 import requests
@@ -42,6 +41,7 @@ from huggingface_hub.utils import (
     HfHubHTTPError,
     LocalEntryNotFoundError,
     OfflineModeIsEnabled,
+    httpx,
     validate_hf_hub_args,
 )
 from packaging import version
