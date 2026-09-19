@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest import mock
+
 import torch
 
 from diffusers import DDPMParallelScheduler
@@ -110,6 +112,51 @@ class DDPMParallelSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 1153.1833) < 1e-2
         assert abs(result_mean.item() - 0.5005) < 1e-3
+
+    def test_batch_step_no_noise_uses_configured_timestep_schedule(self):
+        schedules = [
+            {"timestep_spacing": "linspace", "num_inference_steps": 6},
+            {"timestep_spacing": "trailing", "num_inference_steps": 6},
+            {"timesteps": [16, 12, 5, 1]},
+        ]
+
+        for schedule_config in schedules:
+            scheduler_config = self.get_scheduler_config(
+                num_train_timesteps=17,
+                timestep_spacing=schedule_config.get("timestep_spacing", "leading"),
+            )
+            scheduler = self.scheduler_classes[0](**scheduler_config)
+            if "timesteps" in schedule_config:
+                scheduler.set_timesteps(timesteps=schedule_config["timesteps"])
+            else:
+                scheduler.set_timesteps(schedule_config["num_inference_steps"])
+
+            timesteps = scheduler.timesteps
+            samples = torch.linspace(-1, 1, timesteps.numel() * 12).reshape(timesteps.numel(), 3, 2, 2)
+            model_outputs = torch.linspace(1, -1, timesteps.numel() * 12).reshape(timesteps.numel(), 3, 2, 2)
+
+            batch_output = scheduler.batch_step_no_noise(model_outputs, timesteps, samples)
+            with mock.patch(
+                "diffusers.schedulers.scheduling_ddpm_parallel.randn_tensor",
+                side_effect=lambda shape, **kwargs: torch.zeros(
+                    shape, device=kwargs.get("device"), dtype=kwargs.get("dtype")
+                ),
+            ):
+                scalar_outputs = [
+                    scheduler.step(model_outputs[i : i + 1], timestep, samples[i : i + 1]).prev_sample
+                    for i, timestep in enumerate(timesteps)
+                ]
+
+            torch.testing.assert_close(batch_output, torch.cat(scalar_outputs))
+
+    def test_batch_step_no_noise_rejects_timestep_outside_configured_schedule(self):
+        scheduler = self.scheduler_classes[0](**self.get_scheduler_config(num_train_timesteps=17))
+        scheduler.set_timesteps(timesteps=[16, 12, 5, 1])
+
+        samples = torch.zeros(2, 3, 2, 2)
+        model_outputs = torch.zeros_like(samples)
+        with self.assertRaisesRegex(ValueError, "present in the configured inference schedule"):
+            scheduler.batch_step_no_noise(model_outputs, torch.tensor([16, 7]), samples)
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
