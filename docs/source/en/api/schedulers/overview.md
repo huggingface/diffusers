@@ -56,11 +56,61 @@ Many schedulers are implemented from the [k-diffusion](https://github.com/crowso
 
 All schedulers are built from the base [`SchedulerMixin`] class which implements low level utilities shared by all schedulers.
 
+## Discrete diffusion schedulers
+
+Discrete diffusion models denoise **token IDs** rather than latents, so their schedulers commit and resample
+positions instead of subtracting predicted noise. [`DiscreteDDIMScheduler`], [`UniformRefinementScheduler`],
+[`EntropyBoundScheduler`] and [`BlockRefinementScheduler`] share one contract, so a pipeline can swap one for
+another without touching its loop:
+
+```py
+scheduler.set_timesteps(num_inference_steps, device=device)
+sample = ...  # token IDs, `(batch_size, block_length)`
+for t in scheduler.timesteps:
+    logits = model(sample, ...).logits          # `(batch_size, block_length, vocab_size)`
+    sample = scheduler.step(logits, t, sample).prev_sample
+```
+
+- **`timesteps` is the corruption level `t`, a decreasing `float` in `(0, 1]`** — `1.0` is fully corrupted,
+  `0.0` is clean — with `num_inference_steps` entries starting at `1.0`. It is the loop variable; a scheduler
+  recovers its integer position from it (`index_for_timestep`) and then counts internally, exactly as the
+  continuous schedulers do, so per-step arithmetic never depends on float division.
+- **`step` takes `(model_output, timestep, sample)` and keyword-only `generator` / `return_dict`.** Everything
+  else — `temperature`, `top_k`, `top_p`, confidence thresholds, the entropy bound — is scheduler *config*, not
+  a per-call argument: `pipe.scheduler = UniformRefinementScheduler.from_config(pipe.scheduler.config,
+  temperature=0.7)`.
+- **Call `set_timesteps` once per block.** Block-diffusion pipelines denoise a sequence one block (or "canvas")
+  at a time, and `step_index` advances as the loop runs, so each block starts by rebuilding the schedule. That
+  also clears whatever per-block state a scheduler keeps.
+- **The two corruption processes differ in what an undecided position holds.** In the *absorbing* (masked)
+  process it holds `mask_token_id`, so the scheduler needs that ID in its config; in the *uniform* process every
+  position always holds a real token, and uncommitted ones are resampled each step.
+
+| Scheduler | Corruption process | Selects positions by |
+|---|---|---|
+| [`BlockRefinementScheduler`] | absorbing (masked) | confidence above `threshold`, plus an even per-step quota |
+| [`UniformRefinementScheduler`] | uniform | confidence above `threshold`, plus an even per-step quota |
+| [`DiscreteDDIMScheduler`] | uniform | the exact D3PM posterior (parameter-free) |
+| [`EntropyBoundScheduler`] | uniform | lowest-entropy positions whose joint entropy stays under `entropy_bound` |
+
+Every one of them returns a [`DiscreteSchedulerOutput`]:
+
+- `prev_sample` — the token IDs to feed the next step, the universal hand-off.
+- `pred_original_sample` — the predicted clean token at each position (the `x0` analog).
+- `sampled_probs` — the probability of the drawn token under the **unmodified** denoiser distribution, so a
+  confidence threshold means the same thing whatever `temperature` / `top_k` / `top_p` the draw used.
+- `pred_logits` — the distribution the tokens were drawn from, which is what a self-conditioning model expects.
+- `committed_mask` — positions that adopted the predicted token this step.
+- `edited_mask` — `None` unless the scheduler also overwrites already-committed positions.
+
 ## SchedulerMixin
 [[autodoc]] SchedulerMixin
 
 ## SchedulerOutput
 [[autodoc]] schedulers.scheduling_utils.SchedulerOutput
+
+## DiscreteSchedulerOutput
+[[autodoc]] schedulers.scheduling_utils.DiscreteSchedulerOutput
 
 ## KarrasDiffusionSchedulers
 

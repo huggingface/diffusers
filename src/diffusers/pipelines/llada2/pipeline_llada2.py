@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -21,8 +22,8 @@ import torch
 from tqdm.auto import tqdm
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...schedulers import BlockRefinementScheduler
-from ...utils import BaseOutput, logging, replace_example_docstring
+from ...schedulers import BlockRefinementScheduler, DiscreteSchedulerOutput
+from ...utils import BaseOutput, deprecate, logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 
 
@@ -41,7 +42,8 @@ EXAMPLE_DOC_STRING = """
         ...     model_id, trust_remote_code=True, dtype=torch.bfloat16, device_map="auto"
         ... )
         >>> tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-        >>> scheduler = BlockRefinementScheduler()
+        >>> # The scheduler owns sampling: temperature, top-k/p, and the confidence thresholds.
+        >>> scheduler = BlockRefinementScheduler(threshold=0.7, editing_threshold=0.5)
 
         >>> pipe = LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
         >>> output = pipe(prompt="What is the meaning of life?", gen_length=256)
@@ -73,12 +75,19 @@ class LLaDA2Pipeline(DiffusionPipeline):
 
     _callback_tensor_inputs = [
         "block_x",
-        "transfer_index",
-        "editing_transfer_index",
-        "sampled_tokens",
-        "sampled_probs",
         "active_block",
+        "pred_original_sample",
+        "sampled_probs",
+        "committed_mask",
+        "edited_mask",
     ]
+
+    # Pre-1.0 callback keys, still resolved for one release: old name -> current name.
+    _deprecated_callback_tensor_inputs = {
+        "transfer_index": "committed_mask",
+        "editing_transfer_index": "edited_mask",
+        "sampled_tokens": "pred_original_sample",
+    }
 
     def __init__(
         self,
@@ -186,9 +195,9 @@ class LLaDA2Pipeline(DiffusionPipeline):
         gen_length: int,
         block_length: int,
         num_inference_steps: int,
-        minimal_topk: int,
-        threshold: float,
-        sampling_method: str,
+        minimal_topk: int | None,
+        threshold: float | None,
+        sampling_method: str | None,
         output_type: str,
         callback_on_step_end: Callable | PipelineCallback | MultiPipelineCallbacks | None,
         callback_on_step_end_tensor_inputs: list[str] | None,
@@ -215,11 +224,15 @@ class LLaDA2Pipeline(DiffusionPipeline):
             raise ValueError(f"`block_length` must be > 0, got {block_length}.")
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
-        if minimal_topk <= 0:
+        # `threshold` / `sampling_method` / `minimal_topk` are deprecated here and validated by the scheduler's
+        # own `__init__` -- but this call path reaches the config through `register_to_config`, which merges
+        # values in without re-running that validation. These checks are what catches a bad *argument*, so they
+        # stay until the arguments themselves go at 1.0.0.
+        if minimal_topk is not None and minimal_topk <= 0:
             raise ValueError(f"`minimal_topk` must be > 0, got {minimal_topk}.")
-        if not (0.0 <= threshold <= 1.0) and not (threshold > 1.0):
+        if threshold is not None and threshold < 0.0:
             raise ValueError(f"`threshold` must be in [0, 1] (or > 1 to force top-k commits), got {threshold}.")
-        if sampling_method not in {"auto", "greedy", "multinomial"}:
+        if sampling_method is not None and sampling_method not in {"auto", "greedy", "multinomial"}:
             raise ValueError(
                 f"`sampling_method` must be one of {{'auto','greedy','multinomial'}}, got {sampling_method!r}."
             )
@@ -231,13 +244,126 @@ class LLaDA2Pipeline(DiffusionPipeline):
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        allowed_tensor_inputs = self._callback_tensor_inputs + list(self._deprecated_callback_tensor_inputs)
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+            k in allowed_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
-                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in allowed_tensor_inputs]}"
             )
+
+    @contextmanager
+    def _scheduler_config_overrides(self, overrides: dict[str, Any]):
+        """
+        Apply `overrides` to the scheduler's config for the duration of a call, then restore it.
+
+        Two things need this: handing the scheduler the tokenizer's `mask_token_id`, and honouring the deprecated
+        per-call sampling arguments for one release. Overriding in place rather than running against a reconfigured
+        copy keeps `self.scheduler` the object the loop actually steps, which is what callbacks, `step_index`
+        inspection, and anything else keyed on identity rely on.
+        """
+        if not overrides:
+            yield
+            return
+        previous = {key: self.scheduler.config.get(key, None) for key in overrides}
+        self.scheduler.register_to_config(**overrides)
+        try:
+            yield
+        finally:
+            self.scheduler.register_to_config(**previous)
+
+    # --- Denoising-loop control ---
+
+    @staticmethod
+    def _update_finished(
+        cur_x: torch.LongTensor,
+        pred_original_sample: torch.LongTensor,
+        final_transfer: torch.BoolTensor,
+        finished: torch.BoolTensor,
+        eos_token_id: int,
+        mask_token_id: int,
+        prompt_length: int,
+    ) -> torch.BoolTensor:
+        """
+        Mark rows finished once they commit an EOS with no unresolved position before it.
+
+        This is loop control, not scheduling, so it lives here rather than on the scheduler (where it used to sit as
+        `BlockRefinementScheduler.check_eos_finished`) — the pipeline can then drive any discrete scheduler.
+        """
+        for b in range(cur_x.shape[0]):
+            if finished[b]:
+                continue
+            eos_in_commits = (pred_original_sample[b][final_transfer[b]] == eos_token_id).any().item()
+            if not eos_in_commits:
+                continue
+            eos_pos = (cur_x[b] == eos_token_id).nonzero(as_tuple=True)
+            if len(eos_pos[0]) == 0:
+                continue
+            eos_pos = int(eos_pos[0][0].item())
+            # The first generated token sits at index `prompt_length`; allow EOS there.
+            if eos_pos < prompt_length:
+                continue
+            if (cur_x[b, prompt_length:eos_pos] != mask_token_id).all().item():
+                finished[b] = True
+        return finished
+
+    @staticmethod
+    def _resolve_transfer(
+        scheduler_output: DiscreteSchedulerOutput,
+        editable: torch.BoolTensor,
+        finished: torch.BoolTensor,
+        eos_early_stop: bool,
+    ) -> tuple[torch.BoolTensor, torch.BoolTensor]:
+        """
+        Turn a scheduler output into the positions this step is allowed to write.
+
+        The scheduler proposes; the pipeline decides. Prompt positions are frozen (`editable`) and rows that already
+        emitted EOS are frozen wholesale, so later blocks cannot extend them.
+        """
+        committed_mask = scheduler_output.committed_mask
+        edited_mask = scheduler_output.edited_mask
+        if edited_mask is None:
+            edited_mask = torch.zeros_like(committed_mask)
+        edited_mask = edited_mask & editable
+        final_transfer = (committed_mask | edited_mask) & editable
+        if eos_early_stop and finished.any():
+            final_transfer = final_transfer & ~finished[:, None]
+        return edited_mask, final_transfer
+
+    def _run_step_callback(
+        self,
+        callback_on_step_end: Callable | PipelineCallback | MultiPipelineCallbacks,
+        tensor_inputs: list[str],
+        *,
+        step: int,
+        timestep: torch.Tensor,
+        block_x: torch.LongTensor,
+        active_block: torch.BoolTensor,
+        scheduler_output: DiscreteSchedulerOutput,
+        edited_mask: torch.BoolTensor,
+    ) -> torch.LongTensor:
+        """Run `callback_on_step_end`, resolving the advertised tensor keys and their pre-1.0 aliases."""
+        available = {
+            "block_x": block_x,
+            "active_block": active_block,
+            "pred_original_sample": scheduler_output.pred_original_sample,
+            "sampled_probs": scheduler_output.sampled_probs,
+            "committed_mask": scheduler_output.committed_mask,
+            "edited_mask": edited_mask,
+        }
+        callback_kwargs = {}
+        for key in tensor_inputs:
+            renamed = self._deprecated_callback_tensor_inputs.get(key)
+            if renamed is not None:
+                deprecate(
+                    key,
+                    "1.0.0",
+                    f"The callback tensor input `{key}` is deprecated; use `{renamed}` instead.",
+                )
+            callback_kwargs[key] = available[renamed or key]
+        callback_outputs = callback_on_step_end(self, step, timestep, callback_kwargs)
+        return callback_outputs.pop("block_x", block_x)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -252,14 +378,14 @@ class LLaDA2Pipeline(DiffusionPipeline):
         gen_length: int = 2048,
         block_length: int | None = None,
         num_inference_steps: int = 32,
-        temperature: float = 0.0,
+        temperature: float | None = None,
         top_p: float | None = None,
         top_k: int | None = None,
-        sampling_method: str = "multinomial",
-        threshold: float = 0.7,
-        editing_threshold: float | None = 0.5,
+        sampling_method: str | None = None,
+        threshold: float | None = None,
+        editing_threshold: float | None = None,
         max_post_steps: int = 16,
-        minimal_topk: int = 1,
+        minimal_topk: int | None = None,
         eos_early_stop: bool = True,
         eos_token_id: int | None = None,
         mask_token_id: int | None = None,
@@ -299,32 +425,34 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 Block size for refinement. If not provided, the scheduler's configured `block_length` is used.
             num_inference_steps (`int`):
                 Number of refinement steps per block.
-            temperature (`float`):
-                Sampling temperature.
+            temperature (`float`, *optional*):
+                Deprecated. Sampling temperature; set it on the scheduler instead.
             top_p (`float`, *optional*):
-                Nucleus sampling cutoff.
+                Deprecated. Nucleus sampling cutoff; set it on the scheduler instead.
             top_k (`int`, *optional*):
-                Top-k sampling cutoff.
-            sampling_method (`str`):
-                Sampling method (`auto`, `greedy`, `multinomial`).
-            threshold (`float`):
-                Confidence threshold for committing tokens.
+                Deprecated. Top-k sampling cutoff; set it on the scheduler instead.
+            sampling_method (`str`, *optional*):
+                Deprecated. Sampling method (`auto`, `greedy`, `multinomial`); set it on the scheduler instead.
+            threshold (`float`, *optional*):
+                Deprecated. Confidence threshold for committing tokens; set it on the scheduler instead.
             editing_threshold (`float`, *optional*):
-                Confidence threshold for editing already-committed (non-mask) tokens. When positive, after all mask
-                tokens in a block are resolved, the pipeline continues refining: if the model predicts a different
-                token with confidence above this threshold, the existing token is replaced. Set to `None`, `0.0`, or a
-                negative value to disable editing. Defaults to `0.5`.
+                Deprecated. Confidence threshold for editing already-committed (non-mask) tokens; set it on the
+                scheduler instead. When positive, after all mask tokens in a block are resolved the pipeline keeps
+                refining: if the model predicts a different token with confidence above this threshold, the existing
+                token is replaced. `None`, `0.0`, or a negative value disables editing.
             max_post_steps (`int`):
                 Maximum number of additional refinement iterations after all mask tokens in a block are resolved. Only
-                used when `editing_threshold` is enabled. Defaults to `16`.
-            minimal_topk (`int`):
-                Minimum number of tokens to commit per step.
+                used when the scheduler's `editing_threshold` is enabled. Defaults to `16`.
+            minimal_topk (`int`, *optional*):
+                Deprecated and unused by the scheduler; it only ever capped `num_inference_steps` at `gen_length //
+                minimal_topk`.
             eos_early_stop (`bool`):
                 Whether to stop after committing EOS in a block.
             eos_token_id (`int`, *optional*):
                 EOS token ID to use for early stopping.
             mask_token_id (`int`, *optional*):
-                Mask token ID to use for the template.
+                Mask token ID to use for the template. Falls back to the tokenizer's `mask_token_id`, then to the
+                scheduler's configured `mask_token_id`.
             generator (`torch.Generator`, *optional*):
                 RNG for sampling.
             output_type (`str`, defaults to `"text"`):
@@ -334,10 +462,12 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 Whether to return a [`LLaDA2PipelineOutput`] instead of a tuple.
             callback_on_step_end (`Callable` or `PipelineCallback`, *optional*):
                 Callback executed after each refinement step with signature `callback_on_step_end(self, step: int,
-                timestep: int, callback_kwargs: Dict)`.
+                timestep: float, callback_kwargs: Dict)`. During the editing phase there is no schedule left to report,
+                so `timestep` repeats the last mask-filling timestep.
             callback_on_step_end_tensor_inputs (`List[str]`, *optional*):
-                Tensor keys to pass to the callback. Allowed keys: `block_x`, `transfer_index`,
-                `editing_transfer_index`, `sampled_tokens`, `sampled_probs`, `active_block`.
+                Tensor keys to pass to the callback. Allowed keys: `block_x`, `active_block`, `pred_original_sample`,
+                `sampled_probs`, `committed_mask`, `edited_mask`. The pre-1.0 names `transfer_index`,
+                `editing_transfer_index` and `sampled_tokens` still resolve, with a warning.
 
         Examples:
 
@@ -397,11 +527,45 @@ class LLaDA2Pipeline(DiffusionPipeline):
         if mask_token_id is None:
             mask_token_id = self.mask_token_id
         if mask_token_id is None:
-            raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
+            mask_token_id = getattr(self.scheduler.config, "mask_token_id", None)
+        if mask_token_id is None:
+            raise ValueError(
+                "`mask_token_id` must be provided (or available on the tokenizer, or configured on the scheduler)."
+            )
 
-        num_inference_steps = min(num_inference_steps, gen_length // minimal_topk)
+        # The scheduler owns logit shaping and the confidence thresholds. The per-call knobs below are
+        # deprecated; while they are still honoured -- and to hand the scheduler the tokenizer's
+        # `mask_token_id` -- they are applied to the scheduler config for the duration of the call.
+        scheduler_overrides: dict[str, Any] = {}
+        for name, value in (
+            ("temperature", temperature),
+            ("top_p", top_p),
+            ("top_k", top_k),
+            ("sampling_method", sampling_method),
+            ("threshold", threshold),
+            ("editing_threshold", editing_threshold),
+        ):
+            if value is None:
+                continue
+            deprecate(
+                name,
+                "1.0.0",
+                f"Passing `{name}` to `LLaDA2Pipeline.__call__` is deprecated; the scheduler owns sampling now. "
+                f"Set it there instead: "
+                f"`pipe.scheduler = BlockRefinementScheduler.from_config(pipe.scheduler.config, {name}=...)`.",
+            )
+            scheduler_overrides[name] = value
+        if minimal_topk is not None:
+            deprecate(
+                "minimal_topk",
+                "1.0.0",
+                "`minimal_topk` is deprecated and has no replacement: the scheduler never used it, and its only "
+                "effect here was to cap `num_inference_steps` at `gen_length // minimal_topk`.",
+            )
+        if getattr(self.scheduler.config, "mask_token_id", None) != mask_token_id:
+            scheduler_overrides["mask_token_id"] = mask_token_id
 
-        self.scheduler.set_timesteps(num_inference_steps, device=device, block_length=block_length)
+        num_inference_steps = min(num_inference_steps, gen_length // (minimal_topk or 1))
 
         # 3. Build attention mask and position IDs
         num_blocks = (prompt_length + gen_length + block_length - 1) // block_length
@@ -425,116 +589,161 @@ class LLaDA2Pipeline(DiffusionPipeline):
         self._num_timesteps = num_inference_steps * max(num_blocks - prefill_blocks, 0)
 
         finished = torch.zeros((batch_size,), device=device, dtype=torch.bool)
-        editing_enabled = editing_threshold is not None and editing_threshold > 0.0
         global_step = 0
 
         # 5. Block-wise refinement loop
-        outer_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy()
-        block_progress_bar_config = {**outer_progress_bar_config, "position": 0, "desc": "Blocks"}
-        for num_block in tqdm(range(prefill_blocks, num_blocks), **block_progress_bar_config):
-            current_window_end = (num_block + 1) * block_length
-            block_x = x[:, :current_window_end]
-            block_attn_mask = attn_mask[:, :current_window_end]
-            block_position_ids = position_ids[:, :current_window_end]
+        with self._scheduler_config_overrides(scheduler_overrides):
+            active_editing_threshold = self.scheduler.config.get("editing_threshold", None)
+            editing_enabled = active_editing_threshold is not None and active_editing_threshold > 0.0
 
-            # Identify which positions in the block are prompt (non-editable).
-            block_start_pos = num_block * block_length
-            prompt_mask_in_block = torch.zeros(block_length, device=device, dtype=torch.bool)
-            if block_start_pos < prompt_length:
-                prompt_end_in_block = min(prompt_length - block_start_pos, block_length)
-                prompt_mask_in_block[:prompt_end_in_block] = True
+            outer_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy()
+            block_progress_bar_config = {**outer_progress_bar_config, "position": 0, "desc": "Blocks"}
+            for num_block in tqdm(range(prefill_blocks, num_blocks), **block_progress_bar_config):
+                current_window_end = (num_block + 1) * block_length
+                block_x = x[:, :current_window_end]
+                block_attn_mask = attn_mask[:, :current_window_end]
+                block_position_ids = position_ids[:, :current_window_end]
 
-            post_steps = 0
-            step_idx = 0
-            should_continue = True
-            inner_progress_bar_config = {
-                **outer_progress_bar_config,
-                "position": 1,
-                "leave": False,
-                "desc": f"Block {num_block} Inference Steps",
-            }
-            progress_bar = tqdm(total=num_inference_steps, **inner_progress_bar_config)
+                # Prompt positions inside this block are frozen. The scheduler is free to propose edits
+                # there; the pipeline drops them, the way inpainting pipelines blend the original latents
+                # back in by mask. This replaces the scheduler's old `prompt_mask` argument.
+                block_start_pos = num_block * block_length
+                editable = torch.ones((1, block_length), device=device, dtype=torch.bool)
+                if block_start_pos < prompt_length:
+                    editable[:, : min(prompt_length - block_start_pos, block_length)] = False
 
-            while should_continue:
-                block_tokens = block_x[:, -block_length:]
-                masks_remaining = (block_tokens == mask_token_id).any()
+                # `step_index` advances on every `step`, so every block needs a fresh schedule; this also
+                # clears whatever per-block state the scheduler keeps.
+                self.scheduler.set_timesteps(num_inference_steps, device=device)
 
-                if not masks_remaining:
-                    post_steps += 1
+                inner_progress_bar_config = {
+                    **outer_progress_bar_config,
+                    "position": 1,
+                    "leave": False,
+                    "desc": f"Block {num_block} Inference Steps",
+                }
+                progress_bar = tqdm(total=num_inference_steps, **inner_progress_bar_config)
 
-                logits = self.model(block_x, attention_mask=block_attn_mask, position_ids=block_position_ids).logits
-                block_logits = logits[:, -block_length:, :]
+                masks_cleared = False
 
-                scheduler_output = self.scheduler.step(
-                    model_output=block_logits,
-                    timestep=step_idx,
-                    sample=block_tokens,
-                    mask_token_id=mask_token_id,
-                    temperature=temperature,
-                    top_p=top_p,
-                    top_k=top_k,
-                    sampling_method=sampling_method,
-                    threshold=threshold,
-                    editing_threshold=editing_threshold,
-                    minimal_topk=minimal_topk,
-                    prompt_mask=prompt_mask_in_block,
-                    generator=generator,
-                    return_dict=True,
-                )
+                # --- Mask-filling phase: one step per entry of the schedule ---
+                for t in self.scheduler.timesteps:
+                    # Kept for the editing phase, which has no timestep of its own to report to a callback.
+                    timestep = t
+                    block_tokens = block_x[:, -block_length:]
+                    active_block = block_tokens == mask_token_id
 
-                transfer_index = scheduler_output.transfer_index
-                editing_transfer_index = scheduler_output.editing_transfer_index
-                sampled_tokens = scheduler_output.sampled_tokens
-                sampled_probs = scheduler_output.sampled_probs
-                active_block = block_tokens == mask_token_id
-                final_transfer = transfer_index | editing_transfer_index
-
-                # Freeze rows that already emitted EOS so further blocks don't extend them.
-                if eos_early_stop and finished.any():
-                    final_transfer = final_transfer & ~finished[:, None]
-
-                if final_transfer.any():
-                    block_x[:, -block_length:] = torch.where(
-                        final_transfer, scheduler_output.prev_sample, block_tokens
+                    logits = self.model(
+                        block_x, attention_mask=block_attn_mask, position_ids=block_position_ids
+                    ).logits
+                    scheduler_output = self.scheduler.step(
+                        logits[:, -block_length:, :],
+                        t,
+                        block_tokens,
+                        generator=generator,
+                        return_dict=True,
                     )
 
-                if eos_early_stop and eos_token_id is not None:
-                    finished = self.scheduler.check_eos_finished(
-                        cur_x=block_x,
-                        sampled_tokens=scheduler_output.sampled_tokens,
-                        final_transfer=final_transfer,
-                        finished=finished,
-                        eos_token_id=eos_token_id,
-                        mask_token_id=mask_token_id,
-                        prompt_length=prompt_length,
+                    edited_mask, final_transfer = self._resolve_transfer(
+                        scheduler_output, editable, finished, eos_early_stop
                     )
+                    if final_transfer.any():
+                        block_x[:, -block_length:] = torch.where(
+                            final_transfer, scheduler_output.prev_sample, block_tokens
+                        )
 
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, global_step, step_idx, callback_kwargs)
-                    block_x = callback_outputs.pop("block_x", block_x)
+                    if eos_early_stop and eos_token_id is not None:
+                        finished = self._update_finished(
+                            cur_x=block_x,
+                            pred_original_sample=scheduler_output.pred_original_sample,
+                            final_transfer=final_transfer,
+                            finished=finished,
+                            eos_token_id=eos_token_id,
+                            mask_token_id=mask_token_id,
+                            prompt_length=prompt_length,
+                        )
 
-                global_step += 1
-                if masks_remaining:
-                    step_idx += 1
+                    if callback_on_step_end is not None:
+                        block_x = self._run_step_callback(
+                            callback_on_step_end,
+                            callback_on_step_end_tensor_inputs,
+                            step=global_step,
+                            timestep=t,
+                            block_x=block_x,
+                            active_block=active_block,
+                            scheduler_output=scheduler_output,
+                            edited_mask=edited_mask,
+                        )
+
+                    global_step += 1
                     progress_bar.update(1)
 
-                should_continue = self.scheduler.check_block_should_continue(
-                    step_idx=step_idx,
-                    masks_remaining=masks_remaining,
-                    editing_enabled=editing_enabled,
-                    editing_transfer_index=editing_transfer_index,
-                    post_steps=post_steps,
-                    max_post_steps=max_post_steps,
-                    finished=finished,
-                )
+                    if finished.all():
+                        break
+                    if not (block_x[:, -block_length:] == mask_token_id).any():
+                        masks_cleared = True
+                        break
 
-            progress_bar.close()
-            x[:, :current_window_end] = block_x
-            if eos_early_stop and finished.all():
-                break
+                # --- Editing phase: with every position resolved there is no unmasking left to schedule, so
+                # this sweeps for confident overwrites instead. `step_edit` takes no timestep and does not
+                # consume the schedule, which is what lets the phase run past `num_inference_steps`.
+                if editing_enabled and masks_cleared:
+                    post_steps = 0
+                    while post_steps <= max_post_steps and not finished.all():
+                        block_tokens = block_x[:, -block_length:]
+                        active_block = block_tokens == mask_token_id
+
+                        logits = self.model(
+                            block_x, attention_mask=block_attn_mask, position_ids=block_position_ids
+                        ).logits
+                        scheduler_output = self.scheduler.step_edit(
+                            logits[:, -block_length:, :],
+                            block_tokens,
+                            generator=generator,
+                            return_dict=True,
+                        )
+
+                        edited_mask, final_transfer = self._resolve_transfer(
+                            scheduler_output, editable, finished, eos_early_stop
+                        )
+                        if final_transfer.any():
+                            block_x[:, -block_length:] = torch.where(
+                                final_transfer, scheduler_output.prev_sample, block_tokens
+                            )
+
+                        if eos_early_stop and eos_token_id is not None:
+                            finished = self._update_finished(
+                                cur_x=block_x,
+                                pred_original_sample=scheduler_output.pred_original_sample,
+                                final_transfer=final_transfer,
+                                finished=finished,
+                                eos_token_id=eos_token_id,
+                                mask_token_id=mask_token_id,
+                                prompt_length=prompt_length,
+                            )
+
+                        if callback_on_step_end is not None:
+                            block_x = self._run_step_callback(
+                                callback_on_step_end,
+                                callback_on_step_end_tensor_inputs,
+                                step=global_step,
+                                timestep=timestep,
+                                block_x=block_x,
+                                active_block=active_block,
+                                scheduler_output=scheduler_output,
+                                edited_mask=edited_mask,
+                            )
+
+                        global_step += 1
+                        post_steps += 1
+
+                        if not edited_mask.any():
+                            break
+
+                progress_bar.close()
+                x[:, :current_window_end] = block_x
+                if eos_early_stop and finished.all():
+                    break
 
         # 6. Post-process output
         generated = x[:, : prompt_length + gen_length]
