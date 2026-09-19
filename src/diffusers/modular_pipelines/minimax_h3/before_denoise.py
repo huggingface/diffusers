@@ -24,6 +24,7 @@ from .modular_pipeline import (
     MiniMaxH3ModularPipeline,
     align_num_frames,
     audio_latent_num_frames,
+    frame_bounds,
     resolve_canvas_size,
     video_latent_num_frames,
 )
@@ -395,15 +396,17 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
         frames_per_chunk = components.vae_frames_per_chunk
         latents_per_chunk = components.vae_latents_per_chunk
         aligned_num_frames = align_num_frames(block_state.num_frames, frames_per_chunk, latents_per_chunk)
-        # The duration the request generates is the one of the *aligned* frame count, so that is what the ceiling has
-        # to hold for: 346 frames would otherwise pass the check and then be rounded up to 362, i.e. 15.083 seconds.
-        duration = aligned_num_frames / components.fps
-        if not components.min_duration <= duration <= components.max_duration:
+        # The bound is a frame count on the VAE's own grid, so the declared envelope is carried onto that grid at BOTH
+        # ends by the same upward snap the request gets. Comparing the aligned count against a ceiling left in seconds
+        # is what refuses 362 frames on a model documented to reach 15 seconds.
+        min_frames, max_frames = frame_bounds(
+            components.min_duration, components.max_duration, components.fps, frames_per_chunk, latents_per_chunk
+        )
+        if not min_frames <= aligned_num_frames <= max_frames:
             raise ValueError(
                 f"MiniMax-H3 generates between {components.min_duration} and {components.max_duration} seconds at "
                 f"{components.fps} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE can "
-                f"encode, must be between {int(components.min_duration * components.fps)} and "
-                f"{int(components.max_duration * components.fps)}, got {block_state.num_frames} (rounded up to "
+                f"encode, must be between {min_frames} and {max_frames}, got {block_state.num_frames} (rounded up to "
                 f"{aligned_num_frames})."
             )
         if aligned_num_frames != block_state.num_frames:
