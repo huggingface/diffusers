@@ -989,7 +989,12 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         resample: str = "lanczos",
         do_normalize: bool = True,
     ):
-        super().__init__()
+        super().__init__(
+            do_resize=do_resize,
+            vae_scale_factor=vae_scale_factor,
+            resample=resample,
+            do_normalize=do_normalize,
+        )
 
     @staticmethod
     def numpy_to_pil(images: np.ndarray) -> list[PIL.Image.Image]:
