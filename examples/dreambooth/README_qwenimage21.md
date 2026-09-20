@@ -89,6 +89,8 @@ accelerate launch train_dreambooth_lora_qwenimage21.py \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
   --use_8bit_adam \
+  --rank=4 \
+  --lora_alpha=4 \
   --learning_rate=2e-4 \
   --report_to="wandb" \
   --lr_scheduler="constant" \
