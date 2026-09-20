@@ -136,3 +136,22 @@ class DDIMInverseSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 542.6722) < 1e-2
         assert abs(result_mean.item() - 0.7066) < 1e-3
+
+    def test_sample_prediction_first_step_no_inf(self):
+        # Regression test for #10920: with `prediction_type="sample"` and `set_alpha_to_one=True`, the first
+        # inverse step has `alpha_prod_t == 1` (`beta_prod_t == 0`), and the `pred_epsilon` division by
+        # `beta_prod_t ** 0.5` used to produce `inf` values in `prev_sample`.
+        torch.manual_seed(0)
+        scheduler = DDIMInverseScheduler(num_train_timesteps=1000, prediction_type="sample", set_alpha_to_one=True)
+        scheduler.set_timesteps(num_inference_steps=50)
+
+        with torch.no_grad():
+            model_output = torch.randn((1, 1, 2, 2, 2))
+            sample = torch.randn((1, 1, 2, 2, 2))
+            prev_sample = scheduler.step(model_output, 0, sample).prev_sample
+
+        assert torch.isfinite(prev_sample).all()
+
+        # And the full loop stays finite for sample prediction as well.
+        sample = self.full_loop(prediction_type="sample", set_alpha_to_one=True)
+        assert torch.isfinite(sample).all()
