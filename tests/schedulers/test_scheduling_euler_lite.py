@@ -41,6 +41,14 @@ class TestStructuralContract(unittest.TestCase):
         bases = {getattr(b, "id", getattr(b, "attr", "")) for b in self.node.bases}
         self.assertEqual({"SchedulerMixin", "ConfigMixin"} & bases, {"SchedulerMixin", "ConfigMixin"})
 
+    def test_public_export(self):
+        root = Path(__file__).resolve().parents[2]
+        schedulers_init = (root / "src" / "diffusers" / "schedulers" / "__init__.py").read_text()
+        package_init = (root / "src" / "diffusers" / "__init__.py").read_text()
+        self.assertIn("scheduling_euler_lite", schedulers_init)
+        self.assertIn("EulerLiteScheduler", schedulers_init)
+        self.assertIn("EulerLiteScheduler", package_init)
+
 
 class TestSignatureContract(unittest.TestCase):
     """Deeper than the gate: verify the SIGNATURES, not just method presence."""
