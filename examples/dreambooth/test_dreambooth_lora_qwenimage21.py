@@ -19,8 +19,10 @@ import os
 import sys
 import tempfile
 
+import numpy as np
 import pytest
 import safetensors
+from PIL import Image
 
 from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
 
@@ -87,6 +89,43 @@ class TestDreamBoothLoRAQwenImage21(ExamplesTestsAccelerate):
                 --instance_prompt {self.instance_prompt}
                 --resolution 64
                 --offload
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+
+    def test_dreambooth_lora_custom_captions(self):
+        # `--caption_column` caches one prompt embedding per sample. `encode_prompt` returns no mask when
+        # nothing in the batch is padded — the usual case, since captions often tokenize to equal length —
+        # so the cache has to store a dense mask rather than slice a `None`.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from datasets import Dataset, Features, Value
+            from datasets import Image as ImageFeature
+
+            rng = np.random.default_rng(0)
+            rows = {
+                "image": [Image.fromarray(rng.integers(0, 255, (64, 64, 3), dtype=np.uint8)) for _ in range(2)],
+                "caption": ["a photo"] * 2,
+            }
+            dataset = Dataset.from_dict(rows, features=Features({"image": ImageFeature(), "caption": Value("string")}))
+            dataset_dir = os.path.join(tmpdir, "dataset")
+            os.makedirs(dataset_dir, exist_ok=True)
+            dataset.to_parquet(os.path.join(dataset_dir, "data.parquet"))
+
+            test_args = f"""
+                {self.script_path}
+                --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
+                --dataset_name {dataset_dir}
+                --caption_column caption
+                --instance_prompt {self.instance_prompt}
+                --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --max_train_steps 2

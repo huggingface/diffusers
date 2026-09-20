@@ -1612,6 +1612,10 @@ def main(args):
                         prompt_embeds, prompt_embeds_mask, _ = compute_text_embeddings(
                             batch["instance_prompts"], text_encoding_pipeline
                         )
+                    # `encode_prompt` returns no mask when nothing in the batch is padded, which is the
+                    # common case here since a bucket's captions often tokenize to the same length. The
+                    # cache is read back per sample, so store a dense mask rather than a `None` to slice.
+                    prompt_embeds_mask = _materialize_prompt_embedding_mask(prompt_embeds, prompt_embeds_mask)
                     for i, idx in enumerate(sample_indices):
                         prompt_embeds_cache[idx] = prompt_embeds[i : i + 1]
                         prompt_embeds_mask_cache[idx] = prompt_embeds_mask[i : i + 1]
