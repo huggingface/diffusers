@@ -1,0 +1,35 @@
+---
+description: Extra diffusers conventions for schedulers.
+globs: ["src/diffusers/schedulers/scheduling_*.py", "examples/**/scheduling_*.py", "tests/schedulers/test_scheduling_*.py"]
+alwaysApply: false
+---
+<!-- GENERATED from conventions/rules.yaml by tools/build_projections.py. DO NOT EDIT. Run `make build`. -->
+
+# Scheduler conventions (auto-attached to scheduler files)
+
+### SCHED001 — Schedulers inherit SchedulerMixin and ConfigMixin  (block, owner: architect)
+Schedulers are swappable via ConfigMixin.from_config and serializable via SchedulerMixin. A scheduler that skips these can't be loaded, saved, or swapped like every other scheduler — it breaks the pipeline contract.
+*How:* Declare `class XScheduler(SchedulerMixin, ConfigMixin):`.
+
+### SCHED002 — Schedulers implement the step() / set_timesteps() contract  (block, owner: architect)
+Every denoising loop calls set_timesteps(...) once, then step(...) each iteration. VERIFIED against current source: DDPMScheduler and EulerDiscreteScheduler both define `set_timesteps(self, num_inference_steps, device=None, ...)` and `step(self, model_output, timestep, sample, generator=None, return_dict=True)`. The philosophy doc's older "set_num_inference_steps" name is stale; the code is canonical.
+*How:* Implement `set_timesteps(self, num_inference_steps, device=None)` and `step(self, model_output, timestep, sample, generator=None, return_dict=True) -> SchedulerOutput`.
+
+### SCHED003 — Scheduler __init__ is decorated with @register_to_config  (block, owner: architect)
+@register_to_config captures constructor args into the config so from_pretrained / save_pretrained round-trip correctly. Without it, config is empty and the scheduler cannot be reconstructed from the Hub.
+*How:* Add `@register_to_config` directly above `def __init__`.
+
+### IMPORT001 — Schedulers stay self-contained (no heavy util imports)  (warn, owner: architect)
+The single-file policy keeps schedulers readable and swappable. Pulling in pipeline internals or deep util chains couples them to the rest of the library and violates the philosophy reviewers enforce.
+*How:* Copy the small helper in-file with a `# Copied from` marker instead of importing deep internals.
+
+### TEST001 — New schedulers/models ship with a matching test file  (block, owner: qa)
+"No quality testing = no merge." A new scheduler with no test cannot move toward deployment. Presence is not enough: the test must actually exercise set_timesteps and step, otherwise a dummy file would satisfy the gate.
+*How:* Generate a contract test from tests/_templates/scheduler_test.py that asserts set_timesteps and step.
+
+### TEST002 — Scheduler tests assert behaviour, not just presence  (block, owner: qa)
+Presence of a test file is not enough. A test_* function with zero assertions is a dummy. New scheduler tests must include a same-seed determinism assertion and a shape/dtype assertion so CI actually pins the contract TEST001 only names.
+*How:* Each test_* function must assert. Include same-seed determinism (torch.equal) and shape plus dtype checks (see tests/_templates/scheduler_test.py).
+
+Reference implementation: `examples/scaffolded_scheduler/scheduling_ddpm_lite.py`.
+Start from the scaffold: `/scaffold scheduler <Name>` — do not start from a blank file.

@@ -1,0 +1,38 @@
+---
+description: diffusers contribution conventions enforced by the Ramp Kit. Applied to all edits.
+alwaysApply: true
+---
+<!-- GENERATED from conventions/rules.yaml by tools/build_projections.py. DO NOT EDIT. Run `make build`. -->
+
+# diffusers conventions (registry v0.7.0)
+
+You are contributing to `huggingface/diffusers`. Follow these conventions.
+They mirror the project's own `.ai/` rules and are enforced by
+`tools/convention_check.py` — the same gate that runs in CI, so producing
+code that violates a **block** rule will fail the build.
+
+Use the `diffusers-docs` MCP tool (`search_docs`) to ground answers in the
+library's current docs before scaffolding. If that tool is **not** in your
+tool list (Cloud Agents skip project `.cursor/mcp.json` unless the launch
+MCP dropdown has stdio `python3 -u .cursor/mcp-diffusers-docs.py`), run
+`/search-docs <query>`, the `search-docs` skill, or
+`python3 tools/docs_mcp_server.py --query "..."` — same server.
+Do not pull in code or context from outside this repo's approved
+boundaries (see `.cursorignore`).
+
+## Blocking conventions (must satisfy)
+- **REPRO001 — Randomness threads through a generator, never global RNG.** Use `randn_tensor(shape, generator=generator, device=..., dtype=...)` and thread `generator` through the call chain.
+- **DEVICE001 — No hardcoded CUDA/device placement.** Respect the module's existing device: `.to(sample.device)` or accept a `device` argument.
+- **DEPR001 — No deprecated/moved import paths.** Use the current import path shown in the check output.
+- **MUT001 — No mutable default arguments.** Default to None and initialise inside the body.
+
+## Advisory conventions (should satisfy)
+- **DEPR002 — Avoid deprecated kwargs (verify per release).** Prefer the newer kwarg, but confirm against your pinned diffusers version.
+- **COPY001 — # Copied from markers are well-formed.** Format: `# Copied from diffusers.<module.path>.<Symbol> with A->B`.
+- **LOG001 — Library code logs, it does not print().** Use `logger = logging.get_logger(__name__)` and `logger.info(...)`.
+- **DOC001 — Public methods have docstrings.** Add a Google-style docstring with Args/Returns.
+- **CUST001 — No debugging leftovers committed.** Remove breakpoint()/pdb before committing.
+
+Component-specific rules auto-attach when you open a matching file
+(e.g. a scheduler). Prefer copying an existing in-repo example with a
+`# Copied from` marker over inventing a new pattern.
