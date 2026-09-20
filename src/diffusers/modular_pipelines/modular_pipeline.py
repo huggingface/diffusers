@@ -143,6 +143,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("ideogram4", _create_default_map_fn("Ideogram4ModularPipeline")),
         ("krea2", _krea2_map_fn),
         ("qwenimage", _create_default_map_fn("QwenImageModularPipeline")),
+        ("qwenimage21", _create_default_map_fn("QwenImage21ModularPipeline")),
         ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
