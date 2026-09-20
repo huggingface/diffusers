@@ -50,6 +50,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_minimax_h3_audio"] = ["AutoencoderKLMiniMaxH3Audio"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
+    _import_structure["autoencoders.autoencoder_kl_qwenimage21"] = ["AutoencoderKLQwenImage21"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoders.autoencoder_kl_wan"] = ["AutoencoderKLWan"]
     _import_structure["autoencoders.autoencoder_longcat_audio_dit"] = ["LongCatAudioDiTVae"]
@@ -150,6 +151,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ovis_image"] = ["OvisImageTransformer2DModel"]
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
+    _import_structure["transformers.transformer_qwenimage21"] = ["QwenImage21Transformer2DModel"]
     _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
@@ -201,6 +203,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLMiniMaxH3Audio,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
+            AutoencoderKLQwenImage21,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
@@ -297,6 +300,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtTransformer2DModel,
             PriorTransformer,
             PRXTransformer2DModel,
+            QwenImage21Transformer2DModel,
             QwenImageTransformer2DModel,
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
