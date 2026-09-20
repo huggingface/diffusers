@@ -50,7 +50,7 @@ Here's an example of using xDiT to accelerate inference of a Diffusers model.
          prompt=input_config.prompt,
          num_inference_steps=input_config.num_inference_steps,
          output_type=input_config.output_type,
-         generator=torch.Generator(device="cuda").manual_seed(input_config.seed),
+         generator=torch.Generator(device="cuda").manual_seed(input_config.seed),  # or "mps", "xpu", "cpu"
      )
 
 +    if input_config.output_type == "pil":

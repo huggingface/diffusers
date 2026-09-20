@@ -13,13 +13,22 @@
 # limitations under the License.
 
 
+from contextlib import contextmanager
+from unittest import mock
+
 import torch
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanPipeline, WanTransformer3DModel
 
 from ...testing_utils import assert_tensors_close, torch_device
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 class WanPipelineTesterConfig(BasePipelineTesterConfig):
@@ -95,6 +104,25 @@ class WanPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestWanPipeline(WanPipelineTesterConfig, PipelineTesterMixin):
+    def test_transformer_cache_contexts_receive_exact_scheduler_info(self):
+        pipe = self.get_pipeline().to(torch_device)
+        observed = []
+
+        @contextmanager
+        def record_context(name, **info):
+            observed.append((name, info.get("step_index"), info.get("sigma"), info.get("num_inference_steps")))
+            yield
+
+        with mock.patch.object(pipe.transformer, "cache_context", side_effect=record_context):
+            pipe(**self.get_dummy_inputs())
+
+        assert [name for name, _, _, _ in observed] == ["cond", "uncond", "cond", "uncond"]
+        for call_index, (_, step_index, sigma, num_inference_steps) in enumerate(observed):
+            expected_step = call_index // 2
+            assert step_index == expected_step
+            torch.testing.assert_close(sigma, float(pipe.scheduler.sigmas[expected_step]))
+            assert num_inference_steps == 2
+
     def test_inference(self):
         # Run on CPU: the expected slice below is CPU-specific.
         pipe = self.get_pipeline()
@@ -142,3 +170,11 @@ class TestWanPipeline(WanPipelineTesterConfig, PipelineTesterMixin):
 
 class TestWanPipelineMemory(WanPipelineTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestWanPipelineLoRA(WanPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Wan pipeline."""
+
+
+class TestWanPipelineLoRAMemory(WanPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests for the Wan pipeline."""

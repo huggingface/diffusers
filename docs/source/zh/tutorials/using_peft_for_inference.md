@@ -137,7 +137,7 @@ pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=T
 pipeline("A bowl of ramen shaped like a cute kawaii bear").images[0]
 ```
 
-如果你想在编译模型后配合多个 LoRA 一起使用，又不想每次都重新编译，可以查看下文的 [hotswapping](#hotswapping) 部分。
+如果你想在编译模型后配合多个 LoRA 一起使用，又不想每次都重新编译，可以查看下文的 [hotswapping](#热切换) 部分。
 
 ## 权重缩放
 

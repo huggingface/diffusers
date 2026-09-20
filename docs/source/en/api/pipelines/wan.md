@@ -93,7 +93,7 @@ pipeline = WanPipeline.from_pretrained(
     text_encoder=text_encoder,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 The camera rushes from far to near in a low-angle shot,
@@ -142,7 +142,7 @@ pipeline = WanPipeline.from_pretrained(
     text_encoder=text_encoder,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 # torch.compile
 pipeline.transformer.to(memory_format=torch.channels_last)
@@ -197,7 +197,7 @@ vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.fl
 pipe = WanImageToVideoPipeline.from_pretrained(
     model_id, vae=vae, image_encoder=image_encoder, dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
 last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
@@ -294,7 +294,7 @@ from diffusers.utils import export_to_video, load_image, load_video
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
 pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Load character image and preprocessed videos
 image = load_image("path/to/character.jpg")
@@ -343,7 +343,7 @@ from diffusers.utils import export_to_video, load_image, load_video
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
 pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Load all required inputs for replacement mode
 image = load_image("path/to/new_character.jpg")
@@ -396,7 +396,7 @@ from diffusers.utils import export_to_video, load_image, load_video
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
 pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = load_image("path/to/character.jpg")
 pose_video = load_video("path/to/pose_video.mp4")
@@ -472,7 +472,7 @@ export_to_video(output, "animated_advanced.mp4", fps=30)
   pipeline.scheduler = UniPCMultistepScheduler.from_config(
       pipeline.scheduler.config, flow_shift=5.0
   )
-  pipeline.to("cuda")
+  pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
   pipeline.load_lora_weights("benjamin-paine/steamboat-willie-1.3b", adapter_name="steamboat-willie")
   pipeline.set_adapters("steamboat-willie")

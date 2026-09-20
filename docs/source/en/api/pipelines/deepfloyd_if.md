@@ -317,7 +317,7 @@ The simplest optimization to run IF faster is to move all model components to th
 
 ```py
 pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 You can also run the diffusion process for a shorter number of timesteps.
@@ -342,7 +342,7 @@ A smaller number will vary the image less but run faster.
 
 ```py
 pipe = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(image=image, prompt="<prompt>", strength=0.3).images
 ```
@@ -355,7 +355,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", dtype=torch.float16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 pipe.text_encoder = torch.compile(pipe.text_encoder, mode="reduce-overhead", fullgraph=True)
 pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)

@@ -124,7 +124,8 @@ class DiTPipeline(DiffusionPipeline):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+                The output format of the generated image. Choose between `"pil"` (`PIL.Image`), `"np"` (`np.array`) or
+                `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
 
@@ -234,11 +235,12 @@ class DiTPipeline(DiffusionPipeline):
 
         samples = (samples / 2 + 0.5).clamp(0, 1)
 
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
+        if output_type != "pt":
+            # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+            samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
 
-        if output_type == "pil":
-            samples = self.numpy_to_pil(samples)
+            if output_type == "pil":
+                samples = self.numpy_to_pil(samples)
 
         # Offload all models
         self.maybe_free_model_hooks()

@@ -48,8 +48,6 @@ from ..testing_utils import (
     ModelOptCompileTesterMixin,
     ModelOptTesterMixin,
     ModelTesterMixin,
-    QuantoCompileTesterMixin,
-    QuantoTesterMixin,
     SDNQCompileTesterMixin,
     SDNQTesterMixin,
     SingleFileTesterMixin,
@@ -406,18 +404,6 @@ class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesT
         return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
 
 
-class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
-    """Quanto quantization tests for Flux Transformer."""
-
-    @property
-    def pretrained_model_name_or_path(self):
-        return "hf-internal-testing/tiny-flux-transformer"
-
-    @property
-    def pretrained_model_kwargs(self):
-        return {}
-
-
 class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Flux Transformer."""
 
@@ -471,10 +457,6 @@ class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
         )
         model.to(torch_device)
         model(**self.get_dummy_inputs())
-
-
-class TestFluxTransformerQuantoCompile(FluxTransformerTesterConfig, QuantoCompileTesterMixin):
-    """Quanto + compile tests for Flux Transformer."""
 
 
 class TestFluxTransformerTorchAoCompile(FluxTransformerTesterConfig, TorchAoCompileTesterMixin):

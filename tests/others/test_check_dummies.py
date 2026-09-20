@@ -43,23 +43,16 @@ class TestCheckDummies:
         # )
         # assert double_backend_with_underscore == "sentencepiece_and_tensorflow_text"
 
-        triple_backend = find_backend(
-            "    if not (is_torch_available() and is_transformers_available() and is_onnx_available()):"
-        )
-        assert triple_backend == "torch_and_transformers_and_onnx"
-
     def test_read_init(self):
         objects = read_init()
         # We don't assert on the exact list of keys to allow for smooth grow of backend-specific objects
         assert "torch" in objects
         assert "torch_and_transformers" in objects
-        assert "torch_and_transformers_and_onnx" in objects
 
         # Likewise, we can't assert on the exact content of a key
         assert "UNet2DModel" in objects["torch"]
         assert "StableDiffusionPipeline" in objects["torch_and_transformers"]
         assert "LMSDiscreteScheduler" in objects["torch_and_scipy"]
-        assert "OnnxStableDiffusionPipeline" in objects["torch_and_transformers_and_onnx"]
 
     def test_create_dummy_object(self):
         dummy_constant = create_dummy_object("CONSTANT", "'torch'")

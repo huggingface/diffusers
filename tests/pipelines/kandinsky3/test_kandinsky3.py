@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
@@ -32,6 +32,7 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     load_image,
@@ -42,23 +43,24 @@ from ...testing_utils import (
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
-    TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class Kandinsky3PipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = Kandinsky3Pipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
-    test_xformers_attention = False
+    output_shape = (3, 16, 16)
 
     @property
     def dummy_movq_kwargs(self):
@@ -123,64 +125,54 @@ class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "width": 16,
             "height": 16,
         }
-        return inputs
 
+
+class TestKandinsky3Pipeline(Kandinsky3PipelineTesterConfig, PipelineTesterMixin):
     def test_kandinsky3(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
+        image = pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, *self.output_shape)
 
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
+        # This pipeline only denormalizes the decoded image for `output_type` "np"/"pil", so `"pt"` hands back the
+        # raw decoder output. Map it into the [0, 1] range the expected slice below was recorded in.
+        image = (image * 0.5 + 0.5).clamp(0, 1)
 
-        pipe.set_progress_bar_config(disable=None)
+        # fmt: off
+        expected_slice = torch.tensor([0.3944, 0.3680, 0.4842, 0.5333, 0.4412, 0.4812, 0.5089, 0.5381, 0.5578])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-1)
 
-        output = pipe(**self.get_dummy_inputs(device))
-        image = output.images
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-2):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-        image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 16, 16, 3)
-
-        expected_slice = np.array([0.3944, 0.3680, 0.4842, 0.5333, 0.4412, 0.4812, 0.5089, 0.5381, 0.5578])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1, (
-            f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
-        )
-
-    def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=1e-1)
-
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=1e-2)
+class TestKandinsky3PipelineMemory(Kandinsky3PipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky 3 pipeline."""
 
 
 @slow
 @require_torch_accelerator
-class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
+class TestKandinsky3PipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        # clean up the VRAM before and after each test
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -208,7 +200,7 @@ class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
         image_np = image_processor.pil_to_numpy(image)
         expected_image_np = image_processor.pil_to_numpy(expected_image)
 
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=5e-2))
+        assert np.allclose(image_np, expected_image_np, atol=5e-2)
 
     def test_kandinskyV3_img2img(self):
         pipe = AutoPipelineForImage2Image.from_pretrained(
@@ -239,4 +231,4 @@ class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
         image_np = image_processor.pil_to_numpy(image)
         expected_image_np = image_processor.pil_to_numpy(expected_image)
 
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=5e-2))
+        assert np.allclose(image_np, expected_image_np, atol=5e-2)

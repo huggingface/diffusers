@@ -189,7 +189,7 @@ Once training has been completed, you can use your model for inference:
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_lora_weights("path/to/lora/model", weight_name="pytorch_lora_weights.safetensors")
 image = pipeline("A naruto with blue eyes").images[0]
 ```

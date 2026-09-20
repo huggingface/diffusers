@@ -90,7 +90,8 @@ class DDIMPipeline(DiffusionPipeline):
                 If `True` or `False`, see documentation for [`DDIMScheduler.step`]. If `None`, nothing is passed
                 downstream to the scheduler (use `None` for schedulers which don't support this argument).
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+                The output format of the generated image. Choose between `"pil"` (`PIL.Image`), `"np"` (`np.array`) or
+                `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -167,9 +168,13 @@ class DDIMPipeline(DiffusionPipeline):
                 xm.mark_step()
 
         image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        if output_type != "pt":
+            image = image.cpu().permute(0, 2, 3, 1).numpy()
+            if output_type == "pil":
+                image = self.numpy_to_pil(image)
+
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image,)

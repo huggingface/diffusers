@@ -15,8 +15,8 @@
 
 
 import math
-import unittest
 
+import pytest
 import torch
 from transformers import AutoTokenizer, Qwen3Config, Qwen3Model
 
@@ -30,13 +30,19 @@ from diffusers.pipelines.ace_step import (
 )
 
 from ...testing_utils import enable_full_determinism
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class AceStepConditionEncoderTests(unittest.TestCase):
+class TestAceStepConditionEncoder:
     """Fast tests for the AceStepConditionEncoder."""
 
     def get_tiny_config(self):
@@ -90,55 +96,34 @@ class AceStepConditionEncoderTests(unittest.TestCase):
             )
 
         # Output should be packed: batch_size x (lyric + timbre + text seq_len) x hidden_size
-        self.assertEqual(enc_hidden.shape[0], batch_size)
-        self.assertEqual(enc_hidden.shape[2], config["hidden_size"])
-        self.assertEqual(enc_mask.shape[0], batch_size)
-        self.assertEqual(enc_mask.shape[1], enc_hidden.shape[1])
+        assert enc_hidden.shape[0] == batch_size
+        assert enc_hidden.shape[2] == config["hidden_size"]
+        assert enc_mask.shape[0] == batch_size
+        assert enc_mask.shape[1] == enc_hidden.shape[1]
 
-    def test_save_load_config(self):
+    def test_save_load_config(self, tmp_path):
         """Test that the condition encoder config can be saved and loaded."""
-        import tempfile
-
         config = self.get_tiny_config()
         encoder = AceStepConditionEncoder(**config)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            encoder.save_config(tmpdir)
-            loaded = AceStepConditionEncoder.from_config(tmpdir)
+        encoder.save_config(tmp_path)
+        loaded = AceStepConditionEncoder.from_config(tmp_path)
 
-        self.assertEqual(encoder.config.hidden_size, loaded.config.hidden_size)
-        self.assertEqual(encoder.config.text_hidden_dim, loaded.config.text_hidden_dim)
-        self.assertEqual(encoder.config.timbre_hidden_dim, loaded.config.timbre_hidden_dim)
+        assert encoder.config.hidden_size == loaded.config.hidden_size
+        assert encoder.config.text_hidden_dim == loaded.config.text_hidden_dim
+        assert encoder.config.timbre_hidden_dim == loaded.config.timbre_hidden_dim
 
 
-class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    """Fast end-to-end tests for AceStepPipeline with tiny models."""
-
+class AceStepPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = AceStepPipeline
-    params = frozenset(
-        [
-            "prompt",
-            "lyrics",
-            "audio_duration",
-            "vocal_language",
-            "guidance_scale",
-            "shift",
-        ]
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "lyrics", "audio_duration", "vocal_language", "guidance_scale", "shift"]
     )
-    batch_params = frozenset(["prompt", "lyrics"])
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "output_type",
-            "return_dict",
-        ]
-    )
-
-    # ACE-Step uses custom attention, not standard diffusers attention processors
-    test_attention_slicing = False
-    test_xformers_attention = False
+    batch_input_params = frozenset(["prompt", "lyrics"])
+    # ACE-Step generates audio, so there is no `num_images_per_prompt`.
+    optional_input_params = frozenset(["num_inference_steps", "generator", "latents", "output_type", "return_dict"])
+    # `(channels, samples)` for the short `audio_duration` used by the dummy inputs.
+    output_shape = (2, 7)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -231,7 +216,7 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1, shift=1.0)
 
-        components = {
+        return {
             "transformer": transformer,
             "condition_encoder": condition_encoder,
             "vae": vae,
@@ -241,113 +226,54 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "audio_tokenizer": audio_tokenizer,
             "audio_token_detokenizer": audio_token_detokenizer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A beautiful piano piece",
             "lyrics": "[verse]\nSoft notes in the morning",
-            "audio_duration": 0.4,  # Very short for fast test (10 latent frames at 25Hz)
+            # Short for a fast test, but long enough that the decoded waveform carries enough samples for the
+            # output comparisons the common tests make (the tiny VAE here runs at `latents_per_second == 2`).
+            "audio_duration": 2.0,
             "num_inference_steps": 2,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "max_text_length": 32,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
 
-    def test_ace_step_basic(self):
-        """Test basic text-to-music generation."""
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = AceStepPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=device).manual_seed(0)
-        output = pipe(
-            prompt="A beautiful piano piece",
-            lyrics="[verse]\nSoft notes in the morning",
-            audio_duration=0.4,
-            num_inference_steps=2,
-            generator=generator,
-            max_text_length=32,
-        )
-        audio = output.audios
-        self.assertIsNotNone(audio)
-        self.assertEqual(audio.ndim, 3)  # [batch, channels, samples]
+class TestAceStepPipeline(AceStepPipelineTesterConfig, PipelineTesterMixin):
+    """Fast end-to-end tests for AceStepPipeline with tiny models."""
 
     def test_ace_step_batch(self):
         """Test batch generation."""
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = AceStepPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
-        generator = torch.Generator(device=device).manual_seed(42)
-        output = pipe(
-            prompt=["Piano piece", "Guitar solo"],
-            lyrics=["[verse]\nHello", "[chorus]\nWorld"],
-            audio_duration=0.4,
-            num_inference_steps=2,
-            generator=generator,
-            max_text_length=32,
+        audio = self.run_pipe(
+            pipe, prompt=["Piano piece", "Guitar solo"], lyrics=["[verse]\nHello", "[chorus]\nWorld"]
         )
-        audio = output.audios
-        self.assertIsNotNone(audio)
-        self.assertEqual(audio.shape[0], 2)  # batch size = 2
+        assert audio.shape[0] == 2  # batch size = 2
 
     def test_ace_step_latent_output(self):
         """Test that output_type='latent' returns latents."""
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = AceStepPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
-        generator = torch.Generator(device=device).manual_seed(0)
-        output = pipe(
-            prompt="A test prompt",
-            lyrics="",
-            audio_duration=0.4,
-            num_inference_steps=2,
-            generator=generator,
-            output_type="latent",
-            max_text_length=32,
-        )
-        latents = output.audios
-        self.assertIsNotNone(latents)
+        latents = self.run_pipe(pipe, lyrics="", output_type="latent")
         # Latent shape: [batch, latent_length, acoustic_dim]
-        self.assertEqual(latents.ndim, 3)
-        self.assertEqual(latents.shape[0], 1)
+        assert latents.ndim == 3
+        assert latents.shape[0] == 1
 
     def test_ace_step_return_dict_false(self):
         """Test that return_dict=False returns a tuple."""
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = AceStepPipeline(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
-        generator = torch.Generator(device=device).manual_seed(0)
-        output = pipe(
-            prompt="A test prompt",
-            lyrics="",
-            audio_duration=0.4,
-            num_inference_steps=2,
-            generator=generator,
-            return_dict=False,
-            max_text_length=32,
-        )
-        self.assertIsInstance(output, tuple)
-        self.assertEqual(len(output), 1)
+        inputs = self.get_dummy_inputs()
+        output = pipe(**inputs, return_dict=False)
+        assert isinstance(output, tuple)
+        assert len(output) == 1
 
     def test_audio_codes_cover_path(self):
-        components = self.get_dummy_components()
-        pipe = AceStepPipeline(**components)
+        pipe = self.get_pipeline()
 
         output = pipe(
             prompt="A test prompt",
@@ -358,15 +284,15 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             max_text_length=32,
         )
 
-        self.assertEqual(output.audios.shape[1], 4)
+        assert output.audios.shape[1] == 4
 
-    def test_save_load_local(self, expected_max_difference=7e-3):
+    def test_save_load_local(self, tmp_path, base_pipe_output, expected_max_difference=7e-3):
         # increase tolerance to account for large composite model
-        super().test_save_load_local(expected_max_difference=expected_max_difference)
+        super().test_save_load_local(tmp_path, base_pipe_output, expected_max_difference=expected_max_difference)
 
-    def test_save_load_optional_components(self, expected_max_difference=7e-3):
+    def test_save_load_optional_components(self, tmp_path, expected_max_difference=7e-3):
         # increase tolerance to account for large composite model
-        super().test_save_load_optional_components(expected_max_difference=expected_max_difference)
+        super().test_save_load_optional_components(tmp_path, expected_max_difference=expected_max_difference)
 
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=7e-3):
         # increase tolerance for audio pipeline
@@ -378,94 +304,61 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_slice=expected_slice, expected_max_difference=expected_max_difference
         )
 
-    # ACE-Step does not use num_images_per_prompt
-    def test_num_images_per_prompt(self):
-        pass
-
-    # ACE-Step does not use standard schedulers
-    @unittest.skip("ACE-Step uses built-in flow matching schedule, not diffusers schedulers")
-    def test_karras_schedulers_shape(self):
-        pass
-
-    # ACE-Step does not support prompt_embeds directly
-    @unittest.skip("ACE-Step does not support prompt_embeds / negative_prompt_embeds")
-    def test_cfg(self):
-        pass
-
-    def test_float16_inference(self, expected_max_diff=5e-2):
-        super().test_float16_inference(expected_max_diff=expected_max_diff)
-
-    @unittest.skip(
+    @pytest.mark.skip(
         "ACE-Step __call__ does not accept prompt_embeds, so encode_prompt isolation test is not applicable"
     )
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    @unittest.skip("Sequential CPU offloading produces NaN with tiny random models")
-    def test_sequential_cpu_offload_forward_pass(self):
-        pass
-
-    @unittest.skip("Sequential CPU offloading produces NaN with tiny random models")
-    def test_sequential_offload_forward_pass_twice(self):
-        pass
-
     def test_encode_prompt(self):
         """Test that encode_prompt returns correct shapes."""
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = AceStepPipeline(**components)
-        pipe = pipe.to(device)
+        pipe = self.get_pipeline()
 
         text_hidden, text_mask, lyric_hidden, lyric_mask = pipe.encode_prompt(
             prompt="A test prompt",
             lyrics="[verse]\nHello world",
-            device=device,
+            device="cpu",
             max_text_length=32,
             max_lyric_length=64,
         )
 
-        self.assertEqual(text_hidden.ndim, 3)  # [batch, seq_len, hidden_dim]
-        self.assertEqual(text_mask.ndim, 2)  # [batch, seq_len]
-        self.assertEqual(lyric_hidden.ndim, 3)
-        self.assertEqual(lyric_mask.ndim, 2)
-        self.assertEqual(text_hidden.shape[0], 1)
-        self.assertEqual(lyric_hidden.shape[0], 1)
+        assert text_hidden.ndim == 3  # [batch, seq_len, hidden_dim]
+        assert text_mask.ndim == 2  # [batch, seq_len]
+        assert lyric_hidden.ndim == 3
+        assert lyric_mask.ndim == 2
+        assert text_hidden.shape[0] == 1
+        assert lyric_hidden.shape[0] == 1
 
     def test_prepare_latents(self):
         """Test that prepare_latents returns correct shapes."""
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = AceStepPipeline(**components)
-        pipe = pipe.to(device)
+        pipe = self.get_pipeline()
 
         latents = pipe.prepare_latents(
             batch_size=2,
             audio_duration=1.0,
             dtype=torch.float32,
-            device=device,
+            device="cpu",
         )
 
         expected_length = math.ceil(1.0 * pipe.latents_per_second)
-        self.assertEqual(latents.shape, (2, expected_length, 8))
+        assert latents.shape == (2, expected_length, 8)
 
     def test_timestep_schedule(self):
         """Test that the timestep schedule is generated correctly."""
-        components = self.get_dummy_components()
-        pipe = AceStepPipeline(**components)
+        pipe = self.get_pipeline()
 
         # Test standard schedule
         schedule = pipe._get_timestep_schedule(num_inference_steps=8, shift=3.0)
-        self.assertEqual(len(schedule), 8)
-        self.assertAlmostEqual(schedule[0].item(), 1.0, places=5)
+        assert len(schedule) == 8
+        assert schedule[0].item() == pytest.approx(1.0, abs=1e-5)
 
         # Test truncated schedule
         schedule = pipe._get_timestep_schedule(num_inference_steps=4, shift=3.0)
-        self.assertEqual(len(schedule), 4)
+        assert len(schedule) == 4
 
     def test_format_prompt(self):
         """Test that prompt formatting works correctly."""
-        components = self.get_dummy_components()
-        pipe = AceStepPipeline(**components)
+        pipe = self.get_pipeline()
 
         text, lyrics = pipe._format_prompt(
             prompt="A piano piece",
@@ -474,12 +367,28 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             audio_duration=30.0,
         )
 
-        self.assertIn("A piano piece", text)
-        self.assertIn("30 seconds", text)
-        self.assertIn("[verse]", lyrics)
-        self.assertIn("Hello", lyrics)
-        self.assertIn("en", lyrics)
+        assert "A piano piece" in text
+        assert "30 seconds" in text
+        assert "[verse]" in lyrics
+        assert "Hello" in lyrics
+        assert "en" in lyrics
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestAceStepPipelineMemory(AceStepPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the ACE-Step pipeline."""
+
+    @pytest.mark.skip("Sequential CPU offloading produces NaN with tiny random models")
+    def test_sequential_cpu_offload_forward_pass(self):
+        pass
+
+    @pytest.mark.skip("Sequential CPU offloading produces NaN with tiny random models")
+    def test_sequential_offload_forward_pass_twice(self):
+        pass
+
+
+class TestAceStepPipelineLoRA(AceStepPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the ACE-Step pipeline."""
+
+
+class TestAceStepPipelineLoRAMemory(AceStepPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the ACE-Step pipeline."""

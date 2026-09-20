@@ -91,7 +91,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.40.0.dev0")
+check_min_version("0.41.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -308,7 +308,7 @@ def parse_args(input_args=None):
         "--max_sequence_length",
         type=int,
         default=300,
-        help="Maximum sequence length to use with with the Gemma model",
+        help="Maximum sequence length to use with the Gemma model",
     )
     parser.add_argument(
         "--complex_human_instruction",

@@ -43,6 +43,38 @@ Two checkpoints are released on the Hub — [`nvidia/Cosmos3-Nano`](https://hugg
 > [!TIP]
 > Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
+## FP8 mixed W8A8/W8A16 denoising
+
+Official ModelOpt FP8 checkpoints live on the Hub `fp8` revision (for example [`nvidia/Cosmos3-Nano`](https://huggingface.co/nvidia/Cosmos3-Nano) with `revision="fp8"`).
+
+All of these checkpoints are quantized the same way. **W8A8** uses 8-bit weights and 8-bit activations (the restored ModelOpt GEMM). **W8A16** reuses those same 8-bit weights but skips activation quantization: the FP8 weight is dequantized and a standard linear runs on BF16/FP16/FP32 activations.
+
+Running W8A8 on every step can produce visible flickering in multi-step video generation. The video Nano / Super / Super-I2V FP8 checkpoints therefore declare a schedule in `transformer/config.json`: **W8A16 on the first 3 and last 3 steps**, **W8A8 in the middle**. Diffusers reads those counts from the checkpoint rather than hardcoding them. Precision is chosen once per scheduler step so classifier-free guidance cond/uncond calls match.
+
+Image generation and few-step distilled checkpoints do not show that flickering, so Super-T2I and the distilled 4-step FP8 repos declare no schedule and stay W8A8 on every step. The schedule is also **ModelOpt FP8 only**: other quantization backends (for example TorchAO) keep their native forwards.
+
+Load the `fp8` revision with the same restore path as the [ModelOpt guide](../../quantization/modelopt) (`revision="fp8"` already carries the quantization config). Mixed precision then follows the checkpoint automatically:
+
+```python
+import torch
+from diffusers import Cosmos3OmniPipeline
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano",
+    revision="fp8",
+    dtype=torch.bfloat16,
+    device_map="cuda",
+)
+result = pipe(prompt="...", num_inference_steps=35)
+```
+
+Two generate-time choices:
+
+- **Default** (`mixed_precision_format=None`): if the checkpoint declares `diffusion_step_policy`, run W8A16 on the first/last N steps and native W8A8 in the middle. That is the intended recipe for multi-step **video** FP8 (less flickering than all-W8A8). Distilled 4-step and Super-T2I FP8 omit the policy, so the default is already all W8A8.
+- **`mixed_precision_format="none"`**: keep every step on native W8A8. Faster, because W8A16 is dequant + `torch.nn.functional.linear` rather than the restored FP8 GEMM, but multi-step video can flicker. Use this to A/B the schedule or to match a fully quantized baseline.
+
+On one Blackwell workstation, Cosmos3-Nano `@fp8` at 720×1280 / 35 steps was about **27% slower** (T2I) and **13% slower** (49-frame T2V) with the default mixed schedule than with `"none"`. Those numbers are not a throughput guarantee. Pass `"fp8"` only to force the first/last-N schedule on a ModelOpt FP8 checkpoint that has no policy.
+
 ## Prompt upsampling
 
 Cosmos 3 was trained on long, highly descriptive captions. For optimal quality, short text prompts should be **upsampled into a specific JSON structure** before they are passed to the pipeline. The upsampler lives in the [cosmos-framework](https://github.com/NVIDIA/cosmos-framework) package.
@@ -100,7 +132,7 @@ json_prompt = json.load(open("assets/example_t2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -135,7 +167,7 @@ json_prompt = json.load(open("assets/example_t2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -174,7 +206,7 @@ from diffusers import Cosmos3OmniPipeline
 json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 result = pipe(prompt=json.dumps(json_prompt), num_frames=1, height=720, width=1280)
@@ -193,7 +225,7 @@ from diffusers import Cosmos3OmniPipeline
 json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 result = pipe(prompt=json.dumps(json_prompt), num_frames=1, height=720, width=1280)
@@ -221,7 +253,7 @@ json_prompt = json.load(open("assets/example_i2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 image = load_image(
@@ -255,7 +287,7 @@ json_prompt = json.load(open("assets/example_i2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 image = load_image(
@@ -299,7 +331,7 @@ json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -341,7 +373,7 @@ json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -390,7 +422,7 @@ json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -437,7 +469,7 @@ json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -492,7 +524,7 @@ json_prompt = json.load(open("assets/example_t2v_sound_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 result = pipe(
@@ -528,7 +560,7 @@ json_prompt = json.load(open("assets/example_t2v_sound_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 result = pipe(
@@ -575,7 +607,7 @@ from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepSchedu
 from diffusers.utils import export_to_video, load_video
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -622,7 +654,7 @@ from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepSchedu
 from diffusers.utils import export_to_video, load_video
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -659,6 +691,39 @@ if result.action is not None:
 
 </hfoption>
 </hfoptions>
+
+## SeaCache
+
+SeaCache is disabled by default. Cosmos 3 supports enabling it explicitly with [`SeaCacheConfig`]. SeaCache reuses
+transformer residuals when the Spectral-Evolution-Aware indicator changes slowly, reducing the number of full
+transformer executions. It computes the indicator from the raw vision latents, including clean conditioning frames for
+image-to-video generation. Enable it on the transformer with scheduler metadata callbacks from the pipeline:
+
+```python
+import torch
+from diffusers import Cosmos3OmniPipeline, SeaCacheConfig
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+)
+
+pipe.transformer.enable_cache(SeaCacheConfig(threshold=0.2, max_consecutive_cached=2))
+```
+
+The same model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
+[`Cosmos3DistilledModularPipeline`]. SeaCache is approximate and can change generated outputs. Disable it with
+`pipe.transformer.disable_cache()` when you need every denoising step to execute the full transformer. Cache state is
+reset after each pipeline call, and conditional and unconditional guidance branches keep independent histories.
+
+Cosmos 3 keeps the SeaCache gate outside its repeated decoder layers, so it is compatible with regional compilation.
+Compile the layers after enabling the cache:
+
+```python
+pipe.transformer.compile_repeated_blocks(fullgraph=True)
+```
+
+SeaCache also supports the Cosmos 3 Ulysses context-parallel and DTensor-based tensor-parallel helpers documented
+below. Cache decisions are synchronized across ranks. Full-model compilation and other model-sharding strategies are not claimed.
 
 ## Context parallelism
 
@@ -821,7 +886,7 @@ from diffusers import Cosmos3OmniPipeline
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano",
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map="cuda",  # or "mps", "xpu", "cpu"
     enable_safety_checker=False,
 )
 ```
@@ -845,7 +910,7 @@ To supply a custom checker (e.g., a no-op subclass for fast tests), pass it as `
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano",
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map="cuda",  # or "mps", "xpu", "cpu"
     safety_checker=MyCustomSafetyChecker(),
 )
 ```
@@ -919,7 +984,7 @@ from diffusers.utils import encode_video, export_to_video, load_image, load_vide
 pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", dtype=torch.bfloat16)
 pipe.load_components(dtype=torch.bfloat16)
 pipe.enable_safety_checker()
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
 )
@@ -1082,7 +1147,7 @@ from diffusers.utils import export_to_video, load_video
 
 pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", dtype=torch.bfloat16)
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
 )
@@ -1117,6 +1182,9 @@ config (from the checkpoint's `modular_model_index.json`) and `guidance_scale` i
 1.0 since guidance is baked into the weights — passing any other value for either raises an error,
 and `negative_prompt` is warned about and ignored.
 
+FP8 distilled checkpoints (`revision="fp8"`) do not declare a mixed-precision policy, so every
+step stays native W8A8.
+
 Prompts follow the same descriptive JSON structure as the non-distilled models, so short text
 must be upsampled first — use `--mode text2image` (T2I) or `--mode image2video` (I2V) as
 described in [Prompt upsampling](#prompt-upsampling), then pass the JSON via `json.dumps(...)`.
@@ -1133,7 +1201,7 @@ json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 repo = "nvidia/Cosmos3-Super-Text2Image-4Step"
 pipe = Cosmos3DistilledModularPipeline.from_pretrained(repo, dtype=torch.bfloat16)
 pipe.load_components(dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # text-to-image (distilled)
 videos = pipe(
