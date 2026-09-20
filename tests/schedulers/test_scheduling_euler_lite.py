@@ -108,6 +108,21 @@ class TestBehavioralContract(unittest.TestCase):
         b = s.step(mo, 1, sample, generator=torch.Generator().manual_seed(0)).prev_sample
         self.assertTrue(torch.equal(a, b))
 
+    def test_euler_ode_epsilon_update(self):
+        import torch
+        s = self.Scheduler()
+        s.set_timesteps(10)
+        sample = torch.zeros(1, 3, 8, 8)
+        model_output = torch.ones_like(sample)
+        t = int(s.timesteps[0].item())
+        out = s.step(model_output, t, sample, generator=torch.Generator().manual_seed(0)).prev_sample
+        sigma = s.sigmas[0].to(device=sample.device, dtype=torch.float32)
+        sigma_next = s.sigmas[1].to(device=sample.device, dtype=torch.float32)
+        expected = sample.to(torch.float32) + (sigma_next - sigma) * model_output.to(torch.float32)
+        self.assertEqual(out.shape, sample.shape)
+        self.assertEqual(out.dtype, sample.dtype)
+        self.assertTrue(torch.allclose(out, expected.to(out.dtype)))
+
 
 if __name__ == "__main__":
     unittest.main()
