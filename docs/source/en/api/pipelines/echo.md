@@ -22,24 +22,11 @@ The pipeline generates synchronized video and audio.
 Echo is implemented as a [`ModularPipeline`] so its text encoding, memory conditioning, stochastic DMD denoising, and
 decoding blocks can be run as a complete workflow or composed independently.
 
-## Convert the checkpoint
-
-Convert the BF16 Echo release checkpoint before loading it. The converter reuses the Gemma text encoder and
-tokenizer directly from `google/gemma-3-12b-it`.
-
-```bash
-python scripts/convert_echo_to_diffusers.py \
-  --checkpoint /path/to/echo15_full_dmd \
-  --output-path /path/to/Echo-Diffusers \
-  --repo-id Echo-Team/JoyAI-Echo
-```
-
-The Gemma repository is gated, so users must accept its license and authenticate with Hugging Face before loading the
-pipeline. Pass a different `--base-model` only when the compatible Gemma model and tokenizer are stored together at
-that repository or path root. `--repo-id` records portable Hub references for the converted Echo components; without
-it, the index targets the local output path.
-
 ## Inference
+
+Load the official [jdopensource/JoyAI-Echo](https://huggingface.co/jdopensource/JoyAI-Echo) checkpoint directly.
+It uses the text encoder and tokenizer from [google/gemma-3-12b-it](https://huggingface.co/google/gemma-3-12b-it).
+The Gemma repository is gated, so accept its license and authenticate with Hugging Face before loading the pipeline.
 
 The released model uses 241 frames in its long-video example. The video RoPE coordinates remain at the training rate
 of 24 fps, independently of the output container rate.
@@ -52,9 +39,8 @@ from PIL import Image
 from diffusers import ComponentsManager, ModularPipeline
 from diffusers.utils import encode_video
 
-model_path = "/path/to/Echo-Diffusers"
 manager = ComponentsManager()
-pipe = ModularPipeline.from_pretrained(model_path, components_manager=manager)
+pipe = ModularPipeline.from_pretrained("jdopensource/JoyAI-Echo", components_manager=manager)
 pipe.load_components(dtype={"default": torch.bfloat16, "audio_vae": torch.float32})
 manager.enable_auto_cpu_offload(device="cuda")
 pipe.vae.enable_tiling()
