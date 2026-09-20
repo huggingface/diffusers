@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": ".cursor/hooks/convention-gate.sh",
+        "timeout": 20
+      }
+    ]
+  }
+}

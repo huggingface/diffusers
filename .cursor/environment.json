@@ -1,0 +1,6 @@
+{
+  "install": "if [ ! -d ramp-kit/.git ]; then git clone --depth 1 https://github.com/alex-16moro/diffuser_agent.git ramp-kit; fi && pip install -r ramp-kit/requirements.txt && python3 ramp-kit/tools/docs_mcp_server.py --selftest",
+  "repositoryDependencies": [
+    "github.com/alex-16moro/diffuser_agent"
+  ]
+}

@@ -1,0 +1,10 @@
+# Approved context boundary for the overlay agent.
+
+# Known-bad teaching fixture (in the cloned kit). Gate it; do not copy it.
+ramp-kit/examples/candidate_scheduler/
+
+.git/
+**/__pycache__/
+**/*.pyc
+.venv/
+ramp-kit/.git/

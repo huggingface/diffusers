@@ -125,8 +125,7 @@ dmypy.json
 .vs
 .vscode
 
-# Cursor
-.cursor
+# Cursor — upstream ignored this; overlay tracks .cursor (OVERLAY.md)
 
 # Pycharm
 .idea
@@ -186,3 +185,5 @@ wandb
 # AI agent generated symlinks
 /.agents/skills
 /.claude/skills
+# Ramp Kit overlay clone (see OVERLAY.md)
+ramp-kit/
