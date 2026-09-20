@@ -449,7 +449,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="hidream-dreambooth-lora",
+        default="qwenimage21-img2img-dreambooth-lora",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
@@ -640,7 +640,9 @@ def parse_args(input_args=None):
         "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
+    parser.add_argument(
+        "--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for the LoRA parameters"
+    )
     parser.add_argument(
         "--lora_layers",
         type=str,
@@ -1385,7 +1387,7 @@ def main(args):
         )
 
     to_kwargs = {"dtype": weight_dtype, "device": accelerator.device} if not args.offload else {"dtype": weight_dtype}
-    # flux vae is stable in bf16 so load it in weight_dtype to reduce memory
+    # The VAE is stable in bf16, so load it in weight_dtype to reduce memory.
     vae.to(**to_kwargs)
     text_encoder.to(**to_kwargs)
     # we never offload the transformer to CPU, so we can just use the accelerator device
