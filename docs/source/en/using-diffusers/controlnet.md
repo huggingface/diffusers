@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License.
 A ControlNet is conditioned on extra visual information or "structural controls" (canny edge, depth maps, human pose, etc.) that can be combined with text prompts to generate images that are guided by the visual input.
 
 > [!TIP]
-> ControlNets are available to many models such as [Flux](../api/pipelines/controlnet_flux), [Hunyuan-DiT](../api/pipelines/controlnet_hunyuandit), [Stable Diffusion 3](../api/pipelines/controlnet_sd3), and more. The examples in this guide use Flux and Stable Diffusion XL.
+> ControlNets are available to many models such as [Flux](../api/pipelines/controlnet_flux), [Hunyuan-DiT](../api/pipelines/controlnet_hunyuandit), [Stable Diffusion 3](../api/pipelines/controlnet_sd3), and more. The examples in this guide use Flux and Stable Diffusion XL. For T2I-Adapter on older Stable Diffusion–family checkpoints, see [Legacy adapters](./legacy_adapters#t2i-adapter). Prefer ControlNet for new controllable-generation work.
 
 Load a ControlNet conditioned on a specific control, such as canny edge, and pass it to the pipeline in [`~DiffusionPipeline.from_pretrained`].
 
