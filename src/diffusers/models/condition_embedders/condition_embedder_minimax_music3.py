@@ -17,10 +17,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ..modeling_utils import ModelMixin
 
 
-class MiniMaxMusic3ConditionEncoder(ModelMixin, ConfigMixin):
+class MiniMaxMusic3ConditionEncoder(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     Projects the per-frame hidden states of the autoregressive stage onto the Flow-VAE latent timeline.
 

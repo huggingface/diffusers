@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import UNet2DConditionLoadersMixin
+from ...loaders import FromOriginalModelMixin, UNet2DConditionLoadersMixin
 from ...utils import BaseOutput, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..activations import get_activation
@@ -59,7 +59,9 @@ class UNet3DConditionOutput(BaseOutput):
     sample: torch.Tensor
 
 
-class UNet3DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+class UNet3DConditionModel(
+    ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin, FromOriginalModelMixin
+):
     r"""
     A conditional 3D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
     shaped output.

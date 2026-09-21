@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -369,7 +370,7 @@ class JoyImageTimeTextImageEmbedding(nn.Module):
 # ---------------------------------------------------------------------------
 
 
-class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
+class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, FromOriginalModelMixin):
     """JoyImage Transformer model for image generation / editing.
 
     Dual-stream DiT architecture with WAN-style conditioning embeddings and custom rotary position embeddings.

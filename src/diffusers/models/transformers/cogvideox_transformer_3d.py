@@ -19,7 +19,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, AttentionMixin, FeedForward
@@ -157,7 +157,9 @@ class CogVideoXBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class CogVideoXTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin, CacheMixin):
+class CogVideoXTransformer3DModel(
+    ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin, CacheMixin, FromOriginalModelMixin
+):
     """
     A Transformer model for video-like data in [CogVideoX](https://github.com/THUDM/CogVideo).
 

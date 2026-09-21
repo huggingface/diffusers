@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import FromOriginalModelMixin
 from ..utils import logging
 from .modeling_utils import ModelMixin
 
@@ -217,7 +218,7 @@ class MultiAdapter(ModelMixin):
         return cls(adapters)
 
 
-class T2IAdapter(ModelMixin, ConfigMixin):
+class T2IAdapter(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A simple ResNet-like model that accepts images containing control signals such as keyposes and depth. The model
     generates multiple feature maps that are used as additional conditioning in [`UNet2DConditionModel`]. The model's

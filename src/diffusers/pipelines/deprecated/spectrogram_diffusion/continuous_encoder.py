@@ -23,10 +23,11 @@ from transformers.models.t5.modeling_t5 import (
 )
 
 from ....configuration_utils import ConfigMixin, register_to_config
+from ....loaders import FromOriginalModelMixin
 from ....models import ModelMixin
 
 
-class SpectrogramContEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
+class SpectrogramContEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin, FromOriginalModelMixin):
     @register_to_config
     def __init__(
         self,
