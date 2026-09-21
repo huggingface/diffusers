@@ -1,4 +1,4 @@
-.PHONY: deps_table_update modified_only_fixup extra_style_checks quality style fixup fix-copies test test-examples codex claude clean-ai
+.PHONY: deps_table_update modified_only_fixup extra_style_checks quality style fixup fix-copies test test-examples
 
 # make sure to test the local checkout in scripts and not the pre-installed one (don't use quotes!)
 export PYTHONPATH = src
@@ -45,6 +45,7 @@ quality:
 	ruff format --check $(check_dirs) setup.py
 	doc-builder style src/diffusers docs/source --max_len 119 --check_only
 	python utils/check_doc_toc.py
+	python utils/check_ai.py
 
 # Format source code automatically and check is there are any problems left that need manual fixing
 
@@ -104,17 +105,3 @@ post-release:
 post-patch:
 	python utils/release.py --post_release --patch
 
-# AI agent symlinks
-
-codex:
-	mkdir -p .agents
-	rm -rf .agents/skills
-	ln -snf ../.ai/skills .agents/skills
-
-claude:
-	mkdir -p .claude
-	rm -rf .claude/skills
-	ln -snf ../.ai/skills .claude/skills
-
-clean-ai:
-	rm -rf .agents/skills .claude/skills

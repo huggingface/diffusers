@@ -103,7 +103,12 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
         spec = importlib.util.spec_from_file_location(module_name, str(self.block_module_name))
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        getattr(module, child_class)().save_pretrained(os.getcwd())
+        block = getattr(module, child_class)()
+        block.save_pretrained(os.getcwd())
+        # `ModularPipeline.from_pretrained` (and therefore `diffusers-cli run`) loads a repo
+        # through `modular_model_index.json`, which only the pipeline-level save writes — without
+        # it the packaged repo is importable as blocks but not runnable as a pipeline.
+        block.init_pipeline().save_pretrained(os.getcwd())
 
     def _choose_block(self, candidates, chosen=None):
         for cls, base in candidates:

@@ -14,6 +14,8 @@ specific language governing permissions and limitations under the License.
 
 [Textual Inversion](https://hf.co/papers/2208.01618) is a training technique for personalizing image generation models with just a few example images of what you want it to learn. This technique works by learning and updating the text embeddings (the new embeddings are tied to a special word you must use in the prompt) to match the example images you provide.
 
+For inference with trained embeddings, see [Textual inversion inference](../using-diffusers/textual_inversion_inference).
+
 If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers).
 
 This guide will explore the [textual_inversion.py](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
@@ -193,7 +195,7 @@ After training is complete, you can use your newly trained model for inference l
 from diffusers import StableDiffusionPipeline
 import torch
 
-pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to("cuda")
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_textual_inversion("sd-concepts-library/cat-toy")
 image = pipeline("A <cat-toy> train", num_inference_steps=50).images[0]
 image.save("cat-train.png")

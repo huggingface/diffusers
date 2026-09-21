@@ -32,7 +32,7 @@ import torch
 from diffusers import Ideogram4Pipeline
 
 pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-v4", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A photo of a cat holding a sign that says hello world"
 # The defaults are the recommended settings for best quality.
@@ -57,7 +57,7 @@ import torch
 from diffusers import Ideogram4Pipeline
 
 pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Expand the prompt into a structured JSON caption with Ideogram's hosted magic-prompt API.
 response = requests.post(
@@ -89,7 +89,7 @@ prompt_enhancer_head = Ideogram4PromptEnhancerHead.from_pretrained(
 pipe = Ideogram4Pipeline.from_pretrained(
     "ideogram-ai/ideogram-4-nf4", prompt_enhancer_head=prompt_enhancer_head, dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A photo of a cat holding a sign that says hello world"
 image = pipe(

@@ -146,12 +146,14 @@ diffusers-cli run --model my-user/my-denoise-block --trust-remote-code \
 
 ## Verifying the install
 
-If `diffusers-cli` isn't on PATH, see the install verification section of
-[`../diffusers-cli/SKILL.md`](../diffusers-cli/SKILL.md#verifying-the-cli-is-installed).
+If `diffusers-cli` isn't on PATH after `pip install -e .`, reinstall with
+`pip install -e . --force-reinstall --no-deps` and check `which diffusers-cli`. If the binary is missing recent
+features (e.g. `unrecognized arguments: --lora`), reinstall. See the
+[`diffusers-cli` skill](https://github.com/huggingface/diffusers/blob/main/.ai/skills/diffusers-cli/SKILL.md#verifying-the-cli-is-installed) for more.
 
 ## Related
 
-- [`diffusers-cli` skill](../diffusers-cli/SKILL.md) — once your block is uploaded, `schema`/`run`
-  let you call it from the terminal without writing Python.
-- diffusers' [modular pipelines docs](../../../docs/source/en/modular_diffusers) — for writing the block
+- the [`diffusers-cli` docs](https://github.com/huggingface/diffusers/blob/main/docs/source/en/using-diffusers/cli.md) — once your block
+  is uploaded, `schema` and `run` call it from the terminal without writing Python.
+- diffusers' [modular pipelines docs](https://huggingface.co/docs/diffusers/main/en/modular_diffusers/overview) — for writing the block
   class itself.

@@ -58,7 +58,7 @@ pipeline = StableDiffusionXLAdapterPipeline.from_pretrained(
     adapter=t2i_adapter,
     vae=vae,
     dtype=torch.float16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 A photorealistic overhead image of a cat reclining sideways in a flamingo pool floatie holding a margarita. 
@@ -130,7 +130,7 @@ pipeline = StableDiffusionXLAdapterPipeline.from_pretrained(
     dtype=torch.float16,
     vae=vae,
     adapter=adapters,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 pipeline(
     prompt,

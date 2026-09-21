@@ -12,17 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import SanaTransformer2DModel
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -113,3 +116,23 @@ class TestSanaTransformerTraining(SanaTransformerTesterConfig, TrainingTesterMix
 
 class TestSanaTransformerAttention(SanaTransformerTesterConfig, AttentionTesterMixin):
     pass
+
+
+class TestSanaTransformerLoRA(SanaTransformerTesterConfig, LoraTesterMixin):
+    @pytest.mark.skipif(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_lora_layerwise_casting_inference(self):
+        super().test_lora_layerwise_casting_inference()
+
+
+class TestSanaTransformer2DSingleFile(SanaTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px/blob/main/checkpoints/Sana_1600M_1024px.pth"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Efficient-Large-Model/Sana_1600M_1024px_diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

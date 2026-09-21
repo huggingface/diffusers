@@ -19,21 +19,17 @@ from diffusers import AutoencoderVidTok
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TrainingTesterMixin,
+    run_nondeterministic,
+)
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
-
-
-def _run_nondeterministic(fn):
-    # avg_pool3d_backward_cuda has no deterministic CUDA implementation;
-    # temporarily relax the requirement for tests that do backward passes.
-    torch.use_deterministic_algorithms(False)
-    try:
-        fn()
-    finally:
-        torch.use_deterministic_algorithms(True)
 
 
 class AutoencoderVidTokTesterConfig(BaseModelTesterConfig):
@@ -90,82 +86,32 @@ class TestAutoencoderVidTokTraining(AutoencoderVidTokTesterConfig, TrainingTeste
         expected_set = {"VidTokEncoder3D", "VidTokDecoder3D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    # avg_pool3d_backward_cuda has no deterministic CUDA implementation, so every test with a backward pass runs
+    # with determinism relaxed.
     def test_training(self):
-        _run_nondeterministic(super().test_training)
+        run_nondeterministic(super().test_training)
 
     def test_training_with_ema(self):
-        _run_nondeterministic(super().test_training_with_ema)
+        run_nondeterministic(super().test_training_with_ema)
 
     def test_mixed_precision_training(self):
-        _run_nondeterministic(super().test_mixed_precision_training)
+        run_nondeterministic(super().test_mixed_precision_training)
 
     def test_gradient_checkpointing_equivalence(self):
-        _run_nondeterministic(super().test_gradient_checkpointing_equivalence)
+        run_nondeterministic(super().test_gradient_checkpointing_equivalence)
 
 
 class TestAutoencoderVidTokMemory(AutoencoderVidTokTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderVidTok."""
 
+    # avg_pool3d_backward_cuda has no deterministic CUDA implementation, so every test with a backward pass runs
+    # with determinism relaxed.
     def test_layerwise_casting_training(self):
-        _run_nondeterministic(super().test_layerwise_casting_training)
+        run_nondeterministic(super().test_layerwise_casting_training)
 
 
-class TestAutoencoderVidTokSlicingTiling(AutoencoderVidTokTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderVidTokSlicingTiling(AutoencoderVidTokTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderVidTok."""
-
-    def test_enable_disable_tiling(self):
-        init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict).to(torch_device)
-
-        torch.manual_seed(0)
-        output_without_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        torch.manual_seed(0)
-        model.enable_tiling()
-        output_with_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        assert (
-            output_without_tiling.detach().cpu().numpy() - output_with_tiling.detach().cpu().numpy()
-        ).max() < 0.5, "VAE tiling should not affect the inference results"
-
-        torch.manual_seed(0)
-        model.disable_tiling()
-        output_without_tiling_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        assert (
-            output_without_tiling.detach().cpu().numpy().all() == output_without_tiling_2.detach().cpu().numpy().all()
-        ), "Without tiling outputs should match with the outputs when tiling is manually disabled."
-
-    def test_enable_disable_slicing(self):
-        init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict).to(torch_device)
-        inputs_dict.update({"return_dict": False})
-
-        torch.manual_seed(0)
-        output_without_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        torch.manual_seed(0)
-        model.enable_slicing()
-        output_with_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        assert (
-            output_without_slicing.detach().cpu().numpy() - output_with_slicing.detach().cpu().numpy()
-        ).max() < 0.5, "VAE slicing should not affect the inference results"
-
-        torch.manual_seed(0)
-        model.disable_slicing()
-        output_without_slicing_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        assert (
-            output_without_slicing.detach().cpu().numpy().all()
-            == output_without_slicing_2.detach().cpu().numpy().all()
-        ), "Without slicing outputs should match when slicing is manually disabled."
 
     def test_forward_with_norm_groups(self):
         """VidTok uses layernorm instead of groupnorm."""

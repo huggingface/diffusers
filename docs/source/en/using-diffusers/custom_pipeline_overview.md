@@ -39,7 +39,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
     custom_pipeline="pipeline_stable_diffusion_3_instruct_pix2pix",
     dtype=torch.float16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -54,7 +54,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="pipeline_stable_diffusion_3_instruct_pix2pix",
     custom_revision="main"
     dtype=torch.float16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -73,17 +73,17 @@ There are a few ways to load a community pipeline.
       "stabilityai/stable-diffusion-3-medium-diffusers",
       custom_pipeline="path/to/pipeline_directory",
       dtype=torch.float16,
-      device_map="cuda"
+      device_map="cuda"  # or "mps", "xpu", "cpu"
   )
   ```
 
-- The `custom_pipeline` argument is also supported by [`~DiffusionPipeline.from_pipe`], which is useful for [reusing pipelines](./loading#reuse-a-pipeline) without using additional memory. It limits the memory usage to only the largest pipeline loaded.
+- The `custom_pipeline` argument is also supported by [`~DiffusionPipeline.from_pipe`], which is useful for [reusing pipelines](./loading#reusing-models-in-multiple-pipelines) without using additional memory. It limits the memory usage to only the largest pipeline loaded.
 
   ```py
   import torch
   from diffusers import DiffusionPipeline
 
-  pipeline_sd = DiffusionPipeline.from_pretrained("emilianJR/CyberRealistic_V3", dtype=torch.float16, device_map="cuda")
+  pipeline_sd = DiffusionPipeline.from_pretrained("emilianJR/CyberRealistic_V3", dtype=torch.float16, device_map="cuda")  # or "mps", "xpu", "cpu"
   pipeline_lpw = DiffusionPipeline.from_pipe(
       pipeline_sd, custom_pipeline="lpw_stable_diffusion", device_map="cuda"
   )
@@ -135,7 +135,7 @@ pipeline = TextToVideoIFPipeline(
     tokenizer=tokenizer,
     scheduler=scheduler,
     feature_extractor=feature_extractor,
-    device_map="cuda",
+    device_map="cuda",  # or "mps", "xpu", "cpu"
     dtype=torch.float16
 )
 ```

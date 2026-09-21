@@ -33,7 +33,7 @@ from ...testing_utils import (
     torch_device,
 )
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -143,7 +143,7 @@ class TestAutoencoderTinyMemory(AutoencoderTinyTesterConfig, MemoryTesterMixin):
         super().test_layerwise_casting_memory()
 
 
-class TestAutoencoderTinySlicingTiling(AutoencoderTinyTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderTinySlicingTiling(AutoencoderTinyTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderTiny."""
 
     @pytest.mark.skip("Model does not yet support smaller resolution.")

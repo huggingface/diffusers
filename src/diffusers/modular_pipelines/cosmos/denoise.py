@@ -3,6 +3,11 @@ import inspect
 import torch
 
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
+from ...pipelines.cosmos.mixed_precision import (
+    Cosmos3MixedPrecisionConfig,
+    apply_cosmos3_mixed_precision_step,
+    reset_cosmos3_mixed_precision,
+)
 from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
 from ..modular_pipeline import (
     BlockState,
@@ -154,7 +159,10 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+        return [
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -215,7 +223,15 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
             transformer_kwargs = {
                 name: value for name, value in transformer_kwargs.items() if name in transformer_args
             }
-            preds_vision, preds_sound, preds_action = components.transformer(**transformer_kwargs, return_dict=False)
+            with components.transformer.cache_context(
+                pass_name,
+                step_index=i,
+                sigma=float(components.scheduler.sigmas[i]),
+                num_inference_steps=components.scheduler.num_inference_steps,
+            ):
+                preds_vision, preds_sound, preds_action = components.transformer(
+                    **transformer_kwargs, return_dict=False
+                )
             velocities[pass_name] = components._mask_velocity_predictions(
                 preds_vision,
                 preds_sound,
@@ -227,8 +243,14 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
             )
 
         cond_velocity_vision, cond_velocity_sound, cond_velocity_action = velocities["cond"]
+        cond_velocity_vision = cond_velocity_vision.float()
+        cond_velocity_sound = cond_velocity_sound.float() if cond_velocity_sound is not None else None
+        cond_velocity_action = cond_velocity_action.float() if cond_velocity_action is not None else None
         if do_cfg:
             uncond_velocity_vision, uncond_velocity_sound, uncond_velocity_action = velocities["uncond"]
+            uncond_velocity_vision = uncond_velocity_vision.float()
+            uncond_velocity_sound = uncond_velocity_sound.float() if uncond_velocity_sound is not None else None
+            uncond_velocity_action = uncond_velocity_action.float() if uncond_velocity_action is not None else None
             block_state.velocity_vision = uncond_velocity_vision + block_state.guidance_scale * (
                 cond_velocity_vision - uncond_velocity_vision
             )
@@ -327,11 +349,14 @@ class Cosmos3DistilledVisionLoopSchedulerStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        velocity_vision = block_state.velocity_vision.float()
+        latents = block_state.latents.float()
+
         # Pass the generator so the scheduler's stochastic (SDE) re-noising is seedable/reproducible.
         block_state.latents = components.scheduler.step(
-            block_state.velocity_vision.unsqueeze(0),
+            velocity_vision.unsqueeze(0),
             t,
-            block_state.latents.unsqueeze(0),
+            latents.unsqueeze(0),
             generator=block_state.generator,
             return_dict=False,
         )[0].squeeze(0)
@@ -463,18 +488,61 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
             InputParam(
                 name="num_warmup_steps", type_hint=int, required=True, description="Number of scheduler warmup steps."
             ),
+            InputParam(
+                name="mixed_precision_format",
+                type_hint=str,
+                default=None,
+                description="None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is ModelOpt FP8 only.",
+            ),
+            InputParam(
+                name="mixed_precision_first_steps",
+                type_hint=int,
+                default=None,
+                description="Optional leading W8A16 step count.",
+            ),
+            InputParam(
+                name="mixed_precision_last_steps",
+                type_hint=int,
+                default=None,
+                description="Optional trailing W8A16 step count.",
+            ),
+            InputParam(
+                name="mixed_precision_reasoner_policy",
+                type_hint=str,
+                default=None,
+                description="Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).",
+            ),
         ]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
-            for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(components, block_state, i=i, t=t)
-                if i == len(block_state.timesteps) - 1 or (
-                    (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
-                ):
-                    progress_bar.update()
+        mixed_precision = Cosmos3MixedPrecisionConfig.resolve(
+            components.transformer,
+            mixed_precision_format=getattr(block_state, "mixed_precision_format", None),
+            mixed_precision_first_steps=getattr(block_state, "mixed_precision_first_steps", None),
+            mixed_precision_last_steps=getattr(block_state, "mixed_precision_last_steps", None),
+            mixed_precision_reasoner_policy=getattr(block_state, "mixed_precision_reasoner_policy", None),
+        )
+        trace = []
+        try:
+            with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
+                for i, t in enumerate(block_state.timesteps):
+                    apply_cosmos3_mixed_precision_step(
+                        components.transformer,
+                        mixed_precision,
+                        i,
+                        len(block_state.timesteps),
+                        trace=trace,
+                    )
+                    components, block_state = self.loop_step(components, block_state, i=i, t=t)
+                    if i == len(block_state.timesteps) - 1 or (
+                        (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
+                    ):
+                        progress_bar.update()
+        finally:
+            reset_cosmos3_mixed_precision(components.transformer, mixed_precision)
+        components._mixed_precision_trace = trace
         self.set_block_state(state, block_state)
         return components, state
 
@@ -643,7 +711,10 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+        return [
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -706,21 +777,24 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         return [OutputParam("velocity", type_hint=torch.Tensor, description="Predicted (masked) transfer velocity.")]
 
     @staticmethod
-    def _forward(components, static, vision_tokens, vision_timesteps):
-        preds_vision, _, _ = components.transformer(
-            input_ids=static["input_ids"],
-            text_indexes=static["text_indexes"],
-            position_ids=static["position_ids"],
-            und_len=static["und_len"],
-            sequence_length=static["sequence_length"],
-            vision_tokens=vision_tokens,
-            vision_token_shapes=static["vision_token_shapes"],
-            vision_sequence_indexes=static["vision_sequence_indexes"],
-            vision_mse_loss_indexes=static["vision_mse_loss_indexes"],
-            vision_timesteps=vision_timesteps,
-            vision_noisy_frame_indexes=static["vision_noisy_frame_indexes"],
-            return_dict=False,
-        )
+    def _forward(components, static, vision_tokens, vision_timesteps, context_name, step, sigma, num_inference_steps):
+        with components.transformer.cache_context(
+            context_name, step_index=step, sigma=sigma, num_inference_steps=num_inference_steps
+        ):
+            preds_vision, _, _ = components.transformer(
+                input_ids=static["input_ids"],
+                text_indexes=static["text_indexes"],
+                position_ids=static["position_ids"],
+                und_len=static["und_len"],
+                sequence_length=static["sequence_length"],
+                vision_tokens=vision_tokens,
+                vision_token_shapes=static["vision_token_shapes"],
+                vision_sequence_indexes=static["vision_sequence_indexes"],
+                vision_mse_loss_indexes=static["vision_mse_loss_indexes"],
+                vision_timesteps=vision_timesteps,
+                vision_noisy_frame_indexes=static["vision_noisy_frame_indexes"],
+                return_dict=False,
+            )
         return preds_vision[-1]
 
     @torch.no_grad()
@@ -745,7 +819,14 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         uncond_full_static = denoiser_input_fields["uncond_full_static"]
 
         cond_full = self._forward(
-            components, cond_full_static, block_state.vision_tokens_full, block_state.vision_timesteps
+            components,
+            cond_full_static,
+            block_state.vision_tokens_full,
+            block_state.vision_timesteps,
+            "cond",
+            step=i,
+            sigma=float(components.scheduler.sigmas[i]),
+            num_inference_steps=components.scheduler.num_inference_steps,
         )
 
         cond_no_control = None
@@ -755,6 +836,10 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 cond_no_control_static,
                 block_state.vision_tokens_target,
                 block_state.vision_timesteps,
+                "cond_no_control",
+                step=i,
+                sigma=float(components.scheduler.sigmas[i]),
+                num_inference_steps=components.scheduler.num_inference_steps,
             )
 
         uncond_full = None
@@ -764,7 +849,15 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 uncond_full_static,
                 block_state.vision_tokens_full,
                 block_state.vision_timesteps,
+                "uncond",
+                step=i,
+                sigma=float(components.scheduler.sigmas[i]),
+                num_inference_steps=components.scheduler.num_inference_steps,
             )
+
+        cond_full = cond_full.float()
+        cond_no_control = cond_no_control.float() if cond_no_control is not None else None
+        uncond_full = uncond_full.float() if uncond_full is not None else None
 
         if needs_control_cfg and needs_text_cfg:
             control_cond = cond_no_control + step_control * (cond_full - cond_no_control)
@@ -849,6 +942,15 @@ class Cosmos3TransferDenoiseStep(Cosmos3DenoiseLoopWrapper):
               The number of denoising steps.
           num_warmup_steps (`int`):
               Number of scheduler warmup steps.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           control_latents (`list`):
               Clean control latents for this chunk, one per hint in canonical order.
           latents (`Tensor`):

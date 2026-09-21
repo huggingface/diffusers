@@ -21,6 +21,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TrainingTesterMixin,
@@ -104,3 +105,7 @@ class TestCogView4TransformerTraining(CogView4TransformerTesterConfig, TrainingT
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"CogView4Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestCogView4TransformerLoRA(CogView4TransformerTesterConfig, LoraTesterMixin):
+    pass

@@ -13,12 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import numpy as np
 import PIL.Image
+import pytest
 import torch
-from parameterized import parameterized
 
 from diffusers.video_processor import VideoProcessor
 
@@ -27,7 +25,7 @@ np.random.seed(0)
 torch.manual_seed(0)
 
 
-class VideoProcessorTest(unittest.TestCase):
+class TestVideoProcessor:
     def get_dummy_sample(self, input_type):
         batch_size = 1
         num_frames = 5
@@ -128,7 +126,7 @@ class VideoProcessorTest(unittest.TestCase):
 
         return video
 
-    @parameterized.expand(["list_images", "list_list_images"])
+    @pytest.mark.parametrize("input_type", ["list_images", "list_list_images"])
     def test_video_processor_pil(self, input_type):
         video_processor = VideoProcessor(do_resize=False, do_normalize=True)
 
@@ -140,7 +138,7 @@ class VideoProcessorTest(unittest.TestCase):
             input_np = self.to_np(input).astype("float32") / 255.0 if output_type != "pil" else self.to_np(input)
             assert np.abs(input_np - out_np).max() < 1e-6, f"Decoded output does not match input for {output_type=}"
 
-    @parameterized.expand(["list_4d_np", "list_5d_np", "5d_np"])
+    @pytest.mark.parametrize("input_type", ["list_4d_np", "list_5d_np", "5d_np"])
     def test_video_processor_np(self, input_type):
         video_processor = VideoProcessor(do_resize=False, do_normalize=True)
 
@@ -154,7 +152,7 @@ class VideoProcessorTest(unittest.TestCase):
             )
             assert np.abs(input_np - out_np).max() < 1e-6, f"Decoded output does not match input for {output_type=}"
 
-    @parameterized.expand(["list_4d_pt", "list_5d_pt", "5d_pt"])
+    @pytest.mark.parametrize("input_type", ["list_4d_pt", "list_5d_pt", "5d_pt"])
     def test_video_processor_pt(self, input_type):
         video_processor = VideoProcessor(do_resize=False, do_normalize=True)
 

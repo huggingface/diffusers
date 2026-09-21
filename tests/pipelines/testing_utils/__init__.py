@@ -7,6 +7,9 @@ from .cache import (
     TaylorSeerCacheTesterMixin,
 )
 from .common import BasePipelineTesterConfig, PipelineTesterMixin
+from .from_pipe import FromPipeTesterMixin
+from .ip_adapter import IPAdapterTesterMixin
+from .lora import LoraMemoryTesterMixin, LoraTesterMixin, UNetLoraTesterMixin
 from .memory import (
     GroupOffloadTesterMixin,
     LayerwiseCastingTesterMixin,
@@ -24,6 +27,11 @@ from .utils import (
 __all__ = [
     "BasePipelineTesterConfig",
     "PipelineTesterMixin",
+    "FromPipeTesterMixin",
+    "IPAdapterTesterMixin",
+    "LoraTesterMixin",
+    "LoraMemoryTesterMixin",
+    "UNetLoraTesterMixin",
     "MemoryTesterMixin",
     "PipelineOffloadTesterMixin",
     "GroupOffloadTesterMixin",

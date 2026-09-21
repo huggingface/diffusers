@@ -31,7 +31,6 @@ env:
   PYTEST_TIMEOUT: 600
   PIPELINE_USAGE_CUTOFF: 1000000000 # set high cutoff so that only always-test pipelines run
   # Force version overrides across every `uv pip install` in this workflow via UV_OVERRIDE:
-  #   - tokenizers<0.23.0, even when transformers@main declares a higher lower-bound.
   #   - torch/torchvision/torchaudio pinned to the image's baked-in set so `-U` installs
   #     (e.g. accelerate@main) can't bump torch and break torchvision's C++ ABI
   #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
@@ -98,7 +97,7 @@ jobs:
           fetch-depth: 2
       - name: Install dependencies
         run: |
-          printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
+          printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
       - name: Environment
         run: |
@@ -140,7 +139,7 @@ jobs:
           nvidia-smi
       - name: Install dependencies
         run: |
-          printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
+          printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
@@ -163,13 +162,12 @@ jobs:
         run: |
           if [ "${{ matrix.module }}" = "ip_adapters" ]; then
               pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-              -k "not Onnx" \
               --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
               tests/pipelines/${{ matrix.module }}
           else
               pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
               pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-              -k "not Onnx and $pattern" \
+              -k "$pattern" \
               --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
               tests/pipelines/${{ matrix.module }}
           fi
@@ -210,7 +208,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
+        printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
@@ -235,10 +233,10 @@ jobs:
       run: |
         pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
         if [ -z "$pattern" ]; then
-          pytest -n 1  --max-worker-restart=0 --dist=loadfile -k "not Onnx" tests/${{ matrix.module }} \
+          pytest -n 1  --max-worker-restart=0 --dist=loadfile tests/${{ matrix.module }} \
           --make-reports=tests_torch_cuda_${{ matrix.module }}
         else
-          pytest -n 1  --max-worker-restart=0 --dist=loadfile -k "not Onnx and $pattern" tests/${{ matrix.module }} \
+          pytest -n 1  --max-worker-restart=0 --dist=loadfile -k "$pattern" tests/${{ matrix.module }} \
           --make-reports=tests_torch_cuda_${{ matrix.module }}
         fi
 
@@ -275,7 +273,7 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
+        printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip install -e ".[quality,training]"
 

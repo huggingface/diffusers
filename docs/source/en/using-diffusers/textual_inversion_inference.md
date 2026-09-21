@@ -16,6 +16,8 @@ specific language governing permissions and limitations under the License.
 
 Textual Inversion weights are very lightweight and typically only a few KBs because they're only word embeddings. However, this also means the word embeddings need to be loaded after loading a model with [`~DiffusionPipeline.from_pretrained`].
 
+To train embeddings, see [Train textual inversion](../training/text_inversion).
+
 ```py
 import torch
 from diffusers import AutoPipelineForText2Image
@@ -23,7 +25,7 @@ from diffusers import AutoPipelineForText2Image
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Load the word embeddings with [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] and include the unique token in the prompt to activate its generation.
@@ -49,7 +51,7 @@ from diffusers import AutoPipelineForText2Image
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.load_textual_inversion(
     "EvilEngine/easynegative",
     weight_name="easynegative.safetensors",

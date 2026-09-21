@@ -120,7 +120,7 @@ depending on the intended targets (beginners, more advanced users, or researcher
 When adding a new pipeline:
 
 - Create a file `xxx.md` under `docs/source/<languageCode>/api/pipelines` (don't hesitate to copy an existing file as template).
-- Link that file in (*Diffusers Summary*) section in `docs/source/api/pipelines/overview.md`, along with the link to the paper, and a colab notebook (if available).
+- Link that file in `docs/source/<languageCode>/_toctree.yml` under the **API > Pipelines** section.
 - Write a short overview of the diffusion model:
     - Overview with paper & authors
     - Paper abstract
@@ -188,7 +188,7 @@ Here's an example showcasing everything so far:
             Indices can be obtained using [`AlbertTokenizer`]. See [`~PreTrainedTokenizer.encode`] and
             [`~PreTrainedTokenizer.__call__`] for details.
 
-            [What are input IDs?](../glossary#input-ids)
+            [What are input IDs?](https://huggingface.co/docs/transformers/main/en/glossary#input-ids)
 ```
 
 For optional arguments or arguments with defaults we follow the following syntax: imagine we have a function with the

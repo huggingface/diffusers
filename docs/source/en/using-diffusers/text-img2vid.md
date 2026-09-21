@@ -57,7 +57,7 @@ pipeline = WanPipeline.from_pretrained(
     text_encoder=text_encoder,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 The camera rushes from far to near in a low-angle shot, 
@@ -187,7 +187,7 @@ from diffusers.utils import export_to_video
 
 pipeline = LTXPipeline.from_pretrained(
     "Lightricks/LTX-Video", dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman 
@@ -222,7 +222,7 @@ from diffusers.utils import export_to_video
 pipeline = CogVideoXPipeline.from_pretrained(
   "THUDM/CogVideoX-2b",
   dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over
@@ -261,7 +261,7 @@ pipeline = WanPipeline.from_pretrained(
 pipeline.scheduler = UniPCMultistepScheduler.from_config(
   pipeline.scheduler.config, flow_shift=5.0
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 pipeline.load_lora_weights("benjamin-paine/steamboat-willie-14b", adapter_name="steamboat-willie")
 pipeline.set_adapters("steamboat-willie")
@@ -330,7 +330,7 @@ pipeline = WanPipeline.from_pretrained(
     text_encoder=text_encoder,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 The camera rushes from far to near in a low-angle shot, 
@@ -385,7 +385,7 @@ pipeline = WanPipeline.from_pretrained(
 pipeline.scheduler = UniPCMultistepScheduler.from_config(
   pipeline.scheduler.config, flow_shift=5.0
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 pipeline.load_lora_weights("benjamin-paine/steamboat-willie-14b", adapter_name="steamboat-willie")
 pipeline.set_adapters("steamboat-willie")
@@ -423,7 +423,7 @@ from diffusers.utils import export_to_video
 pipeline = CogVideoXPipeline.from_pretrained(
   "THUDM/CogVideoX-2b",
   dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # torch.compile
 pipeline.transformer.to(memory_format=torch.channels_last)

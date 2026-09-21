@@ -13,9 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
-import numpy as np
 import torch
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
@@ -27,29 +24,15 @@ from diffusers import (
 )
 
 from ...testing_utils import torch_device
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
-class OvisImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class OvisImagePipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = OvisImagePipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
-    )
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
+    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    output_shape = (3, 16, 16)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -101,47 +84,37 @@ class OvisImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "transformer": transformer,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
+    def get_dummy_inputs(self):
         return {
             "prompt": "a cat",
             "negative_prompt": "bad quality",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 2.0,
             "height": 16,
             "width": 16,
             "max_sequence_length": 32,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
 
-    def test_inference(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        generated_image = image[0]
-        self.assertEqual(generated_image.shape, (16, 16, 3))
-        self.assertTrue(np.isfinite(image).all())
+class TestOvisImagePipeline(OvisImagePipelineTesterConfig, PipelineTesterMixin):
+    def test_inference(self, base_pipe_output):
+        # `test_output` already pins the shape; this one guards against a NaN/inf output.
+        assert torch.isfinite(base_pipe_output).all()
 
     def test_guidance_scale_is_set(self):
         # The `guidance_scale` property reads `self._guidance_scale`, which `__call__` must initialize.
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
         pipe(**inputs)
         assert pipe.guidance_scale == inputs["guidance_scale"]
 
     def test_max_sequence_length_is_used(self):
         # `max_sequence_length` should bound the encoded prompt length.
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
         embeds_16 = pipe.encode_prompt(
             "a cat", do_classifier_free_guidance=False, device=torch_device, max_sequence_length=16
         )[0]
@@ -150,3 +123,7 @@ class OvisImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )[0]
         assert embeds_16.shape[1] == 16
         assert embeds_32.shape[1] == 32
+
+
+class TestOvisImagePipelineMemory(OvisImagePipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the OvisImage pipeline."""

@@ -19,9 +19,17 @@ from PIL import Image
 
 from diffusers import ModularPipeline
 from diffusers.modular_pipelines import Cosmos3DistilledBlocks, Cosmos3DistilledModularPipeline
+from diffusers.modular_pipelines.cosmos.before_denoise import Cosmos3VisionPrepareLatentsStep
+from diffusers.modular_pipelines.cosmos.encoders import Cosmos3DistilledTextEncoderStep
 
 from ...testing_utils import torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 TINY_DISTILLED_REPO = "hf-internal-testing/tiny-cosmos3-distilled-modular-pipe"
@@ -59,11 +67,10 @@ COSMOS3_DISTILLED_WORKFLOWS = {
 }
 
 
-class TestCosmos3DistilledModularPipelineFast(ModularPipelineTesterMixin):
+class Cosmos3DistilledModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Cosmos3DistilledModularPipeline
     pipeline_blocks_class = Cosmos3DistilledBlocks
     pretrained_model_name_or_path = TINY_DISTILLED_REPO
-
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
@@ -86,20 +93,8 @@ class TestCosmos3DistilledModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "latent",
         }
 
-    def test_save_from_pretrained(self, tmp_path):
-        base_pipe = self.get_pipeline().to(torch_device)
-        base_pipe.save_pretrained(str(tmp_path))
 
-        loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
-        loaded_pipe.load_components(torch_dtype=torch.float32)
-        loaded_pipe.disable_safety_checker()
-        loaded_pipe.to(torch_device)
-
-        base_output = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
-        loaded_output = loaded_pipe(**self.get_dummy_inputs(), output=self.output_name)
-
-        assert torch.abs(base_output - loaded_output).max() < 1e-3
-
+class TestCosmos3DistilledModularPipelineFast(Cosmos3DistilledModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="Cosmos3 does not support batched prompts.")
     def test_inference_batch_consistent(self):
         pass
@@ -120,6 +115,56 @@ class TestCosmos3DistilledModularPipelineFast(ModularPipelineTesterMixin):
         pipe = self.pipeline_class()
         assert pipe.config.is_distilled is True
         assert pipe.config.distilled_sigmas is None
+        assert pipe.config.default_use_system_prompt is True
+
+    def test_distilled_text_step_uses_system_prompt_config_fallback(self):
+        text_pipe = Cosmos3DistilledTextEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        text_pipe.load_components()
+        text_pipe.disable_safety_checker()
+
+        inputs = {
+            "prompt": "A small robot moves across a table.",
+            "num_frames": 5,
+            "height": 32,
+            "width": 32,
+        }
+        default_with_system_prompt = text_pipe(**inputs, output="cond_input_ids")
+        explicit_with_system_prompt = text_pipe(**inputs, use_system_prompt=True, output="cond_input_ids")
+        explicit_without_system_prompt = text_pipe(**inputs, use_system_prompt=False, output="cond_input_ids")
+
+        text_pipe.update_components(default_use_system_prompt=False)
+        default_without_system_prompt = text_pipe(**inputs, output="cond_input_ids")
+        updated_with_system_prompt = text_pipe(**inputs, use_system_prompt=True, output="cond_input_ids")
+        updated_without_system_prompt = text_pipe(**inputs, use_system_prompt=False, output="cond_input_ids")
+
+        assert default_with_system_prompt == explicit_with_system_prompt == updated_with_system_prompt
+        assert explicit_without_system_prompt == default_without_system_prompt == updated_without_system_prompt
+        assert len(default_with_system_prompt) > len(default_without_system_prompt)
+
+    def test_prepare_vision_latents_uses_fp32(self):
+        prepare_pipe = Cosmos3VisionPrepareLatentsStep().init_pipeline(self.pretrained_model_name_or_path)
+        prepare_pipe.load_components(torch_dtype=torch.bfloat16)
+        prepare_pipe.to(torch_device)
+
+        outputs = prepare_pipe(
+            num_frames=5,
+            height=32,
+            width=32,
+            fps=24.0,
+            generator=self.get_generator(0),
+            output=["latents", "vision_condition_mask"],
+        )
+
+        assert outputs["latents"].dtype == torch.float32
+        assert outputs["vision_condition_mask"].dtype == torch.float32
+
+    def test_distilled_scheduler_uses_fp32_state(self):
+        pipe = self.get_pipeline(torch_dtype=torch.bfloat16).to(torch_device)
+        inputs = self.get_dummy_inputs()
+
+        latents = pipe(**inputs, output=self.output_name)
+
+        assert latents.dtype == torch.float32
 
     def test_vae_encoder_rejects_image_and_video_together(self):
         vae_encoder = Cosmos3DistilledBlocks().sub_blocks["vae_encoder"]
@@ -153,3 +198,31 @@ class TestCosmos3DistilledModularPipelineFast(ModularPipelineTesterMixin):
 
         with pytest.raises(ValueError, match="`guidance_scale` must be 1.0"):
             pipe(**inputs, output=self.output_name)
+
+
+class TestCosmos3DistilledModularPipelineLoading(
+    Cosmos3DistilledModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
+    def test_save_from_pretrained(self, tmp_path):
+        base_pipe = self.get_pipeline().to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+
+        loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
+        loaded_pipe.load_components(torch_dtype=torch.float32)
+        loaded_pipe.disable_safety_checker()
+        loaded_pipe.to(torch_device)
+
+        base_output = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
+        loaded_output = loaded_pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert torch.abs(base_output - loaded_output).max() < 1e-3
+
+
+class TestCosmos3DistilledModularPipelineWorkflow(
+    Cosmos3DistilledModularPipelineTesterConfig, ModularWorkflowTesterMixin
+):
+    pass
+
+
+class TestCosmos3DistilledModularPipelineMemory(Cosmos3DistilledModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

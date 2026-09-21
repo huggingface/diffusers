@@ -21,6 +21,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
+    LoraTesterMixin,
     ModelTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -301,3 +302,7 @@ class HunyuanVideoTokenReplaceTransformerTesterConfig(BaseModelTesterConfig):
 class TestHunyuanVideoTokenReplaceTransformer(HunyuanVideoTokenReplaceTransformerTesterConfig, ModelTesterMixin):
     def test_output(self, base_model_output):
         super().test_output(base_model_output, expected_output_shape=(1, *self.output_shape))
+
+
+class TestHunyuanVideoTransformerLoRA(HunyuanVideoTransformerTesterConfig, LoraTesterMixin):
+    pass

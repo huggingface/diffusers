@@ -37,7 +37,7 @@ from ...testing_utils import (
     torch_device,
 )
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -99,7 +99,7 @@ class TestAsymmetricAutoencoderKLMemory(AsymmetricAutoencoderKLTesterConfig, Mem
     """Memory optimization tests for AsymmetricAutoencoderKL."""
 
 
-class TestAsymmetricAutoencoderKLSlicingTiling(AsymmetricAutoencoderKLTesterConfig, NewAutoencoderTesterMixin):
+class TestAsymmetricAutoencoderKLSlicingTiling(AsymmetricAutoencoderKLTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AsymmetricAutoencoderKL."""
 
     @pytest.mark.skip("Unsupported test.")

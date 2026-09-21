@@ -31,7 +31,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import ChromaPipelineOutput
 
@@ -372,7 +372,7 @@ class ChromaPipeline(
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
-        image = image.to(device=device, dtype=dtype)
+        image = image.to(device=get_module_execution_device(self.image_encoder), dtype=dtype)
         image_embeds = self.image_encoder(image).image_embeds
         image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         return image_embeds
@@ -628,14 +628,14 @@ class ChromaPipeline(
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 35):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             sigmas (`list[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to 3.5):
+            guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
@@ -840,6 +840,9 @@ class ChromaPipeline(
             )
 
         # 6. Denoising loop
+        # We set the index here to remove DtoH sync, helpful especially during compilation.
+        # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
+        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:

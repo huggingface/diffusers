@@ -24,8 +24,11 @@ from ..testing_utils import (
     BitsAndBytesTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SeaCacheTesterMixin,
+    SingleFileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -104,6 +107,10 @@ class WanTransformer3DTesterConfig(BaseModelTesterConfig):
 
 class TestWanTransformer3D(WanTransformer3DTesterConfig, ModelTesterMixin):
     """Core model tests for Wan Transformer 3D."""
+
+
+class TestWanTransformer3DSeaCache(WanTransformer3DTesterConfig, SeaCacheTesterMixin):
+    cache_input_key = "hidden_states"
 
 
 class TestWanTransformer3DMemory(WanTransformer3DTesterConfig, MemoryTesterMixin):
@@ -228,3 +235,39 @@ class TestWanTransformer3DGGUFCompile(WanTransformer3DTesterConfig, GGUFCompileT
             ),
             "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
         }
+
+
+class TestWanTransformer3DLoRA(WanTransformer3DTesterConfig, LoraTesterMixin):
+    pass
+
+
+class TestWanTransformer3DText2VideoSingleFile(WanTransformer3DTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+
+class TestWanTransformer3DImage2VideoSingleFile(WanTransformer3DTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    @property
+    def torch_dtype(self):
+        return torch.float8_e4m3fn

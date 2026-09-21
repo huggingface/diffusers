@@ -20,7 +20,6 @@ class AnimaModularPipeline(ModularPipeline, AnimaLoraLoaderMixin):
     """
     A ModularPipeline for Anima.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "AnimaAutoBlocks"

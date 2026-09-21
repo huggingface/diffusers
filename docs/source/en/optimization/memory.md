@@ -55,7 +55,7 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     unet=unet,
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ### Device placement
@@ -91,7 +91,7 @@ print(pipeline.hf_device_map)
 </hfoption>
 <hfoption id="model level">
 
-The `device_map` is useful for loading large models, such as the Flux diffusion transformer which has 12.5B parameters. Set it to `"auto"` to automatically distribute a model across the fastest device first before moving to slower devices. Refer to the [Model sharding](../training/distributed_inference#model-sharding) docs for more details.
+The `device_map` is useful for loading large models, such as the Flux diffusion transformer which has 12.5B parameters. Set it to `"auto"` to automatically distribute a model across the fastest device first before moving to slower devices. Refer to the [Sharded checkpoints](#sharded-checkpoints) section for more details.
 
 ```py
 import torch
@@ -156,7 +156,7 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
 )
 ```
 
-Diffusers uses the maxmium memory of all devices by default, but if they don't fit on the GPUs, then you'll need to use a single GPU and offload to the CPU with the methods below.
+Diffusers uses the maximum memory of all devices by default, but if they don't fit on the GPUs, then you'll need to use a single GPU and offload to the CPU with the methods below.
 
 - [`~DiffusionPipeline.enable_model_cpu_offload`] only works on a single GPU but a very large model may not fit on it
 - [`~DiffusionPipeline.enable_sequential_cpu_offload`] may work but it is extremely slow and also limited to a single GPU
@@ -182,7 +182,7 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.vae.enable_slicing()
 pipeline(["An astronaut riding a horse on Mars"]*32).images[0]
 print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
@@ -204,7 +204,7 @@ from diffusers.utils import load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.vae.enable_tiling()
 
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-sdxl-init.png")
@@ -431,7 +431,7 @@ transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_
 pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b",
     transformer=transformer,
     dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 prompt = (
     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
     "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
@@ -470,7 +470,7 @@ apply_layerwise_casting(
 
 ## torch.channels_last
 
-[torch.channels_last](https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html) flips how tensors are stored from `(batch size, channels, height, width)` to `(batch size, heigh, width, channels)`. This aligns the tensors with how the hardware sequentially accesses the tensors stored in memory and avoids skipping around in memory to access the pixel values.
+[torch.channels_last](https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html) flips how tensors are stored from `(batch size, channels, height, width)` to `(batch size, height, width, channels)`. This aligns the tensors with how the hardware sequentially accesses the tensors stored in memory and avoids skipping around in memory to access the pixel values.
 
 Not all operators currently support the channels-last format and may result in worst performance, but it is still worth trying.
 

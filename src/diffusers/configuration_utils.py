@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from huggingface_hub import DDUFEntry, create_repo, hf_hub_download
+from huggingface_hub import create_repo, hf_hub_download
 from huggingface_hub.utils import (
     EntryNotFoundError,
     HfHubHTTPError,
@@ -383,7 +383,6 @@ class ConfigMixin:
         _ = kwargs.pop("mirror", None)
         subfolder = kwargs.pop("subfolder", None)
         user_agent = kwargs.pop("user_agent", {})
-        dduf_entries: dict[str, DDUFEntry] | None = kwargs.pop("dduf_entries", None)
 
         user_agent = {**user_agent, "file_type": "config"}
         user_agent = http_user_agent(user_agent)
@@ -395,15 +394,7 @@ class ConfigMixin:
                 "`self.config_name` is not defined. Note that one should not load a config from "
                 "`ConfigMixin`. Please make sure to define `config_name` in a class inheriting from `ConfigMixin`"
             )
-        # Custom path for now
-        if dduf_entries:
-            if subfolder is not None:
-                raise ValueError(
-                    "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
-                    "Please check the DDUF structure"
-                )
-            config_file = cls._get_config_file_from_dduf(pretrained_model_name_or_path, dduf_entries)
-        elif os.path.isfile(pretrained_model_name_or_path):
+        if os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
         elif os.path.isdir(pretrained_model_name_or_path):
             if subfolder is not None and os.path.isfile(
@@ -471,7 +462,7 @@ class ConfigMixin:
                     f"containing a {cls.config_name} file"
                 )
         try:
-            config_dict = cls._dict_from_json_file(config_file, dduf_entries=dduf_entries)
+            config_dict = cls._dict_from_json_file(config_file)
 
             commit_hash = extract_commit_hash(config_file)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -590,12 +581,9 @@ class ConfigMixin:
         return init_dict, unused_kwargs, hidden_config_dict
 
     @classmethod
-    def _dict_from_json_file(cls, json_file: str | os.PathLike, dduf_entries: dict[str, DDUFEntry] | None = None):
-        if dduf_entries:
-            text = dduf_entries[json_file].read_text()
-        else:
-            with open(json_file, "r", encoding="utf-8") as reader:
-                text = reader.read()
+    def _dict_from_json_file(cls, json_file: str | os.PathLike):
+        with open(json_file, "r", encoding="utf-8") as reader:
+            text = reader.read()
         return json.loads(text)
 
     def __repr__(self):
@@ -666,20 +654,6 @@ class ConfigMixin:
         """
         with open(json_file_path, "w", encoding="utf-8") as writer:
             writer.write(self.to_json_string())
-
-    @classmethod
-    def _get_config_file_from_dduf(cls, pretrained_model_name_or_path: str, dduf_entries: dict[str, DDUFEntry]):
-        # paths inside a DDUF file must always be "/"
-        config_file = (
-            cls.config_name
-            if pretrained_model_name_or_path == ""
-            else "/".join([pretrained_model_name_or_path, cls.config_name])
-        )
-        if config_file not in dduf_entries:
-            raise ValueError(
-                f"We did not manage to find the file {config_file} in the dduf file. We only have the following files {dduf_entries.keys()}"
-            )
-        return config_file
 
 
 def register_to_config(init):

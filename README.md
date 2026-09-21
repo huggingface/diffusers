@@ -103,16 +103,16 @@ Check out the [Quickstart](https://huggingface.co/docs/diffusers/quicktour) to l
 
 | **Documentation**                                                   | **What can I learn?**                                                                                                                                                                           |
 |---------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [Tutorial](https://huggingface.co/docs/diffusers/tutorials/tutorial_overview)                                                            | A basic crash course for learning how to use the library's most important features like using models and schedulers to build your own diffusion system, and training your own diffusion model.  |
+| [Quickstart](https://huggingface.co/docs/diffusers/quicktour)                                                            | A basic crash course for loading pipelines, generating outputs, and applying common inference optimizations.  |
 | [Loading](https://huggingface.co/docs/diffusers/using-diffusers/loading)                                                             | Guides for how to load and configure all the components (pipelines, models, and schedulers) of the library, as well as how to use different schedulers.                                         |
-| [Pipelines for inference](https://huggingface.co/docs/diffusers/using-diffusers/overview_techniques)                                             | Guides for how to use pipelines for different inference tasks, batched generation, controlling generated outputs and randomness, and how to contribute a pipeline to the library.               |
+| [Modular Diffusers](https://huggingface.co/docs/diffusers/main/en/modular_diffusers/overview)                                             | Build flexible diffusion systems from modular pipeline components.               |
 | [Optimization](https://huggingface.co/docs/diffusers/optimization/fp16)                                                        | Guides for how to optimize your diffusion model to run faster and consume less memory.                                                                                                          |
 | [Training](https://huggingface.co/docs/diffusers/training/overview) | Guides for how to train a diffusion model for different tasks with different training techniques.                                                                                               |
 ## Contribution
 
 We ❤️  contributions from the open-source community!
 If you want to contribute to this library, please check out our [Contribution guide](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution).
-If you are using an AI agent, please point it at the project conventions in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai) first (run `make claude` or `make codex`) — see [Coding with AI agents](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents).
+If you are using an AI agent, please point it at the project conventions in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai) first (install them as a plugin with `claude plugin marketplace add huggingface/diffusers`, or a skill at a time with `diffusers-cli skills add <name>`) — see [Coding with AI agents](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents).
 You can look out for [issues](https://github.com/huggingface/diffusers/issues) you'd like to tackle to contribute to the library.
 - See [Good first issues](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) for general opportunities to contribute
 - See [New model/pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) to contribute exciting new diffusion models / diffusion pipelines
@@ -141,7 +141,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
   </tr>
   <tr>
     <td>Text-to-Image</td>
-    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/unclip">unCLIP</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_unclip">unCLIP</a></td>
       <td><a href="https://huggingface.co/kakaobrain/karlo-v1-alpha"> kakaobrain/karlo-v1-alpha </a></td>
   </tr>
   <tr>

@@ -16,7 +16,13 @@
 
 from diffusers.modular_pipelines import Krea2AutoBlocks, Krea2ModularPipeline
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 KREA2_WORKFLOWS = {
@@ -32,11 +38,10 @@ KREA2_WORKFLOWS = {
 }
 
 
-class TestKrea2ModularPipelineFast(ModularPipelineTesterMixin):
+class Krea2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Krea2ModularPipeline
     pipeline_blocks_class = Krea2AutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-krea2-modular-pipe"
-
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     expected_workflow_blocks = KREA2_WORKFLOWS
@@ -54,5 +59,19 @@ class TestKrea2ModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestKrea2ModularPipelineFast(Krea2ModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-3)
+
+
+class TestKrea2ModularPipelineLoading(Krea2ModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestKrea2ModularPipelineWorkflow(Krea2ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestKrea2ModularPipelineMemory(Krea2ModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

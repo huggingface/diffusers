@@ -57,7 +57,8 @@ def load_image(
 def load_video(
     video: str,
     convert_method: Callable[[list[PIL.Image.Image]], list[PIL.Image.Image]] | None = None,
-) -> list[PIL.Image.Image]:
+    return_fps: bool = False,
+) -> list[PIL.Image.Image] | tuple[list[PIL.Image.Image], float]:
     """
     Loads `video` to a list of PIL Image.
 
@@ -67,10 +68,13 @@ def load_video(
         convert_method (Callable[[list[PIL.Image.Image]], list[PIL.Image.Image]], *optional*):
             A conversion method to apply to the video after loading it. When set to `None` the images will be converted
             to "RGB".
+        return_fps (`bool`, *optional*, defaults to `False`):
+            Whether to also return the frame rate the video was encoded at. Needed by pipelines that resample the input
+            to the frame rate their model works at, since a list of frames does not carry that information.
 
     Returns:
-        `list[PIL.Image.Image]`:
-            The video as a list of PIL images.
+        `list[PIL.Image.Image]` or `tuple[list[PIL.Image.Image], float]`:
+            The video as a list of PIL images, and its frame rate if `return_fps` is set.
     """
     is_url = video.startswith("http://") or video.startswith("https://")
     is_file = os.path.isfile(video)
@@ -102,8 +106,12 @@ def load_video(
         video = video_path
 
     pil_images = []
+    fps = None
     if video.endswith(".gif"):
         gif = PIL.Image.open(video)
+        # Milliseconds this frame is displayed for; GIFs are not obliged to record it.
+        frame_duration = gif.info.get("duration")
+        fps = 1000 / frame_duration if frame_duration else None
         try:
             while True:
                 pil_images.append(gif.copy())
@@ -125,6 +133,7 @@ def load_video(
             )
 
         with imageio.get_reader(video) as reader:
+            fps = reader.get_meta_data().get("fps")
             # Read all frames
             for frame in reader:
                 pil_images.append(PIL.Image.fromarray(frame))
@@ -134,6 +143,11 @@ def load_video(
 
     if convert_method is not None:
         pil_images = convert_method(pil_images)
+
+    if return_fps:
+        if fps is None:
+            raise ValueError(f"Could not read a frame rate from {video}, so `return_fps=True` cannot be honoured.")
+        return pil_images, fps
 
     return pil_images
 
