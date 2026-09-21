@@ -355,13 +355,13 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
         repo_id="SageAttention/sage-attention",
         function_attr="sageattn",
         version=3,
-        trust_remote_code=["SageAttention/sage-attention"] if DIFFUSERS_TRUST_REMOTE_KERNELS else False
+        trust_remote_code=["SageAttention/sage-attention"] if DIFFUSERS_TRUST_REMOTE_KERNELS else False,
     ),
     AttentionBackendName.SAGE_BLACKWELL_HUB: _HubKernelConfig(
         repo_id="SageAttention/sage-blackwell",
         function_attr="sageattn3_blackwell",
         version=1,
-        trust_remote_code=["SageAttention/sage-blackwell"] if DIFFUSERS_TRUST_REMOTE_KERNELS else False
+        trust_remote_code=["SageAttention/sage-blackwell"] if DIFFUSERS_TRUST_REMOTE_KERNELS else False,
     ),
     AttentionBackendName.FLASH_4_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn4",
@@ -749,7 +749,7 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
             revision=config.revision,
             version=config.version,
             user_agent={"diffusers": __version__},
-            **trust_kwargs
+            **trust_kwargs,
         )
         if needs_kernel:
             config.kernel_fn = _resolve_kernel_attr(kernel_module, config.function_attr)
