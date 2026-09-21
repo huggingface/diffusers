@@ -308,7 +308,7 @@ def parse_args(input_args=None):
         "--max_sequence_length",
         type=int,
         default=300,
-        help="Maximum sequence length to use with with the Gemma model",
+        help="Maximum sequence length to use with the Gemma model",
     )
     parser.add_argument(
         "--complex_human_instruction",
