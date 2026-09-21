@@ -134,48 +134,7 @@ image = pipeline(
   </div>
 </div>
 
-### Rescaling schedules
-
-Denoising should begin with pure noise and the signal-to-noise (SNR) ratio should be zero. However, some models don't actually start from pure noise which makes it difficult to generate images at brightness extremes.
-
-> [!TIP]
-> Train your own model with `v_prediction` by adding the `--prediction_type="v_prediction"` flag to your training script. You can also [search](https://huggingface.co/search/full-text?q=v_prediction&type=model) for existing models trained with `v_prediction`.
-
-To fix this, a model must be trained with `v_prediction`. If a model is trained with `v_prediction`, then enable the following arguments in the scheduler.
-
-- Set `rescale_betas_zero_snr=True` to rescale the noise schedule to the very last timestep with exactly zero SNR
-- Set `timestep_spacing="trailing"` to force sampling from the last timestep with pure noise
-
-```py
-from diffusers import DiffusionPipeline, DDIMScheduler
-
-pipeline = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", device_map="cuda")  # or "mps", "xpu", "cpu"
-
-pipeline.scheduler = DDIMScheduler.from_config(
-    pipeline.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
-)
-```
-
-Set `guidance_rescale` in the pipeline to avoid overexposed images. A lower value increases brightness, but some details may appear washed out.
-
-```py
-prompt = """
-cinematic photo of a snowy mountain at night with the northern lights aurora borealis
-overhead, 35mm photograph, film, professional, 4k, highly detailed
-"""
-image = pipeline(prompt, guidance_rescale=0.7).images[0]
-```
-
-<div class="flex gap-4">
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/no-zero-snr.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">default Stable Diffusion v2-1 image</figcaption>
-  </div>
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/zero-snr.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">image with zero SNR and trailing timestep spacing enabled</figcaption>
-  </div>
-</div>
+For v-prediction/zero-SNR rescaling on older checkpoints, see [Legacy checkpoints](./legacy_checkpoints#rescaling-schedules).
 
 ## Timestep spacing
 

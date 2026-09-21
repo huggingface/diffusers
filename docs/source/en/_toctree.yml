@@ -32,6 +32,8 @@
       title: Community pipelines and components
     - local: using-diffusers/push_to_hub
       title: Sharing pipelines and models
+    - local: using-diffusers/legacy_checkpoints
+      title: Legacy checkpoints
     title: Using diffusion pipelines
   - isExpanded: false
     sections:

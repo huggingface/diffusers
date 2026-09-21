@@ -232,23 +232,6 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 
 Some methods may not work correctly on pipelines created with [`~DiffusionPipeline.from_pipe`]. For example, [`~DiffusionPipeline.enable_model_cpu_offload`] relies on a unique model execution order, which may differ in the new pipeline. To ensure proper functionality, reapply these methods on the new pipeline.
 
-## Safety checker
-
-Diffusers provides a [safety checker](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py) for older Stable Diffusion checkpoints to prevent generating harmful content. It screens the generated output against a set of hardcoded harmful concepts. Newer models such as Qwen-Image do not have this checker.
-
-If you want to disable the safety checker, pass `safety_checker=None` in [`~DiffusionPipeline.from_pretrained`] as shown below.
-
-```py
-from diffusers import DiffusionPipeline
-
-pipeline = DiffusionPipeline.from_pretrained(
-  "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None
-)
-"""
-You have disabled the safety checker for <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'> by passing `safety_checker=None`. Ensure that you abide by the conditions of the Stable Diffusion license and do not expose unfiltered results in services or applications open to the public. Both the diffusers team and Hugging Face strongly recommend keeping the safety filter enabled in all public-facing circumstances, disabling it only for use cases that involve analyzing network behavior or auditing its results. For more information, please have a look at https://github.com/huggingface/diffusers/pull/254 .
-"""
-```
-
 ## Next steps
 
 Once a pipeline loads, you usually tune the denoising schedule, swap weight formats, or attach adapters.
@@ -257,3 +240,4 @@ Once a pipeline loads, you usually tune the denoising schedule, swap weight form
 - [Model formats](./other-formats) covers GGUF, single-file checkpoints, and other weight layouts.
 - [Reduce memory usage](../optimization/memory) covers offloading and other memory tools.
 - [LoRA](../tutorials/using_peft_for_inference) covers loading adapters on a pipeline.
+- [Legacy checkpoints](./legacy_checkpoints#safety-checker) covers the safety checker for older Stable Diffusion checkpoints.
