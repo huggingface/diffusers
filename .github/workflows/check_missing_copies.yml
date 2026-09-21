@@ -1,0 +1,31 @@
+name: Check for missing Copied from comments
+
+on:
+  pull_request_target:
+    branches: [main]
+    paths:
+      - "src/diffusers/**.py"
+      - "utils/check_missing_copies.py"
+      - "tests/others/test_check_missing_copies.py"
+      - ".github/workflows/check_missing_copies.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check_missing_copies:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Check for missing Copied from comments
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git show "$BASE_SHA:utils/check_missing_copies.py" | python - "$BASE_SHA"
