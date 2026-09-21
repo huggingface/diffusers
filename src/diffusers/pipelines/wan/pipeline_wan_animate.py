@@ -28,7 +28,7 @@ from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanAnimateTransformer3DModel
 from ...schedulers import UniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import WanAnimateImageProcessor
@@ -259,7 +259,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
 
-        model_device = self.text_encoder.device
+        model_device = get_module_execution_device(self.text_encoder)
         prompt_embeds = self.text_encoder(text_input_ids.to(model_device), mask.to(model_device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
@@ -281,9 +281,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: torch.device | None = None,
     ):
         device = device or self._execution_device
-        image = self.image_processor(images=image, return_tensors="pt").to(device)
+        image = self.image_processor(images=image, return_tensors="pt").to(
+            get_module_execution_device(self.image_encoder)
+        )
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
-        return image_embeds.hidden_states[-2]
+        return image_embeds.hidden_states[-2].to(device)
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(

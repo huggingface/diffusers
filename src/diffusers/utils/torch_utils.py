@@ -18,6 +18,7 @@ PyTorch utilities: Utilities related to PyTorch
 from __future__ import annotations
 
 import functools
+import itertools
 import os
 from typing import Callable, ParamSpec, TypeVar
 
@@ -259,6 +260,34 @@ def is_compiled_module(module) -> bool:
 def unwrap_module(module):
     """Unwraps a module if it was compiled with torch.compile()"""
     return module._orig_mod if is_compiled_module(module) else module
+
+
+def get_module_execution_device(module: "torch.nn.Module") -> "torch.device":
+    """
+    Returns the device a module's inputs have to be on for its forward pass.
+
+    This is not always the device its weights currently sit on: with offloading enabled the weights stay on the CPU
+    (`enable_model_cpu_offload`, group offloading) or on the meta device (`enable_sequential_cpu_offload`) and are only
+    moved to the accelerator by the pre-forward hook. In that case the hook's onload device is what the inputs must
+    match. Without offloading this is just the module's own device, which is what makes it safe to use for pipelines
+    whose components were placed on different devices by hand.
+    """
+    from ..hooks.group_offloading import _get_group_onload_device
+
+    try:
+        return _get_group_onload_device(module)
+    except ValueError:
+        pass
+
+    for submodule in module.modules():
+        execution_device = getattr(getattr(submodule, "_hf_hook", None), "execution_device", None)
+        if execution_device is not None:
+            return torch.device(execution_device)
+
+    device = getattr(module, "device", None)
+    if device is None:
+        device = next(itertools.chain(module.parameters(), module.buffers())).device
+    return torch.device(device)
 
 
 def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.Tensor":

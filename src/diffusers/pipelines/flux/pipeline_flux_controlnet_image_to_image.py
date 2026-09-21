@@ -24,7 +24,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import FluxPipelineOutput
 
@@ -274,7 +274,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        model_device = self.text_encoder_2.device
+        model_device = get_module_execution_device(self.text_encoder_2)
         prompt_embeds = self.text_encoder_2(text_input_ids.to(model_device), output_hidden_states=False)[0]
 
         dtype = self.text_encoder_2.dtype
@@ -321,7 +321,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer_max_length} tokens: {removed_text}"
             )
-        model_device = self.text_encoder.device
+        model_device = get_module_execution_device(self.text_encoder)
         prompt_embeds = self.text_encoder(text_input_ids.to(model_device), output_hidden_states=False)
 
         # Use pooled output of CLIPTextModel

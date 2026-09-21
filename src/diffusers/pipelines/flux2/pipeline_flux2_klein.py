@@ -24,7 +24,7 @@ from ...loaders import Flux2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
+from ...utils.torch_utils import get_module_execution_device, maybe_adjust_dtype_for_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import Flux2ImageProcessor
 from .pipeline_output import Flux2PipelineOutput
@@ -241,7 +241,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             all_input_ids.append(inputs["input_ids"])
             all_attention_masks.append(inputs["attention_mask"])
 
-        model_device = text_encoder.device
+        model_device = get_module_execution_device(text_encoder)
         input_ids = torch.cat(all_input_ids, dim=0).to(model_device)
         attention_mask = torch.cat(all_attention_masks, dim=0).to(model_device)
 
@@ -521,7 +521,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     ):
         image_latents = []
         for image in images:
-            image = image.to(device=device, dtype=dtype)
+            image = image.to(device=get_module_execution_device(self.vae), dtype=dtype)
             imagge_latent = self._encode_vae_image(image=image, generator=generator)
             image_latents.append(imagge_latent)  # (1, 128, 32, 32)
 
@@ -540,6 +540,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latents = image_latents.unsqueeze(0)  # (1, N*1024, 128)
 
         image_latents = image_latents.repeat(batch_size, 1, 1)
+        image_latents = image_latents.to(device)
         image_latent_ids = image_latent_ids.repeat(batch_size, 1, 1)
         image_latent_ids = image_latent_ids.to(device)
 
@@ -916,6 +917,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         if output_type == "latent":
             image = latents
         else:
+            latents = latents.to(get_module_execution_device(self.vae))
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
