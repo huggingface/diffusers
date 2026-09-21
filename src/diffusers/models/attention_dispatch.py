@@ -47,7 +47,7 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_TRUST_REMOTE_KERNELS
 from ..utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from ._modeling_parallel import gather_size_by_comm
 
@@ -318,6 +318,7 @@ class _HubKernelConfig:
     wrapped_backward_attr: str | None = None
     wrapped_forward_fn: Callable | None = None
     wrapped_backward_fn: Callable | None = None
+    trust_remote_code: bool | list[str] = True
 
 
 # Registry for hub-based attention kernels
@@ -351,14 +352,16 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
         version=1,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
-        repo_id="kernels-community/sage-attention",
+        repo_id="SageAttention/sage-attention",
         function_attr="sageattn",
         version=3,
+        trust_remote_code=["SageAttention/sage-attention"] if DIFFUSERS_TRUST_REMOTE_KERNELS else False
     ),
     AttentionBackendName.SAGE_BLACKWELL_HUB: _HubKernelConfig(
-        repo_id="kernels-community/sage-blackwell",
+        repo_id="SageAttention/sage-blackwell",
         function_attr="sageattn3_blackwell",
         version=1,
+        trust_remote_code=["SageAttention/sage-blackwell"] if DIFFUSERS_TRUST_REMOTE_KERNELS else False
     ),
     AttentionBackendName.FLASH_4_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn4",
@@ -739,11 +742,14 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
     try:
         from kernels import get_kernel
 
+        trust_kwargs = {"trust_remote_code": config.trust_remote_code} if is_kernels_version(">=", "0.14.0") else {}
+
         kernel_module = get_kernel(
             config.repo_id,
             revision=config.revision,
             version=config.version,
             user_agent={"diffusers": __version__},
+            **trust_kwargs
         )
         if needs_kernel:
             config.kernel_fn = _resolve_kernel_attr(kernel_module, config.function_attr)
