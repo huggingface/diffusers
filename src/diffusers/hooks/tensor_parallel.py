@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import NamedTuple
+
 import torch
 
 from ..models._modeling_parallel import TensorParallelConfig
@@ -63,6 +65,89 @@ def _blocks_to_block_sizes(total_size: int, blocks: "list[int]") -> "list[int]":
         )
     unit = total_size // total
     return [b * unit for b in blocks]
+
+
+class TPShardSpec(NamedTuple):
+    """How one parameter is laid out across the tensor-parallel ranks.
+
+    `dim` is the dimension sharded across ranks, or `None` when the parameter is replicated on every rank (a rowwise
+    bias, which is added after the all-reduce). `block_sizes` partitions `dim` into independently sharded blocks; a
+    plain `"colwise"` / `"rowwise"` style has a single block covering the whole dimension, and packed styles have one
+    per fused projection.
+    """
+
+    dim: "int | None"
+    block_sizes: "list[int] | None"
+
+
+def _local_shard(tensor: torch.Tensor, dim: int, block_sizes: "list[int]", tp_mesh) -> torch.Tensor:
+    """Extract this rank's slice of `tensor` along `dim`.
+
+    Each block is sliced independently and the pieces concatenated, so every fused projection of a packed weight
+    contributes its own contiguous chunk to the rank's shard. A `dim`-1 slice comes back strided, hence the final
+    `contiguous()` — `DTensor.from_local` needs a contiguous local tensor.
+    """
+    rank = tp_mesh.get_local_rank()
+    tp_size = tp_mesh.size()
+
+    parts, offset = [], 0
+    for block_size in block_sizes:
+        # An uneven split is rejected rather than handed to `Shard`, which pads the tail and would break both the
+        # paired colwise/rowwise matmul and the attention head split.
+        if block_size % tp_size != 0:
+            raise ValueError(
+                f"Cannot shard a block of size {block_size} across {tp_size} tensor-parallel ranks: "
+                f"{block_size} is not divisible by {tp_size}."
+            )
+        chunk = block_size // tp_size
+        index = [slice(None)] * tensor.dim()
+        index[dim] = slice(offset + rank * chunk, offset + (rank + 1) * chunk)
+        parts.append(tensor[tuple(index)])
+        offset += block_size
+
+    local = parts[0] if len(parts) == 1 else torch.cat(parts, dim=dim)
+    return local.contiguous()
+
+
+def _block_shard_specs(
+    block: torch.nn.Module, relative_plan: dict
+) -> "list[tuple[torch.nn.Module, str, TPShardSpec]]":
+    """Resolve one block's plan to `(module, param_name, spec)` triples, covering both `weight` and `bias`.
+
+    Modules are returned directly rather than by name so the caller can place the shards without a second lookup.
+    """
+    resolved = []
+    for relative_path, style in relative_plan.items():
+        submodule = block
+        for atom in relative_path.split("."):
+            submodule = getattr(submodule, atom)
+
+        # `_tp_packed_*_blocks` hold absolute sizes rather than proportions; that works because they sum to the
+        # full dimension, so `_blocks_to_block_sizes` computes `unit == 1`.
+        if style == "colwise":
+            weight_spec = TPShardSpec(0, [submodule.weight.shape[0]])
+            bias_spec = weight_spec
+        elif style == "rowwise":
+            weight_spec = TPShardSpec(1, [submodule.weight.shape[1]])
+            bias_spec = TPShardSpec(None, None)
+        elif isinstance(style, PackedColwiseParallel):
+            blocks = style.blocks if style.blocks is not None else submodule._tp_packed_col_blocks
+            weight_spec = TPShardSpec(0, _blocks_to_block_sizes(submodule.weight.shape[0], blocks))
+            bias_spec = weight_spec
+        elif isinstance(style, PackedRowwiseParallel):
+            blocks = style.blocks if style.blocks is not None else submodule._tp_packed_row_blocks
+            weight_spec = TPShardSpec(1, _blocks_to_block_sizes(submodule.weight.shape[1], blocks))
+            bias_spec = TPShardSpec(None, None)
+        else:
+            raise ValueError(
+                f"Unsupported tensor-parallel style '{style}' for '{relative_path}'. "
+                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+            )
+
+        resolved.append((submodule, "weight", weight_spec))
+        if submodule.bias is not None:
+            resolved.append((submodule, "bias", bias_spec))
+    return resolved
 
 
 def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
@@ -193,7 +278,7 @@ def _styles(relative_plan: dict) -> dict:
     # `distribute_tensor` accepts an indivisible shard dim and just gives the trailing ranks a smaller (or empty)
     # slice, so an uneven split does not raise here — it surfaces much later as a shape or numerics error, because
     # the attention head split and the paired colwise/rowwise Linear both assume equal shards. Reject it up front,
-    # matching what the packed styles above and the Neuron pre-shard path already do.
+    # matching what `_local_shard` already does for the packed styles.
     def _make_checked_col(path: str) -> ColwiseParallel:
         class _CheckedColwiseImpl(ColwiseParallel):
             def _partition_linear_fn(self, name, module, device_mesh):
@@ -240,6 +325,78 @@ def _styles(relative_plan: dict) -> dict:
     return resolved
 
 
+def _hooks_only_styles(relative_plan: dict) -> dict:
+    """Map a `{relative_path: style}` plan to styles that partition nothing.
+
+    Used when the caller has already placed every planned parameter as a `DTensor`. `parallelize_module` then runs only
+    to register the forward input/output hooks; `_partition_linear_fn` must not re-partition. Packed and plain styles
+    share hook behaviour, so both collapse onto the two styles here.
+
+    Note this is not purely additive: `distribute_module` still replicates any *remaining* plain parameter of the
+    targeted module into a `Replicate()` DTensor via a broadcast, so callers must place every planned parameter
+    themselves.
+    """
+    from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
+
+    class _NoPartitionColwise(ColwiseParallel):
+        def _partition_linear_fn(self, name, module, device_mesh):
+            pass  # weight already Shard(0)
+
+    class _NoPartitionRowwise(RowwiseParallel):
+        def _partition_linear_fn(self, name, module, device_mesh):
+            pass  # weight already Shard(1)
+
+    resolved = {}
+    for path, style in relative_plan.items():
+        if style == "colwise" or isinstance(style, PackedColwiseParallel):
+            resolved[path] = _NoPartitionColwise()
+        elif style == "rowwise" or isinstance(style, PackedRowwiseParallel):
+            resolved[path] = _NoPartitionRowwise()
+        else:
+            raise ValueError(
+                f"Unsupported tensor-parallel style '{style}' for '{path}'. "
+                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+            )
+    return resolved
+
+
+def _pre_shard_and_parallelize(tp_mesh, groups: list, device: torch.device) -> None:
+    """Slice every planned parameter on CPU and move only this rank's shard to `device`.
+
+    The default path lets `parallelize_module` distribute the weights, which materializes each full weight on every
+    rank before scattering it, so peak memory per rank is the size of the whole weight even though only a shard
+    survives. Slicing first and handing `DTensor.from_local` just this rank's piece keeps the full tensor off the
+    accelerator, which is what allows sharding a model larger than one device's memory. `parallelize_module` then runs
+    over `_hooks_only_styles`, distributing nothing and registering only the hooks the forward pass needs.
+
+    `device` is the only backend-specific input; the slicing itself is the same on any accelerator. Unlike the default
+    path this does not broadcast from a single rank, so every rank must already hold the same weights — true after
+    loading a checkpoint, not after a random init.
+
+    Model weights must be on CPU when this is called.
+    """
+    import torch.nn as nn
+    from torch.distributed.tensor import DTensor, Replicate, Shard
+    from torch.distributed.tensor.parallel import parallelize_module
+
+    for block, relative_plan in groups:
+        for submodule, param_name, spec in _block_shard_specs(block, relative_plan):
+            param = getattr(submodule, param_name)
+            if spec.dim is None:
+                # A rowwise bias is added after the all-reduce, so every rank needs the whole vector.
+                local, placement = param.data, Replicate()
+            else:
+                local, placement = _local_shard(param.data, spec.dim, spec.block_sizes, tp_mesh), Shard(spec.dim)
+            submodule.register_parameter(
+                param_name,
+                nn.Parameter(
+                    DTensor.from_local(local.to(device), tp_mesh, [placement]),
+                    requires_grad=param.requires_grad,
+                ),
+            )
+        parallelize_module(block, tp_mesh, _hooks_only_styles(relative_plan))
+
+
 def apply_tensor_parallel(
     model: torch.nn.Module,
     config: TensorParallelConfig,
@@ -273,9 +430,11 @@ def apply_tensor_parallel(
         return
 
     if backend == "tpu":
-        from .tensor_parallel_tpu import _apply_tp_tpu
-
-        _apply_tp_tpu(model, tp_mesh, groups)
+        # Pre-shard rather than let `parallelize_module` distribute: it materializes each full weight on every chip
+        # before scattering it, which exhausts HBM for a large diffusion transformer. Address the chip as "tpu" with
+        # no index — "tpu:rank" would mean chip `rank` from this process's view, but each torchrun worker only has
+        # access to its own assigned chip.
+        _pre_shard_and_parallelize(tp_mesh, groups, torch.device("tpu"))
         return
 
     from torch.distributed.tensor.parallel import parallelize_module
