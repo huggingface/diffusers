@@ -1,7 +1,7 @@
 name: Check for missing Copied from comments
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [main]
     paths:
       - "src/diffusers/**.py"
@@ -22,7 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 2
           persist-credentials: false
       - name: Check for missing Copied from comments
