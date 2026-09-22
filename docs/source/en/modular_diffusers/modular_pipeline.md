@@ -429,6 +429,10 @@ pipe.save_pretrained("path/to/local-copy")
 
 The destination recorded in `modular_model_index.json` is wherever [`~ModularPipeline.save_pretrained`] writes: the `save_directory` for a local save, or the `repo_id` when you pass `push_to_hub=True`.
 
+With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached payload across any Hub repositories. This includes individual files in a sharded checkpoint: a shard with the same Xet hash can be reused even when other shards differ. Both downloads must use the same Hub cache directory with symlink support. Changing the dtype, serialization, or shard boundaries can change file hashes and prevent reuse. This saves download traffic and disk space, not the memory used by loaded components.
+
+Shared caching is best-effort. Setting `HF_HUB_DISABLE_SHARED_BLOBS=1` still supports loading, but caches separate copies. Existing component references in `modular_model_index.json` remain unchanged; keep external references for components that are not stored in the modular repository.
+
 ### Keep references to existing components
 
 Load only what's new (or nothing at all). Only loaded components are saved; everything else stays a pointer to its original repository. Use this mode when you want to replace one component while continuing to load the others from their original repository. For example, save a custom transformer while the remaining components continue to load from the base repository.
