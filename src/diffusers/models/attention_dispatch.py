@@ -50,6 +50,8 @@ from ..utils import (
 from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_TRUST_REMOTE_KERNELS
 from ..utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from ._modeling_parallel import gather_size_by_comm
+from huggingface_hub import get_organization_overview
+from huggingface_hub.constants import HF_HUB_OFFLINE
 
 
 if TYPE_CHECKING:
@@ -318,7 +320,6 @@ class _HubKernelConfig:
     wrapped_backward_attr: str | None = None
     wrapped_forward_fn: Callable | None = None
     wrapped_backward_fn: Callable | None = None
-    trust_remote_code: bool | list[str] = True
 
 
 # Registry for hub-based attention kernels
@@ -355,13 +356,11 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
         repo_id="SageAttention/sage-attention",
         function_attr="sageattn",
         version=3,
-        trust_remote_code=["SageAttention/sage-attention"] if DIFFUSERS_TRUST_REMOTE_KERNELS else False,
     ),
     AttentionBackendName.SAGE_BLACKWELL_HUB: _HubKernelConfig(
         repo_id="SageAttention/sage-blackwell",
         function_attr="sageattn3_blackwell",
         version=1,
-        trust_remote_code=["SageAttention/sage-blackwell"] if DIFFUSERS_TRUST_REMOTE_KERNELS else False,
     ),
     AttentionBackendName.FLASH_4_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn4",
@@ -742,10 +741,22 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
     try:
         from kernels import get_kernel
 
-        trust_kwargs = {"trust_remote_code": config.trust_remote_code} if is_kernels_version(">=", "0.14.0") else {}
+        repo_id = config.repo_id
+
+        if not HF_HUB_OFFLINE and not DIFFUSERS_TRUST_REMOTE_KERNELS:
+            publisher = repo_id.split("/")[0]
+            org_info = get_organization_overview(publisher)
+            if not getattr(org_info, "trustedKernelPublisher", False):
+                raise ValueError(
+                    f"Backend '{backend.value}' loads `{config.repo_id}`, which is not published by a trusted kernel "
+                    "publisher on the Hub, so loading it downloads and executes remote code. Set "
+                    "`DIFFUSERS_TRUST_REMOTE_KERNELS=true` to allow it."
+                )
+
+        trust_kwargs = {"trust_remote_code": DIFFUSERS_TRUST_REMOTE_KERNELS} if is_kernels_version(">=", "0.14.0") else {}
 
         kernel_module = get_kernel(
-            config.repo_id,
+            repo_id,
             revision=config.revision,
             version=config.version,
             user_agent={"diffusers": __version__},
