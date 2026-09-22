@@ -88,7 +88,31 @@ class ComfyQuantizer(DiffusersQuantizer):
     ):
         module, tensor_name = get_module_from_name(model, param_name)
 
-        quantized_weight = ck_tensor.QuantizedTensor.from_float(param_value.to(target_device), self.layout.__name__)
+        if self.pre_quantized: # we have pre-quantized weights from the checkpoint
+            layout_cls = ck_tensor.get_layout_class(self.layout.__name__)
+
+            orig_shape = tuple(getattr(module, tensor_name).shape)
+            params_kwargs = {
+                "orig_shape": orig_shape,
+                "orig_dtype": self.compute_dtype,
+                "scale" : torch.tensor(1.0, dtype=torch.float32, device=target_device),
+            }
+
+            if state_dict is not None:
+                for k, v in list(state_dict.items()):
+                    if k.startswith(param_name + "_"):
+                        suffix = k[len(param_name) :]
+                        if suffix.startswith("_"):
+                            field_name = suffix[1:]
+                            params_kwargs[field_name] = v.to(target_device)
+                        if unexpected_keys is not None and k in unexpected_keys:
+                            unexpected_keys.remove(k)
+
+
+            params = layout_cls.Params(**params_kwargs)
+            quantized_weight = ck_tensor.QuantizedTensor(param_value.to(target_device), self.layout.__name__, params)
+        else:
+            quantized_weight = ck_tensor.QuantizedTensor.from_float(param_value.to(target_device), self.layout.__name__)
 
         if tensor_name in module._parameters:
             module._parameters[tensor_name] = quantized_weight.to(target_device)
