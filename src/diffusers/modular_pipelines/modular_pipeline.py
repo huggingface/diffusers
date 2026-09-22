@@ -1812,7 +1812,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     # a local copy of the repo (e.g. `hf download --local-dir`) keeps the original index, which
                     # points at the Hub; load the components whose files are present locally from the copy
                     if _is_local_component(pretrained_model_name_or_path, component_spec):
-                        component_spec.pretrained_model_name_or_path = pretrained_model_name_or_path
+                        component_spec.pretrained_model_name_or_path = str(pretrained_model_name_or_path)
                         component_spec.revision = None
                     self._component_specs[name] = component_spec
 
