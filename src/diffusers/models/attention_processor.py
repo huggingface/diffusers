@@ -1296,9 +1296,7 @@ class AttnAddedKVProcessor:
         residual = hidden_states
 
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
-        batch_size, sequence_length, _ = hidden_states.shape
-
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        batch_size = hidden_states.shape[0]
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
@@ -1326,6 +1324,7 @@ class AttnAddedKVProcessor:
             key = encoder_hidden_states_key_proj
             value = encoder_hidden_states_value_proj
 
+        attention_mask = attn.prepare_attention_mask(attention_mask, key.shape[1], batch_size)
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
@@ -1369,9 +1368,7 @@ class AttnAddedKVProcessor2_0:
         residual = hidden_states
 
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
-        batch_size, sequence_length, _ = hidden_states.shape
-
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size, out_dim=4)
+        batch_size = hidden_states.shape[0]
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
@@ -1399,6 +1396,7 @@ class AttnAddedKVProcessor2_0:
             key = encoder_hidden_states_key_proj
             value = encoder_hidden_states_value_proj
 
+        attention_mask = attn.prepare_attention_mask(attention_mask, key.shape[2], batch_size, out_dim=4)
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
@@ -2436,9 +2434,7 @@ class XFormersAttnAddedKVProcessor:
     ) -> torch.Tensor:
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
-        batch_size, sequence_length, _ = hidden_states.shape
-
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        batch_size = hidden_states.shape[0]
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
@@ -2466,6 +2462,7 @@ class XFormersAttnAddedKVProcessor:
             key = encoder_hidden_states_key_proj
             value = encoder_hidden_states_value_proj
 
+        attention_mask = attn.prepare_attention_mask(attention_mask, key.shape[1], batch_size)
         hidden_states = xformers.ops.memory_efficient_attention(
             query, key, value, attn_bias=attention_mask, op=self.attention_op, scale=attn.scale
         )
@@ -4110,9 +4107,7 @@ class SlicedAttnAddedKVProcessor:
 
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
 
-        batch_size, sequence_length, _ = hidden_states.shape
-
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        batch_size = hidden_states.shape[0]
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
@@ -4142,6 +4137,7 @@ class SlicedAttnAddedKVProcessor:
             key = encoder_hidden_states_key_proj
             value = encoder_hidden_states_value_proj
 
+        attention_mask = attn.prepare_attention_mask(attention_mask, key.shape[1], batch_size)
         batch_size_attention, query_tokens, _ = query.shape
         hidden_states = torch.zeros(
             (batch_size_attention, query_tokens, dim // attn.heads), device=query.device, dtype=query.dtype
