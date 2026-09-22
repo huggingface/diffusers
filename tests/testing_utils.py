@@ -34,7 +34,7 @@ from diffusers.utils.import_utils import (
     is_accelerate_available,
     is_auto_round_available,
     is_bitsandbytes_available,
-    is_comfy_kitchen_available,
+    is_comfy_quant_available,
     is_compel_available,
     is_flashpack_available,
     is_gguf_available,
@@ -517,14 +517,14 @@ def require_torch_2(test_case):
     )(test_case)
 
 
-def require_comfy_kitchen(test_case):
+def require_comfy_quant(test_case):
     """
     Decorator marking a test that requires comfy_kitchen.
     """
     import pytest
 
-    if not is_comfy_kitchen_available():
-        return pytest.mark.skipif(not is_comfy_kitchen_available(), reason="test requires comfy-kitchen")(test_case)
+    if not is_comfy_quant_available():
+        return pytest.mark.skipif(not is_comfy_quant_available(), reason="test requires comfy-kitchen")(test_case)
 
     return test_case
 

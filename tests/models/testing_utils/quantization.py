@@ -54,7 +54,7 @@ from ...testing_utils import (
     require_accelerator,
     require_auto_round_version_greater_or_equal,
     require_bitsandbytes_version_greater,
-    require_comfy_kitchen,
+    require_comfy_quant,
     require_gguf_version_greater_or_equal,
     require_modelopt_version_greater_or_equal,
     require_sdnq,
@@ -1829,7 +1829,7 @@ class AutoRoundCompileTesterMixin(AutoRoundConfigMixin, QuantizationCompileTeste
 
 @is_quantization
 @is_comfy_kitchen
-@require_comfy_kitchen
+@require_comfy_quant
 @require_accelerator
 @require_accelerate
 class ComfyQuantConfigMixin:
@@ -1877,7 +1877,7 @@ class ComfyQuantConfigMixin:
 
 
 @is_comfy_kitchen
-@require_comfy_kitchen
+@require_comfy_quant
 @require_accelerate
 @require_accelerator
 class ComfyQuantTesterMixin(ComfyQuantConfigMixin, QuantizationTesterMixin):
@@ -1895,8 +1895,8 @@ class ComfyQuantTesterMixin(ComfyQuantConfigMixin, QuantizationTesterMixin):
     Optional class attributes:
         - COMFY_QUANT_CONFIGS: Dict of config name -> ComfyQuantConfig kwargs to test
 
-    Pytest mark: comfy_kitchen
-        Use `pytest -m "not comfy_kitchen"` to skip these tests
+    Pytest mark: comfy_quant
+        Use `pytest -m "not comfy_quant"` to skip these tests
     """
 
     @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])

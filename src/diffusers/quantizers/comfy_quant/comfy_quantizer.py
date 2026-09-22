@@ -1,10 +1,10 @@
 from typing import TYPE_CHECKING, Any
 
-from ...utils import get_module_from_name, is_comfy_kitchen_available, is_torch_available, logging
+from ...utils import get_module_from_name, is_comfy_quant_available, is_torch_available, logging
 from ..base import DiffusersQuantizer
 
 
-if is_comfy_kitchen_available():
+if is_comfy_quant_available():
     import comfy_kitchen.tensor as ck_tensor
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ class ComfyQuantizer(DiffusersQuantizer):
         if not isinstance(self.modules_to_not_convert, list):
             self.modules_to_not_convert = [self.modules_to_not_convert]
 
-        if is_comfy_kitchen_available():
+        if is_comfy_quant_available():
             # Resolve the layout class once since quant_format is constant.
             layout_map = {
                 "fp8": getattr(ck_tensor, "TensorCoreFP8Layout", None),
@@ -55,7 +55,7 @@ class ComfyQuantizer(DiffusersQuantizer):
             self.layout = None
 
     def validate_environment(self, *args, **kwargs):
-        if not is_comfy_kitchen_available():
+        if not is_comfy_quant_available():
             raise ImportError(
                 "Loading Comfy Quant weights requires `comfy-kitchen`. "
                 "Please install it with: `pip install comfy-kitchen`."

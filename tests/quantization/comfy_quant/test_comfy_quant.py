@@ -3,12 +3,12 @@ import torch
 import torch.nn as nn
 
 from diffusers import ComfyQuantConfig
-from diffusers.utils import is_comfy_kitchen_available
+from diffusers.utils import is_comfy_quant_available
 
 from ...testing_utils import require_torch
 
 
-if is_comfy_kitchen_available():
+if is_comfy_quant_available():
     import comfy_kitchen.tensor as ck_tensor
 
     from diffusers.quantizers.comfy_quant.comfy_quantizer import ComfyQuantizer
@@ -17,7 +17,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 @require_torch
-@pytest.mark.skipif(not is_comfy_kitchen_available(), reason="comfy-kitchen is not available")
+@pytest.mark.skipif(not is_comfy_quant_available(), reason="comfy-kitchen is not available")
 class TestComfyQuantizer:
     def test_create_quantized_param_fp8(self):
         config = ComfyQuantConfig(quant_format="fp8")
