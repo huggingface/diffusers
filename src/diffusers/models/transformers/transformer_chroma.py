@@ -21,8 +21,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import apply_lora_scale, deprecate, logging
-from ...utils.import_utils import is_torch_npu_available
+from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, FeedForward
 from ..cache_utils import CacheMixin
@@ -216,17 +215,7 @@ class ChromaSingleTransformerBlock(nn.Module):
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
-        if is_torch_npu_available():
-            from ..attention_processor import FluxAttnProcessor2_0_NPU
-
-            deprecation_message = (
-                "Defaulting to FluxAttnProcessor2_0_NPU for NPU devices will be removed. Attention processors "
-                "should be set explicitly using the `set_attn_processor` method."
-            )
-            deprecate("npu_processor", "0.34.0", deprecation_message)
-            processor = FluxAttnProcessor2_0_NPU()
-        else:
-            processor = FluxAttnProcessor()
+        processor = FluxAttnProcessor()
 
         self.attn = FluxAttention(
             query_dim=dim,
