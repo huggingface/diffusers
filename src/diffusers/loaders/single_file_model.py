@@ -50,6 +50,7 @@ from .single_file_utils import (
     convert_ltx_transformer_checkpoint_to_diffusers,
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
+    convert_minimax_h3_transformer_checkpoint_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
     convert_sana_transformer_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
@@ -218,6 +219,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "MotifVideoTransformer3DModel": {
         "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
+        "default_subfolder": "transformer",
+    },
+    "MiniMaxH3Transformer3DModel": {
+        "checkpoint_mapping_fn": convert_minimax_h3_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
 }

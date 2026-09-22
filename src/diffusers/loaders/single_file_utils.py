@@ -127,6 +127,7 @@ CHECKPOINT_KEY_NAMES = {
     ],
     "z-image-turbo-controlnet": "control_all_x_embedder.2-1.weight",
     "z-image-turbo-controlnet-2.x": "control_layers.14.adaLN_modulation.0.weight",
+    "minimax-h3": "token_refiner.blocks.0.attn.qkv_proj.weight",
     "sana": [
         "blocks.0.cross_attn.q_linear.weight",
         "blocks.0.cross_attn.q_linear.bias",
@@ -242,6 +243,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "z-image-turbo-controlnet-2.0": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.0"},
     "z-image-turbo-controlnet-2.1": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.1"},
     "ltx2-dev": {"pretrained_model_name_or_path": "Lightricks/LTX-2"},
+    "minimax-h3": {"pretrained_model_name_or_path": "MiniMaxAI/MiniMax-H3"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -823,6 +825,9 @@ def infer_diffusers_model_type(checkpoint):
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ltx2"]):
         model_type = "ltx2-dev"
+
+    elif CHECKPOINT_KEY_NAMES["minimax-h3"] in checkpoint:
+        model_type = "minimax-h3"
 
     else:
         model_type = "v1"
@@ -4222,3 +4227,88 @@ def convert_ernie_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
 
     return checkpoint
+
+
+def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, qkv_layout="stacked", **kwargs):
+    if qkv_layout not in ("stacked", "interleaved"):
+        raise ValueError(
+            f'`qkv_layout` must be "stacked" or "interleaved", got {qkv_layout!r}. "stacked" is the `[q; k; v]` row '
+            "order of every published single-file MiniMax-H3 checkpoint (Comfy-Org/MiniMax-H3 and the GGUFs derived "
+            'from it). "interleaved" is the per-head `[q k v]` row order of the MiniMaxAI/MiniMax-H3 shards, for a '
+            "file merged from those shards by hand. The two cannot be told apart from the checkpoint itself."
+        )
+    if "adaln_t_table" in checkpoint:
+        raise ValueError(
+            "This is a pruned MiniMax-H3 checkpoint: it replaces `time_embedder` with `adaln_t_table` of shape "
+            f"{tuple(checkpoint['adaln_t_table'].shape)}, which `MiniMaxH3Transformer3DModel` does not support. "
+            "Use the unpruned checkpoint from https://huggingface.co/MiniMaxAI/MiniMax-H3."
+        )
+
+    MINIMAX_H3_KEYS_RENAME_DICT = {
+        "token_refiner.blocks.": "token_refiner.refiner_blocks.",
+        "time_embedder.proj_in.": "time_embedder.linear_1.",
+        "time_embedder.proj_out.": "time_embedder.linear_2.",
+        "video_patch_proj.": "proj_in.",
+        "audio_patch_proj.": "audio_proj_in.",
+        "condition_proj.": "context_embedder.",
+        "final_layer.norm.": "norm_out.norm.",
+        "final_layer.adaln_proj.linear.": "norm_out.linear.",
+        "final_layer.video_out.": "proj_out.",
+        "final_layer.audio_out.": "audio_proj_out.",
+        ".attn.q_norm.": ".attn.norm_q.",
+        ".attn.k_norm.": ".attn.norm_k.",
+        ".attn.out_proj.": ".attn.to_out.0.",
+        ".mlp.fc1.": ".ff.net.0.proj.",
+        ".mlp.fc2.": ".ff.net.2.",
+    }
+
+    def convert_minimax_h3_fused_attention(key: str, state_dict: dict[str, object]) -> None:
+        # Published single files store the reference model's post-load `[q; k; v]` stack; the MiniMaxAI/MiniMax-H3
+        # shards interleave the rows per head, `[head0: q k v, head1: q k v, ...]`. Keys and shapes are identical, so
+        # the caller has to say which one it is.
+        fused_qkv_weight = state_dict.pop(key)
+        if qkv_layout == "interleaved":
+            fused_qkv_weight = fused_qkv_weight.unflatten(
+                0, (config["num_attention_heads"], 3, config["attention_head_dim"])
+            )
+            to_q_weight, to_k_weight, to_v_weight = [weight.flatten(0, 1) for weight in fused_qkv_weight.unbind(dim=1)]
+        else:
+            to_q_weight, to_k_weight, to_v_weight = torch.chunk(fused_qkv_weight, 3, dim=0)
+        state_dict[key.replace(".attn.qkv_proj.weight", ".attn.to_q.weight")] = to_q_weight
+        state_dict[key.replace(".attn.qkv_proj.weight", ".attn.to_k.weight")] = to_k_weight
+        state_dict[key.replace(".attn.qkv_proj.weight", ".attn.to_v.weight")] = to_v_weight
+
+    def convert_minimax_h3_gated_ff(key: str, state_dict: dict[str, object]) -> None:
+        # The checkpoint fuses `[gate; value]`, `SwiGLU` reads `[value; gate]`.
+        gate, value = torch.chunk(state_dict[key], 2, dim=0)
+        state_dict[key] = torch.cat([value, gate], dim=0)
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP = {
+        ".attn.qkv_proj.weight": convert_minimax_h3_fused_attention,
+        ".ff.net.0.proj.weight": convert_minimax_h3_gated_ff,
+    }
+
+    def update_state_dict(state_dict: dict[str, object], old_key: str, new_key: str) -> None:
+        state_dict[new_key] = state_dict.pop(old_key)
+
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    # `MiniMaxH3RotaryPosEmbed` recomputes this buffer from the config.
+    converted_state_dict.pop("rope.inv_freq", None)
+
+    for key in list(converted_state_dict.keys()):
+        new_key = key[:]
+        if new_key.startswith("blocks."):
+            new_key = new_key.replace("blocks.", "transformer_blocks.", 1)
+        for replace_key, rename_key in MINIMAX_H3_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+
+        update_state_dict(converted_state_dict, key, new_key)
+
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
