@@ -433,6 +433,32 @@ With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached 
 
 Shared caching is best-effort. Setting `HF_HUB_DISABLE_SHARED_BLOBS=1` still supports loading, but caches separate copies. Existing component references in `modular_model_index.json` remain unchanged; keep external references for components that are not stored in the modular repository.
 
+#### Update an existing modular index
+
+Migration is optional: references to the original repository already reuse its cached files. Update a reference if it was only used to avoid duplicate downloads and you want that component to load from the modular repository instead.
+
+First, check that the modular repository contains the same component configuration and all required weight files, including the weight index and every shard for a sharded checkpoint. Matching Xet hashes determine which weight files can reuse the shared cache. Keep references to components that are absent or intentionally loaded from another checkpoint.
+
+Edit only the relevant loading specification in a local copy of `modular_model_index.json`. For example, to use a VAE stored under `vae/` in the modular repository with the same weight variant:
+
+```py
+import json
+from pathlib import Path
+
+index_path = Path("path/to/local-copy/modular_model_index.json")
+index = json.loads(index_path.read_text())
+spec = index["vae"][2]
+spec["pretrained_model_name_or_path"] = "my-username/my-modular-repo"
+spec.pop("repo", None)
+spec["subfolder"] = "vae"
+spec["revision"] = None
+index_path.write_text(json.dumps(index, indent=2) + "\n")
+```
+
+This also removes the legacy `repo` field. A revision from the original repository does not identify a revision in the destination: use `None` for the destination's default branch, or pin a destination revision containing the component. Adjust `subfolder` and `variant` if its filenames differ.
+
+Before publishing the updated index, load it with `ModularPipeline.from_pretrained("path/to/local-copy")`, call `load_components(names="vae")`, and verify that the component loads with the expected parameters. Upload only the edited index; re-saving the weights can change their hashes and prevent cache reuse.
+
 ### Keep references to existing components
 
 Load only what's new (or nothing at all). Only loaded components are saved; everything else stays a pointer to its original repository. Use this mode when you want to replace one component while continuing to load the others from their original repository. For example, save a custom transformer while the remaining components continue to load from the base repository.
