@@ -21,10 +21,17 @@ from diffusers import QwenImage21Transformer2DModel
 from diffusers.models.transformers.transformer_qwenimage21 import build_qwenimage21_block_causal_mask
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import (
+    enable_full_determinism,
+    is_context_parallel,
+    require_torch_multi_accelerator,
+    torch_device,
+)
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    ContextParallelAttentionBackendsTesterMixin,
+    ContextParallelTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TrainingTesterMixin,
@@ -294,3 +301,42 @@ class TestQwenImage21TransformerTraining(QwenImage21TransformerTesterConfig, Tra
 
 class TestQwenImage21TransformerAttention(QwenImage21TransformerTesterConfig, AttentionTesterMixin):
     pass
+
+
+@is_context_parallel
+@require_torch_multi_accelerator
+class TestQwenImage21TransformerContextParallel(QwenImage21TransformerTesterConfig, ContextParallelTesterMixin):
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree"], ids=["ulysses"])
+    def test_context_parallel_inference(self, cp_type, batch_size: int = 1):
+        super().test_context_parallel_inference(cp_type, batch_size=batch_size)
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree"], ids=["ulysses"])
+    def test_context_parallel_batch_inputs(self, cp_type):
+        super().test_context_parallel_inference(cp_type, batch_size=2)
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree"], ids=["ulysses"])
+    def test_context_parallel_backward(self, cp_type, batch_size: int = 1):
+        super().test_context_parallel_backward(cp_type, batch_size=batch_size)
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree"], ids=["ulysses"])
+    def test_context_parallel_backward_batch_inputs(self, cp_type):
+        super().test_context_parallel_backward(cp_type, batch_size=2)
+
+    @pytest.mark.parametrize(
+        "cp_type,mesh_shape,mesh_dim_names",
+        [("ulysses_degree", (1, 2, 1), ("ring", "ulysses", "fsdp"))],
+        ids=["ulysses-3d-fsdp"],
+    )
+    def test_context_parallel_custom_mesh(self, cp_type, mesh_shape, mesh_dim_names):
+        super().test_context_parallel_custom_mesh(cp_type, mesh_shape, mesh_dim_names)
+
+
+class TestQwenImage21TransformerContextParallelAttnBackends(
+    QwenImage21TransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
+):
+    unsupported_attn_backends = ["flash_hub", "flash_varlen_hub", "_flash_3_hub", "_flash_3_varlen_hub"]
+
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        inputs["encoder_hidden_states_mask"][:, 1] = 0
+        return inputs
