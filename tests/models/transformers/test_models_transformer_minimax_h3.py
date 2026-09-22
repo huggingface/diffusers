@@ -13,13 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
 
-from diffusers import MiniMaxH3Transformer3DModel
+from diffusers import ContextParallelConfig, MiniMaxH3Transformer3DModel
 from diffusers.models.transformers.transformer_minimax_h3 import MiniMaxH3TransformerOutput
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import (
+    enable_full_determinism,
+    is_context_parallel,
+    require_torch_multi_accelerator,
+    torch_device,
+)
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -30,6 +38,7 @@ from ..testing_utils import (
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
+from ..testing_utils.parallelism import DEVICE_CONFIG, _find_free_port
 
 
 enable_full_determinism()
@@ -185,6 +194,88 @@ class TestMiniMaxH3TransformerTorchCompile(MiniMaxH3TransformerTesterConfig, Tor
 
 class TestMiniMaxH3TransformerContextParallel(MiniMaxH3TransformerTesterConfig, ContextParallelTesterMixin):
     """Context parallel inference tests for the MiniMax-H3 transformer."""
+
+
+def _minimax_h3_ulysses_backward_worker(rank, world_size, master_port):
+    device_type = torch_device.split(":")[0]
+    device_config = DEVICE_CONFIG[device_type]
+    device_config["module"].set_device(rank)
+    device = torch.device(f"{device_type}:{rank}")
+
+    dist.init_process_group(
+        backend=device_config["backend"],
+        init_method=f"tcp://127.0.0.1:{master_port}",
+        rank=rank,
+        world_size=world_size,
+    )
+    try:
+        mesh = dist.device_mesh.init_device_mesh(device_type, (1, world_size), mesh_dim_names=("ring", "ulysses"))
+        tester = MiniMaxH3TransformerTesterConfig()
+        init_dict = {**tester.get_init_dict(), "num_attention_heads": 4}
+        for gradient_checkpointing in (False, True):
+            torch.manual_seed(7)
+            model = MiniMaxH3Transformer3DModel(**init_dict).to(device)
+            reference = MiniMaxH3Transformer3DModel(**init_dict).to(device)
+            reference.load_state_dict(model.state_dict())
+            model.set_attention_backend("native")
+            reference.set_attention_backend("native")
+            model.enable_parallelism(
+                config=ContextParallelConfig(ulysses_degree=world_size, ulysses_anything=True, mesh=mesh)
+            )
+            if gradient_checkpointing:
+                model.enable_gradient_checkpointing()
+                reference.enable_gradient_checkpointing()
+
+            losses, reference_losses = [], []
+            for task in ("t2va", "fl2va", "ref2va"):
+                num_video_tokens = {"t2va": 7, "fl2va": 8, "ref2va": 9}[task]
+                inputs = tester.get_dummy_inputs(num_video_tokens=num_video_tokens, batch_size=1)
+                if task != "t2va":
+                    inputs["timestep"] = torch.cat((inputs["timestep"], torch.tensor([0.999], device=device)))
+                    inputs["timestep_indices"][inputs["video_indices"][0]] = 2
+                if task == "ref2va":
+                    inputs["timestep"] = torch.cat((inputs["timestep"], torch.tensor([1.0], device=device)))
+                    inputs["timestep_indices"][inputs["audio_indices"][0]] = 3
+                output = model(**inputs, return_dict=False)
+                expected = reference(**inputs, return_dict=False)
+                for actual, target in zip(output, expected):
+                    torch.testing.assert_close(actual, target, atol=1e-6, rtol=1e-5)
+                losses.append(sum(tensor.square().mean() for tensor in output))
+                reference_losses.append(sum(tensor.square().mean() for tensor in expected))
+
+            loss, reference_loss = torch.stack(losses).mean(), torch.stack(reference_losses).mean()
+            torch.testing.assert_close(loss, reference_loss, atol=1e-6, rtol=1e-5)
+            loss.backward()
+            reference_loss.backward()
+            compared = 0
+            for parameter, reference_parameter in zip(model.parameters(), reference.parameters()):
+                if parameter.grad is None or reference_parameter.grad is None:
+                    assert parameter.grad is reference_parameter.grad
+                    continue
+                dist.all_reduce(parameter.grad, group=mesh["ulysses"].get_group())
+                torch.testing.assert_close(parameter.grad, reference_parameter.grad, atol=2e-5, rtol=2e-4)
+                compared += 1
+            assert compared > 0
+    finally:
+        dist.destroy_process_group()
+
+
+@is_context_parallel
+@require_torch_multi_accelerator
+class TestMiniMaxH3UlyssesBackward:
+    @pytest.mark.parametrize("world_size", [2, 4])
+    def test_packed_layout_parameter_gradients(self, world_size):
+        """T2VA, FL2VA and Ref2VA layouts match serial outputs and parameter gradients."""
+        if not dist.is_available():
+            pytest.skip("torch.distributed is not available.")
+        if DEVICE_CONFIG[torch_device.split(":")[0]]["module"].device_count() < world_size:
+            pytest.skip(f"Requires {world_size} devices.")
+        mp.spawn(
+            _minimax_h3_ulysses_backward_worker,
+            args=(world_size, _find_free_port()),
+            nprocs=world_size,
+            join=True,
+        )
 
 
 class TestMiniMaxH3TransformerLoRA(MiniMaxH3TransformerTesterConfig, LoraTesterMixin):
