@@ -102,8 +102,6 @@ class ContextManagers:
 
 logger = logging.get_logger(__name__)
 
-_REGEX_SHARD = re.compile(r"(.*?)-\d{5}-of-\d{5}")
-
 # The `user_agent` dict is flattened into a single `user-agent` HTTP header. Serializing an
 # unbounded `quantization_config` into it can exceed server header size limits, so we only
 # attach the serialized config for telemetry when it stays under this many characters.
@@ -803,20 +801,25 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             # Clean the folder from a previous save
             if is_main_process:
+                weights_without_ext = weights_name.rsplit(".", 1)[0]
+                # Only delete files that belong to the checkpoint being replaced, i.e. shards of the
+                # same variant and serialization format, e.g. diffusion_pytorch_model.ema-00001-of-00002.safetensors.
+                shard_file_pattern = re.compile(re.escape(weights_without_ext) + r"-\d{5}-of-\d{5}\.(bin|safetensors)")
+                obsolete_index_file = os.path.join(
+                    save_directory,
+                    _add_variant(SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME, variant),
+                )
                 for filename in os.listdir(save_directory):
-                    if filename in state_dict_split.filename_to_tensors.keys():
-                        continue
                     full_filename = os.path.join(save_directory, filename)
                     if not os.path.isfile(full_filename):
                         continue
-                    weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
-                    weights_without_ext = weights_without_ext.replace("{suffix}", "")
-                    filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
-                    # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                    if (
-                        filename.startswith(weights_without_ext)
-                        and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
-                    ):
+                    # An unsharded save supersedes the index of the checkpoint being replaced.
+                    if not state_dict_split.is_sharded and full_filename == obsolete_index_file:
+                        os.remove(full_filename)
+                        continue
+                    if filename in state_dict_split.filename_to_tensors.keys():
+                        continue
+                    if shard_file_pattern.fullmatch(filename) is not None:
                         os.remove(full_filename)
 
             for filename, tensors in state_dict_split.filename_to_tensors.items():

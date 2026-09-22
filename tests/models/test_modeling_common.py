@@ -16,6 +16,7 @@
 import inspect
 import logging
 import os
+import re
 import tempfile
 import unittest.mock as mock
 import uuid
@@ -26,7 +27,7 @@ import torch
 from huggingface_hub import ModelCard, delete_repo, snapshot_download, try_to_load_from_cache
 from huggingface_hub.utils import HfHubHTTPError, is_jinja_available
 
-from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel
+from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel, UNet2DModel
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import (
@@ -275,6 +276,67 @@ class TestModelUtils:
             _ = model(**model_inputs)
 
         SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
+
+
+def _get_tiny_unet():
+    # Small UNet that shards into several files under a tiny `max_shard_size`, so
+    # save/load round-trip tests need no download and no GPU.
+    return UNet2DModel(
+        sample_size=32,
+        in_channels=3,
+        out_channels=3,
+        block_out_channels=(4, 8),
+        norm_num_groups=2,
+        down_block_types=("DownBlock2D", "AttnDownBlock2D"),
+        up_block_types=("UpBlock2D", "AttnUpBlock2D"),
+    )
+
+
+class TestSavePretrainedCleanup:
+    def test_default_save_keeps_other_variant_shards(self):
+        # Saving the default (unvarianted) weights into a folder that holds a sharded
+        # variant must not delete that variant's shard files (#14719).
+        model = _get_tiny_unet()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir, variant="ema", max_shard_size="50KB")
+            variant_shards = sorted(
+                f for f in os.listdir(tmpdir) if re.fullmatch(r"diffusion_pytorch_model\.ema-\d{5}-of-\d{5}\..+", f)
+            )
+            assert variant_shards, "expected sharded ema checkpoint"
+
+            ema_model = UNet2DModel.from_pretrained(tmpdir, variant="ema")
+
+            model.save_pretrained(tmpdir, max_shard_size="100MB")
+
+            remaining = set(os.listdir(tmpdir))
+            assert set(variant_shards) <= remaining, (
+                f"sharded variant files deleted by a default-variant save: {set(variant_shards) - remaining}"
+            )
+
+            reloaded = UNet2DModel.from_pretrained(tmpdir, variant="ema")
+            for p1, p2 in zip(ema_model.parameters(), reloaded.parameters()):
+                assert torch.equal(p1, p2)
+
+    def test_sharded_to_unsharded_save_removes_stale_index(self):
+        # Saving a formerly sharded checkpoint as a single file must remove the index of
+        # the replaced checkpoint, otherwise loading follows it to deleted shards (#14719).
+        model = _get_tiny_unet()
+        index_name = "diffusion_pytorch_model.safetensors.index.json"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir, max_shard_size="50KB")
+            assert index_name in os.listdir(tmpdir)
+
+            sharded_model = UNet2DModel.from_pretrained(tmpdir)
+
+            model.save_pretrained(tmpdir, max_shard_size="100MB")
+
+            files = os.listdir(tmpdir)
+            assert index_name not in files, "stale index left behind after switching to an unsharded save"
+            assert "diffusion_pytorch_model.safetensors" in files
+
+            reloaded = UNet2DModel.from_pretrained(tmpdir)
+            for p1, p2 in zip(sharded_model.parameters(), reloaded.parameters()):
+                assert torch.equal(p1, p2)
 
 
 class UNetTesterMixin:
