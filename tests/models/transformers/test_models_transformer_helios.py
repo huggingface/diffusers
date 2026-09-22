@@ -28,6 +28,7 @@ from ..testing_utils import (
     ModelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
+    UlyssesAnythingBackwardTesterMixin,
 )
 
 
@@ -139,6 +140,18 @@ class TestHeliosTransformer3D(HeliosTransformer3DTesterConfig, ModelTesterMixin)
 
 class TestHeliosTransformer3DMemory(HeliosTransformer3DTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for Helios Transformer 3D."""
+
+
+class TestHeliosTransformerUlyssesAnythingBackward(
+    HeliosTransformer3DTesterConfig, UlyssesAnythingBackwardTesterMixin
+):
+    def get_ulysses_anything_inputs(self):
+        inputs = self.get_dummy_inputs()
+        uneven = dict(inputs)
+        uneven["hidden_states"] = inputs["hidden_states"][:, :, :1, :6, :6]
+        uneven["indices_hidden_states"] = inputs["indices_hidden_states"][:, :1]
+        uneven["encoder_hidden_states"] = inputs["encoder_hidden_states"][:, :-1]
+        return [inputs, uneven]
 
 
 class TestHeliosTransformer3DTraining(HeliosTransformer3DTesterConfig, TrainingTesterMixin):

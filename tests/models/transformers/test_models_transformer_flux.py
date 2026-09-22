@@ -57,6 +57,7 @@ from ..testing_utils import (
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
+    UlyssesAnythingBackwardTesterMixin,
 )
 
 
@@ -252,6 +253,17 @@ class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterM
 
 class TestFluxTransformerAttentionBackend(FluxTransformerTesterConfig, AttentionBackendTesterMixin):
     """Attention backend tests for Flux Transformer."""
+
+
+class TestFluxTransformerUlyssesAnythingBackward(FluxTransformerTesterConfig, UlyssesAnythingBackwardTesterMixin):
+    def get_ulysses_anything_inputs(self):
+        inputs = self.get_dummy_inputs()
+        uneven = dict(inputs)
+        for key in ("hidden_states", "encoder_hidden_states"):
+            uneven[key] = inputs[key][:, :-1]
+        for key in ("img_ids", "txt_ids"):
+            uneven[key] = inputs[key][:-1]
+        return [inputs, uneven]
 
 
 class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):

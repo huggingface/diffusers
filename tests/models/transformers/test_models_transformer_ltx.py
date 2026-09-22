@@ -26,6 +26,7 @@ from ..testing_utils import (
     SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
+    UlyssesAnythingBackwardTesterMixin,
 )
 
 
@@ -97,6 +98,21 @@ class TestLTXTransformer(LTXTransformerTesterConfig, ModelTesterMixin):
 
 class TestLTXTransformerMemory(LTXTransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for LTX Video Transformer."""
+
+
+class TestLTXTransformerUlyssesAnythingBackward(LTXTransformerTesterConfig, UlyssesAnythingBackwardTesterMixin):
+    def get_ulysses_anything_init_dict(self):
+        init_dict = super().get_ulysses_anything_init_dict()
+        init_dict["cross_attention_dim"] = init_dict["num_attention_heads"] * init_dict["attention_head_dim"]
+        return init_dict
+
+    def get_ulysses_anything_inputs(self):
+        inputs = self.get_dummy_inputs()
+        uneven = {**inputs, "num_frames": 1, "height": 3, "width": 3}
+        uneven["hidden_states"] = inputs["hidden_states"][:, :9]
+        for key in ("encoder_hidden_states", "encoder_attention_mask"):
+            uneven[key] = inputs[key][:, :-1]
+        return [inputs, uneven]
 
 
 class TestLTXTransformerTraining(LTXTransformerTesterConfig, TrainingTesterMixin):

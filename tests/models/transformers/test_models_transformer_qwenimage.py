@@ -40,6 +40,7 @@ from ..testing_utils import (
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
+    UlyssesAnythingBackwardTesterMixin,
 )
 
 
@@ -269,6 +270,19 @@ class TestQwenImageTransformerAttentionBackend(QwenImageTransformerTesterConfig,
         mask[1, :6] = 1
         inputs["encoder_hidden_states_mask"] = mask.bool()
         return inputs
+
+
+class TestQwenImageTransformerUlyssesAnythingBackward(
+    QwenImageTransformerTesterConfig, UlyssesAnythingBackwardTesterMixin
+):
+    def get_ulysses_anything_inputs(self):
+        inputs = self.get_dummy_inputs()
+        uneven = dict(inputs)
+        uneven["encoder_hidden_states"] = inputs["encoder_hidden_states"][:, :-1]
+        mask = inputs["encoder_hidden_states_mask"][:, :-1].clone()
+        mask[:, 1] = 0
+        uneven["encoder_hidden_states_mask"] = mask
+        return [inputs, uneven]
 
 
 class TestQwenImageTransformerContextParallel(QwenImageTransformerTesterConfig, ContextParallelTesterMixin):

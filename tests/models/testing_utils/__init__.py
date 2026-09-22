@@ -23,6 +23,7 @@ from .parallelism import (
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     TensorParallelTesterMixin,
+    UlyssesAnythingBackwardTesterMixin,
 )
 from .quantization import (
     AutoRoundCompileTesterMixin,
@@ -67,6 +68,7 @@ __all__ = [
     "ContextParallelTesterMixin",
     "ContextParallelAttentionBackendsTesterMixin",
     "TensorParallelTesterMixin",
+    "UlyssesAnythingBackwardTesterMixin",
     "CPUOffloadTesterMixin",
     "FasterCacheConfigMixin",
     "FasterCacheTesterMixin",
