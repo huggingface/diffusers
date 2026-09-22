@@ -30,6 +30,9 @@ import torch.nn.functional as F
 if torch.distributed.is_available():
     import torch.distributed._functional_collectives as funcol
 
+from huggingface_hub import get_organization_overview
+from huggingface_hub.constants import HF_HUB_OFFLINE
+
 from .. import __version__
 from ..utils import (
     get_logger,
@@ -50,8 +53,6 @@ from ..utils import (
 from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_TRUST_REMOTE_KERNELS
 from ..utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from ._modeling_parallel import gather_size_by_comm
-from huggingface_hub import get_organization_overview
-from huggingface_hub.constants import HF_HUB_OFFLINE
 
 
 if TYPE_CHECKING:
@@ -753,7 +754,9 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
                     "`DIFFUSERS_TRUST_REMOTE_KERNELS=true` to allow it."
                 )
 
-        trust_kwargs = {"trust_remote_code": DIFFUSERS_TRUST_REMOTE_KERNELS} if is_kernels_version(">=", "0.14.0") else {}
+        trust_kwargs = (
+            {"trust_remote_code": DIFFUSERS_TRUST_REMOTE_KERNELS} if is_kernels_version(">=", "0.14.0") else {}
+        )
 
         kernel_module = get_kernel(
             repo_id,
