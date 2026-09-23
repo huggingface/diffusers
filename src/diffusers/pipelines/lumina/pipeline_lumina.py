@@ -30,6 +30,7 @@ from ...models.transformers.lumina_nextdit2d import LuminaNextDiT2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
+    deprecate,
     is_bs4_available,
     is_ftfy_available,
     is_torch_xla_available,
@@ -935,3 +936,23 @@ class LuminaPipeline(DiffusionPipeline):
             return (image,)
 
         return ImagePipelineOutput(images=image)
+
+
+class LuminaText2ImgPipeline(LuminaPipeline):
+    def __init__(
+        self,
+        transformer: LuminaNextDiT2DModel,
+        scheduler: FlowMatchEulerDiscreteScheduler,
+        vae: AutoencoderKL,
+        text_encoder: GemmaPreTrainedModel,
+        tokenizer: GemmaTokenizer | GemmaTokenizerFast,
+    ):
+        deprecation_message = "`LuminaText2ImgPipeline` has been renamed to `LuminaPipeline` and will be removed in a future version. Please use `LuminaPipeline` instead."
+        deprecate("diffusers.pipelines.lumina.pipeline_lumina.LuminaText2ImgPipeline", "0.34", deprecation_message)
+        super().__init__(
+            transformer=transformer,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+        )

@@ -12,8 +12,8 @@ from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import ControlNetModel
 from diffusers.models.attention import BasicTransformerBlock
-from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
 from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
+from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from diffusers.utils import PIL_INTERPOLATION, deprecate, logging, replace_example_docstring
 from diffusers.utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor

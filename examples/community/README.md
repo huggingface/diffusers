@@ -3526,7 +3526,7 @@ from controlnet_aux.midas import MidasDetector
 from PIL import Image
 
 from diffusers import AutoencoderKL, ControlNetModel, MultiAdapter, T2IAdapter
-from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
+from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.utils import load_image
 from examples.community.pipeline_stable_diffusion_xl_controlnet_adapter import (
     StableDiffusionXLControlNetAdapterPipeline,
@@ -3591,7 +3591,7 @@ from controlnet_aux.midas import MidasDetector
 from PIL import Image
 
 from diffusers import AutoencoderKL, ControlNetModel, MultiAdapter, T2IAdapter
-from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
+from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.utils import load_image
 from examples.community.pipeline_stable_diffusion_xl_controlnet_adapter_inpaint import (
     StableDiffusionXLControlNetAdapterInpaintPipeline,

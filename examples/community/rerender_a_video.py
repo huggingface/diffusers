@@ -26,7 +26,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from diffusers.models.attention_processor import Attention, AttnProcessor
-from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
+from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.controlnet.pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers

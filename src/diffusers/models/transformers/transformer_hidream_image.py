@@ -8,7 +8,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.modeling_outputs import Transformer2DModelOutput
 from ...models.modeling_utils import ModelMixin
-from ...utils import apply_lora_scale, logging
+from ...utils import apply_lora_scale, deprecate, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
 from ..attention import Attention
 from ..embeddings import TimestepEmbedding, Timesteps
@@ -783,6 +783,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         hidden_states_masks: torch.Tensor | None = None,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
+        **kwargs,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         """
         The [`HiDreamImageTransformer2DModel`] forward method.
@@ -816,6 +817,20 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
+        encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
+
+        if encoder_hidden_states is not None:
+            deprecation_message = "The `encoder_hidden_states` argument is deprecated. Please use `encoder_hidden_states_t5` and `encoder_hidden_states_llama3` instead."
+            deprecate("encoder_hidden_states", "0.35.0", deprecation_message)
+            encoder_hidden_states_t5 = encoder_hidden_states[0]
+            encoder_hidden_states_llama3 = encoder_hidden_states[1]
+
+        if img_ids is not None and img_sizes is not None and hidden_states_masks is None:
+            deprecation_message = (
+                "Passing `img_ids` and `img_sizes` with unpachified `hidden_states` is deprecated and will be ignored."
+            )
+            deprecate("img_ids", "0.35.0", deprecation_message)
+
         if hidden_states_masks is not None and (img_ids is None or img_sizes is None):
             raise ValueError("if `hidden_states_masks` is passed, `img_ids` and `img_sizes` must also be passed.")
         elif hidden_states_masks is not None and hidden_states.ndim != 3:

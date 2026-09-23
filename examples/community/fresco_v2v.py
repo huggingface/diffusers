@@ -29,9 +29,9 @@ from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
 from diffusers.models.attention_processor import AttnProcessor2_0
-from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
+from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.controlnet.pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker

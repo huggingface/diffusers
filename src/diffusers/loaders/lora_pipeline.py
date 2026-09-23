@@ -3700,7 +3700,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
 
 class Lumina2LoraLoaderMixin(LoraBaseMixin):
     r"""
-    Load LoRA layers into [`Lumina2Transformer2DModel`]. Specific to [`Lumina2Pipeline`].
+    Load LoRA layers into [`Lumina2Transformer2DModel`]. Specific to [`Lumina2Text2ImgPipeline`].
     """
 
     _lora_loadable_modules = ["transformer"]
