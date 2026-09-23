@@ -58,7 +58,7 @@ sf.write("minimax_music3.wav", audio.T, pipe.sampling_rate)
 
 ## Reduce memory usage
 
-Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving
+Refer to the [Memory and offloading](../../optimization/memory) guide for more details about the various memory saving
 techniques.
 
 The full pipeline needs ~23 GB of VRAM in bfloat16. With automatic CPU offloading a generation runs in ~22 GB of free

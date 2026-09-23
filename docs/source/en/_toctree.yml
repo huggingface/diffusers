@@ -58,7 +58,7 @@
   - isExpanded: false
     sections:
     - local: optimization/fp16
-      title: Accelerate inference
+      title: Precision and compilation
     - local: optimization/cache
       title: Caching
     - local: optimization/attention_backends
@@ -125,7 +125,6 @@
     title: Hardware-specific acceleration
   - isExpanded: false
     sections:
-<<<<<<< HEAD
     - local: optimization/cache_dit
       title: CacheDiT
     - local: optimization/para_attn
@@ -134,26 +133,6 @@
       title: Pruna
     - local: optimization/xdit
       title: xDiT
-=======
-    - local: optimization/pruna
-      title: Pruna
-    - local: optimization/xformers
-      title: xFormers
-    - local: optimization/tome
-      title: Token merging
-    - local: optimization/deepcache
-      title: DeepCache
-    - local: optimization/cache_dit
-      title: CacheDiT
-    - local: optimization/tgate
-      title: TGATE
-    - local: optimization/xdit
-      title: xDiT
-    - local: optimization/para_attn
-      title: ParaAttention
-    - local: using-diffusers/image_quality
-      title: FreeU
->>>>>>> c5c97346d (overview)
     title: Community methods
   title: Optimize and scale
 - isExpanded: false
