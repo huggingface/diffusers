@@ -15,11 +15,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
+
+permissions: {}
 
 jobs:
   check_dependencies:
+    permissions:
+      contents: read
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
