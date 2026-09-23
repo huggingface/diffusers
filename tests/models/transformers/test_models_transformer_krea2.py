@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import Krea2Transformer2DModel
@@ -155,6 +156,12 @@ class TestKrea2TransformerTraining(Krea2TransformerTesterConfig, TrainingTesterM
 
 class TestKrea2TransformerAttention(Krea2TransformerTesterConfig, AttentionTesterMixin):
     """Attention processor tests for the Krea 2 Transformer."""
+
+    @pytest.mark.skip(
+        "Krea2Attention's attention processor has no fused-projection branch, so it reads the split projections that in-place fusion removes. Fusing is a no-op for this model until its processor uses the fused weights."
+    )
+    def test_fuse_unfuse_qkv_projections_inplace(self, atol=1e-3, rtol=0):
+        pass
 
 
 class TestKrea2TransformerLoRA(Krea2TransformerTesterConfig, LoraTesterMixin):
