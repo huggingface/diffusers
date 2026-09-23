@@ -27,6 +27,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -294,3 +295,21 @@ class TestQwenImage21TransformerTraining(QwenImage21TransformerTesterConfig, Tra
 
 class TestQwenImage21TransformerAttention(QwenImage21TransformerTesterConfig, AttentionTesterMixin):
     pass
+
+
+class TestQwenImage21TransformerSingleFile(QwenImage21TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/blob/main/diffusion_models/qwen_image_2.1_bf16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Qwen/Qwen-Image-2.1"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
