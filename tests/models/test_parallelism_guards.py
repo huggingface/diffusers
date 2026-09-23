@@ -46,13 +46,6 @@ class TinyTPModel(ModelMixin, ConfigMixin):
         return self.linear_2(self.linear_1(hidden_states))
 
 
-class _SerializableQuantizer:
-    """Stand-in that passes `save_pretrained`'s serializability check, so the TP guard is what raises."""
-
-    is_serializable = True
-    supports_safetensors_serialization = True
-
-
 @pytest.fixture(scope="module")
 def gloo_process_group():
     """A single-rank CPU process group, enough for `_resolve_parallel_config` to build a mesh."""
@@ -155,16 +148,10 @@ class TestTensorParallelReverseDirectionGuards:
 
 
 class TestTensorParallelSaveGuards:
-    """`save_pretrained` must not write a checkpoint that silently drops quantization."""
+    """Saving a tensor-parallel model is not supported yet, so `save_pretrained` must raise rather than write shards."""
 
-    def test_dcp_save_rejects_quantized_model(self, tmp_path):
+    def test_save_rejects_tp_model(self, tmp_path):
         model = _mark_as_tensor_parallel(TinyTPModel())
-        model.hf_quantizer = _SerializableQuantizer()
-        with pytest.raises(ValueError, match="quantized tensor-parallel model cannot be saved"):
-            model.save_pretrained(str(tmp_path / "dcp"), dcp=True)
-
-    def test_tp_save_rejects_quantized_model(self, tmp_path):
-        model = _mark_as_tensor_parallel(TinyTPModel())
-        model.hf_quantizer = _SerializableQuantizer()
-        with pytest.raises(ValueError, match="quantized tensor-parallel model cannot be saved"):
+        with pytest.raises(NotImplementedError, match="tensor-parallel"):
             model.save_pretrained(str(tmp_path / "full"))
+        assert not (tmp_path / "full").exists()

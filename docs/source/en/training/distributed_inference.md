@@ -485,22 +485,7 @@ torchrun --nproc-per-node 4 tensor_parallel_flux.py
 
 A tensor-parallel `parallel_config` cannot be combined with `device_map`, `quantization_config`, `low_cpu_mem_usage=False`, `use_flashpack=True`, or non-safetensors weights; each raises rather than quietly falling back to loading the full checkpoint. Tensor parallelism also cannot be combined with quantization, offloading, or LoRA adapters at all — the parameters it shards have to be plain parameters owned by the model — so those raise however the model is sharded. To shard a model that is already in memory, call [`~ModelMixin.enable_parallelism`] with the same config instead — that loads everything first and reshards it, so it costs full checkpoint memory on every rank.
 
-### Saving a tensor-parallel model
-
-[`~ModelMixin.save_pretrained`] gathers the shards back into ordinary full tensors, so the result is a normal checkpoint that loads with or without tensor parallelism. Gathering is a collective, so call it on **every** rank; only rank 0 writes.
-
-```py
-# on all ranks
-pipeline.transformer.save_pretrained("flux2-transformer")
-```
-
-For a model too large to gather onto a single rank, pass `dcp=True` to write a [distributed checkpoint](https://pytorch.org/docs/stable/distributed.checkpoint.html) instead. Every rank writes its own shards, so no full tensor is ever formed.
-
-```py
-pipeline.transformer.save_pretrained("flux2-transformer-dcp", dcp=True)
-```
-
-`from_pretrained` detects such a directory automatically, and reads it back with the same `parallel_config` you saved it under. Because a packed projection's shards are stored interleaved by the writing degree, the checkpoint only loads at that same `tp_degree`, and only with tensor parallelism — anything else raises rather than silently returning wrong weights. It is also local-only: a distributed checkpoint is recognized by the `.metadata` file in its directory, so it cannot be pushed to or loaded from the Hub. To lift any of these restrictions, re-save with the default (gathered) path, which produces an ordinary checkpoint.
+Saving a tensor-parallel model isn't supported yet, and [`~ModelMixin.save_pretrained`] raises on one. Save the model before sharding it.
 
 ### Writing a tensor parallelism plan
 

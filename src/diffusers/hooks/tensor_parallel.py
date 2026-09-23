@@ -95,7 +95,7 @@ def _local_shard(tensor, dim: int, block_sizes: "list[int]", tp_mesh) -> torch.T
     parts, offset = [], 0
     for block_size in block_sizes:
         # An uneven split is rejected rather than silently handed to `Shard`, which pads the tail
-        # and would break both the paired colwise/rowwise matmul and `_unshard_gathered`.
+        # and would break the paired colwise/rowwise matmul.
         if block_size % tp_size != 0:
             raise ValueError(
                 f"Cannot shard a block of size {block_size} across {tp_size} tensor-parallel ranks: "
@@ -109,53 +109,6 @@ def _local_shard(tensor, dim: int, block_sizes: "list[int]", tp_mesh) -> torch.T
 
     local = parts[0] if len(parts) == 1 else torch.cat(parts, dim=dim)
     return local.contiguous()
-
-
-def _unshard_gathered(gathered: torch.Tensor, dim: int, block_sizes: "list[int]", tp_size: int) -> torch.Tensor:
-    """Undo `_local_shard`'s block interleaving on an all-gathered tensor.
-
-    `DTensor.full_tensor()` concatenates the local shards rank-major, so a packed weight comes back as `[block0_rank0,
-    block1_rank0, block0_rank1, block1_rank1, ...]` and has to be regrouped by block. A single block is already in the
-    original order and passes through unchanged.
-    """
-    if len(block_sizes) == 1:
-        return gathered
-
-    local_sizes = [block_size // tp_size for block_size in block_sizes]
-    stride = sum(local_sizes)
-    parts = []
-    for i, local_size in enumerate(local_sizes):
-        offset = sum(local_sizes[:i])
-        parts.extend(gathered.narrow(dim, rank * stride + offset, local_size) for rank in range(tp_size))
-    return torch.cat(parts, dim=dim)
-
-
-def gather_tp_state_dict(state_dict: dict, specs: "dict[str, TPShardSpec]", config: TensorParallelConfig) -> dict:
-    """Reassemble a tensor-parallel `state_dict` into ordinary full tensors.
-
-    Every `DTensor` is all-gathered back to its full shape and, for the packed styles, reordered by `_unshard_gathered`
-    — `full_tensor()` alone would leave the fused blocks interleaved by rank. Replicated and unplanned parameters pass
-    through untouched.
-
-    `full_tensor()` is a collective, so this must run on **every** rank even though usually only rank 0 goes on to
-    write the result.
-    """
-    from torch.distributed.tensor import DTensor
-
-    tp_size = config._tp_degree
-    gathered = {}
-    for key, value in state_dict.items():
-        if not isinstance(value, DTensor):
-            gathered[key] = value
-            continue
-        # `full_tensor()` is the collective; the reorder after it is plain tensor arithmetic, so keep it off
-        # the accelerator — CPU is where this state dict is headed anyway, since it is about to be written.
-        full = value.full_tensor().cpu()
-        spec = specs[key]
-        if spec.dim is not None:
-            full = _unshard_gathered(full, spec.dim, spec.block_sizes, tp_size)
-        gathered[key] = full.contiguous()
-    return gathered
 
 
 def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict) -> "dict[str, TPShardSpec]":

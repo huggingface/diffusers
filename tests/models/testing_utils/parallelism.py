@@ -20,11 +20,9 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from safetensors.torch import load_file
 
 from diffusers.models._modeling_parallel import ContextParallelConfig, TensorParallelConfig
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
-from diffusers.utils.constants import SAFETENSORS_WEIGHTS_NAME
 
 from ...testing_utils import (
     is_attention,
@@ -298,13 +296,12 @@ def _tensor_parallel_worker(
 
 
 def _tensor_parallel_from_pretrained_worker(
-    rank, world_size, master_port, model_class, checkpoint_dir, resave_dir, inputs_dict, return_dict
+    rank, world_size, master_port, model_class, checkpoint_dir, inputs_dict, return_dict
 ):
     """Worker for `from_pretrained(..., parallel_config=...)`, i.e. sharding while reading the checkpoint.
 
-    Each rank loads only its own slice of every `_tp_plan` parameter straight into a `DTensor`, runs a forward
-    pass, and (if `resave_dir` is given) saves the model back out, which has to gather the shards first. Rank
-    0 reports its output and the local/global shapes of one sharded weight so the caller can check both the
+    Each rank loads only its own slice of every `_tp_plan` parameter straight into a `DTensor` and runs a forward
+    pass. Rank 0 reports its output and the local/global shapes of one sharded weight so the caller can check both the
     numerics and that sharding actually happened.
     """
     try:
@@ -330,10 +327,6 @@ def _tensor_parallel_from_pretrained_worker(
         if isinstance(output, DTensor):
             output = output.full_tensor()
 
-        # Gathering is a collective, so every rank has to reach this even though only rank 0 writes.
-        if resave_dir is not None:
-            model.save_pretrained(resave_dir)
-
         if rank == 0:
             sharded = {k: v for k, v in model.state_dict().items() if isinstance(v, DTensor)}
             assert sharded, "No parameter was sharded into a DTensor by the streaming load."
@@ -341,53 +334,6 @@ def _tensor_parallel_from_pretrained_worker(
             return_dict["status"] = "success"
             return_dict["num_sharded"] = len(sharded)
             return_dict["shard_example"] = (name, list(param.to_local().shape), list(param.shape))
-            return_dict["output"] = output.float().cpu().tolist()
-
-    except Exception as e:
-        if rank == 0:
-            return_dict["status"] = "error"
-            return_dict["error"] = f"{type(e).__name__}: {e}"
-    finally:
-        if dist.is_initialized():
-            dist.destroy_process_group()
-
-
-def _tensor_parallel_dcp_worker(
-    rank, world_size, master_port, model_class, checkpoint_dir, dcp_dir, inputs_dict, return_dict
-):
-    """Worker for the `save_pretrained(..., dcp=True)` round trip.
-
-    Streams the checkpoint into shards, writes them as a distributed checkpoint (no rank ever holding a full
-    tensor), then loads that back and runs a forward pass. Rank 0 reports the output.
-    """
-    try:
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = str(master_port)
-        os.environ["RANK"] = str(rank)
-        os.environ["WORLD_SIZE"] = str(world_size)
-
-        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
-        dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
-        device_config["module"].set_device(rank)
-
-        from torch.distributed.tensor import DTensor
-
-        tp_config = TensorParallelConfig(tp_degree=world_size)
-        model_class.from_pretrained(checkpoint_dir, parallel_config=tp_config).save_pretrained(dcp_dir, dcp=True)
-
-        reloaded = model_class.from_pretrained(
-            dcp_dir, parallel_config=TensorParallelConfig(tp_degree=world_size)
-        ).eval()
-
-        device = torch.device(f"{torch_device}:{rank}")
-        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
-        with torch.no_grad():
-            output = reloaded(**inputs_on_device, return_dict=False)[0]
-        if isinstance(output, DTensor):
-            output = output.full_tensor()
-
-        if rank == 0:
-            return_dict["status"] = "success"
             return_dict["output"] = output.float().cpu().tolist()
 
     except Exception as e:
@@ -476,15 +422,9 @@ class TensorParallelTesterMixin:
         return checkpoint_dir, inputs_dict, reference
 
     def test_tensor_parallel_from_pretrained(self, tmp_path):
-        """`from_pretrained(..., parallel_config=...)` shards while reading, and `save_pretrained` gathers back.
-
-        Covers both directions in one spawn: the streaming load must match the single-device reference, and the
-        checkpoint it writes back out must be byte-identical to the one it read. The round trip is what catches
-        a wrong packed-projection reorder — a plain colwise/rowwise mistake would pass the forward check alone.
-        """
+        """`from_pretrained(..., parallel_config=...)` shards while reading and matches the single-device reference."""
         world_size = 2
         checkpoint_dir, inputs_dict, reference = self._tp_checkpoint_and_reference(tmp_path, world_size)
-        resave_dir = str(tmp_path / "resaved")
 
         manager = mp.Manager()
         return_dict = manager.dict()
@@ -495,7 +435,6 @@ class TensorParallelTesterMixin:
                 _find_free_port(),
                 self.model_class,
                 checkpoint_dir,
-                resave_dir,
                 inputs_dict,
                 return_dict,
             ),
@@ -512,38 +451,6 @@ class TensorParallelTesterMixin:
         )
 
         # Sharded matmuls + all-reduce reorder the summation, so allow a small tolerance over the reference.
-        torch.testing.assert_close(reference, torch.tensor(return_dict["output"]), atol=1e-3, rtol=1e-3)
-
-        original = load_file(os.path.join(checkpoint_dir, SAFETENSORS_WEIGHTS_NAME))
-        resaved = load_file(os.path.join(resave_dir, SAFETENSORS_WEIGHTS_NAME))
-        assert original.keys() == resaved.keys()
-        for key, value in original.items():
-            torch.testing.assert_close(resaved[key], value, atol=0, rtol=0, msg=lambda m, key=key: f"{key}: {m}")
-
-    def test_tensor_parallel_dcp_roundtrip(self, tmp_path):
-        """`save_pretrained(..., dcp=True)` writes sharded and `from_pretrained` reads it back at the same degree."""
-        world_size = 2
-        checkpoint_dir, inputs_dict, reference = self._tp_checkpoint_and_reference(tmp_path, world_size)
-
-        manager = mp.Manager()
-        return_dict = manager.dict()
-        mp.spawn(
-            _tensor_parallel_dcp_worker,
-            args=(
-                world_size,
-                _find_free_port(),
-                self.model_class,
-                checkpoint_dir,
-                str(tmp_path / "dcp"),
-                inputs_dict,
-                return_dict,
-            ),
-            nprocs=world_size,
-            join=True,
-        )
-        assert return_dict.get("status") == "success", (
-            f"Tensor parallel DCP round trip failed: {return_dict.get('error', 'Unknown error')}"
-        )
         torch.testing.assert_close(reference, torch.tensor(return_dict["output"]), atol=1e-3, rtol=1e-3)
 
 

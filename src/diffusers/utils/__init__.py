@@ -20,7 +20,6 @@ from packaging import version
 from .. import __version__
 from .constants import (
     CONFIG_NAME,
-    DCP_CONFIG_NAME,
     DEFAULT_HF_PARALLEL_LOADING_WORKERS,
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
