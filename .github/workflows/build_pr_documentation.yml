@@ -16,6 +16,8 @@ permissions:
 
 jobs:
   check-links:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
 
     steps:
