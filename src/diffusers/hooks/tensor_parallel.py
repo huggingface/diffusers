@@ -206,6 +206,22 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
     return [grouped[key] for key in order]
 
 
+def _shard_packed_param(param, dim: int, blocks: "list[int]", device_mesh, src_data_rank) -> torch.nn.Parameter:
+    """Shard a packed `param` along `dim`, splitting each fused block across the ranks separately.
+
+    The parameter is replicated before slicing: the broadcast from `src_data_rank` is what makes one rank's weights
+    authoritative when the model was randomly initialized rather than loaded from a checkpoint, in which case every
+    rank starts with different values.
+    """
+    from torch.distributed.tensor import DTensor, Replicate, Shard, distribute_tensor
+
+    full = distribute_tensor(param, device_mesh, [Replicate()], src_data_rank=src_data_rank).to_local()
+    local = _local_shard(full, dim, _blocks_to_block_sizes(full.shape[dim], blocks), device_mesh)
+    return torch.nn.Parameter(
+        DTensor.from_local(local, device_mesh, [Shard(dim)], run_check=False), requires_grad=param.requires_grad
+    )
+
+
 def _styles(relative_plan: dict) -> dict:
     """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
 
@@ -213,8 +229,7 @@ def _styles(relative_plan: dict) -> dict:
     instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`, each subclassed to
     reject a sharded dim that is not divisible by the TP degree.
     """
-    import torch.nn as nn
-    from torch.distributed.tensor import DTensor, Replicate, Shard, distribute_tensor
+    from torch.distributed.tensor import Replicate, distribute_tensor
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
 
     def _make_packed_col(marker: PackedColwiseParallel) -> ColwiseParallel:
@@ -226,20 +241,8 @@ def _styles(relative_plan: dict) -> dict:
                 # Both weight (`[out, in]`) and bias (`[out]`) are sharded row-wise (dim 0) with the same per-block
                 # slicing so each rank's bias rows line up with its weight rows for the packed layout.
                 for param_name, param in module.named_parameters():
-                    # Replicate before slicing: the broadcast from `src_data_rank` is what makes one rank's
-                    # weights authoritative when the model was randomly initialized rather than loaded from a
-                    # checkpoint, in which case every rank starts with different values.
-                    full = distribute_tensor(
-                        param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank
-                    ).to_local()
-                    local = _local_shard(full, 0, _blocks_to_block_sizes(full.shape[0], blocks), device_mesh)
-                    module.register_parameter(
-                        param_name,
-                        nn.Parameter(
-                            DTensor.from_local(local, device_mesh, [Shard(0)], run_check=False),
-                            requires_grad=param.requires_grad,
-                        ),
-                    )
+                    sharded = _shard_packed_param(param, 0, blocks, device_mesh, self.src_data_rank)
+                    module.register_parameter(param_name, sharded)
 
         return _PackedColwiseImpl()
 
@@ -249,23 +252,17 @@ def _styles(relative_plan: dict) -> dict:
         class _PackedRowwiseImpl(RowwiseParallel):
             def _partition_linear_fn(self, name, module, device_mesh):
                 blocks = _blocks if _blocks is not None else module._tp_packed_row_blocks
+                # Only the weight (`[out, in]`) is sharded, column-wise (dim 1); the bias is added after the
+                # all-reduce, so every rank keeps it whole.
                 for param_name, param in module.named_parameters():
                     if param_name == "weight":
-                        # See `_make_packed_col`: replicate first so one rank's weights win.
-                        full = distribute_tensor(
-                            param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank
-                        ).to_local()
-                        local = _local_shard(full, 1, _blocks_to_block_sizes(full.shape[1], blocks), device_mesh)
-                        dist_param = nn.Parameter(
-                            DTensor.from_local(local, device_mesh, [Shard(1)], run_check=False),
-                            requires_grad=param.requires_grad,
-                        )
+                        sharded = _shard_packed_param(param, 1, blocks, device_mesh, self.src_data_rank)
                     else:
-                        dist_param = nn.Parameter(
+                        sharded = torch.nn.Parameter(
                             distribute_tensor(param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank),
                             requires_grad=param.requires_grad,
                         )
-                    module.register_parameter(param_name, dist_param)
+                    module.register_parameter(param_name, sharded)
 
         return _PackedRowwiseImpl()
 
