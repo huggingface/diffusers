@@ -593,4 +593,4 @@ With [`torch.compile`](../optimization/fp16#torchcompile), you can boost your in
 pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-To learn more, take a look at the [Reduce memory usage](../optimization/memory) and [Accelerate inference](../optimization/fp16) guides.
+To learn more, take a look at the [Memory and offloading](../optimization/memory) and [Precision and compilation](../optimization/fp16) guides.
