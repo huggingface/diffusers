@@ -166,8 +166,7 @@ jobs:
               tests/pipelines/${{ matrix.module }}
           else
               pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
-              pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-              -k "$pattern" \
+              pytest -k "$pattern" \
               --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
               tests/pipelines/${{ matrix.module }}
           fi
@@ -232,11 +231,11 @@ jobs:
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
-        if [ -z "$pattern" ]; then
+        if [ -z "$pattern" ] || [ "${{ matrix.module }}" = "lora" ]; then
           pytest -n 1  --max-worker-restart=0 --dist=loadfile tests/${{ matrix.module }} \
           --make-reports=tests_torch_cuda_${{ matrix.module }}
         else
-          pytest -n 1  --max-worker-restart=0 --dist=loadfile -k "$pattern" tests/${{ matrix.module }} \
+          pytest -k "$pattern" tests/${{ matrix.module }} \
           --make-reports=tests_torch_cuda_${{ matrix.module }}
         fi
 
