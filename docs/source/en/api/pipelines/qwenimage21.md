@@ -62,6 +62,21 @@ pipe.transformer.set_attn_processor(QwenImage21FlexAttnProcessor())
 pipe.transformer.compile()
 ```
 
+## Loading single-file checkpoints
+
+```python
+import torch
+from diffusers import QwenImage21Pipeline, QwenImage21Transformer2DModel
+
+transformer = QwenImage21Transformer2DModel.from_single_file(
+    "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/blob/main/diffusion_models/qwen_image_2.1_bf16.safetensors",
+    dtype=torch.bfloat16,
+)
+pipe = QwenImage21Pipeline.from_pretrained("Qwen/Qwen-Image-2.1", transformer=transformer, dtype=torch.bfloat16).to(
+    "cuda"
+)
+```
+
 ## QwenImage21Pipeline
 
 [[autodoc]] QwenImage21Pipeline
