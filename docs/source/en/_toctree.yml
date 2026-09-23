@@ -43,6 +43,8 @@
       title: IP-Adapter
     - local: using-diffusers/controlnet
       title: ControlNet
+    - local: using-diffusers/dreambooth
+      title: DreamBooth
     - local: using-diffusers/legacy_adapters
       title: Legacy adapters
     title: Adapters and personalization

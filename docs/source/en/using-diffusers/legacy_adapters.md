@@ -16,11 +16,9 @@ These methods are still supported, especially on Stable Diffusion–family check
 
 ## T2I-Adapter
 
-[T2I-Adapter](https://huggingface.co/papers/2302.08453) is an adapter that enables controllable generation like [ControlNet](./controlnet). A T2I-Adapter works by learning a *mapping* between a control signal (for example, a depth map) and a pretrained model's internal knowledge. The adapter is plugged into the base model to provide extra guidance based on the control signal during generation.
+[T2I-Adapter](https://huggingface.co/papers/2302.08453) is an adapter for controllable generation. It learns a mapping from a control signal (for example, a depth map or canny edges) into a pretrained model's internal features and adds that guidance during generation. It is similar in role to [ControlNet](./controlnet), but it is a lighter plugged-in adapter.
 
-For new controllable-generation work, prefer [ControlNet](./controlnet).
-
-Load a T2I-Adapter conditioned on a specific control, such as canny edge. Then load the pipeline with [`~DiffusionPipeline.from_pretrained`] and pass the adapter with `adapter=`.
+Load a control-conditioned adapter, then load the pipeline with [`~DiffusionPipeline.from_pretrained`] and pass it with `adapter=`.
 
 ```py
 import torch
@@ -94,13 +92,11 @@ pipeline(
   </figure>
 </div>
 
+See also [T2I-Adapter training](../training/t2i_adapters).
+
 ### MultiAdapter
 
-You can compose multiple controls, such as canny image and a depth map, with the [`MultiAdapter`] class.
-
-The example below composes a canny image and depth map.
-
-Load the control images and T2I-Adapters as a list.
+Compose multiple controls (for example, canny and depth) with [`MultiAdapter`]. Pass a list of adapters into `MultiAdapter`, then pass the matching control images as a list to the pipeline.
 
 ```py
 import torch
@@ -162,39 +158,11 @@ pipeline(
   </figure>
 </div>
 
-## DreamBooth
+## Textual Inversion
 
-[DreamBooth](https://huggingface.co/papers/2208.12242) is a method for generating personalized images of a specific instance. It works by fine-tuning the model on 3-5 images of the subject (for example, a cat) that is associated with a unique identifier (`sks cat`). This allows you to use `sks cat` in your prompt to trigger the model to generate images of your cat in different settings, lighting, poses, and styles.
+[Textual Inversion](https://huggingface.co/papers/2208.01618) personalizes a model to a concept from 3-5 images by fine-tuning word embeddings bound to a unique token (`<sks>`). You can then use that token in your prompt to generate the concept (for example, pixel art).
 
-DreamBooth checkpoints are typically a few GBs in size because they contain the full model weights.
-
-To train one, see [Train DreamBooth](../training/dreambooth).
-
-Load the DreamBooth checkpoint with [`~DiffusionPipeline.from_pretrained`] and include the unique identifier in the prompt to activate its generation.
-
-```py
-import torch
-from diffusers import AutoPipelineForText2Image
-
-pipeline = AutoPipelineForText2Image.from_pretrained(
-    "sd-dreambooth-library/herge-style",
-    dtype=torch.float16
-).to("cuda")  # or "mps", "xpu", "cpu"
-prompt = "A cute sks herge_style brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
-pipeline(prompt).images[0]
-```
-
-<div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_dreambooth.png" />
-</div>
-
-## Textual inversion
-
-[Textual Inversion](https://huggingface.co/papers/2208.01618) is a method for generating personalized images of a concept. It works by fine-tuning a model's word embeddings on 3-5 images of the concept (for example, pixel art) that is associated with a unique token (`<sks>`). This allows you to use the `<sks>` token in your prompt to trigger the model to generate pixel art images.
-
-Textual Inversion weights are very lightweight and typically only a few KBs because they're only word embeddings. However, this also means the word embeddings need to be loaded after loading a model with [`~DiffusionPipeline.from_pretrained`].
-
-To train embeddings, see [Train textual inversion](../training/text_inversion).
+Textual Inversion weights are typically only a few KBs because they are only word embeddings. Load them after [`~DiffusionPipeline.from_pretrained`] with [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`], and include the unique token in the prompt to trigger generation.
 
 ```py
 import torch
@@ -206,8 +174,6 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 ).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
-Load the word embeddings with [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] and include the unique token in the prompt to activate its generation.
-
 ```py
 pipeline.load_textual_inversion("sd-concepts-library/gta5-artwork")
 prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration, <gta5-artwork> style"
@@ -218,7 +184,9 @@ pipeline(prompt).images[0]
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_txt_embed.png" />
 </div>
 
-Textual Inversion can also be trained to learn *negative embeddings* to steer generation away from unwanted characteristics such as "blurry" or "ugly". It is useful for improving image quality.
+To train embeddings, see [Train textual inversion](../training/text_inversion).
+
+Textual Inversion can also be trained to learn *negative embeddings* to steer generation away from unwanted characteristics such as "blurry" or "ugly", making it useful for improving image quality.
 
 EasyNegative is a widely used negative embedding that contains multiple learned negative concepts. Load the negative embeddings and specify the file name and token associated with the negative embeddings. Pass the token to `negative_prompt` in your pipeline to activate it.
 

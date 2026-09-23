@@ -14,15 +14,6 @@ specific language governing permissions and limitations under the License.
 
 [ControlNet](https://huggingface.co/papers/2302.05543) steers a pretrained diffusion model with a structural control image (edges, depth, or pose) while you keep a text prompt. It freezes the base model and adds a parallel network whose residuals guide the denoiser, so you get layout control without fine-tuning.
 
-```text
-control image --> ControlNet --> residuals
-                                    |
-text --> encoder --------------+    |
-                               v    v
-                         denoiser blocks
-                         (frozen base)
-```
-
 Load a ControlNet for the control you need (for example canny), then pass it as `controlnet=` to [`~DiffusionPipeline.from_pretrained`]. Use `controlnet_conditioning_scale` to set how strongly the control steers generation.
 
 > [!TIP]

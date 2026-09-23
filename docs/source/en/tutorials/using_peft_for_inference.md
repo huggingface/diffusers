@@ -14,20 +14,6 @@ specific language governing permissions and limitations under the License.
 
 [LoRA (Low-Rank Adaptation)](https://huggingface.co/papers/2106.09685) adapts a pretrained model to a new task by freezing the original weights and training a small set of new parameters. Adaptation is faster and cheaper than full fine-tuning, which makes it practical for tasks like generating images in a new style.
 
-```text
-full fine-tune                      LoRA
-train all of W                      freeze W, train B and A
-
-  W (d×d)                             W (d×d)  frozen
- ████████                             +------+
- ████████                             |      |
- ████████                             +------+
-                               +      B (d×r)   A (r×d)
-                                      ██              ██
-                                      ██              ██
-                               ΔW ≈ B A   (r ≪ d)
-```
-
 LoRA checkpoints are typically only a couple hundred MBs. Load them with `pipeline.load_lora_weights` and set `weight_name` to the checkpoint filename. See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for the shared parameters.
 
 <hfoptions id="usage">
@@ -88,7 +74,7 @@ export_to_video(video, "output.mp4", fps=26)
 </hfoption>
 </hfoptions>
 
-The pipeline LoRA APIs on this page work the same across model families. The denoising module is `pipeline.unet` on Stable Diffusion and SDXL, and `pipeline.transformer` on DiT-style models such as Flux, SD3, AuraFlow, and LTX. Model-level PEFT methods use that attribute and a matching `prefix` (`"unet"` or `"transformer"`).
+The pipeline LoRA APIs on this page work the same across model families. The denoising module is `pipeline.unet` on [Stable Diffusion](../api/pipelines/stable_diffusion/overview) and [SDXL](../api/pipelines/stable_diffusion/stable_diffusion_xl), and `pipeline.transformer` on DiT-style models such as [Flux](../api/pipelines/flux), [Stable Diffusion 3](../api/pipelines/stable_diffusion/stable_diffusion_3), [AuraFlow](../api/pipelines/aura_flow), and [LTX](../api/pipelines/ltx_video). The same pattern applies to video models such as [CogVideoX](../api/pipelines/cogvideox), [HunyuanVideo](../api/pipelines/hunyuan_video), and [Wan](../api/pipelines/wan). Model-level PEFT methods use that attribute and a matching `prefix` (`"unet"` or `"transformer"`).
 
 `pipeline.load_lora_weights` is the preferred way to load LoRA weights into the denoiser (UNet or transformer) and text encoders. See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for the shared parameters. It can handle cases where:
 
@@ -186,7 +172,7 @@ Refer to the [hotswapping](#hotswapping) section to learn how to avoid recompila
 
 ## Weight scale
 
-Use [`~loaders.lora_base.LoraBaseMixin.set_adapters`] to control how much of a LoRA to apply. A weight of `0` is equivalent to only using the base model weights and a weight of `1` is equivalent to fully using the LoRA.
+Use the `adapter_weights` parameter on [`~loaders.lora_base.LoraBaseMixin.set_adapters`] to control how much of a LoRA to apply. A weight of `0` is equivalent to only using the base model weights and a weight of `1` is equivalent to fully using the LoRA.
 
 <hfoptions id="weight-scale">
 <hfoption id="scalar weight">
@@ -210,7 +196,7 @@ pipeline.set_adapters("cereal", adapter_weights=1.0)
 pipeline("bears, pizza bites").images[0]
 ```
 
-You can also pass `cross_attention_kwargs={"scale": 1.0}` on the pipeline call as a secondary way to scale attention, but prefer `set_adapters` as the primary pattern.
+`set_adapters` as the primary pattern, but some pipelines also accept `cross_attention_kwargs={"scale": 1.0}` on the call as a secondary way to scale attention. Pipelines that do not use cross-attention typically expose `attention_kwargs` instead (or `joint_attention_kwargs` on Flux and Stable Diffusion 3).
 
 </hfoption>
 <hfoption id="per-component scales">
@@ -378,7 +364,7 @@ This is why the `target_rank` argument is important. The results are unchanged e
 
 Since no new LoRA attributes are added, each subsequent LoRA is only allowed to target the same layers, or subset of layers, the first LoRA targets. Choosing the LoRA loading order is important because if the LoRAs target disjoint layers, you may end up creating a dummy LoRA that targets the union of all target layers.
 
-For more implementation details, take a look at the [`hotswap.py`](https://github.com/huggingface/peft/blob/92d65cafa51c829484ad3d95cf71d09de57ff066/src/peft/utils/hotswap.py) file.
+See the [LoRA fast](https://huggingface.co/blog/lora-fast) blog post for more on LoRA hotswapping with compiled models, and for more implementation details, take a look at the [`hotswap.py`](https://github.com/huggingface/peft/blob/92d65cafa51c829484ad3d95cf71d09de57ff066/src/peft/utils/hotswap.py) file.
 
 </details>
 
