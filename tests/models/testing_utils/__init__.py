@@ -20,8 +20,10 @@ from .ip_adapter import IPAdapterTesterMixin
 from .lora import LoraHotSwappingForModelTesterMixin, LoraTesterMixin
 from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCastingTesterMixin, MemoryTesterMixin
 from .parallelism import (
+    ContextAndTensorParallelTesterMixin,
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
+    HybridParallelTesterMixin,
     TensorParallelTesterMixin,
 )
 from .quantization import (
@@ -64,8 +66,10 @@ __all__ = [
     "BitsAndBytesConfigMixin",
     "BitsAndBytesTesterMixin",
     "CacheTesterMixin",
+    "ContextAndTensorParallelTesterMixin",
     "ContextParallelTesterMixin",
     "ContextParallelAttentionBackendsTesterMixin",
+    "HybridParallelTesterMixin",
     "TensorParallelTesterMixin",
     "CPUOffloadTesterMixin",
     "FasterCacheConfigMixin",

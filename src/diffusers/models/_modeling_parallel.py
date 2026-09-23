@@ -186,6 +186,8 @@ class TensorParallelConfig:
             raise ValueError("`tp_degree` must be >= 1.")
 
     def setup(self, rank: int, world_size: int, device: torch.device, mesh: torch.distributed.device_mesh.DeviceMesh):
+        if mesh.size() > world_size:
+            raise ValueError(f"Tensor parallel degree ({mesh.size()}) cannot exceed the world size ({world_size}).")
         self._rank = rank
         self._world_size = world_size
         self._device = device
@@ -197,6 +199,11 @@ class TensorParallelConfig:
 class ParallelConfig:
     """
     Configuration for applying different parallelisms.
+
+    Both may be set at once. The two are then applied over one device mesh with a dimension each — `("ring", "ulysses",
+    "tp")`, built by `enable_parallelism` — so their collectives stay in separate process groups. This is what lets a
+    model too large for one device (TP shards the weights) also run a sequence too long for one device's attention
+    scratchpad (CP splits the sequence): TP alone cannot divide the sequence, and CP alone cannot divide the weights.
 
     Args:
         context_parallel_config (`ContextParallelConfig`, *optional*):
@@ -214,11 +221,16 @@ class ParallelConfig:
     _mesh: torch.distributed.device_mesh.DeviceMesh = None
 
     def __post_init__(self):
-        if self.context_parallel_config is not None and self.tensor_parallel_config is not None:
+        if self.context_parallel_config is None and self.tensor_parallel_config is None:
             raise ValueError(
-                "Combining context parallelism and tensor parallelism in a single `ParallelConfig` is not supported. "
-                "Please specify only one of `context_parallel_config` or `tensor_parallel_config`."
+                "A `ParallelConfig` must specify at least one of `context_parallel_config` or "
+                "`tensor_parallel_config`."
             )
+
+    @property
+    def _is_combined(self) -> bool:
+        """Whether both context and tensor parallelism are requested, i.e. they must share one mesh."""
+        return self.context_parallel_config is not None and self.tensor_parallel_config is not None
 
     def setup(
         self,
@@ -232,10 +244,32 @@ class ParallelConfig:
         self._world_size = world_size
         self._device = device
         self._mesh = mesh
+
+        # Context and tensor parallelism compose because they cut the model along different axes: CP splits the
+        # sequence (and, under Ulysses, trades sequence for heads inside attention) while TP shards the Linear
+        # weights. Composing them means giving each its own mesh *dimension*, so that every collective one issues
+        # stays inside its own process group: TP's all-reduce must not reach a rank holding a different sequence
+        # chunk, and CP's sequence all-gather must not reach a rank holding a different weight shard.
+        cp_mesh = tp_mesh = mesh
+        if self._is_combined:
+            dim_names = mesh.mesh_dim_names if mesh is not None else None
+            missing = [d for d in ("ring", "ulysses", "tp") if dim_names is None or d not in dim_names]
+            if missing:
+                raise ValueError(
+                    f"Combining context and tensor parallelism requires a device mesh with 'ring', 'ulysses' and "
+                    f"'tp' dimensions, but {missing} {'is' if len(missing) == 1 else 'are'} missing (got "
+                    f"{dim_names}). `enable_parallelism` builds this mesh from `ring_degree`/`ulysses_degree`/"
+                    f"`tp_degree`; if you build it yourself, set `mesh=` on one of the two configs."
+                )
+            # `ContextParallelConfig.setup` slices ("ring", "ulysses") off whatever mesh it is handed, so it takes
+            # the full mesh. TP instead needs its own 1-D submesh: `parallelize_module` shards a weight over every
+            # rank of the mesh it is given, so handing it the 3-D mesh would shard over the CP ranks as well.
+            tp_mesh = mesh["tp"]
+
         if self.context_parallel_config is not None:
-            self.context_parallel_config.setup(rank, world_size, device, mesh)
+            self.context_parallel_config.setup(rank, world_size, device, cp_mesh)
         if self.tensor_parallel_config is not None:
-            self.tensor_parallel_config.setup(rank, world_size, device, mesh)
+            self.tensor_parallel_config.setup(rank, world_size, device, tp_mesh)
 
 
 @dataclass(frozen=True)
