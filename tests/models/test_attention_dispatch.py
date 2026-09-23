@@ -207,6 +207,13 @@ def _ulysses_anything_parity_worker(rank, world_size, master_port, attention_bac
                     query_local, key_local, value_local, attn_mask=mask_local, parallel_config=parallel_config
                 )
             torch.testing.assert_close(inference_out, out)
+
+        query_local, key_local, value_local = (torch.randn(2, 4, 4, 64, device=device, dtype=dtype) for _ in range(3))
+        per_head_mask = torch.ones(2, 4, 1, 4 * world_size, device=device, dtype=torch.bool)
+        with pytest.raises(ValueError, match="per-head"), attention_backend_ctx(attention_backend):
+            dispatch_attention_fn(
+                query_local, key_local, value_local, attn_mask=per_head_mask, parallel_config=parallel_config
+            )
     finally:
         dist.destroy_process_group()
 

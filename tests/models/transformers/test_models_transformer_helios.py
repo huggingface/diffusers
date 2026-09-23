@@ -17,6 +17,7 @@ import pytest
 import torch
 
 from diffusers import HeliosTransformer3DModel
+from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -28,7 +29,6 @@ from ..testing_utils import (
     ModelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
-    UlyssesAnythingBackwardTesterMixin,
 )
 
 
@@ -142,16 +142,14 @@ class TestHeliosTransformer3DMemory(HeliosTransformer3DTesterConfig, MemoryTeste
     """Memory optimization tests for Helios Transformer 3D."""
 
 
-class TestHeliosTransformerUlyssesAnythingBackward(
-    HeliosTransformer3DTesterConfig, UlyssesAnythingBackwardTesterMixin
-):
-    def get_ulysses_anything_inputs(self):
-        inputs = self.get_dummy_inputs()
-        uneven = dict(inputs)
-        uneven["hidden_states"] = inputs["hidden_states"][:, :, :1, :6, :6]
-        uneven["indices_hidden_states"] = inputs["indices_hidden_states"][:, :1]
-        uneven["encoder_hidden_states"] = inputs["encoder_hidden_states"][:, :-1]
-        return [inputs, uneven]
+class TestHeliosTransformerContextParallelBackward(HeliosTransformer3DTesterConfig):
+    def test_context_parallel_backward_raises(self):
+        """The guard only reads the parallel config, so it is checked without distributed hooks."""
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        model._parallel_config = ParallelConfig(context_parallel_config=ContextParallelConfig(ulysses_degree=2))
+        output = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        with pytest.raises(NotImplementedError, match="Helios with context parallelism"):
+            output.mean().backward()
 
 
 class TestHeliosTransformer3DTraining(HeliosTransformer3DTesterConfig, TrainingTesterMixin):

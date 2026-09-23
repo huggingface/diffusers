@@ -2746,6 +2746,9 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         _parallel_config: "ParallelConfig" | None = None,
         **kwargs,
     ):
+        if attn_mask is not None and attn_mask.ndim == 4 and attn_mask.shape[1] > 1:
+            raise ValueError("Ulysses Anything Attention does not support attention masks with a per-head dimension.")
+
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         group = ulysses_mesh.get_group()
 

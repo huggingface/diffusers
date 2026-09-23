@@ -107,11 +107,11 @@ class TestLTXTransformerUlyssesAnythingBackward(LTXTransformerTesterConfig, Ulys
         return init_dict
 
     def get_ulysses_anything_inputs(self):
-        inputs = self.get_dummy_inputs()
+        # LTX expands the text mask per head, which Ulysses Anything rejects.
+        inputs = {**self.get_dummy_inputs(), "encoder_attention_mask": None}
         uneven = {**inputs, "num_frames": 1, "height": 3, "width": 3}
         uneven["hidden_states"] = inputs["hidden_states"][:, :9]
-        for key in ("encoder_hidden_states", "encoder_attention_mask"):
-            uneven[key] = inputs[key][:, :-1]
+        uneven["encoder_hidden_states"] = inputs["encoder_hidden_states"][:, :-1]
         return [inputs, uneven]
 
 
