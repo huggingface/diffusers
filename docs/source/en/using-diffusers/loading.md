@@ -238,6 +238,6 @@ Once a pipeline loads, you usually tune the denoising schedule, swap weight form
 
 - [Schedulers](./schedulers) covers swapping and configuring the denoising algorithm.
 - [Model formats](./other-formats) covers GGUF, single-file checkpoints, and other weight layouts.
-- [Reduce memory usage](../optimization/memory) covers offloading and other memory tools.
+- [Memory and offloading](../optimization/memory) covers offloading and other memory tools.
 - [LoRA](../tutorials/using_peft_for_inference) covers loading adapters on a pipeline.
 - [Legacy checkpoints](./legacy_checkpoints#safety-checker) covers the safety checker for older Stable Diffusion checkpoints.

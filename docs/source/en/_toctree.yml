@@ -58,15 +58,15 @@
   - isExpanded: false
     sections:
     - local: optimization/fp16
-      title: Accelerate inference
+      title: Precision and compilation
     - local: optimization/cache
       title: Caching
     - local: optimization/attention_backends
       title: Attention backends
     - local: optimization/memory
-      title: Reduce memory usage
+      title: Memory and offloading
     - local: optimization/speed-memory-optims
-      title: Compiling and offloading quantized models
+      title: Quantize, compile, and offload
     title: Inference
   - isExpanded: false
     sections:
