@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Command line interface
 
-`diffusers-cli` is a command line client for running, inspecting, and packaging Diffusers pipelines. 
+`diffusers-cli` is a command line client for running, inspecting, and packaging Diffusers pipelines.
 
 ## Available commands
 
@@ -26,35 +26,31 @@ specific language governing permissions and limitations under the License.
 | [`skills`](#skills) | Install pre-authored skill bundles into your AI coding agent. |
 
 > [!TIP]
-> This page does not provide details for all options under each subcommand. For the full, always-current list of options for any subcommand, run `diffusers-cli <command> --help` (`diffusers-cli run --help`).
+> This page does not provide details for all options under each subcommand. For the full, always current list of options for any subcommand, run `diffusers-cli <command> --help` (`diffusers-cli run --help`).
 
-## `env`
+## env
 
-Prints Python/PyTorch/Diffusers versions, CUDA info, and installed optional deps. Use it when opening an
+Prints Python, PyTorch, Diffusers versions, CUDA info, and installed optional deps. Use it when opening an
 issue so maintainers can reproduce your setup.
 
 ```bash
 diffusers-cli env
 ```
 
-## `schema`
+## schema
 
-Returns the pipeline's accepted inputs without downloading weights. This is useful when building `--pipeline-kwargs`
+Returns the pipeline's accepted inputs without downloading weights. Use it when building `--pipeline-kwargs` for [`run`](#run).
 
-Only the index file is fetched. Standard pipelines read `model_index.json`; modular pipelines read
-`modular_model_index.json`; custom-block repos read `modular_config.json` and need `--trust-remote-code` since
-loading them runs code from the Hub.
+Only the index file is fetched. Standard pipelines read `model_index.json`. Modular pipelines read `modular_model_index.json`. Custom-block repos read `modular_config.json` and need `--trust-remote-code`, because loading them runs Hub code.
 
 ```bash
 diffusers-cli --format json schema --model black-forest-labs/FLUX.1-dev
 diffusers-cli schema --model my-org/my-custom-blocks --trust-remote-code
 ```
 
-## `run`
+## run
 
-Run a pipeline end-to-end. Auto-detects standard vs modular repos, auto-loads media inputs from URLs or local
-paths, saves outputs by detecting the pipeline's return type, and can run remotely on a Hugging Face
-Sandbox via `--remote`.
+Run a pipeline end-to-end. The CLI auto-detects standard vs modular repos. It auto-loads media inputs from URLs or local paths, saves outputs from the pipeline's return type, and can run remotely on a Hugging Face Sandbox via `--remote`.
 
 Minimal example:
 
@@ -82,7 +78,7 @@ diffusers-cli run \
 ```
 
 Both media keys and text keys accept a JSON array to run a batch through a single pipeline call. Each entry
-in a media list is loaded individually (URL, local path, or bucket-mount path), and diffusers processes the
+in a media list is loaded individually (URL, local path, or bucket-mount path), and Diffusers processes the
 whole list in one forward pass on the GPU:
 
 ```bash
@@ -105,14 +101,14 @@ Configure how the CLI loads model weights and custom pipeline code.
 - `--dtype {auto, bfloat16, bf16, float16, fp16, float32, fp32}` — weight dtype.
 - `--device-map <value>` — component placement. Accepts a torch device string (`cuda`, `cuda:0`, `cpu`, `mps`),
   `balanced` (auto-splits components across visible GPUs), or a JSON dict for explicit per-component placement.
-  Auto-detected if omitted. See [device_map](../training/distributed_inference#devicemap) for more details
+  Auto-detected if omitted. See [device_map](../training/distributed_inference#devicemap) for more details.
 - `--variant fp16` — pick a weight variant.
 - `--revision <sha>` — pin a specific model revision.
 - `--trust-remote-code` — allow custom code from the Hub (required for repos that ship custom pipeline classes
   or modular blocks). See [Community pipelines](../using-diffusers/custom_pipeline_overview) for standard custom
   pipelines and [Modular Diffusers](../modular_diffusers/overview).
-- `--lora <spec>` — attach a LoRA adapter after loading. Each value is a JSON dict; repeat the flag to
-  stack multiple adapters. `lora_id` is required per entry; `lora_scale` defaults to `1.0`;
+- `--lora <spec>` — attach a LoRA adapter after loading. Each value is a JSON dict. Repeat the flag to
+  stack multiple adapters. `lora_id` is required per entry, `lora_scale` defaults to `1.0`, and
   `adapter_name` is optional (auto-generated as `lora_<i>` when stacking).
   - Single: `--lora '{"lora_id": "alvdansen/flux-koda", "lora_scale": 0.8}'`
   - Multiple: `--lora '{"lora_id": "alvdansen/flux-koda", "lora_scale": 0.6, "adapter_name": "koda"}' --lora '{"lora_id": "Shakker-Labs/FLUX.1-dev-LoRA-AntiBlur", "lora_scale": 0.4}'`
@@ -123,27 +119,22 @@ Configure how the CLI loads model weights and custom pipeline code.
 
 ### Optimizations
 
-- `--cpu-offload {model, group, auto}` — `model` calls `enable_model_cpu_offload`; `group` calls
-  `enable_group_offload(offload_type="leaf_level", use_stream=True)`. Onload target comes from `--device-map`
-  (which must be a plain device string for offload). See
-  [Model offloading](../optimization/memory#model-offloading) and
-  [Group offloading](../optimization/memory#group-offloading). Modular pipelines support only `auto`, which
-  offloads through their [`ComponentsManager`](../modular_diffusers/components_manager); the standard modes
-  raise for them, and `auto` raises for standard pipelines.
+- `--cpu-offload {model, group, auto}` — onload target comes from `--device-map` (plain device string required for offload).
+  - `model` — `enable_model_cpu_offload` for standard pipelines. See [Model offloading](../optimization/memory#model-offloading).
+  - `group` — `enable_group_offload(offload_type="leaf_level", use_stream=True)` for standard pipelines. See [Group offloading](../optimization/memory#group-offloading).
+  - `auto` — modular only with [`ComponentsManager`](../modular_diffusers/components_manager). Standard modes raise on modular pipelines. `auto` raises on standard pipelines.
 - `--offload-margin <size>` — device memory kept free for activations under `--cpu-offload auto`, passed to
   `enable_auto_cpu_offload` as `memory_reserve_margin` (default `3GB`). Raise it when a large canvas runs out
-  of memory mid-forward: the offloader keeps components resident while they fit, so on a high-VRAM card the
+  of memory mid-forward. The offloader keeps components resident while they fit, so on a high-VRAM card the
   default margin can leave too little room for the activations of a long video.
-- `--attention-backend {default, flash_hub, flash_varlen_hub, flash_4_hub, sage_hub}` — Hub-hosted attention
-  kernels, auto-downloaded on first use. Transformer-based pipelines only; ignored with a warning on legacy UNet
-  pipelines. See [Attention backends](../optimization/attention_backends).
+- `--attention-backend` — Hub-hosted attention kernels, auto-downloaded on first use. Choices are `default` plus the Hub backends registered in Diffusers (for example `flash_hub`, `flash_varlen_hub`, `flash_4_hub`, `sage_hub`). Run `diffusers-cli run --help` for the current list. It only supports Transformer-based pipelines only, and is ignored with a warning on legacy UNet pipelines. See [Attention backends](../optimization/attention_backends).
 - `--vae-tiling` / `--vae-slicing` — lower VAE decode VRAM. See
   [VAE tiling](../optimization/memory#vae-tiling) and [VAE slicing](../optimization/memory#vae-slicing).
 - `--compile [JSON]` — compile denoiser modules with [torch.compile](../optimization/fp16#torchcompile). The
   CLI prefers [regional compilation](../optimization/fp16#regional-compilation) for modules with repeated
   blocks. Bare `--compile` uses `fullgraph=true`. A JSON object is forwarded to `torch.compile`. Not supported
   with `--context-parallel`.
-- `--context-parallel` — Ulysses-style context parallelism on a DiT-based pipeline. Locally requires torchrun;
+- `--context-parallel` — Ulysses-style context parallelism on a DiT-based pipeline. Locally requires torchrun, but
   under `--remote` the CLI wraps `torchrun --nproc-per-node=gpu` for you. See
   [Context parallelism](../training/distributed_inference#context-parallelism).
 
@@ -153,7 +144,7 @@ Configure how the CLI loads model weights and custom pipeline code.
 `modular_model_index.json`, or because its `model_index.json` names a `ModularPipeline` subclass — so no flag
 is needed to opt in.
 
-Some modular repos define several **workflows**: named tasks that share components but differ in which blocks
+Some modular repos define several *workflows* like named tasks that share components but differ in which blocks
 run and which inputs they take. [MiniMax-H3](../api/pipelines/minimax_h3), for example, offers `t2va` (text to
 video and audio), `fl2va` (first and/or last keyframe) and `ref2va` (an ordered mix of image, video and audio
 references). Pass `--workflow` to select one:
@@ -180,7 +171,7 @@ pipeline pick per call from the inputs it is given.
 diffusers-cli --format json schema --model MiniMaxAI/MiniMax-H3 --trust-remote-code
 ```
 
-`--workflow` applies to modular pipelines only; it is ignored with a warning on standard pipelines.
+`--workflow` applies to modular pipelines only. It is ignored with a warning on standard pipelines.
 
 A modular pipeline returns a [`PipelineState`](../modular_diffusers/modular_pipeline) rather than a single output object, so `--output-key` names the intermediate to save.
 
@@ -209,10 +200,14 @@ Directory outputs always use bare padded names (`0000`, `0001`, …). Explicit f
 stem and get the padded index appended when the batch produces multiple outputs.
 
 Use `--push-to` to upload outputs to a
-[Hugging Face storage bucket](https://huggingface.co/docs/hub/en/storage-buckets). Accepts an HF bucket
-id (`<namespace>/<name>`), an `hf://buckets/<namespace>/<name>[/<subpath>]`
-[HF URI](https://huggingface.co/docs/huggingface_hub/main/en/package_reference/hf_uris), or a browser URL
-for the same — a subpath is used as a folder prefix. The bucket is created if missing; objects land under
+[Hugging Face storage bucket](https://huggingface.co/docs/hub/en/storage-buckets). It accepts an:
+
+- HF bucket id (`<namespace>/<name>`)
+- `hf://buckets/<namespace>/<name>[/<subpath>]`
+[HF URI](https://huggingface.co/docs/huggingface_hub/main/en/package_reference/hf_uris)
+- browser URL
+
+A subpath is used as a folder prefix. The bucket is created if missing, and objects land under
 `[<subpath>/]<run_id>/<filename>`.
 
 ```bash
@@ -236,7 +231,7 @@ not suppress local file creation.
 | yes | no | bucket only, no local download |
 | yes | yes | bucket AND `--output` |
 
-`--format` shapes the stdout metadata (paths, timing, sandbox info) — it does not change the file format of
+`--format` shapes the stdout metadata (paths, timing, sandbox info). It does not change the file format of
 the media itself. Written images are always PNG, videos MP4, audio WAV.
 
 ### Remote execution (`--remote`)
@@ -258,7 +253,7 @@ diffusers-cli run \
 
 Remote flags:
 
-- `--flavor <name>` — sandbox hardware (e.g. `a10g-small`, `h200`, `rtx-pro-6000`).
+- `--flavor <name>` — sandbox hardware (for example, `a10g-small`, `h200`, `rtx-pro-6000`).
 - `--timeout <duration>` — max wallclock for the run command inside the sandbox (default `10m`).
 - `--dependencies <pkg>` — extra pip deps (repeatable), installed on top of the image. Useful for pinning a
   diffusers branch tarball or adding pipeline-specific extras.
@@ -267,17 +262,17 @@ Remote flags:
   driver. The CLI then installs its own dependencies on top on every cold sandbox, which the default image
   avoids.
 - `--volume <bucket-id>[:<mount-path>]` — mount an [HF storage bucket](https://huggingface.co/docs/hub/en/storage-buckets)
-  into the sandbox as a read-write directory. Repeatable. Default mount path is
+  into the sandbox as a read-write directory (repeatable). Default mount path is
   `/mnt/buckets/<bucket-id>`. Reference mounted files from `--pipeline-kwargs` like any other local path.
-  Applied only on new sandbox creation — ignored when reconnecting via `--sandbox-id`.
+  Applied only on new sandbox creation and ignored when reconnecting via `--sandbox-id`.
 
 By default each `--remote` run is ephemeral (create → run → download → kill). To reuse a warm sandbox across
 runs — keeping deps, the model weight cache, and the `torch.compile` cache on its disk — keep it alive and
 reconnect:
 
-- `--keep-alive` — don't terminate the sandbox after the run; its id is printed.
+- `--keep-alive` — don't terminate the sandbox after the run. Its id is printed.
 - `--sandbox-id <id>` — reconnect to a kept-alive sandbox instead of creating a new one. 
-- `--idle-timeout <duration>` — auto-shutdown after this much inactivity (default `10m`). Applied only on new sandbox creation — ignored when reconnecting via `--sandbox-id`.
+- `--idle-timeout <duration>` — auto-shutdown after this much inactivity (default `10m`). Applied only on new sandbox creation and ignored when reconnecting via `--sandbox-id`.
 
 ```bash
 # First run keeps the sandbox alive and prints sandbox_id=<id>.
@@ -306,7 +301,7 @@ diffusers-cli custom_blocks
 diffusers-cli custom_blocks --block_module_name my_block.py --block_class_name MyDenoiseBlock
 ```
 
-The block class must be instantiable with zero constructor args — hardcode defaults in `__init__` or read
+The block class must be instantiable with zero constructor args and hardcodes defaults in `__init__` or read
 config from the pipeline `state` at call time.
 
 ## `fp16_safetensors`
@@ -344,7 +339,5 @@ diffusers-cli skills add diffusers-cli --global
 diffusers-cli skills add --all --claude   # or --codex / --cursor
 ```
 
-Without a target flag, the CLI installs for whichever agent launched it, or for every agent when it can't tell.
-For Claude Code the skills are written as a plugin bundle at `.claude/skills/diffusers/`, so they are namespaced
-as `/diffusers:<skill name>`; Codex and Cursor get `.agents/skills/<skill name>/`.
+Without a target flag, the CLI installs for the agent that launched it, or for every agent when it cannot tell. Claude Code gets a plugin bundle under `.claude/skills/diffusers/` (namespaced as `/diffusers:<skill name>`). Codex and Cursor get `.agents/skills/<skill name>/`.
 
