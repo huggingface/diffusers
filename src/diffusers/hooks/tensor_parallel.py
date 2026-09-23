@@ -351,6 +351,23 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
     return resolved
 
 
+def _check_tp_supported(model_name: str, tp_plan: "dict | None", num_heads: "int | None", tp_config) -> None:
+    """Reject a model class, or a `tp_degree`, that tensor parallelism cannot shard.
+
+    Needs only the class and its config, so both entry points run it before anything is loaded or sharded:
+    `enable_parallelism` on a model in memory, and `from_pretrained` before it reads the checkpoint.
+    """
+    if tp_plan is None:
+        raise ValueError(
+            f"`_tp_plan` must be set on the model class to use tensor parallelism. '{model_name}' does not define one."
+        )
+
+    # The mesh is not built yet, so read the degree the same way `_resolve_parallel_config` will.
+    tp_degree = tp_config.mesh.size() if tp_config.mesh is not None else tp_config.tp_degree
+    if num_heads is not None and num_heads % tp_degree != 0:
+        raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
+
+
 def _check_tp_model_state(model: torch.nn.Module) -> None:
     """Reject a model whose parameters tensor parallelism cannot take over.
 
@@ -360,7 +377,7 @@ def _check_tp_model_state(model: torch.nn.Module) -> None:
     worse, sharding successfully and producing wrong numbers.
 
     `from_pretrained` rejects the same combinations earlier and with a message naming the offending argument; this is
-    the only guard on the `enable_parallelism` path, where the model already exists and only its state can be read.
+    the guard on the `enable_parallelism` path, where the model already exists and only its state can be read.
     """
     if getattr(model, "hf_quantizer", None) is not None or getattr(model, "is_quantized", False):
         raise ValueError(
@@ -413,23 +430,9 @@ def apply_tensor_parallel(
     detected, because a planned parameter missing from the checkpoint would still be a meta tensor and would make
     detection say "not sharded" for a model that is in fact half-sharded.
     """
-    if tp_plan is None:
-        raise ValueError(
-            "`_tp_plan` must be set on the model class to use tensor parallelism. "
-            f"'{model.__class__.__name__}' does not define one."
-        )
-
     tp_mesh = config._mesh
     if tp_mesh is None:
         raise ValueError("`config._mesh` is None. Call `config.setup(rank, world_size, device)` before applying TP.")
-
-    num_heads = getattr(model.config, "num_attention_heads", None)
-    if num_heads is not None and num_heads % config._tp_degree != 0:
-        raise ValueError(f"`tp_degree` ({config._tp_degree}) must divide the number of attention heads ({num_heads}).")
-
-    # Before the device-type check below, so that a quantized or offloaded model reports what is actually wrong with
-    # it rather than being turned away for its device type.
-    _check_tp_model_state(model)
 
     if tp_mesh.device_type not in _SUPPORTED_TP_DEVICES:
         raise ValueError(

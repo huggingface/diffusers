@@ -1241,6 +1241,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 tp_config = None
         if tp_config is not None:
             cls._check_tp_streaming_supported(
+                tp_config,
+                num_attention_heads=config.get("num_attention_heads"),
                 device_map=device_map,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 use_flashpack=use_flashpack,
@@ -1681,7 +1683,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     @classmethod
     def _check_tp_streaming_supported(
         cls,
+        tp_config: TensorParallelConfig,
         *,
+        num_attention_heads: int | None,
         device_map,
         low_cpu_mem_usage: bool,
         use_flashpack: bool,
@@ -1697,11 +1701,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         instead of a missing-file error. The weights-format check lives at the point where the resolved file list is
         known.
         """
-        if cls._tp_plan is None:
-            raise ValueError(
-                f"`_tp_plan` must be set on the model class to use tensor parallelism. "
-                f"'{cls.__name__}' does not define one."
-            )
+        from ..hooks.tensor_parallel import _check_tp_supported
+
+        _check_tp_supported(cls.__name__, cls._tp_plan, num_attention_heads, tp_config)
         if device_map is not None:
             raise ValueError(
                 "`device_map` cannot be combined with a tensor-parallel `parallel_config`: tensor parallelism "
@@ -1791,6 +1793,19 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 "called twice, and it must not be called on a model loaded with `from_pretrained(..., "
                 "parallel_config=...)` — that already sharded the weights while reading the checkpoint."
             )
+
+        tp_config = (
+            config if isinstance(config, TensorParallelConfig) else getattr(config, "tensor_parallel_config", None)
+        )
+        if tp_config is not None:
+            from ..hooks.tensor_parallel import _check_tp_model_state, _check_tp_supported
+
+            # Before `_resolve_parallel_config`, which records the config on the model: a model that fails these
+            # checks is left untouched.
+            _check_tp_supported(
+                self.__class__.__name__, self._tp_plan, getattr(self.config, "num_attention_heads", None), tp_config
+            )
+            _check_tp_model_state(self)
 
         config = self._resolve_parallel_config(config)
 
