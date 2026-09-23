@@ -1,6 +1,7 @@
 import argparse
 import inspect
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 from typing import List, Type
 
@@ -41,35 +42,36 @@ def generate_pattern_for_mixins(mixin_classes: List[Type]) -> str:
 
 
 if __name__ == "__main__":
-    mixin_classes = []
-    if args.type == "pipeline":
-        from tests.pipelines.test_pipelines_common import PipelineTesterMixin
+    with redirect_stdout(sys.stderr):
+        mixin_classes = []
+        if args.type == "pipeline":
+            from tests.pipelines.test_pipelines_common import PipelineTesterMixin
 
-        mixin_classes = [PipelineTesterMixin]
+            mixin_classes = [PipelineTesterMixin]
 
-    elif args.type == "models":
-        # The model tester suite is split across several mixins under `tests/models/testing_utils`,
-        # so aggregate their test methods to reconstruct the full coverage.
-        from tests.models.testing_utils import (
-            AttentionTesterMixin,
-            LoraTesterMixin,
-            MemoryTesterMixin,
-            ModelTesterMixin,
-            TrainingTesterMixin,
-        )
+        elif args.type == "models":
+            # The model tester suite is split across several mixins under `tests/models/testing_utils`,
+            # so aggregate their test methods to reconstruct the full coverage.
+            from tests.models.testing_utils import (
+                AttentionTesterMixin,
+                LoraTesterMixin,
+                MemoryTesterMixin,
+                ModelTesterMixin,
+                TrainingTesterMixin,
+            )
 
-        mixin_classes = [
-            ModelTesterMixin,
-            MemoryTesterMixin,
-            TrainingTesterMixin,
-            AttentionTesterMixin,
-            LoraTesterMixin,
-        ]
+            mixin_classes = [
+                ModelTesterMixin,
+                MemoryTesterMixin,
+                TrainingTesterMixin,
+                AttentionTesterMixin,
+                LoraTesterMixin,
+            ]
 
-    elif args.type == "lora":
-        from tests.lora.utils import PeftLoraLoaderMixinTests
+        elif args.type == "lora":
+            from tests.lora.utils import PeftLoraLoaderMixinTests
 
-        mixin_classes = [PeftLoraLoaderMixinTests]
+            mixin_classes = [PeftLoraLoaderMixinTests]
 
-    pattern = generate_pattern_for_mixins(mixin_classes)
+        pattern = generate_pattern_for_mixins(mixin_classes)
     print(pattern)
