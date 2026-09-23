@@ -24,7 +24,13 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          LABELS=$(python utils/label_issues.py)
+          # Issue title/body are attacker-controlled data, never instructions:
+          # strip control characters and truncate before they reach the model.
+          ISSUE_TITLE=$(printf '%s' "$ISSUE_TITLE" | tr -d '\000-\010\013\014\016-\037' | head -c 500)
+          ISSUE_BODY=$(printf '%s' "$ISSUE_BODY" | tr -d '\000-\010\013\014\016-\037' | head -c 4000)
+          export ISSUE_TITLE ISSUE_BODY
+          # Collapse the model response to a single line so it cannot forge extra outputs.
+          LABELS=$(python utils/label_issues.py | tr -d '\r\n')
           echo "labels=$LABELS" >> "$GITHUB_OUTPUT"
       - name: Apply labels
         if: steps.get-labels.outputs.labels != ''
@@ -33,6 +39,20 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           LABELS: ${{ steps.get-labels.outputs.labels }}
         run: |
-          for label in $(echo "$LABELS" | python -c "import json,sys; print('\n'.join(json.load(sys.stdin)))"); do
-            gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+          # The model output is untrusted: only labels that already exist in this
+          # repository (and look like label names) are ever applied.
+          gh label list --limit 200 --json name --jq '.[].name' > /tmp/allowed_labels.txt
+          echo "$LABELS" | python -c "import json,sys; print('\n'.join(json.load(sys.stdin)))" | while IFS= read -r label; do
+            [ -z "$label" ] && continue
+            case "$label" in
+              *[!A-Za-z0-9\ ._/:-]*)
+                echo "Rejected label with unexpected characters: $label"
+                continue
+                ;;
+            esac
+            if grep -Fxq -- "$label" /tmp/allowed_labels.txt; then
+              gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+            else
+              echo "Rejected label not in repository allowlist: $label"
+            fi
           done
