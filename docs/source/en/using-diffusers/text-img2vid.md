@@ -290,7 +290,7 @@ export_to_video(output, "output.mp4", fps=16)
 Recent video models like [`HunyuanVideoPipeline`] and [`WanPipeline`], which have 10B+ parameters, require a lot of memory and it often exceeds the memory available on consumer hardware. Diffusers offers several techniques for reducing the memory requirements of these large models.
 
 > [!TIP]
-> Refer to the [Reduce memory usage](../optimization/memory) guide for more details about other memory saving techniques.
+> Refer to the [Memory and offloading](../optimization/memory) guide for more details about other memory saving techniques.
 
 One of these techniques is [group-offloading](../optimization/memory#group-offloading), which offloads groups of internal model layers (such as `torch.nn.Sequential`) to the CPU when it isn't being used. These layers are only loaded when they're needed for computation to avoid storing **all** the model components on the GPU. For a 14B parameter model like [`WanPipeline`], group-offloading can lower the required memory to ~13GB of VRAM.
 

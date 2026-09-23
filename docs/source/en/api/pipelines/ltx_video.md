@@ -35,7 +35,7 @@ The example below demonstrates how to generate a video optimized for memory or i
 <hfoptions id="usage">
 <hfoption id="memory">
 
-Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
+Refer to the [Memory and offloading](../../optimization/memory) guide for more details about the various memory saving techniques.
 
 The LTX-Video model below requires ~10GB of VRAM.
 

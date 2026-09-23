@@ -36,7 +36,7 @@ HunyuanDiT has the following components:
 
 ## Optimization
 
-You can optimize the pipeline's runtime and memory consumption with torch.compile and feed-forward chunking. To learn about other optimization methods, check out the [Speed up inference](../../optimization/fp16) and [Reduce memory usage](../../optimization/memory) guides.
+You can optimize the pipeline's runtime and memory consumption with torch.compile and feed-forward chunking. To learn about other optimization methods, check out the [Precision and compilation](../../optimization/fp16) and [Memory and offloading](../../optimization/memory) guides.
 
 ### Inference
 

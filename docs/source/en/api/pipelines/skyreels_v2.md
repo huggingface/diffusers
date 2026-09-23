@@ -160,7 +160,7 @@ The example below demonstrates how to generate a video from text.
 <hfoptions id="T2V usage">
 <hfoption id="T2V memory">
 
-Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
+Refer to the [Memory and offloading](../../optimization/memory) guide for more details about the various memory saving techniques.
 
 From the original repo:
 >You can use --ar_step 5 to enable asynchronous inference. When asynchronous inference, --causal_block_size 5 is recommended while it is not supposed to be set for synchronous generation... Asynchronous inference will take more steps to diffuse the whole sequence which means it will be SLOWER than synchronous mode. In our experiments, asynchronous inference may improve the instruction following and visual consistent performance.

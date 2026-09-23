@@ -52,7 +52,7 @@ The example below demonstrates how to generate a video from text optimized for m
 <hfoptions id="T2V usage">
 <hfoption id="T2V memory">
 
-Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
+Refer to the [Memory and offloading](../../optimization/memory) guide for more details about the various memory saving techniques.
 
 The Wan2.1 text-to-video model below requires ~13GB of VRAM.
 
