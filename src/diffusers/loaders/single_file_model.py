@@ -51,6 +51,7 @@ from .single_file_utils import (
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
+    convert_qwen_image21_transformer_checkpoint_to_diffusers,
     convert_sana_transformer_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
@@ -191,6 +192,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "QwenImageTransformer2DModel": {
         "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
+        "default_subfolder": "transformer",
+    },
+    "QwenImage21Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_qwen_image21_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "Flux2Transformer2DModel": {
