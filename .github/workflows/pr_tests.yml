@@ -16,8 +16,6 @@ on:
     branches:
       - ci-*
 
-permissions:
-  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -35,8 +33,12 @@ env:
   #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
+permissions: {}
+
 jobs:
   check_code_quality:
+    permissions:
+      contents: read
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
@@ -56,6 +58,8 @@ jobs:
           echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
 
   check_repository_consistency:
+    permissions:
+      contents: read
     needs: check_code_quality
     runs-on: ubuntu-22.04
     steps:
@@ -81,6 +85,8 @@ jobs:
           echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
 
   run_fast_tests:
+    permissions:
+      contents: read
     needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
@@ -169,6 +175,8 @@ jobs:
         path: reports
 
   run_staging_tests:
+    permissions:
+      contents: read
     needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
@@ -229,6 +237,8 @@ jobs:
         path: reports
 
   run_lora_tests:
+    permissions:
+      contents: read
     needs: [check_code_quality, check_repository_consistency]
 
     name: LoRA tests with PEFT main

@@ -1,7 +1,5 @@
 name: Fast GPU Tests on PR
 
-permissions:
-  contents: read
 
 on:
   pull_request:
@@ -36,8 +34,12 @@ env:
   #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
+permissions: {}
+
 jobs:
   check_code_quality:
+    permissions:
+      contents: read
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
@@ -57,6 +59,8 @@ jobs:
           echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
 
   check_repository_consistency:
+    permissions:
+      contents: read
     needs: check_code_quality
     runs-on: ubuntu-22.04
     steps:
@@ -82,6 +86,8 @@ jobs:
           echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
 
   setup_torch_cuda_pipeline_matrix:
+    permissions:
+      contents: read
     needs: [check_code_quality, check_repository_consistency]
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
     runs-on:
@@ -116,6 +122,8 @@ jobs:
           path: reports
 
   torch_pipelines_cuda_tests:
+    permissions:
+      contents: read
     name: Torch Pipelines CUDA Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
@@ -185,6 +193,8 @@ jobs:
           path: reports
 
   torch_cuda_tests:
+    permissions:
+      contents: read
     name: Torch CUDA Tests
     needs: [check_code_quality, check_repository_consistency]
     runs-on:
@@ -254,6 +264,8 @@ jobs:
         path: reports
 
   run_examples_tests:
+    permissions:
+      contents: read
     name: Examples PyTorch CUDA tests on Ubuntu
     needs: [check_code_quality, check_repository_consistency]
     runs-on:
