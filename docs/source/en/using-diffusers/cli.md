@@ -237,7 +237,7 @@ the media itself. Written images are always PNG, videos MP4, audio WAV.
 ### Remote execution (`--remote`)
 
 Run the same call inside a [Hugging Face Sandbox](https://huggingface.co/docs/huggingface_hub/en/guides/sandbox), an isolated cloud VM the CLI drives over HTTP. It uploads inputs, installs deps, runs the pipeline, downloads
-outputs, then terminates the sandbox. Requires a current `huggingface_hub` with Sandbox support (Diffusers depends on `huggingface-hub>=1.31`).
+outputs, then terminates the sandbox. Requires a current `huggingface_hub` with Sandbox support (Diffusers depends on `huggingface-hub>=1.32`).
 
 ```bash
 diffusers-cli run \
@@ -334,4 +334,3 @@ diffusers-cli skills add --all --claude   # or --codex / --cursor
 ```
 
 Without a target flag, the CLI installs for the agent that launched it, or for every agent when it cannot tell. Claude Code gets a plugin bundle under `.claude/skills/diffusers/` (namespaced as `/diffusers:<skill name>`). Codex and Cursor get `.agents/skills/<skill name>/`.
-
