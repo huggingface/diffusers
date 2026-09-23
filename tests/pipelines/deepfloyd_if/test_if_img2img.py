@@ -15,109 +15,190 @@
 
 import gc
 import random
-import unittest
 
+import pytest
 import torch
+from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
-from diffusers import IFImg2ImgPipeline
+from diffusers import DDPMScheduler, IFImg2ImgPipeline, UNet2DConditionModel
 from diffusers.models.attention_processor import AttnAddedKVProcessor
-from diffusers.utils.import_utils import is_xformers_available
+from diffusers.pipelines.deepfloyd_if import IFWatermarker
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
     floats_tensor,
     load_numpy,
-    require_accelerator,
     require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
 )
-from ..pipeline_params import (
-    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
-    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+from ..test_pipelines_common import assert_mean_pixel_difference
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    PipelineOffloadTesterMixin,
+    PipelineTesterMixin,
 )
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
-from . import IFPipelineTesterMixin
+
+
+class IFImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
+    pipeline_class = IFImg2ImgPipeline
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "image", "guidance_scale", "negative_prompt", "prompt_embeds", "negative_prompt_embeds"]
+    )
+    # IF pipelines take no `latents` argument (pixel-space UNet, no user-suppliable latents)
+    optional_input_params = BasePipelineTesterConfig.optional_input_params - {"latents"}
+    batch_input_params = frozenset(["prompt", "image", "negative_prompt"])
+    output_shape = (3, 32, 32)
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
+
+        torch.manual_seed(0)
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            sample_size=32,
+            layers_per_block=1,
+            block_out_channels=[32, 64],
+            down_block_types=[
+                "ResnetDownsampleBlock2D",
+                "SimpleCrossAttnDownBlock2D",
+            ],
+            mid_block_type="UNetMidBlock2DSimpleCrossAttn",
+            up_block_types=["SimpleCrossAttnUpBlock2D", "ResnetUpsampleBlock2D"],
+            in_channels=3,
+            out_channels=6,
+            cross_attention_dim=32,
+            encoder_hid_dim=32,
+            attention_head_dim=8,
+            addition_embed_type="text",
+            addition_embed_type_num_heads=2,
+            cross_attention_norm="group_norm",
+            resnet_time_scale_shift="scale_shift",
+            act_fn="gelu",
+        )
+        unet.set_attn_processor(AttnAddedKVProcessor())  # For reproducibility tests
+
+        torch.manual_seed(0)
+        scheduler = DDPMScheduler(
+            num_train_timesteps=1000,
+            beta_schedule="squaredcos_cap_v2",
+            beta_start=0.0001,
+            beta_end=0.02,
+            thresholding=True,
+            dynamic_thresholding_ratio=0.95,
+            sample_max_value=1.0,
+            prediction_type="epsilon",
+            variance_type="learned_range",
+        )
+
+        torch.manual_seed(0)
+        watermarker = IFWatermarker()
+
+        return {
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "unet": unet,
+            "scheduler": scheduler,
+            "watermarker": watermarker,
+            "safety_checker": None,
+            "feature_extractor": None,
+        }
+
+    def get_dummy_inputs(self):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device)
+        return {
+            "prompt": "A painting of a squirrel eating a burger",
+            "image": image,
+            "generator": self.get_generator(0),
+            "num_inference_steps": 2,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
+        }
 
 
 @skip_mps
-class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.TestCase):
-    pipeline_class = IFImg2ImgPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"width", "height"}
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
+class TestIFImg2ImgPipeline(IFImg2ImgPipelineTesterConfig, PipelineTesterMixin):
+    def test_inference(self):
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-    def get_dummy_components(self):
-        return self._get_dummy_components()
+        inputs = self.get_dummy_inputs()
+        image = pipe(**inputs).images
+        generated_image = image[0]
+        assert generated_image.shape == self.output_shape
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+        # fmt: off
+        expected_slice = torch.tensor([0.8323, 0.7497, 0.4152, 0.2555, 0.5107, 0.4029, 0.7861, 0.2884, 0.2902, 0.7971, 0.3437, 0.1664, 0.9674, 0.6985, 0.7951, 0.4881])
+        # fmt: on
 
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-
-        inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
-            "image": image,
-            "generator": generator,
-            "num_inference_steps": 2,
-            "output_type": "np",
-        }
-
-        return inputs
-
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
-
-    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
-    @require_accelerator
-    def test_save_load_float16(self):
-        # Due to non-determinism in save load of the hf-internal-testing/tiny-random-t5 text encoder
-        super().test_save_load_float16(expected_max_diff=1e-1)
-
-    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
-    @require_accelerator
-    def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=1e-1)
-
-    def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass(expected_max_diff=1e-2)
-
-    def test_save_load_local(self):
-        self._test_save_load_local()
+        generated_slice = generated_image.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(
-            expected_max_diff=1e-2,
+        super().test_inference_batch_single_identical(expected_max_diff=1e-2)
+
+    def test_save_load_optional_components(self, tmp_path):
+        # The text encoder is optional so a pre-encoded prompt can be passed directly; the base test would
+        # pass the raw prompt with `text_encoder=None`, so encode it first (the intended usage).
+        pipe = self.get_pipeline().to(torch_device)
+
+        inputs = self.get_dummy_inputs()
+        prompt = inputs.pop("prompt")
+        prompt_embeds, negative_prompt_embeds = pipe.encode_prompt(prompt)
+
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["negative_prompt_embeds"] = negative_prompt_embeds
+        torch.manual_seed(0)
+        output = pipe(**inputs)[0]
+
+        pipe.save_pretrained(tmp_path, safe_serialization=False)
+        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path)
+        pipe_loaded.to(torch_device)
+        pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            assert getattr(pipe_loaded, optional_component) is None, (
+                f"`{optional_component}` did not stay set to None after loading."
+            )
+
+        inputs = self.get_dummy_inputs()
+        inputs.pop("prompt")
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["negative_prompt_embeds"] = negative_prompt_embeds
+        torch.manual_seed(0)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        assert_tensors_close(
+            output_loaded, output, atol=1e-4, msg="Output changed after dropping optional components."
         )
 
-    @unittest.skip("Functionality is tested elsewhere.")
-    def test_save_load_optional_components(self):
-        pass
+
+@skip_mps
+class TestIFImg2ImgPipelineMemory(IFImg2ImgPipelineTesterConfig, PipelineOffloadTesterMixin):
+    pass
 
 
 @slow
 @require_torch_accelerator
-class IFImg2ImgPipelineSlowTests(unittest.TestCase):
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
+class TestIFImg2ImgPipelineSlow:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

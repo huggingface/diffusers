@@ -27,7 +27,7 @@ from diffusers import MiniMaxH3Transformer3DModel
 
 transformer = MiniMaxH3Transformer3DModel.from_pretrained(
     "MiniMaxAI/MiniMax-H3", subfolder="transformer", dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 The checkpoint is mixed precision: the two input patch projections, the timestep MLP and the two output heads are float32 while the block stack is bfloat16. `from_pretrained` keeps that layout through `_keep_in_fp32_modules`, so pass `dtype=torch.bfloat16` and let it place the float32 modules rather than casting the model with `.to(torch.bfloat16)` afterwards.

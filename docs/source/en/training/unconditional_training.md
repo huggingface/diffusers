@@ -193,6 +193,6 @@ The training script creates and saves a checkpoint file in your repository. Now 
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128").to("cuda")
+pipeline = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128").to("cuda")  # or "mps", "xpu", "cpu"
 image = pipeline().images[0]
 ```

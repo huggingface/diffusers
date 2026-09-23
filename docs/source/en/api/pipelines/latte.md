@@ -41,7 +41,7 @@ from diffusers import LattePipeline
 
 pipeline = LattePipeline.from_pretrained(
 	"maxin-cn/Latte-1", dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Then change the memory layout of the pipelines `transformer` and `vae` components to `torch.channels-last`:

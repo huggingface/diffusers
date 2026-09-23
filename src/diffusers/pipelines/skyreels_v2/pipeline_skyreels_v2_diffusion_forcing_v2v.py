@@ -28,7 +28,7 @@ from ...loaders import SkyReelsV2LoraLoaderMixin
 from ...models import AutoencoderKLWan, SkyReelsV2Transformer3DModel
 from ...schedulers import UniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import SkyReelsV2PipelineOutput
@@ -261,7 +261,8 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
+        model_device = get_module_execution_device(self.text_encoder)
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), mask.to(model_device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
         prompt_embeds = torch.stack(
@@ -441,6 +442,8 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
         latent_width = width // self.vae_scale_factor_spatial
 
         if long_video_iter == 0:
+            # `video` is preprocessed in float32; the VAE may be running in another dtype (fp16/bf16).
+            video = video.to(self.vae.dtype)
             prefix_video_latents = [
                 retrieve_latents(
                     self.vae.encode(
@@ -1049,7 +1052,9 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
             )
             latents = latents / latents_std + latents_mean
             video_generated = self.vae.decode(latents, return_dict=False)[0]
-            video = torch.cat([video_original, video_generated], dim=2)
+            # `video_original` is kept in float32 by `preprocess_video`; promote the decoded frames to match it
+            # so the two halves can be concatenated when the VAE runs in fp16/bf16.
+            video = torch.cat([video_original, video_generated.to(video_original.dtype)], dim=2)
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents

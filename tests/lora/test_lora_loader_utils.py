@@ -27,7 +27,7 @@ from diffusers.loaders.peft import PeftAdapterMixin
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils.import_utils import is_peft_available
 
-from ..testing_utils import require_peft_backend
+from ..testing_utils import CaptureLogger, require_peft_backend
 
 
 if is_peft_available():
@@ -99,20 +99,23 @@ def test_local_directory_without_matching_files_returns_none(tmp_path, monkeypat
     assert weight_name is None
 
 
-def test_local_directory_with_multiple_files_warns_and_uses_first(tmp_path, monkeypatch, caplog):
+def test_local_directory_with_multiple_files_warns_and_uses_first(tmp_path, monkeypatch):
     first_path = tmp_path / "first.safetensors"
     second_path = tmp_path / "second.safetensors"
     first_path.touch()
     second_path.touch()
     monkeypatch.setattr(lora_base, "HF_HUB_OFFLINE", True)
+    # `os.listdir` returns entries in arbitrary order; pin it so `first.safetensors` is the one picked.
     monkeypatch.setattr(lora_base.os, "listdir", lambda _: [first_path.name, second_path.name])
-    monkeypatch.setattr(lora_base.logger, "propagate", True)
 
-    with caplog.at_level(logging.WARNING, logger="diffusers.loaders.lora_base"):
+    # `caplog` cannot see this warning: `diffusers` sets `propagate = False` on its library root logger, so
+    # records never reach the root handler pytest installs. `CaptureLogger` attaches to the logger directly.
+    lora_base.logger.setLevel(logging.WARNING)
+    with CaptureLogger(lora_base.logger) as cap_logger:
         weight_name = lora_base._best_guess_weight_name(tmp_path)
 
     assert weight_name == first_path.name
-    assert "contains more than one weights file" in caplog.text
+    assert "contains more than one weights file" in cap_logger.out
 
 
 @require_peft_backend

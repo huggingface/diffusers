@@ -100,8 +100,7 @@ _deps = [
     "filelock",
     "ftfy",
     "hf-doc-builder>=0.3.0",
-    "httpx<1.0.0",
-    "huggingface-hub>=1.23.0,<2.0",
+    "huggingface-hub>=1.32.0,<2.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -130,7 +129,7 @@ _deps = [
     "optimum_quanto>=0.2.6",
     "gguf>=0.10.0",
     "auto-round>=0.13.0",
-    "torchao>=0.7.0",
+    "torchao>=0.15.0",
     "bitsandbytes>=0.43.3",
     "nvidia_modelopt[hf]>=0.33.1",
     "sdnq>=0.2.2",
@@ -260,7 +259,6 @@ extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras
 install_requires = [
     deps["importlib_metadata"],
     deps["filelock"],
-    deps["httpx"],
     deps["huggingface-hub"],
     deps["numpy"],
     deps["regex"],
@@ -273,7 +271,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.40.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.41.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

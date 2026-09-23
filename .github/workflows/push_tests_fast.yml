@@ -13,8 +13,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -25,8 +23,12 @@ env:
   PYTEST_TIMEOUT: 600
   RUN_SLOW: no
 
+permissions: {}
+
 jobs:
   run_fast_tests:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -60,7 +62,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         fetch-depth: 2
 
@@ -76,7 +78,6 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -k "not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
@@ -94,7 +95,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports

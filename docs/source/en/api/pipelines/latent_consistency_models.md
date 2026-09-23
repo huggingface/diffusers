@@ -52,7 +52,7 @@ unet = UNet2DConditionModel.from_pretrained(
 )
 pipe = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", unet=unet, dtype=torch.float16, variant="fp16",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
 prompt = "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
@@ -86,7 +86,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     variant="fp16",
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 pipe.load_lora_weights("latent-consistency/lcm-lora-sdxl")
 
@@ -131,7 +131,7 @@ pipe = AutoPipelineForImage2Image.from_pretrained(
     unet=unet,
     dtype=torch.float16,
     variant="fp16",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png")
@@ -176,7 +176,7 @@ pipe = AutoPipelineForImage2Image.from_pretrained(
     "Lykon/dreamshaper-7",
     dtype=torch.float16,
     variant="fp16",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -224,7 +224,7 @@ pipe = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting",
     dtype=torch.float16,
     variant="fp16",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -281,7 +281,7 @@ unet = UNet2DConditionModel.from_pretrained(
 )
 pipe = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", unet=unet, dtype=torch.float16, variant="fp16",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 pipe.load_lora_weights("TheLastBen/Papercut_SDXL", weight_name="papercut.safetensors", adapter_name="papercut")
 
@@ -310,7 +310,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     variant="fp16",
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -375,7 +375,7 @@ pipe = StableDiffusionControlNetPipeline.from_pretrained(
     controlnet=controlnet,
     dtype=torch.float16,
     safety_checker=None,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
 generator = torch.manual_seed(0)
@@ -430,7 +430,7 @@ pipe = StableDiffusionControlNetPipeline.from_pretrained(
     dtype=torch.float16,
     safety_checker=None,
     variant="fp16"
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -491,7 +491,7 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image).resize((1024, 1216))
 
-adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16, variant="fp16").to("cuda")
+adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16, variant="fp16").to("cuda")  # or "mps", "xpu", "cpu"
 
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
@@ -557,7 +557,7 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image).resize((1024, 1024))
 
-adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16, variant="fp16").to("cuda")
+adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16, variant="fp16").to("cuda")  # or "mps", "xpu", "cpu"
 
 pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
@@ -608,7 +608,7 @@ adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5"
 pipe = AnimateDiffPipeline.from_pretrained(
     "frankjoshua/toonyou_beta6",
     motion_adapter=adapter,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # set scheduler
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)

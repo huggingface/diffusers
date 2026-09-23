@@ -441,6 +441,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
     """
 
     _supports_gradient_checkpointing = True
+    _repeated_blocks = ["BriaFiboTransformerBlock", "BriaFiboSingleTransformerBlock"]
 
     @register_to_config
     def __init__(

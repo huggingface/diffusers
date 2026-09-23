@@ -65,7 +65,7 @@ pipe = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", dtype=torch.f
 pipe.scheduler = DDIMScheduler.from_config(
     pipe.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
 image = pipe(prompt, guidance_rescale=0.7).images[0]

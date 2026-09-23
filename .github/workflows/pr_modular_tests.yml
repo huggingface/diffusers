@@ -25,8 +25,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -40,13 +38,17 @@ env:
   #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
+permissions: {}
+
 jobs:
   check_code_quality:
+    permissions:
+      contents: read
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -61,12 +63,14 @@ jobs:
           echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
 
   check_repository_consistency:
+    permissions:
+      contents: read
     needs: check_code_quality
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -85,6 +89,8 @@ jobs:
         run: |
           echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
   check_auto_docs:
+    permissions:
+      contents: read
     # the check regenerates each docstring from the block declarations, which requires importing diffusers —
     # so this job runs in the torch container rather than a lint-only environment
     runs-on:
@@ -92,7 +98,7 @@ jobs:
     container:
       image: diffusers/diffusers-pytorch-cpu
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Install dependencies
         run: |
           printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
@@ -106,6 +112,8 @@ jobs:
           echo "Auto docstring checks failed. Please run `python utils/modular_auto_docstring.py --fix_and_overwrite`." >> $GITHUB_STEP_SUMMARY
 
   run_fast_tests:
+    permissions:
+      contents: read
     needs: [check_code_quality, check_repository_consistency, check_auto_docs]
     name: Fast PyTorch Modular Pipeline CPU tests
 
@@ -122,7 +130,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         fetch-depth: 2
 
@@ -130,6 +138,8 @@ jobs:
       run: |
         printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
+        # TODO (sayakpaul, DN6): revisit `--no-deps`
+        uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
@@ -140,7 +150,6 @@ jobs:
     - name: Run fast PyTorch Pipeline CPU tests
       run: |
         pytest -n 8 --max-worker-restart=0 --dist=loadfile \
-          -k "not Onnx" \
           --make-reports=tests_torch_cpu_modular_pipelines \
           tests/modular_pipelines
 
@@ -150,7 +159,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: pr_pytorch_pipelines_torch_cpu_modular_pipelines_test_reports
         path: reports

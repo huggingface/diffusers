@@ -10,11 +10,9 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-[[open-in-colab]]
-
 # DiffusionPipeline
 
-Diffusion models consists of multiple components like UNets or diffusion transformers (DiTs), text encoders, variational autoencoders (VAEs), and schedulers. The [`DiffusionPipeline`] wraps all of these components into a single easy-to-use API without giving up the flexibility to modify it's components.
+Diffusion models consist of multiple components like UNets or diffusion transformers (DiTs), text encoders, variational autoencoders (VAEs), and schedulers. The [`DiffusionPipeline`] wraps all of these components into a single easy-to-use API without giving up the flexibility to modify its components.
 
 This guide will show you how to load a [`DiffusionPipeline`].
 
@@ -29,11 +27,11 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
-Every model has a specific pipeline subclass that inherits from [`DiffusionPipeline`]. A subclass usually has a narrow focus and are task-specific. See the table below for an example.
+Every model has a specific pipeline subclass that inherits from [`DiffusionPipeline`]. A subclass usually has a narrow focus and is task-specific. See the table below for an example.
 
 | pipeline subclass | task |
 |---|---|
@@ -48,7 +46,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+  "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -62,17 +60,17 @@ Pipelines can also be run locally. Use [`~huggingface_hub.snapshot_download`] to
 ```py
 from huggingface_hub import snapshot_download
 
-snapshot_download(repo_id="Qwen/Qwen-Image")
+local_dir = snapshot_download(repo_id="Qwen/Qwen-Image")
 ```
 
-The model is downloaded to your [cache](../installation#cache). Pass the folder path to [`~QwenImagePipeline.from_pretrained`] to load it.
+Pass that path to [`~QwenImagePipeline.from_pretrained`] to load it.
 
 ```py
 import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-  "path/to/your/cache", dtype=torch.bfloat16, device_map="cuda"
+  local_dir, dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -109,14 +107,13 @@ print(pipeline.transformer.dtype, pipeline.vae.dtype)
 
 ## Device placement
 
-The `device_map` argument determines individual model or pipeline placement on an accelerator like a GPU. It is especially helpful when there are multiple GPUs.
-
-A pipeline supports two options for `device_map`, `"cuda"` and `"balanced"`. Refer to the table below to compare the placement strategies.
+The `device_map` argument places a pipeline on devices. At runtime, Diffusers accepts `"balanced"`, `"cpu"`, and the accelerator string for the machine you are on (typically `"cuda"`, `"mps"`, or `"xpu"`).
 
 | parameter | description |
 |---|---|
-| `"cuda"` | places pipeline on a supported accelerator device like CUDA |
-| `"balanced"` | evenly distributes pipeline on all GPUs |
+| accelerator string | Places the pipeline on that device. Pass the accelerator your machine supports, such as `"cuda"`, `"mps"`, or `"xpu"`. |
+| `"balanced"` | Spreads pipeline components across visible GPUs. Use with `max_memory` when you need per-device caps. |
+| `"cpu"` | Places the pipeline on CPU. |
 
 Use the `max_memory` argument in [`~DiffusionPipeline.from_pretrained`] to allocate a maximum amount of memory to use on each device. By default, Diffusers uses the maximum amount available.
 
@@ -126,9 +123,10 @@ from diffusers import DiffusionPipeline
 
 max_memory = {0: "16GB", 1: "16GB"}
 pipeline = DiffusionPipeline.from_pretrained(
-  "Qwen/Qwen-Image", 
+  "Qwen/Qwen-Image",
   dtype=torch.bfloat16,
-  device_map="cuda",
+  device_map="balanced",
+  max_memory=max_memory,
 )
 ```
 
@@ -136,7 +134,7 @@ The `hf_device_map` attribute allows you to access and view the `device_map`.
 
 ```py
 print(pipeline.hf_device_map)
-# {'unet': 1, 'vae': 1, 'safety_checker': 0, 'text_encoder': 0}
+# {'transformer': 1, 'vae': 1, 'text_encoder': 0}
 ```
 
 Reset a pipeline's `device_map` with the [`~DiffusionPipeline.reset_device_map`] method. This is necessary if you want to use methods such as `.to()`, [`~DiffusionPipeline.enable_sequential_cpu_offload`], and [`~DiffusionPipeline.enable_model_cpu_offload`].
@@ -161,13 +159,13 @@ from diffusers import DiffusionPipeline
 os.environ["HF_ENABLE_PARALLEL_LOADING"] = "YES"
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "Wan-AI/Wan2.2-I2V-A14B-Diffusers", dtype=torch.bfloat16, device_map="cuda"
+  "Wan-AI/Wan2.2-I2V-A14B-Diffusers", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
 ## Replacing models in a pipeline
 
-[`DiffusionPipeline`] is flexible and accommodates loading different models or schedulers. You can experiment with different schedulers to optimize for generation speed or quality, and you can replace models with more performant ones.
+[`DiffusionPipeline`] is flexible and accommodates loading other models or schedulers. You can experiment with different schedulers to optimize for generation speed or quality, and you can replace models with more performant ones.
 
 The example below uses a more stable VAE version.
 
@@ -183,7 +181,7 @@ pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   vae=vae,
   dtype=torch.float16,
-  device_map="cuda"
+  device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -203,7 +201,7 @@ import torch
 from diffusers import AutoPipelineForText2Image
 
 pipeline_sdxl = AutoPipelineForText2Image.from_pretrained(
-  "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, device_map="cuda"
+  "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 prompt = """
 cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
@@ -234,19 +232,12 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 
 Some methods may not work correctly on pipelines created with [`~DiffusionPipeline.from_pipe`]. For example, [`~DiffusionPipeline.enable_model_cpu_offload`] relies on a unique model execution order, which may differ in the new pipeline. To ensure proper functionality, reapply these methods on the new pipeline.
 
-## Safety checker
+## Next steps
 
-Diffusers provides a [safety checker](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py) for older Stable Diffusion models to prevent generating harmful content. It screens the generated output against a set of hardcoded harmful concepts.
+Once a pipeline loads, you usually tune the denoising schedule, swap weight formats, or attach adapters.
 
-If you want to disable the safety checker, pass `safety_checker=None` in [`~DiffusionPipeline.from_pretrained`] as shown below.
-
-```py
-from diffusers import DiffusionPipeline
-
-pipeline = DiffusionPipeline.from_pretrained(
-  "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None
-)
-"""
-You have disabled the safety checker for <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'> by passing `safety_checker=None`. Ensure that you abide by the conditions of the Stable Diffusion license and do not expose unfiltered results in services or applications open to the public. Both the diffusers team and Hugging Face strongly recommend keeping the safety filter enabled in all public-facing circumstances, disabling it only for use cases that involve analyzing network behavior or auditing its results. For more information, please have a look at https://github.com/huggingface/diffusers/pull/254 .
-"""
-```
+- [Schedulers](./schedulers) covers swapping and configuring the denoising algorithm.
+- [Model formats](./other-formats) covers GGUF, single-file checkpoints, and other weight layouts.
+- [Reduce memory usage](../optimization/memory) covers offloading and other memory tools.
+- [LoRA](../tutorials/using_peft_for_inference) covers loading adapters on a pipeline.
+- [Legacy checkpoints](./legacy_checkpoints#safety-checker) covers the safety checker for older Stable Diffusion checkpoints.

@@ -23,7 +23,7 @@ import torch
 from transformers import AutoTokenizer, T5EncoderModel, UMT5EncoderModel
 
 from diffusers.image_processor import PipelineImageInput
-from diffusers.utils.torch_utils import randn_tensor
+from diffusers.utils.torch_utils import get_module_execution_device, randn_tensor
 from diffusers.video_processor import VideoProcessor
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -205,7 +205,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
+        model_device = get_module_execution_device(self.text_encoder)
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), mask.to(model_device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
         prompt_embeds = torch.stack(
@@ -1035,7 +1036,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
         # Final decoding step - convert latents to pixels
         if not output_type == "latent":
             if last_image is not None:
-                latents = latents[:, :, :-prefix_video_latents_frames, :, :].to(self.vae.dtype)
+                latents = latents[:, :, :-prefix_video_latents_frames, :, :]
+            latents = latents.to(self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)

@@ -31,7 +31,7 @@ from diffusers import ModularPipeline
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipeline(prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
 image.save("modular_t2i_out.png")
@@ -47,7 +47,7 @@ from diffusers.utils import load_image
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 init_image = load_image(url)
@@ -66,7 +66,7 @@ from diffusers.utils import load_image
 
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(dtype=torch.float16)
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 mask_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-inpaint-mask.png"
@@ -165,7 +165,7 @@ ModularPipeline {
 }
 ```
 
-If you pass a repository to [`~ModularPipelineBlocks.init_pipeline`], it overrides the loading path by matching your block's components against the pipeline config in that repository (`model_index.json` or `modular_model_index.json`).
+If you pass a repository to [`~ModularPipelineBlocks.init_pipeline`], it overrides the loading path by matching your block's components against the pipeline config in that repository (`model_index.json` or `modular_model_index.json`). See [Modular repository](#modular-repository) for how loading specs are recorded and saved.
 
 In the example below, the `pretrained_model_name_or_path` will be updated to `"stabilityai/stable-diffusion-xl-base-1.0"`.
 
@@ -360,7 +360,7 @@ Since blocks are composable, you can take a pipeline apart and reconstruct it in
 from diffusers import ModularPipeline, ComponentsManager
 import torch
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 dtype = torch.bfloat16
 repo_id = "black-forest-labs/FLUX.2-klein-4B"
 
@@ -415,6 +415,64 @@ pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base
 pipeline.save_pretrained("local/path", repo_id="my-username/sdxl-modular", push_to_hub=True)
 ```
 
+By default, [`~ModularPipeline.save_pretrained`] writes each currently loaded component that Diffusers can serialize. Components that are not loaded, or cannot be serialized, are not written and keep their existing loading specifications. This gives you two ways to save, depending on what you want.
+
+### Save a self-contained copy
+
+Load all the components, then save. Every spec points at the result, so it reloads entirely from one place, including offline.
+
+```py
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
+pipe.load_components()
+pipe.save_pretrained("path/to/local-copy")
+```
+
+The destination recorded in `modular_model_index.json` is wherever [`~ModularPipeline.save_pretrained`] writes: the `save_directory` for a local save, or the `repo_id` when you pass `push_to_hub=True`.
+
+With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached payload across any Hub repositories. This includes individual files in a sharded checkpoint: a shard with the same Xet hash can be reused even when other shards differ. Both downloads must use the same Hub cache directory with symlink support. Changing the dtype, serialization, or shard boundaries can change file hashes and prevent reuse. This saves download traffic and disk space, not the memory used by loaded components.
+
+Shared caching is best-effort. Setting `HF_HUB_DISABLE_SHARED_BLOBS=1` still supports loading, but caches separate copies. Existing component references in `modular_model_index.json` remain unchanged; keep external references for components that are not stored in the modular repository.
+
+#### Update an existing modular index
+
+Migration is optional: references to the original repository already reuse its cached files. Update a reference if it was only used to avoid duplicate downloads and you want that component to load from the modular repository instead.
+
+First, check that the modular repository contains the same component configuration and all required weight files, including the weight index and every shard for a sharded checkpoint. Matching Xet hashes determine which weight files can reuse the shared cache. Keep references to components that are absent or intentionally loaded from another checkpoint.
+
+Edit only the relevant loading specification in a local copy of `modular_model_index.json`. For example, to use a VAE stored under `vae/` in the modular repository with the same weight variant:
+
+```py
+import json
+from pathlib import Path
+
+index_path = Path("path/to/local-copy/modular_model_index.json")
+index = json.loads(index_path.read_text())
+spec = index["vae"][2]
+spec["pretrained_model_name_or_path"] = "my-username/my-modular-repo"
+spec.pop("repo", None)
+spec["subfolder"] = "vae"
+spec["revision"] = None
+index_path.write_text(json.dumps(index, indent=2) + "\n")
+```
+
+This also removes the legacy `repo` field. A revision from the original repository does not identify a revision in the destination: use `None` for the destination's default branch, or pin a destination revision containing the component. Adjust `subfolder` and `variant` if its filenames differ.
+
+Before publishing the updated index, load it with `ModularPipeline.from_pretrained("path/to/local-copy")`, call `load_components(names="vae")`, and verify that the component loads with the expected parameters. Upload only the edited index; re-saving the weights can change their hashes and prevent cache reuse.
+
+### Keep references to existing components
+
+Load only what's new (or nothing at all). Only loaded components are saved; everything else stays a pointer to its original repository. Use this mode when you want to replace one component while continuing to load the others from their original repository. For example, save a custom transformer while the remaining components continue to load from the base repository.
+
+```py
+pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.2-dev")
+pipe.update_components(transformer=my_custom_transformer)  # the only component in memory
+pipe.save_pretrained("local/path", repo_id="my-username/flux2-custom-transformer", push_to_hub=True)
+```
+
+Pass `overwrite_modular_index=False` to keep the loading specs in `modular_model_index.json` as they are. A saved component whose loading spec is empty is still filled in with the destination, since there is nothing to preserve.
+
+Note that moving the files any other way (uploading with `hf upload`, downloading a repository with `hf download --local-dir`) doesn't rewrite the index, so the copy still points to the old location; update the index manually in that case.
+
 A modular repository can also include custom pipeline blocks as Python code. This allows you to share specialized blocks that aren't native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
 
 ```
@@ -436,4 +494,4 @@ The `config.json` file contains an `auto_map` key that tells [`ModularPipeline`]
 }
 ```
 
-Load custom code repositories with `trust_remote_code=True` as shown in [from_pretrained](#from_pretrained). See [Custom blocks](./custom_blocks) for how to create and share your own.
+Load custom code repositories with `trust_remote_code=True` as shown in [from_pretrained](#frompretrained). See [Custom blocks](./custom_blocks) for how to create and share your own.

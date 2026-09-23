@@ -50,10 +50,10 @@ from ...testing_utils import (
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    IPAdapterTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
-from .ip_adapter_tester import IPAdapterTesterMixin
 
 
 class StableDiffusionImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):

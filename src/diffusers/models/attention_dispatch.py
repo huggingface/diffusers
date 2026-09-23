@@ -30,6 +30,7 @@ import torch.nn.functional as F
 if torch.distributed.is_available():
     import torch.distributed._functional_collectives as funcol
 
+from .. import __version__
 from ..utils import (
     get_logger,
     is_flash_attn_3_available,
@@ -598,13 +599,13 @@ def _prepare_for_flash_attn_or_sage_varlen_without_mask(
 ):
     seqlens_q = torch.full((batch_size,), seq_len_q, dtype=torch.int32, device=device)
     seqlens_k = torch.full((batch_size,), seq_len_kv, dtype=torch.int32, device=device)
-    cu_seqlens_q = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    cu_seqlens_q[1:] = torch.cumsum(seqlens_q, dim=0)
-    cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
-    max_seqlen_q = seqlens_q.max().item()
-    max_seqlen_k = seqlens_k.max().item()
-    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
+    # Built with arange instead of cumsum(full(...)): inductor rewrites that pattern into
+    # `arange * fill_value`, which raises under dynamic shapes because the fill value is a
+    # symbolic sequence length. The lengths are uniform here, so arange is also cheaper.
+    offsets = torch.arange(0, batch_size + 1, dtype=torch.int32, device=device)
+    cu_seqlens_q = offsets * seq_len_q
+    cu_seqlens_k = offsets * seq_len_kv
+    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (seq_len_q, seq_len_kv)
 
 
 def _prepare_for_flash_attn_or_sage_varlen_with_mask(
@@ -615,13 +616,13 @@ def _prepare_for_flash_attn_or_sage_varlen_with_mask(
 ):
     seqlens_q = torch.full((batch_size,), seq_len_q, dtype=torch.int32, device=device)
     seqlens_k = attn_mask.sum(dim=1, dtype=torch.int32)
-    cu_seqlens_q = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
+    # Queries are uniform, so arange (see the no-mask helper: cumsum(full(...)) breaks inductor
+    # under dynamic shapes). Keys are data-dependent and keep the cumsum.
+    cu_seqlens_q = torch.arange(0, batch_size + 1, dtype=torch.int32, device=device) * seq_len_q
     cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    cu_seqlens_q[1:] = torch.cumsum(seqlens_q, dim=0)
     cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
-    max_seqlen_q = seqlens_q.max().item()
     max_seqlen_k = seqlens_k.max().item()
-    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
+    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (seq_len_q, max_seqlen_k)
 
 
 def _prepare_for_flash_attn_or_sage_varlen(
@@ -724,7 +725,12 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
     try:
         from kernels import get_kernel
 
-        kernel_module = get_kernel(config.repo_id, revision=config.revision, version=config.version)
+        kernel_module = get_kernel(
+            config.repo_id,
+            revision=config.revision,
+            version=config.version,
+            user_agent={"diffusers": __version__},
+        )
         if needs_kernel:
             config.kernel_fn = _resolve_kernel_attr(kernel_module, config.function_attr)
 
@@ -2015,13 +2021,17 @@ def _maybe_modify_attn_mask_npu(query: torch.Tensor, key: torch.Tensor, attn_mas
     if attn_mask is not None and torch.all(attn_mask != 0):
         attn_mask = None
 
-    # Reshape Attention Mask: [batch_size, seq_len_k] or [batch_size, 1, 1, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
+    # Reshape Attention Mask: [B, Skv] or [B, 1|N, 1, Skv] -> [B, 1|N, Sq, Skv]
     # https://www.hiascend.com/document/detail/zh/Pytorch/730/apiref/torchnpuCustomsapi/docs/context/torch_npu-npu_fusion_attention.md
     if attn_mask is not None:
         if attn_mask.ndim == 2 and attn_mask.shape[0] == query.shape[0] and attn_mask.shape[1] == key.shape[1]:
             batch_size, seq_len_q, seq_len_kv = attn_mask.shape[0], query.shape[1], key.shape[1]
             attn_mask = attn_mask.unsqueeze(1).expand(batch_size, seq_len_q, seq_len_kv).unsqueeze(1).contiguous()
-        elif attn_mask.ndim == 4 and attn_mask.shape[1:3] == (1, 1):
+        elif (
+            attn_mask.ndim == 4
+            and attn_mask.shape[1] in (1, query.shape[2])  # head: 1 (broadcast) or N
+            and attn_mask.shape[2] == 1  # singleton query length
+        ):
             attn_mask = attn_mask.expand(-1, -1, query.shape[1], -1).contiguous()
 
         attn_mask = ~attn_mask.to(torch.bool)

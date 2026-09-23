@@ -42,7 +42,7 @@ pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-schnell",
     dtype=torch.float16,
     vae=None,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 init_image = load_image(
@@ -74,7 +74,7 @@ pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-schnell",
     dtype=torch.bfloat16,
     vae=None,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 prompt = """
@@ -109,7 +109,7 @@ transformer = HunyuanVideoTransformer3DModel.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo", subfolder="transformer", dtype=torch.bfloat16
 )
 pipeline = HunyuanVideoPipeline.from_pretrained(
-    model_id, transformer=transformer, vae=None, dtype=torch.float16, device_map="cuda"
+    model_id, transformer=transformer, vae=None, dtype=torch.float16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 latent = pipeline(
@@ -178,7 +178,7 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16,
     vae=None,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 pipeline.unet = pipeline.unet.to(memory_format=torch.channels_last)
