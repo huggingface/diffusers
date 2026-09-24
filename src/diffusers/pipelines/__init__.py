@@ -467,6 +467,7 @@ else:
         "SkyReelsV2Pipeline",
     ]
     _import_structure["nucleusmoe_image"] = ["NucleusMoEImagePipeline"]
+    _import_structure["qwenimage21"] = ["QwenImage21Pipeline"]
     _import_structure["qwenimage"] = [
         "QwenImagePipeline",
         "QwenImageImg2ImgPipeline",
@@ -864,6 +865,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredPipeline,
             QwenImagePipeline,
         )
+        from .qwenimage21 import QwenImage21Pipeline
         from .sana import (
             SanaControlNetPipeline,
             SanaPipeline,

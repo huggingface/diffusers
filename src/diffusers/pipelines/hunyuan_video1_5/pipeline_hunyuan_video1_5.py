@@ -352,7 +352,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
                 torch device
             batch_size (`int`):
                 batch size of prompts, defaults to 1
-            num_images_per_prompt (`int`):
+            num_videos_per_prompt (`int`):
                 number of images that should be generated per prompt
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. If not provided, text embeddings will be generated from `prompt` input
