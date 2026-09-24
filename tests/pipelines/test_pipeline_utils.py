@@ -24,7 +24,17 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible, variant_compatible_siblings
+from diffusers.pipelines.pipeline_loading_utils import (
+    ALL_IMPORTABLE_CLASSES,
+    _fetch_class_library_tuple,
+    _get_custom_components_and_folders,
+    _is_deprecated_pipeline_module,
+    get_class_obj_and_candidates,
+    is_safetensors_compatible,
+    maybe_raise_or_warn,
+    simple_get_class_obj,
+    variant_compatible_siblings,
+)
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import require_torch_accelerator, torch_device
@@ -276,6 +286,164 @@ class TestIsSafetensorsCompatible:
             "vae/diffusion_pytorch_model.bin",
         ]
         assert not is_safetensors_compatible(filenames, variant="fp16")
+
+
+class TestGetCustomComponentsAndFolders:
+    def test_deprecated_pipeline_module_is_recognized(self):
+        # Pipelines relocated under `diffusers.pipelines.deprecated` (e.g. Wuerstchen) are no longer
+        # attributes of `diffusers.pipelines`. They must still resolve instead of being mistaken for
+        # a missing custom module. Regression test for loading repos like `warp-ai/wuerstchen-prior`.
+        config_dict = {
+            "_class_name": "WuerstchenPriorPipeline",
+            "prior": ["wuerstchen", "WuerstchenPrior"],
+        }
+        custom_components, folder_names = _get_custom_components_and_folders(
+            "warp-ai/wuerstchen-prior", config_dict, filenames=[]
+        )
+        assert custom_components == {}
+        assert folder_names == ["prior"]
+
+    def test_missing_custom_module_still_raises(self):
+        # A component that is neither a loadable class, a known pipeline module, a deprecated module,
+        # nor an actual custom file on the Hub must still raise.
+        config_dict = {
+            "_class_name": "FooPipeline",
+            "foo": ["totally_made_up_module", "FooModel"],
+        }
+        with pytest.raises(ValueError):
+            _get_custom_components_and_folders("some/repo", config_dict, filenames=[])
+
+    def test_custom_component_file_is_detected(self):
+        # When the custom module file is actually present on the Hub it is recorded as a custom component.
+        config_dict = {
+            "_class_name": "FooPipeline",
+            "foo": ["my_pipeline", "FooModel"],
+        }
+        custom_components, folder_names = _get_custom_components_and_folders(
+            "some/repo", config_dict, filenames=["foo/my_pipeline.py"]
+        )
+        assert custom_components == {"foo": "my_pipeline"}
+
+    def test_is_deprecated_pipeline_module(self):
+        assert _is_deprecated_pipeline_module("wuerstchen")
+        assert not _is_deprecated_pipeline_module("totally_made_up_module")
+        # A non-deprecated (current) pipeline module is not under the deprecated namespace.
+        assert not _is_deprecated_pipeline_module("stable_diffusion")
+        # Malformed candidate names must not raise.
+        assert not _is_deprecated_pipeline_module("weird/name")
+
+
+class TestGetClassObjAndCandidates:
+    def _resolve_load_method(self, class_obj, class_candidates):
+        # Mirrors the load-method lookup in `load_sub_model`.
+        for class_name, class_candidate in class_candidates.items():
+            if class_candidate is not None and issubclass(class_obj, class_candidate):
+                return ALL_IMPORTABLE_CLASSES[class_name][1]
+        return None
+
+    def test_deprecated_module_resolves_to_class_and_load_method(self):
+        # Regression test for the second half of loading `warp-ai/wuerstchen-prior`: a component
+        # whose `model_index.json` library is a relocated module (`["wuerstchen", "WuerstchenPrior"]`)
+        # arrives here with `is_pipeline_module=False`. It must (1) not raise `ModuleNotFoundError`
+        # from a bare `import_module("wuerstchen")`, and (2) resolve a usable load method, which only
+        # happens with pipeline-module candidate semantics (the relocated module does not expose the
+        # base classes in `ALL_IMPORTABLE_CLASSES`).
+        from diffusers import pipelines
+        from diffusers.pipelines.deprecated.wuerstchen import WuerstchenPrior
+
+        class_obj, class_candidates = get_class_obj_and_candidates(
+            "wuerstchen", "WuerstchenPrior", ALL_IMPORTABLE_CLASSES, pipelines, is_pipeline_module=False
+        )
+        assert class_obj is WuerstchenPrior
+        assert self._resolve_load_method(class_obj, class_candidates) == "from_pretrained"
+
+    def test_missing_module_still_raises(self):
+        from diffusers import pipelines
+
+        with pytest.raises(ModuleNotFoundError):
+            get_class_obj_and_candidates(
+                "totally_made_up_module", "Foo", ALL_IMPORTABLE_CLASSES, pipelines, is_pipeline_module=False
+            )
+
+
+class TestFetchClassLibraryTuple:
+    """Gap 1: _fetch_class_library_tuple must return the deprecated subpackage name, not 'diffusers'."""
+
+    def test_deprecated_module_returns_subpackage_library(self):
+        # Before the fix, WuerstchenPrior (module path
+        # `diffusers.pipelines.deprecated.wuerstchen.modeling_wuerstchen_prior`) caused
+        # `_fetch_class_library_tuple` to return ("diffusers", "WuerstchenPrior") because
+        # `hasattr(pipelines, "wuerstchen")` is False.  The correct return value is
+        # ("wuerstchen", "WuerstchenPrior") so that `save_pretrained` writes the tuple that
+        # `get_class_obj_and_candidates` can resolve on reload.
+        from diffusers.pipelines.deprecated.wuerstchen import WuerstchenPrior
+
+        library, class_name = _fetch_class_library_tuple(WuerstchenPrior)
+
+        assert library == "wuerstchen"
+        assert class_name == "WuerstchenPrior"
+
+    def test_deprecated_module_tuple_roundtrips_through_get_class_obj(self):
+        # Prove the roundtrip: the tuple written by _fetch_class_library_tuple must be
+        # resolvable by get_class_obj_and_candidates (the load path).
+        from diffusers import pipelines
+        from diffusers.pipelines.deprecated.wuerstchen import WuerstchenPrior
+
+        library, class_name = _fetch_class_library_tuple(WuerstchenPrior)
+        class_obj, _ = get_class_obj_and_candidates(
+            library, class_name, ALL_IMPORTABLE_CLASSES, pipelines, is_pipeline_module=False
+        )
+        assert class_obj is WuerstchenPrior
+
+
+class TestMaybeRaiseOrWarn:
+    """Gap 2: maybe_raise_or_warn must take the warn branch (not crash) for deprecated modules."""
+
+    def test_deprecated_library_does_not_raise(self):
+        # Before the fix, a deprecated library_name (e.g. "wuerstchen") with
+        # is_pipeline_module=False caused maybe_raise_or_warn to call
+        # importlib.import_module("wuerstchen"), which raises ModuleNotFoundError, or to
+        # reach issubclass(model_cls, None) when expected_class_obj stays None.
+        # The correct behaviour is to take the warning branch (same as pipeline-module components).
+        #
+        # Use a plain sentinel object as the passed component — the warning branch only calls
+        # str() on it, so a real (uninitialized) nn.Module is not required and would fail
+        # with AttributeError because __repr__ expects _modules.
+        from unittest.mock import MagicMock, patch
+
+        passed_class_obj = {"prior": MagicMock()}
+
+        # Must log a warning and not raise.
+        with patch("diffusers.pipelines.pipeline_loading_utils.logger") as mock_logger:
+            maybe_raise_or_warn(
+                "wuerstchen",
+                None,
+                "WuerstchenPrior",
+                ALL_IMPORTABLE_CLASSES,
+                passed_class_obj,
+                "prior",
+                is_pipeline_module=False,
+            )
+
+        mock_logger.warning.assert_called_once()
+
+
+class TestSimpleGetClassObj:
+    """Gap 3: simple_get_class_obj must resolve deprecated pipeline modules."""
+
+    def test_deprecated_module_resolves_class(self):
+        # Before the fix, simple_get_class_obj("wuerstchen", "WuerstchenPrior") fell to the
+        # else branch and tried importlib.import_module("wuerstchen"), raising ModuleNotFoundError.
+        from diffusers.pipelines.deprecated.wuerstchen import WuerstchenPrior
+
+        class_obj = simple_get_class_obj("wuerstchen", "WuerstchenPrior")
+
+        assert class_obj is WuerstchenPrior
+
+    def test_missing_module_still_raises(self):
+        # Non-deprecated, non-pipeline, non-installed library names must still raise.
+        with pytest.raises((ModuleNotFoundError, ImportError)):
+            simple_get_class_obj("totally_made_up_module", "Foo")
 
 
 class TestVariantCompatibleSiblings:
