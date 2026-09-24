@@ -16,8 +16,6 @@ on:
     branches:
       - ci-*
 
-permissions:
-  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -35,13 +33,17 @@ env:
   #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
+permissions: {}
+
 jobs:
   check_code_quality:
+    permissions:
+      contents: read
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -56,12 +58,14 @@ jobs:
           echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
 
   check_repository_consistency:
+    permissions:
+      contents: read
     needs: check_code_quality
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -81,6 +85,8 @@ jobs:
           echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
 
   run_fast_tests:
+    permissions:
+      contents: read
     needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
@@ -119,7 +125,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         fetch-depth: 2
 
@@ -163,12 +169,14 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
         path: reports
 
   run_staging_tests:
+    permissions:
+      contents: read
     needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
@@ -195,7 +203,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         fetch-depth: 2
 
@@ -223,12 +231,14 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports
 
   run_lora_tests:
+    permissions:
+      contents: read
     needs: [check_code_quality, check_repository_consistency]
 
     name: LoRA tests with PEFT main
@@ -249,7 +259,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         fetch-depth: 2
 
@@ -290,7 +300,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: pr_lora_test_reports
         path: reports
