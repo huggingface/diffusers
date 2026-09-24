@@ -12,13 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # DreamBooth
 
-[DreamBooth](https://huggingface.co/papers/2208.12242) is a method for generating personalized images of a specific instance. It works by fine-tuning the model on 3-5 images of the subject (for example, a cat) that is associated with a unique identifier (`sks cat`). This allows you to use `sks cat` in your prompt to trigger the model to generate images of your cat in different settings, lighting, poses, and styles.
+[DreamBooth](https://huggingface.co/papers/2208.12242) personalizes a pretrained model to a specific subject from a few images (for example, your cat) by fine-tuning the full weights and binding that subject to a unique identifier in the prompt (`sks cat`). You can then generate the subject in new settings, lighting, poses, and styles.
 
-DreamBooth checkpoints are typically a few GBs in size because it contains the full model weights.
-
-To train one, see [Train DreamBooth](../training/dreambooth).
-
-Load the DreamBooth checkpoint with [`~DiffusionPipeline.from_pretrained`] and include the unique identifier in the prompt to activate its generation.
+DreamBooth checkpoints are typically a few GBs because they contain the full model weights. Load them with [`~DiffusionPipeline.from_pretrained`] and include the unique identifier in the prompt to trigger generation.
 
 ```py
 import torch
@@ -35,3 +31,5 @@ pipeline(prompt).images[0]
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_dreambooth.png" />
 </div>
+
+To train your own checkpoint, see [Train DreamBooth](../training/dreambooth).
