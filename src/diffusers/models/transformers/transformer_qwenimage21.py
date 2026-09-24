@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import math
 from typing import Any
 
@@ -23,7 +24,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import logging
 from ...utils.peft_utils import apply_lora_scale
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -131,6 +132,42 @@ def apply_rotary_emb_qwen(
         x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
 
         return x_out.type_as(x)
+
+
+# Copied from diffusers.models.transformers.transformer_qwenimage.apply_rotary_emb_qwen_neuron
+def apply_rotary_emb_qwen_neuron(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
+    """
+    Apply rotary embeddings to `x` using real-valued cos/sin, for backends without a complex dtype.
+
+    Numerically equivalent to `apply_rotary_emb_qwen(..., use_real=False)`, which multiplies `x` by a complex
+    exponential. Neuron has no complex tensor support, so the rotation angles are carried as reals and cos/sin are
+    taken here instead.
+
+    Args:
+        x (`torch.Tensor`): Query or key tensor to rotate, shape `[B, S, H, D]`.
+        freqs (`torch.Tensor`): Rotation angles, shape `[S, D // 2]`.
+
+    Returns:
+        `torch.Tensor`: `x` with rotary embeddings applied.
+    """
+    # Adjacent feature pairs (2k, 2k+1) share angle k, so each angle is repeated twice along the last dim; unsqueeze
+    # the head axis so the freqs broadcast over heads (this is what keeps it tensor-parallel-agnostic).
+    cos = torch.cos(freqs).repeat_interleave(2, dim=-1).unsqueeze(1)  # [S, 1, D]
+    sin = torch.sin(freqs).repeat_interleave(2, dim=-1).unsqueeze(1)  # [S, 1, D]
+    x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+    x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)  # [B, S, H, D]
+    return (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+
+
+# RoPE application is backend-dependent: the default path multiplies by a complex exponential, which Neuron and TPU
+# cannot represent. On those backends `QwenImage21Rope` hands out rotation angles instead of complex freqs, and
+# `apply_rotary_emb_qwen_neuron` takes cos/sin on device. Callers select by `device.type` and fall back to the
+# default for any backend not listed here.
+_ROPE_ANGLE_DEVICES = ("neuron", "tpu")
+ROPE_PER_DEVICE = {
+    "cuda": functools.partial(apply_rotary_emb_qwen, use_real=False),
+    **dict.fromkeys(_ROPE_ANGLE_DEVICES, apply_rotary_emb_qwen_neuron),
+}
 
 
 class QwenImage21TemporalTimesteps(nn.Module):
@@ -337,16 +374,20 @@ def _qwenimage21_prepare_qkv(
     key = attn.to_k(hidden_states)
     value = attn.to_v(hidden_states)
 
-    query = query.unflatten(-1, (attn.heads, -1))
-    key = key.unflatten(-1, (attn.heads, -1))
-    value = value.unflatten(-1, (attn.heads, -1))
+    # Split by `head_dim` rather than by `attn.heads`: under tensor parallelism each rank holds only its share of the
+    # heads, while `attn.heads` and `attn.inner_dim` keep their full values.
+    head_dim = attn.inner_dim // attn.heads
+    query = query.unflatten(-1, (-1, head_dim))
+    key = key.unflatten(-1, (-1, head_dim))
+    value = value.unflatten(-1, (-1, head_dim))
 
     query = attn.norm_q(query).to(value.dtype)
     key = attn.norm_k(key).to(value.dtype)
 
     if rotary_emb is not None:
-        query = apply_rotary_emb_qwen(query, rotary_emb, use_real=False)
-        key = apply_rotary_emb_qwen(key, rotary_emb, use_real=False)
+        apply_rope = ROPE_PER_DEVICE.get(query.device.type, ROPE_PER_DEVICE["cuda"])
+        query = apply_rope(query, rotary_emb)
+        key = apply_rope(key, rotary_emb)
 
     if layer_cache is not None:
         if kv_cache_mode == "extract" and cache_write_slice is not None:
@@ -674,10 +715,19 @@ class QwenImage21Rope(nn.Module):
         freqs = torch.outer(index, 1.0 / torch.pow(theta, torch.arange(0, dim, 2).to(torch.float32).div(dim)))
         return torch.polar(torch.ones_like(freqs), freqs)
 
+    @lru_cache_unless_export(maxsize=None)
+    def _get_device_freqs(self, device: torch.device) -> list[torch.Tensor]:
+        """Return the per-axis freqs on `device`: complex exponentials, or rotation angles where complex is missing."""
+        if device.type in _ROPE_ANGLE_DEVICES:
+            # `torch.angle` runs on CPU while the freqs are still complex; wrapping into (-pi, pi] is harmless because
+            # only cos/sin of the angle are used.
+            return [torch.angle(freq).to(device) for freq in self.freqs]
+        return [freq.to(device) for freq in self.freqs]
+
     def forward(
         self, img_shapes: list[tuple[int, int, int]], image_pad_mask: torch.Tensor, device: torch.device
     ) -> torch.Tensor:
-        self.freqs = [freq.to(device) for freq in self.freqs]
+        freqs = self._get_device_freqs(torch.device(device))
 
         frame_index, height_index, width_index = [], [], []
         image_height_index, image_width_index = [], []
@@ -707,7 +757,7 @@ class QwenImage21Rope(nn.Module):
         height_index[image_pad_mask] = torch.tensor(image_height_index, dtype=torch.long, device=device)
         width_index[image_pad_mask] = torch.tensor(image_width_index, dtype=torch.long, device=device)
 
-        return torch.cat([self.freqs[0][frame_index], self.freqs[1][height_index], self.freqs[2][width_index]], dim=-1)
+        return torch.cat([freqs[0][frame_index], freqs[1][height_index], freqs[2][width_index]], dim=-1)
 
 
 class QwenImage21Transformer2DModel(
@@ -758,6 +808,18 @@ class QwenImage21Transformer2DModel(
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _repeated_blocks = ["QwenImage21TransformerBlock"]
     _skip_keys = ["kv_cache"]
+    # Tensor-parallel plan: every block's attention and SwiGLU projections are separate, bias-free Linears, so each
+    # entry is a plain "colwise"/"rowwise" pair and no packed sharding is needed. The shared `modulation`, the input
+    # projections (`img_in`, `txt_in`), `norm_out` and `proj_out` stay replicated (intentionally absent here).
+    _tp_plan = {
+        "transformer_blocks.*.attn.to_q": "colwise",
+        "transformer_blocks.*.attn.to_k": "colwise",
+        "transformer_blocks.*.attn.to_v": "colwise",
+        "transformer_blocks.*.attn.to_out.0": "rowwise",
+        "transformer_blocks.*.img_mlp.proj": "colwise",
+        "transformer_blocks.*.img_mlp.gate_layer": "colwise",
+        "transformer_blocks.*.img_mlp.out": "rowwise",
+    }
 
     @register_to_config
     def __init__(
@@ -833,9 +895,10 @@ class QwenImage21Transformer2DModel(
             )
 
         image_ids = torch.full_like(image_pad_mask, -1, dtype=torch.long)
-        block_ids = torch.repeat_interleave(
-            torch.arange(len(block_lengths), device=image_pad_mask.device),
-            torch.tensor(block_lengths, device=image_pad_mask.device),
+        # Built from the Python block lengths rather than with a tensor-repeats `repeat_interleave`, whose
+        # data-dependent output size some compiled backends (e.g. Neuron) cannot lower.
+        block_ids = torch.tensor(
+            [block for block, length in enumerate(block_lengths) for _ in range(length)], device=image_pad_mask.device
         )
         image_ids[image_positions] = block_ids
 
