@@ -27,7 +27,12 @@ from diffusers.models.embeddings import ImageProjection
 from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
+from ...testing_utils import (
+    enable_full_determinism,
+    is_tensor_parallel,
+    require_torch_neuron,
+    torch_device,
+)
 from ..testing_utils import (
     AttentionBackendTesterMixin,
     AttentionTesterMixin,
@@ -53,6 +58,7 @@ from ..testing_utils import (
     SingleFileTesterMixin,
     TaylorSeerCacheTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -266,6 +272,35 @@ class TestFluxTransformerContextParallelAttnBackends(
 
 class TestFluxTransformerTensorParallel(FluxTransformerTesterConfig, TensorParallelTesterMixin):
     """Tensor Parallel inference tests for Flux Transformer (CUDA/XPU multi-accelerator)."""
+
+
+def make_tpu_tp_spec():
+    """Model spec consumed by the generic TPU TP worker (``_tpu_tp_worker.py``).
+
+    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all Flux-specific test data lives in this file
+    while the worker stays model-agnostic.
+
+    Overrides ``num_attention_heads`` to 4 (instead of reusing the shared tester config's 2) so
+    ``TensorParallelTPUTesterMixin``'s default 4-rank ``WORLD_SIZE`` divides the head count — see
+    ``make_tpu_tp_spec`` in ``test_models_transformer_flux2.py`` for the full rationale (TPU can't shard across an
+    arbitrary rank count the way CUDA/XPU can). Every other field still comes from the shared config so the rest of
+    the spec doesn't drift from the other Flux tests.
+    """
+    config = FluxTransformerTesterConfig()
+    init_dict = {**config.get_init_dict(), "num_attention_heads": 4}
+    return FluxTransformer2DModel, init_dict, config.get_dummy_inputs(device="cpu")
+
+
+class TestFluxTransformerTensorParallelTPU(TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for Flux Transformer on TPU.
+
+    TPU TP runs through ``torchrun`` with the ``"tpu_dist"`` distributed backend, so it cannot use the
+    ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker
+    with the Flux model spec (``make_tpu_tp_spec``) via ``TensorParallelTPUTesterMixin``; the worker asserts the
+    sharded output matches a single-device reference, and the test checks its exit code.
+    """
+
+    TP_SPEC = "tests.models.transformers.test_models_transformer_flux:make_tpu_tp_spec"
 
 
 def make_neuron_tp_spec():

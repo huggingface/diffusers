@@ -99,7 +99,6 @@ def main():
         print("[rank0] PASS: Neuron tensor-parallel output matches single-device reference.")
 
     dist.barrier()
-    dist.destroy_process_group()
 
 
 if __name__ == "__main__":
