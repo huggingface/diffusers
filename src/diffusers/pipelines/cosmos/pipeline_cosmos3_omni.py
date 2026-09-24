@@ -1229,43 +1229,31 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         preds_action: list[torch.Tensor] | None = None,
         action_condition_mask: list[torch.Tensor] | None = None,
         raw_action_dim: int | None = None,
-        noisy_mask_nonzero: tuple[bool, bool, bool] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """Zero out conditioning positions in the transformer's velocity predictions.
 
         ``preds_vision`` / ``preds_sound`` are returned per-sample by the transformer; the pipeline runs batch=1, so we
         take the first entry and apply ``1 - condition_mask`` to keep only the noisy positions where the model produces
         meaningful velocity.
-
-        Whether each modality has any noisy position is a property of the condition masks, which are fixed for a whole
-        run. Reading it here costs a device-to-host sync on every call, so the caller may pass ``noisy_mask_nonzero``
-        having read it once. It is computed on demand when omitted.
         """
-        has_v, has_s, has_a = noisy_mask_nonzero if noisy_mask_nonzero is not None else (None, None, None)
         pred_v = preds_vision[0]
         m_v = vision_condition_mask[0]
         noisy_mask_v = (1.0 - m_v).to(dtype=pred_v.dtype, device=pred_v.device)
-        if has_v is None:
-            has_v = bool(noisy_mask_v.sum() > 0)
-        velocity_vision = pred_v * noisy_mask_v if has_v else torch.zeros_like(pred_v)
+        velocity_vision = pred_v * noisy_mask_v if noisy_mask_v.sum() > 0 else torch.zeros_like(pred_v)
 
         velocity_sound: torch.Tensor | None = None
         if preds_sound is not None and sound_condition_mask is not None:
             pred_s = preds_sound[0]
             cond_mask_s = sound_condition_mask[0]
             noisy_mask_s = (1.0 - cond_mask_s).T.to(dtype=pred_s.dtype, device=pred_s.device)
-            if has_s is None:
-                has_s = bool(noisy_mask_s.sum() > 0)
-            velocity_sound = pred_s * noisy_mask_s if has_s else torch.zeros_like(pred_s)
+            velocity_sound = pred_s * noisy_mask_s if noisy_mask_s.sum() > 0 else torch.zeros_like(pred_s)
 
         velocity_action: torch.Tensor | None = None
         if preds_action is not None and action_condition_mask is not None:
             pred_a = preds_action[0]
             cond_mask_a = action_condition_mask[0]
             noisy_mask_a = (1.0 - cond_mask_a).to(dtype=pred_a.dtype, device=pred_a.device)
-            if has_a is None:
-                has_a = bool(noisy_mask_a.sum() > 0)
-            velocity_action = pred_a * noisy_mask_a if has_a else torch.zeros_like(pred_a)
+            velocity_action = pred_a * noisy_mask_a if noisy_mask_a.sum() > 0 else torch.zeros_like(pred_a)
             if raw_action_dim is not None:
                 velocity_action[:, raw_action_dim:] = 0
 
@@ -1729,15 +1717,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         self._mixed_precision_trace = []
         try:
             with self.progress_bar(total=num_inference_steps) as progress_bar:
-                # read timesteps on the host; a device scalar would sync every step
-                timesteps_cpu = timesteps.tolist()
-                # The condition masks are fixed for the whole run, so read whether each modality has any noisy
-                # position once here rather than once per modality per pass per step.
-                noisy_mask_nonzero = (
-                    bool((1.0 - vision_condition_mask).sum() > 0),
-                    sound_condition_mask is not None and bool((1.0 - sound_condition_mask).sum() > 0),
-                    action_condition_mask is not None and bool((1.0 - action_condition_mask).sum() > 0),
-                )
                 for i, t in enumerate(timesteps):
                     apply_cosmos3_mixed_precision_step(
                         self.transformer,
@@ -1751,7 +1730,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
                     self._current_timestep = t
                     sigma = float(self.scheduler.sigmas[i])
-                    timestep = timesteps_cpu[i]
+                    timestep = t.item()
 
                     # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
                     # noisy tokens before packing so the modality tokens enter the model in the right dtype.
@@ -1809,7 +1788,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         preds_action=preds_action,
                         action_condition_mask=[action_condition_mask] if action_condition_mask is not None else None,
                         raw_action_dim=raw_action_dim_resolved,
-                        noisy_mask_nonzero=noisy_mask_nonzero,
                     )
 
                     # --- Unconditional pass (Skip if not using CFG) ---
@@ -1855,7 +1833,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                             if action_condition_mask is not None
                             else None,
                             raw_action_dim=raw_action_dim_resolved,
-                            noisy_mask_nonzero=noisy_mask_nonzero,
                         )
 
                     cond_v_vision = cond_v_vision.float()

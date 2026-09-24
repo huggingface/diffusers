@@ -620,11 +620,6 @@ class ZImageControlNetPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSin
         self._num_timesteps = len(timesteps)
 
         # 6. Denoising loop
-        if self.do_classifier_free_guidance and self._cfg_truncation is not None and float(self._cfg_truncation) <= 1:
-            _precomputed_t_norms = ((1000 - timesteps.float()) / 1000).tolist()
-        else:
-            _precomputed_t_norms = None
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -633,10 +628,17 @@ class ZImageControlNetPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSin
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
                 timestep = (1000 - timestep) / 1000
+                # Normalized time for time-aware config (0 at start, 1 at end)
+                t_norm = timestep[0].item()
+
                 # Handle cfg truncation
                 current_guidance_scale = self.guidance_scale
-                if _precomputed_t_norms is not None:
-                    if _precomputed_t_norms[i] > self._cfg_truncation:
+                if (
+                    self.do_classifier_free_guidance
+                    and self._cfg_truncation is not None
+                    and float(self._cfg_truncation) <= 1
+                ):
+                    if t_norm > self._cfg_truncation:
                         current_guidance_scale = 0.0
 
                 # Run CFG only if configured AND scale is non-zero
