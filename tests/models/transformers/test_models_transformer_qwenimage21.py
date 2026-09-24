@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import subprocess
+import sys
+
 import pytest
 import torch
 from torch.nn.attention.flex_attention import create_mask
@@ -21,13 +25,14 @@ from diffusers import QwenImage21Transformer2DModel
 from diffusers.models.transformers.transformer_qwenimage21 import build_qwenimage21_block_causal_mask
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
+    TensorParallelTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -313,3 +318,39 @@ class TestQwenImage21TransformerSingleFile(QwenImage21TransformerTesterConfig, S
     @property
     def torch_dtype(self):
         return torch.bfloat16
+
+
+class TestQwenImage21TransformerTensorParallel(QwenImage21TransformerTesterConfig, TensorParallelTesterMixin):
+    """Tensor Parallel inference tests for QwenImage 2.1 Transformer (CUDA/XPU multi-accelerator)."""
+
+
+def make_neuron_tp_spec():
+    """Model spec consumed by the generic Neuron TP worker (``_neuron_tp_worker.py``).
+
+    Returns ``(model_class, init_dict, cpu_inputs)``. Reuses the shared tester config so the spec never drifts from the
+    rest of the QwenImage 2.1 tests.
+    """
+    config = QwenImage21TransformerTesterConfig()
+    return QwenImage21Transformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+@is_tensor_parallel
+@require_torch_neuron
+class TestQwenImage21TransformerTensorParallelNeuron:
+    """Tensor Parallel inference test for QwenImage 2.1 Transformer on AWS Neuron.
+
+    Neuron TP runs through ``torchrun`` with the ``"neuron"`` distributed backend, so it cannot use the
+    ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker with
+    the QwenImage 2.1 model spec (``make_neuron_tp_spec``); the worker asserts the sharded output matches a
+    single-device reference, and the test checks its exit code.
+    """
+
+    def test_tensor_parallel_neuron_inference(self):
+        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
+        spec = "tests.models.transformers.test_models_transformer_qwenimage21:make_neuron_tp_spec"
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )
