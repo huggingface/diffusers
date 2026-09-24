@@ -44,7 +44,7 @@ EXAMPLE_DOC_STRING = """
         >>> prior_pipe = StableCascadePriorPipeline.from_pretrained(
         ...     "stabilityai/stable-cascade-prior", torch_dtype=torch.bfloat16
         ... ).to("cuda")
-        >>> gen_pipe = StableCascadeDecoderPipeline.from_pretrain(
+        >>> gen_pipe = StableCascadeDecoderPipeline.from_pretrained(
         ...     "stabilityai/stable-cascade", torch_dtype=torch.float16
         ... ).to("cuda")
 
