@@ -77,9 +77,9 @@ EXAMPLE_DOC_STRING = """
         >>> canny_image = Image.fromarray(np_image)
 
         >>> # load control net and stable diffusion v1-5
-        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", dtype=torch.float16)
         >>> pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, dtype=torch.float16
         ... )
 
         >>> # speed up diffusion process with faster scheduler and memory optimization

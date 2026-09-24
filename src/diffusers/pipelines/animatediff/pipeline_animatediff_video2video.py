@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
 
         >>> adapter = MotionAdapter.from_pretrained(
-        ...     "guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16
+        ...     "guoyww/animatediff-motion-adapter-v1-5-2", dtype=torch.float16
         ... )
         >>> pipe = AnimateDiffVideoToVideoPipeline.from_pretrained(
         ...     "SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter

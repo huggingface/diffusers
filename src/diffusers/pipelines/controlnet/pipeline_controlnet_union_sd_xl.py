@@ -92,14 +92,14 @@ EXAMPLE_DOC_STRING = """
         ... ).resize((1024, 1024))
         >>> # initialize the models and pipeline
         >>> controlnet = ControlNetUnionModel.from_pretrained(
-        ...     "xinsir/controlnet-union-sdxl-1.0", torch_dtype=torch.float16
+        ...     "xinsir/controlnet-union-sdxl-1.0", dtype=torch.float16
         ... )
-        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
         >>> pipe = StableDiffusionXLControlNetUnionPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     controlnet=controlnet,
         ...     vae=vae,
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     variant="fp16",
         ... )
         >>> pipe.enable_model_cpu_offload()

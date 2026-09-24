@@ -68,7 +68,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils.loading_utils import load_image
 
         >>> pipe = SanaSprintImg2ImgPipeline.from_pretrained(
-        ...     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers", torch_dtype=torch.bfloat16
+        ...     "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers", dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 

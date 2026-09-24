@@ -70,15 +70,15 @@ EXAMPLE_DOC_STRING = """
 
         pipe = FluxControlInpaintPipeline.from_pretrained(
             "black-forest-labs/FLUX.1-Depth-dev",
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
         )
         # use following lines if you have GPU constraints
         # ---------------------------------------------------------------
         transformer = FluxTransformer2DModel.from_pretrained(
-            "sayakpaul/FLUX.1-Depth-dev-nf4", subfolder="transformer", torch_dtype=torch.bfloat16
+            "sayakpaul/FLUX.1-Depth-dev-nf4", subfolder="transformer", dtype=torch.bfloat16
         )
         text_encoder_2 = T5EncoderModel.from_pretrained(
-            "sayakpaul/FLUX.1-Depth-dev-nf4", subfolder="text_encoder_2", torch_dtype=torch.bfloat16
+            "sayakpaul/FLUX.1-Depth-dev-nf4", subfolder="text_encoder_2", dtype=torch.bfloat16
         )
         pipe.transformer = transformer
         pipe.text_encoder_2 = text_encoder_2

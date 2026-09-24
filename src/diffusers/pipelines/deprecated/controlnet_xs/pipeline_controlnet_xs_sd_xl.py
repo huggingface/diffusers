@@ -86,12 +86,12 @@ EXAMPLE_DOC_STRING = """
 
         >>> # initialize the models and pipeline
         >>> controlnet_conditioning_scale = 0.5
-        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
         >>> controlnet = ControlNetXSAdapter.from_pretrained(
-        ...     "UmerHA/Testing-ConrolNetXS-SDXL-canny", torch_dtype=torch.float16
+        ...     "UmerHA/Testing-ConrolNetXS-SDXL-canny", dtype=torch.float16
         ... )
         >>> pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, dtype=torch.float16
         ... )
         >>> pipe.enable_model_cpu_offload()
 

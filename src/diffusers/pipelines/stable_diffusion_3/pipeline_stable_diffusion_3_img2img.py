@@ -64,7 +64,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> device = "cuda"
         >>> model_id_or_path = "stabilityai/stable-diffusion-3-medium-diffusers"
-        >>> pipe = AutoPipelineForImage2Image.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
+        >>> pipe = AutoPipelineForImage2Image.from_pretrained(model_id_or_path, dtype=torch.float16)
         >>> pipe = pipe.to(device)
 
         >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"

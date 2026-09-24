@@ -69,7 +69,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
         ...     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     pag_applied_layers=["blocks.14"],
         ...     enable_pag=True,
         ... )

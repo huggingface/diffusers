@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
         >>> image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/cup.png")
         >>> mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/cup_mask.png")
 
-        >>> pipe = FluxFillPipeline.from_pretrained("black-forest-labs/FLUX.1-Fill-dev", torch_dtype=torch.bfloat16)
+        >>> pipe = FluxFillPipeline.from_pretrained("black-forest-labs/FLUX.1-Fill-dev", dtype=torch.bfloat16)
         >>> pipe.enable_model_cpu_offload()  # save some VRAM by offloading the model to CPU
 
         >>> image = pipe(

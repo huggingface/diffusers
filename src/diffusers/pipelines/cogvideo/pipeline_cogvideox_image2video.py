@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import CogVideoXImageToVideoPipeline
         >>> from diffusers.utils import export_to_video, load_image
 
-        >>> pipe = CogVideoXImageToVideoPipeline.from_pretrained("THUDM/CogVideoX-5b-I2V", torch_dtype=torch.bfloat16)
+        >>> pipe = CogVideoXImageToVideoPipeline.from_pretrained("THUDM/CogVideoX-5b-I2V", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."

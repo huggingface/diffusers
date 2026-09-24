@@ -85,7 +85,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import PRXPixelPipeline
 
-        >>> pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", torch_dtype=torch.bfloat16)
+        >>> pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A front-facing portrait of a lion in the golden savanna at sunset."
@@ -114,7 +114,7 @@ class PRXPixelPipeline(DiffusionPipeline):
         >>> import torch
         >>> from diffusers import PRXPixelPipeline
 
-        >>> pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", torch_dtype=torch.bfloat16)
+        >>> pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A front-facing portrait of a lion in the golden savanna at sunset."

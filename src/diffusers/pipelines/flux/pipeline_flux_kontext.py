@@ -61,7 +61,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> pipe = FluxKontextPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+        ...     "black-forest-labs/FLUX.1-Kontext-dev", dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 

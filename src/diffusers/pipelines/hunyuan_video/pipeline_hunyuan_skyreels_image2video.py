@@ -51,10 +51,10 @@ EXAMPLE_DOC_STRING = """
         >>> model_id = "hunyuanvideo-community/HunyuanVideo"
         >>> transformer_model_id = "Skywork/SkyReels-V1-Hunyuan-I2V"
         >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
-        ...     transformer_model_id, torch_dtype=torch.bfloat16
+        ...     transformer_model_id, dtype=torch.bfloat16
         ... )
         >>> pipe = HunyuanSkyreelsImageToVideoPipeline.from_pretrained(
-        ...     model_id, transformer=transformer, torch_dtype=torch.float16
+        ...     model_id, transformer=transformer, dtype=torch.float16
         ... )
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")

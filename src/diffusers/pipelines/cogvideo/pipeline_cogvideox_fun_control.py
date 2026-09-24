@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_video
 
         >>> pipe = CogVideoXFunControlPipeline.from_pretrained(
-        ...     "alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose", torch_dtype=torch.bfloat16
+        ...     "alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose", dtype=torch.bfloat16
         ... )
         >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         >>> pipe.to("cuda")

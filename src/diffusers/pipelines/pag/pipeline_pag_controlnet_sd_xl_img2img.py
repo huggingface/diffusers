@@ -91,16 +91,16 @@ EXAMPLE_DOC_STRING = """
         ...     "diffusers/controlnet-depth-sdxl-1.0-small",
         ...     variant="fp16",
         ...     use_safetensors="True",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ... )
-        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
         >>> pipe = StableDiffusionXLControlNetPAGImg2ImgPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     controlnet=controlnet,
         ...     vae=vae,
         ...     variant="fp16",
         ...     use_safetensors=True,
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     enable_pag=True,
         ... )
         >>> pipe.enable_model_cpu_offload()

@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         ... )
 
         >>> pipe = StableDiffusionParadigmsPipeline.from_pretrained(
-        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", scheduler=scheduler, torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", scheduler=scheduler, dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

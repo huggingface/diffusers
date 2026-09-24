@@ -90,12 +90,12 @@ EXAMPLE_DOC_STRING = """
         >>> control_image = make_canny_condition(init_image)
 
         >>> controlnet = ControlNetModel.from_pretrained(
-        ...     "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16
+        ...     "lllyasviel/control_v11p_sd15_inpaint", dtype=torch.float16
         ... )
         >>> pipe = AutoPipelineForInpainting.from_pretrained(
         ...     "stable-diffusion-v1-5/stable-diffusion-v1-5",
         ...     controlnet=controlnet,
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     enable_pag=True,
         ... )
 

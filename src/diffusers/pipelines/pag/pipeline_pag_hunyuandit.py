@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
         ...     "Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     enable_pag=True,
         ...     pag_applied_layers=[14],
         ... ).to("cuda")

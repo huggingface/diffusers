@@ -47,7 +47,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import Flux2Pipeline
 
-        >>> pipe = Flux2Pipeline.from_pretrained("black-forest-labs/FLUX.2-dev", torch_dtype=torch.bfloat16)
+        >>> pipe = Flux2Pipeline.from_pretrained("black-forest-labs/FLUX.2-dev", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.

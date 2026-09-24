@@ -73,7 +73,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> adapter = MotionAdapter.from_pretrained("openmmlab/PIA-condition-adapter")
         >>> pipe = PIAPipeline.from_pretrained(
-        ...     "SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter, torch_dtype=torch.float16
+        ...     "SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter, dtype=torch.float16
         ... )
 
         >>> pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)

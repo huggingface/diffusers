@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_image, load_video
 
         >>> model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
-        >>> pipe = WanAnimatePipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = WanAnimatePipeline.from_pretrained(model_id, dtype=torch.bfloat16)
         >>> # Optionally upcast the Wan VAE to FP32
         >>> pipe.vae.to(torch.float32)
         >>> pipe.to("cuda")
