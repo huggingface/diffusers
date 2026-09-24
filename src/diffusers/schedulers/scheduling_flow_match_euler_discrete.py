@@ -333,9 +333,13 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if sigmas is None:
             if timesteps is None:
+                # Use the raw, pre-shift `[num_train_timesteps, ..., 1]` range here:
+                # `self.sigma_max`/`self.sigma_min` are recorded *after* the shift transform
+                # in `__init__`, so feeding them back into the linspace and then re-applying
+                # the shift below would shift the schedule twice (#13243).
                 timesteps = np.linspace(
-                    self._sigma_to_t(self.sigma_max),
-                    self._sigma_to_t(self.sigma_min),
+                    self.config.num_train_timesteps,
+                    1,
                     num_inference_steps,
                 )
             sigmas = timesteps / self.config.num_train_timesteps
