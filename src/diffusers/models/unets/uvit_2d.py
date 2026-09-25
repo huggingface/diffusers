@@ -165,8 +165,8 @@ class UVit2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor`.
 
         Returns:
-            `torch.Tensor`: The logits over the codebook for each image token, of shape
-            `(batch_size, codebook_size, height, width)`.
+            `torch.Tensor`: The logits over the codebook for each image token, of shape `(batch_size, codebook_size,
+            height, width)`.
         """
         encoder_hidden_states = self.encoder_proj(encoder_hidden_states)
         encoder_hidden_states = self.encoder_proj_layer_norm(encoder_hidden_states)
