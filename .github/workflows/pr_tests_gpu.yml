@@ -240,8 +240,9 @@ jobs:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
+        STEPS_EXTRACT_TESTS_OUTPUTS_PATTERN_FILE: ${{ steps.extract_tests.outputs.pattern_file }}
       run: |
-        pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
+        pattern=$(cat ${STEPS_EXTRACT_TESTS_OUTPUTS_PATTERN_FILE})
         if [ -z "$pattern" ]; then
           pytest -n 1  --max-worker-restart=0 --dist=loadfile tests/${{ matrix.module }} \
           --make-reports=tests_torch_cuda_${{ matrix.module }}
