@@ -930,6 +930,10 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 Spatial patch size used to patchify the input latents.
             f_patch_size (`int`, *optional*, defaults to 1):
                 Temporal patch size used to patchify the input latents.
+
+        Returns:
+            If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
         """
         assert patch_size in self.all_patch_size and f_patch_size in self.all_f_patch_size
         omni_mode = isinstance(x[0], list)

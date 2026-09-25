@@ -356,6 +356,10 @@ class OmniGenPipeline(DiffusionPipeline):
         Returns: [`~pipelines.ImagePipelineOutput`] or `tuple`:
             If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is returned
             where the first element is a list with the generated images.
+
+        Returns:
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
         height = height or self.default_sample_size * self.vae_scale_factor

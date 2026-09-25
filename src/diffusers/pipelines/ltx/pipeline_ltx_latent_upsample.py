@@ -227,6 +227,11 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
                 The output format of the generated video. Choose between `PIL.Image`, `np.array`, or `latent`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ltx.LTXPipelineOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~pipelines.ltx.LTXPipelineOutput`] or `tuple`: [`~pipelines.ltx.LTXPipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple`. When returning a tuple, the first element is the upsampled video (or the latents
+            if `output_type="latent"`).
         """
         self.check_inputs(
             video=video,
