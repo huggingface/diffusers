@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [Textual Inversion](https://hf.co/papers/2208.01618) is a training technique for personalizing image generation models with just a few example images of what you want it to learn. This technique works by learning and updating the text embeddings (the new embeddings are tied to a special word you must use in the prompt) to match the example images you provide.
 
-For inference with trained embeddings, see [Textual inversion inference](../using-diffusers/textual_inversion_inference).
+For inference with trained embeddings, see [Textual inversion inference](../using-diffusers/legacy_adapters#textual-inversion).
 
 If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers).
 
@@ -205,4 +205,4 @@ image.save("cat-train.png")
 
 Congratulations on training your own Textual Inversion model! 🎉 To learn more about how to use your new model, the following guides may be helpful:
 
-- Learn how to [load Textual Inversion embeddings](../using-diffusers/textual_inversion_inference) and also use them as negative embeddings.
+- Learn how to [load Textual Inversion embeddings](../using-diffusers/legacy_adapters#textual-inversion) and also use them as negative embeddings.
