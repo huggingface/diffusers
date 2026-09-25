@@ -32,6 +32,7 @@ from ..testing_utils import (
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
+    TaylorSeerCacheTesterMixin,
     TensorParallelTesterMixin,
     TrainingTesterMixin,
 )
@@ -300,6 +301,72 @@ class TestQwenImage21TransformerTraining(QwenImage21TransformerTesterConfig, Tra
 
 class TestQwenImage21TransformerAttention(QwenImage21TransformerTesterConfig, AttentionTesterMixin):
     pass
+
+
+class TestQwenImage21TransformerTaylorSeerCache(QwenImage21TransformerTesterConfig, TaylorSeerCacheTesterMixin):
+    """TaylorSeerCache tests for QwenImage 2.1 Transformer."""
+
+    def _run_denoising_loop(self, model, step_inputs, use_kv_cache):
+        from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
+
+        # Mirrors `QwenImage21Pipeline`: the first step prefills the cache, later steps only recompute the target.
+        kv_cache = QwenImage21KVCache(self.get_init_dict()["num_layers"]) if use_kv_cache else None
+        outputs = []
+        with torch.no_grad(), model.cache_context("cond"):
+            for index, inputs in enumerate(step_inputs):
+                kv_cache_mode = ("extract" if index == 0 else "cached") if use_kv_cache else None
+                output = model(**inputs, kv_cache=kv_cache, kv_cache_mode=kv_cache_mode, return_dict=False)[0]
+                outputs.append(output[:, -inputs["hidden_states"].shape[1] :])
+        return outputs
+
+    @pytest.mark.parametrize("use_lite_mode", [False, True])
+    def test_taylorseer_cache_with_kv_cache(self, use_lite_mode):
+        """
+        With the KV cache, the hooked modules see prefix + target tokens on the prefill step and target tokens only
+        afterwards. TaylorSeer must restart its expansion on the shape change instead of differencing the two, and
+        still predict the same target tokens as a loop that recomputes the full sequence every step.
+        """
+        from diffusers import TaylorSeerCacheConfig
+
+        num_steps = 8
+        base_inputs = self.get_dummy_inputs()
+        generator = torch.Generator("cpu").manual_seed(0)
+        step_inputs = [
+            dict(
+                base_inputs,
+                hidden_states=randn_tensor(
+                    base_inputs["hidden_states"].shape, generator=generator, device=torch_device
+                ),
+                timestep=torch.tensor([1.0 - index / num_steps], device=torch_device),
+            )
+            for index in range(num_steps)
+        ]
+
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        uncached = self._run_denoising_loop(model, step_inputs, use_kv_cache=False)
+
+        # Steps 0-2 compute fully, so the first cached steps refresh the factors before step 3 is predicted.
+        model.enable_cache(
+            TaylorSeerCacheConfig(
+                cache_interval=3,
+                disable_cache_before_step=3,
+                max_order=1,
+                taylor_factors_dtype=torch.float32,
+                use_lite_mode=use_lite_mode,
+            )
+        )
+        with_kv_cache = self._run_denoising_loop(model, step_inputs, use_kv_cache=True)
+        model._reset_stateful_cache()
+        without_kv_cache = self._run_denoising_loop(model, step_inputs, use_kv_cache=False)
+        model.disable_cache()
+
+        for step, (cached, reference) in enumerate(zip(with_kv_cache, without_kv_cache)):
+            assert cached.shape == reference.shape
+            torch.testing.assert_close(cached, reference, atol=2e-5, rtol=2e-5, msg=f"step {step} diverged")
+
+        # The prediction steps must actually be approximated, otherwise the comparison above proves nothing.
+        assert not torch.allclose(with_kv_cache[3], uncached[3], atol=1e-5)
 
 
 class TestQwenImage21TransformerSingleFile(QwenImage21TransformerTesterConfig, SingleFileTesterMixin):
