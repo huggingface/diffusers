@@ -396,6 +396,10 @@ class HunyuanDiT2DModel(ModelMixin, AttentionMixin, ConfigMixin):
             A list of tensors that if specified are added to the residuals of transformer blocks.
         return_dict: bool
             Whether to return a dictionary.
+
+        Returns:
+            If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
         """
 
         height, width = hidden_states.shape[-2:]

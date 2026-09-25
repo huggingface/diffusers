@@ -161,6 +161,10 @@ class Kandinsky3UNet(ModelMixin, AttentionMixin, ConfigMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
                 tuple.
+
+        Returns:
+            If `return_dict` is True, a [`~models.unets.unet_kandinsky3.Kandinsky3UNetOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
         """
         if encoder_attention_mask is not None:
             encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0

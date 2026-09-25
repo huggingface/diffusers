@@ -569,6 +569,10 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 Optional `crp` conditioning value used to build the timestep embedding.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`StableCascadeUNetOutput`] instead of a plain tuple.
+
+        Returns:
+            If `return_dict` is True, a [`~models.unets.unet_stable_cascade.StableCascadeUNetOutput`] is returned,
+            otherwise a `tuple` where the first element is the sample tensor.
         """
         if pixels is None:
             pixels = sample.new_zeros(sample.size(0), 3, 8, 8)

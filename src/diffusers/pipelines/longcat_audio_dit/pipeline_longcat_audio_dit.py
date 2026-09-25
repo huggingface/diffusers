@@ -254,6 +254,10 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 Tensor inputs passed to `callback_on_step_end`.
 
         Examples:
+
+        Returns:
+            [`~pipelines.AudioPipelineOutput`] or `tuple`: [`~pipelines.AudioPipelineOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is the generated audio waveform.
         """
         if prompt is None:
             prompt = []

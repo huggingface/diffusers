@@ -539,6 +539,10 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+
+        Returns:
+            If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
         """
         # handle multi-item input (b, n, c, t, h, w)
         is_multi_item = hidden_states.ndim == 6

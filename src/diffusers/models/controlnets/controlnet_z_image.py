@@ -677,6 +677,10 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 Spatial patch size used to tokenize the latent.
             f_patch_size (`int`, *optional*, defaults to `1`):
                 Temporal (frame) patch size used to tokenize the latent.
+
+        Returns:
+            `dict[int, torch.Tensor]`: The ControlNet block samples, scaled by `conditioning_scale` and keyed by the
+            index of the transformer layer each one is added to.
         """
         if (
             self.t_scale is None
