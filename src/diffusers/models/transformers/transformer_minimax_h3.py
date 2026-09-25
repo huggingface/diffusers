@@ -600,9 +600,8 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
             text_indices (`torch.Tensor` of shape `(num_text_tokens,)`):
                 Positions of the text rows in the packed sequence.
             attention_mask (`torch.Tensor`, *optional*):
-                Boolean key-padding mask for the packed sequence. `True` marks valid rows; padding rows are excluded
-                as attention keys. Use shape `(batch_size, 1, 1, seq_len)` for attention backends with context
-                parallelism. When omitted, every row participates in attention.
+                Key-padding mask (`True` for valid rows); use shape `(batch_size, 1, 1, seq_len)`
+                for context parallelism.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that, if specified, may carry a `scale` entry which is applied to the LoRA layers.
             return_dict (`bool`, defaults to `True`):
