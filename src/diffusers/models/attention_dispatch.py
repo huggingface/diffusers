@@ -2286,10 +2286,12 @@ def ulysses_anything_metadata(query: torch.Tensor, **kwargs) -> dict:
 
 @maybe_allow_in_graph
 def all_to_all_single_any_qkv_async(
-    x: torch.Tensor, group: dist.ProcessGroup, **kwargs
+    x: torch.Tensor, group: dist.ProcessGroup, *, seq_lengths: list[int] | None = None, **kwargs
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_LOCAL, H, D) return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
+
+    seq_lengths: Optional sequence lengths in process-group rank order, collected from the current inputs.
     """
     world_size = dist.get_world_size(group=group)
     B, S_LOCAL, H, D = x.shape
@@ -2302,7 +2304,7 @@ def all_to_all_single_any_qkv_async(
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
     # since we don't know the actual shape before this timing, thus,
     # we have to use all gather to collect the S_LOCAL first.
-    output_split_sizes = gather_size_by_comm(S_LOCAL, group)
+    output_split_sizes = seq_lengths if seq_lengths is not None else gather_size_by_comm(S_LOCAL, group)
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
@@ -2319,9 +2321,13 @@ def all_to_all_single_any_qkv_async(
 
 
 @maybe_allow_in_graph
-def all_to_all_single_any_o_async(x: torch.Tensor, group: dist.ProcessGroup, **kwargs) -> Callable[..., torch.Tensor]:
+def all_to_all_single_any_o_async(
+    x: torch.Tensor, group: dist.ProcessGroup, *, seq_lengths: list[int] | None = None, **kwargs
+) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D) return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
+
+    seq_lengths: Optional sequence lengths in process-group rank order, collected from the current inputs.
     """
     # Assume H is provided in kwargs, since we can't infer H from x's shape.
     # The padding logic needs H to determine if padding is necessary.
@@ -2341,7 +2347,7 @@ def all_to_all_single_any_o_async(x: torch.Tensor, group: dist.ProcessGroup, **k
     # b.tensor_split(4)[0].shape[1])
 
     S_LOCAL = kwargs.get("Q_S_LOCAL")
-    input_split_sizes = gather_size_by_comm(S_LOCAL, group)
+    input_split_sizes = seq_lengths if seq_lengths is not None else gather_size_by_comm(S_LOCAL, group)
     x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
     output_split_sizes = [S_LOCAL] * world_size
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
@@ -2759,11 +2765,15 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         _, S_KV_LOCAL, _, _ = key.shape
 
         metadata = ulysses_anything_metadata(query)
+        key_metadata = ulysses_anything_metadata(key)
+        # Keep layouts per invocation: local lengths can repeat while other ranks' lengths change.
+        metadata["seq_lengths"] = gather_size_by_comm(query.shape[1], group)
+        key_metadata["seq_lengths"] = gather_size_by_comm(key.shape[1], group)
         ctx.query_metadata = metadata
-        ctx.key_metadata = ulysses_anything_metadata(key)
+        ctx.key_metadata = key_metadata
         query_wait = all_to_all_single_any_qkv_async(query, group, **metadata)
-        key_wait = all_to_all_single_any_qkv_async(key, group, **metadata)
-        value_wait = all_to_all_single_any_qkv_async(value, group, **metadata)
+        key_wait = all_to_all_single_any_qkv_async(key, group, **key_metadata)
+        value_wait = all_to_all_single_any_qkv_async(value, group, **key_metadata)
 
         query = query_wait()  # type: torch.Tensor
         key = key_wait()  # type: torch.Tensor
@@ -2773,12 +2783,12 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             # All-gather a local mask to match the post-all-to-all global sequence.
             # The "anything" path allows unequal local sizes, so we pad to the
             # maximum across ranks before all-gathering, then trim each shard.
-            mask_local_sizes = gather_size_by_comm(attn_mask.shape[-1], group)
+            mask_local_sizes = key_metadata["seq_lengths"]
             max_local = max(mask_local_sizes)
             if attn_mask.shape[-1] < max_local:
                 attn_mask = F.pad(attn_mask, (0, max_local - attn_mask.shape[-1]))
             mask_list = [torch.empty_like(attn_mask) for _ in range(dist.get_world_size(group=group))]
-            dist.all_gather(mask_list, attn_mask, group=group)
+            dist.all_gather(mask_list, attn_mask.contiguous(), group=group)
             attn_mask = torch.cat([mask[..., :size] for mask, size in zip(mask_list, mask_local_sizes)], dim=-1)
 
         out = forward_op(

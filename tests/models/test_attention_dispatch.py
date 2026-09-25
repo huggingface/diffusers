@@ -141,6 +141,8 @@ def _ulysses_anything_parity_worker(rank, world_size, master_port, attention_bac
             (9, 9, 4, None, False),
             (9, 7, 4, None, False),
             (9, 7, 7, None, False),
+            (10, 8, 7, None, False),
+            (9, 7, 7, None, False),
             (9, 9, 4, "bool", True),
             (9, 7, 7, "bool", False),
             (3, 2, 7, None, False),
@@ -148,6 +150,7 @@ def _ulysses_anything_parity_worker(rank, world_size, master_port, attention_bac
         if attention_backend == "native":
             cases.append((9, 9, 7, "additive", True))
 
+        pending_backwards = []
         for query_length, key_length, num_heads, mask_type, local_mask in cases:
             torch.manual_seed(777)
             query = torch.randn(2, query_length, num_heads, 64, device=device, dtype=dtype)
@@ -193,20 +196,30 @@ def _ulysses_anything_parity_worker(rank, world_size, master_port, attention_bac
             torch.testing.assert_close(
                 out.float(), ref_out.tensor_split(world_size, dim=1)[rank], atol=tolerance, rtol=tolerance
             )
-            out.backward(grad_out.tensor_split(world_size, dim=1)[rank])
-            for tensor, grad_ref in zip((query_local, key_local, value_local), ref_grads):
-                torch.testing.assert_close(
-                    tensor.grad.float(),
-                    grad_ref.tensor_split(world_size, dim=1)[rank],
-                    atol=tolerance,
-                    rtol=tolerance,
+            pending_backwards.append(
+                (
+                    out,
+                    grad_out.tensor_split(world_size, dim=1)[rank],
+                    (query_local, key_local, value_local),
+                    [grad.tensor_split(world_size, dim=1)[rank] for grad in ref_grads],
                 )
+            )
 
             with torch.no_grad(), attention_backend_ctx(attention_backend):
                 inference_out = dispatch_attention_fn(
                     query_local, key_local, value_local, attn_mask=mask_local, parallel_config=parallel_config
                 )
             torch.testing.assert_close(inference_out, out)
+
+        # Each outstanding forward must keep its own partition lengths, even if some ranks' lengths repeat.
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profile:
+            for out, grad_out, inputs, expected_grads in reversed(pending_backwards):
+                out.backward(grad_out)
+                for tensor, grad_ref in zip(inputs, expected_grads):
+                    torch.testing.assert_close(tensor.grad.float(), grad_ref, atol=tolerance, rtol=tolerance)
+        operations = [event.key for event in profile.key_averages()]
+        assert any("all_to_all" in name for name in operations), operations
+        assert not any("allgather" in name or "all_gather" in name for name in operations), operations
 
         query_local, key_local, value_local = (torch.randn(2, 4, 4, 64, device=device, dtype=dtype) for _ in range(3))
         per_head_mask = torch.ones(2, 4, 1, 4 * world_size, device=device, dtype=torch.bool)
