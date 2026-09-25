@@ -89,7 +89,7 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
         mask = torch.mul(query_input.unsqueeze(-1), key_input.unsqueeze(-2))
         return mask.unsqueeze(-3)
 
-    def forward(self, encodings_and_masks, decoder_input_tokens, decoder_noise_time):
+    def forward(self, encodings_and_masks, decoder_input_tokens, decoder_noise_time) -> torch.Tensor:
         """
         The [`T5FilmDecoder`] forward method.
 

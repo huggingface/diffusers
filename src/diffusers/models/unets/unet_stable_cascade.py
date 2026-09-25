@@ -46,7 +46,7 @@ class SDCascadeTimestepBlock(nn.Module):
         for cname in conds:
             setattr(self, f"mapper_{cname}", nn.Linear(c_timestep, c * 2))
 
-    def forward(self, x, t):
+    def forward(self, x, t) -> torch.Tensor:
         t = t.chunk(len(self.conds) + 1, dim=1)
         a, b = self.mapper(t[0])[:, :, None, None].chunk(2, dim=1)
         for i, c in enumerate(self.conds):
@@ -68,7 +68,7 @@ class SDCascadeResBlock(nn.Module):
             nn.Linear(c * 4, c),
         )
 
-    def forward(self, x, x_skip=None):
+    def forward(self, x, x_skip=None) -> torch.Tensor:
         x_res = x
         x = self.norm(self.depthwise(x))
         if x_skip is not None:
@@ -84,7 +84,7 @@ class GlobalResponseNorm(nn.Module):
         self.gamma = nn.Parameter(torch.zeros(1, 1, 1, dim))
         self.beta = nn.Parameter(torch.zeros(1, 1, 1, dim))
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         agg_norm = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
         stand_div_norm = agg_norm / (agg_norm.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * stand_div_norm) + self.beta + x
@@ -99,7 +99,7 @@ class SDCascadeAttnBlock(nn.Module):
         self.attention = Attention(query_dim=c, heads=nhead, dim_head=c // nhead, dropout=dropout, bias=True)
         self.kv_mapper = nn.Sequential(nn.SiLU(), nn.Linear(c_cond, c))
 
-    def forward(self, x, kv):
+    def forward(self, x, kv) -> torch.Tensor:
         kv = self.kv_mapper(kv)
         norm_x = self.norm(x)
         if self.self_attn:
@@ -122,7 +122,7 @@ class UpDownBlock2d(nn.Module):
         mapping = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         self.blocks = nn.ModuleList([interpolation, mapping] if mode == "up" else [mapping, interpolation])
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         for block in self.blocks:
             x = block(x)
         return x
@@ -547,7 +547,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         sca=None,
         crp=None,
         return_dict=True,
-    ):
+    ) -> StableCascadeUNetOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): The noisy input sample.

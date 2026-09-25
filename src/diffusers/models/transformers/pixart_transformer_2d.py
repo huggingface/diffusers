@@ -234,7 +234,7 @@ class PixArtTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin):
         attention_mask: torch.Tensor | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         return_dict: bool = True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`PixArtTransformer2DModel`] forward method.
 

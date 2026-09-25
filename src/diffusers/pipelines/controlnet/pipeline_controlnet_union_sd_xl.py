@@ -1016,7 +1016,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         clip_skip: int | None = None,
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> StableDiffusionXLPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
