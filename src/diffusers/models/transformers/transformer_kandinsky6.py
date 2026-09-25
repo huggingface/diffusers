@@ -1063,6 +1063,7 @@ class Kandinsky6Transformer3DModel(
         cross_gates (`bool`, *optional*, defaults to False): Whether to use cross-modal residual gates.
         fix_modulation (`bool`, *optional*, defaults to False): Whether to use the fixed modulation variant.
         visual_token_type_num_embeddings (`int`, *optional*, defaults to 0): Number of visual token type embeddings.
+        magcache (`dict`, *optional*): MagCache configuration.
     """
 
     _repeated_blocks = [
@@ -1103,6 +1104,7 @@ class Kandinsky6Transformer3DModel(
         cross_gates: bool = False,
         fix_modulation: bool = False,
         visual_token_type_num_embeddings: int = 0,
+        magcache: dict[str, Any] | None = None,
     ) -> None:
         super().__init__()
         self.patch_size = patch_size
