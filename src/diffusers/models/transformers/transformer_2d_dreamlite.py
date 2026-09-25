@@ -522,7 +522,7 @@ class DreamLiteTransformer2DModel(ModelMixin, ConfigMixin):
         attention_mask: torch.Tensor | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         return_dict: bool = True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """Forward pass of :class:`DreamLiteTransformer2DModel`.
 
         Args:

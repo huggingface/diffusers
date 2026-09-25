@@ -367,7 +367,7 @@ class HunyuanDiT2DModel(ModelMixin, AttentionMixin, ConfigMixin):
         image_rotary_emb=None,
         controlnet_block_samples=None,
         return_dict=True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`HunyuanDiT2DModel`] forward method.
 

@@ -396,7 +396,7 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         return_dict: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> StableCascadePriorPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

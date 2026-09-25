@@ -940,7 +940,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         decode_chunk_size: int = 16,
-    ):
+    ) -> AnimateDiffPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

@@ -58,7 +58,7 @@ class HunyuanImageResnetBlock(nn.Module):
         else:
             self.conv_shortcut = None
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         # Apply shortcut connection
         residual = x
 
@@ -95,7 +95,7 @@ class HunyuanImageAttentionBlock(nn.Module):
         self.to_v = nn.Conv2d(in_channels, in_channels, 1)
         self.proj = nn.Conv2d(in_channels, in_channels, 1)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         identity = x
         x = self.norm(x)
 

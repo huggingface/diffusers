@@ -629,7 +629,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 4096,
         enable_denormalization: bool = True,
-    ):
+    ) -> JoyImageEditPipelineOutput | tuple:
         r"""
         Generate an edited image conditioned on a reference image and a text prompt.
 

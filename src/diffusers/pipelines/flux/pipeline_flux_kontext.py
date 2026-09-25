@@ -726,7 +726,7 @@ class FluxKontextPipeline(
         max_sequence_length: int = 512,
         max_area: int = 1024**2,
         _auto_resize: bool = True,
-    ):
+    ) -> FluxPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

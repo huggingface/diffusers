@@ -264,7 +264,7 @@ class ErnieImageSharedAdaLNBlock(nn.Module):
         rotary_pos_emb,
         temb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
         attention_mask: torch.Tensor | None = None,
-    ):
+    ) -> torch.Tensor:
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = temb
         residual = x
         x = self.adaLN_sa_ln(x)
@@ -353,7 +353,7 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         text_bth: torch.Tensor,
         text_lens: torch.Tensor,
         return_dict: bool = True,
-    ):
+    ) -> ErnieImageTransformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`ErnieImageTransformer2DModel`] forward method.
 

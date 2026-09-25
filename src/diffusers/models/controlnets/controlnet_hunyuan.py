@@ -226,7 +226,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         style=None,
         image_rotary_emb=None,
         return_dict=True,
-    ):
+    ) -> HunyuanControlNetOutput | tuple[list[torch.Tensor]]:
         """
         The [`HunyuanDiT2DControlNetModel`] forward method.
 
@@ -339,7 +339,7 @@ class HunyuanDiT2DMultiControlNetModel(ModelMixin):
         style=None,
         image_rotary_emb=None,
         return_dict=True,
-    ):
+    ) -> HunyuanControlNetOutput | tuple[list[torch.Tensor]]:
         """
         The [`HunyuanDiT2DControlNetModel`] forward method.
 

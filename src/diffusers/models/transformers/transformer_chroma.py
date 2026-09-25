@@ -191,7 +191,7 @@ class ChromaApproximator(nn.Module):
         self.norms = nn.ModuleList([nn.RMSNorm(hidden_dim) for _ in range(n_layers)])
         self.out_proj = nn.Linear(hidden_dim, out_dim)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         x = self.in_proj(x)
 
         for layer, norms in zip(self.layers, self.norms):

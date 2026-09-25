@@ -831,7 +831,7 @@ class AceStepPipeline(DiffusionPipeline, AceStepLoraLoaderMixin):
         cfg_interval_end: float = 1.0,
         timesteps: Optional[List[float]] = None,
         attention_kwargs: Optional[dict] = None,
-    ):
+    ) -> AudioPipelineOutput | tuple:
         r"""
         The call function to the pipeline for music generation.
 

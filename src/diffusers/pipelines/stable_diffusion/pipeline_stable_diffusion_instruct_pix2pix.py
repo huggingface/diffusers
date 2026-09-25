@@ -192,7 +192,7 @@ class StableDiffusionInstructPix2PixPipeline(
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         cross_attention_kwargs: dict[str, Any] | None = None,
         **kwargs,
-    ):
+    ) -> StableDiffusionPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

@@ -39,7 +39,7 @@ class Kandinsky3EncoderProj(nn.Module):
         self.projection_linear = nn.Linear(encoder_hid_dim, cross_attention_dim, bias=False)
         self.projection_norm = nn.LayerNorm(cross_attention_dim)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         x = self.projection_linear(x)
         x = self.projection_norm(x)
         return x
@@ -146,7 +146,9 @@ class Kandinsky3UNet(ModelMixin, AttentionMixin, ConfigMixin):
         """
         self.set_attn_processor(AttnProcessor())
 
-    def forward(self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True):
+    def forward(
+        self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True
+    ) -> Kandinsky3UNetOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.
@@ -260,7 +262,7 @@ class Kandinsky3UpSampleBlock(nn.Module):
         self.resnets_in = nn.ModuleList(resnets_in)
         self.resnets_out = nn.ModuleList(resnets_out)
 
-    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None):
+    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None) -> torch.Tensor:
         for attention, resnet_in, resnet_out in zip(self.attentions[1:], self.resnets_in, self.resnets_out):
             x = resnet_in(x, time_embed)
             if self.context_dim is not None:
@@ -328,7 +330,7 @@ class Kandinsky3DownSampleBlock(nn.Module):
         self.resnets_in = nn.ModuleList(resnets_in)
         self.resnets_out = nn.ModuleList(resnets_out)
 
-    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None):
+    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None) -> torch.Tensor:
         if self.self_attention:
             x = self.attentions[0](x, time_embed, image_mask=image_mask)
 
@@ -348,7 +350,7 @@ class Kandinsky3ConditionalGroupNorm(nn.Module):
         self.context_mlp[1].weight.data.zero_()
         self.context_mlp[1].bias.data.zero_()
 
-    def forward(self, x, context):
+    def forward(self, x, context) -> torch.Tensor:
         context = self.context_mlp(context)
 
         for _ in range(len(x.shape[2:])):
@@ -377,7 +379,7 @@ class Kandinsky3Block(nn.Module):
         else:
             self.down_sample = nn.Identity()
 
-    def forward(self, x, time_embed):
+    def forward(self, x, time_embed) -> torch.Tensor:
         x = self.group_norm(x, time_embed)
         x = self.activation(x)
         x = self.up_sample(x)
@@ -418,7 +420,7 @@ class Kandinsky3ResNetBlock(nn.Module):
             else nn.Identity()
         )
 
-    def forward(self, x, time_embed):
+    def forward(self, x, time_embed) -> torch.Tensor:
         out = x
         for resnet_block in self.resnet_blocks:
             out = resnet_block(out, time_embed)
@@ -441,7 +443,7 @@ class Kandinsky3AttentionPooling(nn.Module):
             out_bias=False,
         )
 
-    def forward(self, x, context, context_mask=None):
+    def forward(self, x, context, context_mask=None) -> torch.Tensor:
         context_mask = context_mask.to(dtype=context.dtype)
         context = self.attention(context.mean(dim=1, keepdim=True), context, context_mask)
         return x + context.squeeze(1)
@@ -467,7 +469,7 @@ class Kandinsky3AttentionBlock(nn.Module):
             nn.Conv2d(hidden_channels, num_channels, kernel_size=1, bias=False),
         )
 
-    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None):
+    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None) -> torch.Tensor:
         height, width = x.shape[-2:]
         out = self.in_norm(x, time_embed)
         out = out.reshape(x.shape[0], -1, height * width).permute(0, 2, 1)

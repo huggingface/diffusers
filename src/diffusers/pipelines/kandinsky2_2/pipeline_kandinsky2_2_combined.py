@@ -21,7 +21,7 @@ from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTo
 from ...models import PriorTransformer, UNet2DConditionModel, VQModel
 from ...schedulers import DDPMScheduler, UnCLIPScheduler
 from ...utils import deprecate, logging, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .pipeline_kandinsky2_2 import KandinskyV22Pipeline
 from .pipeline_kandinsky2_2_img2img import KandinskyV22Img2ImgPipeline
 from .pipeline_kandinsky2_2_inpainting import KandinskyV22InpaintPipeline
@@ -222,7 +222,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         prior_callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -468,7 +468,7 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
         prior_callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -723,7 +723,7 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

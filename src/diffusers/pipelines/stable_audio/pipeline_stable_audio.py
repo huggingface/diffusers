@@ -483,7 +483,7 @@ class StableAudioPipeline(DiffusionPipeline):
         callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int | None = 1,
         output_type: str | None = "pt",
-    ):
+    ) -> AudioPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

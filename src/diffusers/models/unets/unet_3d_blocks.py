@@ -936,7 +936,7 @@ class MidBlockTemporalDecoder(nn.Module):
         self,
         hidden_states: torch.Tensor,
         image_only_indicator: torch.Tensor,
-    ):
+    ) -> torch.Tensor:
         hidden_states = self.resnets[0](
             hidden_states,
             image_only_indicator=image_only_indicator,

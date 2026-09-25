@@ -199,7 +199,7 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str | None = "pil",
         return_dict: bool = True,
-    ):
+    ) -> LTXPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for latent upsampling.
 

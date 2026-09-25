@@ -2193,7 +2193,7 @@ class SeqAllToAllDim(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, group, input, scatter_id=2, gather_id=1):
+    def forward(ctx, group, input, scatter_id=2, gather_id=1) -> torch.Tensor:
         ctx.group = group
         ctx.scatter_id = scatter_id
         ctx.gather_id = gather_id
@@ -2374,7 +2374,7 @@ class TemplatedRingAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ring_mesh = _parallel_config.context_parallel_config._ring_mesh
         rank = _parallel_config.context_parallel_config._ring_local_rank
         world_size = _parallel_config.context_parallel_config.ring_degree
@@ -2527,7 +2527,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         world_size = _parallel_config.context_parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
@@ -2628,7 +2628,7 @@ class TemplatedRingAnythingAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # Ring attention for arbitrary sequence lengths.
         if attn_mask is not None:
             raise ValueError(
@@ -2745,7 +2745,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
         **kwargs,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         group = ulysses_mesh.get_group()
 

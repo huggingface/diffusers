@@ -48,7 +48,7 @@ class StableAudioGaussianFourierProjection(nn.Module):
             self.weight = self.W
             del self.W
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         if self.log:
             x = torch.log(x)
 
