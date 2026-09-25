@@ -92,25 +92,6 @@ def _local_merge(x: Tensor, shape: tuple, group_size: tuple, dim: int = 0) -> Te
     return x.flatten(dim, dim + 1).flatten(dim + 1, dim + 2).flatten(dim + 2, dim + 3)
 
 
-def fractal_flatten(x: Tensor, rope: Tensor, shape: tuple, block_mask: bool = False):
-    """Flatten visual tokens, optionally arranging them into local fractal blocks."""
-    if block_mask:
-        ps = 8
-        x = _local_patch(x, shape, (1, ps, ps), dim=0)
-        rope = _local_patch(rope, shape, (1, ps, ps), dim=0)
-        return x.flatten(0, 1), rope.flatten(0, 1)
-    return x.flatten(0, 2), rope.flatten(0, 2)
-
-
-def fractal_unflatten(x: Tensor, shape: tuple, block_mask: bool = False) -> Tensor:
-    """Restore the spatial layout produced by :func:`fractal_flatten`."""
-    if block_mask:
-        ps = 8
-        x = x.reshape(-1, ps * ps, x.shape[-1])
-        return _local_merge(x, shape, (1, ps, ps), dim=0)
-    return x.reshape(*shape, x.shape[-1])
-
-
 def nabla_block_mask(
     q: Tensor,
     k: Tensor,
@@ -234,10 +215,6 @@ def _streams_from_args(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[T
     video = kwargs.get("vis", args[0] if args else None)
     audio = kwargs.get("aud", args[1] if len(args) > 1 else None)
     return video, audio
-
-
-def _pack_streams(video: Tensor | None, audio: Tensor | None) -> Tensor | tuple[Tensor | None, Tensor | None]:
-    return video if audio is None else (video, audio)
 
 
 def _add_residual(
@@ -366,7 +343,7 @@ class _Kandinsky6MagCacheBlockHook(ModelHook):
         if not state.should_compute:
             if self.is_tail:
                 _advance(state, self.config, self.num_steps)
-            return _pack_streams(video, audio)
+            return video if audio is None else (video, audio)
 
         output = self.fn_ref.original_forward(*args, **kwargs)
         if self.is_tail:
@@ -436,13 +413,12 @@ class Kandinsky6MagCacheMixin(CacheMixin):
         self._cache_config = None
 
 
-# Diffusers-style K6 transformer components for the source port.
+# Diffusers-style K6 transformer components.
 #
-# The assembler inlines this module after the portable attention, RoPE, and
-# tensor helpers. The classes use the same inner-module vocabulary as the
-# Diffusers Kandinsky5 transformer (for example ``in_layer``, ``modulation``,
-# ``self_attention`` and ``feed_forward``). Checkpoint conversion maps the
-# native K6 names to this public Diffusers layout.
+# The classes use the same inner-module vocabulary as the Diffusers Kandinsky5
+# transformer (for example ``in_layer``, ``modulation``, ``self_attention`` and
+# ``feed_forward``). Checkpoint conversion maps the native K6 names to this
+# public Diffusers layout.
 
 
 _MASKED_ATTENTION_BACKENDS = {
@@ -567,8 +543,7 @@ class Kandinsky6TimeEmbeddings(nn.Module):
         args = torch.outer(time.float(), freqs)
         embed = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         h = functional.linear(embed, self.in_layer.weight.float(), self.in_layer.bias.float())
-        out = functional.linear(self.activation(h), self.out_layer.weight.float(), self.out_layer.bias.float())
-        return out.to(dtype=self.out_layer.weight.dtype)
+        return functional.linear(self.activation(h), self.out_layer.weight.float(), self.out_layer.bias.float())
 
 
 class Kandinsky6TextEmbeddings(nn.Module):
@@ -580,8 +555,7 @@ class Kandinsky6TextEmbeddings(nn.Module):
         self.norm = nn.LayerNorm(model_dim, elementwise_affine=True)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.in_layer(x.to(dtype=self.in_layer.weight.dtype))
-        return self.norm(x).to(dtype=x.dtype)
+        return self.norm(self.in_layer(x))
 
 
 class Kandinsky6VisualEmbeddings(nn.Module):
@@ -622,7 +596,7 @@ class Kandinsky6VisualEmbeddings(nn.Module):
                 .permute(0, 2, 4, 1, 3, 5, 6)
                 .flatten(3, 6)
             )
-        return self.in_layer(x.to(dtype=self.in_layer.weight.dtype))
+        return self.in_layer(x)
 
 
 class Kandinsky6Modulation(nn.Module):
@@ -665,7 +639,6 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         head_dim: int,
         kv_dim: int | None = None,
         text_token_padding: bool = False,
-        visual: bool = False,
         processor: Kandinsky6AttnProcessor | None = None,
     ):
         super().__init__()
@@ -679,7 +652,6 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         self.query_norm = nn.RMSNorm(head_dim)
         self.key_norm = nn.RMSNorm(head_dim)
         self.out_layer = nn.Linear(num_channels, num_channels)
-        self.visual = visual
         self.text_token_padding = text_token_padding
         self.set_processor(processor or self._default_processor_cls())
         if self.text_token_padding:
@@ -825,7 +797,7 @@ class Kandinsky6TransformerDecoderBlock(nn.Module):
         super().__init__()
         self.visual_modulation = Kandinsky6Modulation(time_dim, model_dim, 9)
         self.self_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
-        self.self_attention = Kandinsky6Attention(model_dim, head_dim, visual=True)
+        self.self_attention = Kandinsky6Attention(model_dim, head_dim)
         self.cross_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.cross_attention = Kandinsky6Attention(
             model_dim,
@@ -1091,7 +1063,6 @@ class Kandinsky6Transformer3DModel(
         cross_gates (`bool`, *optional*, defaults to False): Whether to use cross-modal residual gates.
         fix_modulation (`bool`, *optional*, defaults to False): Whether to use the fixed modulation variant.
         visual_token_type_num_embeddings (`int`, *optional*, defaults to 0): Number of visual token type embeddings.
-        magcache (`dict`, *optional*): MagCache configuration.
     """
 
     _repeated_blocks = [
@@ -1132,7 +1103,6 @@ class Kandinsky6Transformer3DModel(
         cross_gates: bool = False,
         fix_modulation: bool = False,
         visual_token_type_num_embeddings: int = 0,
-        magcache: dict[str, Any] | None = None,
     ) -> None:
         super().__init__()
         self.patch_size = patch_size
@@ -1217,6 +1187,8 @@ class Kandinsky6Transformer3DModel(
                 ]
             )
 
+        self.gradient_checkpointing = False
+
     def clear_text_proj_cache(self) -> None:
         """Clear cached projected text embeddings."""
         self._text_proj_cache.clear()
@@ -1264,7 +1236,10 @@ class Kandinsky6Transformer3DModel(
     ) -> Tensor:
         blocks = self.text_transformer_blocks if prefix is None else getattr(self, f"{prefix}_text_transformer_blocks")
         for block in blocks:
-            te = block(te, tm, text_rope, attn_mask)
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                te = self._gradient_checkpointing_func(block, te, tm, text_rope, attn_mask)
+            else:
+                te = block(te, tm, text_rope, attn_mask)
         return te
 
     def _encode_text(
@@ -1336,18 +1311,23 @@ class Kandinsky6Transformer3DModel(
         sparse_params: dict | None,
         attn_mask: Tensor | None = None,
     ) -> tuple[Tensor | None, Tensor | None]:
+        checkpoint = torch.is_grad_enabled() and self.gradient_checkpointing
         for block in self.visual_transformer_blocks:
             if self.is_multimodal:
                 if vis_embed is not None and aud_embed is None:
-                    vis_embed, _ = block(vis_embed, None, te, te, (tm, tm), vis_rope, None, sparse_params, attn_mask)
+                    args = (vis_embed, None, te, te, (tm, tm), vis_rope, None, sparse_params, attn_mask)
+                    vis_embed, _ = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
                 elif aud_embed is not None and vis_embed is None:
-                    _, aud_embed = block(None, aud_embed, te, te, (tm, tm), None, aud_rope, None, attn_mask)
+                    args = (None, aud_embed, te, te, (tm, tm), None, aud_rope, None, attn_mask)
+                    _, aud_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
                 else:
                     raise RuntimeError("single-modality fused path expects exactly one of video/audio")
             elif vis_embed is not None:
-                vis_embed = block(vis_embed, te, tm, vis_rope, sparse_params, attn_mask)
+                args = (vis_embed, te, tm, vis_rope, sparse_params, attn_mask)
+                vis_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
             else:
-                aud_embed = block(aud_embed, te, tm, aud_rope, None, attn_mask)
+                args = (aud_embed, te, tm, aud_rope, None, attn_mask)
+                aud_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
         return vis_embed, aud_embed
 
     def _run_visual_blocks_fused(
@@ -1363,8 +1343,9 @@ class Kandinsky6Transformer3DModel(
         sparse_params: dict | None,
         attn_mask: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
+        checkpoint = torch.is_grad_enabled() and self.gradient_checkpointing
         for block in self.visual_transformer_blocks:
-            vis_embed, aud_embed = block(
+            args = (
                 vis_embed,
                 aud_embed,
                 video_te,
@@ -1375,6 +1356,7 @@ class Kandinsky6Transformer3DModel(
                 sparse_params,
                 attn_mask,
             )
+            vis_embed, aud_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
         return vis_embed, aud_embed
 
     def _project_video(self, vis_embed: Tensor, vis_shape: tuple, tm: Tensor, sparse_params: dict | None) -> Tensor:

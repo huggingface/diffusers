@@ -79,7 +79,7 @@ class Kandinsky6SRAttentionProcessor(Kandinsky6AttnProcessor):
                     parallel_config=self._parallel_config,
                 )[0]
             )
-        return torch.cat(outputs, dim=0)
+        return torch.cat(outputs, dim=0).flatten(-2, -1)
 
     @staticmethod
     def assemble_cached_attention_inputs(
@@ -1104,9 +1104,10 @@ class ModulationLQ(nn.Module):
 
 
 class MultiheadSelfAttention(nn.Module, AttentionModuleMixin):
+    """Multi-head self-attention with flash attention and optional sparse flex attention."""
+
     _default_processor_cls = Kandinsky6SRAttentionProcessor
     _available_processors = [Kandinsky6SRAttentionProcessor]
-    """Multi-head self-attention with flash attention and optional sparse flex attention."""
 
     def __init__(self, num_channels: int, head_dim: int) -> None:
         """Initialize multi-head self-attention.
@@ -1198,7 +1199,7 @@ class MultiheadSelfAttention(nn.Module, AttentionModuleMixin):
             Attention output, or tuple of (output, sparsity percentage) if requested.
         """
         if self.cached_k is not None:
-            msg = "KV-cache on the flex/NABLA path is out of scope (dense flash only in M0.2; see LAY-429)."
+            msg = "KV-cache is not supported on the flex/NABLA attention path; only dense flash attention supports it."
             raise NotImplementedError(msg)
 
         query = query.unsqueeze(0).transpose(1, 2).contiguous()
@@ -1306,9 +1307,10 @@ class MultiheadSelfAttention(nn.Module, AttentionModuleMixin):
 
 
 class MultiheadCrossAttention(nn.Module, AttentionModuleMixin):
+    """Multi-head cross-attention with flash attention."""
+
     _default_processor_cls = Kandinsky6SRAttentionProcessor
     _available_processors = [Kandinsky6SRAttentionProcessor]
-    """Multi-head cross-attention with flash attention."""
 
     def __init__(self, num_channels: int, head_dim: int) -> None:
         """Initialize multi-head cross-attention.
@@ -1785,20 +1787,6 @@ class VideoAdapter(nn.Module):
             [TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim) for _ in range(num_blocks)]
         )
 
-    def _patchify(self, x: Tensor, visual_cu_seqlens: Tensor) -> tuple[Tensor, Tensor]:
-        """Patchify LQ latent with the same logic as VisualEmbeddings._patchify."""
-        pt, ph, pw = self.patch_size
-        if pt > 1:
-            idxs = torch.ones(x.shape[0], dtype=torch.int32, device=visual_cu_seqlens.device)
-            idxs[visual_cu_seqlens[:-1]] += pt - 1
-            x = torch.repeat_interleave(x, idxs, dim=0)
-            visual_cu_seqlens = visual_cu_seqlens + torch.arange(
-                visual_cu_seqlens.shape[0], device=visual_cu_seqlens.device, dtype=torch.int32
-            )
-        T, H, W, C = x.shape
-        x = x.view(T // pt, pt, H // ph, ph, W // pw, pw, C).permute(0, 2, 4, 1, 3, 5, 6).flatten(3, 6)
-        return x, visual_cu_seqlens // pt
-
     def forward(
         self,
         lq_visual: Tensor,
@@ -1813,7 +1801,16 @@ class VideoAdapter(nn.Module):
         to_fractal: bool,
     ) -> list[Tensor]:
         """Process LQ tokens through adapter blocks, return γ-scaled features."""
-        lq_patches, _ = self._patchify(lq_visual, pre_patch_cu_seqlens)
+        # Patchify LQ latent with the same logic as VisualEmbeddings._patchify.
+        pt, ph, pw = self.patch_size
+        if pt > 1:
+            idxs = torch.ones(lq_visual.shape[0], dtype=torch.int32, device=pre_patch_cu_seqlens.device)
+            idxs[pre_patch_cu_seqlens[:-1]] += pt - 1
+            lq_visual = torch.repeat_interleave(lq_visual, idxs, dim=0)
+        T, H, W, C = lq_visual.shape
+        lq_patches = (
+            lq_visual.view(T // pt, pt, H // ph, ph, W // pw, pw, C).permute(0, 2, 4, 1, 3, 5, 6).flatten(3, 6)
+        )
         adapter_embed = self.lq_proj(lq_patches)
         if to_fractal:
             visual_shape = adapter_embed.shape[:-1]
@@ -1880,7 +1877,6 @@ class Kandinsky6SRTransformer3DModel(ModelMixin, ConfigMixin):
         use_text: bool = True,
         use_lq_noise_cond: bool = False,
         attribute_overrides: Mapping[str, Any] | None = None,
-        sr_params: Mapping[str, Any] | None = None,
     ) -> None:
         """Initialize the 3D diffusion transformer.
 

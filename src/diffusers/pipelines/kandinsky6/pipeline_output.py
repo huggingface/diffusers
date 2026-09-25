@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+
 from ...utils import BaseOutput
 
 Audio = list[np.ndarray] | np.ndarray | None

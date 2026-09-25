@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 from typing import Any, Literal, Optional
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,211 +16,73 @@ from torch.nn import Conv1d, ConvTranspose1d, Parameter
 from torch.nn.utils.parametrizations import weight_norm
 from torch.nn.utils.parametrize import remove_parametrizations
 
-# Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-#
-# This work is licensed under a Creative Commons
-# Attribution-NonCommercial-ShareAlike 4.0 International License.
-# You should have received a copy of the license along with this
-# work. If not, see http://creativecommons.org/licenses/by-nc-sa/4.0/
-# Improved diffusion model architecture proposed in the paper
-# "Analyzing and Improving the Training Dynamics of Diffusion Models".
+from .vae import DiagonalGaussianDistribution
+
+# The magnitude-preserving building blocks below (`normalize`, `mp_silu`, `mp_sum`, `MPConv1D`) implement
+# equations from Karras et al., "Analyzing and Improving the Training Dynamics of Diffusion Models"
+# (https://arxiv.org/abs/2312.02696): each layer is designed so that if its inputs have unit variance, its
+# output does too, which removes the need for the running activation-magnitude tracking earlier EDM variants
+# relied on. MMAudio's VAE reuses this design for its 1D convolutional blocks.
 
 
-# ----------------------------------------------------------------------------
-# Variant of constant() that inherits dtype and device from the given
-# reference tensor by default.
+def normalize(x: torch.Tensor, dim: "list[int] | None" = None, eps: float = 1e-4) -> torch.Tensor:
+    """Rescale `x` to unit L2 norm over `dim` (default: every dimension but the first).
 
-_constant_cache = dict()
-
-
-def constant(value, shape=None, dtype=None, device=None, memory_format=None):
-    value = np.asarray(value)
-    if shape is not None:
-        shape = tuple(shape)
-    if dtype is None:
-        dtype = torch.get_default_dtype()
-    if device is None:
-        device = torch.device("cpu")
-    if memory_format is None:
-        memory_format = torch.contiguous_format
-
-    key = (value.shape, value.dtype, value.tobytes(), shape, dtype, device, memory_format)
-    tensor = _constant_cache.get(key, None)
-    if tensor is None:
-        tensor = torch.as_tensor(value.copy(), dtype=dtype, device=device)
-        if shape is not None:
-            tensor, _ = torch.broadcast_tensors(tensor, torch.empty(shape))
-        tensor = tensor.contiguous(memory_format=memory_format)
-        _constant_cache[key] = tensor
-    return tensor
-
-
-def const_like(ref, value, shape=None, dtype=None, device=None, memory_format=None):
-    if dtype is None:
-        dtype = ref.dtype
-    if device is None:
-        device = ref.device
-    return constant(value, shape=shape, dtype=dtype, device=device, memory_format=memory_format)
-
-
-# ----------------------------------------------------------------------------
-# Normalize given tensor to unit magnitude with respect to the given
-# dimensions. Default = all dimensions except the first.
-
-
-def normalize(x, dim=None, eps=1e-4):
+    `eps` is scaled by `sqrt(norm.numel() / x.numel())` so it stays a meaningful floor relative to the
+    norm's typical magnitude regardless of how many elements are reduced over.
+    """
     if dim is None:
         dim = list(range(1, x.ndim))
     norm = torch.linalg.vector_norm(x, dim=dim, keepdim=True, dtype=torch.float32)
-    norm = torch.add(eps, norm, alpha=np.sqrt(norm.numel() / x.numel()))
+    norm = eps + norm * math.sqrt(norm.numel() / x.numel())
     return x / norm.to(x.dtype)
 
 
-class Normalize(torch.nn.Module):
-    def __init__(self, dim=None, eps=1e-4):
-        super().__init__()
-        self.dim = dim
-        self.eps = eps
-
-    def forward(self, x):
-        return normalize(x, dim=self.dim, eps=self.eps)
+def mp_silu(x: torch.Tensor) -> torch.Tensor:
+    """SiLU rescaled by the standard deviation of `silu(z)` for `z ~ N(0, 1)`, so a unit-variance input
+    stays unit-variance after activation.
+    """
+    return F.silu(x) / 0.596
 
 
-# ----------------------------------------------------------------------------
-# Upsample or downsample the given tensor with the given filter,
-# or keep it as is.
-
-
-def resample(x, f=[1, 1], mode="keep"):
-    if mode == "keep":
-        return x
-    f = np.float32(f)
-    assert f.ndim == 1 and len(f) % 2 == 0
-    pad = (len(f) - 1) // 2
-    f = f / f.sum()
-    f = np.outer(f, f)[np.newaxis, np.newaxis, :, :]
-    f = const_like(x, f)
-    c = x.shape[1]
-    if mode == "down":
-        return torch.nn.functional.conv2d(x, f.tile([c, 1, 1, 1]), groups=c, stride=2, padding=(pad,))
-    assert mode == "up"
-    return torch.nn.functional.conv_transpose2d(x, (f * 4).tile([c, 1, 1, 1]), groups=c, stride=2, padding=(pad,))
-
-
-# ----------------------------------------------------------------------------
-# Magnitude-preserving SiLU (Equation 81).
-
-
-def mp_silu(x):
-    return torch.nn.functional.silu(x) / 0.596
-
-
-class MPSiLU(torch.nn.Module):
-    def forward(self, x):
-        return mp_silu(x)
-
-
-# ----------------------------------------------------------------------------
-# Magnitude-preserving sum (Equation 88).
-
-
-def mp_sum(a, b, t=0.5):
-    return a.lerp(b, t) / np.sqrt((1 - t) ** 2 + t**2)
-
-
-# ----------------------------------------------------------------------------
-# Magnitude-preserving concatenation (Equation 103).
-
-
-def mp_cat(a, b, dim=1, t=0.5):
-    Na = a.shape[dim]
-    Nb = b.shape[dim]
-    C = np.sqrt((Na + Nb) / ((1 - t) ** 2 + t**2))
-    wa = C / np.sqrt(Na) * (1 - t)
-    wb = C / np.sqrt(Nb) * t
-    return torch.cat([wa * a, wb * b], dim=dim)
-
-
-# ----------------------------------------------------------------------------
-# Magnitude-preserving convolution or fully-connected layer (Equation 47)
-# with force weight normalization (Equation 66).
+def mp_sum(a: torch.Tensor, b: torch.Tensor, t: float = 0.5) -> torch.Tensor:
+    """Interpolate between `a` and `b` and rescale by `1 / sqrt((1-t)^2 + t^2)`, the factor that keeps the
+    result unit-variance when `a` and `b` are unit-variance and uncorrelated.
+    """
+    return a.lerp(b, t) / math.sqrt((1 - t) ** 2 + t**2)
 
 
 class MPConv1D(torch.nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size):
+    """1D convolution (or, with `kernel_size=1` on a 2D input, a linear layer) whose weight is normalized to
+    unit norm per output channel and rescaled by `1 / sqrt(fan_in)`, so its output variance matches its
+    input variance regardless of `in_channels` or `kernel_size`.
+
+    The weight starts as plain random init and only becomes usable after `remove_weight_norm()` folds the
+    normalization into `self.weight` once; `forward` then applies that folded weight directly rather than
+    renormalizing on every call, matching how the converted checkpoint stores it.
+    """
+
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int):
         super().__init__()
         self.out_channels = out_channels
         self.weight = torch.nn.Parameter(torch.randn(out_channels, in_channels, kernel_size))
-
         self.weight_norm_removed = False
 
-    def forward(self, x, gain=1):
-        assert self.weight_norm_removed, "call remove_weight_norm() before inference"
+    def forward(self, x: torch.Tensor, gain: float = 1) -> torch.Tensor:
+        if not self.weight_norm_removed:
+            raise RuntimeError("call remove_weight_norm() before inference")
 
         w = self.weight * gain
-        if w.ndim == 2:
-            return x @ w.t()
-        assert w.ndim == 3
-        return torch.nn.functional.conv1d(x, w, padding=(w.shape[-1] // 2,))
+        return F.conv1d(x, w, padding=(w.shape[-1] // 2,))
 
-    def remove_weight_norm(self):
+    def remove_weight_norm(self) -> "MPConv1D":
         w = self.weight.to(torch.float32)
-        w = normalize(w)  # traditional weight normalization
-        w = w / np.sqrt(w[0].numel())
-        w = w.to(self.weight.dtype)
-        self.weight.data.copy_(w)
+        w = normalize(w)
+        w = w / math.sqrt(w[0].numel())
+        self.weight.data.copy_(w.to(self.weight.dtype))
 
         self.weight_norm_removed = True
         return self
-
-
-class DiagonalGaussianDistribution:
-    def __init__(self, parameters, deterministic=False):
-        self.parameters = parameters
-        self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)
-        self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
-        self.deterministic = deterministic
-        self.std = torch.exp(0.5 * self.logvar)
-        self.var = torch.exp(self.logvar)
-        if self.deterministic:
-            self.var = self.std = torch.zeros_like(self.mean).to(device=self.parameters.device)
-
-    def sample(self, rng: Optional[torch.Generator] = None):
-        # x = self.mean + self.std * torch.randn(self.mean.shape).to(device=self.parameters.device)
-
-        r = torch.empty_like(self.mean).normal_(generator=rng)
-        x = self.mean + self.std * r
-
-        return x
-
-    def kl(self, other=None):
-        if self.deterministic:
-            return torch.Tensor([0.0])
-        else:
-            if other is None:
-                return 0.5 * torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar
-            else:
-                return 0.5 * (
-                    torch.pow(self.mean - other.mean, 2) / other.var
-                    + self.var / other.var
-                    - 1.0
-                    - self.logvar
-                    + other.logvar
-                )
-
-    def nll(self, sample, dims=[1, 2, 3]):
-        if self.deterministic:
-            return torch.Tensor([0.0])
-        logtwopi = np.log(2.0 * np.pi)
-        return 0.5 * torch.sum(logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var, dim=dims)
-
-    def mode(self):
-        return self.mean
-
-
-def nonlinearity(x):
-    # swish
-    return mp_silu(x)
 
 
 class ResnetBlock1D(nn.Module):
@@ -248,10 +109,10 @@ class ResnetBlock1D(nn.Module):
             x = normalize(x, dim=1)
 
         h = x
-        h = nonlinearity(h)
+        h = mp_silu(h)
         h = self.conv1(h)
 
-        h = nonlinearity(h)
+        h = mp_silu(h)
         h = self.conv2(h)
 
         if self.in_dim != self.out_dim:
@@ -535,7 +396,7 @@ class Encoder1D(nn.Module):
         h = h.clamp(-self.clip_act, self.clip_act)
 
         # end
-        h = nonlinearity(h)
+        h = mp_silu(h)
         h = self.conv_out(h, gain=(self.learnable_gain + 1))
         return h
 
@@ -618,7 +479,7 @@ class Decoder1D(nn.Module):
             if i_level in self.down_layers:
                 h = self.up[i_level].upsample(h)
 
-        h = nonlinearity(h)
+        h = mp_silu(h)
         h = self.conv_out(h, gain=(self.learnable_gain + 1))
         return h
 

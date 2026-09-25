@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import torch
 from ..configuration_utils import register_to_config
-from diffusers.schedulers.scheduling_flow_match_euler_discrete import (
+from .scheduling_flow_match_euler_discrete import (
     FlowMatchEulerDiscreteScheduler,
     FlowMatchEulerDiscreteSchedulerOutput,
 )
@@ -37,7 +37,6 @@ class DXPolicy:
         mode: str = "grid",
         eps: float = 1e-4,
     ) -> None:
-        self.x_t_src = x_t_src
         self.ndim = x_t_src.dim()
         self.shift = shift
         self.eps = eps
@@ -45,14 +44,14 @@ class DXPolicy:
             raise ValueError(f"Unknown mode: {mode}")
         self.mode = mode
 
-        self.sigma_t_src = sigma_t_src.reshape(*sigma_t_src.size(), *((self.ndim - sigma_t_src.dim()) * [1]))
-        self.raw_t_src = self._unwarp_t(self.sigma_t_src)
+        sigma_t_src = sigma_t_src.reshape(*sigma_t_src.size(), *((self.ndim - sigma_t_src.dim()) * [1]))
+        self.raw_t_src = self._unwarp_t(sigma_t_src)
         segment = segment_size
         if isinstance(segment, torch.Tensor) and segment.dim() < self.raw_t_src.dim():
             segment = segment.reshape(*segment.size(), *((self.raw_t_src.dim() - segment.dim()) * [1]))
         self.raw_t_dst = (self.raw_t_src - segment).clamp(min=0)
         self.segment_size = (self.raw_t_src - self.raw_t_dst).clamp(min=eps)
-        self.denoising_output_x_0 = self._u_to_x_0(denoising_output, self.x_t_src, self.sigma_t_src)
+        self.denoising_output_x_0 = x_t_src.unsqueeze(1) - sigma_t_src.unsqueeze(1) * denoising_output
 
     @staticmethod
     def _interpolate(x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
@@ -68,14 +67,6 @@ class DXPolicy:
 
     def _unwarp_t(self, sigma_t: torch.Tensor) -> torch.Tensor:
         return sigma_t / (self.shift + (1 - self.shift) * sigma_t)
-
-    @staticmethod
-    def _u_to_x_0(
-        denoising_output: torch.Tensor,
-        x_t: torch.Tensor,
-        sigma_t: torch.Tensor,
-    ) -> torch.Tensor:
-        return x_t.unsqueeze(1) - sigma_t.unsqueeze(1) * denoising_output
 
     def pi(self, x_t: torch.Tensor, sigma_t: torch.Tensor) -> torch.Tensor:
         sigma_t = sigma_t.reshape(*sigma_t.size(), *((self.ndim - sigma_t.dim()) * [1]))
@@ -268,7 +259,7 @@ class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
             self.num_policy_substeps,
             policy,
         )
-        return updated.to(dtype=sample.dtype)
+        return updated
 
     def _step_index_for(self, timestep: torch.Tensor | float) -> int:
         if self.step_index is None:
@@ -276,8 +267,6 @@ class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
                 self._step_index = self.begin_index
             else:
                 schedule_timesteps = self.timesteps
-                if not isinstance(schedule_timesteps, torch.Tensor):
-                    schedule_timesteps = torch.as_tensor(schedule_timesteps, dtype=torch.float32)
                 timestep = torch.as_tensor(
                     timestep,
                     device=schedule_timesteps.device,
@@ -318,9 +307,11 @@ class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
                 "pass a value from scheduler.timesteps instead"
             )
         step_index = self._step_index_for(timestep)
-        # PiFlow's policy rollout performs its update in float32. Keep that
-        # precision across outer steps, matching the native sampler.
+        # PiFlow's policy rollout performs its update in float32, matching the
+        # native sampler; cast back to the input dtype before returning, like
+        # the base Euler scheduler does.
         updated = self._policy_step(model_output, sample.to(torch.float32), step_index)
+        updated = updated.to(dtype=sample.dtype)
         self._step_index += 1
         if return_dict:
             return FlowMatchEulerDiscreteSchedulerOutput(prev_sample=updated)

@@ -35,6 +35,11 @@ from torch.autograd import Function
 from torch.nn import functional
 
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from types import ModuleType
+
+
 def rearrange(*args: Any, **kwargs: Any) -> Any:
     """Load einops only when the latent upscaler is actually executed."""
     try:
@@ -96,11 +101,6 @@ TemporalPadding = Literal["zeros", "replicate", "causal"]
 UpsamplePaddingMode = Literal["reflect", "zeros"]
 
 
-def as_triple(value: int | tuple[int, int, int]) -> tuple[int, int, int]:
-    """Expand a scalar kernel/padding spec into an explicit ``(t, h, w)`` triple."""
-    return (value, value, value) if isinstance(value, int) else value
-
-
 class TemporalReplicateConv3d(nn.Conv3d):
     """``Conv3d`` that repeats the edge frame along T and zero-pads H/W.
 
@@ -139,7 +139,7 @@ class TemporalReplicateConv3d(nn.Conv3d):
         groups: int = 1,
     ) -> None:
         """Initialize the convolution with H/W padding only, keeping T for forward."""
-        pad_t, pad_h, pad_w = as_triple(padding)
+        pad_t, pad_h, pad_w = (padding, padding, padding) if isinstance(padding, int) else padding
         super().__init__(
             in_channels,
             out_channels,
@@ -582,10 +582,6 @@ class ResidualBlock(nn.Module):
 # Exact merging of flash-style attention branches with a closed-form null branch.
 
 
-if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
-
-
 def merge_math(
     outputs: Sequence[Tensor],
     lses: Sequence[Tensor],
@@ -701,10 +697,6 @@ def merge_attention_branches(
 # Runtime helpers shared by latent-upscaler model components.
 
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-
 def forward_with_checkpointing(
     module: Callable[..., Tensor],
     *inputs: Tensor,
@@ -719,11 +711,6 @@ def forward_with_checkpointing(
 # Spatial upsampling operations: pixel-shuffle, bilinear, and K-VAE PXS v2.
 
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-DIMS_2 = 2
-DIMS_3 = 3
 VALID_DIMS = {DIMS_2, DIMS_3}
 
 
@@ -1007,9 +994,6 @@ class PXSv2HybridUpsampleND(nn.Module):
 
 # Motion-correspondence attention for latent video features.
 
-
-if TYPE_CHECKING:
-    from types import ModuleType
 
 MotionAttentionBackend = Literal["sdpa", "natten"]
 NattenBackend = Literal["cutlass-fna", "hopper-fna", "flex-fna"]
@@ -1452,11 +1436,6 @@ def build_residual_stack(count: int, start_index: int, spec: ResidualStackSpec) 
             )
         )
     return nn.Sequential(*blocks)
-
-
-def build_motion_attention_stack(spec: MotionAttentionSpec) -> nn.ModuleList:
-    """Build one motion block for every configured mid-stage placement."""
-    return nn.ModuleList([MotionCorrespondenceBlock(spec.block) for _placement in spec.after_mid_blocks])
 
 
 def apply_block_sequence(
@@ -2157,7 +2136,9 @@ class MultiScaleUpsampler(nn.Module):
 
         self.mid_motion_blocks: nn.ModuleList | None = None
         if motion_attention is not None:
-            self.mid_motion_blocks = build_motion_attention_stack(motion_attention)
+            self.mid_motion_blocks = nn.ModuleList(
+                [MotionCorrespondenceBlock(motion_attention.block) for _placement in motion_attention.after_mid_blocks]
+            )
 
         # Build x2-exclusive modules after the complete x4 path so enabling an x2
         # entry does not perturb the base-path RNG initialization.
@@ -2360,10 +2341,6 @@ class MultiScaleUpsampler(nn.Module):
 # Factory functions for building upsampler models.
 
 
-if TYPE_CHECKING:
-    from torch import nn
-
-
 def build_upsampler(config: FlatModelConfig | MultiScaleModelConfig) -> nn.Module:
     """Create an upsampler module from config.
 
@@ -2478,6 +2455,8 @@ class Kandinsky6SRLatentUpscalerBank(ModelMixin, ConfigMixin):
         scaling_factor (`float`, *optional*, defaults to 1.0): Factor applied to
             latents before they are passed to an upscaler.
     """
+
+    _no_split_modules = ["ConvLatentUpsampler", "MultiScaleUpsampler"]
 
     @register_to_config
     def __init__(

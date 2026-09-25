@@ -15,6 +15,10 @@ specific language governing permissions and limitations under the License.
 Kandinsky 6 provides pipelines for text/image-to-video-and-audio generation
 and video super-resolution.
 
+[`Kandinsky6TI2VAPipeline`] denoises video and audio latents together with a single multimodal transformer, conditioned on a Qwen2.5-VL text encoder (and, optionally, a reference image) plus a CLIP text encoder for pooled embeddings. Video and audio come out of the same denoising loop, so there is no separate vocoder or post-hoc audio pass; pass `sample_audio=False` to skip generating audio and drop the `audio_vae` component.
+
+[`Kandinsky6SRPipeline`] upscales the video latents produced by the base pipeline. Its production route (`resolution_scale=2.25`) does a 1.125x pixel pre-upscale followed by an x2 latent-upscale step, using [`Kandinsky6SRLatentUpscalerBank`] as the latent upscaler; a `source_vae` is only needed for the KVAE latent bridge and is otherwise unused.
+
 ## Kandinsky6TI2VAPipeline
 
 [[autodoc]] Kandinsky6TI2VAPipeline

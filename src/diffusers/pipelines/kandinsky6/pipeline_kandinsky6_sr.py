@@ -75,7 +75,6 @@ ResolutionScale = Literal[2, 4]
 TotalResolutionScale = Literal[2, 4, 2.25]
 constants = SimpleNamespace(VAE_SPATIAL_FACTOR=VAE_SPATIAL_FACTOR)
 TileGridMode = Literal["legacy", "even"]
-_sr_constants = None
 
 
 def _call_module_method(module: nn.Module, method: str, *args: Any, **kwargs: Any) -> Any:
@@ -450,8 +449,9 @@ def get_visual_size(x: torch.Tensor) -> int:
 
     Scales the tensor's spatial dims by the VAE spatial factor and looks them
     up in the ``RESOLUTIONS`` registry. Reads ``constants.VAE_SPATIAL_FACTOR``
-    late-bound so ``set_vae_factors`` (16 for the KVAE) applies — a
-    ``from``-import would freeze the import-time default.
+    late-bound (via attribute access on the module) so a caller can override
+    ``constants.VAE_SPATIAL_FACTOR`` for a different VAE — a ``from``-import
+    would freeze the import-time default instead.
 
     Args:
         x: Visual latent tensor of shape ``(T, H, W, C)``.
@@ -602,56 +602,31 @@ def replicate_cached_embeds(
     return {"text_embeds": text_embeds, "pooled_embed": pooled_embed}, cu_seqlens
 
 
-def kvae_weights_path(checkpoint_prefix: str) -> str:
-    """Return the kvae weights file for a sidecar prefix, preferring safetensors.
-
-    The release format is ``{prefix}.safetensors`` (flat state dict), the
-    training format ``{prefix}.ckpt`` (pickled ``{"state_dict": ...}``); both
-    load through ``CachedCausalVAE.init_from_ckpt``, which dispatches on the
-    suffix.
-
-    Args:
-        checkpoint_prefix: Local kvae sidecar prefix (``{prefix}.yaml`` sits
-            next to the weights).
-
-    Returns:
-        Path to the weights file to load.
-    """
-    safetensors_path = f"{checkpoint_prefix}.safetensors"
-    return safetensors_path if Path(safetensors_path).exists() else f"{checkpoint_prefix}.ckpt"
-
-
-def module_dtype(module: torch.nn.Module) -> torch.dtype | None:
-    """Return the dtype used by the first parameterized layer, if any."""
-    try:
-        return next(module.parameters()).dtype
-    except StopIteration:
-        return None
-
-
 def cast_to_module_dtype(module: torch.nn.Module, value: torch.Tensor) -> torch.Tensor:
     """Cast floating-point inputs to the module's parameter dtype."""
-    dtype = module_dtype(module)
-    if dtype is not None and value.is_floating_point() and value.dtype != dtype:
+    try:
+        dtype = next(module.parameters()).dtype
+    except StopIteration:
+        return value
+    if value.is_floating_point() and value.dtype != dtype:
         return value.to(dtype=dtype)
     return value
 
 
-def encode_pixels_to_latent(vae: torch.nn.Module, pixels: torch.Tensor, *, sample: bool = True) -> torch.Tensor:
+def encode_pixels_to_latent(vae: torch.nn.Module, pixels: torch.Tensor) -> torch.Tensor:
     """Encode ``(B, C, T, H, W)`` pixels in ``[0, 255]`` with the KVAE.
 
     Normalizes with the KVAE's own convention, then returns the latent
-    (``(latent, split_list)[0]`` — the regularizer mode).
+    (``(latent, split_list)[0]`` — the regularizer mode; the KVAE always
+    returns this mode, there is no sampling toggle).
 
     Args:
         vae: Causal video KVAE.
         pixels: ``(B, C, T, H, W)`` tensor in ``[0, 255]``.
-        sample: Unused — the KVAE always returns the regularizer mode.
 
     Returns:
         Latent ``(B, C, T', H', W')`` — not yet scaled by ``scaling_factor``.
     """
-    del sample  # the KVAE always returns the regularizer mode
     x = vae.normalize_data(pixels)
     x = cast_to_module_dtype(vae, x)
     result = vae.encode(x)
@@ -675,19 +650,6 @@ def decode_latent_to_uint8(vae: torch.nn.Module, latent: torch.Tensor) -> torch.
     return denormalize_to_uint8(vae, vae.decode(latent).sample)
 
 
-def denormalize_to_float(vae: torch.nn.Module, decoded: torch.Tensor) -> torch.Tensor:
-    """Convert a decoded tensor to float pixels in ``[0, 1]`` without quantization.
-
-    Args:
-        vae: Causal video KVAE.
-        decoded: Decode output in the VAE's normalized pixel space.
-
-    Returns:
-        Float pixels in ``[0, 1]`` with the same shape.
-    """
-    return (vae.denormalize_data(decoded) / 255.0).clamp(0.0, 1.0)
-
-
 def denormalize_to_uint8(vae: torch.nn.Module, decoded: torch.Tensor) -> torch.Tensor:
     """Convert an already-decoded tensor in ``[-1, 1]`` to ``uint8`` ``[0, 255]``.
 
@@ -702,7 +664,8 @@ def denormalize_to_uint8(vae: torch.nn.Module, decoded: torch.Tensor) -> torch.T
     Returns:
         ``uint8`` pixels in ``[0, 255]`` with the same shape.
     """
-    return (denormalize_to_float(vae, decoded) * 255.0).to(torch.uint8)
+    float_pixels = (vae.denormalize_data(decoded) / 255.0).clamp(0.0, 1.0)
+    return (float_pixels * 255.0).to(torch.uint8)
 
 
 def latent_upscaler_scale(upscaler: nn.Module) -> int:
@@ -1512,10 +1475,7 @@ def _spatial_factor(components: Any) -> int:
     vae = getattr(components, "vae", None)
     config = getattr(vae, "config", None)
     return int(
-        getattr(vae, "spatial_factor", None)
-        or getattr(config, "spatial_factor", None)
-        or getattr(_sr_constants, "VAE_SPATIAL_FACTOR", None)
-        or VAE_SPATIAL_FACTOR
+        getattr(vae, "spatial_factor", None) or getattr(config, "spatial_factor", None) or VAE_SPATIAL_FACTOR
     )
 
 
@@ -1558,14 +1518,6 @@ def _extract_latent(result: Any) -> torch.Tensor:
     return result
 
 
-def _validate_equal_shapes(values: list[torch.Tensor], name: str) -> None:
-    if not values:
-        raise ValueError(f"{name} batch must not be empty")
-    shape = tuple(values[0].shape)
-    if any(tuple(value.shape) != shape for value in values[1:]):
-        raise ValueError(f"all {name} batch items must have equal shape")
-
-
 @torch.no_grad()
 def encode_lq_videos_to_lr_latents(
     lq_videos: list[torch.Tensor],
@@ -1573,7 +1525,7 @@ def encode_lq_videos_to_lr_latents(
     device: str | torch.device,
 ) -> torch.Tensor:
     """Encode an equal-shaped batch of ``[T,C,H,W]`` videos in one VAE call."""
-    _validate_equal_shapes(lq_videos, "video")
+    _validate_batch_shapes(lq_videos, "video")
     pixel = torch.stack(lq_videos).permute(0, 2, 1, 3, 4).to(device=device)
     pixel = vae.normalize_data(pixel.float()) if hasattr(vae, "normalize_data") else pixel.float() / 127.5 - 1.0
     pixel = cast_to_module_dtype(vae, pixel)
@@ -2074,17 +2026,6 @@ def _run_tile_batches(
     return outputs
 
 
-def _require_av():
-    """Load PyAV only for file-based video input."""
-    try:
-        import av
-    except (ImportError, OSError) as exc:
-        raise RuntimeError(
-            "SR file-based video input requires PyAV and FFmpeg. Install with `pip install av`."
-        ) from exc
-    return av
-
-
 def align_to_vae_stride(t: int) -> int:
     """Round ``t`` to the nearest valid pixel-frame count ``1 + 8·k`` (ties up).
 
@@ -2530,7 +2471,7 @@ def _run_batched_tiles(  # noqa: PLR0913
 ) -> Tensor:
     """Run equal-shape samples tile-major and restore the sample batch."""
     params = _component_params(components)
-    visual_size = int(params.visual_size[0]) if isinstance(params.visual_size, list) else int(params.visual_size)
+    visual_size = _visual_size(params)
     batch_size = len(samples)
     if latent_input:
         spatial_factor = _spatial_factor(components)
@@ -2604,7 +2545,7 @@ def _sr_progress_plan(
 ) -> tuple[int, int, int]:
     """Return total updates, denoising steps, and tile batches."""
     params = _component_params(components)
-    visual_size = int(params.visual_size[0]) if isinstance(params.visual_size, list) else int(params.visual_size)
+    visual_size = _visual_size(params)
     spatial_factor = _spatial_factor(components)
     height, width = value.shape[-2:]
     if latent_input:
@@ -2706,7 +2647,6 @@ class Kandinsky6SRPipeline(DiffusionPipeline):
         overlap: float | None = None,
         tiles_batch_size: int | None = None,
         kvae_bridge: bool = False,
-        save_path: str | Path | list[str | Path] | None = None,
         fps: int | None = None,
         audio: list[np.ndarray] | np.ndarray | None = None,
         source_video: str | Path | list[str | Path] | None = None,
@@ -2723,7 +2663,6 @@ class Kandinsky6SRPipeline(DiffusionPipeline):
             num_inference_steps: Number of denoising steps.
             overlap: Tile overlap fraction in ``[0, 1)``.
             tiles_batch_size: Number of tiles processed together.
-            save_path: Optional output video path.
             fps: Optional output video frame rate.
             audio: Optional audio waveform to mux.
             source_video: Optional source video whose audio is copied.
@@ -2828,7 +2767,6 @@ class Kandinsky6SRPipeline(DiffusionPipeline):
             overlap=effective_overlap,
             tiles_batch_size=effective_tiles_batch_size,
             kvae_bridge=kvae_bridge,
-            save_path=save_path,
             fps=fps,
             audio=audio,
             source_video=source_video,

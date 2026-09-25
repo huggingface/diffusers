@@ -215,11 +215,6 @@ def _rebuild_text_rope(dit: nn.Module, template: Tensor | list[Tensor]) -> Tenso
     return compute_rope1d(module, int(template.shape[0]))
 
 
-def apply_cfg(cond: Tensor, uncond: Tensor, guidance_weight: float) -> Tensor:
-    """Classifier-free guidance: uncond + w * (cond - uncond)."""
-    return uncond + guidance_weight * (cond - uncond)
-
-
 @torch.no_grad()
 def denoise_loop(  # noqa: PLR0912, PLR0913, PLR0915
     bundle: LatentBundle,
@@ -299,7 +294,8 @@ def denoise_loop(  # noqa: PLR0912, PLR0913, PLR0915
         return cache_context(name) if callable(cache_context) else nullcontext()
 
     def _guided(cond: Tensor, uncond: Tensor) -> Tensor:
-        return cond if is_piflow else apply_cfg(cond, uncond, guidance_weight)
+        # Classifier-free guidance: uncond + w * (cond - uncond)
+        return cond if is_piflow else uncond + guidance_weight * (cond - uncond)
 
     for step_index, t in enumerate(step_timesteps):
         # Diffusers schedulers expose the model-scale timestep directly.
@@ -555,7 +551,8 @@ def postprocess_audio(
         return None
 
     cu = bundle.audio_cu_seqlens
-    assert cu is not None
+    if cu is None:
+        raise ValueError("postprocess_audio requires bundle.audio_cu_seqlens when bundle.audio is set")
     bs = cu.shape[0] - 1
 
     # Reverse audio VAE normalization
@@ -610,7 +607,8 @@ def postprocess_video(
     ``(bs, T, H_lat, W_lat, C)``.
     """
     video = bundle.video
-    assert video is not None
+    if video is None:
+        raise ValueError("postprocess_video requires bundle.video")
 
     if video.ndim == 4:
         frames = video.reshape(bs, -1, video.shape[-3], video.shape[-2], video.shape[-1])
@@ -803,7 +801,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             tokenizer_2=tokenizer_2,
             scheduler=scheduler,
         )
-        transformer_config = self.transformer.config
+        transformer_config = self.transformer.config if getattr(self, "transformer", None) else {}
         scale_factor = transformer_config.get("scale_factor", (1.0, 2.0, 2.0))
         text_token_padding = transformer_config.get("text_token_padding", True)
         self.scale_factor = tuple(float(value) for value in scale_factor)
@@ -1033,6 +1031,12 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             qwen_attention = None
             lengths = attention.sum(dim=1).to(torch.int32)
             cu_seqlens = torch.cat([torch.zeros(1, dtype=torch.int32, device=embeds.device), lengths.cumsum(0)])
+
+        if qwen_attention is not None and qwen_attention.all():
+            # An all-True mask carries no information beyond "attend to everything", which is what the
+            # transformer already does when no mask is passed (see transformer_kandinsky6.py's
+            # _normalize_attn_mask). Drop it so the dense mask isn't threaded through the denoise loop.
+            qwen_attention = None
 
         clip_device = next(self.text_encoder_2.parameters()).device
         clip_inputs = self.tokenizer_2(
@@ -1362,14 +1366,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         )
         return text_rope, negative_text_rope, audio_rope
 
-    @staticmethod
-    def _format_video(frames: Tensor, output_type: str) -> Tensor | np.ndarray:
-        if output_type in ("pt", "torch"):
-            return frames
-        if output_type in ("np", "numpy"):
-            return frames.permute(0, 2, 3, 4, 1).cpu().numpy()
-        raise ValueError("output_type must be 'pt', 'torch', 'np', 'numpy', or 'latent'")
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -1668,7 +1664,13 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         else:
             packed_result = self._packed_bundle(result)
             decoded_frames = postprocess_video(packed_result, self.vae, bs=batch_size)
-            frames = self._format_video(decoded_frames, output_type)
+            # check_inputs already restricted output_type to pt/torch/np/numpy/latent, and "latent" is
+            # handled above, so only the tensor-vs-numpy choice is left here.
+            frames = (
+                decoded_frames
+                if output_type in ("pt", "torch")
+                else decoded_frames.permute(0, 2, 3, 4, 1).cpu().numpy()
+            )
         audio = postprocess_audio(self._packed_bundle(result), self.audio_vae) if sample_audio else None
         if not return_dict:
             return frames, audio

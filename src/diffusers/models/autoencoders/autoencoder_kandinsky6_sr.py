@@ -18,9 +18,8 @@ from __future__ import annotations
 
 import functools
 import math
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Tuple, Union
+from typing import Tuple, Union
 
 import numpy as np
 import torch
@@ -29,14 +28,16 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
-from torch.utils.checkpoint import checkpoint
-
-
-def cast_tuple(t, length=1):
-    return t if isinstance(t, tuple) else ((t,) * length)
+from .vae import DiagonalGaussianDistribution
 
 
 class SafeConv3d(nn.Conv3d):
+    """Conv3d that splits its input along the time axis when it would otherwise materialize more than ~2B
+    elements, running the convolution chunk by chunk instead. Each chunk is padded with the last
+    ``kernel_size - 1`` frames of the previous chunk before convolving, so the result is identical to running
+    the convolution on the whole tensor at once; this only bounds peak memory.
+    """
+
     def forward(self, x, write_to=None, transform=None):
         if transform is None:
             transform = lambda x: x
@@ -48,9 +49,8 @@ class SafeConv3d(nn.Conv3d):
             input_chunks = torch.chunk(x, part_num, dim=2)  # NCTHW
 
             if any(ch.size(2) < kernel_size for ch in input_chunks) and kernel_size > 1:
-                assert input_chunks[0].numel() * (kernel_size / input_chunks[0].size(2)) < (2 * 10**9), (
-                    "frames are too big for Conv3d"
-                )
+                if input_chunks[0].numel() * (kernel_size / input_chunks[0].size(2)) >= (2 * 10**9):
+                    raise ValueError("frames are too big for Conv3d")
 
                 t_stride, output = self.stride[0], []
                 for i in range(0, x.size(2) - kernel_size + 1, t_stride):
@@ -88,35 +88,6 @@ class SafeConv3d(nn.Conv3d):
                 return write_to
 
 
-def nonlinearity(x):
-    # Apply the SiLU activation.
-    return x * torch.sigmoid(x)
-
-
-def custom_forward(module):
-    def inside_fn(args):
-        if isinstance(args, tuple):
-            return module(*args)
-        else:
-            return module(args)
-
-    return inside_fn
-
-
-def ckpt_wrap(module, args):
-    fn = custom_forward(module)
-    return checkpoint(fn, args=args, use_reentrant=False)
-
-
-def identity(module, args):
-    if not isinstance(args, tuple):
-        return module(args)
-    return module(*args)
-
-
-Conv3d = SafeConv3d
-
-
 class CausalConv3d(nn.Module):
     def __init__(
         self,
@@ -129,11 +100,16 @@ class CausalConv3d(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        kernel_size = cast_tuple(kernel_size, 3)
+        if not isinstance(kernel_size, tuple):
+            kernel_size = (kernel_size,) * 3
 
         time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
 
-        assert (height_kernel_size % 2) and (width_kernel_size % 2)
+        if not (height_kernel_size % 2 and width_kernel_size % 2):
+            raise ValueError(
+                f"height_kernel_size and width_kernel_size must be odd, got {height_kernel_size} and "
+                f"{width_kernel_size}"
+            )
 
         self.height_pad = height_kernel_size // 2
         self.width_pad = width_kernel_size // 2
@@ -142,7 +118,7 @@ class CausalConv3d(nn.Module):
         self.temporal_dim = 2
 
         self.stride = stride
-        self.conv = Conv3d(chan_in, chan_out, kernel_size, stride=stride, dilation=dilation, **kwargs)
+        self.conv = SafeConv3d(chan_in, chan_out, kernel_size, stride=stride, dilation=dilation, **kwargs)
         self.cache_padding = None
         self.padding_mode = padding_mode
 
@@ -156,56 +132,46 @@ class CausalConv3d(nn.Module):
         return output
 
 
-def RMSNorm(in_channels, *args, **kwargs):
-    return WanRMS_norm(n_ch=in_channels, bias=False)
-
-
-class WanRMS_norm(nn.Module):
+class Kandinsky6VAERMSNorm(nn.Module):
     r"""
-    A custom RMS normalization layer.
+    RMS normalization over the channel dimension of a video tensor (`N, C, T, H, W`).
+
+    `forward` accepts and ignores extra positional/keyword arguments (e.g. the causal-cache dict the
+    encoder/decoder pass to every normalization layer) so this stays a drop-in alternative to
+    `CachedGroupNorm`; construction likewise ignores `zq_ch`/`add_conv`, which only apply to the
+    `CachedSpatialNorm3D` alternative.
 
     Args:
-        dim (int): The number of dimensions to normalize over.
+        in_channels (int): The number of channels to normalize over.
         bias (bool, optional): Whether to include a learnable bias term. Default is False.
     """
 
-    def __init__(self, n_ch: int, bias: bool = False) -> None:
+    def __init__(self, in_channels: int, bias: bool = False, **kwargs) -> None:
         super().__init__()
-        shape = (n_ch, 1, 1, 1)
+        shape = (in_channels, 1, 1, 1)
 
-        self.scale = n_ch**0.5
+        self.scale = in_channels**0.5
         self.gamma = nn.Parameter(torch.ones(shape))
         self.bias = nn.Parameter(torch.zeros(shape)) if bias else 0.0
 
     def forward(self, x, *args, **kwargs):
-        return F.normalize(x, dim=1) * self.scale * self.gamma + self.bias
+        needs_fp32_normalize = x.dtype in (torch.float16, torch.bfloat16) or any(
+            t in str(x.dtype) for t in ("float4_", "float8_")
+        )
+        normalized = F.normalize(x.float() if needs_fp32_normalize else x, dim=1).to(x.dtype)
+        return normalized * self.scale * self.gamma + self.bias
 
 
 class CachedGroupNorm(nn.GroupNorm):
-    def group_forward(self, x_input, expectation=None, variance=None, return_stat=False):
-        input_dtype = x_input.dtype
-        x = x_input.to(torch.float32)
-        chunks = torch.chunk(x, self.num_groups, dim=1)
-        if expectation is None:
-            ch_mean = [torch.mean(chunk, dim=(1, 2, 3, 4), keepdim=True) for chunk in chunks]
-        else:
-            ch_mean = expectation
+    """GroupNorm alternative to `Kandinsky6VAERMSNorm`: same call convention (ignores `zq_ch`/`add_conv`,
+    accepts a `cache` dict) so the encoder/decoder can pick either one through the same `normalization(...)`
+    call. `cache` only ever records whether this layer has run before — `CachedSpatialNorm3D` reads that
+    presence flag to decide whether it's normalizing the first causal segment or a later one; the statistics
+    themselves are not reused across calls.
+    """
 
-        if variance is None:
-            ch_var = [torch.var(chunk, dim=(1, 2, 3, 4), keepdim=True, unbiased=False) for chunk in chunks]
-        else:
-            ch_var = variance
-
-        x_norm = [(chunk - mean) / torch.sqrt(var + self.eps) for chunk, mean, var in zip(chunks, ch_mean, ch_var)]
-        x_norm = torch.cat(x_norm, dim=1)
-
-        x_norm.mul_(self.weight.data.view(1, -1, 1, 1, 1))
-        x_norm.add_(self.bias.data.view(1, -1, 1, 1, 1))
-
-        x_out = x_norm.to(input_dtype)
-        if return_stat:
-            return x_out, ch_mean, ch_var
-        return x_out
+    def __init__(self, in_channels, **kwargs):
+        super().__init__(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
     def forward(self, x, cache: dict):
         out = super().forward(x)
@@ -213,10 +179,6 @@ class CachedGroupNorm(nn.GroupNorm):
             cache["mean"] = 1
             cache["var"] = 1
         return out
-
-
-def Normalize(in_channels, gather=False, **kwargs):
-    return CachedGroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
 
 class CachedCausalConv3d(CausalConv3d):
@@ -295,8 +257,7 @@ class CachedCausalResnetBlock3D(nn.Module):
         temb_channels=512,
         zq_ch=None,
         add_conv=False,
-        gather_norm=False,
-        normalization=Normalize,
+        normalization=CachedGroupNorm,
         padding_mode=None,
     ):
         super().__init__()
@@ -323,7 +284,7 @@ class CachedCausalResnetBlock3D(nn.Module):
                     chan_in=in_channels, chan_out=out_channels, kernel_size=3, padding_mode=padding_mode
                 )
             else:
-                self.nin_shortcut = Conv3d(
+                self.nin_shortcut = SafeConv3d(
                     in_channels,
                     out_channels,
                     kernel_size=1,
@@ -344,7 +305,6 @@ class CachedCausalResnetBlock3D(nn.Module):
         if x.size(2) == 17 and x.size(3) == 1080 and zq is not None:
             torch.cuda.empty_cache()
 
-        # h = nonlinearity(h)
         h = F.silu(h, inplace=True)
         if x.size(2) == 17 and x.size(3) == 1080 and zq is not None:
             torch.cuda.empty_cache()
@@ -354,14 +314,13 @@ class CachedCausalResnetBlock3D(nn.Module):
             torch.cuda.empty_cache()
 
         if temb is not None:
-            h = h + self.temb_proj(nonlinearity(temb))[:, :, None, None, None]
+            h = h + self.temb_proj(F.silu(temb))[:, :, None, None, None]
 
         if zq is None:
             h = self.norm2(h, cache=layer_cache["norm2"])
         else:
             h = self.norm2(h, zq, cache=layer_cache["norm2"])
 
-        # h = nonlinearity(h)
         h = F.silu(h, inplace=True)
         # h = self.dropout(h)
         h = self.conv2(h, cache=layer_cache["conv2"])
@@ -389,7 +348,7 @@ class CachedPXSDownsample(nn.Module):
         self.version = version
         out_channels = in_channels * 2 if version > 1 else in_channels
 
-        self.spatial_conv = Conv3d(
+        self.spatial_conv = SafeConv3d(
             in_channels,
             out_channels,
             kernel_size=(1, 3, 3),
@@ -428,7 +387,7 @@ class CachedPXSDownsample(nn.Module):
                     padding_mode=padding_mode,
                 )
 
-        self.linear = nn.Conv3d(out_channels, out_channels, kernel_size=1, stride=1)
+        self.linear = SafeConv3d(out_channels, out_channels, kernel_size=1, stride=1)
 
     def spatial_downsample(self, input_):
         # PixelShuffle part
@@ -491,9 +450,10 @@ class CachedPXSDownsample(nn.Module):
 
 
 class CachedSpatialNorm3D(nn.Module):
-    """
-    Looking at `forward`, it seems this class should be renamed to `DecoderSpatialNorm` or something similar,
-    because it's not usual forward, but a conditional one.
+    """Normalization used by the decoder's ResnetBlocks: modulates a GroupNorm/RMSNorm output with a
+    per-channel scale and shift derived from the latent `zq`, the same "spatial norm" conditioning other VAEs
+    in the library (e.g. CogVideoX) use to inject the encoder's output back into the decoder — adapted here
+    for causal, segment-by-segment video decoding.
     """
 
     def __init__(
@@ -503,7 +463,7 @@ class CachedSpatialNorm3D(nn.Module):
         freeze_norm_layer=False,
         add_conv=False,
         padding_mode=None,
-        normalization=Normalize,
+        normalization=CachedGroupNorm,
         **norm_layer_params,
     ):
         super().__init__()
@@ -515,20 +475,18 @@ class CachedSpatialNorm3D(nn.Module):
                 chan_in=zq_channels, chan_out=zq_channels, kernel_size=3, padding_mode=padding_mode
             )
 
-        self.conv_y = Conv3d(
+        self.conv_y = SafeConv3d(
             zq_channels,
             f_channels,
             kernel_size=1,
         )
-        self.conv_b = Conv3d(
+        self.conv_b = SafeConv3d(
             zq_channels,
             f_channels,
             kernel_size=1,
         )
 
     def forward(self, f, zq, cache):
-        f_shape = [s for s in f.shape]
-
         if cache["norm"]["mean"] is None and cache["norm"]["var"] is None:
             f_first, f_rest = f[:, :, :1], f[:, :, 1:]
             f_first_size, f_rest_size = f_first.shape[-3:], f_rest.shape[-3:]
@@ -566,7 +524,7 @@ class CachedSpatialNorm3D(nn.Module):
         return norm_f
 
 
-def Normalize3D(in_channels, zq_ch, add_conv, normalization=Normalize):
+def Normalize3D(in_channels, zq_ch, add_conv, normalization=CachedGroupNorm):
     return CachedSpatialNorm3D(
         in_channels,
         zq_ch,
@@ -585,7 +543,7 @@ class CachedPXSUpsample(nn.Module):
         self.temporal_compress = compress_time
         self.factor = factor
         self.shuffle = nn.PixelShuffle(self.factor)
-        self.spatial_conv = Conv3d(
+        self.spatial_conv = SafeConv3d(
             in_channels,
             in_channels,
             kernel_size=(1, 3, 3),
@@ -604,7 +562,7 @@ class CachedPXSUpsample(nn.Module):
                 padding_mode=padding_mode,
             )
 
-        self.linear = Conv3d(in_channels, in_channels, kernel_size=1, stride=1)
+        self.linear = SafeConv3d(in_channels, in_channels, kernel_size=1, stride=1)
 
     def spatial_upsample_NEW(self, input_):
         def conv_part(x):
@@ -646,79 +604,6 @@ class CachedPXSUpsample(nn.Module):
         return lin_out
 
 
-class DiagonalGaussianDistribution(object):
-    def __init__(self, parameters, deterministic=False):
-        self.parameters = parameters
-        self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)
-        self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
-        self.deterministic = deterministic
-        self.std = torch.exp(0.5 * self.logvar)
-        self.var = torch.exp(self.logvar)
-        if self.deterministic:
-            self.var = self.std = torch.zeros_like(self.mean)  # .to(device=self.parameters.device)
-
-    def sample(self):
-        x = self.mean + self.std * torch.randn_like(self.mean)
-        return x
-
-    def kl(self, other=None):
-        if self.deterministic:
-            return torch.Tensor([0.0])
-        else:
-            if other is None:
-                return 0.5 * torch.sum(
-                    torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar,
-                    dim=[1, 2, 3, 4],
-                )
-            else:
-                return 0.5 * torch.sum(
-                    torch.pow(self.mean - other.mean, 2) / other.var
-                    + self.var / other.var
-                    - 1.0
-                    - self.logvar
-                    + other.logvar,
-                    dim=[1, 2, 3, 4],
-                )
-
-    def mode(self):
-        return self.mean
-
-
-class DiagonalGaussianRegularizer(nn.Module):
-    def __init__(self, sample: bool = True):
-        super().__init__()
-        self.sample = sample
-
-    def get_trainable_parameters(self) -> Any:
-        yield from ()
-
-    def get_kl_loss(self, z: torch.Tensor) -> torch.Tensor:
-        posterior = DiagonalGaussianDistribution(z)
-        kl_loss = posterior.kl()
-        kl_loss = torch.mean(kl_loss, dim=0)
-        return kl_loss
-
-    def get_sample(self, z: torch.Tensor) -> torch.Tensor:
-        posterior = DiagonalGaussianDistribution(z)
-        if self.sample:
-            z = posterior.sample()
-        else:
-            z = posterior.mode()
-        return z
-
-    def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, dict]:
-        log = dict()
-        posterior = DiagonalGaussianDistribution(z)
-        if self.sample:
-            z = posterior.sample()
-        else:
-            z = posterior.mode()
-        kl_loss = posterior.kl()
-        kl_loss = torch.sum(kl_loss) / kl_loss.shape[0]
-        log["kl_loss"] = kl_loss
-        return z, log
-
-
 class CachedEncoder3D(nn.Module):
     def __init__(
         self,
@@ -727,20 +612,17 @@ class CachedEncoder3D(nn.Module):
         ch_mult=(1, 2, 4, 8),
         num_res_blocks,
         dropout=0.0,
-        resamp_with_conv=True,
         in_channels,
         resolution=0,
         z_channels,
         double_z=True,
         padding_mode=None,
         temporal_compress_times=4,
-        gather_norm=False,
         fix_pxs=False,
         norm_type="group_norm",
         downsample_version=1,
         temporal_compress_start_level=0,
         skip_last_resolution=False,
-        **ignore_kwargs,
     ):
         super().__init__()
         self.ch = ch
@@ -759,7 +641,7 @@ class CachedEncoder3D(nn.Module):
             chan_in=in_channels, chan_out=round(in_ch_mult[0] * self.ch), kernel_size=3, padding_mode=padding_mode
         )
 
-        normalization = Normalize if norm_type == "group_norm" else RMSNorm
+        normalization = CachedGroupNorm if norm_type == "group_norm" else Kandinsky6VAERMSNorm
 
         curr_res = resolution
         self.down = nn.ModuleList()
@@ -780,7 +662,6 @@ class CachedEncoder3D(nn.Module):
                         out_channels=block_out,
                         dropout=dropout,
                         temb_channels=self.temb_ch,
-                        gather_norm=gather_norm,
                         normalization=normalization,
                         padding_mode=padding_mode,
                     )
@@ -817,7 +698,6 @@ class CachedEncoder3D(nn.Module):
             out_channels=block_in,
             temb_channels=self.temb_ch,
             dropout=dropout,
-            gather_norm=gather_norm,
             normalization=normalization,
             padding_mode=padding_mode,
         )
@@ -827,13 +707,12 @@ class CachedEncoder3D(nn.Module):
             out_channels=block_in,
             temb_channels=self.temb_ch,
             dropout=dropout,
-            gather_norm=gather_norm,
             normalization=normalization,
             padding_mode=padding_mode,
         )
 
         # end
-        self.norm_out = normalization(block_in, gather=gather_norm)
+        self.norm_out = normalization(block_in)
 
         self.conv_out = CachedCausalConv3d(
             chan_in=block_in,
@@ -863,7 +742,7 @@ class CachedEncoder3D(nn.Module):
 
         # end
         h = self.norm_out(h, cache=cache_dict["norm_out"])
-        h = nonlinearity(h)
+        h = F.silu(h)
         h = self.conv_out(h, cache=cache_dict["conv_out"])
 
         return h
@@ -880,7 +759,6 @@ class CachedDecoder3D(nn.Module):
         ch_mult=(1, 2, 4, 8),
         num_res_blocks=2,
         dropout=0.0,
-        resamp_with_conv=True,
         resolution=0,
         z_channels=16,
         give_pre_end=False,
@@ -888,10 +766,8 @@ class CachedDecoder3D(nn.Module):
         add_conv=False,
         padding_mode=None,
         temporal_compress_times=4,
-        gather_norm=False,
         norm_type="group_norm",
         temporal_compress_start_level=0,
-        **kwargs,
     ):
         super().__init__()
         self.ch = ch
@@ -917,7 +793,7 @@ class CachedDecoder3D(nn.Module):
         )
 
         modulated_norm = functools.partial(
-            Normalize3D, normalization=Normalize if norm_type == "group_norm" else RMSNorm
+            Normalize3D, normalization=CachedGroupNorm if norm_type == "group_norm" else Kandinsky6VAERMSNorm
         )
 
         # middle
@@ -930,7 +806,6 @@ class CachedDecoder3D(nn.Module):
             zq_ch=zq_ch,
             add_conv=add_conv,
             normalization=modulated_norm,
-            gather_norm=gather_norm,
             padding_mode=padding_mode,
         )
 
@@ -942,7 +817,6 @@ class CachedDecoder3D(nn.Module):
             zq_ch=zq_ch,
             add_conv=add_conv,
             normalization=modulated_norm,
-            gather_norm=gather_norm,
             padding_mode=padding_mode,
         )
 
@@ -962,7 +836,6 @@ class CachedDecoder3D(nn.Module):
                         zq_ch=zq_ch,
                         add_conv=add_conv,
                         normalization=modulated_norm,
-                        gather_norm=gather_norm,
                         padding_mode=padding_mode,
                     )
                 )
@@ -981,7 +854,7 @@ class CachedDecoder3D(nn.Module):
                     up.upsample = CachedPXSUpsample(block_in, compress_time=False, padding_mode=padding_mode)
             self.up.insert(0, up)
 
-        self.norm_out = modulated_norm(block_in, zq_ch, add_conv=add_conv)  # , gather=gather_norm)
+        self.norm_out = modulated_norm(block_in, zq_ch, add_conv=add_conv)
 
         self.conv_out = CachedCausalConv3d(chan_in=block_in, chan_out=out_ch, kernel_size=3, padding_mode=padding_mode)
 
@@ -990,8 +863,6 @@ class CachedDecoder3D(nn.Module):
 
         # timestep embedding
         temb = None
-
-        t = z.shape[2]
 
         zq = z
         h = self.conv_in(z, cache_dict["conv_in"])
@@ -1015,7 +886,7 @@ class CachedDecoder3D(nn.Module):
             return h
 
         h = self.norm_out(h, zq, cache_dict["norm_out"])
-        h = nonlinearity(h)
+        h = F.silu(h)
         h = self.conv_out(h, cache_dict["conv_out"])
 
         return h
@@ -1038,8 +909,6 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
 
     Args:
         vae_type (`str`): VAE architecture identifier. Must be ``"video-kvae"``.
-        encoder_config (`dict`): Configuration for the cached 3D encoder.
-        decoder_config (`dict`): Configuration for the cached 3D decoder.
         scaling_factor (`float`, *optional*, defaults to 1.0): Latent scaling
             factor stored in the component configuration.
         spatial_factor (`int`, *optional*, defaults to 16): Spatial compression
@@ -1049,6 +918,7 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
     """
 
     _no_split_modules = ["CachedEncoder3D", "CachedDecoder3D"]
+    _supports_gradient_checkpointing = False
 
     @staticmethod
     def normalize_data(data):
@@ -1064,8 +934,25 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
     def __init__(
         self,
         vae_type: str,
-        encoder_config: Mapping[str, Any],
-        decoder_config: Mapping[str, Any],
+        in_channels: int = 3,
+        out_channels: int = 3,
+        z_channels: int = 16,
+        ch: int = 128,
+        ch_mult: Tuple[int, ...] = (1, 2, 4, 8),
+        num_res_blocks: int = 2,
+        dropout: float = 0.0,
+        resolution: int = 0,
+        padding_mode: Union[str, None] = None,
+        temporal_compress_times: int = 4,
+        temporal_compress_start_level: int = 0,
+        norm_type: str = "group_norm",
+        double_z: bool = True,
+        downsample_version: int = 1,
+        fix_pxs: bool = False,
+        skip_last_resolution: bool = False,
+        give_pre_end: bool = False,
+        zq_ch: Union[int, None] = None,
+        add_conv: bool = False,
         scaling_factor: float = 1.0,
         spatial_factor: int = 16,
         temporal_factor: int = 4,
@@ -1073,10 +960,39 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         super().__init__()
         if vae_type != "video-kvae":
             raise ValueError(f"Kandinsky6SRVAE supports only 'video-kvae', got: {vae_type!r}")
-        self.conf = {"enc": encoder_config, "dec": decoder_config}
-        self.encoder = CachedEncoder3D(**encoder_config)
-        self.decoder = CachedDecoder3D(**decoder_config)
-        self.regularizer = DiagonalGaussianRegularizer(sample=False)
+        self.encoder = CachedEncoder3D(
+            in_channels=in_channels,
+            z_channels=z_channels,
+            ch=ch,
+            ch_mult=ch_mult,
+            num_res_blocks=num_res_blocks,
+            dropout=dropout,
+            resolution=resolution,
+            padding_mode=padding_mode,
+            temporal_compress_times=temporal_compress_times,
+            temporal_compress_start_level=temporal_compress_start_level,
+            norm_type=norm_type,
+            double_z=double_z,
+            downsample_version=downsample_version,
+            fix_pxs=fix_pxs,
+            skip_last_resolution=skip_last_resolution,
+        )
+        self.decoder = CachedDecoder3D(
+            out_ch=out_channels,
+            z_channels=z_channels,
+            ch=ch,
+            ch_mult=ch_mult,
+            num_res_blocks=num_res_blocks,
+            dropout=dropout,
+            resolution=resolution,
+            padding_mode=padding_mode,
+            temporal_compress_times=temporal_compress_times,
+            temporal_compress_start_level=temporal_compress_start_level,
+            norm_type=norm_type,
+            give_pre_end=give_pre_end,
+            zq_ch=zq_ch,
+            add_conv=add_conv,
+        )
         self.spatial_factor = int(spatial_factor)
         self.temporal_factor = int(temporal_factor)
 
@@ -1115,8 +1031,8 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
             "norm_out": make_dict(f"norm_{block}"),
             "conv_out": make_dict("conv"),
         }
-        for i in range(len(self.conf[block].get("ch_mult", [1, 2, 4, 8]))):
-            cache[i] = make_dict(f"{i}_block", p=self.conf[block]["num_res_blocks"] + 1)
+        for i in range(len(self.config.ch_mult)):
+            cache[i] = make_dict(f"{i}_block", p=self.config.num_res_blocks + 1)
         return cache
 
     @apply_forward_hook
@@ -1147,8 +1063,7 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         latent = []
         for chunk in torch.split(x, split_list, dim=2):
             l = self.encoder(chunk, cache)
-            sample = self.regularizer.get_sample(l)
-            latent.append(sample)
+            latent.append(DiagonalGaussianDistribution(l).mode())
 
         latent = torch.cat(latent, dim=2)
         return latent, split_list
@@ -1169,7 +1084,7 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
 
         # Compute latent segment sizes.
         if split_list is None:
-            default_split_size = 16 // self.conf["enc"]["temporal_compress_times"]
+            default_split_size = 16 // self.config.temporal_compress_times
             time_dim = z.shape[2]
             if time_dim == 1:
                 # image
@@ -1181,7 +1096,7 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
                     split_list.append((time_dim - 1) % default_split_size)
                 split_list[0] += 1
         else:
-            split_list = [math.ceil(size / self.conf["enc"]["temporal_compress_times"]) for size in split_list]
+            split_list = [math.ceil(size / self.config.temporal_compress_times) for size in split_list]
 
         # Decode each segment.
         recs = []
