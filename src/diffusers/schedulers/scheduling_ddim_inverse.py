@@ -357,7 +357,14 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             pred_epsilon = model_output
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
-            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+            if beta_prod_t > 0:
+                pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+            else:
+                # At a zero noise level (`alpha_prod_t == 1`, e.g. the first inverse step when
+                # `set_alpha_to_one=True`) the sample carries no noise, so `pred_epsilon` is not identifiable from
+                # `sample` and the x0 prediction. Fall back to zero noise instead of dividing by zero, which would
+                # produce `inf` values.
+                pred_epsilon = torch.zeros_like(sample)
         elif self.config.prediction_type == "v_prediction":
             pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
             pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
