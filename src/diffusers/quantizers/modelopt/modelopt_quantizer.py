@@ -167,8 +167,13 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         if self.quantization_config.disable_conv_quantization:
             modules_to_not_convert.extend(self.get_conv_param_names(model))
 
+        # ModelOpt >= 0.44 uses a list-of-entries `quant_cfg`; older versions use a mapping.
+        quant_cfg = self.quantization_config.modelopt_config["quant_cfg"]
         for module in modules_to_not_convert:
-            self.quantization_config.modelopt_config["quant_cfg"]["*" + module + "*"] = {"enable": False}
+            if isinstance(quant_cfg, list):
+                quant_cfg.append({"quantizer_name": "*" + module + "*", "enable": False})
+            else:
+                quant_cfg["*" + module + "*"] = {"enable": False}
         self.quantization_config.modules_to_not_convert = modules_to_not_convert
         mto.apply_mode(model, mode=[("quantize", self.quantization_config.modelopt_config)])
         model.config.quantization_config = self.quantization_config
