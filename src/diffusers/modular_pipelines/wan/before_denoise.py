@@ -206,7 +206,7 @@ class WanTextInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("num_videos_per_prompt", default=1),
+            InputParam("num_videos_per_prompt", default=1, description="The number of videos to generate per prompt."),
             InputParam(
                 "prompt_embeds",
                 required=True,
@@ -594,4 +594,146 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
 
+        return components, state
+
+
+class WanVideoToVideoSetTimestepsStep(ModularPipelineBlocks):
+    model_name = "wan-v2v"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
+        ]
+
+    @property
+    def description(self) -> str:
+        return "Set the scheduler timesteps and select the video-to-video denoising schedule from strength."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("num_inference_steps", default=50, description="The number of denoising steps."),
+            InputParam("timesteps", description="Custom timesteps for the denoising process."),
+            InputParam("sigmas", description="Custom sigmas for the denoising process."),
+            InputParam(
+                "strength",
+                default=0.8,
+                type_hint=float,
+                description="The amount of noise added to the input video latents.",
+            ),
+            InputParam("batch_size", required=True, type_hint=int),
+            InputParam(
+                "num_videos_per_prompt",
+                default=1,
+                type_hint=int,
+                description="The number of videos to generate per prompt.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("timesteps", type_hint=torch.Tensor, description="The selected denoising timesteps."),
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="The number of selected denoising steps.",
+            ),
+            OutputParam(
+                "latent_timestep",
+                type_hint=torch.Tensor,
+                description="The timestep used to add noise to the input video latents.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        timesteps, num_inference_steps = retrieve_timesteps(
+            components.scheduler,
+            block_state.num_inference_steps,
+            device,
+            block_state.timesteps,
+            block_state.sigmas,
+        )
+        init_timestep = min(int(num_inference_steps * block_state.strength), num_inference_steps)
+        t_start = max(num_inference_steps - init_timestep, 0)
+        block_state.timesteps = timesteps[t_start * components.scheduler.order :]
+        block_state.num_inference_steps = num_inference_steps - t_start
+        block_state.latent_timestep = block_state.timesteps[:1].repeat(
+            block_state.batch_size * block_state.num_videos_per_prompt
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanVideoToVideoPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "wan-v2v"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
+        ]
+
+    @property
+    def description(self) -> str:
+        return "Add noise at the selected timestep to the encoded input video latents."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "video_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Normalized VAE latents of the input video.",
+            ),
+            InputParam("latent_timestep", required=True, type_hint=torch.Tensor),
+            InputParam(
+                "latents",
+                type_hint=torch.Tensor | None,
+                description="Pre-generated noisy video latents to use instead of adding noise to the input video.",
+            ),
+            InputParam("generator", description="Torch generator for deterministic noise generation."),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="Noisy video latents used to start the denoising process.",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        if block_state.latents is None:
+            noise = randn_tensor(
+                block_state.video_latents.shape,
+                generator=block_state.generator,
+                device=device,
+                dtype=torch.float32,
+            )
+            if hasattr(components.scheduler, "add_noise"):
+                block_state.latents = components.scheduler.add_noise(
+                    block_state.video_latents, noise, block_state.latent_timestep
+                )
+            else:
+                block_state.latents = components.scheduler.scale_noise(
+                    block_state.video_latents, block_state.latent_timestep, noise
+                )
+        else:
+            block_state.latents = block_state.latents.to(device)
+
+        self.set_block_state(state, block_state)
         return components, state
