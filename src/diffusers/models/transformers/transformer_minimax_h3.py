@@ -573,6 +573,7 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         text_indices: torch.Tensor,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
+        attention_mask: torch.Tensor | None = None,
     ) -> MiniMaxH3TransformerOutput | tuple[torch.Tensor, torch.Tensor]:
         r"""
         Args:
@@ -598,6 +599,9 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
                 Positions of the audio rows in the packed sequence.
             text_indices (`torch.Tensor` of shape `(num_text_tokens,)`):
                 Positions of the text rows in the packed sequence.
+            attention_mask (`torch.Tensor`, *optional*):
+                Key-padding mask (`True` for valid rows); use shape `(batch_size, 1, 1, seq_len)`
+                for context parallelism.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that, if specified, may carry a `scale` entry which is applied to the LoRA layers.
             return_dict (`bool`, defaults to `True`):
@@ -647,10 +651,10 @@ class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, temb, adaln_indices, rotary_emb
+                    block, hidden_states, temb, adaln_indices, rotary_emb, attention_mask
                 )
             else:
-                hidden_states = block(hidden_states, temb, adaln_indices, rotary_emb)
+                hidden_states = block(hidden_states, temb, adaln_indices, rotary_emb, attention_mask)
 
         # 5. Both heads run over every row, then the rows of each modality are selected. The heads are listed in
         # `_keep_in_fp32_modules`, so they stay float32 while the block stack runs in the requested `torch_dtype`;

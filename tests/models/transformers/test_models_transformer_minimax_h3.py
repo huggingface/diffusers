@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
+import torch.nn.functional as F
 
 from diffusers import MiniMaxH3Transformer3DModel
 from diffusers.models.transformers.transformer_minimax_h3 import MiniMaxH3TransformerOutput
@@ -160,6 +162,38 @@ class TestMiniMaxH3Transformer(MiniMaxH3TransformerTesterConfig, ModelTesterMixi
         assert output.audio_sample.shape == (2, NUM_AUDIO_TOKENS, self.get_init_dict()["audio_in_channels"])
         torch.testing.assert_close(output.sample, output_tuple[0])
         torch.testing.assert_close(output.audio_sample, output_tuple[1])
+
+    @pytest.mark.parametrize("gradient_checkpointing", [False, True])
+    def test_padded_attention_mask_preserves_outputs_and_gradients(self, gradient_checkpointing):
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        if gradient_checkpointing:
+            model.enable_gradient_checkpointing()
+
+        inputs = self.get_dummy_inputs(batch_size=1)
+        sequence_length = inputs["position_ids"].shape[0]
+        padded_inputs = dict(inputs)
+        padded_inputs["position_ids"] = F.pad(inputs["position_ids"], (0, 0, 0, 2))
+        padded_inputs["token_tags"] = F.pad(inputs["token_tags"], (0, 2), value=1)
+        padded_inputs["timestep_indices"] = F.pad(inputs["timestep_indices"], (0, 2))
+        attention_mask = torch.zeros((1, 1, 1, sequence_length + 2), device=torch_device, dtype=torch.bool)
+        attention_mask[..., :sequence_length] = True
+
+        expected = model(**inputs)
+        (expected.sample.square().mean() + expected.audio_sample.square().mean()).backward()
+        expected_grads = [p.grad.clone() if p.grad is not None else None for p in model.parameters()]
+        model.zero_grad(set_to_none=True)
+
+        actual = model(**padded_inputs, attention_mask=attention_mask)
+        (actual.sample.square().mean() + actual.audio_sample.square().mean()).backward()
+        torch.testing.assert_close(actual.sample, expected.sample)
+        torch.testing.assert_close(actual.audio_sample, expected.audio_sample)
+        for param, grad in zip(model.parameters(), expected_grads):
+            if grad is not None:
+                torch.testing.assert_close(param.grad, grad)
+
+        with torch.no_grad():
+            unmasked = model(**padded_inputs)
+        assert (unmasked.sample - expected.sample).abs().max() > 1e-4
 
 
 class TestMiniMaxH3TransformerMemory(MiniMaxH3TransformerTesterConfig, MemoryTesterMixin):
