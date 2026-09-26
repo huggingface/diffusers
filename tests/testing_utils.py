@@ -52,6 +52,7 @@ from diffusers.utils.import_utils import (
     is_transformers_available,
 )
 from diffusers.utils.logging import get_logger
+from diffusers.utils.torch_utils import TorchDeviceBackend
 
 
 if is_torch_available():
@@ -1505,107 +1506,38 @@ if is_torch_available():
         else None
     )
 
-    # Function definitions
-    BACKEND_EMPTY_CACHE = {
-        "cuda": torch.cuda.empty_cache,
-        "xpu": torch.xpu.empty_cache,
-        "cpu": None,
-        "mps": torch.mps.empty_cache,
-        "default": None,
-    }
-    BACKEND_DEVICE_COUNT = {
-        "cuda": torch.cuda.device_count,
-        "xpu": torch.xpu.device_count,
-        "cpu": lambda: 0,
-        "mps": lambda: 0,
-        "default": 0,
-    }
-    BACKEND_MANUAL_SEED = {
-        "cuda": torch.cuda.manual_seed,
-        "xpu": torch.xpu.manual_seed,
-        "cpu": torch.manual_seed,
-        "mps": torch.mps.manual_seed,
-        "default": torch.manual_seed,
-    }
-    BACKEND_RESET_PEAK_MEMORY_STATS = {
-        "cuda": torch.cuda.reset_peak_memory_stats,
-        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
-        "cpu": None,
-        "mps": None,
-        "default": None,
-    }
-    BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
-        "cuda": torch.cuda.reset_max_memory_allocated,
-        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
-        "cpu": None,
-        "mps": None,
-        "default": None,
-    }
-    BACKEND_MAX_MEMORY_ALLOCATED = {
-        "cuda": torch.cuda.max_memory_allocated,
-        "xpu": getattr(torch.xpu, "max_memory_allocated", None),
-        "cpu": 0,
-        "mps": 0,
-        "default": 0,
-    }
-    BACKEND_SYNCHRONIZE = {
-        "cuda": torch.cuda.synchronize,
-        "xpu": getattr(torch.xpu, "synchronize", None),
-        "cpu": None,
-        "mps": None,
-        "default": None,
-    }
-
     if _neuron_device is not None:
-        BACKEND_EMPTY_CACHE[_neuron_device] = None
-        BACKEND_DEVICE_COUNT[_neuron_device] = torch.neuron.device_count
-        BACKEND_MANUAL_SEED[_neuron_device] = torch.manual_seed
-        BACKEND_RESET_PEAK_MEMORY_STATS[_neuron_device] = None
-        BACKEND_RESET_MAX_MEMORY_ALLOCATED[_neuron_device] = None
-        BACKEND_MAX_MEMORY_ALLOCATED[_neuron_device] = 0
-        BACKEND_SYNCHRONIZE[_neuron_device] = torch.neuron.synchronize
         BACKEND_SUPPORTS_TRAINING[_neuron_device] = False
 
 
-# This dispatches a defined function according to the accelerator from the function definitions.
-def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, Callable], *args, **kwargs):
-    fn = dispatch_table[device] if device in dispatch_table else dispatch_table["default"]
-
-    # Some device agnostic functions return values. Need to guard against 'None' instead at
-    # user level
-    if not callable(fn):
-        return fn
-
-    return fn(*args, **kwargs)
-
-
-# These are callables which automatically dispatch the function specific to the accelerator
+# Device operations go through `TorchDeviceBackend`.
 def backend_manual_seed(device: str, seed: int):
-    return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
+    TorchDeviceBackend(device).manual_seed(seed)
 
 
 def backend_synchronize(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_SYNCHRONIZE)
+    TorchDeviceBackend(device).synchronize()
 
 
 def backend_empty_cache(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_EMPTY_CACHE)
+    TorchDeviceBackend(device).empty_cache()
 
 
 def backend_device_count(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_DEVICE_COUNT)
+    return TorchDeviceBackend(device).device_count()
 
 
 def backend_reset_peak_memory_stats(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
+    TorchDeviceBackend(device).reset_peak_memory_stats()
 
 
 def backend_reset_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_MAX_MEMORY_ALLOCATED)
+    # `reset_max_memory_allocated` is CUDA's deprecated alias of `reset_peak_memory_stats`.
+    TorchDeviceBackend(device).reset_peak_memory_stats()
 
 
 def backend_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_MAX_MEMORY_ALLOCATED)
+    return TorchDeviceBackend(device).max_memory_allocated()
 
 
 # These are callables which return boolean behaviour flags and can be used to specify some
@@ -1659,14 +1591,9 @@ if is_torch_available():
 
         torch_device = device_name
 
-        # Add one entry here for each `BACKEND_*` dictionary.
-        update_mapping_from_spec(BACKEND_MANUAL_SEED, "MANUAL_SEED_FN")
-        update_mapping_from_spec(BACKEND_EMPTY_CACHE, "EMPTY_CACHE_FN")
-        update_mapping_from_spec(BACKEND_DEVICE_COUNT, "DEVICE_COUNT_FN")
+        # `SUPPORTS_TRAINING` is the only per-device table left. Device operations come from the backend's own
+        # `torch.<backend>` module through `TorchDeviceBackend`, so a spec file no longer supplies them.
         update_mapping_from_spec(BACKEND_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")
-        update_mapping_from_spec(BACKEND_RESET_PEAK_MEMORY_STATS, "RESET_PEAK_MEMORY_STATS_FN")
-        update_mapping_from_spec(BACKEND_RESET_MAX_MEMORY_ALLOCATED, "RESET_MAX_MEMORY_ALLOCATED_FN")
-        update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")
 
 
 # Modified from https://github.com/huggingface/transformers/blob/cdfb018d0300fef3b07d9220f3efe9c2a9974662/src/transformers..testing_utils.py#L3090

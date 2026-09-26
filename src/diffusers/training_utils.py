@@ -37,6 +37,7 @@ from .utils import (
     is_torchvision_available,
     is_transformers_available,
 )
+from .utils.torch_utils import empty_device_cache
 
 
 if is_transformers_available():
@@ -412,15 +413,7 @@ def free_memory():
     Runs garbage collection. Then clears the cache of the available accelerator.
     """
     gc.collect()
-
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    elif torch.backends.mps.is_available():
-        torch.mps.empty_cache()
-    elif is_torch_npu_available():
-        torch_npu.npu.empty_cache()
-    elif hasattr(torch, "xpu") and torch.xpu.is_available():
-        torch.xpu.empty_cache()
+    empty_device_cache()
 
 
 @contextmanager
