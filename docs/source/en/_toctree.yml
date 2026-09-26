@@ -52,41 +52,20 @@
 - isExpanded: true
   sections:
   - local: stable_diffusion
-    title: Basic performance
+    title: Overview
   - isExpanded: false
     sections:
     - local: optimization/fp16
-      title: Accelerate inference
+      title: Precision and compilation
     - local: optimization/cache
       title: Caching
     - local: optimization/attention_backends
       title: Attention backends
     - local: optimization/memory
-      title: Reduce memory usage
+      title: Memory and offloading
     - local: optimization/speed-memory-optims
-      title: Compiling and offloading quantized models
+      title: Quantize, compile, and offload
     title: Inference
-  - isExpanded: false
-    sections:
-    - local: optimization/pruna
-      title: Pruna
-    - local: optimization/xformers
-      title: xFormers
-    - local: optimization/tome
-      title: Token merging
-    - local: optimization/deepcache
-      title: DeepCache
-    - local: optimization/cache_dit
-      title: CacheDiT
-    - local: optimization/tgate
-      title: TGATE
-    - local: optimization/xdit
-      title: xDiT
-    - local: optimization/para_attn
-      title: ParaAttention
-    - local: using-diffusers/image_quality
-      title: FreeU
-    title: Community methods
   - isExpanded: false
     sections:
     - local: quantization/overview
@@ -110,6 +89,17 @@
     title: Quantization
   - isExpanded: false
     sections:
+    - local: using-diffusers/create_a_server
+      title: Create a server
+    - local: using-diffusers/batched_inference
+      title: Batch inference
+    - local: training/distributed_inference
+      title: Distributed inference
+    - local: hybrid_inference/overview
+      title: Remote inference
+    title: Serving and scaling
+  - isExpanded: false
+    sections:
     - local: optimization/onnx
       title: ONNX
     - local: optimization/open_vino
@@ -125,15 +115,25 @@
     title: Hardware-specific acceleration
   - isExpanded: false
     sections:
-    - local: using-diffusers/create_a_server
-      title: Create a server
-    - local: using-diffusers/batched_inference
-      title: Batch inference
-    - local: training/distributed_inference
-      title: Distributed inference
-    - local: hybrid_inference/overview
-      title: Remote inference
-    title: Serving and scaling
+    - local: optimization/pruna
+      title: Pruna
+    - local: optimization/xformers
+      title: xFormers
+    - local: optimization/tome
+      title: Token merging
+    - local: optimization/deepcache
+      title: DeepCache
+    - local: optimization/cache_dit
+      title: CacheDiT
+    - local: optimization/tgate
+      title: TGATE
+    - local: optimization/xdit
+      title: xDiT
+    - local: optimization/para_attn
+      title: ParaAttention
+    - local: using-diffusers/image_quality
+      title: FreeU
+    title: Community methods
   title: Optimize and scale
 - isExpanded: false
   sections:

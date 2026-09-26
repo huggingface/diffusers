@@ -52,3 +52,9 @@ Cache methods speedup diffusion transformers by storing and reusing intermediate
 [[autodoc]] SeaCacheConfig
 
 [[autodoc]] apply_sea_cache
+
+## TextKVCacheConfig
+
+[[autodoc]] TextKVCacheConfig
+
+[[autodoc]] apply_text_kv_cache

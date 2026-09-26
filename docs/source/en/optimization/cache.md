@@ -11,50 +11,57 @@ specific language governing permissions and limitations under the License. -->
 
 # Caching
 
-Caching accelerates inference by storing and reusing intermediate outputs of different layers, such as attention and feedforward layers, instead of performing the entire computation at each inference step. It significantly improves generation speed at the expense of more memory and doesn't require additional training.
+Caching reuses intermediate layer outputs across denoising steps to speed up inference. It uses more memory and doesn't need training. Enable a method on the transformer with a config.
 
-This guide shows you how to use the caching methods supported in Diffusers.
+## Choose a cache method
+
+Pick a method depending on how much config you will set, and the fit you need.
+
+| Method | Use when | Tradeoff |
+|--------|----------|----------|
+| Text KV Cache | NucleusMoE image only, need exact text K/V reuse across steps | Lossless |
+| SeaCache | Video transformers that already have a SeaCache path | Approximate, settings often do not transfer across models |
+| FirstBlockCache | Want one main speed/quality knob on a registered transformer | Approximate |
+| MagCache | Have magnitude ratios for your checkpoint and scheduler, or will calibrate first | Approximate, ratios are checkpoint and scheduler specific |
+| TaylorSeer | Want to predict later activations from earlier steps | Approximate |
+| PAB | Video, willing to tune attention reuse (block and timestep skip ranges per attention kind) | Approximate |
+| FasterCache | Like PAB, plus optional CFG-branch skipping | Approximate, experimental |
 
 ## Pyramid Attention Broadcast
 
-[Pyramid Attention Broadcast (PAB)](https://huggingface.co/papers/2408.12588) is based on the observation that attention outputs aren't that different between successive timesteps of the generation process. The attention differences are smallest in the cross attention layers and are generally cached over a longer timestep range. This is followed by temporal attention and spatial attention layers.
+[Pyramid Attention Broadcast (PAB)](https://huggingface.co/papers/2408.12588) approximates attention across denoising steps by reusing attention outputs for some blocks and timesteps instead of recomputing every step. Config separates attention kinds (spatial, temporal, cross) when the model has them. Not every video model exposes all three, and set only the ranges that match the blocks you have.
 
-> [!TIP]
-> Not all video models have three types of attention (cross, temporal, and spatial)!
+Each kind uses a `*_attention_block_skip_range` (how often to recompute vs reuse within the window) and a `*_attention_timestep_skip_range` (which denoising timesteps may skip). You must pass `current_timestep_callback` so the hook can read the pipeline’s current timestep. Wider or more aggressive skips usually mean more speed and more quality risk.
 
-PAB can be combined with other techniques like sequence parallelism and classifier-free guidance parallelism (data parallelism) for near real-time video generation.
-
-Set up and pass a [`PyramidAttentionBroadcastConfig`] to a pipeline's transformer to enable it. The `spatial_attention_block_skip_range` controls how often to skip attention calculations in the spatial attention blocks and the `spatial_attention_timestep_skip_range` is the range of timesteps to skip. Take care to choose an appropriate range because a smaller interval can lead to slower inference speeds and a larger interval can result in lower generation quality.
+Pass a [`PyramidAttentionBroadcastConfig`] to enable it.
 
 ```python
 import torch
 from diffusers import CogVideoXPipeline, PyramidAttentionBroadcastConfig
 
-pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
-pipeline.to("cuda")  # or "mps", "xpu", "cpu"
+pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 config = PyramidAttentionBroadcastConfig(
     spatial_attention_block_skip_range=2,
     spatial_attention_timestep_skip_range=(100, 800),
     current_timestep_callback=lambda: pipe.current_timestep,
 )
-pipeline.transformer.enable_cache(config)
+pipe.transformer.enable_cache(config)
 ```
 
 ## FasterCache
 
-[FasterCache](https://huggingface.co/papers/2410.19355) caches and reuses attention features similar to [PAB](#pyramid-attention-broadcast) since output differences are small for each successive timestep.
+[FasterCache](https://huggingface.co/papers/2410.19355) caches and reuses attention features similar to [PAB](#pyramid-attention-broadcast). It can also skip the unconditional branch under classifier-free guidance and estimate it from the conditional branch when successive latents are redundant enough.
 
-This method may also choose to skip the unconditional branch prediction, when using classifier-free guidance for sampling (common in most base models), and estimate it from the conditional branch prediction if there is significant redundancy in the predicted latent outputs between successive timesteps.
-
-Set up and pass a [`FasterCacheConfig`] to a pipeline's transformer to enable it.
+Pass a [`FasterCacheConfig`] to enable it. Like PAB, set `*_attention_block_skip_range` and `*_attention_timestep_skip_range` for the attention kinds you have, plus the CFG-branch skip options when you want them.
 
 ```python
 import torch
 from diffusers import CogVideoXPipeline, FasterCacheConfig
 
-pipe line= CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
-pipeline.to("cuda")  # or "mps", "xpu", "cpu"
+pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 config = FasterCacheConfig(
     spatial_attention_block_skip_range=2,
@@ -62,38 +69,22 @@ config = FasterCacheConfig(
     current_timestep_callback=lambda: pipe.current_timestep,
     attention_weight_callback=lambda _: 0.3,
     unconditional_batch_skip_range=5,
-    unconditional_batch_timestep_skip_range=(-1, 781),
+    unconditional_batch_timestep_skip_range=(-1, 641),
     tensor_format="BFCHW",
 )
-pipeline.transformer.enable_cache(config)
+pipe.transformer.enable_cache(config)
 ```
 
 ## SeaCache
 
-[SeaCache](https://huggingface.co/papers/2602.18993) compares Spectral-Evolution-Aware (SEA) indicators between
-successive denoising steps. When the accumulated indicator change remains below a threshold, it skips the expensive
-transformer block stack and predicts its output from cached residuals. The indicator is computed from the raw vision
-latents, including clean conditioning frames for image-to-video generation.
+[SeaCache](https://huggingface.co/papers/2602.18993) compares Spectral Evolution Aware (SEA) indicators between successive denoising steps. When the accumulated change stays under a threshold, it skips the transformer block stack and predicts the output from cached residuals. The method is approximate and designed for video generation.
 
-The implementation provides built-in adapters for the following models:
+Built-in adapters for SeaCache include:
 
-- **Cosmos 3** is the primary optimized and benchmarked integration. It caches the complete decoder stack through a
-  post-normalization boundary.
-- **Wan T2V** uses the generic repeated-block path in eager mode. This integration demonstrates how another
-  single-stream video transformer can provide raw vision latents to SeaCache; it is not a claim that the same cache
-  parameters are optimal for Wan or that other Wan variants are supported.
+- Cosmos 3 is the primary optimized and benchmarked integration.
+- Wan T2V uses the generic repeated-block path as a demo for how to provide the raw vision latents to SeaCache. The same cache parameters may not transfer to Wan or other Wan variants.
 
-Other video transformers can integrate with the generic path when they use `CacheMixin`, expose a recognized repeated
-block list, and register the block input/output layout in `TransformerBlockRegistry`. The pipeline must enter a
-`cache_context` for every transformer call, attach `step_index`, `sigma`, and `num_inference_steps`, and use separate
-context names for independent trajectories such as conditional and unconditional guidance. Pass a `raw_vision_callback`
-that returns the noisy vision latents when no built-in adapter is available. Validate output quality and tune the cache
-parameters for each model and scheduler; support and benchmark results do not transfer automatically from Cosmos 3.
-
-### Cosmos 3
-
-SeaCache is disabled by default. Enable it on the transformer; the Cosmos 3 denoising loop attaches the active
-scheduler step, sigma, and step count to each `cache_context` call, so no extra wiring is needed:
+Enable SeaCache on the transformer. The Cosmos 3 denoising loop attaches scheduler step, sigma, and step count to each `cache_context`, so no extra parameters are needed.
 
 ```python
 from diffusers import Cosmos3OmniPipeline, SeaCacheConfig
@@ -102,35 +93,33 @@ pipe = Cosmos3OmniPipeline.from_pretrained("nvidia/Cosmos3-Nano")
 pipe.transformer.enable_cache(SeaCacheConfig(threshold=0.2, max_consecutive_cached=2))
 ```
 
-This model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
-[`Cosmos3DistilledModularPipeline`]. SeaCache is an approximate optimization and may change generated outputs. Call
-`pipe.transformer.disable_cache()` when you need every denoising step to execute the full transformer.
+SeaCache may change outputs. Call `pipe.transformer.disable_cache()` when you need every step to run the full transformer. The same enable call works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and [`Cosmos3DistilledModularPipeline`].
+
+To integrate another video transformer, use `CacheMixin`, register the block layout in `TransformerBlockRegistry`, enter a `cache_context` on every call with `step_index`, `sigma`, and `num_inference_steps`, and pass a `raw_vision_callback` when no built-in adapter exists. Tune parameters per model and scheduler.
 
 ## FirstBlockCache
 
-[FirstBlock Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) checks how much the early layers of the denoiser changes from one timestep to the next. If the change is small, the model skips the expensive later layers and reuses the previous output.
+[`FirstBlockCacheConfig`] checks how much the early layers of the denoiser change from one timestep to the next. If the change is small, the model skips the expensive later layers and reuses the previous output.
 
-```py
+Enable it through `enable_cache` so `disable_cache` and `is_cache_enabled` stay in sync. The default `threshold` is `0.05`. A higher value such as `0.2` skips more often for extra speed, but generation quality may drop.
+
+```python
 import torch
-from diffusers import DiffusionPipeline
-from diffusers.hooks import apply_first_block_cache, FirstBlockCacheConfig
+from diffusers import DiffusionPipeline, FirstBlockCacheConfig
 
-pipeline = DiffusionPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "Qwen/Qwen-Image", dtype=torch.bfloat16
 )
-apply_first_block_cache(pipeline.transformer, FirstBlockCacheConfig(threshold=0.2))
+pipe.transformer.enable_cache(FirstBlockCacheConfig(threshold=0.2))
 ```
+
 ## TaylorSeer Cache
 
-[TaylorSeer Cache](https://huggingface.co/papers/2403.06923) accelerates diffusion inference by using Taylor series expansions to approximate and cache intermediate activations across denoising steps. The method predicts future outputs based on past computations, reusing them at specified intervals to reduce redundant calculations.
-
-This caching mechanism delivers strong results with minimal additional memory overhead. For detailed performance analysis, see [our findings here](https://github.com/huggingface/diffusers/pull/12648#issuecomment-3610615080).
-
-To enable TaylorSeer Cache, create a [`TaylorSeerCacheConfig`] and pass it to your pipeline's transformer:
+[TaylorSeer Cache](https://huggingface.co/papers/2503.06923) accelerates diffusion inference with Taylor series expansions across denoising steps. It predicts later-step activations from earlier ones and reuses those predictions for several steps so the transformer does less full work.
 
 - `cache_interval`: Number of steps to reuse cached outputs before performing a full forward pass
 - `disable_cache_before_step`: Initial steps that use full computations to gather data for approximations
-- `max_order`: Approximation accuracy (in theory, higher values improve quality but increase memory usage but we recommend it should be set to `1`)
+- `max_order`: Higher Taylor orders can be more accurate but use more memory. Keep this at `1` unless you have a reason to change it.
 
 ```python
 import torch
@@ -152,18 +141,19 @@ pipe.transformer.enable_cache(config)
 
 ## MagCache
 
-[MagCache](https://github.com/Zehong-Ma/MagCache) accelerates inference by skipping transformer blocks based on the magnitude of the residual update. It observes that the magnitude of updates (Output - Input) decays predictably over the diffusion process. By accumulating an "error budget" based on pre-computed magnitude ratios, it dynamically decides when to skip computation and reuse the previous residual.
+[MagCache](https://github.com/Zehong-Ma/MagCache) skips transformer blocks from the residual update magnitude. Update magnitudes decay predictably over denoising, and MagCache tracks an error budget from precomputed magnitude ratios (`mag_ratios`) to decide when reuse is safe. Those ratios are checkpoint and scheduler-specific. Ratios from a high step count can be interpolated down to fewer steps.
 
-MagCache relies on **Magnitude Ratios** (`mag_ratios`), which describe this decay curve. These ratios are specific to the model checkpoint and scheduler.
+MagCache follows two steps:
 
-To use MagCache, you typically follow a two-step process: **Calibration** and **Inference**.
+1. Calibration: Run inference once with `calibrate=True`. The hook measures residual magnitudes and prints the calculated ratios.
+2. Inference: Disable the calibration cache, then pass those ratios to `MagCacheConfig` for acceleration.
 
-1.  **Calibration**: Run inference once with `calibrate=True`. The hook will measure the residual magnitudes and print the calculated ratios to the console.
-2.  **Inference**: Pass these ratios to `MagCacheConfig` to enable acceleration.
+Classifier-free guidance may affect calibration. Pipelines that use true CFG with sequential contexts, such as Flux when `true_cfg_scale > 1`, enter `cache_context("cond")` and `cache_context("uncond")` separately. Calibration may print one array per context, but you should use the conditional array in most cases. Pipelines that batch CFG by concatenating conditional and unconditional inputs (for example, CogVideoX) produce a single joint array you can use directly.
 
 ```python
 import torch
 from diffusers import FluxPipeline, MagCacheConfig
+from diffusers.hooks.mag_cache import FLUX_MAG_RATIOS
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-schnell",
@@ -177,27 +167,38 @@ pipe.transformer.enable_cache(calib_config)
 
 # Run a prompt to trigger calibration
 pipe("A cat playing chess", num_inference_steps=4)
-# Logs will print something like: "MagCache Calibration Results: [1.0, 1.37, 0.97, 0.87]"
+# Prints: [MagCache] Calibration Complete. Copy these values to MagCacheConfig(mag_ratios=...):
 
 # 2. Inference Step
-# Apply the specific ratios obtained from calibration for optimized speed.
-# Note: For Flux models, you can also import defaults: 
-# from diffusers.hooks.mag_cache import FLUX_MAG_RATIOS
+# Disable calibration hooks before enabling MagCache for inference.
+pipe.transformer.disable_cache()
+
+# Apply ratios from calibration, or use the Flux defaults:
+# mag_ratios=FLUX_MAG_RATIOS
 mag_config = MagCacheConfig(
     mag_ratios=[1.0, 1.37, 0.97, 0.87],
     num_inference_steps=4
 )
 
-pipe.transformer.enable_cache(mag_config) 
+pipe.transformer.enable_cache(mag_config)
 
 image = pipe("A cat playing chess", num_inference_steps=4).images[0]
 ```
 
-> [!NOTE]
-> `mag_ratios` represent the model's intrinsic magnitude decay curve. Ratios calibrated for a high number of steps (e.g., 50) can be reused for lower step counts (e.g., 20). The implementation uses interpolation to map the curve to the current number of inference steps.
+## Text KV Cache
 
-> [!TIP]
-> For pipelines that run Classifier-Free Guidance sequentially (like Kandinsky 5.0), the calibration log might print two arrays: one for the Conditional pass and one for the Unconditional pass. In most cases, you should use the first array (Conditional).
+[`TextKVCacheConfig`] enables exact (lossless) reuse of text key and value projections across denoising steps. It is for NucleusMoE image only (`NucleusMoEImageTransformerBlock`, the architecture [`apply_text_kv_cache`] hooks). Enable it with `enable_cache`.
 
-> [!TIP]
-> For pipelines that run Classifier-Free Guidance in a **batched** manner (like SDXL or Flux), the `hidden_states` processed by the model contain both conditional and unconditional branches concatenated together. The calibration process automatically accounts for this, producing a single array of ratios that represents the joint behavior. You can use this resulting array directly without modification.
+```python
+import torch
+from diffusers import NucleusMoEImagePipeline, TextKVCacheConfig
+
+pipe = NucleusMoEImagePipeline.from_pretrained(
+    "NucleusAI/NucleusMoE-Image", dtype=torch.bfloat16
+)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
+
+pipe.transformer.enable_cache(TextKVCacheConfig())
+
+image = pipe("A cat holding a sign that says hello world", num_inference_steps=50).images[0]
+```

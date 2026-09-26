@@ -81,8 +81,7 @@ The following is a summary of the recommended checkpoints, all of which produce 
 > Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff
 > between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to
 > efficiently load the same components into multiple pipelines.
-> Also, to know more about reducing the memory usage of this pipeline, refer to the ["Reduce memory usage"] section
-> [here](./stable_diffusion/svd#reduce-memory-usage).
+> Also, to know more about reducing the memory usage of this pipeline, refer to the [Memory and offloading](../../optimization/memory) guide.
 
 > [!WARNING]
 > Marigold pipelines were designed and tested with the scheduler embedded in the model checkpoint.
