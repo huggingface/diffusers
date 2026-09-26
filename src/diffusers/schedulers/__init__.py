@@ -50,14 +50,14 @@ else:
     _import_structure["scheduling_ddpm_parallel"] = ["DDPMParallelScheduler"]
     _import_structure["scheduling_ddpm_wuerstchen"] = ["DDPMWuerstchenScheduler"]
     _import_structure["scheduling_deis_multistep"] = ["DEISMultistepScheduler"]
-    _import_structure["scheduling_discrete_ddim"] = ["DiscreteDDIMScheduler", "DiscreteDDIMSchedulerOutput"]
+    _import_structure["scheduling_discrete_ddim"] = ["DiscreteDDIMScheduler"]
     _import_structure["scheduling_dpm_cogvideox"] = ["CogVideoXDPMScheduler"]
     _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
     _import_structure["scheduling_dpmsolver_singlestep"] = ["DPMSolverSinglestepScheduler"]
     _import_structure["scheduling_edm_dpmsolver_multistep"] = ["EDMDPMSolverMultistepScheduler"]
     _import_structure["scheduling_edm_euler"] = ["EDMEulerScheduler"]
-    _import_structure["scheduling_entropy_bound"] = ["EntropyBoundScheduler", "EntropyBoundSchedulerOutput"]
+    _import_structure["scheduling_entropy_bound"] = ["EntropyBoundScheduler"]
     _import_structure["scheduling_euler_ancestral_discrete"] = ["EulerAncestralDiscreteScheduler"]
     _import_structure["scheduling_euler_discrete"] = ["EulerDiscreteScheduler"]
     _import_structure["scheduling_flow_map_euler_discrete"] = ["FlowMapEulerDiscreteScheduler"]
@@ -80,8 +80,14 @@ else:
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
     _import_structure["scheduling_tcd"] = ["TCDScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
+    _import_structure["scheduling_uniform_refinement"] = ["UniformRefinementScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
-    _import_structure["scheduling_utils"] = ["AysSchedules", "KarrasDiffusionSchedulers", "SchedulerMixin"]
+    _import_structure["scheduling_utils"] = [
+        "AysSchedules",
+        "DiscreteSchedulerOutput",
+        "KarrasDiffusionSchedulers",
+        "SchedulerMixin",
+    ]
     _import_structure["scheduling_vq_diffusion"] = ["VQDiffusionScheduler"]
 
 try:
@@ -134,14 +140,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_ddpm_parallel import DDPMParallelScheduler
         from .scheduling_ddpm_wuerstchen import DDPMWuerstchenScheduler
         from .scheduling_deis_multistep import DEISMultistepScheduler
-        from .scheduling_discrete_ddim import DiscreteDDIMScheduler, DiscreteDDIMSchedulerOutput
+        from .scheduling_discrete_ddim import DiscreteDDIMScheduler
         from .scheduling_dpm_cogvideox import CogVideoXDPMScheduler
         from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
         from .scheduling_dpmsolver_multistep_inverse import DPMSolverMultistepInverseScheduler
         from .scheduling_dpmsolver_singlestep import DPMSolverSinglestepScheduler
         from .scheduling_edm_dpmsolver_multistep import EDMDPMSolverMultistepScheduler
         from .scheduling_edm_euler import EDMEulerScheduler
-        from .scheduling_entropy_bound import EntropyBoundScheduler, EntropyBoundSchedulerOutput
+        from .scheduling_entropy_bound import EntropyBoundScheduler
         from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
         from .scheduling_euler_discrete import EulerDiscreteScheduler
         from .scheduling_flow_map_euler_discrete import FlowMapEulerDiscreteScheduler
@@ -164,8 +170,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_sde_ve import ScoreSdeVeScheduler
         from .scheduling_tcd import TCDScheduler
         from .scheduling_unclip import UnCLIPScheduler
+        from .scheduling_uniform_refinement import UniformRefinementScheduler
         from .scheduling_unipc_multistep import UniPCMultistepScheduler
-        from .scheduling_utils import AysSchedules, KarrasDiffusionSchedulers, SchedulerMixin
+        from .scheduling_utils import (
+            AysSchedules,
+            DiscreteSchedulerOutput,
+            KarrasDiffusionSchedulers,
+            SchedulerMixin,
+        )
         from .scheduling_vq_diffusion import VQDiffusionScheduler
 
     try:
