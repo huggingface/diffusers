@@ -75,7 +75,9 @@ def is_valid_image_imagelist(images):
     elif is_valid_image(images):
         return True
     elif isinstance(images, list):
-        return all(is_valid_image(image) for image in images)
+        # `all([])` is True, so an empty list would otherwise look valid and then
+        # crash on `image[0]` in `VaeImageProcessor.preprocess`.
+        return len(images) > 0 and all(is_valid_image(image) for image in images)
     return False
 
 
@@ -640,6 +642,9 @@ class VaeImageProcessor(ConfigMixin):
                 The preprocessed image.
         """
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
+
+        if isinstance(image, list) and len(image) == 0:
+            raise ValueError("Cannot preprocess an empty list of images.")
 
         # Expand the missing dimension for 3-dimensional pytorch tensor or numpy array that represents grayscale image
         if self.config.do_convert_grayscale and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
