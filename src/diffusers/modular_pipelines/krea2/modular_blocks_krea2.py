@@ -22,7 +22,7 @@ from .before_denoise import (
     Krea2SetTimestepsStep,
     Krea2TextInputsStep,
 )
-from .decoders import Krea2DecodeStep
+from .decoders import Krea2DecodeStep, Krea2UnpackLatentsStep
 from .denoise import Krea2DenoiseStep
 from .encoders import Krea2TextEncoderStep
 
@@ -37,6 +37,7 @@ CORE_DENOISE_BLOCKS = InsertableDict(
         ("set_timesteps", Krea2SetTimestepsStep()),
         ("prepare_position_ids", Krea2PreparePositionIdsStep()),
         ("denoise", Krea2DenoiseStep()),
+        ("unpack_latents", Krea2UnpackLatentsStep()),
     ]
 )
 

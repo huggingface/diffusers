@@ -20,7 +20,7 @@ import torch
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL
-from ...utils import logging
+from ...utils import deprecate, logging
 from ...video_processor import VaeImageProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -43,6 +43,50 @@ def _unpack_latents(latents, height, width, vae_scale_factor):
     latents = latents.reshape(batch_size, channels // (2 * 2), height, width)
 
     return latents
+
+
+class FluxUnpackLatentsStep(ModularPipelineBlocks):
+    model_name = "flux"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Unpacks the denoised latents from the transformer's token layout back into the `[B, C, H, W]` form the "
+            "VAE takes (still normalized). Closes the core denoise group, so the blocks that follow take the same "
+            "form the VAE encoder produces and need no geometry inputs."
+        )
+
+    @property
+    def inputs(self) -> list[tuple[str, Any]]:
+        return [
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The denoised latents from the denoising step, packed, of shape `[B, S, C]`.",
+            ),
+            InputParam("height", default=1024),
+            InputParam("width", default=1024),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[str]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="The denoised latents of shape `[B, C, H, W]` (normalized, not packed).",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.latents = _unpack_latents(
+            block_state.latents, block_state.height, block_state.width, components.vae_scale_factor
+        )
+        self.set_block_state(state, block_state)
+        return components, state
 
 
 class FluxDecodeStep(ModularPipelineBlocks):
@@ -68,14 +112,15 @@ class FluxDecodeStep(ModularPipelineBlocks):
     def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("output_type", default="pil"),
-            InputParam("height", default=1024),
-            InputParam("width", default=1024),
             InputParam(
                 "latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The denoised latents from the denoising step",
+                description="The denoised latents from the denoising step, of shape `[B, C, H, W]`.",
             ),
+            # Only read on the deprecated path that still accepts packed `[B, S, C]` latents.
+            InputParam("height", default=1024),
+            InputParam("width", default=1024),
         ]
 
     @property
@@ -95,7 +140,14 @@ class FluxDecodeStep(ModularPipelineBlocks):
 
         if not block_state.output_type == "latent":
             latents = block_state.latents
-            latents = _unpack_latents(latents, block_state.height, block_state.width, components.vae_scale_factor)
+            if latents.ndim == 3:
+                deprecate(
+                    "packed latents",
+                    "1.0.0",
+                    "Passing packed latents of shape `[B, S, C]` to the decode step is deprecated; the denoise group "
+                    "now unpacks them. Pass latents of shape `[B, C, H, W]` instead.",
+                )
+                latents = _unpack_latents(latents, block_state.height, block_state.width, components.vae_scale_factor)
             latents = (latents / vae.config.scaling_factor) + vae.config.shift_factor
             block_state.images = vae.decode(latents, return_dict=False)[0]
             block_state.images = components.image_processor.postprocess(
