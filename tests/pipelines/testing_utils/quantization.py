@@ -1380,6 +1380,30 @@ class TestFluxGGUFPipeline(GGUFPipelineTests):
         max_diff = numpy_cosine_similarity_distance(expected_slice, output_slice)
         assert max_diff < 1e-4
 
+    def test_pipeline_inference_sequential_cpu_offload(self):
+        r"""
+        Sequential CPU offload rebuilds every parameter through `param_cls(new_value, ...)`, which
+        used to drop `GGUFParameter.quant_type` and fail with `KeyError: None`. Like the TorchAO
+        equivalent this only checks that inference runs.
+        """
+        quantization_config = GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
+        transformer = self.model_cls.from_single_file(
+            self.ckpt_path, quantization_config=quantization_config, torch_dtype=self.torch_dtype
+        )
+        pipe = FluxPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev", transformer=transformer, torch_dtype=self.torch_dtype
+        )
+        pipe.enable_sequential_cpu_offload()
+
+        output = pipe(
+            prompt="a cat holding a sign that says hello",
+            num_inference_steps=2,
+            generator=torch.Generator("cpu").manual_seed(0),
+            output_type="np",
+        ).images[0]
+
+        assert output.shape == (1024, 1024, 3)
+
 
 class TestSD35LargeGGUFPipeline(GGUFPipelineTests):
     ckpt_path = "https://huggingface.co/city96/stable-diffusion-3.5-large-gguf/blob/main/sd3.5_large-Q4_0.gguf"
