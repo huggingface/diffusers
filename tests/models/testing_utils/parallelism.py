@@ -25,6 +25,7 @@ from diffusers.models._modeling_parallel import ContextParallelConfig, TensorPar
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
 
 from ...testing_utils import (
+    enable_full_determinism,
     is_attention,
     is_context_parallel,
     is_kernels_available,
@@ -181,6 +182,71 @@ def _context_parallel_backward_worker(
     finally:
         if dist.is_initialized():
             dist.destroy_process_group()
+
+
+def _ulysses_anything_backward_parity_worker(
+    rank, world_size, master_port, model_class, init_dict, inputs_list, gradient_checkpointing
+):
+    enable_full_determinism()
+    device_type = torch_device.split(":")[0]
+    device_config = DEVICE_CONFIG[device_type]
+    device_config["module"].set_device(rank)
+    device = torch.device(f"{device_type}:{rank}")
+    dist.init_process_group(
+        backend=device_config["backend"],
+        init_method=f"tcp://127.0.0.1:{master_port}",
+        rank=rank,
+        world_size=world_size,
+    )
+    try:
+        torch.manual_seed(7)
+        model = model_class(**init_dict).to(device).train()
+        reference = model_class(**init_dict).to(device).train()
+        reference.load_state_dict(model.state_dict())
+        model.set_attention_backend("native")
+        reference.set_attention_backend("native")
+        mesh = dist.device_mesh.init_device_mesh(device_type, (1, world_size), mesh_dim_names=("ring", "ulysses"))
+        model.enable_parallelism(
+            config=ContextParallelConfig(ulysses_degree=world_size, ulysses_anything=True, mesh=mesh)
+        )
+        if gradient_checkpointing:
+            model.enable_gradient_checkpointing()
+            reference.enable_gradient_checkpointing()
+
+        for inputs in inputs_list:
+            model.zero_grad(set_to_none=True)
+            reference.zero_grad(set_to_none=True)
+            inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+            output = model(**inputs, return_dict=False)
+            expected = reference(**inputs, return_dict=False)
+            assert len(output) == len(expected)
+            for actual, target in zip(output, expected):
+                torch.testing.assert_close(actual, target, atol=1e-6, rtol=1e-5)
+            loss = sum(tensor.square().mean() for tensor in output)
+            reference_loss = sum(tensor.square().mean() for tensor in expected)
+            torch.testing.assert_close(loss, reference_loss, atol=1e-6, rtol=1e-5)
+            loss.backward()
+            reference_loss.backward()
+
+            reference_parameters = dict(reference.named_parameters())
+            compared = 0
+            for name, parameter in model.named_parameters():
+                reference_parameter = reference_parameters[name]
+                if parameter.grad is None or reference_parameter.grad is None:
+                    assert parameter.grad is reference_parameter.grad, name
+                    continue
+                dist.all_reduce(parameter.grad, group=mesh["ulysses"].get_group())
+                torch.testing.assert_close(
+                    parameter.grad,
+                    reference_parameter.grad,
+                    atol=2e-5,
+                    rtol=2e-4,
+                    msg=lambda message: f"{model_class.__name__}.{name}: {message}",
+                )
+                compared += 1
+            assert compared > 0
+    finally:
+        dist.destroy_process_group()
 
 
 def _custom_mesh_worker(
@@ -343,6 +409,60 @@ class TensorParallelTesterMixin:
 
     def test_tensor_parallel_batch_inputs(self):
         self.test_tensor_parallel_inference(batch_size=2)
+
+
+@is_context_parallel
+class UlyssesAnythingBackwardTesterMixin:
+    def get_ulysses_anything_init_dict(self):
+        init_dict = {**self.get_init_dict(), "num_attention_heads": 4}
+        if "audio_num_attention_heads" in init_dict:
+            init_dict["audio_num_attention_heads"] = 4
+        return init_dict
+
+    @pytest.mark.parametrize("gradient_checkpointing", [False, True])
+    def test_ulysses_anything_reference_backward(self, gradient_checkpointing):
+        """Check the real model and parity fixtures independently of distributed hardware."""
+        torch.manual_seed(7)
+        model = self.model_class(**self.get_ulysses_anything_init_dict()).to(torch_device).train()
+        model.set_attention_backend("native")
+        if gradient_checkpointing:
+            model.enable_gradient_checkpointing()
+        for inputs in self.get_ulysses_anything_inputs():
+            model.zero_grad(set_to_none=True)
+            output = model(**inputs, return_dict=False)
+            loss = sum(tensor.square().mean() for tensor in output)
+            assert torch.isfinite(loss)
+            loss.backward()
+            grads = [parameter.grad for parameter in model.parameters() if parameter.grad is not None]
+            assert grads and all(torch.isfinite(grad).all() for grad in grads)
+            assert any(torch.count_nonzero(grad) for grad in grads)
+
+    @require_torch_multi_accelerator
+    @pytest.mark.parametrize("world_size", [2, 4])
+    @pytest.mark.parametrize("gradient_checkpointing", [False, True])
+    def test_ulysses_anything_backward_parity(self, world_size, gradient_checkpointing):
+        """Compare every output and parameter gradient with the unsharded model."""
+        if not dist.is_available():
+            pytest.skip("torch.distributed is not available.")
+        if DEVICE_CONFIG[torch_device.split(":")[0]]["module"].device_count() < world_size:
+            pytest.skip(f"Requires {world_size} devices.")
+        inputs_list = [
+            {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+            for inputs in self.get_ulysses_anything_inputs()
+        ]
+        mp.spawn(
+            _ulysses_anything_backward_parity_worker,
+            args=(
+                world_size,
+                _find_free_port(),
+                self.model_class,
+                self.get_ulysses_anything_init_dict(),
+                inputs_list,
+                gradient_checkpointing,
+            ),
+            nprocs=world_size,
+            join=True,
+        )
 
 
 @is_context_parallel

@@ -374,6 +374,12 @@ class HeliosRotaryPosEmbed(nn.Module):
         return result.permute(1, 0, 2, 3, 4)
 
 
+def _raise_context_parallel_backward(grad: torch.Tensor):
+    # Blocks gather activations after attention and FFN, so parameter gradients from the replicated residual stream
+    # cannot be recovered by reducing across context-parallel ranks.
+    raise NotImplementedError("Backward through Helios with context parallelism is not supported.")
+
+
 @maybe_allow_in_graph
 class HeliosTransformerBlock(nn.Module):
     def __init__(
@@ -852,6 +858,8 @@ class HeliosTransformer3DModel(
         )
         hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
         output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        if output.requires_grad and getattr(self._parallel_config, "context_parallel_config", None) is not None:
+            output.register_hook(_raise_context_parallel_backward)
 
         if not return_dict:
             return (output,)

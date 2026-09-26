@@ -2286,10 +2286,12 @@ def ulysses_anything_metadata(query: torch.Tensor, **kwargs) -> dict:
 
 @maybe_allow_in_graph
 def all_to_all_single_any_qkv_async(
-    x: torch.Tensor, group: dist.ProcessGroup, **kwargs
+    x: torch.Tensor, group: dist.ProcessGroup, *, seq_lengths: list[int] | None = None, **kwargs
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_LOCAL, H, D) return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
+
+    seq_lengths: Optional sequence lengths in process-group rank order, collected from the current inputs.
     """
     world_size = dist.get_world_size(group=group)
     B, S_LOCAL, H, D = x.shape
@@ -2302,7 +2304,7 @@ def all_to_all_single_any_qkv_async(
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
     # since we don't know the actual shape before this timing, thus,
     # we have to use all gather to collect the S_LOCAL first.
-    output_split_sizes = gather_size_by_comm(S_LOCAL, group)
+    output_split_sizes = seq_lengths if seq_lengths is not None else gather_size_by_comm(S_LOCAL, group)
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
@@ -2319,9 +2321,13 @@ def all_to_all_single_any_qkv_async(
 
 
 @maybe_allow_in_graph
-def all_to_all_single_any_o_async(x: torch.Tensor, group: dist.ProcessGroup, **kwargs) -> Callable[..., torch.Tensor]:
+def all_to_all_single_any_o_async(
+    x: torch.Tensor, group: dist.ProcessGroup, *, seq_lengths: list[int] | None = None, **kwargs
+) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D) return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
+
+    seq_lengths: Optional sequence lengths in process-group rank order, collected from the current inputs.
     """
     # Assume H is provided in kwargs, since we can't infer H from x's shape.
     # The padding logic needs H to determine if padding is necessary.
@@ -2341,7 +2347,7 @@ def all_to_all_single_any_o_async(x: torch.Tensor, group: dist.ProcessGroup, **k
     # b.tensor_split(4)[0].shape[1])
 
     S_LOCAL = kwargs.get("Q_S_LOCAL")
-    input_split_sizes = gather_size_by_comm(S_LOCAL, group)
+    input_split_sizes = seq_lengths if seq_lengths is not None else gather_size_by_comm(S_LOCAL, group)
     x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
     output_split_sizes = [S_LOCAL] * world_size
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
@@ -2746,6 +2752,9 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         _parallel_config: "ParallelConfig" | None = None,
         **kwargs,
     ):
+        if attn_mask is not None and attn_mask.ndim == 4 and attn_mask.shape[1] > 1:
+            raise ValueError("Ulysses Anything Attention does not support attention masks with a per-head dimension.")
+
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         group = ulysses_mesh.get_group()
 
@@ -2756,9 +2765,15 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         _, S_KV_LOCAL, _, _ = key.shape
 
         metadata = ulysses_anything_metadata(query)
+        key_metadata = ulysses_anything_metadata(key)
+        # Keep layouts per invocation: local lengths can repeat while other ranks' lengths change.
+        metadata["seq_lengths"] = gather_size_by_comm(query.shape[1], group)
+        key_metadata["seq_lengths"] = gather_size_by_comm(key.shape[1], group)
+        ctx.query_metadata = metadata
+        ctx.key_metadata = key_metadata
         query_wait = all_to_all_single_any_qkv_async(query, group, **metadata)
-        key_wait = all_to_all_single_any_qkv_async(key, group, **metadata)
-        value_wait = all_to_all_single_any_qkv_async(value, group, **metadata)
+        key_wait = all_to_all_single_any_qkv_async(key, group, **key_metadata)
+        value_wait = all_to_all_single_any_qkv_async(value, group, **key_metadata)
 
         query = query_wait()  # type: torch.Tensor
         key = key_wait()  # type: torch.Tensor
@@ -2767,15 +2782,14 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         if attn_mask is not None and attn_mask.shape[-1] == S_KV_LOCAL:
             # All-gather a local mask to match the post-all-to-all global sequence.
             # The "anything" path allows unequal local sizes, so we pad to the
-            # maximum across ranks before all-gathering, then trim back.
-            mask_local_sizes = gather_size_by_comm(attn_mask.shape[-1], group)
+            # maximum across ranks before all-gathering, then trim each shard.
+            mask_local_sizes = key_metadata["seq_lengths"]
             max_local = max(mask_local_sizes)
             if attn_mask.shape[-1] < max_local:
                 attn_mask = F.pad(attn_mask, (0, max_local - attn_mask.shape[-1]))
             mask_list = [torch.empty_like(attn_mask) for _ in range(dist.get_world_size(group=group))]
-            dist.all_gather(mask_list, attn_mask, group=group)
-            attn_mask = torch.cat(mask_list, dim=-1)
-            attn_mask = attn_mask[..., : sum(mask_local_sizes)]
+            dist.all_gather(mask_list, attn_mask.contiguous(), group=group)
+            attn_mask = torch.cat([mask[..., :size] for mask, size in zip(mask_list, mask_local_sizes)], dim=-1)
 
         out = forward_op(
             ctx,
@@ -2788,7 +2802,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             scale,
             enable_gqa,
             return_lse,
-            _save_ctx=False,  # ulysses anything only support forward pass now.
+            _save_ctx=True,
             _parallel_config=_parallel_config,
         )
         if return_lse:
@@ -2804,6 +2818,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
             lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
+            ctx.mark_non_differentiable(lse)
         else:
             out = out_wait()  # type: torch.Tensor
             lse = None
@@ -2816,7 +2831,14 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         grad_out: torch.Tensor,
         *args,
     ):
-        raise NotImplementedError("Backward pass for Ulysses Anything Attention in diffusers is not implemented yet.")
+        group = ctx._parallel_config.context_parallel_config._ulysses_mesh.get_group()
+        grad_out = all_to_all_single_any_qkv_async(grad_out, group, **ctx.query_metadata)()
+        grad_query, grad_key, grad_value, *_ = ctx.backward_op(ctx, grad_out)
+
+        query_wait = all_to_all_single_any_o_async(grad_query, group, **ctx.query_metadata)
+        key_wait = all_to_all_single_any_o_async(grad_key, group, **ctx.key_metadata)
+        value_wait = all_to_all_single_any_o_async(grad_value, group, **ctx.key_metadata)
+        return query_wait(), key_wait(), value_wait(), None, None, None, None, None, None, None, None, None
 
 
 def _templated_unified_attention(

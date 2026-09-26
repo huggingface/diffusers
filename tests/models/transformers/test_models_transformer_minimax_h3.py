@@ -29,6 +29,7 @@ from ..testing_utils import (
     ModelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
+    UlyssesAnythingBackwardTesterMixin,
 )
 
 
@@ -185,6 +186,21 @@ class TestMiniMaxH3TransformerTorchCompile(MiniMaxH3TransformerTesterConfig, Tor
 
 class TestMiniMaxH3TransformerContextParallel(MiniMaxH3TransformerTesterConfig, ContextParallelTesterMixin):
     """Context parallel inference tests for the MiniMax-H3 transformer."""
+
+
+class TestMiniMaxH3UlyssesAnythingBackward(MiniMaxH3TransformerTesterConfig, UlyssesAnythingBackwardTesterMixin):
+    def get_ulysses_anything_inputs(self):
+        inputs_list = []
+        for task, num_video_tokens in (("t2va", 7), ("fl2va", 8), ("ref2va", 9)):
+            inputs = self.get_dummy_inputs(num_video_tokens=num_video_tokens, batch_size=1)
+            if task != "t2va":
+                inputs["timestep"] = torch.cat((inputs["timestep"], torch.tensor([0.999], device=torch_device)))
+                inputs["timestep_indices"][inputs["video_indices"][0]] = 2
+            if task == "ref2va":
+                inputs["timestep"] = torch.cat((inputs["timestep"], torch.tensor([1.0], device=torch_device)))
+                inputs["timestep_indices"][inputs["audio_indices"][0]] = 3
+            inputs_list.append(inputs)
+        return inputs_list
 
 
 class TestMiniMaxH3TransformerLoRA(MiniMaxH3TransformerTesterConfig, LoraTesterMixin):
