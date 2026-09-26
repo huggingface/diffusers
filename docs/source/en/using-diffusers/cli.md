@@ -127,7 +127,7 @@ Configure how the CLI loads model weights and custom pipeline code.
   `enable_auto_cpu_offload` as `memory_reserve_margin` (default `3GB`). Raise it when a large canvas runs out
   of memory mid-forward. The offloader keeps components resident while they fit, so on a high-VRAM card the
   default margin can leave too little room for the activations of a long video.
-- `--attention-backend` — Hub-hosted attention kernels, auto-downloaded on first use. Choices are `default` plus the Hub backends registered in Diffusers (for example `flash_hub`, `flash_varlen_hub`, `flash_4_hub`, `sage_hub`). Run `diffusers-cli run --help` for the current list. It only supports Transformer-based pipelines only, and is ignored with a warning on legacy UNet pipelines. See [Attention backends](../optimization/attention_backends).
+- `--attention-backend` — Hub-hosted attention kernels, auto-downloaded on first use. Choices are `default` plus the Hub backends registered in Diffusers (for example `flash_hub`, `flash_varlen_hub`, `flash_4_hub`, `sage_hub`, `sage_blackwell_hub`). Run `diffusers-cli run --help` for the current list. It only supports Transformer-based pipelines only, and is ignored with a warning on legacy UNet pipelines. See [Attention backends](../optimization/attention_backends).
 - `--vae-tiling` / `--vae-slicing` — lower VAE decode VRAM. See
   [VAE tiling](../optimization/memory#vae-tiling) and [VAE slicing](../optimization/memory#vae-slicing).
 - `--compile [JSON]` — compile denoiser modules with [torch.compile](../optimization/fp16#torchcompile). The
