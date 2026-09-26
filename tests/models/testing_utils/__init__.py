@@ -22,6 +22,7 @@ from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCas
 from .parallelism import (
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
+    HybridParallelTesterMixin,
     TensorParallelTesterMixin,
 )
 from .quantization import (
@@ -66,6 +67,7 @@ __all__ = [
     "CacheTesterMixin",
     "ContextParallelTesterMixin",
     "ContextParallelAttentionBackendsTesterMixin",
+    "HybridParallelTesterMixin",
     "TensorParallelTesterMixin",
     "CPUOffloadTesterMixin",
     "FasterCacheConfigMixin",
