@@ -553,7 +553,7 @@ class StableDiffusionUpscalePipeline(
         callback_steps: int = 1,
         cross_attention_kwargs: dict[str, Any] | None = None,
         clip_skip: int = None,
-    ):
+    ) -> StableDiffusionPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

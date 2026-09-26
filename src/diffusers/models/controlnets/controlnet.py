@@ -95,7 +95,7 @@ class ControlNetConditioningEmbedding(nn.Module):
             nn.Conv2d(block_out_channels[-1], conditioning_embedding_channels, kernel_size=3, padding=1)
         )
 
-    def forward(self, conditioning):
+    def forward(self, conditioning) -> torch.Tensor:
         embedding = self.conv_in(conditioning)
         embedding = F.silu(embedding)
 

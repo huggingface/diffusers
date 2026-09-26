@@ -59,7 +59,7 @@ class SD3SingleTransformerBlock(nn.Module):
         self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.ff = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
 
-    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor):
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
         # 1. Attention
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
         attn_output = self.attn(hidden_states=norm_hidden_states, encoder_hidden_states=None)

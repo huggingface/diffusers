@@ -552,7 +552,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         zero_steps: int | None = 1,
         # ------------ DMD ------------
         is_amplify_first_chunk: bool = False,
-    ):
+    ) -> HeliosPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

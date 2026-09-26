@@ -864,7 +864,7 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, StableDiffusionLora
         cross_attention_kwargs: dict[str, Any] | None = None,
         noise_level: int = 0,
         clean_caption: bool = True,
-    ):
+    ) -> IFPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

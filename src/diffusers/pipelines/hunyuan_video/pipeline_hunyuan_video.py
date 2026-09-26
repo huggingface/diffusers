@@ -466,7 +466,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         prompt_template: dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         max_sequence_length: int = 256,
-    ):
+    ) -> HunyuanVideoPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

@@ -813,7 +813,7 @@ class LEditsPPPipelineStableDiffusionXL(
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
-    ):
+    ) -> LEditsPPDiffusionPipelineOutput | tuple:
         r"""
         The call function to the pipeline for editing. The
         [`~pipelines.ledits_pp.LEditsPPPipelineStableDiffusionXL.invert`] method has to be called beforehand. Edits

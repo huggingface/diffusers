@@ -56,7 +56,7 @@ class ResidualAttentionMlp(nn.Module):
         self.gelu = QuickGELU()
         self.c_proj = nn.Linear(d_model * 4, d_model)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.c_fc(x)
         x = self.gelu(x)
         x = self.c_proj(x)
@@ -76,7 +76,7 @@ class ResidualAttentionBlock(nn.Module):
         self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
         return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.attention(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
         return x

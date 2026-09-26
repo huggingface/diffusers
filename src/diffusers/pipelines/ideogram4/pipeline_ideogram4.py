@@ -501,7 +501,7 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
         attention_kwargs: dict[str, Any] | None = None,
         callback_on_step_end: Callable[["Ideogram4Pipeline", int, int, dict[str, Any]], dict[str, Any]] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ) -> Ideogram4PipelineOutput | tuple[Any]:
+    ) -> Ideogram4PipelineOutput | tuple:
         r"""
         Run text-to-image generation.
 

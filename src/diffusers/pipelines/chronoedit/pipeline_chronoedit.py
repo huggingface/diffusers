@@ -493,7 +493,7 @@ class ChronoEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         max_sequence_length: int = 512,
         enable_temporal_reasoning: bool = False,
         num_temporal_reasoning_steps: int = 0,
-    ):
+    ) -> ChronoEditPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

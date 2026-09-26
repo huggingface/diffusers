@@ -679,7 +679,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionLor
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 256,
-    ):
+    ) -> KolorsPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

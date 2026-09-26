@@ -805,7 +805,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         skip_layer_guidance_stop: float = 0.2,
         skip_layer_guidance_start: float = 0.01,
         mu: float | None = None,
-    ):
+    ) -> StableDiffusion3PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

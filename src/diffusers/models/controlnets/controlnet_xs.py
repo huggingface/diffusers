@@ -502,7 +502,7 @@ class ControlNetXSAdapter(ModelMixin, AttentionMixin, ConfigMixin):
 
         return model
 
-    def forward(self, *args, **kwargs):
+    def forward(self, *args, **kwargs) -> None:
         raise ValueError(
             "A ControlNetXSAdapter cannot be run by itself. Use it together with a UNet2DConditionModel to instantiate a UNetControlNetXSModel."
         )

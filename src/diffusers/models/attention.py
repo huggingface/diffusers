@@ -1125,7 +1125,7 @@ class LuminaFeedForward(nn.Module):
         )
         self.silu = FP32SiLU()
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         return self.linear_2(self.silu(self.linear_1(x)) * self.linear_3(x))
 
 
@@ -1302,7 +1302,7 @@ class SkipFFTransformerBlock(nn.Module):
             out_bias=attention_out_bias,
         )
 
-    def forward(self, hidden_states, encoder_hidden_states, cross_attention_kwargs):
+    def forward(self, hidden_states, encoder_hidden_states, cross_attention_kwargs) -> torch.Tensor:
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
 
         if self.kv_mapper is not None:

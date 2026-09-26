@@ -621,7 +621,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         max_sequence_length: int = 3000,
         do_patching=False,
         _auto_resize: bool = True,
-    ):
+    ) -> BriaFiboPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

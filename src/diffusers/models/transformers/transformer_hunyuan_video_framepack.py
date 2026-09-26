@@ -47,7 +47,9 @@ class HunyuanVideoFramepackRotaryPosEmbed(nn.Module):
         self.rope_dim = rope_dim
         self.theta = theta
 
-    def forward(self, frame_indices: torch.Tensor, height: int, width: int, device: torch.device):
+    def forward(
+        self, frame_indices: torch.Tensor, height: int, width: int, device: torch.device
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         height = height // self.patch_size
         width = width // self.patch_size
         grid = torch.meshgrid(
@@ -94,7 +96,7 @@ class HunyuanVideoHistoryPatchEmbed(nn.Module):
         latents_clean: torch.Tensor | None = None,
         latents_clean_2x: torch.Tensor | None = None,
         latents_clean_4x: torch.Tensor | None = None,
-    ):
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
         if latents_clean is not None:
             latents_clean = self.proj(latents_clean)
             latents_clean = latents_clean.flatten(2).transpose(1, 2)

@@ -623,7 +623,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         ar_step: int = 0,
         causal_block_size: int | None = None,
         fps: int = 24,
-    ):
+    ) -> SkyReelsV2PipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

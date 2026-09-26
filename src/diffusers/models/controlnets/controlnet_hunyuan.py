@@ -226,7 +226,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         style=None,
         image_rotary_emb=None,
         return_dict=True,
-    ):
+    ) -> HunyuanControlNetOutput | tuple[list[torch.Tensor]]:
         """
         The [`HunyuanDiT2DControlNetModel`] forward method.
 
@@ -257,6 +257,10 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
             The image rotary embeddings to apply on query and key tensors during attention calculation.
         return_dict: bool
             Whether to return a dictionary.
+
+        Returns:
+            If `return_dict` is True, a [`~models.controlnets.controlnet_hunyuan.HunyuanControlNetOutput`] is returned,
+            otherwise a `tuple` where the first element is the list of ControlNet block samples.
         """
 
         height, width = hidden_states.shape[-2:]
@@ -339,7 +343,7 @@ class HunyuanDiT2DMultiControlNetModel(ModelMixin):
         style=None,
         image_rotary_emb=None,
         return_dict=True,
-    ):
+    ) -> HunyuanControlNetOutput | tuple[list[torch.Tensor]]:
         """
         The [`HunyuanDiT2DControlNetModel`] forward method.
 
@@ -370,6 +374,11 @@ class HunyuanDiT2DMultiControlNetModel(ModelMixin):
             The image rotary embeddings to apply on query and key tensors during attention calculation.
         return_dict: bool
             Whether to return a dictionary.
+
+        Returns:
+            If `return_dict` is True and only one ControlNet is used, a
+            [`~models.controlnets.controlnet_hunyuan.HunyuanControlNetOutput`] is returned. Otherwise a `tuple` where
+            the first element is the list of ControlNet block samples, summed across all ControlNets.
         """
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             block_samples = controlnet(

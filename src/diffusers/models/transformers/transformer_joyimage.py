@@ -350,7 +350,7 @@ class JoyImageTimeTextImageEmbedding(nn.Module):
         self,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         timestep = self.timesteps_proj(timestep)
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
@@ -525,7 +525,7 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
         return_dict: bool = True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`JoyImageEditTransformer3DModel`] forward method.
 
@@ -539,6 +539,10 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+
+        Returns:
+            If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
         """
         # handle multi-item input (b, n, c, t, h, w)
         is_multi_item = hidden_states.ndim == 6
