@@ -801,22 +801,32 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name_pattern
             )
 
-            # Clean the folder from a previous save
+            # Clean the folder from a previous save. Match only shards of the exact
+            # checkpoint being written (same variant and serialization format): the
+            # prefix must be anchored, or a default save (weights_name
+            # "diffusion_pytorch_model") would also match another variant's shards
+            # ("diffusion_pytorch_model.ema-00001-of-00002") via a bare startswith
+            # and delete them while leaving that variant's index behind.
             if is_main_process:
+                ext = ".bin" if not safe_serialization else ".safetensors"
+                weights_without_ext = weights_name_pattern.replace("{suffix}", "").replace(ext, "")
+                shard_re = re.compile(re.escape(weights_without_ext) + r"-\d{5}-of-\d{5}")
+                base_index_file = WEIGHTS_INDEX_NAME if not safe_serialization else SAFE_WEIGHTS_INDEX_NAME
+                index_file = _add_variant(base_index_file, variant)
                 for filename in os.listdir(save_directory):
                     if filename in state_dict_split.filename_to_tensors.keys():
                         continue
                     full_filename = os.path.join(save_directory, filename)
                     if not os.path.isfile(full_filename):
                         continue
-                    weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
-                    weights_without_ext = weights_without_ext.replace("{suffix}", "")
-                    filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
-                    # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                    if (
-                        filename.startswith(weights_without_ext)
-                        and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
-                    ):
+                    filename_without_ext = filename.replace(ext, "")
+                    is_prior_shard = shard_re.fullmatch(filename_without_ext) is not None
+                    # Drop this checkpoint's stale index too: when a formerly sharded
+                    # checkpoint is now saved as a single file (or fewer shards), a
+                    # leftover index would be followed on load instead of the new
+                    # weights. A fresh index is rewritten below when still sharded.
+                    is_stale_index = filename == index_file and not state_dict_split.is_sharded
+                    if is_prior_shard or is_stale_index:
                         os.remove(full_filename)
 
             for filename, tensors in state_dict_split.filename_to_tensors.items():
