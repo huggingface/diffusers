@@ -36,6 +36,7 @@ from ...testing_utils import (
     torch_device,
 )
 from ..testing_utils import (
+    AttentionTesterMixin,
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
@@ -201,6 +202,10 @@ class TestAutoencoderKL(AutoencoderKLTesterConfig, ModelTesterMixin, TrainingTes
 
 class TestAutoencoderKLMemory(AutoencoderKLTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKL."""
+
+
+class TestAutoencoderKLAttention(AutoencoderKLTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for AutoencoderKL."""
 
 
 class TestAutoencoderKLSlicingTiling(AutoencoderKLTesterConfig, AutoencoderTesterMixin):

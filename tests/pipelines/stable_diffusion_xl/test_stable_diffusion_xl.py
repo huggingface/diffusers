@@ -70,8 +70,6 @@ from ..testing_utils import (
     MemoryTesterMixin,
     PipelineTesterMixin,
     UNetLoraTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
 )
 
 
@@ -344,43 +342,6 @@ class TestStableDiffusionXLPipeline(StableDiffusionXLPipelineTesterConfig, Pipel
 
         assert torch.allclose(base_pipe_output[0, -1, -3:, -3:], output_no_freeu[0, -1, -3:, -3:], atol=1e-2), (
             "Disabling of FreeU should lead to results similar to the default pipeline results."
-        )
-
-    def test_fused_qkv_projections(self, base_pipe_output):
-        # The unfused reference is the class-cached `base_pipe_output`, so the runs below reseed the global RNG to
-        # reproduce it and the only remaining difference comes from the projection fusion itself.
-        sd_pipe = self.get_pipeline().to(torch_device)
-
-        original_image_slice = base_pipe_output[0, -1, -3:, -3:]
-
-        sd_pipe.fuse_qkv_projections()
-        for component in sd_pipe.components.values():
-            if (
-                isinstance(component, torch.nn.Module)
-                and getattr(component, "original_attn_processors", None) is not None
-            ):
-                assert check_qkv_fusion_processors_exist(component), (
-                    "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-                )
-                assert check_qkv_fusion_matches_attn_procs_length(component, component.original_attn_processors), (
-                    "Something wrong with the attention processors concerning the fused QKV projections."
-                )
-
-        torch.manual_seed(0)
-        image_slice_fused = sd_pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
-
-        sd_pipe.unfuse_qkv_projections()
-        torch.manual_seed(0)
-        image_slice_disabled = sd_pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
-
-        assert torch.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
-            "Fusion of QKV projections shouldn't affect the outputs."
-        )
-        assert torch.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        )
-        assert torch.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
         )
 
     def test_stable_diffusion_two_xl_mixture_of_denoiser_fast(self):

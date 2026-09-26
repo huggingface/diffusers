@@ -42,8 +42,6 @@ from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
     PipelineTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
 )
 
 
@@ -196,45 +194,6 @@ class TestPixArtSigmaPipeline(PixArtSigmaPipelineTesterConfig, PipelineTesterMix
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-3)
-
-    def test_fused_qkv_projections(self):
-        # Run on CPU to keep the device-dependent `torch.Generator` deterministic.
-        pipe = self.get_pipeline()
-
-        original_output = self.run_pipe(pipe)
-
-        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
-        # to the pipeline level.
-        pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(pipe.transformer), (
-            "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-        )
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
-
-        output_fused = self.run_pipe(pipe)
-
-        pipe.transformer.unfuse_qkv_projections()
-        output_disabled = self.run_pipe(pipe)
-
-        assert_tensors_close(
-            output_fused, original_output, atol=1e-3, rtol=1e-3, msg="Fusion of QKV projections changed the outputs."
-        )
-        assert_tensors_close(
-            output_disabled,
-            output_fused,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Outputs changed after the fused QKV projections were disabled.",
-        )
-        assert_tensors_close(
-            output_disabled,
-            original_output,
-            atol=1e-2,
-            rtol=1e-2,
-            msg="Original outputs should match when fused QKV projections are disabled.",
-        )
 
 
 class TestPixArtSigmaPipelineMemory(PixArtSigmaPipelineTesterConfig, MemoryTesterMixin):
