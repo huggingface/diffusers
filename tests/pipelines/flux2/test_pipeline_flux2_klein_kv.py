@@ -167,6 +167,19 @@ class TestFlux2KleinKVPipeline(Flux2KleinKVPipelineTesterConfig, PipelineTesterM
         image = pipe(**inputs).images
         assert image.shape == (1, *self.output_shape)
 
+    def test_image_input_max_area(self):
+        # `max_area` (previously hardcoded to 1024**2) is the condition-image downscale threshold:
+        # condition images whose area exceeds it are downscaled while preserving aspect ratio.
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        height, width = inputs["height"], inputs["width"]
+
+        # the dummy 64x64 condition image exceeds max_area -> downscale path
+        inputs["max_area"] = 32 * 32
+        image = pipe(**inputs).images[0]
+        _, output_height, output_width = image.shape
+        assert (output_height, output_width) == (height, width)
+
     @pytest.mark.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):
         pass
