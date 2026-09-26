@@ -892,6 +892,23 @@ def get_ltx2_diffusion_video_vae_config(version: str) -> tuple[dict[str, Any], d
     return config, LTX_2_3_VIDEO_VAE_RENAME_DICT, LTX_2_0_VAE_SPECIAL_KEYS_REMAP
 
 
+def get_ltx2_diffusion_decoder_scheduler() -> FlowMatchEulerDiscreteScheduler:
+    """The scheduler for the LTX-2.5 diffusion decoder's denoising loop.
+
+    This is deliberately *not* the transformer's scheduler. The decoder walks a plain uniform schedule,
+    `linspace(1, 1 / num_inference_steps, num_inference_steps)`, so every knob that bends the sigmas has to be off:
+    resolution-dependent shifting expects a `mu` the decoder has no sequence length to derive, and a terminal shift
+    would end the walk at `shift_terminal` instead of the last sigma the decoder was distilled on.
+    """
+    return FlowMatchEulerDiscreteScheduler(
+        num_train_timesteps=1000,
+        shift=1.0,
+        use_dynamic_shifting=False,
+        shift_terminal=None,
+        stochastic_sampling=False,
+    )
+
+
 def convert_ltx2_diffusion_video_vae(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_diffusion_video_vae_config(version)
     diffusers_config = config["diffusers_config"]
@@ -1414,7 +1431,8 @@ def get_args():
         help=(
             "Whether to convert the LTX-2.5 diffusion decoder, saved to a `diffusion_decoder` subfolder — the "
             "component name `LTX2VideoDiffusionDecodePipeline` and the modular blocks resolve it by — so "
-            "`from_pretrained` keeps returning the conv decoder in `vae` by default"
+            "`from_pretrained` keeps returning the conv decoder in `vae` by default. Its denoising schedule "
+            "differs from the transformer's, so a `diffusion_decoder_scheduler` subfolder is written too"
         ),
     )
     parser.add_argument("--audio_vae", action="store_true", help="Whether to convert the audio VAE model")
@@ -1551,6 +1569,12 @@ def main(args):
         # from the subfolder named after it, so this folder name must match the `diffusion_decoder` component
         # of `LTX2VideoDiffusionDecodePipeline` (and the modular `ComponentSpec`) for those loads to work.
         diffusion_vae.to(vae_dtype).save_pretrained(os.path.join(args.output_path, "diffusion_decoder"))
+        # The decoder denoises, so it needs a scheduler, and the repo's top-level `scheduler` is the transformer's:
+        # it has `use_dynamic_shifting` on, which the decoder cannot satisfy. Save the decoder's own alongside the
+        # weights so `LTX2VideoDiffusionDecodePipeline` can be assembled entirely from this repo.
+        get_ltx2_diffusion_decoder_scheduler().save_pretrained(
+            os.path.join(args.output_path, "diffusion_decoder_scheduler")
+        )
 
     if args.audio_vae or args.full_pipeline:
         if args.audio_vae_filename is not None:
