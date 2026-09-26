@@ -17,7 +17,7 @@ import numpy as np
 import PIL.Image
 import torch
 
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import VaeImageProcessor, VaeImageProcessorLDM3D
 
 
 class TestImageProcessor:
@@ -306,3 +306,21 @@ class TestImageProcessor:
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+    def test_vae_image_processor_ldm3d_keeps_its_own_config(self):
+        # LDM3D's __init__ used to call super().__init__() with no arguments, so the base
+        # class's own @register_to_config wrapper re-registered its defaults over whatever
+        # LDM3D had just registered, silently discarding any non-default value passed in.
+        image_processor = VaeImageProcessorLDM3D(
+            do_resize=False, vae_scale_factor=16, resample="bilinear", do_normalize=False
+        )
+        assert image_processor.config.do_resize is False
+        assert image_processor.config.vae_scale_factor == 16
+        assert image_processor.config.resample == "bilinear"
+        assert image_processor.config.do_normalize is False
+
+        default_processor = VaeImageProcessorLDM3D()
+        assert default_processor.config.do_resize is True
+        assert default_processor.config.vae_scale_factor == 8
+        assert default_processor.config.resample == "lanczos"
+        assert default_processor.config.do_normalize is True
