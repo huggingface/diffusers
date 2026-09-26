@@ -99,7 +99,7 @@ class FP16SafetensorsCommand(BaseDiffusersCLICommand):
             from huggingface_hub._commit_api import CommitOperationAdd
 
         model_index = hf_hub_download(repo_id=self.ckpt_id, filename="model_index.json")
-        with open(model_index, "r") as f:
+        with open(model_index, "r", encoding="utf-8") as f:
             pipeline_class_name = json.load(f)["_class_name"]
         pipeline_class = getattr(import_module("diffusers"), pipeline_class_name)
         self.logger.info(f"Pipeline class imported: {pipeline_class_name}.")

@@ -502,7 +502,7 @@ def load_single_file_checkpoint(
 
 def fetch_original_config(original_config_file, local_files_only=False):
     if os.path.isfile(original_config_file):
-        with open(original_config_file, "r") as fp:
+        with open(original_config_file, "r", encoding="utf-8") as fp:
             original_config_file = fp.read()
 
     elif is_valid_url(original_config_file):
