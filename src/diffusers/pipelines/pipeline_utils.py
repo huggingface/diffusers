@@ -1735,8 +1735,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # allow all patterns from non-model folders
             # this enables downloading schedulers, tokenizers, ...
             allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
-            # add custom component files
-            allow_patterns += [f"{k}/{f}.py" for k, f in custom_components.items()]
+            # Add custom component modules and their local Python dependencies.
+            allow_patterns += [f"{folder_name}/*.py" for folder_name in custom_components]
             # add custom pipeline file
             allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
             # also allow downloading config.json files with the model
