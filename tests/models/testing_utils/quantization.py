@@ -43,6 +43,7 @@ from ...testing_utils import (
     backend_empty_cache,
     is_autoround,
     is_bitsandbytes,
+    is_comfy_kitchen,
     is_gguf,
     is_modelopt,
     is_quantization,
@@ -53,6 +54,7 @@ from ...testing_utils import (
     require_accelerator,
     require_auto_round_version_greater_or_equal,
     require_bitsandbytes_version_greater,
+    require_comfy_quant,
     require_gguf_version_greater_or_equal,
     require_modelopt_version_greater_or_equal,
     require_sdnq,
@@ -1823,3 +1825,133 @@ class AutoRoundCompileTesterMixin(AutoRoundConfigMixin, QuantizationCompileTeste
 
     def test_autoround_torch_compile_with_group_offload(self):
         self._test_torch_compile_with_group_offload(self.config_dict)
+
+
+@is_quantization
+@is_comfy_kitchen
+@require_comfy_quant
+@require_accelerator
+@require_accelerate
+class ComfyQuantConfigMixin:
+    """
+    Base mixin providing ComfyQuant quantization config and model creation.
+
+    Expected class attributes:
+        - model_class: The model class to test
+        - pretrained_model_name_or_path: Hub repository ID for the pretrained model
+        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained
+    """
+
+    COMFY_QUANT_CONFIGS = {
+        "fp8": {"quant_format": "fp8"},
+        "nvfp4": {"quant_format": "nvfp4"},
+        "mxfp8": {"quant_format": "mxfp8"},
+        "int8": {"quant_format": "int8"},
+        "int4_svd": {"quant_format": "int4_svd"},
+        "int4_awq": {"quant_format": "int4_awq"},
+    }
+
+    COMFY_QUANT_EXPECTED_MEMORY_REDUCTIONS = {
+        "fp8": 1.2,
+        "nvfp4": 1.2,
+        "mxfp8": 1.2,
+        "int8": 1.2,
+        "int4_svd": 1.2,
+        "int4_awq": 1.2,
+    }
+
+    def _create_quantized_model(self, config_kwargs, **extra_kwargs):
+        from diffusers.quantizers.quantization_config import ComfyQuantConfig
+
+        config = ComfyQuantConfig(**config_kwargs)
+        kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
+        kwargs["quantization_config"] = config
+        kwargs["device_map"] = str(torch_device)
+        kwargs.update(extra_kwargs)
+        return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
+
+    def _verify_if_layer_quantized(self, name, module, config_kwargs):
+        import comfy_kitchen.tensor as ck_tensor
+
+        assert isinstance(module.weight, ck_tensor.QuantizedTensor), f"Layer {name} is not a ck_tensor.QuantizedTensor"
+
+
+@is_comfy_kitchen
+@require_comfy_quant
+@require_accelerate
+@require_accelerator
+class ComfyQuantTesterMixin(ComfyQuantConfigMixin, QuantizationTesterMixin):
+    """
+    Mixin class for testing ComfyQuant quantization on models.
+
+    Expected class attributes:
+        - model_class: The model class to test
+        - pretrained_model_name_or_path: Hub repository ID for the pretrained model
+        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained (e.g., {"subfolder": "transformer"})
+
+    Expected methods to be implemented by subclasses:
+        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Optional class attributes:
+        - COMFY_QUANT_CONFIGS: Dict of config name -> ComfyQuantConfig kwargs to test
+
+    Pytest mark: comfy_quant
+        Use `pytest -m "not comfy_quant"` to skip these tests
+    """
+
+    @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
+    def test_comfy_quant_quantization_num_parameters(self, config_name):
+        self._test_quantization_num_parameters(ComfyQuantConfigMixin.COMFY_QUANT_CONFIGS[config_name])
+
+    @pytest.mark.parametrize(
+        "config_name",
+        ["fp8", "int8", "int4_svd"],
+        ids=["fp8", "int8", "int4_svd"],
+    )
+    def test_comfy_quant_quantization_memory_footprint(self, config_name):
+        expected = ComfyQuantConfigMixin.COMFY_QUANT_EXPECTED_MEMORY_REDUCTIONS.get(config_name, 1.2)
+        self._test_quantization_memory_footprint(
+            ComfyQuantConfigMixin.COMFY_QUANT_CONFIGS[config_name], expected_memory_reduction=expected
+        )
+
+    @pytest.mark.parametrize(
+        "config_name",
+        ["fp8", "int8", "int4_svd"],
+        ids=["fp8", "int8", "int4_svd"],
+    )
+    def test_comfy_quant_quantization_inference(self, config_name):
+        self._test_quantization_inference(ComfyQuantConfigMixin.COMFY_QUANT_CONFIGS[config_name])
+
+    @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
+    def test_comfy_quant_quantization_dtype_assignment(self, config_name):
+        self._test_quantization_dtype_assignment(ComfyQuantConfigMixin.COMFY_QUANT_CONFIGS[config_name])
+
+    @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
+    def test_comfy_quant_quantization_lora_inference(self, config_name):
+        self._test_quantization_lora_inference(ComfyQuantConfigMixin.COMFY_QUANT_CONFIGS[config_name])
+
+    @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
+    def test_comfy_quant_quantization_serialization(self, config_name, tmp_path):
+        self._test_quantization_serialization(ComfyQuantConfigMixin.COMFY_QUANT_CONFIGS[config_name], tmp_path)
+
+    @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
+    def test_comfy_quant_quantized_layers(self, config_name):
+        self._test_quantized_layers(ComfyQuantConfigMixin.COMFY_QUANT_CONFIGS[config_name])
+
+    def test_comfy_quant_modules_to_not_convert(self):
+        """Test that modules_to_not_convert parameter works correctly."""
+        modules_to_exclude = getattr(self, "modules_to_not_convert_for_test", None)
+        if modules_to_exclude is None:
+            pytest.skip("modules_to_not_convert_for_test not defined for this model")
+
+        self._test_quantization_modules_to_not_convert(
+            ComfyQuantConfigMixin.COMFY_QUANT_CONFIGS["fp8"], modules_to_exclude
+        )
+
+    def test_comfy_quant_device_map(self):
+        """Test that device_map='auto' works correctly with quantization."""
+        self._test_quantization_device_map(ComfyQuantConfigMixin.COMFY_QUANT_CONFIGS["fp8"])
+
+    def test_comfy_quant_dequantize(self):
+        """Test that dequantize() works correctly."""
+        self._test_dequantize(ComfyQuantConfigMixin.COMFY_QUANT_CONFIGS["fp8"])
