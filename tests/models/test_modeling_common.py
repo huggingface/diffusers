@@ -26,7 +26,7 @@ import torch
 from huggingface_hub import ModelCard, delete_repo, snapshot_download, try_to_load_from_cache
 from huggingface_hub.utils import HfHubHTTPError, is_jinja_available
 
-from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel
+from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel, UNet2DModel
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import (
@@ -166,6 +166,31 @@ class TestModelUtils:
             assert os.path.basename(cached_shard_file) in error_msg, (
                 f"Expected error about missing shard, got: {error_msg}"
             )
+
+    @pytest.mark.parametrize(
+        "variant, index_name",
+        [
+            (None, "diffusion_pytorch_model.bin.index.json"),
+            ("ema", "diffusion_pytorch_model.bin.index.ema.json"),
+            ("ema", "diffusion_pytorch_model.bin.ema.index.json"),
+        ],
+    )
+    def test_sharded_bin_checkpoint_loads_with_default_use_safetensors(self, tmp_path, variant, index_name):
+        model = UNet2DModel(
+            sample_size=32,
+            in_channels=3,
+            out_channels=3,
+            block_out_channels=(4, 8),
+            norm_num_groups=2,
+            down_block_types=("DownBlock2D", "AttnDownBlock2D"),
+            up_block_types=("AttnUpBlock2D", "UpBlock2D"),
+        )
+        model.save_pretrained(tmp_path, variant=variant, safe_serialization=False, max_shard_size="50KB")
+        saved_index = next(tmp_path.glob("*.bin.index*.json"))
+        saved_index.rename(tmp_path / index_name)
+
+        loaded = UNet2DModel.from_pretrained(tmp_path, variant=variant)
+        assert all(torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), loaded.parameters()))
 
     @pytest.mark.skip(reason="Flaky behaviour on CI. Re-enable after migrating to new runners")
     @pytest.mark.skipif(torch_device == "mps", reason="Test not supported for MPS.")

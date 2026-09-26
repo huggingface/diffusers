@@ -1288,19 +1288,44 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     )
 
         if resolved_model_file is None and not is_sharded:
-            resolved_model_file = _get_model_file(
-                pretrained_model_name_or_path,
-                weights_name=_add_variant(WEIGHTS_NAME, variant),
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-                subfolder=subfolder,
-                user_agent=user_agent,
-                commit_hash=commit_hash,
-            )
+            pickle_index_file = None
+            try:
+                resolved_model_file = _get_model_file(
+                    pretrained_model_name_or_path,
+                    weights_name=_add_variant(WEIGHTS_NAME, variant),
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                    commit_hash=commit_hash,
+                )
+            except EnvironmentError:
+                if not allow_pickle or use_flashpack:
+                    raise
+                pickle_index_file_kwargs = {**index_file_kwargs, "use_safetensors": False}
+                pickle_index_file = _fetch_index_file(**pickle_index_file_kwargs)
+                if variant is not None and (pickle_index_file is None or not os.path.exists(pickle_index_file)):
+                    pickle_index_file = _fetch_index_file_legacy(**pickle_index_file_kwargs)
+                if pickle_index_file is None or not pickle_index_file.is_file():
+                    raise
+
+            if pickle_index_file is not None:
+                is_sharded = True
+                resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
+                    pretrained_model_name_or_path,
+                    pickle_index_file,
+                    cache_dir=cache_dir,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    user_agent=user_agent,
+                    revision=revision,
+                    subfolder=subfolder or "",
+                )
 
         if not isinstance(resolved_model_file, list):
             resolved_model_file = [resolved_model_file]
