@@ -21,7 +21,6 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["pipeline_controlnet"] = ["StableDiffusionControlNetPipeline"]
     _import_structure["pipeline_controlnet_blip_diffusion"] = ["BlipDiffusionControlNetPipeline"]
     _import_structure["pipeline_controlnet_img2img"] = ["StableDiffusionControlNetImg2ImgPipeline"]
@@ -42,7 +41,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .multicontrolnet import MultiControlNetModel
         from .pipeline_controlnet import StableDiffusionControlNetPipeline
         from .pipeline_controlnet_blip_diffusion import BlipDiffusionControlNetPipeline
         from .pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
