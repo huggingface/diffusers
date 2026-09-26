@@ -45,6 +45,7 @@ from diffusers.utils.import_utils import (
     is_sdnq_available,
     is_timm_available,
     is_torch_available,
+    is_torch_mlu_available,
     is_torch_neuronx_available,
     is_torch_version,
     is_torchao_available,
@@ -100,6 +101,8 @@ if is_torch_available():
     else:
         if torch.cuda.is_available():
             torch_device = "cuda"
+        elif is_torch_mlu_available() and hasattr(torch, "mlu") and torch.mlu.is_available():
+            torch_device = "mlu"
         elif torch.xpu.is_available():
             torch_device = "xpu"
         elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
@@ -1494,7 +1497,7 @@ def _is_torch_fp64_available(device):
 # Guard these lookups for when Torch is not used - alternative accelerator support is for PyTorch
 if is_torch_available():
     # Behaviour flags
-    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
+    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "mlu": True, "xpu": True, "cpu": True, "mps": False, "default": True}
 
     # Neuron device key: torch.neuron.current_device() returns an int (e.g. 0).
     # We capture it once at import time if torch_neuronx is available so we can add it
@@ -1508,6 +1511,7 @@ if is_torch_available():
     # Function definitions
     BACKEND_EMPTY_CACHE = {
         "cuda": torch.cuda.empty_cache,
+        "mlu": getattr(getattr(torch, "mlu", None), "empty_cache", None),
         "xpu": torch.xpu.empty_cache,
         "cpu": None,
         "mps": torch.mps.empty_cache,
@@ -1515,6 +1519,7 @@ if is_torch_available():
     }
     BACKEND_DEVICE_COUNT = {
         "cuda": torch.cuda.device_count,
+        "mlu": lambda: getattr(getattr(torch, "mlu", None), "device_count", lambda: 0)(),
         "xpu": torch.xpu.device_count,
         "cpu": lambda: 0,
         "mps": lambda: 0,
@@ -1522,6 +1527,7 @@ if is_torch_available():
     }
     BACKEND_MANUAL_SEED = {
         "cuda": torch.cuda.manual_seed,
+        "mlu": getattr(getattr(torch, "mlu", None), "manual_seed", torch.manual_seed),
         "xpu": torch.xpu.manual_seed,
         "cpu": torch.manual_seed,
         "mps": torch.mps.manual_seed,
@@ -1529,6 +1535,7 @@ if is_torch_available():
     }
     BACKEND_RESET_PEAK_MEMORY_STATS = {
         "cuda": torch.cuda.reset_peak_memory_stats,
+        "mlu": getattr(getattr(torch, "mlu", None), "reset_peak_memory_stats", None),
         "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "cpu": None,
         "mps": None,
@@ -1536,6 +1543,7 @@ if is_torch_available():
     }
     BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
         "cuda": torch.cuda.reset_max_memory_allocated,
+        "mlu": getattr(getattr(torch, "mlu", None), "reset_peak_memory_stats", None),
         "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "cpu": None,
         "mps": None,
@@ -1543,6 +1551,7 @@ if is_torch_available():
     }
     BACKEND_MAX_MEMORY_ALLOCATED = {
         "cuda": torch.cuda.max_memory_allocated,
+        "mlu": getattr(getattr(torch, "mlu", None), "max_memory_allocated", 0),
         "xpu": getattr(torch.xpu, "max_memory_allocated", None),
         "cpu": 0,
         "mps": 0,
@@ -1550,6 +1559,7 @@ if is_torch_available():
     }
     BACKEND_SYNCHRONIZE = {
         "cuda": torch.cuda.synchronize,
+        "mlu": getattr(getattr(torch, "mlu", None), "synchronize", None),
         "xpu": getattr(torch.xpu, "synchronize", None),
         "cpu": None,
         "mps": None,
