@@ -33,6 +33,7 @@ from ..attention_dispatch import (
     dispatch_attention_fn,
 )
 from ..cache_utils import CacheMixin
+from ..embeddings import get_timestep_embedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from torch import Tensor, nn
@@ -483,12 +484,6 @@ class Kandinsky6AttnProcessor:
         if rotary_emb_kv is not None:
             key = apply_rotary(key, rotary_emb_kv).to(dtype=key.dtype)
 
-        query_was_batched = query.dim() == 4
-        if not query_was_batched:
-            query, key, value = query.unsqueeze(0), key.unsqueeze(0), value.unsqueeze(0)
-        elif key.dim() == 3:
-            key, value = key.unsqueeze(0), value.unsqueeze(0)
-
         if sparse_params is not None:
             q = query.transpose(1, 2).contiguous()
             k = key.transpose(1, 2).contiguous()
@@ -521,8 +516,6 @@ class Kandinsky6AttnProcessor:
                 parallel_config=self._parallel_config,
             )
 
-        if not query_was_batched:
-            output = output[0]
         return attn.out_layer(output.flatten(-2, -1))
 
 
@@ -533,15 +526,16 @@ class Kandinsky6TimeEmbeddings(nn.Module):
         super().__init__()
         if model_dim % 2:
             raise ValueError("model_dim must be even")
-        self.register_buffer("freqs", get_freqs(model_dim // 2, max_period), persistent=False)
+        self.model_dim = model_dim
+        self.max_period = max_period
         self.in_layer = nn.Linear(model_dim, time_dim)
         self.activation = nn.SiLU()
         self.out_layer = nn.Linear(time_dim, time_dim)
 
     def forward(self, time: Tensor) -> Tensor:
-        freqs = self.freqs.to(device=time.device, dtype=torch.float32)
-        args = torch.outer(time.float(), freqs)
-        embed = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        embed = get_timestep_embedding(
+            time, self.model_dim, flip_sin_to_cos=True, downscale_freq_shift=0, max_period=self.max_period
+        )
         h = functional.linear(embed, self.in_layer.weight.float(), self.in_layer.bias.float())
         return functional.linear(self.activation(h), self.out_layer.weight.float(), self.out_layer.bias.float())
 
@@ -559,7 +553,7 @@ class Kandinsky6TextEmbeddings(nn.Module):
 
 
 class Kandinsky6VisualEmbeddings(nn.Module):
-    """Patch projection for ``[T,H,W,C]`` or ``[B,T,H,W,C]`` visual tokens."""
+    """Patch projection for ``[B,T,H,W,C]`` visual tokens."""
 
     def __init__(self, visual_dim: int, model_dim: int, patch_size: tuple[int, int, int]):
         super().__init__()
@@ -567,35 +561,13 @@ class Kandinsky6VisualEmbeddings(nn.Module):
         self.in_layer = nn.Linear(math.prod(patch_size) * visual_dim, model_dim)
 
     def forward(self, x: Tensor) -> Tensor:
-        batched = bool(x.ndim == 5)
-        offset = 1 if batched else 0
-        if not batched and x.ndim != 4:
-            raise ValueError("visual input must have shape (T,H,W,C) or (B,T,H,W,C)")
-
-        shape = x.shape
-        duration, height, width, channels = shape[offset:]
+        batch, duration, height, width, channels = x.shape
         p_t, p_h, p_w = self.patch_size
-        if batched:
-            x = (
-                x.view(
-                    shape[0],
-                    duration // p_t,
-                    p_t,
-                    height // p_h,
-                    p_h,
-                    width // p_w,
-                    p_w,
-                    channels,
-                )
-                .permute(0, 1, 3, 5, 2, 4, 6, 7)
-                .flatten(4, 7)
-            )
-        else:
-            x = (
-                x.view(duration // p_t, p_t, height // p_h, p_h, width // p_w, p_w, channels)
-                .permute(0, 2, 4, 1, 3, 5, 6)
-                .flatten(3, 6)
-            )
+        x = (
+            x.view(batch, duration // p_t, p_t, height // p_h, p_h, width // p_w, p_w, channels)
+            .permute(0, 1, 3, 5, 2, 4, 6, 7)
+            .flatten(4, 7)
+        )
         return self.in_layer(x)
 
 
@@ -708,26 +680,14 @@ class Kandinsky6OutLayer(nn.Module):
         )
         x = self.out_layer(x)
 
-        # batch_dim variant
-        if x.ndim == 5:
-            batch, duration, height, width = x.shape[:4]
-            p_t, p_h, p_w = self.patch_size
-            return (
-                x.view(batch, duration, height, width, -1, p_t, p_h, p_w)
-                .permute(0, 1, 5, 2, 6, 3, 7, 4)
-                .flatten(1, 2)
-                .flatten(2, 3)
-                .flatten(3, 4)
-            )
-
-        duration, height, width, _ = x.shape
+        batch, duration, height, width = x.shape[:4]
         p_t, p_h, p_w = self.patch_size
         return (
-            x.view(duration, height, width, -1, p_t, p_h, p_w)
-            .permute(0, 4, 1, 5, 2, 6, 3)
-            .flatten(0, 1)
+            x.view(batch, duration, height, width, -1, p_t, p_h, p_w)
+            .permute(0, 1, 5, 2, 6, 3, 7, 4)
             .flatten(1, 2)
             .flatten(2, 3)
+            .flatten(3, 4)
         )
 
 
