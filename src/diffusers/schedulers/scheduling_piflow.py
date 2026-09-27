@@ -14,20 +14,32 @@
 
 """Diffusers scheduler for distilled Kandinsky 6 PiFlow checkpoints."""
 
-from __future__ import annotations
+from dataclasses import dataclass
 
 import torch
-from ..configuration_utils import register_to_config
-from .scheduling_flow_match_euler_discrete import (
-    FlowMatchEulerDiscreteScheduler,
-    FlowMatchEulerDiscreteSchedulerOutput,
-)
+
+from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import BaseOutput
+from .scheduling_utils import SchedulerMixin
+
+
+@dataclass
+class PiflowSchedulerOutput(BaseOutput):
+    """
+    Output class for the scheduler's `step` function output.
+
+    Args:
+        prev_sample (`torch.Tensor`):
+            Computed sample at the next PiFlow grid point. Should be used as the next denoising input.
+    """
+
+    prev_sample: torch.Tensor
 
 
 class DXPolicy:
     """Network-free DX policy over one flow-matching segment."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         denoising_output: torch.Tensor,
         x_t_src: torch.Tensor,
@@ -56,7 +68,7 @@ class DXPolicy:
     @staticmethod
     def _interpolate(x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         n = x.size(1)
-        if n < 2:  # noqa: PLR2004
+        if n < 2:
             return x.squeeze(1)
         t = t.clamp(min=0, max=1) * (n - 1)
         t0 = t.floor().to(torch.long).clamp(min=0, max=n - 2)
@@ -89,7 +101,7 @@ def shift_timesteps(t: torch.Tensor, shift: float) -> torch.Tensor:
     return shift * t / (1 + (shift - 1) * t)
 
 
-def policy_rollout_fm(  # noqa: PLR0913
+def policy_rollout_fm(
     x_t_start: torch.Tensor,
     sigma_t_start: torch.Tensor,
     raw_t_start: torch.Tensor,
@@ -126,14 +138,16 @@ def policy_rollout_fm(  # noqa: PLR0913
     return x_t, sigma_t, sigma_t.flatten() * 1_000
 
 
-class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
+class PiflowScheduler(SchedulerMixin, ConfigMixin):
     """Few-step PiFlow scheduler for widened-output diffusion transformers.
 
-    PiFlow evaluates the denoising model at a small number of grid points and
-    integrates a network-free policy between those evaluations. The scheduler
-    is intended for distilled Kandinsky 6 checkpoints, including the main
-    video/audio model and the video super-resolution model. Their model output
-    contains ``n_grid`` predictions per sample channel.
+    PiFlow evaluates the denoising model at a small number of grid points and integrates a network-free policy
+    between those evaluations. The scheduler is intended for distilled Kandinsky 6 checkpoints, including the main
+    video/audio model and the video super-resolution model. Their model output contains `n_grid` predictions per
+    sample channel.
+
+    This scheduler inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the
+    generic methods implemented for all schedulers (loading, saving, etc.).
 
     Args:
         num_train_timesteps (`int`, *optional*, defaults to 1000): Number of
@@ -149,6 +163,8 @@ class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
             integration substeps per raw-timestep unit.
     """
 
+    _compatibles = []
+    order = 1
     is_piflow = True
 
     @register_to_config
@@ -170,15 +186,40 @@ class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
             raise ValueError("PiflowScheduler requires 0 < final_step_size_scale <= 1")
         if num_policy_substeps < 1:
             raise ValueError("PiflowScheduler requires num_policy_substeps >= 1")
-        super().__init__(
-            num_train_timesteps=num_train_timesteps,
-            shift=shift,
-        )
+
+        self._step_index = None
+        self._begin_index = None
+        self.timesteps = torch.empty(0)
+        self.sigmas = torch.empty(0)
         self.n_grid = int(n_grid)
         self.eps = float(eps)
         self.final_step_size_scale = float(final_step_size_scale)
         self.num_policy_substeps = int(num_policy_substeps)
         self._piflow_raw_timesteps = torch.empty(0)
+
+    @property
+    def step_index(self):
+        """The index counter for the current timestep. It increases by 1 after each scheduler step."""
+        return self._step_index
+
+    @property
+    def begin_index(self):
+        """The index for the first timestep. It should be set from the pipeline with `set_begin_index`."""
+        return self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0) -> None:
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`, defaults to `0`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
+
+    def __len__(self) -> int:
+        return self.config.num_train_timesteps
 
     def set_timesteps(
         self,
@@ -287,7 +328,7 @@ class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
         timestep: float | torch.FloatTensor,
         sample: torch.FloatTensor,
         return_dict: bool = True,
-    ) -> FlowMatchEulerDiscreteSchedulerOutput | tuple:
+    ) -> PiflowSchedulerOutput | tuple:
         """Advance one step by integrating the PiFlow policy.
 
         Args:
@@ -296,10 +337,10 @@ class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
             timestep (`float` or `torch.FloatTensor`): Current scheduler timestep.
             sample (`torch.FloatTensor`): Current noisy sample.
             return_dict (`bool`, *optional*, defaults to True): Whether to return
-                a [`FlowMatchEulerDiscreteSchedulerOutput`].
+                a [`PiflowSchedulerOutput`].
 
         Returns:
-            [`FlowMatchEulerDiscreteSchedulerOutput`] or `tuple`: Updated sample.
+            [`PiflowSchedulerOutput`] or `tuple`: Updated sample.
         """
         if isinstance(timestep, int) or isinstance(timestep, (torch.IntTensor, torch.LongTensor)):
             raise ValueError(
@@ -314,5 +355,5 @@ class PiflowScheduler(FlowMatchEulerDiscreteScheduler):
         updated = updated.to(dtype=sample.dtype)
         self._step_index += 1
         if return_dict:
-            return FlowMatchEulerDiscreteSchedulerOutput(prev_sample=updated)
+            return PiflowSchedulerOutput(prev_sample=updated)
         return (updated,)
