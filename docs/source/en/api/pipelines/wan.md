@@ -66,9 +66,9 @@ from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -91,9 +91,9 @@ pipeline = WanPipeline.from_pretrained(
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 The camera rushes from far to near in a low-angle shot,
@@ -131,18 +131,18 @@ from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 
 pipeline = WanPipeline.from_pretrained(
     "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 # torch.compile
 pipeline.transformer.to(memory_format=torch.channels_last)
@@ -192,12 +192,12 @@ from transformers import CLIPVisionModel
 
 
 model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-diffusers"
-image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
 pipe = WanImageToVideoPipeline.from_pretrained(
-    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+    model_id, vae=vae, image_encoder=image_encoder, dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
 last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
@@ -292,9 +292,9 @@ from diffusers import AutoencoderKLWan, WanAnimatePipeline
 from diffusers.utils import export_to_video, load_image, load_video
 
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Load character image and preprocessed videos
 image = load_image("path/to/character.jpg")
@@ -341,9 +341,9 @@ from diffusers import AutoencoderKLWan, WanAnimatePipeline
 from diffusers.utils import export_to_video, load_image, load_video
 
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Load all required inputs for replacement mode
 image = load_image("path/to/new_character.jpg")
@@ -394,9 +394,9 @@ from diffusers import AutoencoderKLWan, WanAnimatePipeline
 from diffusers.utils import export_to_video, load_image, load_video
 
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = load_image("path/to/character.jpg")
 pose_video = load_video("path/to/pose_video.mp4")
@@ -464,15 +464,15 @@ export_to_video(output, "animated_advanced.mp4", fps=30)
   from diffusers.utils import export_to_video
 
   vae = AutoModel.from_pretrained(
-      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32
+      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", dtype=torch.float32
   )
   pipeline = WanPipeline.from_pretrained(
-      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", vae=vae, torch_dtype=torch.bfloat16
+      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", vae=vae, dtype=torch.bfloat16
   )
   pipeline.scheduler = UniPCMultistepScheduler.from_config(
       pipeline.scheduler.config, flow_shift=5.0
   )
-  pipeline.to("cuda")
+  pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
   pipeline.load_lora_weights("benjamin-paine/steamboat-willie-1.3b", adapter_name="steamboat-willie")
   pipeline.set_adapters("steamboat-willie")
@@ -513,13 +513,13 @@ export_to_video(output, "animated_advanced.mp4", fps=30)
   )
   transformer = WanTransformer3DModel.from_single_file(
       "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors",
-      torch_dtype=torch.bfloat16
+      dtype=torch.bfloat16
   )
   pipeline = WanPipeline.from_pretrained(
       "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
       vae=vae,
       transformer=transformer,
-      torch_dtype=torch.bfloat16
+      dtype=torch.bfloat16
   )
   ```
 
@@ -531,7 +531,7 @@ export_to_video(output, "animated_advanced.mp4", fps=30)
 
 - Try lower `shift` values (`2.0` to `5.0`) for lower resolution videos and higher `shift` values (`7.0` to `12.0`) for higher resolution images.
 
-- Wan 2.1 and 2.2 support using [LightX2V LoRAs](https://huggingface.co/Kijai/WanVideo_comfy/tree/main/Lightx2v) to speed up inference. Using them on Wan 2.2 is slightly more involed. Refer to [this code snippet](https://github.com/huggingface/diffusers/pull/12040#issuecomment-3144185272) to learn more.
+- Wan 2.1 and 2.2 support using [LightX2V LoRAs](https://huggingface.co/Kijai/WanVideo_comfy/tree/main/Lightx2v) to speed up inference. Using them on Wan 2.2 is slightly more involved. Refer to [this code snippet](https://github.com/huggingface/diffusers/pull/12040#issuecomment-3144185272) to learn more.
 
 - Wan 2.2 has two denoisers. By default, LoRAs are only loaded into the first denoiser. One can set `load_into_transformer_2=True` to load LoRAs into the second denoiser. Refer to [this](https://github.com/huggingface/diffusers/pull/12074#issue-3292620048) and [this](https://github.com/huggingface/diffusers/pull/12074#issuecomment-3155896144) examples to learn more.
 

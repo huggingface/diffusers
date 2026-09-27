@@ -28,6 +28,7 @@ from transformers import AutoTokenizer, BatchEncoding
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
+from ...models.modeling_utils import get_parameter_device
 from ...models.transformers.transformer_cosmos3 import (
     Cosmos3OmniTransformer,
 )
@@ -36,6 +37,11 @@ from ...utils import BaseOutput, is_cosmos_guardrail_available, logging
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .mixed_precision import (
+    Cosmos3MixedPrecisionConfig,
+    apply_cosmos3_mixed_precision_step,
+    reset_cosmos3_mixed_precision,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -50,6 +56,48 @@ else:
             raise ImportError(
                 "`cosmos_guardrail` is not installed. Please install it to use the safety checker for Cosmos: `pip install cosmos_guardrail`."
             )
+
+
+def _preprocess_conditioning_image(
+    image: Image.Image | np.ndarray | torch.Tensor, height: int, width: int
+) -> torch.Tensor:
+    """Preprocess one Cosmos3 conditioning image to ``[1, 3, H, W]`` in ``[-1, 1]``."""
+    if isinstance(image, Image.Image):
+        image = torch.from_numpy(np.array(image.convert("RGB"), copy=True)).permute(2, 0, 1).unsqueeze(0)
+    elif isinstance(image, np.ndarray):
+        image = torch.from_numpy(image)
+        image = image.unsqueeze(0) if image.ndim == 3 else image
+        image = image.permute(0, 3, 1, 2)
+    else:
+        image = image.unsqueeze(0) if image.ndim == 3 else image
+
+    if image.ndim != 4 or image.shape[0] != 1 or image.shape[1] != 3:
+        raise ValueError(f"`image` must describe one RGB image, got shape {tuple(image.shape)}.")
+
+    is_integer_input = not image.is_floating_point()
+    image = image.to(dtype=torch.float32)
+    if not is_integer_input:
+        if image.min() < 0:
+            image = (image + 1.0) * 127.5
+        elif image.max() <= 1.0:
+            image = image * 255.0
+
+    source_height, source_width = image.shape[-2:]
+    scale = max(width / source_width, height / source_height)
+    resized_height = math.ceil(scale * source_height)
+    resized_width = math.ceil(scale * source_width)
+    image = F.interpolate(
+        image,
+        size=(resized_height, resized_width),
+        mode="bilinear",
+        align_corners=False,
+        antialias=True,
+    )
+    crop_top = round((resized_height - height) / 2)
+    crop_left = round((resized_width - width) / 2)
+    image = image[:, :, crop_top : crop_top + height, crop_left : crop_left + width]
+    image = image.round().clamp(0, 255) / 127.5 - 1.0
+    return image
 
 
 # ============================================================================
@@ -377,8 +425,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         sound_tokenizer: Cosmos3AVAEAudioTokenizer | None = None,
         safety_checker: CosmosSafetyChecker | None = None,
         enable_safety_checker: bool = True,
+        default_use_system_prompt: bool = True,
+        use_native_flow_schedule: bool = False,
     ):
         super().__init__()
+        self.register_to_config(
+            enable_safety_checker=enable_safety_checker,
+            default_use_system_prompt=default_use_system_prompt,
+            use_native_flow_schedule=use_native_flow_schedule,
+        )
         if enable_safety_checker:
             if safety_checker is None:
                 safety_checker = CosmosSafetyChecker()
@@ -398,6 +453,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         # Image preprocessor for caller-supplied conditioning frames (PIL / tensor / numpy).
         self.vae_scale_factor_spatial = int(self.vae.config.scale_factor_spatial) if getattr(self, "vae", None) else 16
+        self.vae_scale_factor_temporal = (
+            int(self.vae.config.scale_factor_temporal) if getattr(self, "vae", None) else 4
+        )
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear")
 
         self.llm_special_tokens = {
@@ -437,7 +495,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     return torch.device(execution_device)
 
             try:
-                return next(component.parameters()).device
+                return get_parameter_device(component)
             except StopIteration:
                 continue
 
@@ -451,9 +509,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         matches Wan2pt2VAEInterface; no autocast (WanVAE was trained with is_amp=False)."""
         in_dtype = x.dtype
         dtype = self.vae.dtype
-        mean = self._vae_latents_mean.to(device=x.device, dtype=dtype)
-        inv_std = self._vae_latents_inv_std.to(device=x.device, dtype=dtype)
         raw_mu = retrieve_latents(self.vae.encode(x.to(dtype)), sample_mode="argmax")
+        mean = self._vae_latents_mean.to(device=raw_mu.device, dtype=dtype)
+        inv_std = self._vae_latents_inv_std.to(device=raw_mu.device, dtype=dtype)
         return ((raw_mu - mean.view(1, -1, 1, 1, 1)) * inv_std.view(1, -1, 1, 1, 1)).to(in_dtype)
 
     def decode_sound(self, latent: torch.Tensor) -> torch.Tensor:
@@ -545,7 +603,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             reset_spatial_indices=config.unified_3d_mrope_reset_spatial_ids,
             fps=effective_fps,
             base_fps=float(config.base_fps),
-            temporal_compression_factor=self.vae.config.scale_factor_temporal,
+            temporal_compression_factor=self.vae_scale_factor_temporal,
         )
 
         return {
@@ -628,7 +686,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             fps=effective_fps,
             base_fps=float(config.base_fps),
             temporal_compression_factor=1,
-            base_temporal_compression_factor=self.vae.config.scale_factor_temporal,
+            base_temporal_compression_factor=self.vae_scale_factor_temporal,
             start_frame_offset=1,
         )
 
@@ -704,7 +762,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
     def prepare_latents(
         self,
-        image: torch.Tensor | None = None,
+        image: Image.Image | np.ndarray | torch.Tensor | None = None,
         video: list[Image.Image] | torch.Tensor | np.ndarray | None = None,
         condition_frame_indexes_vision: Iterable[int] = (0, 1),
         condition_video_keep: Literal["first", "last"] = "first",
@@ -744,10 +802,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         # Video-to-video conditioning: a top-level `video` without an action run.
         has_video_condition = video is not None and action is None
 
-        # video_processor.preprocess handles PIL/np/tensor → [1, 3, H, W] in [-1, 1], resized to (height, width).
         conditioning_frame_2d: torch.Tensor | None = None
         if image is not None:
-            conditioning_frame_2d = self.video_processor.preprocess(image, height=height, width=width).to(
+            conditioning_frame_2d = _preprocess_conditioning_image(image, height=height, width=width).to(
                 device=device, dtype=dtype
             )
 
@@ -1080,15 +1137,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         height: int = 720,
         width: int = 1280,
         fps: float = 24.0,
-        use_system_prompt: bool = True,
+        use_system_prompt: bool | None = None,
         add_resolution_template: bool = True,
         add_duration_template: bool = True,
         action_mode: str | None = None,
         action_view_point: str | None = None,
     ) -> tuple[list[int], list[int]]:
-        """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the Qwen2 chat template.
+        """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the configured chat template.
 
-        This pipeline does not run a separate text encoder: the joint Cosmos3 transformer consumes raw Qwen2 token IDs
+        This pipeline does not run a separate text encoder: the joint Cosmos3 transformer consumes raw token IDs
         alongside vision (and optionally sound) tokens.
 
         When ``negative_prompt`` is ``None``, an empty string is used; the Cosmos3 docs page documents recommended
@@ -1102,6 +1159,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         Returns:
             ``(cond_input_ids, uncond_input_ids)`` — token-id lists for this sample.
         """
+        if use_system_prompt is None:
+            use_system_prompt = self.config.default_use_system_prompt
+
         is_image = num_frames == 1
 
         if negative_prompt is None:
@@ -1239,6 +1299,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         return self._current_timestep
 
     @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -1251,7 +1319,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         self,
         prompt: str | list[str],
         negative_prompt: str | list[str] | None = None,
-        image: torch.Tensor | None = None,
+        image: Image.Image | np.ndarray | torch.Tensor | None = None,
         video: list[Image.Image] | torch.Tensor | np.ndarray | None = None,
         condition_frame_indexes_vision: Iterable[int] = (0, 1),
         condition_video_keep: Literal["first", "last"] = "first",
@@ -1269,7 +1337,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         action: CosmosActionCondition | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
-        use_system_prompt: bool = True,
+        use_system_prompt: bool | None = None,
         callback_on_step_end: Callable[[int, int, dict[str, Any]], None]
         | PipelineCallback
         | MultiPipelineCallbacks
@@ -1278,6 +1346,10 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         add_resolution_template: bool = True,
         add_duration_template: bool = True,
         enable_safety_check: bool = True,
+        mixed_precision_format: str | None = None,
+        mixed_precision_first_steps: int | None = None,
+        mixed_precision_last_steps: int | None = None,
+        mixed_precision_reasoner_policy: str | None = None,
     ) -> Cosmos3OmniPipelineOutput:
         r"""
         Run the Cosmos 3 omni pipeline end-to-end: encode the (optional) conditioning image/video, denoise vision and
@@ -1293,9 +1365,10 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 per call.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The negative prompt used for classifier-free guidance. When `None`, the empty string is used.
-            image (`torch.Tensor` or `PIL.Image.Image`, *optional*):
+            image (`PIL.Image.Image`, `np.ndarray`, or `torch.Tensor`, *optional*):
                 Optional conditioning frame for image-to-video. The pipeline anchors frame 0 to this image and denoises
-                the remaining frames. Ignored when `num_frames == 1`. Not used for action runs (pass `action` instead).
+                the remaining frames. The image is resized while preserving its aspect ratio, then center-cropped to
+                `height` and `width`. Ignored when `num_frames == 1`. Not used for action runs (pass `action` instead).
                 Mutually exclusive with `video`.
             video (`List[PIL.Image.Image]`, `torch.Tensor`, or `np.ndarray`, *optional*):
                 Optional conditioning clip for video-to-video. The leading frames are kept clean at the latent indexes
@@ -1352,9 +1425,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 W, C]`), `"pt"` (`torch.Tensor`, `[T, C, H, W]`), or `"latent"` (raw vision latents).
             return_dict (`bool`, *optional*, defaults to `True`):
                 When `True`, returns a [`Cosmos3OmniPipelineOutput`]; otherwise a plain tuple `(video, sound)`.
-            use_system_prompt (`bool`, *optional*, defaults to `True`):
-                When `True`, prepends the mode-specific Cosmos 3 system prompt to the chat template before
-                tokenization.
+            use_system_prompt (`bool`, *optional*):
+                Whether to prepend the mode-specific Cosmos 3 system prompt to the chat template before tokenization.
+                Defaults to the pipeline's `default_use_system_prompt` configuration.
             callback_on_step_end (`Callable`, `PipelineCallback`, or `MultiPipelineCallbacks`, *optional*):
                 A callback invoked at the end of each denoising step. Receives `(step_index, timestep, kwargs)` where
                 `kwargs` is keyed by `callback_on_step_end_tensor_inputs`.
@@ -1372,6 +1445,16 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 When `True` and a `CosmosSafetyChecker` is attached, runs the text guardrail on the prompt before
                 generation and the video guardrail on the decoded frames. Set to `False` to skip both for this call;
                 the checker remains loaded for subsequent calls.
+            mixed_precision_format (`str`, *optional*):
+                Follow the ModelOpt FP8 checkpoint schedule when `None`. `"none"` leaves the native quantized forward
+                unchanged. `"fp8"` enables first/last-N W8A16 only on serialized ModelOpt FP8 transformers; other
+                backends such as TorchAO are left unchanged.
+            mixed_precision_first_steps (`int`, *optional*):
+                Optional leading W8A16 step count. Ignored when mixed precision is off.
+            mixed_precision_last_steps (`int`, *optional*):
+                Optional trailing W8A16 step count.
+            mixed_precision_reasoner_policy (`str`, *optional*):
+                Optional reasoner path: `"high_precision"` (W8A16) or `"base_precision"` (native W8A8).
 
         Returns:
             [`Cosmos3OmniPipelineOutput`] or `tuple`:
@@ -1434,6 +1517,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         device = self._get_execution_device()
         dtype = self.transformer.dtype
+        sampling_dtype = torch.float32
 
         if enable_safety_check and isinstance(self.safety_checker, CosmosSafetyChecker):
             self.safety_checker.to(device)
@@ -1494,7 +1578,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             action_latents=action_latents,
             generator=generator,
             device=device,
-            dtype=dtype,
+            dtype=sampling_dtype,
             enable_sound=enable_sound,
             action=action,
         )
@@ -1606,7 +1690,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         # 6. Set timesteps. UniPCMultistepScheduler keeps per-step state (_step_index,
         # model_outputs history) on the instance, so sound/action each get their own copy.
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        if self.config.use_native_flow_schedule:
+            sigmas = np.linspace(
+                1.0 - 1.0 / self.scheduler.config.num_train_timesteps,
+                0.0,
+                num_inference_steps + 1,
+            )[:-1]
+            self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas)
+        else:
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
         sound_scheduler = copy.deepcopy(self.scheduler) if sound_latents is not None else None
         action_scheduler = copy.deepcopy(self.scheduler) if action_latents is not None else None
@@ -1614,96 +1706,81 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                if self.interrupt:
-                    continue
-
-                self._current_timestep = t
-                timestep = t.item()
-
-                # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
-                # noisy tokens before packing so the modality tokens enter the model in the right dtype.
-                vision_tokens = latents.to(device=device, dtype=dtype)
-                sound_tokens = sound_latents.to(device=device, dtype=dtype) if sound_latents is not None else None
-                action_tokens = action_latents.to(device=device, dtype=dtype) if action_latents is not None else None
-                # The static packs both report the same num_noisy_vision_tokens / sound_len, so a
-                # single per-step timestep tensor per modality is shared by the cond / uncond passes.
-                vision_timesteps = torch.full((num_noisy_vision_tokens,), timestep, device=device)
-                sound_timesteps = (
-                    torch.full((sound_len,), timestep, device=device) if sound_tokens is not None else None
-                )
-                action_timesteps = (
-                    torch.full((action_noisy_len,), timestep, device=device) if action_tokens is not None else None
-                )
-
-                # --- Conditional pass ---
-                preds_vision, preds_sound, preds_action = self.transformer(
-                    input_ids=cond_packed_static["input_ids"],
-                    text_indexes=cond_packed_static["text_indexes"],
-                    position_ids=cond_packed_static["position_ids"],
-                    und_len=cond_packed_static["und_len"],
-                    sequence_length=cond_packed_static["sequence_length"],
-                    vision_tokens=[vision_tokens],
-                    vision_token_shapes=cond_packed_static["vision_token_shapes"],
-                    vision_sequence_indexes=cond_packed_static["vision_sequence_indexes"],
-                    vision_mse_loss_indexes=cond_packed_static["vision_mse_loss_indexes"],
-                    vision_timesteps=vision_timesteps,
-                    vision_noisy_frame_indexes=cond_packed_static["vision_noisy_frame_indexes"],
-                    sound_tokens=[sound_tokens] if sound_tokens is not None else None,
-                    sound_token_shapes=cond_packed_static.get("sound_token_shapes"),
-                    sound_sequence_indexes=cond_packed_static.get("sound_sequence_indexes"),
-                    sound_mse_loss_indexes=cond_packed_static.get("sound_mse_loss_indexes"),
-                    sound_timesteps=sound_timesteps,
-                    sound_noisy_frame_indexes=cond_packed_static.get("sound_noisy_frame_indexes"),
-                    action_tokens=[action_tokens] if action_tokens is not None else None,
-                    action_token_shapes=cond_packed_static.get("action_token_shapes"),
-                    action_sequence_indexes=cond_packed_static.get("action_sequence_indexes"),
-                    action_mse_loss_indexes=cond_packed_static.get("action_mse_loss_indexes"),
-                    action_timesteps=action_timesteps,
-                    action_noisy_frame_indexes=cond_packed_static.get("action_noisy_frame_indexes"),
-                    action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
-                )
-                cond_v_vision, cond_v_sound, cond_v_action = self._mask_velocity_predictions(
-                    preds_vision,
-                    preds_sound,
-                    vision_condition_mask=[vision_condition_mask],
-                    sound_condition_mask=[sound_condition_mask] if sound_condition_mask is not None else None,
-                    preds_action=preds_action,
-                    action_condition_mask=[action_condition_mask] if action_condition_mask is not None else None,
-                    raw_action_dim=raw_action_dim_resolved,
-                )
-
-                # --- Unconditional pass (Skip if not using CFG) ---
-                uncond_v_vision = uncond_v_sound = uncond_v_action = None
-                if self.do_classifier_free_guidance:
-                    preds_vision, preds_sound, preds_action = self.transformer(
-                        input_ids=uncond_packed_static["input_ids"],
-                        text_indexes=uncond_packed_static["text_indexes"],
-                        position_ids=uncond_packed_static["position_ids"],
-                        und_len=uncond_packed_static["und_len"],
-                        sequence_length=uncond_packed_static["sequence_length"],
-                        vision_tokens=[vision_tokens],
-                        vision_token_shapes=uncond_packed_static["vision_token_shapes"],
-                        vision_sequence_indexes=uncond_packed_static["vision_sequence_indexes"],
-                        vision_mse_loss_indexes=uncond_packed_static["vision_mse_loss_indexes"],
-                        vision_timesteps=vision_timesteps,
-                        vision_noisy_frame_indexes=uncond_packed_static["vision_noisy_frame_indexes"],
-                        sound_tokens=[sound_tokens] if sound_tokens is not None else None,
-                        sound_token_shapes=uncond_packed_static.get("sound_token_shapes"),
-                        sound_sequence_indexes=uncond_packed_static.get("sound_sequence_indexes"),
-                        sound_mse_loss_indexes=uncond_packed_static.get("sound_mse_loss_indexes"),
-                        sound_timesteps=sound_timesteps,
-                        sound_noisy_frame_indexes=uncond_packed_static.get("sound_noisy_frame_indexes"),
-                        action_tokens=[action_tokens] if action_tokens is not None else None,
-                        action_token_shapes=uncond_packed_static.get("action_token_shapes"),
-                        action_sequence_indexes=uncond_packed_static.get("action_sequence_indexes"),
-                        action_mse_loss_indexes=uncond_packed_static.get("action_mse_loss_indexes"),
-                        action_timesteps=action_timesteps,
-                        action_noisy_frame_indexes=uncond_packed_static.get("action_noisy_frame_indexes"),
-                        action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+        mixed_precision = Cosmos3MixedPrecisionConfig.resolve(
+            self.transformer,
+            mixed_precision_format=mixed_precision_format,
+            mixed_precision_first_steps=mixed_precision_first_steps,
+            mixed_precision_last_steps=mixed_precision_last_steps,
+            mixed_precision_reasoner_policy=mixed_precision_reasoner_policy,
+        )
+        self._mixed_precision_config = mixed_precision
+        self._mixed_precision_trace = []
+        try:
+            with self.progress_bar(total=num_inference_steps) as progress_bar:
+                for i, t in enumerate(timesteps):
+                    apply_cosmos3_mixed_precision_step(
+                        self.transformer,
+                        mixed_precision,
+                        i,
+                        len(timesteps),
+                        trace=self._mixed_precision_trace,
                     )
-                    uncond_v_vision, uncond_v_sound, uncond_v_action = self._mask_velocity_predictions(
+                    if self.interrupt:
+                        continue
+
+                    self._current_timestep = t
+                    sigma = float(self.scheduler.sigmas[i])
+                    timestep = t.item()
+
+                    # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
+                    # noisy tokens before packing so the modality tokens enter the model in the right dtype.
+                    vision_tokens = latents.to(device=device, dtype=dtype)
+                    sound_tokens = sound_latents.to(device=device, dtype=dtype) if sound_latents is not None else None
+                    action_tokens = (
+                        action_latents.to(device=device, dtype=dtype) if action_latents is not None else None
+                    )
+                    # The static packs both report the same num_noisy_vision_tokens / sound_len, so a
+                    # single per-step timestep tensor per modality is shared by the cond / uncond passes.
+                    vision_timesteps = torch.full((num_noisy_vision_tokens,), timestep, device=device)
+                    sound_timesteps = (
+                        torch.full((sound_len,), timestep, device=device) if sound_tokens is not None else None
+                    )
+                    action_timesteps = (
+                        torch.full((action_noisy_len,), timestep, device=device) if action_tokens is not None else None
+                    )
+
+                    # --- Conditional pass ---
+                    with self.transformer.cache_context(
+                        "cond", step_index=i, sigma=sigma, num_inference_steps=self._num_timesteps
+                    ):
+                        preds_vision, preds_sound, preds_action = self.transformer(
+                            input_ids=cond_packed_static["input_ids"],
+                            text_indexes=cond_packed_static["text_indexes"],
+                            position_ids=cond_packed_static["position_ids"],
+                            und_len=cond_packed_static["und_len"],
+                            sequence_length=cond_packed_static["sequence_length"],
+                            vision_tokens=[vision_tokens],
+                            vision_token_shapes=cond_packed_static["vision_token_shapes"],
+                            vision_sequence_indexes=cond_packed_static["vision_sequence_indexes"],
+                            vision_mse_loss_indexes=cond_packed_static["vision_mse_loss_indexes"],
+                            vision_timesteps=vision_timesteps,
+                            vision_noisy_frame_indexes=cond_packed_static["vision_noisy_frame_indexes"],
+                            sound_tokens=[sound_tokens] if sound_tokens is not None else None,
+                            sound_token_shapes=cond_packed_static.get("sound_token_shapes"),
+                            sound_sequence_indexes=cond_packed_static.get("sound_sequence_indexes"),
+                            sound_mse_loss_indexes=cond_packed_static.get("sound_mse_loss_indexes"),
+                            sound_timesteps=sound_timesteps,
+                            sound_noisy_frame_indexes=cond_packed_static.get("sound_noisy_frame_indexes"),
+                            action_tokens=[action_tokens] if action_tokens is not None else None,
+                            action_token_shapes=cond_packed_static.get("action_token_shapes"),
+                            action_sequence_indexes=cond_packed_static.get("action_sequence_indexes"),
+                            action_mse_loss_indexes=cond_packed_static.get("action_mse_loss_indexes"),
+                            action_timesteps=action_timesteps,
+                            action_noisy_frame_indexes=cond_packed_static.get("action_noisy_frame_indexes"),
+                            action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                            return_dict=False,
+                        )
+                    cond_v_vision, cond_v_sound, cond_v_action = self._mask_velocity_predictions(
                         preds_vision,
                         preds_sound,
                         vision_condition_mask=[vision_condition_mask],
@@ -1713,51 +1790,108 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         raw_action_dim=raw_action_dim_resolved,
                     )
 
-                # --- CFG combine + per-modality scheduler step ---
-                # UniPC's multistep_uni_p_bh_update einsum ("k,bkc...->bc...") requires sample
-                # to carry a batch dim; per-modality latents have no batch axis, so wrap for the step.
+                    # --- Unconditional pass (Skip if not using CFG) ---
+                    uncond_v_vision = uncond_v_sound = uncond_v_action = None
+                    if self.do_classifier_free_guidance:
+                        with self.transformer.cache_context(
+                            "uncond", step_index=i, sigma=sigma, num_inference_steps=self._num_timesteps
+                        ):
+                            preds_vision, preds_sound, preds_action = self.transformer(
+                                input_ids=uncond_packed_static["input_ids"],
+                                text_indexes=uncond_packed_static["text_indexes"],
+                                position_ids=uncond_packed_static["position_ids"],
+                                und_len=uncond_packed_static["und_len"],
+                                sequence_length=uncond_packed_static["sequence_length"],
+                                vision_tokens=[vision_tokens],
+                                vision_token_shapes=uncond_packed_static["vision_token_shapes"],
+                                vision_sequence_indexes=uncond_packed_static["vision_sequence_indexes"],
+                                vision_mse_loss_indexes=uncond_packed_static["vision_mse_loss_indexes"],
+                                vision_timesteps=vision_timesteps,
+                                vision_noisy_frame_indexes=uncond_packed_static["vision_noisy_frame_indexes"],
+                                sound_tokens=[sound_tokens] if sound_tokens is not None else None,
+                                sound_token_shapes=uncond_packed_static.get("sound_token_shapes"),
+                                sound_sequence_indexes=uncond_packed_static.get("sound_sequence_indexes"),
+                                sound_mse_loss_indexes=uncond_packed_static.get("sound_mse_loss_indexes"),
+                                sound_timesteps=sound_timesteps,
+                                sound_noisy_frame_indexes=uncond_packed_static.get("sound_noisy_frame_indexes"),
+                                action_tokens=[action_tokens] if action_tokens is not None else None,
+                                action_token_shapes=uncond_packed_static.get("action_token_shapes"),
+                                action_sequence_indexes=uncond_packed_static.get("action_sequence_indexes"),
+                                action_mse_loss_indexes=uncond_packed_static.get("action_mse_loss_indexes"),
+                                action_timesteps=action_timesteps,
+                                action_noisy_frame_indexes=uncond_packed_static.get("action_noisy_frame_indexes"),
+                                action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                                return_dict=False,
+                            )
+                        uncond_v_vision, uncond_v_sound, uncond_v_action = self._mask_velocity_predictions(
+                            preds_vision,
+                            preds_sound,
+                            vision_condition_mask=[vision_condition_mask],
+                            sound_condition_mask=[sound_condition_mask] if sound_condition_mask is not None else None,
+                            preds_action=preds_action,
+                            action_condition_mask=[action_condition_mask]
+                            if action_condition_mask is not None
+                            else None,
+                            raw_action_dim=raw_action_dim_resolved,
+                        )
 
-                # Skip CFG for 1.0 guidance scale
-                if self.do_classifier_free_guidance:
-                    velocity_vision = uncond_v_vision + guidance_scale * (cond_v_vision - uncond_v_vision)
-                else:
-                    velocity_vision = cond_v_vision
+                    cond_v_vision = cond_v_vision.float()
+                    cond_v_sound = cond_v_sound.float() if cond_v_sound is not None else None
+                    cond_v_action = cond_v_action.float() if cond_v_action is not None else None
+                    uncond_v_vision = uncond_v_vision.float() if uncond_v_vision is not None else None
+                    uncond_v_sound = uncond_v_sound.float() if uncond_v_sound is not None else None
+                    uncond_v_action = uncond_v_action.float() if uncond_v_action is not None else None
 
-                latents = self.scheduler.step(
-                    velocity_vision.unsqueeze(0), t, latents.unsqueeze(0), return_dict=False
-                )[0].squeeze(0)
+                    # --- CFG combine + per-modality scheduler step ---
+                    # UniPC's multistep_uni_p_bh_update einsum ("k,bkc...->bc...") requires sample
+                    # to carry a batch dim; per-modality latents have no batch axis, so wrap for the step.
 
-                if sound_scheduler is not None and cond_v_sound is not None:
                     # Skip CFG for 1.0 guidance scale
                     if self.do_classifier_free_guidance:
-                        velocity_sound = uncond_v_sound + guidance_scale * (cond_v_sound - uncond_v_sound)
+                        velocity_vision = uncond_v_vision + guidance_scale * (cond_v_vision - uncond_v_vision)
                     else:
-                        velocity_sound = cond_v_sound
-                    sound_latents = sound_scheduler.step(
-                        velocity_sound.unsqueeze(0), t, sound_latents.unsqueeze(0), return_dict=False
+                        velocity_vision = cond_v_vision
+
+                    latents = self.scheduler.step(
+                        velocity_vision.unsqueeze(0), t, latents.unsqueeze(0), return_dict=False
                     )[0].squeeze(0)
 
-                has_noisy_action = (
-                    action_condition_mask is not None and action_condition_mask.sum() < action_condition_mask.numel()
-                )
-                if action_scheduler is not None and has_noisy_action and cond_v_action is not None:
-                    if self.do_classifier_free_guidance:
-                        velocity_action = uncond_v_action + guidance_scale * (cond_v_action - uncond_v_action)
-                    else:
-                        velocity_action = cond_v_action
-                    action_latents = action_scheduler.step(
-                        velocity_action.unsqueeze(0), t, action_latents.unsqueeze(0), return_dict=False
-                    )[0].squeeze(0)
-                    if raw_action_dim_resolved is not None:
-                        action_latents[:, raw_action_dim_resolved:] = 0
+                    if sound_scheduler is not None and cond_v_sound is not None:
+                        # Skip CFG for 1.0 guidance scale
+                        if self.do_classifier_free_guidance:
+                            velocity_sound = uncond_v_sound + guidance_scale * (cond_v_sound - uncond_v_sound)
+                        else:
+                            velocity_sound = cond_v_sound
+                        sound_latents = sound_scheduler.step(
+                            velocity_sound.unsqueeze(0), t, sound_latents.unsqueeze(0), return_dict=False
+                        )[0].squeeze(0)
 
-                if callback_on_step_end is not None:
-                    callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-                    latents = callback_outputs.pop("latents", latents)
+                    has_noisy_action = (
+                        action_condition_mask is not None
+                        and action_condition_mask.sum() < action_condition_mask.numel()
+                    )
+                    if action_scheduler is not None and has_noisy_action and cond_v_action is not None:
+                        if self.do_classifier_free_guidance:
+                            velocity_action = uncond_v_action + guidance_scale * (cond_v_action - uncond_v_action)
+                        else:
+                            velocity_action = cond_v_action
+                        action_latents = action_scheduler.step(
+                            velocity_action.unsqueeze(0), t, action_latents.unsqueeze(0), return_dict=False
+                        )[0].squeeze(0)
+                        if raw_action_dim_resolved is not None:
+                            action_latents[:, raw_action_dim_resolved:] = 0
 
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
+                    if callback_on_step_end is not None:
+                        callback_kwargs = {}
+                        for key in callback_on_step_end_tensor_inputs:
+                            callback_kwargs[key] = locals()[key]
+                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                        latents = callback_outputs.pop("latents", latents).float()
+
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        progress_bar.update()
+        finally:
+            reset_cosmos3_mixed_precision(self.transformer, mixed_precision)
 
         self._current_timestep = None
 

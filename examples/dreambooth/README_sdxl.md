@@ -135,7 +135,7 @@ lora_model_id = <"lora-sdxl-dreambooth-id">
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16)
 pipe = pipe.to("cuda")
 pipe.load_lora_weights(lora_model_id)
 image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
@@ -154,13 +154,13 @@ card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
 # Load the base pipeline and load the LoRA parameters into it.
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16)
 pipe = pipe.to("cuda")
 pipe.load_lora_weights(lora_model_id)
 
 # Load the refiner.
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+    "stabilityai/stable-diffusion-xl-refiner-1.0", dtype=torch.float16, use_safetensors=True, variant="fp16"
 )
 refiner.to("cuda")
 

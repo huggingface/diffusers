@@ -16,14 +16,22 @@ import json
 import os
 import re
 
-from sentencepiece import SentencePieceProcessor
 from transformers import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding, EncodedInput
 from transformers.utils import PaddingStrategy
 
+from ...utils import is_sentencepiece_available
+
 
 class SPTokenizer:
     def __init__(self, model_path: str):
+        if not is_sentencepiece_available():
+            raise ImportError(
+                "`SPTokenizer` requires the `sentencepiece` library but it was not found in your environment. You can "
+                "install it with `pip install sentencepiece`."
+            )
+        from sentencepiece import SentencePieceProcessor
+
         # reload tokenizer
         assert os.path.isfile(model_path), model_path
         self.sp_model = SentencePieceProcessor(model_file=model_path)

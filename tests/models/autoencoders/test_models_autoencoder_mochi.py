@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -91,5 +91,5 @@ class TestAutoencoderKLMochiMemory(AutoencoderKLMochiTesterConfig, MemoryTesterM
     """Memory optimization tests for AutoencoderKLMochi."""
 
 
-class TestAutoencoderKLMochiSlicingTiling(AutoencoderKLMochiTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLMochiSlicingTiling(AutoencoderKLMochiTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLMochi."""

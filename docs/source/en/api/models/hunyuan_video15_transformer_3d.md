@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import HunyuanVideo15Transformer3DModel
 
-transformer = HunyuanVideo15Transformer3DModel.from_pretrained("hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v" subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = HunyuanVideo15Transformer3DModel.from_pretrained("hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v" subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## HunyuanVideo15Transformer3DModel

@@ -176,9 +176,8 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
         text_encoder ([`Qwen2.5-VL-7B-Instruct`]):
             [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct), specifically the
             [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) variant.
-        tokenizer (`QwenTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer (`Qwen2Tokenizer`):
+            Tokenizer of class https://huggingface.co/docs/transformers/en/model_doc/qwen2#transformers.Qwen2Tokenizer
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -402,35 +401,6 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
         latents = latents.reshape(batch_size, channels // (2 * 2), 1, height, width)
 
         return latents
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
 
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline.prepare_latents
     def prepare_latents(

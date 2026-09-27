@@ -31,7 +31,7 @@ Hergé가 그린 단 10개의 이미지로 학습된 [herge_style](https://huggi
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("sd-dreambooth-library/herge-style", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("sd-dreambooth-library/herge-style", dtype=torch.float16).to("cuda")
 prompt = "A cute herge_style brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
 image = pipeline(prompt).images[0]
 image
@@ -51,7 +51,7 @@ Textual inversion은 임베딩을 생성하기 때문에 DreamBooth처럼 단독
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to("cuda")
 ```
 
 이제 [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] 메서드를 사용하여 textual inversion 임베딩을 불러와 이미지를 생성할 수 있습니다. [sd-concepts-library/gta5-artwork](https://huggingface.co/sd-concepts-library/gta5-artwork) 임베딩을 불러와 보겠습니다. 이를 트리거하려면 프롬프트에 특수 단어 `<gta5-artwork>`를 포함시켜야 합니다:
@@ -107,7 +107,7 @@ LoRA는 다른 모델과 함께 사용해야 합니다:
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16).to("cuda")
 ```
 
 그리고 [`~loaders.LoraLoaderMixin.load_lora_weights`] 메서드를 사용하여 [ostris/super-cereal-sdxl-lora](https://huggingface.co/ostris/super-cereal-sdxl-lora) 가중치를 불러오고 리포지토리에서 가중치 파일명을 지정합니다:
@@ -134,7 +134,7 @@ image
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16).to("cuda")
 pipeline.unet.load_attn_procs("jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors")
 
 # 프롬프트에서 cnmt를 사용하여 LoRA를 트리거합니다.
@@ -200,7 +200,7 @@ LoRA 체크포인트를 [`~loaders.LoraLoaderMixin.load_lora_weights`] 메서드
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16).to("cuda")
 pipeline.load_lora_weights("path/to/weights", weight_name="blueprintify-sd-xl-10.safetensors")
 ```
 
@@ -228,7 +228,7 @@ TheLastBen에서 체크포인트를 불러오는 방법은 매우 유사합니�
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16).to("cuda")
 pipeline.load_lora_weights("TheLastBen/William_Eggleston_Style_SDXL", weight_name="wegg.safetensors")
 
 # LoRA를 트리거하기 위해 william eggleston를 프롬프트에 사용
@@ -257,7 +257,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 from diffusers.utils import load_image
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to("cuda")
 ```
 
 그런 다음 IP-Adapter 가중치를 불러와 [`~loaders.IPAdapterMixin.load_ip_adapter`] 메서드를 사용하여 파이프라인에 추가합니다.
@@ -297,13 +297,13 @@ from transformers import CLIPVisionModelWithProjection
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "h94/IP-Adapter",
     subfolder="models/image_encoder",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     image_encoder=image_encoder,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter-plus_sdxl_vit-h.safetensors")
@@ -320,7 +320,7 @@ IP-Adapter FaceID 모델은 CLIP 이미지 임베딩 대신 `insightface`에서 
 ```py
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipeline.load_ip_adapter("h94/IP-Adapter-FaceID", subfolder=None, weight_name="ip-adapter-faceid_sdxl.bin", image_encoder_folder=None)
@@ -333,13 +333,13 @@ from transformers import CLIPVisionModelWithProjection
 
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     image_encoder=image_encoder,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipeline.load_ip_adapter("h94/IP-Adapter-FaceID", subfolder=None, weight_name="ip-adapter-faceid-plus_sd15.bin")

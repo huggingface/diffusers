@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-import tempfile
-import unittest
-
-import numpy as np
+import pytest
 import torch
 from transformers import AutoConfig, AutoTokenizer, BertModel, T5EncoderModel
 
@@ -29,22 +25,21 @@ from diffusers import (
     HunyuanDiTPipeline,
 )
 
-from ...testing_utils import enable_full_determinism, torch_device
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ...testing_utils import assert_tensors_close, enable_full_determinism, torch_device
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin
+from .testing_utils import PAGPipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class HunyuanDiTPAGPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = HunyuanDiTPAGPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-
-    required_optional_params = PipelineTesterMixin.required_optional_params
+    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    # `transformer.sample_size` (16) * `vae_scale_factor` (8) / 8 -> the dummy transformer generates 16x16 images.
+    output_shape = (3, 16, 16)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -72,7 +67,7 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder_2 = T5EncoderModel(config)
         tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
-        components = {
+        return {
             "transformer": transformer.eval(),
             "vae": vae.eval(),
             "scheduler": scheduler,
@@ -83,159 +78,88 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "safety_checker": None,
             "feature_extractor": None,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "use_resolution_binning": False,
             "pag_scale": 0.0,
         }
-        return inputs
+
+
+class TestHunyuanDiTPAGPipeline(HunyuanDiTPAGPipelineTesterConfig, PAGPipelineTesterMixin):
+    base_pipeline_class = HunyuanDiTPipeline
+    # HunyuanDiT's denoiser is a transformer: PAG uses the pipeline's default applied layers, turned on by raising
+    # `pag_scale` (the dummy inputs disable it with `pag_scale=0.0`).
+    pag_enabled_applied_layers = None
+    pag_enabled_scale = 3.0
 
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        image = pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, *self.output_shape)
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
-
-        self.assertEqual(image.shape, (1, 16, 16, 3))
-        expected_slice = np.array(
-            [0.56939435, 0.34541583, 0.35915792, 0.46489206, 0.38775963, 0.45004836, 0.5957267, 0.59481275, 0.33287364]
-        )
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
-
-    @unittest.skip("Not supported.")
-    def test_sequential_cpu_offload_forward_pass(self):
-        # TODO(YiYi) need to fix later
-        pass
-
-    @unittest.skip("Not supported.")
-    def test_sequential_offload_forward_pass_twice(self):
-        # TODO(YiYi) need to fix later
-        pass
+        # fmt: off
+        expected_slice = torch.tensor([0.56939435, 0.34541583, 0.35915792, 0.46489206, 0.38775963, 0.45004836, 0.5957267, 0.59481275, 0.33287364])
+        # fmt: on
+        assert_tensors_close(image[0, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(
-            expected_max_diff=1e-3,
-        )
+        super().test_inference_batch_single_identical(expected_max_diff=1e-3)
 
     def test_feed_forward_chunking(self):
-        device = "cpu"
+        # Run on CPU to keep the device-dependent `torch.Generator` deterministic.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_no_chunking = image[0, -3:, -3:, -1]
+        output_no_chunking = self.run_pipe(pipe)
 
         pipe.transformer.enable_forward_chunking(chunk_size=1, dim=0)
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_chunking = image[0, -3:, -3:, -1]
+        output_chunking = self.run_pipe(pipe)
 
-        max_diff = np.abs(to_np(image_slice_no_chunking) - to_np(image_slice_chunking)).max()
-        self.assertLess(max_diff, 1e-4)
+        assert_tensors_close(
+            output_chunking, output_no_chunking, atol=1e-4, msg="Forward chunking changed the output."
+        )
 
     def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        # Run on CPU to keep the device-dependent `torch.Generator` deterministic.
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image = pipe(**inputs)[0]
-        original_image_slice = image[0, -3:, -3:, -1]
+        original_output = self.run_pipe(pipe)
 
         pipe.transformer.fuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image_fused = pipe(**inputs)[0]
-        image_slice_fused = image_fused[0, -3:, -3:, -1]
+        output_fused = self.run_pipe(pipe)
 
         pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image_disabled = pipe(**inputs)[0]
-        image_slice_disabled = image_disabled[0, -3:, -3:, -1]
+        output_disabled = self.run_pipe(pipe)
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
-            "Fusion of QKV projections shouldn't affect the outputs."
+        assert_tensors_close(
+            output_fused, original_output, atol=1e-2, rtol=1e-2, msg="Fusion of QKV projections changed the outputs."
         )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert_tensors_close(
+            output_disabled,
+            output_fused,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Outputs changed after the fused QKV projections were disabled.",
         )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
+        assert_tensors_close(
+            output_disabled,
+            original_output,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Original outputs should match when fused QKV projections are disabled.",
         )
-
-    def test_pag_disable_enable(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-
-        # base pipeline (expect same output when pag is disabled)
-        pipe_sd = HunyuanDiTPipeline(**components)
-        pipe_sd = pipe_sd.to(device)
-        pipe_sd.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        del inputs["pag_scale"]
-        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
-            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
-        )
-        out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
-
-        components = self.get_dummy_components()
-
-        # pag disabled with pag_scale=0.0
-        pipe_pag = self.pipeline_class(**components)
-        pipe_pag = pipe_pag.to(device)
-        pipe_pag.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["pag_scale"] = 0.0
-        out_pag_disabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
-
-        # pag enabled
-        pipe_pag = self.pipeline_class(**components)
-        pipe_pag = pipe_pag.to(device)
-        pipe_pag.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["pag_scale"] = 3.0
-        out_pag_enabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
-
-        assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
-        assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
 
     def test_pag_applied_layers(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-
-        # base pipeline
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
         all_self_attn_layers = [k for k in pipe.transformer.attn_processors.keys() if "attn1" in k]
         original_attn_procs = pipe.transformer.attn_processors
@@ -265,19 +189,16 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert len(pipe.pag_attn_processors) == 2
 
-    @unittest.skip(
+    @pytest.mark.skip(
         "Test not supported as `encode_prompt` is called two times separately which deivates from about 99% of the pipelines we have."
     )
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    def test_save_load_optional_components(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+    def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
 
         prompt = inputs["prompt"]
         generator = inputs["generator"]
@@ -325,19 +246,17 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(torch_device)
-            pipe_loaded.set_progress_bar_config(disable=None)
+        pipe.save_pretrained(tmp_path)
+        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path)
+        pipe_loaded.to(torch_device)
+        pipe_loaded.set_progress_bar_config(disable=None)
 
         for optional_component in pipe._optional_components:
-            self.assertTrue(
-                getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
+            assert getattr(pipe_loaded, optional_component) is None, (
+                f"`{optional_component}` did not stay set to None after loading."
             )
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
 
         generator = inputs["generator"]
         num_inference_steps = inputs["num_inference_steps"]
@@ -361,5 +280,23 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         output_loaded = pipe_loaded(**inputs)[0]
 
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1e-4)
+        assert_tensors_close(
+            output_loaded,
+            output,
+            atol=expected_max_difference,
+            msg="Output changed after dropping optional components.",
+        )
+
+
+class TestHunyuanDiTPAGPipelineMemory(HunyuanDiTPAGPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the HunyuanDiT PAG pipeline."""
+
+    @pytest.mark.skip("Not supported.")
+    def test_sequential_cpu_offload_forward_pass(self):
+        # TODO(YiYi) need to fix later
+        pass
+
+    @pytest.mark.skip("Not supported.")
+    def test_sequential_offload_forward_pass_twice(self):
+        # TODO(YiYi) need to fix later
+        pass

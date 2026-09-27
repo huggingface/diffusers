@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ from ...configuration_utils import FrozenDict
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import PIL_INTERPOLATION, deprecate, logging
 from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 
 
@@ -55,7 +55,9 @@ def preprocess(image):
     return image
 
 
-class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
+class OnnxStableDiffusionImg2ImgPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
+    _last_supported_version = "0.43.0"
+
     r"""
     Pipeline for text-guided image to image generation using Stable Diffusion.
 

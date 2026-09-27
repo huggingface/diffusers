@@ -41,7 +41,7 @@ mask_image = load_image(mask_url).resize((512, 512))
 
 pipe = StableDiffusionInpaintPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-inpainting")
 pipe.vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(prompt=prompt, image=original_image, mask_image=mask_image).images[0]
 make_image_grid([original_image, mask_image, image], rows=1, cols=3)

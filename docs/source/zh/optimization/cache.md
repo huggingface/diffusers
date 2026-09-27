@@ -27,7 +27,7 @@ PAB 可以与其他技术（如序列并行性和无分类器引导并行性（�
 import torch
 from diffusers import CogVideoXPipeline, PyramidAttentionBroadcastConfig
 
-pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
 pipeline.to("cuda")
 
 config = PyramidAttentionBroadcastConfig(
@@ -51,7 +51,7 @@ pipeline.transformer.enable_cache(config)
 import torch
 from diffusers import CogVideoXPipeline, FasterCacheConfig
 
-pipe line= CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipe line= CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
 pipeline.to("cuda")
 
 config = FasterCacheConfig(

@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -293,6 +293,11 @@ class ModuleGroup:
 
     def _offload_to_disk(self):
         self._check_disk_offload_torchao()
+
+        # Releasing the onloaded tensors below frees their device memory, which the compute stream may still be
+        # reading. `record_stream` already prevents the allocator from reusing it too early.
+        if self.stream is not None and not self.record_stream:
+            self._torch_accelerator_module.current_stream().synchronize()
 
         # TODO: we can potentially optimize this code path by checking if the _all_ the desired
         # safetensor files exist on the disk and if so, skip this step entirely, reducing IO

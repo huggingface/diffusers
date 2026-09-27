@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -343,7 +343,7 @@ class Flux2KleinBaseAutoBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`Qwen3ForCausalLM`) tokenizer (`Qwen2TokenizerFast`) guider (`ClassifierFreeGuidance`)
+          text_encoder (`Qwen3ForCausalLM`) tokenizer (`Qwen2Tokenizer`) guider (`ClassifierFreeGuidance`)
           image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`) scheduler
           (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
 

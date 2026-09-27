@@ -174,8 +174,8 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             tokenizer_2=tokenizer_2,
             scheduler=scheduler,
         )
-        self.prompt_template = "<|im_start|>system\nYou are a promt engineer. Based on the provided source image (first image) and target image (second image), create an interesting text prompt that can be used together with the source image to create the target image:<|im_end|><|im_start|>user{}<|vision_start|><|image_pad|><|vision_end|><|im_end|>"
-        self.prompt_template_encode_start_idx = 55
+        self.prompt_template = "<|im_start|>system\nYou are a prompt engineer. Based on the provided source image (first image) and target image (second image), create an interesting text prompt that can be used together with the source image to create the target image:<|im_end|><|im_start|>user{}<|vision_start|><|image_pad|><|vision_end|><|im_end|>"
+        self.prompt_template_encode_start_idx = 54
 
         self.vae_scale_factor_spatial = 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
@@ -544,6 +544,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
             # Reshape to match latent dimensions [batch, 1, height, width, channels]
             image_latents = image_latents.permute(0, 2, 3, 4, 1)  # [batch, 1, H, W, C]
+            image_latents = image_latents.to(device=latents.device, dtype=latents.dtype)
             latents = torch.cat([latents, image_latents, torch.ones_like(latents[..., :1])], -1)
 
         return latents

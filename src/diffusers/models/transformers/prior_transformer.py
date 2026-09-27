@@ -318,5 +318,8 @@ class PriorTransformer(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionL
         return PriorTransformerOutput(predicted_image_embedding=predicted_image_embedding)
 
     def post_process_latents(self, prior_latents):
-        prior_latents = (prior_latents * self.clip_std) + self.clip_mean
+        # `clip_std` / `clip_mean` are parameters of this model, not of a submodule, so group offloading onloads
+        # them only for the duration of `forward`. This runs after the denoising loop, hence the explicit move.
+        device = prior_latents.device
+        prior_latents = (prior_latents * self.clip_std.to(device)) + self.clip_mean.to(device)
         return prior_latents

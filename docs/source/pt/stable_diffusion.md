@@ -30,7 +30,7 @@ from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.bfloat16,
+  dtype=torch.bfloat16,
   device_map="cuda"
 )
 pipeline.enable_model_cpu_offload()
@@ -48,7 +48,7 @@ print(f"Memória máxima reservada: {torch.cuda.max_memory_allocated() / 1024**3
 O processo de remoção de ruído é o mais exigente computacionalmente durante a difusão. Métodos que otimizam este processo aceleram a velocidade de inferência. Experimente os seguintes métodos para acelerar.
 
 - Adicione `device_map="cuda"` para colocar o pipeline em uma GPU. Colocar um modelo em um acelerador, como uma GPU, aumenta a velocidade porque realiza computações em paralelo.
-- Defina `torch_dtype=torch.bfloat16` para executar o pipeline em meia-precisão. Reduzir a precisão do tipo de dado aumenta a velocidade porque leva menos tempo para realizar computações em precisão mais baixa.
+- Defina `dtype=torch.bfloat16` para executar o pipeline em meia-precisão. Reduzir a precisão do tipo de dado aumenta a velocidade porque leva menos tempo para realizar computações em precisão mais baixa.
 
 ```py
 import torch
@@ -57,7 +57,7 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.bfloat16,
+  dtype=torch.bfloat16,
   device_map="cuda"
 )
 ```
@@ -92,7 +92,7 @@ Muitos modelos de difusão modernos entregam imagens de alta qualidade imediatam
 
     pipeline = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map="cuda"
     )
 
@@ -114,7 +114,7 @@ Muitos modelos de difusão modernos entregam imagens de alta qualidade imediatam
 
     pipeline = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map="cuda"
     )
     pipeline.scheduler = HeunDiscreteScheduler.from_config(pipeline.scheduler.config)

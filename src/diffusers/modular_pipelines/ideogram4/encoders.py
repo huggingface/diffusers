@@ -41,32 +41,33 @@ QWEN3_VL_ACTIVATION_LAYERS = (0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 35)
 # auto_docstring
 class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
     """
-    Optional step that rewrites the prompt(s) into Ideogram4's native structured JSON caption (the format the model is
-    trained on) when ``prompt_upsampling=True``. Requires the optional ``prompt_enhancer_head`` component, which is
-    grafted onto the shared ``text_encoder`` body to make it generative; install ``outlines`` for schema-constrained
-    captions.
+    Optional step that rewrites the prompt(s) into Ideogram4's native structured JSON caption when
+    `prompt_upsampling=True` (the format the model is trained on). Requires a generative `text_encoder` (a
+    `Qwen3VLForConditionalGeneration`); install `outlines` for schema-constrained captions.
 
       Components:
           text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer paired
-          with the text encoder. prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): The LM head grafted onto the
-          text encoder for upsampling.
+          with the text encoder. prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): LM head grafted onto the text
+          encoder for prompt upsampling.
 
       Inputs:
           prompt (`str`):
               The prompt or prompts to guide image generation.
           prompt_upsampling (`bool`, *optional*, defaults to False):
-              If True, rewrite the prompt into the native JSON caption before encoding.
+              If True, rewrite the prompt into Ideogram4's native JSON caption before encoding.
           prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
               Sampling temperature for prompt upsampling.
           height (`int`, *optional*):
-              Together with width, sets the caption's target aspect ratio.
+              The height in pixels of the generated image.
           width (`int`, *optional*):
-              Together with height, sets the caption's target aspect ratio.
+              The width in pixels of the generated image.
+          max_sequence_length (`int`, *optional*, defaults to 2048):
+              Maximum sequence length for prompt encoding.
           generator (`Generator`, *optional*):
-              Reused to make the upsampling reproducible.
+              Torch generator for deterministic generation.
 
       Outputs:
-          prompt (`str`):
+          prompt (`list`):
               The (possibly upsampled) prompt forwarded to the text encoder.
     """
 

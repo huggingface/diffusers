@@ -172,14 +172,14 @@ from diffusers.utils import export_to_video
 
 
 model_id = "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers"
-vae = AutoModel.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+vae = AutoModel.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
 
 pipeline = SkyReelsV2DiffusionForcingPipeline.from_pretrained(
     model_id,
     vae=vae,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
 
@@ -219,11 +219,11 @@ from diffusers.utils import export_to_video, load_image
 
 
 model_id = "Skywork/SkyReels-V2-DF-1.3B-720P-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
 pipeline = SkyReelsV2DiffusionForcingImageToVideoPipeline.from_pretrained(
-    model_id, vae=vae, torch_dtype=torch.bfloat16
+    model_id, vae=vae, dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 flow_shift = 5.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
 
@@ -282,11 +282,11 @@ from diffusers.utils import export_to_video, load_video
 
 
 model_id = "Skywork/SkyReels-V2-DF-1.3B-720P-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
 pipeline = SkyReelsV2DiffusionForcingVideoToVideoPipeline.from_pretrained(
-    model_id, vae=vae, torch_dtype=torch.bfloat16
+    model_id, vae=vae, dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 flow_shift = 5.0  # 8.0 for T2V, 5.0 for I2V
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=flow_shift)
 

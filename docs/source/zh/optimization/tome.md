@@ -26,7 +26,7 @@ pip install tomesd
   import tomesd
 
   pipeline = StableDiffusionPipeline.from_pretrained(
-        "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True,
+        "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True,
   ).to("cuda")
 + tomesd.apply_patch(pipeline, ratio=0.5)
 

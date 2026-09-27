@@ -8,7 +8,6 @@ from ...utils import (
     is_onnx_available,
     is_torch_available,
     is_transformers_available,
-    is_transformers_flax_compatible,
     is_transformers_version,
 )
 
@@ -17,8 +16,6 @@ _dummy_objects = {}
 _additional_imports = {}
 _import_structure = {"pipeline_output": ["StableDiffusionPipelineOutput"]}
 
-if is_transformers_flax_compatible():
-    _import_structure["pipeline_output"].extend(["FlaxStableDiffusionPipelineOutput"])
 try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
@@ -81,15 +78,6 @@ else:
     _import_structure["pipeline_onnx_stable_diffusion_inpaint"] = ["OnnxStableDiffusionInpaintPipeline"]
     _import_structure["pipeline_onnx_stable_diffusion_inpaint_legacy"] = ["OnnxStableDiffusionInpaintPipelineLegacy"]
     _import_structure["pipeline_onnx_stable_diffusion_upscale"] = ["OnnxStableDiffusionUpscalePipeline"]
-
-if is_transformers_flax_compatible():
-    from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
-
-    _additional_imports.update({"PNDMSchedulerState": PNDMSchedulerState})
-    _import_structure["pipeline_flax_stable_diffusion"] = ["FlaxStableDiffusionPipeline"]
-    _import_structure["pipeline_flax_stable_diffusion_img2img"] = ["FlaxStableDiffusionImg2ImgPipeline"]
-    _import_structure["pipeline_flax_stable_diffusion_inpaint"] = ["FlaxStableDiffusionInpaintPipeline"]
-    _import_structure["safety_checker_flax"] = ["FlaxStableDiffusionSafetyChecker"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -160,22 +148,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_onnx_stable_diffusion_upscale import (
             OnnxStableDiffusionUpscalePipeline,
         )
-
-    try:
-        if not is_transformers_flax_compatible():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from ...utils.dummy_flax_objects import *
-    else:
-        from .pipeline_flax_stable_diffusion import FlaxStableDiffusionPipeline
-        from .pipeline_flax_stable_diffusion_img2img import (
-            FlaxStableDiffusionImg2ImgPipeline,
-        )
-        from .pipeline_flax_stable_diffusion_inpaint import (
-            FlaxStableDiffusionInpaintPipeline,
-        )
-        from .pipeline_output import FlaxStableDiffusionPipelineOutput
-        from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 else:
     import sys

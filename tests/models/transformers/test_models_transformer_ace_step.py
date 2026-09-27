@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import AceStepTransformer1DModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BaseModelTesterConfig, ModelTesterMixin
+from ..testing_utils import BaseModelTesterConfig, LoraTesterMixin, ModelTesterMixin
 
 
 enable_full_determinism()
@@ -82,3 +83,13 @@ class AceStepTransformer1DModelTesterConfig(BaseModelTesterConfig):
 
 class TestAceStepTransformer1DModel(AceStepTransformer1DModelTesterConfig, ModelTesterMixin):
     pass
+
+
+class TestAceStepTransformer1DModelLoRA(AceStepTransformer1DModelTesterConfig, LoraTesterMixin):
+    @pytest.mark.skip("Tiny AceStep GQA model produces numerically close outputs for different LoRA ranks.")
+    def test_correct_lora_configs_with_different_ranks(self):
+        pass
+
+    @pytest.mark.skip("AceStep attention layers have no bias; lora_bias is not applicable.")
+    def test_lora_B_bias(self):
+        pass

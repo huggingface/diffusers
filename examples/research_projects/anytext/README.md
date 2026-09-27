@@ -23,10 +23,10 @@ from anytext_controlnet import AnyTextControlNetModel
 from diffusers.utils import load_image
 
 
-anytext_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
+anytext_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", dtype=torch.float16,
                                                             variant="fp16",)
 pipe = DiffusionPipeline.from_pretrained("tolgacangoz/anytext", font_path="arial-unicode-ms.ttf",
-                                          controlnet=anytext_controlnet, torch_dtype=torch.float16,
+                                          controlnet=anytext_controlnet, dtype=torch.float16,
                                           trust_remote_code=False,  # One needs to give permission to run this pipeline's code
                                           ).to("cuda")
 

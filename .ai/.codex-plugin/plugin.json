@@ -1,0 +1,6 @@
+{
+  "name": "diffusers",
+  "version": "0.1.0",
+  "description": "Conventions and task skills for contributing to diffusers",
+  "skills": "./skills/"
+}

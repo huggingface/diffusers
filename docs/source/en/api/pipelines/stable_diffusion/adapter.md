@@ -29,8 +29,6 @@ This model was contributed by the community contributor [HimariO](https://github
     - __call__
     - enable_attention_slicing
     - disable_attention_slicing
-    - enable_vae_slicing
-    - disable_vae_slicing
     - enable_xformers_memory_efficient_attention
     - disable_xformers_memory_efficient_attention
 
@@ -41,7 +39,5 @@ This model was contributed by the community contributor [HimariO](https://github
     - __call__
     - enable_attention_slicing
     - disable_attention_slicing
-    - enable_vae_slicing
-    - disable_vae_slicing
     - enable_xformers_memory_efficient_attention
     - disable_xformers_memory_efficient_attention

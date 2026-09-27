@@ -22,7 +22,7 @@ The model can be loaded with the following code snippet.
 import torch
 from diffusers import AutoencoderKLKVAE
 
-vae = AutoencoderKLKVAE.from_pretrained("kandinskylab/KVAE-2D-1.0", subfolder="diffusers", torch_dtype=torch.bfloat16)
+vae = AutoencoderKLKVAE.from_pretrained("kandinskylab/KVAE-2D-1.0", subfolder="diffusers", dtype=torch.bfloat16)
 ```
 
 ## AutoencoderKLKVAE

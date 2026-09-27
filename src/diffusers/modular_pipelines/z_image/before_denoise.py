@@ -80,9 +80,7 @@ def repeat_tensor_to_batch_size(
     elif input_tensor.shape[0] == batch_size:
         repeat_by = num_images_per_prompt
     else:
-        raise ValueError(
-            f"`{input_name}` must have have batch size 1 or {batch_size}, but got {input_tensor.shape[0]}"
-        )
+        raise ValueError(f"`{input_name}` must have batch size 1 or {batch_size}, but got {input_tensor.shape[0]}")
 
     # expand the tensor to match the batch_size * num_images_per_prompt
     input_tensor = input_tensor.repeat_interleave(repeat_by, dim=0)
@@ -99,7 +97,7 @@ def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor_spa
     Args:
         latents (torch.Tensor): The latent tensor. Must have 4 dimensions.
             Expected shapes: [batch, channels, height, width]
-        vae_scale_factor (int): The scale factor used by the VAE to compress image spatial dimension.
+        vae_scale_factor_spatial (int): The scale factor used by the VAE to compress image spatial dimension.
             By default, it is 16
     Returns:
         tuple[int, int]: The calculated image dimensions as (height, width)

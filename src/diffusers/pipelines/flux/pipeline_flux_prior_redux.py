@@ -34,6 +34,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
+from ...utils.torch_utils import get_module_execution_device
 from ..pipeline_utils import DiffusionPipeline
 from .modeling_flux import ReduxImageEncoder
 from .pipeline_output import FluxPriorReduxPipelineOutput
@@ -172,12 +173,18 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             raise ValueError(
                 "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
             )
-        if isinstance(prompt_embeds_scale, list) and (
-            isinstance(image, list) and len(prompt_embeds_scale) != len(image)
+        image_batch_size = (
+            image.shape[0] if isinstance(image, torch.Tensor) else len(image) if isinstance(image, list) else 1
+        )
+        for scale_name, scale in (
+            ("prompt_embeds_scale", prompt_embeds_scale),
+            ("pooled_prompt_embeds_scale", pooled_prompt_embeds_scale),
         ):
-            raise ValueError(
-                f"number of weights must be equal to number of images, but {len(prompt_embeds_scale)} weights were provided and {len(image)} images"
-            )
+            if isinstance(scale, list) and len(scale) != image_batch_size:
+                raise ValueError(
+                    f"number of weights in `{scale_name}` must be equal to number of images, but "
+                    f"{len(scale)} weights were provided and {image_batch_size} images"
+                )
 
     def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -228,7 +235,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder_2(text_input_ids.to(device), output_hidden_states=False)[0]
+        model_device = get_module_execution_device(self.text_encoder_2)
+        prompt_embeds = self.text_encoder_2(text_input_ids.to(model_device), output_hidden_states=False)[0]
 
         dtype = self.text_encoder_2.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
@@ -274,7 +282,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer_max_length} tokens: {removed_text}"
             )
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), output_hidden_states=False)
+        model_device = get_module_execution_device(self.text_encoder)
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), output_hidden_states=False)
 
         # Use pooled output of CLIPTextModel
         prompt_embeds = prompt_embeds.pooler_output

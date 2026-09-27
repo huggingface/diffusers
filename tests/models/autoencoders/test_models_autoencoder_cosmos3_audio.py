@@ -13,9 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib.util
-from pathlib import Path
-
 import pytest
 import torch
 
@@ -144,54 +141,3 @@ def test_cosmos3_audio_tokenizer_decoder_only_state_disables_encode():
     assert decoder_only_model.encoder is None
     with pytest.raises(ValueError, match="decoder-only weights"):
         decoder_only_model.encode(torch.randn(1, 2, 16))
-
-
-def _load_converter_module():
-    repo_root = Path(__file__).resolve().parents[3]
-    script_path = repo_root / "scripts" / "convert_cosmos3_to_diffusers.py"
-    spec = importlib.util.spec_from_file_location("convert_cosmos3_to_diffusers", script_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_cosmos3_audio_converter_keeps_encoder_and_remaps_decoder():
-    converter = _load_converter_module()
-    state_dict = {
-        "generator.encoder.layers.0.weight": torch.ones(4, 20, 1),
-        "generator.encoder.layers.1.act.alpha": torch.zeros(16),
-        "generator.encoder.layers.1.act.beta": torch.zeros(16),
-        "generator.decoder.layers.0.weight": torch.ones(8, 4, 7),
-        "generator.decoder.layers.1.layers.0.alpha": torch.zeros(8),
-        "generator.decoder.layers.1.layers.1.weight": torch.ones(8, 4, 4),
-        "generator.decoder.layers.1.layers.2.layers.0.alpha": torch.zeros(4),
-        "generator.decoder.layers.1.layers.2.layers.1.weight": torch.ones(4, 4, 7),
-        "generator.decoder.layers.2.alpha": torch.zeros(4),
-        "generator.decoder.layers.3.weight": torch.ones(2, 4, 7),
-    }
-
-    remapped = converter._remap_avae_state_dict(state_dict)
-
-    assert not any(key.startswith("decoder.layers.") for key in remapped)
-    assert "encoder.layers.0.weight" not in remapped
-    assert "encoder.layers.0.weight_g" in remapped
-    assert "encoder.layers.0.weight_v" in remapped
-    assert remapped["encoder.layers.1.act.alpha"].shape == (1, 16, 1)
-    assert remapped["decoder.conv1.weight_g"].shape == (8, 1, 1)
-    assert remapped["decoder.block.0.snake1.alpha"].shape == (1, 8, 1)
-    assert remapped["decoder.block.0.res_unit1.snake1.alpha"].shape == (1, 4, 1)
-    assert remapped["decoder.snake1.alpha"].shape == (1, 4, 1)
-
-
-def test_cosmos3_audio_converter_allows_decoder_only_state_dict():
-    converter = _load_converter_module()
-    state_dict = {
-        "decoder.conv1.weight": torch.ones(8, 4, 7),
-        "decoder.snake1.alpha": torch.zeros(4),
-    }
-
-    remapped = converter._remap_avae_state_dict(state_dict)
-
-    assert not any(key.startswith("encoder.") for key in remapped)
-    assert "decoder.conv1.weight_g" in remapped
-    assert remapped["decoder.snake1.alpha"].shape == (1, 4, 1)

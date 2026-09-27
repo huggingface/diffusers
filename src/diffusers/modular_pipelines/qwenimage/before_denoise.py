@@ -426,7 +426,7 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
     def check_inputs(image_latents, latents):
         if image_latents.shape[0] != latents.shape[0]:
             raise ValueError(
-                f"`image_latents` must have have same batch size as `latents`, but got {image_latents.shape[0]} and {latents.shape[0]}"
+                f"`image_latents` must have same batch size as `latents`, but got {image_latents.shape[0]} and {latents.shape[0]}"
             )
 
         if image_latents.ndim != 3:
