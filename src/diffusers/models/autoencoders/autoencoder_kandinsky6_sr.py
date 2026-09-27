@@ -909,6 +909,11 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
 
     Args:
         vae_type (`str`): VAE architecture identifier. Must be ``"video-kvae"``.
+        decoder_ch (`int`, *optional*): Base channel count for the decoder, if
+            different from the encoder's ``ch``. Defaults to ``ch``.
+        decoder_ch_mult (`tuple[float, ...]`, *optional*): Per-resolution channel
+            multiplier for the decoder, if different from the encoder's
+            ``ch_mult``. Defaults to ``ch_mult``.
         scaling_factor (`float`, *optional*, defaults to 1.0): Latent scaling
             factor stored in the component configuration.
         spatial_factor (`int`, *optional*, defaults to 16): Spatial compression
@@ -938,7 +943,9 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         out_channels: int = 3,
         z_channels: int = 16,
         ch: int = 128,
-        ch_mult: Tuple[int, ...] = (1, 2, 4, 8),
+        ch_mult: Tuple[float, ...] = (1, 2, 4, 8),
+        decoder_ch: Union[int, None] = None,
+        decoder_ch_mult: Union[Tuple[float, ...], None] = None,
         num_res_blocks: int = 2,
         dropout: float = 0.0,
         resolution: int = 0,
@@ -980,8 +987,8 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         self.decoder = CachedDecoder3D(
             out_ch=out_channels,
             z_channels=z_channels,
-            ch=ch,
-            ch_mult=ch_mult,
+            ch=ch if decoder_ch is None else decoder_ch,
+            ch_mult=ch_mult if decoder_ch_mult is None else decoder_ch_mult,
             num_res_blocks=num_res_blocks,
             dropout=dropout,
             resolution=resolution,
