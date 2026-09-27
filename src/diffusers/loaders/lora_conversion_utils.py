@@ -2909,10 +2909,11 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
 
             base = k[: -len(lora_dot_down_key)]
 
-            # Combined "qkv" projection. Next to split to.q/k/v keys (Anime-Z) it is
-            # redundant; a LoRA trained on Z-Image's original module names carries ONLY
-            # the fused key, so split it like the single-file converter does (q, k, v
-            # chunks along dim 0, the shared down weight repeated).
+            # Fused "qkv" LoRA, e.g. `lora_unet_layers_0_attention_qkv.lora_down.weight` from
+            # kohya-style trainers that wrap Z-Image's original module tree (the layout
+            # https://github.com/utensils/mold/blob/main/crates/mold-inference/src/zimage/lora.rs
+            # documents as "Kohya / sd-scripts"). Split it into to_q/to_k/to_v like
+            # `convert_z_image_fused_attention`; next to split keys (Anime-Z) it is redundant.
             if base.endswith(".qkv"):
                 block = base[: -len(".qkv")]
                 down_weight = state_dict.pop(k)
