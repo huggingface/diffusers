@@ -14,9 +14,9 @@ specific language governing permissions and limitations under the License. -->
 > [!NOTE]
 > The attention dispatcher is an experimental feature. Please open an issue if you have any feedback or encounter any problems.
 
-Diffusers routes attention through an *attention dispatcher* so you can switch optimized backends behind one API. The dispatcher manages registered implementations and exposes a unified call path for them.
+Most Diffusers transformer models route attention through an *attention dispatcher* so you can switch optimized backends behind one API. The dispatcher manages registered implementations and exposes a unified call path for them. Some models, such as many autoencoders, don't use the dispatcher because of their internals, and switching the backend has no effect on their attention layers.
 
-Refer to the table below for an overview of the available attention families and to the [Available backends](#available-backends) section for a more complete list. The fastest backend depends on the model, GPU, and dtype.
+Refer to the table below for an overview of the available attention families and to the [Available backends](#available-backends) section for a more complete list. The fastest backend depends on the model, GPU, dtype, and input shape.
 
 | attention family | main feature |
 |---|---|
@@ -27,7 +27,7 @@ Refer to the table below for an overview of the available attention families and
 | PyTorch native | built-in PyTorch implementation using [scaled_dot_product_attention](./fp16#scaled-dot-product-attention) |
 | xFormers | memory-efficient attention with support for various attention kernels |
 
-Install each backend’s own package before you enable it. The [Available backends](#available-backends) table lists package requirements Diffusers checks at enable time, plus hardware targets where they matter.
+Hub backends (the `*_hub` names) only need the [Kernels](https://github.com/huggingface/kernels) library and download the kernel on first use. Other backends need their own package, such as `flash-attn` or `sageattention`. The [Available backends](#available-backends) table lists the requirements Diffusers checks when you enable a backend.
 
 ## Set a backend on the model
 
@@ -35,7 +35,7 @@ The [`~ModelMixin.set_attention_backend`] method walks the model’s attention l
 
 [`~ModelMixin.reset_attention_backend`] clears the backend on attention layers only. It does not clear the process-wide active backend. For a temporary switch that restores the previous active backend on exit, use the [attention_backend](#try-a-backend-temporarily) context manager.
 
-The example below enables `_flash_3_hub` (FlashAttention-3 from the Hub) with `device_map="cuda"` only. FlashAttention-3 targets Hopper GPUs (for example H100 or H800). Prefer FlashAttention-2 backends such as `flash` or `flash_hub` on Ampere or Ada.
+The example below enables `_flash_3_hub` (FlashAttention-3 from the Hub) with `device_map="cuda"`.
 
 ```py
 import torch
@@ -53,7 +53,8 @@ highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous
 pipeline(prompt).images[0]
 ```
 
-The non-Hub FlashAttention-3 backends (`_flash_3`, `_flash_varlen_3`) require building FlashAttention-3 from source. Prefer `_flash_3_hub` (or `_flash_3_varlen_hub`) when you want the Hub path with Kernels.
+> [!NOTE]
+> The non-Hub FlashAttention-3 backends (`_flash_3`, `_flash_varlen_3`) require building FlashAttention-3 from source and will be deprecated soon. Use `_flash_3_hub` or `_flash_3_varlen_hub` instead.
 
 ## Try a backend temporarily
 
@@ -144,10 +145,10 @@ Refer to the table below for a complete list of available attention backends and
 | `flash_varlen_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention from Hub kernels | `kernels>=0.12` |
 | `aiter_fa2_hub` | [AI Tensor Engine for ROCm](https://github.com/ROCm/aiter) | FlashAttention-2 for AMD ROCm from Hub kernels (`bfloat16`) | `kernels>=0.12`, ROCm |
 | `flash_4_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-4 from Hub kernels | `kernels>=0.12.3` |
-| `_flash_3` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-3 (local; targets Hopper) | Build FA3 from source |
-| `_flash_varlen_3` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention-3 (local; targets Hopper) | Build FA3 from source |
-| `_flash_3_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-3 from Hub kernels (targets Hopper) | `kernels>=0.12` |
-| `_flash_3_varlen_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention-3 from Hub kernels (targets Hopper) | `kernels>=0.12` |
+| `_flash_3` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-3 (local; deprecated soon) | Build FA3 from source |
+| `_flash_varlen_3` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention-3 (local; deprecated soon) | Build FA3 from source |
+| `_flash_3_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-3 from Hub kernels | `kernels>=0.12` |
+| `_flash_3_varlen_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention-3 from Hub kernels | `kernels>=0.12` |
 | `sage` | [SageAttention](https://github.com/thu-ml/SageAttention) | Quantized attention (INT8 QK) | `sageattention>=2.1.1` |
 | `sage_hub` | [SageAttention](https://github.com/thu-ml/SageAttention) | Quantized attention (INT8 QK) from Hub kernels | `kernels>=0.12` |
 | `sage_varlen` | [SageAttention](https://github.com/thu-ml/SageAttention) | Variable length SageAttention | `sageattention>=2.1.1` |
