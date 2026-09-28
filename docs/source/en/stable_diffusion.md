@@ -41,7 +41,7 @@ If the pipeline does not fit, or memory is tight, call [`~DiffusionPipeline.enab
 
 Skip it when the model fits. Offloading is slower when you do not need it.
 
-For more offloading options, see [Memory and offloading](./optimization/memory#offloading).
+For more offloading options, see [Reduce memory usage](./optimization/memory#offloading).
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
@@ -51,7 +51,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 pipeline.enable_model_cpu_offload()
 ```
 
-Lower latency with fewer `num_inference_steps` or a faster scheduler such as [`DPMSolverMultistepScheduler`]. That usually speeds up generation but can reduce image quality versus a slower, higher-quality scheduler. See [Precision and compilation](./optimization/fp16) for more speed techniques.
+Lower latency with fewer `num_inference_steps` or a faster scheduler such as [`DPMSolverMultistepScheduler`]. That usually speeds up generation but can reduce image quality versus a slower, higher-quality scheduler. See [Optimization techniques](#optimization-techniques) below for more speed techniques.
 
 ```py
 import time
@@ -68,13 +68,22 @@ print(f"Image generation took {end_time - start_time:.3f} seconds")
 
 ## Optimization techniques
 
-When the starter path is not enough, use these techniques. If you are out of memory, start with offloading or quantization. If inference is too slow, start with caching, attention backends, `torch.compile`, or regional compilation.
+When the starter path is not enough, use these techniques. If inference is too slow, start with `torch.compile`, caching, or attention backends. If you are out of memory, start with offloading or quantization.
 
+Faster inference:
+
+- [torch.compile](./optimization/fp16#torchcompile) — Compile the UNet, transformer, or VAE into optimized kernels.
+- [Regional compilation](./optimization/fp16#regional-compilation) — Compile repeated blocks to cut `torch.compile` cold-start latency and reuse compiled artifacts.
 - [Caching](./optimization/cache) — Reuse intermediates across denoising steps when you want more speed and can spend memory.
 - [Attention backends](./optimization/attention_backends) — Swap Diffusers attention implementations through a unified API when attention is the bottleneck.
-- [Quantization](./quantization/overview) — Load smaller weights to cut memory (and often speed up inference). [GGUF](./quantization/gguf) is a common starting point.
-- [Regional compilation](./optimization/fp16#regional-compilation) — Compile repeated blocks to cut `torch.compile` cold-start latency and reuse compiled artifacts.
-- [torch.compile](./optimization/fp16#torchcompile) — Compile the UNet, transformer, or VAE into optimized kernels.
 - [Kernels](./optimization/fp16#kernels) — Load optimized Hub compute kernels (attention and custom CUDA ops such as RMSNorm or RoPE) when you need hardware-specific speedups beyond stock PyTorch.
+
+Less memory:
+
 - [Offloading](./optimization/memory#offloading) — Move inactive models or layers to the CPU with CPU, model, or group offloading.
+- [Quantization](./quantization/overview) — Load smaller weights to cut memory (and often speed up inference). [GGUF](./quantization/gguf) is a common starting point.
+- [VAE slicing](./optimization/memory#vae-slicing) and [VAE tiling](./optimization/memory#vae-tiling) — Decode large batches or high-resolution images in pieces to lower peak memory.
+
+Both:
+
 - [Quantize, compile, and offload](./optimization/speed-memory-optims) — Combine quantization, `torch.compile`, and offloading when one technique is not enough.
