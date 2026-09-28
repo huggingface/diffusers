@@ -21,6 +21,9 @@ from typing import Any
 
 import torch
 import torch.nn.functional as functional
+from torch import Tensor, nn
+from torch.nn.attention.flex_attention import BlockMask
+
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...hooks import MagCacheConfig
 from ...hooks.hooks import HookRegistry, ModelHook, StateManager
@@ -36,8 +39,6 @@ from ..cache_utils import CacheMixin
 from ..embeddings import get_timestep_embedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from torch import Tensor, nn
-from torch.nn.attention.flex_attention import BlockMask
 
 
 def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
@@ -744,7 +745,12 @@ class Kandinsky6TransformerEncoderBlock(nn.Module):
 
 
 class Kandinsky6TransformerDecoderBlock(nn.Module):
-    """Visual self-attention, text cross-attention, and feed-forward block."""
+    """Visual self-attention, text cross-attention, and feed-forward submodules.
+
+    `Kandinsky6FusedTransformerDecoderBlock` uses this class only as a named submodule container
+    (`self_attention`/`cross_attention`/`feed_forward` and their norms/modulation), calling those
+    submodules directly rather than this class's own `forward`.
+    """
 
     def __init__(
         self,
@@ -767,35 +773,6 @@ class Kandinsky6TransformerDecoderBlock(nn.Module):
         )
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.feed_forward = Kandinsky6FeedForward(model_dim, ff_dim)
-
-    def forward(
-        self, vis: Tensor, text: Tensor, time_embed: Tensor, rope: Tensor, sparse_params: dict | None, attn_mask=None
-    ) -> Tensor:
-        sa_params, ca_params, ff_params = torch.chunk(self.visual_modulation(time_embed), 3, dim=-1)
-        shift, scale, gate = torch.chunk(sa_params, 3, dim=-1)
-        vis = apply_gate_sum(
-            vis,
-            self.self_attention(
-                apply_scale_shift_norm(self.self_attention_norm, vis, scale, shift),
-                rotary_emb=rope,
-                sparse_params=sparse_params,
-            ),
-            gate,
-        )
-        shift, scale, gate = torch.chunk(ca_params, 3, dim=-1)
-        vis = apply_gate_sum(
-            vis,
-            self.cross_attention(
-                apply_scale_shift_norm(self.cross_attention_norm, vis, scale, shift),
-                encoder_hidden_states=text,
-                attn_mask=attn_mask,
-            ),
-            gate,
-        )
-        shift, scale, gate = torch.chunk(ff_params, 3, dim=-1)
-        return apply_gate_sum(
-            vis, self.feed_forward(apply_scale_shift_norm(self.feed_forward_norm, vis, scale, shift)), gate
-        )
 
 
 class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
@@ -860,12 +837,7 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
         aud_rope: Tensor | None,
         sparse_params: dict | None,
         attn_mask=None,
-        modality_mask=None,
-        av_gate_scale: float = 1.0,
-        va_gate_scale: float = 1.0,
     ) -> tuple[Tensor | None, Tensor | None]:
-        fake_audio = modality_mask[0] if modality_mask is not None else 0
-        fake_video = modality_mask[1] if modality_mask is not None else 0
         t_v, t_a = time_embed
         if vis is not None:
             sa_p, ca_p, ff_p = torch.chunk(self.videoT.visual_modulation(t_v), 3, dim=-1)
@@ -927,32 +899,20 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
                 aud_for_av = apply_scale_shift_norm(self.av_normalization, aud, av_scale, av_shift)
                 rq_v = vis_rope if self.ca_rope else None
                 rk_a = aud_rope if self.ca_rope else None
-                vis_from_aud = (
-                    self.va_cross_attention(
-                        vis_for_va,
-                        encoder_hidden_states=aud_pre_ca,
-                        rope_q=rq_v,
-                        rope_kv=rk_a,
-                    )
-                    * (1 - fake_audio)
-                    * (1 - fake_video)
+                vis_from_aud = self.va_cross_attention(
+                    vis_for_va,
+                    encoder_hidden_states=aud_pre_ca,
+                    rope_q=rq_v,
+                    rope_kv=rk_a,
                 )
-                aud_from_vis = (
-                    self.av_cross_attention(
-                        aud_for_av,
-                        encoder_hidden_states=vis_pre_ca,
-                        rope_q=rk_a,
-                        rope_kv=rq_v,
-                    )
-                    * (1 - fake_audio)
-                    * (1 - fake_video)
+                aud_from_vis = self.av_cross_attention(
+                    aud_for_av,
+                    encoder_hidden_states=vis_pre_ca,
+                    rope_q=rk_a,
+                    rope_kv=rq_v,
                 )
-                vis = apply_gate_sum(
-                    vis, vis_from_aud, (va_gate if not self.cross_gates else av_gate) * va_gate_scale
-                ).type_as(vis)
-                aud = apply_gate_sum(
-                    aud, aud_from_vis, (av_gate if not self.cross_gates else va_gate) * av_gate_scale
-                ).type_as(aud)
+                vis = apply_gate_sum(vis, vis_from_aud, va_gate if not self.cross_gates else av_gate).type_as(vis)
+                aud = apply_gate_sum(aud, aud_from_vis, av_gate if not self.cross_gates else va_gate).type_as(aud)
         elif vis is not None:
             vis = apply_gate_sum(vis, vis_out_t, gate_v).type_as(vis)
 
@@ -990,11 +950,13 @@ class Kandinsky6Transformer3DModel(
     CacheMixin,
     AttentionMixin,
 ):
-    """Kandinsky 6 transformer for text-to-video and text-to-video-and-audio generation.
+    """Kandinsky 6 multimodal transformer for text/image-to-video-and-audio generation.
 
-    The model uses separate text and visual transformer blocks for video-only
-    generation and fused video/audio blocks for multimodal generation. Inputs
-    and outputs use packed token layouts compatible with the native K6 model.
+    Video and audio are denoised together through fused, cross-modal transformer blocks, each
+    conditioned on its own text branch (Qwen2.5-VL tokens + CLIP pooled embedding). Passing only
+    `x_video` or only `x_audio` denoises a single modality while still running through the fused
+    block's per-modality self-attention, cross-attention, and feed-forward stages. Inputs and
+    outputs use packed token layouts compatible with the native K6 model.
 
     Args:
         in_visual_dim (`int`, *optional*, defaults to 16): Number of input video latent channels.
@@ -1005,11 +967,10 @@ class Kandinsky6Transformer3DModel(
         patch_size (`tuple[int, int, int]`, *optional*, defaults to ``(1, 2, 2)``): Video patch size.
         model_dim (`int`, *optional*, defaults to 4096): Video transformer hidden dimension.
         ff_dim (`int`, *optional*, defaults to 16384): Video feed-forward hidden dimension.
-        num_text_blocks (`int`, *optional*, defaults to 4): Number of text blocks.
-        num_visual_blocks (`int`, *optional*, defaults to 60): Number of visual blocks.
+        num_text_blocks (`int`, *optional*, defaults to 4): Number of text blocks per modality.
+        num_visual_blocks (`int`, *optional*, defaults to 60): Number of fused video/audio blocks.
         axes_dims (`tuple[int, int, int]`, *optional*, defaults to ``(32, 48, 48)``): RoPE dimensions for video.
         visual_cond (`bool`, *optional*, defaults to True): Whether video conditioning channels are present.
-        is_multimodal (`bool`, *optional*, defaults to False): Whether to construct fused video/audio blocks.
         in_audio_dim (`int`, *optional*, defaults to 20): Number of input audio latent channels.
         out_audio_dim (`int`, *optional*, defaults to 20): Number of output audio latent channels.
         model_dim_a (`int`, *optional*): Audio transformer hidden dimension. Defaults to `model_dim`.
@@ -1028,12 +989,18 @@ class Kandinsky6Transformer3DModel(
 
     _repeated_blocks = [
         "Kandinsky6TransformerEncoderBlock",
-        "Kandinsky6TransformerDecoderBlock",
         "Kandinsky6FusedTransformerDecoderBlock",
     ]
     _no_split_modules = _repeated_blocks
-    _keep_in_fp32_modules = ["time_embeddings", "modulation", "visual_modulation", "text_modulation"]
+    _keep_in_fp32_modules = ["time_embeddings", "modulation"]
     _supports_gradient_checkpointing = True
+    # `Kandinsky6TimeEmbeddings`/`Kandinsky6Modulation` hand their `nn.Linear` weight/bias straight to
+    # `functional.linear` (upcast to fp32 first) rather than calling the submodule, so the AdaLN math stays
+    # fp32 even after a later blanket `.to(bfloat16)` cast (`_keep_in_fp32_modules` only protects the
+    # `from_pretrained(dtype=...)` load, not a subsequent cast). Leaf-level offload hooks only fire on an
+    # actual submodule call, so they never see these weights — the same class of gap as
+    # `HunyuanDiTAttentionPool` (see testing.md), which opts out of group offloading for the same reason.
+    _supports_group_offloading = False
 
     @register_to_config
     def __init__(
@@ -1050,7 +1017,6 @@ class Kandinsky6Transformer3DModel(
         num_visual_blocks: int = 60,
         axes_dims: tuple = (32, 48, 48),
         visual_cond: bool = True,
-        is_multimodal: bool = False,
         in_audio_dim: int = 20,
         out_audio_dim: int = 20,
         model_dim_a: int | None = None,
@@ -1069,13 +1035,11 @@ class Kandinsky6Transformer3DModel(
         super().__init__()
         self.patch_size = patch_size
         self.visual_cond = visual_cond
-        self.is_multimodal = is_multimodal
         self.in_visual_dim = in_visual_dim
         self.in_audio_dim = in_audio_dim
         self.text_token_padding = text_token_padding
         self.scale_factor = tuple(float(value) for value in scale_factor)
         self.visual_token_type_num_embeddings = int(visual_token_type_num_embeddings or 0)
-        self._text_proj_cache: dict[tuple, object] = {}
         head_dim = sum(axes_dims)
         model_dim_a = model_dim_a or model_dim
         time_dim_a = time_dim_a or time_dim
@@ -1090,268 +1054,60 @@ class Kandinsky6Transformer3DModel(
         self.visual_rope_embeddings = Kandinsky6RoPE3D(axes_dims)
         self.out_layer = Kandinsky6OutLayer(model_dim, time_dim, out_visual_dim, patch_size)
 
-        if not is_multimodal:
-            self.time_embeddings = Kandinsky6TimeEmbeddings(model_dim, time_dim)
-            self.text_embeddings = Kandinsky6TextEmbeddings(in_text_dim, model_dim)
-            self.pooled_text_embeddings = Kandinsky6TextEmbeddings(in_text_dim2, time_dim)
-            self.text_rope_embeddings = Kandinsky6RoPE1D(head_dim)
-            self.text_transformer_blocks = nn.ModuleList(
-                [
-                    Kandinsky6TransformerEncoderBlock(model_dim, time_dim, ff_dim, head_dim, text_token_padding)
-                    for _ in range(num_text_blocks)
-                ]
+        self.audio_embeddings = Kandinsky6TextEmbeddings(in_audio_dim, model_dim_a)
+        self.audio_rope_embeddings = Kandinsky6RoPE1D(head_dim_a, freqs_scaling=audio_freqs_scaling)
+        self.audio_out_layer = Kandinsky6OutLayerAudio(model_dim_a, time_dim_a, out_audio_dim)
+        for prefix, md, td, fd, hd in (
+            ("video", model_dim, time_dim, ff_dim, head_dim),
+            ("audio", model_dim_a, time_dim_a, ff_dim_a, head_dim_a),
+        ):
+            setattr(self, f"{prefix}_time_embeddings", Kandinsky6TimeEmbeddings(md, td))
+            setattr(self, f"{prefix}_text_embeddings", Kandinsky6TextEmbeddings(in_text_dim, md))
+            setattr(self, f"{prefix}_pooled_text_embeddings", Kandinsky6TextEmbeddings(in_text_dim2, td))
+            setattr(self, f"{prefix}_text_rope_embeddings", Kandinsky6RoPE1D(hd))
+            setattr(
+                self,
+                f"{prefix}_text_transformer_blocks",
+                nn.ModuleList(
+                    [
+                        Kandinsky6TransformerEncoderBlock(md, td, fd, hd, text_token_padding)
+                        for _ in range(num_text_blocks)
+                    ]
+                ),
             )
-            self.visual_transformer_blocks = nn.ModuleList(
-                [
-                    Kandinsky6TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim, text_token_padding)
-                    for _ in range(num_visual_blocks)
-                ]
-            )
-        else:
-            self.audio_embeddings = Kandinsky6TextEmbeddings(in_audio_dim, model_dim_a)
-            self.audio_rope_embeddings = Kandinsky6RoPE1D(head_dim_a, freqs_scaling=audio_freqs_scaling)
-            self.audio_out_layer = Kandinsky6OutLayerAudio(model_dim_a, time_dim_a, out_audio_dim)
-            for prefix, md, td, fd, hd in (
-                ("video", model_dim, time_dim, ff_dim, head_dim),
-                ("audio", model_dim_a, time_dim_a, ff_dim_a, head_dim_a),
-            ):
-                setattr(self, f"{prefix}_time_embeddings", Kandinsky6TimeEmbeddings(md, td))
-                setattr(self, f"{prefix}_text_embeddings", Kandinsky6TextEmbeddings(in_text_dim, md))
-                setattr(self, f"{prefix}_pooled_text_embeddings", Kandinsky6TextEmbeddings(in_text_dim2, td))
-                setattr(self, f"{prefix}_text_rope_embeddings", Kandinsky6RoPE1D(hd))
-                setattr(
-                    self,
-                    f"{prefix}_text_transformer_blocks",
-                    nn.ModuleList(
-                        [
-                            Kandinsky6TransformerEncoderBlock(md, td, fd, hd, text_token_padding)
-                            for _ in range(num_text_blocks)
-                        ]
-                    ),
+        self.visual_transformer_blocks = nn.ModuleList(
+            [
+                Kandinsky6FusedTransformerDecoderBlock(
+                    model_dim,
+                    time_dim,
+                    ff_dim,
+                    head_dim,
+                    model_dim_a,
+                    time_dim_a,
+                    ff_dim_a,
+                    head_dim_a,
+                    text_token_padding,
+                    ca_rope,
+                    cross_gates,
+                    fix_modulation,
                 )
-            self.visual_transformer_blocks = nn.ModuleList(
-                [
-                    Kandinsky6FusedTransformerDecoderBlock(
-                        model_dim,
-                        time_dim,
-                        ff_dim,
-                        head_dim,
-                        model_dim_a,
-                        time_dim_a,
-                        ff_dim_a,
-                        head_dim_a,
-                        text_token_padding,
-                        ca_rope,
-                        cross_gates,
-                        fix_modulation,
-                    )
-                    for _ in range(num_visual_blocks)
-                ]
-            )
+                for _ in range(num_visual_blocks)
+            ]
+        )
 
         self.gradient_checkpointing = False
-
-    def clear_text_proj_cache(self) -> None:
-        """Clear cached projected text embeddings."""
-        self._text_proj_cache.clear()
-
-    def _project_pooled(self, prefix: str | None, pooled: Tensor) -> Tensor:
-        key = ("pe", prefix, pooled.data_ptr(), tuple(pooled.shape))
-        hit = self._text_proj_cache.get(key)
-        if hit is not None:
-            return hit  # type: ignore[return-value]
-        pe = (
-            self.pooled_text_embeddings(pooled)
-            if prefix is None
-            else getattr(self, f"{prefix}_pooled_text_embeddings")(pooled)
-        )
-        self._text_proj_cache[key] = pe
-        return pe
-
-    def _project_text_tokens(self, prefix: str | None, text_embed: Tensor, pooled: Tensor) -> tuple[Tensor, Tensor]:
-        key = ("te", prefix, text_embed.data_ptr(), pooled.data_ptr(), tuple(text_embed.shape), tuple(pooled.shape))
-        hit = self._text_proj_cache.get(key)
-        if hit is not None:
-            return hit  # type: ignore[return-value]
-        te = (
-            self.text_embeddings(text_embed)
-            if prefix is None
-            else getattr(self, f"{prefix}_text_embeddings")(text_embed)
-        )
-        pe = self._project_pooled(prefix, pooled)
-        self._text_proj_cache[key] = (te, pe)
-        return te, pe
-
-    def _time_embed(self, prefix: str | None, time: Tensor, pooled_proj: Tensor) -> Tensor:
-        return (
-            self.time_embeddings(time) if prefix is None else getattr(self, f"{prefix}_time_embeddings")(time)
-        ) + pooled_proj
-
-    @staticmethod
-    def _normalize_attn_mask(attn_mask: Tensor | None) -> Tensor | None:
-        if attn_mask is None:
-            return None
-        return attn_mask.unsqueeze(0) if attn_mask.dim() == 1 else attn_mask
-
-    def _run_text_blocks(
-        self, prefix: str | None, te: Tensor, tm: Tensor, text_rope: Tensor, attn_mask: Tensor | None = None
-    ) -> Tensor:
-        blocks = self.text_transformer_blocks if prefix is None else getattr(self, f"{prefix}_text_transformer_blocks")
-        for block in blocks:
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
-                te = self._gradient_checkpointing_func(block, te, tm, text_rope, attn_mask)
-            else:
-                te = block(te, tm, text_rope, attn_mask)
-        return te
-
-    def _encode_text(
-        self,
-        prefix: str,
-        text_embed: Tensor,
-        pooled: Tensor,
-        time: Tensor,
-        text_rope: Tensor,
-        attn_mask: Tensor | None = None,
-    ) -> tuple[Tensor, Tensor]:
-        te, pe = self._project_text_tokens(prefix, text_embed, pooled)
-        tm = self._time_embed(prefix, time, pe)
-        return self._run_text_blocks(prefix, te, tm, text_rope, attn_mask), tm
-
-    def _encode_t2v(
-        self, text_embed: Tensor, pooled: Tensor, time: Tensor, text_rope: Tensor, attn_mask: Tensor | None = None
-    ) -> tuple[Tensor, Tensor]:
-        te, pe = self._project_text_tokens(None, text_embed, pooled)
-        tm = self._time_embed(None, time, pe)
-        return self._run_text_blocks(None, te, tm, text_rope, attn_mask), tm
-
-    def _time_only(self, prefix: str | None, pooled: Tensor, time: Tensor) -> Tensor:
-        return self._time_embed(prefix, time, self._project_pooled(prefix, pooled))
-
-    def _embed_visual(
-        self,
-        x_video: Tensor,
-        visual_rope: Tensor,
-        sparse_params: dict | None,
-        *,
-        apply_fractal: bool = True,
-        visual_token_type_ids: Tensor | None = None,
-    ) -> tuple[Tensor, tuple, Tensor]:
-        if x_video.ndim == 4:
-            x_video = x_video.unsqueeze(0)
-
-        visual_embed = self.visual_embeddings(x_video)
-        if hasattr(self, "visual_token_type_embeddings") and visual_token_type_ids is not None:
-            if visual_token_type_ids.ndim == 1:
-                visual_token_type_ids = visual_token_type_ids.unsqueeze(0)
-            token_types = self.visual_token_type_embeddings(visual_token_type_ids.to(device=visual_embed.device))
-            token_types = token_types[:, :, None, None, :]
-            visual_embed = visual_embed + token_types
-        visual_shape = visual_embed.shape[-4:-1]
-        to_fractal = sparse_params["to_fractal"] if sparse_params and apply_fractal else False
-        if to_fractal:
-            visual_embed = _local_patch(visual_embed, visual_shape, (1, 8, 8), dim=1).flatten(1, 2)
-            visual_rope = _local_patch(visual_rope, visual_shape, (1, 8, 8), dim=0).flatten(0, 1)
-        else:
-            visual_embed = visual_embed.flatten(1, 3)
-            visual_rope = visual_rope.flatten(0, 2)
-        return visual_embed, visual_shape, visual_rope
-
-    def _embed_audio(self, x_audio: Tensor, audio_rope: Tensor) -> tuple[Tensor, Tensor]:
-        if x_audio.ndim == 2:
-            x_audio = x_audio.unsqueeze(0)
-        embed = self.audio_embeddings(x_audio)
-        return embed, audio_rope
-
-    def _run_visual_blocks_single(
-        self,
-        vis_embed: Tensor | None,
-        aud_embed: Tensor | None,
-        te: Tensor,
-        tm: Tensor,
-        vis_rope: Tensor | None,
-        aud_rope: Tensor | None,
-        sparse_params: dict | None,
-        attn_mask: Tensor | None = None,
-    ) -> tuple[Tensor | None, Tensor | None]:
-        checkpoint = torch.is_grad_enabled() and self.gradient_checkpointing
-        for block in self.visual_transformer_blocks:
-            if self.is_multimodal:
-                if vis_embed is not None and aud_embed is None:
-                    args = (vis_embed, None, te, te, (tm, tm), vis_rope, None, sparse_params, attn_mask)
-                    vis_embed, _ = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
-                elif aud_embed is not None and vis_embed is None:
-                    args = (None, aud_embed, te, te, (tm, tm), None, aud_rope, None, attn_mask)
-                    _, aud_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
-                else:
-                    raise RuntimeError("single-modality fused path expects exactly one of video/audio")
-            elif vis_embed is not None:
-                args = (vis_embed, te, tm, vis_rope, sparse_params, attn_mask)
-                vis_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
-            else:
-                args = (aud_embed, te, tm, aud_rope, None, attn_mask)
-                aud_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
-        return vis_embed, aud_embed
-
-    def _run_visual_blocks_fused(
-        self,
-        vis_embed: Tensor,
-        aud_embed: Tensor,
-        video_te: Tensor,
-        audio_te: Tensor,
-        video_tm: Tensor,
-        audio_tm: Tensor,
-        vis_rope: Tensor,
-        aud_rope: Tensor,
-        sparse_params: dict | None,
-        attn_mask: Tensor | None = None,
-    ) -> tuple[Tensor, Tensor]:
-        checkpoint = torch.is_grad_enabled() and self.gradient_checkpointing
-        for block in self.visual_transformer_blocks:
-            args = (
-                vis_embed,
-                aud_embed,
-                video_te,
-                audio_te,
-                (video_tm, audio_tm),
-                vis_rope,
-                aud_rope,
-                sparse_params,
-                attn_mask,
-            )
-            vis_embed, aud_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
-        return vis_embed, aud_embed
-
-    def _project_video(self, vis_embed: Tensor, vis_shape: tuple, tm: Tensor, sparse_params: dict | None) -> Tensor:
-        if sparse_params and sparse_params.get("to_fractal"):
-            vis_embed = _local_merge(
-                vis_embed.reshape(vis_embed.shape[0], -1, 64, vis_embed.shape[-1]),
-                vis_shape,
-                (1, 8, 8),
-                dim=1,
-            )
-        else:
-            vis_embed = vis_embed.reshape(-1, *vis_shape, vis_embed.shape[-1])
-        return self.out_layer(vis_embed, tm)
-
-    def _project_audio(self, aud_embed: Tensor, tm: Tensor) -> Tensor:
-        return self.audio_out_layer(aud_embed, tm)
-
-    def _project_fused(
-        self, vis_embed: Tensor, aud_embed: Tensor, vis_shape: tuple, video_tm: Tensor, audio_tm: Tensor
-    ) -> tuple[Tensor, Tensor]:
-        video = self.out_layer(vis_embed.reshape(-1, *vis_shape, vis_embed.shape[-1]), video_tm)
-        return video, self.audio_out_layer(aud_embed, audio_tm)
 
     def forward(
         self,
         x_video: Tensor | None = None,
         x_audio: Tensor | None = None,
-        text_embed: Tensor | list[Tensor] | None = None,
-        pooled_text_embed: Tensor | list[Tensor] | None = None,
-        time: Tensor | list[Tensor] | None = None,
+        text_embed: Tensor | None = None,
+        pooled_text_embed: Tensor | None = None,
+        time: Tensor | None = None,
         visual_rope: Tensor | None = None,
         audio_rope: Tensor | None = None,
-        text_rope: Tensor | list[Tensor] | None = None,
+        video_text_rope: Tensor | None = None,
+        audio_text_rope: Tensor | None = None,
         sparse_params: dict | None = None,
         attention_mask: Tensor | None = None,
         visual_token_type_ids: Tensor | None = None,
@@ -1363,13 +1119,14 @@ class Kandinsky6Transformer3DModel(
         Args:
             x_video (`torch.Tensor`, *optional*): Packed video latent tokens.
             x_audio (`torch.Tensor`, *optional*): Packed audio latent tokens.
-            text_embed (`torch.Tensor` or `list[torch.Tensor]`): Text token embeddings.
-            pooled_text_embed (`torch.Tensor` or `list[torch.Tensor]`): Pooled text embeddings.
-            time (`torch.Tensor` or `list[torch.Tensor]`): Diffusion timesteps.
-            visual_rope (`torch.Tensor`): Video rotary position embeddings.
-            audio_rope (`torch.Tensor`, *optional*): Audio rotary position embeddings.
-            text_rope (`torch.Tensor` or `list[torch.Tensor]`): Text rotary position embeddings.
-            sparse_params (`dict`, *optional*): NABLA sparse-attention configuration.
+            text_embed (`torch.Tensor`): Text token embeddings, shared by the video and audio text branches.
+            pooled_text_embed (`torch.Tensor`): Pooled text embedding, shared by the video and audio text branches.
+            time (`torch.Tensor`): Diffusion timestep, shared by the video and audio branches.
+            visual_rope (`torch.Tensor`, *optional*): Video rotary position embeddings. Required with `x_video`.
+            audio_rope (`torch.Tensor`, *optional*): Audio rotary position embeddings. Required with `x_audio`.
+            video_text_rope (`torch.Tensor`): Rotary position embeddings for the video text branch.
+            audio_text_rope (`torch.Tensor`): Rotary position embeddings for the audio text branch.
+            sparse_params (`dict`, *optional*): NABLA sparse-attention configuration for the video self-attention.
             attention_mask (`torch.Tensor`, *optional*): Text attention mask.
             visual_token_type_ids (`torch.Tensor`, *optional*): Video token type IDs.
             return_dict (`bool`, *optional*, defaults to False): Whether to return a
@@ -1377,70 +1134,95 @@ class Kandinsky6Transformer3DModel(
 
         Returns:
             `torch.Tensor`, `tuple[torch.Tensor, torch.Tensor]`, or
-            [`Transformer2DModelOutput`]: Denoised video output, audio and video
-            outputs, or a model output object.
+            [`Transformer2DModelOutput`]: The denoised single modality, `(video, audio)` when both `x_video`
+            and `x_audio` are given, or a model output object.
         """
-        if text_embed is None or pooled_text_embed is None or time is None or text_rope is None:
-            raise ValueError("text_embed, pooled_text_embed, time, and text_rope are required")
-        both = x_video is not None and x_audio is not None and self.is_multimodal
-        attn_mask = self._normalize_attn_mask(attention_mask)
-        if not both:
-            te_in = text_embed[0] if isinstance(text_embed, list) else text_embed
-            pe_in = pooled_text_embed[0] if isinstance(pooled_text_embed, list) else pooled_text_embed
-            rope_in = text_rope[0] if isinstance(text_rope, list) else text_rope
-            t_in = time[0] if isinstance(time, list) else time
-            if self.is_multimodal:
-                prefix = "audio" if x_audio is not None else "video"
-                if isinstance(text_rope, list):
-                    rope_in = text_rope[1] if prefix == "audio" else text_rope[0]
-                te, tm = self._encode_text(prefix, te_in, pe_in, t_in, rope_in, attn_mask)
-            else:
-                te, tm = self._encode_t2v(te_in, pe_in, t_in, rope_in, attn_mask)
-            if x_video is not None:
-                vis_embed, vis_shape, vis_rope = self._embed_visual(
-                    x_video, visual_rope, sparse_params, visual_token_type_ids=visual_token_type_ids
+        if x_video is None and x_audio is None:
+            raise ValueError("at least one of `x_video`, `x_audio` must be provided")
+        if text_embed is None or pooled_text_embed is None or time is None:
+            raise ValueError("`text_embed`, `pooled_text_embed`, and `time` are required")
+        if video_text_rope is None or audio_text_rope is None:
+            raise ValueError("`video_text_rope` and `audio_text_rope` are required")
+
+        attn_mask = attention_mask
+        if attn_mask is not None and attn_mask.dim() == 1:
+            attn_mask = attn_mask.unsqueeze(0)
+        checkpoint = torch.is_grad_enabled() and self.gradient_checkpointing
+
+        # 1. Encode text tokens through the video and audio text branches
+        video_text_embed = self.video_text_embeddings(text_embed)
+        video_temb = self.video_time_embeddings(time) + self.video_pooled_text_embeddings(pooled_text_embed)
+        for block in self.video_text_transformer_blocks:
+            args = (video_text_embed, video_temb, video_text_rope, attn_mask)
+            video_text_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
+
+        audio_text_embed = self.audio_text_embeddings(text_embed)
+        audio_temb = self.audio_time_embeddings(time) + self.audio_pooled_text_embeddings(pooled_text_embed)
+        for block in self.audio_text_transformer_blocks:
+            args = (audio_text_embed, audio_temb, audio_text_rope, attn_mask)
+            audio_text_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
+
+        # 2. Patchify the video latents and embed the audio latents (only the modalities that were passed)
+        visual_embed, visual_shape = None, None
+        to_fractal = bool(sparse_params and sparse_params.get("to_fractal"))
+        if x_video is not None:
+            if x_video.ndim == 4:
+                x_video = x_video.unsqueeze(0)
+            visual_embed = self.visual_embeddings(x_video)
+            if visual_token_type_ids is not None and hasattr(self, "visual_token_type_embeddings"):
+                token_type_ids = (
+                    visual_token_type_ids.unsqueeze(0) if visual_token_type_ids.ndim == 1 else visual_token_type_ids
                 )
-                vis_embed, _ = self._run_visual_blocks_single(
-                    vis_embed, None, te, tm, vis_rope, None, sparse_params, attn_mask
-                )
-                result: Tensor | tuple[Tensor, Tensor] = self._project_video(vis_embed, vis_shape, tm, sparse_params)
+                token_types = self.visual_token_type_embeddings(token_type_ids.to(device=visual_embed.device))
+                visual_embed = visual_embed + token_types[:, :, None, None, :]
+            visual_shape = visual_embed.shape[-4:-1]
+            if to_fractal:
+                visual_embed = _local_patch(visual_embed, visual_shape, (1, 8, 8), dim=1).flatten(1, 2)
+                visual_rope = _local_patch(visual_rope, visual_shape, (1, 8, 8), dim=0).flatten(0, 1)
             else:
-                aud_embed, aud_rope = self._embed_audio(x_audio, audio_rope)
-                _, aud_embed = self._run_visual_blocks_single(None, aud_embed, te, tm, None, aud_rope, None, attn_mask)
-                result = self._project_audio(aud_embed, tm)
-        else:
-            te_v, pe_v = (
-                (text_embed[0], pooled_text_embed[0])
-                if isinstance(text_embed, list)
-                else (text_embed, pooled_text_embed)
-            )
-            te_a, pe_a = (
-                (text_embed[1], pooled_text_embed[1])
-                if isinstance(text_embed, list)
-                else (text_embed, pooled_text_embed)
-            )
-            rope_v, rope_a = (text_rope[0], text_rope[1]) if isinstance(text_rope, list) else (text_rope, text_rope)
-            t_v, t_a = (time[0], time[1]) if isinstance(time, list) else (time, time)
-            video_te, video_tm = self._encode_text("video", te_v, pe_v, t_v, rope_v, attn_mask)
-            audio_te, audio_tm = self._encode_text("audio", te_a, pe_a, t_a, rope_a, attn_mask)
-            vis_embed, vis_shape, vis_rope = self._embed_visual(
-                x_video, visual_rope, sparse_params, apply_fractal=False, visual_token_type_ids=visual_token_type_ids
-            )
-            aud_embed, aud_rope = self._embed_audio(x_audio, audio_rope)
-            vis_embed, aud_embed = self._run_visual_blocks_fused(
-                vis_embed,
-                aud_embed,
-                video_te,
-                audio_te,
-                video_tm,
-                audio_tm,
-                vis_rope,
-                aud_rope,
+                visual_embed = visual_embed.flatten(1, 3)
+                visual_rope = visual_rope.flatten(0, 2)
+
+        audio_embed = None
+        if x_audio is not None:
+            if x_audio.ndim == 2:
+                x_audio = x_audio.unsqueeze(0)
+            audio_embed = self.audio_embeddings(x_audio)
+
+        # 3. Run the fused video/audio transformer blocks (a block no-ops on whichever modality is absent)
+        for block in self.visual_transformer_blocks:
+            args = (
+                visual_embed,
+                audio_embed,
+                video_text_embed,
+                audio_text_embed,
+                (video_temb, audio_temb),
+                visual_rope,
+                audio_rope,
                 sparse_params,
                 attn_mask,
             )
-            result = self._project_fused(vis_embed, aud_embed, vis_shape, video_tm, audio_tm)
+            visual_embed, audio_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
 
+        # 4. Project back to patch/latent space
+        video_out = None
+        if visual_embed is not None:
+            if to_fractal:
+                visual_embed = _local_merge(
+                    visual_embed.reshape(visual_embed.shape[0], -1, 64, visual_embed.shape[-1]),
+                    visual_shape,
+                    (1, 8, 8),
+                    dim=1,
+                )
+            else:
+                visual_embed = visual_embed.reshape(-1, *visual_shape, visual_embed.shape[-1])
+            video_out = self.out_layer(visual_embed, video_temb)
+        audio_out = self.audio_out_layer(audio_embed, audio_temb) if audio_embed is not None else None
+
+        if video_out is not None and audio_out is not None:
+            result = (video_out, audio_out)
+        else:
+            result = video_out if video_out is not None else audio_out
         return Transformer2DModelOutput(sample=result) if return_dict else result
 
 

@@ -192,7 +192,15 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
     ) -> int:
         sizes = [
             cls._value_batch_size(value)
-            for value in (prompt, negative_prompt, image, latents, audio_latents, prompt_embeds, negative_prompt_embeds)
+            for value in (
+                prompt,
+                negative_prompt,
+                image,
+                latents,
+                audio_latents,
+                prompt_embeds,
+                negative_prompt_embeds,
+            )
         ]
         batch_size = max(sizes)
         if batch_size < 1 or any(size not in (1, batch_size) for size in sizes):
@@ -229,25 +237,26 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         image: str | object | None = None,
         visual_cond_scheme: str = "pretrain",
     ) -> None:
-        """Validate arguments shared by text-to-video and image-to-video calls.
+        r"""Validate arguments shared by text-to-video and image-to-video calls.
 
         Args:
-            prompt: Text prompt or a batch of prompts.
-            negative_prompt: Negative text prompt or a batch of prompts.
-            height: Requested output height in pixels.
-            width: Requested output width in pixels.
-            num_frames: Requested output frame count.
-            num_inference_steps: Number of denoising steps.
-            max_sequence_length: Maximum Qwen prompt length after the template.
-            output_type: One of `pt`, `torch`, `np`, `numpy`, or `latent`.
-            prompt_embeds: Optional precomputed Qwen prompt embeddings.
-            pooled_prompt_embeds: Optional precomputed CLIP pooled prompt embeddings.
-            negative_prompt_embeds: Optional precomputed negative Qwen embeddings.
-            negative_pooled_prompt_embeds: Optional precomputed negative CLIP pooled embeddings.
-            callback_on_step_end_tensor_inputs: Tensor names exposed to the step callback.
-            sample_audio: Whether to generate and decode audio.
-            image: Optional reference image or batch of reference images.
-            visual_cond_scheme: Image-conditioning scheme when `image` is set.
+            prompt (`str` or `list[str]`, *optional*): Text prompt or a batch of prompts.
+            negative_prompt (`str` or `list[str]`, *optional*): Negative text prompt or a batch of prompts.
+            height (`int`): Requested output height in pixels.
+            width (`int`): Requested output width in pixels.
+            num_frames (`int`): Requested output frame count.
+            num_inference_steps (`int`): Number of denoising steps.
+            max_sequence_length (`int`): Maximum Qwen prompt length after the template.
+            output_type (`str`): One of `"pt"`, `"torch"`, `"np"`, `"numpy"`, or `"latent"`.
+            prompt_embeds (`torch.Tensor`, *optional*): Precomputed Qwen prompt embeddings.
+            pooled_prompt_embeds (`torch.Tensor`, *optional*): Precomputed CLIP pooled prompt embeddings.
+            negative_prompt_embeds (`torch.Tensor`, *optional*): Precomputed negative Qwen embeddings.
+            negative_pooled_prompt_embeds (`torch.Tensor`, *optional*): Precomputed negative CLIP pooled embeddings.
+            callback_on_step_end_tensor_inputs (`list[str]`, *optional*): Tensor names exposed to the step callback.
+            sample_audio (`bool`, *optional*, defaults to `True`): Whether to generate and decode audio.
+            image (`str`, `PIL.Image.Image`, or a list thereof, *optional*): Reference image or batch of images.
+            visual_cond_scheme (`str`, *optional*, defaults to `"pretrain"`): Image-conditioning scheme when `image`
+                is set.
 
         Raises:
             ValueError: If an input combination is unsupported.
@@ -284,8 +293,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         if sample_audio and self.audio_vae is None:
             raise ValueError("sample_audio=True requires an audio_vae")
 
-        if getattr(self.transformer, "is_multimodal", False) is not True:
-            raise ValueError("Kandinsky6TI2VAPipeline requires a multimodal transformer")
         patch_size = tuple(int(value) for value in getattr(self.transformer, "patch_size", (1, 2, 2)))
         if len(patch_size) < 3 or any(value <= 0 for value in patch_size):
             raise ValueError(f"transformer.patch_size must contain three positive values, got {patch_size}")
@@ -313,21 +320,25 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                 raise ValueError("tail_cond_first_frame requires transformer.visual_token_type_num_embeddings >= 2")
 
     def _encode_single_prompt(
-        self, text: str | list[str], max_sequence_length: int
+        self, text: str | list[str], max_sequence_length: int, device: torch.device
     ) -> tuple[Tensor, Tensor, Tensor | None]:
-        """Encode one prompt (or batch of prompts) with Qwen2.5-VL and CLIP.
+        r"""Encode one prompt (or batch of prompts) with Qwen2.5-VL and CLIP.
 
         Args:
-            text: Prompt or prompts to encode.
-            max_sequence_length: Maximum number of Qwen text tokens.
+            text (`str` or `list[str]`): Prompt or prompts to encode.
+            max_sequence_length (`int`): Maximum number of Qwen text tokens.
+            device (`torch.device`): Execution device to move tokenized inputs to. This must be the pipeline's
+                `_execution_device`, not a component's own parameter device: under CPU/group offloading a
+                component's resting parameter device can be `meta` or `cpu` even though it computes on the
+                accelerator once its forward hook runs.
 
         Returns:
-            `(prompt_embeds, pooled_prompt_embeds, attention_mask)`. `attention_mask` is `None` when every prompt
-            in the batch fills `max_sequence_length` (an all-`True` mask carries no extra information).
+            `tuple[torch.Tensor, torch.Tensor, torch.Tensor or None]`: `(prompt_embeds, pooled_prompt_embeds,
+            attention_mask)`. `attention_mask` is `None` when every prompt in the batch fills
+            `max_sequence_length` (an all-`True` mask carries no extra information).
         """
         texts = [text] if isinstance(text, str) else text
         full_texts = [_PROMPT_TEMPLATE.format(item) for item in texts]
-        qwen_device = next(self.text_encoder.parameters()).device
         inputs = self.tokenizer(
             text=full_texts,
             images=None,
@@ -336,7 +347,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             truncation=True,
             return_tensors="pt",
             padding="max_length",
-        ).to(qwen_device)
+        ).to(device)
         qwen_output = self.text_encoder(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
@@ -351,7 +362,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             # _normalize_attn_mask). Drop it so the dense mask isn't threaded through the denoise loop.
             attention_mask = None
 
-        clip_device = next(self.text_encoder_2.parameters()).device
         clip_inputs = self.tokenizer_2(
             texts,
             max_length=_CLIP_MAX_LENGTH,
@@ -359,7 +369,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             add_special_tokens=True,
             padding="max_length",
             return_tensors="pt",
-        ).to(clip_device)
+        ).to(device)
         pooled_prompt_embeds = self.text_encoder_2(**clip_inputs)["pooler_output"]
         return prompt_embeds, pooled_prompt_embeds, attention_mask
 
@@ -375,33 +385,41 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         negative_pooled_prompt_embeds: Tensor | None = None,
         negative_prompt_attention_mask: Tensor | None = None,
         max_sequence_length: int = 1024,
+        device: torch.device | None = None,
     ) -> tuple[Tensor, Tensor, Tensor | None, Tensor | None, Tensor | None, Tensor | None]:
-        """Encode the positive and (optionally) negative prompt.
+        r"""Encode the positive and (optionally) negative prompt.
 
         Args:
-            prompt: Prompt or prompts to encode.
-            negative_prompt: Negative prompt or prompts, used when `do_classifier_free_guidance=True` and
-                `negative_prompt_embeds` is not already provided.
-            do_classifier_free_guidance: Whether to also encode `negative_prompt`.
-            prompt_embeds: Optional precomputed Qwen prompt embeddings, skipping encoding of `prompt`.
-            pooled_prompt_embeds: Optional precomputed CLIP pooled prompt embeddings.
-            prompt_attention_mask: Optional Qwen attention mask paired with `prompt_embeds`.
-            negative_prompt_embeds: Optional precomputed negative Qwen embeddings.
-            negative_pooled_prompt_embeds: Optional precomputed negative CLIP pooled embeddings.
-            negative_prompt_attention_mask: Optional Qwen attention mask paired with `negative_prompt_embeds`.
-            max_sequence_length: Maximum Qwen prompt length after the template.
+            prompt (`str` or `list[str]`): Prompt or prompts to encode.
+            negative_prompt (`str` or `list[str]`, *optional*): Negative prompt or prompts, used when
+                `do_classifier_free_guidance=True` and `negative_prompt_embeds` is not already provided.
+            do_classifier_free_guidance (`bool`, *optional*, defaults to `True`): Whether to also encode
+                `negative_prompt`.
+            prompt_embeds (`torch.Tensor`, *optional*): Precomputed Qwen prompt embeddings, skipping encoding of
+                `prompt`.
+            pooled_prompt_embeds (`torch.Tensor`, *optional*): Precomputed CLIP pooled prompt embeddings.
+            prompt_attention_mask (`torch.Tensor`, *optional*): Qwen attention mask paired with `prompt_embeds`.
+            negative_prompt_embeds (`torch.Tensor`, *optional*): Precomputed negative Qwen embeddings.
+            negative_pooled_prompt_embeds (`torch.Tensor`, *optional*): Precomputed negative CLIP pooled embeddings.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*): Qwen attention mask paired with
+                `negative_prompt_embeds`.
+            max_sequence_length (`int`, *optional*, defaults to 1024): Maximum Qwen prompt length after the
+                template.
+            device (`torch.device`, *optional*): Execution device for newly-encoded prompts. Defaults to
+                `self._execution_device`.
 
         Returns:
-            `(prompt_embeds, pooled_prompt_embeds, prompt_attention_mask, negative_prompt_embeds,
-            negative_pooled_prompt_embeds, negative_prompt_attention_mask)`.
+            `tuple[torch.Tensor, ...]`: `(prompt_embeds, pooled_prompt_embeds, prompt_attention_mask,
+            negative_prompt_embeds, negative_pooled_prompt_embeds, negative_prompt_attention_mask)`.
         """
+        device = device or self._execution_device
         if prompt_embeds is None:
             prompt_embeds, pooled_prompt_embeds, prompt_attention_mask = self._encode_single_prompt(
-                prompt, max_sequence_length
+                prompt, max_sequence_length, device
             )
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt_embeds, negative_pooled_prompt_embeds, negative_prompt_attention_mask = (
-                self._encode_single_prompt(negative_prompt, max_sequence_length)
+                self._encode_single_prompt(negative_prompt, max_sequence_length, device)
             )
         return (
             prompt_embeds,
@@ -412,19 +430,32 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             negative_prompt_attention_mask,
         )
 
-    @torch.no_grad()
     def expand_prompts(
         self,
         prompt: str | list[str],
         image: Any | list[Any] | None = None,
         max_sequence_length: int = 1024,
         mode: str | None = None,
+        generator: torch.Generator | None = None,
     ) -> str | list[str]:
-        """Expand T2VA prompts, or image-grounded I2VA prompts when an image is supplied."""
+        """Expand T2VA prompts, or image-grounded I2VA prompts when an image is supplied.
+
+        Args:
+            prompt: Prompt or a batch of prompts to expand.
+            image: Optional reference image or batch of reference images, for `mode="i2va"`.
+            max_sequence_length: Maximum number of new tokens to generate per prompt.
+            mode: `"t2va"` or `"i2va"`. Defaults to `"i2va"` when `image` is given, else `"t2va"`.
+            generator: Optional generator whose seed makes the (sampled) expansion reproducible.
+
+        Returns:
+            The expanded prompt, or a list of expanded prompts when `prompt` is a list.
+        """
         if isinstance(prompt, list):
             images = image if isinstance(image, (list, tuple)) else [image] * len(prompt)
             return [
-                self.expand_prompts(item, image=item_image, max_sequence_length=max_sequence_length, mode=mode)
+                self.expand_prompts(
+                    item, image=item_image, max_sequence_length=max_sequence_length, mode=mode, generator=generator
+                )
                 for item, item_image in zip(prompt, images, strict=True)
             ]
         mode = mode or ("i2va" if image is not None else "t2va")
@@ -438,7 +469,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         content.append({"type": "text", "text": instruction})
         messages = [{"role": "user", "content": content}]
         text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        device = next(self.text_encoder.parameters()).device
+        device = self._execution_device
         inputs = self.tokenizer(
             text=[text],
             images=[image] if image is not None else None,
@@ -446,6 +477,12 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             padding=True,
             return_tensors="pt",
         ).to(device)
+        if generator is not None:
+            # `generate()` samples from the global RNG rather than accepting a `torch.Generator`, so seed
+            # the global RNG from the pipeline's own generator to make the expansion reproducible. This
+            # doesn't affect later `randn_tensor(..., generator=generator)` calls, which use `generator`
+            # directly rather than the global RNG state.
+            torch.manual_seed(generator.initial_seed())
         generated = self.text_encoder.generate(**inputs, max_new_tokens=max_sequence_length)
         qwen_crop_start = inputs["input_ids"].shape[1]
         trimmed = [output[qwen_crop_start:] for output in generated]
@@ -476,7 +513,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             raise TypeError(f"i2va image must be a path or PIL image, got {type(image).__name__}")
         return pil_image
 
-    @torch.no_grad()
     def _encode_i2va_first_frame(self, image: str | object, device: torch.device, height: int, width: int) -> Tensor:
         """Resize, center-crop, and VAE-encode one reference image into the packed K6 first-frame latent."""
         try:
@@ -582,7 +618,9 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         first_frames = first_frames.to(device=latents.device, dtype=latents.dtype)
         expected = (batch_size, height, width, channels)
         if tuple(first_frames.shape) != expected:
-            raise ValueError(f"first-frame latent shape mismatch: expected {expected}, got {tuple(first_frames.shape)}")
+            raise ValueError(
+                f"first-frame latent shape mismatch: expected {expected}, got {tuple(first_frames.shape)}"
+            )
 
         latents = torch.cat([latents, first_frames[:, None]], dim=1)
         token_types = torch.cat(
@@ -655,28 +693,27 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         negative_text_length: int,
         audio_length: int | None,
         device: torch.device,
-    ) -> tuple[list[Tensor], list[Tensor], Tensor | None]:
-        """Build per-modality text RoPE for the cond/uncond branches, plus the audio RoPE."""
-        text_rope = [
-            self._compute_rope1d(self.transformer.video_text_rope_embeddings, text_length, device=device),
-            self._compute_rope1d(self.transformer.audio_text_rope_embeddings, text_length, device=device),
-        ]
-        negative_text_rope = [
-            self._compute_rope1d(self.transformer.video_text_rope_embeddings, negative_text_length, device=device),
-            self._compute_rope1d(self.transformer.audio_text_rope_embeddings, negative_text_length, device=device),
-        ]
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor | None]:
+        """Build the video/audio text-branch RoPE for the cond/uncond passes, plus the audio latent RoPE."""
+        video_text_rope = self._compute_rope1d(self.transformer.video_text_rope_embeddings, text_length, device=device)
+        audio_text_rope = self._compute_rope1d(self.transformer.audio_text_rope_embeddings, text_length, device=device)
+        negative_video_text_rope = self._compute_rope1d(
+            self.transformer.video_text_rope_embeddings, negative_text_length, device=device
+        )
+        negative_audio_text_rope = self._compute_rope1d(
+            self.transformer.audio_text_rope_embeddings, negative_text_length, device=device
+        )
         audio_rope = (
             self._compute_rope1d(self.transformer.audio_rope_embeddings, audio_length, device=device)
             if audio_length is not None
             else None
         )
-        return text_rope, negative_text_rope, audio_rope
+        return video_text_rope, audio_text_rope, negative_video_text_rope, negative_audio_text_rope, audio_rope
 
     @staticmethod
     def _apply_guidance(cond: Tensor, uncond: Tensor, guidance_scale: float) -> Tensor:
         return uncond + guidance_scale * (cond - uncond)
 
-    @torch.no_grad()
     def _postprocess_video(self, latents: Tensor) -> Tensor:
         """Decode video latents `(B, T, H, W, C)` into `(B, 3, T, H, W)` `uint8` frames in `[0, 255]`."""
         frames = (latents / self.vae.config.scaling_factor).permute(0, 4, 1, 2, 3)
@@ -685,7 +722,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         frames = self.vae.decode(frames.to(dtype=vae_dtype)).sample
         return ((frames.clamp(-1.0, 1.0) + 1.0) * 127.5).to(torch.uint8)
 
-    @torch.no_grad()
     def _postprocess_audio(self, audio_latents: Tensor | None) -> list[np.ndarray] | None:
         """Decode audio latents `(B, A, D)` into a list of int16 `(samples,)` waveforms, or `None` in T2V mode."""
         if audio_latents is None:
@@ -697,9 +733,11 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             decoded = decoded.unsqueeze(0)
         elif decoded.ndim == 3 and decoded.shape[1] == 1:
             decoded = decoded[:, 0]
-        return [
-            (np.clip(waveform.cpu().float().numpy(), -1.0, 1.0) * 32767).astype(np.int16) for waveform in decoded
-        ]
+        return [(np.clip(waveform.cpu().float().numpy(), -1.0, 1.0) * 32767).astype(np.int16) for waveform in decoded]
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
 
     @property
     def num_timesteps(self):
@@ -727,6 +765,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         max_sequence_length: int = 1024,
         guidance_scale: float = 5.0,
+        num_images_per_prompt: int = 1,
         generator: torch.Generator | None = None,
         latents: Tensor | None = None,
         audio_latents: Tensor | None = None,
@@ -745,39 +784,43 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         r"""Generate synchronized video and, optionally, audio from text or an image.
 
         Args:
-            prompt: Text prompt or a batch of prompts.
-            image: Optional reference image or batch of reference images.
-            negative_prompt: Optional negative prompt.
-            height: Output video height in pixels; must be divisible by 8.
-            width: Output video width in pixels; must be divisible by 8.
-            num_frames: Number of decoded video frames.
-            sample_fps: Output video frame rate. Kandinsky 6 is trained for 24.0 fps; other values may affect
-                audio/video alignment.
-            num_inference_steps: Number of denoising steps.
-            max_sequence_length: Maximum Qwen prompt length after the template.
-            guidance_scale: Classifier-free guidance weight.
-            generator: Random generator used for latent initialization.
-            latents: Optional precomputed video latents.
-            audio_latents: Optional precomputed audio latents.
-            prompt_embeds: Optional precomputed Qwen prompt embeddings.
-            pooled_prompt_embeds: Optional precomputed CLIP pooled prompt embeddings.
-            negative_prompt_embeds: Optional precomputed negative Qwen embeddings.
-            negative_pooled_prompt_embeds: Optional precomputed negative CLIP pooled embeddings.
-            sample_audio: Whether to generate synchronized audio.
-            expand_prompts: Whether to use the built-in Qwen video+audio prompt expander before encoding.
-            output_type: `pt`/`torch` for tensors, `np`/`numpy` for NumPy arrays, or `latent` for undecoded video
-                latents.
-            return_dict: Whether to return `Kandinsky6TI2VAPipelineOutput`.
-            callback_on_step_end: Optional callback invoked after each step.
-            callback_on_step_end_tensor_inputs: Names passed to the callback.
-            visual_cond_scheme: Optional image-conditioning scheme. Defaults to `pretrain` without `image` and
-                `tail_cond_first_frame` with `image`.
+            prompt (`str` or `list[str]`, *optional*): Text prompt or a batch of prompts.
+            image (`str`, `PIL.Image.Image`, or a list thereof, *optional*): Reference image or batch of images.
+            negative_prompt (`str` or `list[str]`, *optional*): Negative prompt.
+            height (`int`, *optional*, defaults to 512): Output video height in pixels; must be divisible by 8.
+            width (`int`, *optional*, defaults to 768): Output video width in pixels; must be divisible by 8.
+            num_frames (`int`, *optional*, defaults to 121): Number of decoded video frames.
+            sample_fps (`float`, *optional*, defaults to 24.0): Output video frame rate. Kandinsky 6 is trained
+                for 24.0 fps; other values may affect audio/video alignment.
+            num_inference_steps (`int`, *optional*, defaults to 50): Number of denoising steps.
+            max_sequence_length (`int`, *optional*, defaults to 1024): Maximum Qwen prompt length after the
+                template.
+            guidance_scale (`float`, *optional*, defaults to 5.0): Classifier-free guidance weight.
+            num_images_per_prompt (`int`, *optional*, defaults to 1): Number of videos to generate per prompt.
+            generator (`torch.Generator`, *optional*): Random generator used for latent initialization and, when
+                `expand_prompts=True`, to seed prompt expansion.
+            latents (`torch.Tensor`, *optional*): Precomputed video latents.
+            audio_latents (`torch.Tensor`, *optional*): Precomputed audio latents.
+            prompt_embeds (`torch.Tensor`, *optional*): Precomputed Qwen prompt embeddings.
+            pooled_prompt_embeds (`torch.Tensor`, *optional*): Precomputed CLIP pooled prompt embeddings.
+            negative_prompt_embeds (`torch.Tensor`, *optional*): Precomputed negative Qwen embeddings.
+            negative_pooled_prompt_embeds (`torch.Tensor`, *optional*): Precomputed negative CLIP pooled embeddings.
+            sample_audio (`bool`, *optional*, defaults to `True`): Whether to generate synchronized audio.
+            expand_prompts (`bool`, *optional*, defaults to `False`): Whether to use the built-in Qwen video+audio
+                prompt expander before encoding.
+            output_type (`str`, *optional*, defaults to `"pt"`): `"pt"`/`"torch"` for tensors, `"np"`/`"numpy"` for
+                NumPy arrays, or `"latent"` for undecoded video latents.
+            return_dict (`bool`, *optional*, defaults to `True`): Whether to return `Kandinsky6TI2VAPipelineOutput`.
+            callback_on_step_end (`Callable`, *optional*): Callback invoked after each step.
+            callback_on_step_end_tensor_inputs (`list[str]`, *optional*): Names passed to the callback.
+            visual_cond_scheme (`str`, *optional*): Image-conditioning scheme. Defaults to `"pretrain"` without
+                `image` and `"tail_cond_first_frame"` with `image`.
 
         Examples:
 
         Returns:
-            `Kandinsky6TI2VAPipelineOutput` containing video frames and int16 NumPy audio waveforms, or a tuple
-            when `return_dict=False`.
+            [`Kandinsky6TI2VAPipelineOutput`] or `tuple`: [`Kandinsky6TI2VAPipelineOutput`] containing video
+            frames and int16 NumPy audio waveforms if `return_dict=True`, otherwise a `(frames, audio)` tuple.
         """
         if sample_fps != 24.0:
             warnings.warn(
@@ -817,12 +860,15 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         )
         callback_on_step_end_tensor_inputs = callback_on_step_end_tensor_inputs or self._callback_tensor_inputs
 
+        self._guidance_scale = guidance_scale
         self._current_timestep = None
         self._interrupt = False
 
         device = self._execution_device
         dtype = (
-            self.transformer.dtype if isinstance(getattr(self.transformer, "dtype", None), torch.dtype) else torch.bfloat16
+            self.transformer.dtype
+            if isinstance(getattr(self.transformer, "dtype", None), torch.dtype)
+            else torch.bfloat16
         )
 
         # 3. Encode the reference image, if any
@@ -839,6 +885,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                 image=image_batch,
                 max_sequence_length=max_sequence_length,
                 mode="i2va" if image_batch is not None else "t2va",
+                generator=generator,
             )
         negative_prompt_batch = negative_prompt_batch or [self._DEFAULT_NEGATIVE_PROMPT] * batch_size
 
@@ -853,6 +900,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             prompt=prompt_batch or [""] * batch_size,
             negative_prompt=negative_prompt_batch,
             do_classifier_free_guidance=True,
+            device=device,
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -867,6 +915,20 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             prompt_attention_mask = prompt_attention_mask.to(device=device)
         if negative_prompt_attention_mask is not None:
             negative_prompt_attention_mask = negative_prompt_attention_mask.to(device=device)
+
+        prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        pooled_prompt_embeds = pooled_prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        negative_prompt_embeds = negative_prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        if prompt_attention_mask is not None:
+            prompt_attention_mask = prompt_attention_mask.repeat_interleave(num_images_per_prompt, dim=0)
+        if negative_prompt_attention_mask is not None:
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
+        if first_frames is not None:
+            first_frames = first_frames.repeat_interleave(num_images_per_prompt, dim=0)
+        batch_size = batch_size * num_images_per_prompt
 
         # 5. Prepare latent variables
         patch_size = tuple(int(value) for value in self.transformer.patch_size)
@@ -917,11 +979,13 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         if generated_visual_mask is not None:
             # The appended reference frame reuses the first frame's rotary position rather than a real T+1 one.
             visual_rope = torch.cat([visual_rope, visual_rope[:1]], dim=0)
-        text_rope, negative_text_rope, audio_rope = self._prepare_text_ropes(
-            text_length=prompt_embeds.shape[1],
-            negative_text_length=negative_prompt_embeds.shape[1],
-            audio_length=audio_latents.shape[1] if audio_latents is not None else None,
-            device=device,
+        video_text_rope, audio_text_rope, negative_video_text_rope, negative_audio_text_rope, audio_rope = (
+            self._prepare_text_ropes(
+                text_length=prompt_embeds.shape[1],
+                negative_text_length=negative_prompt_embeds.shape[1],
+                audio_length=audio_latents.shape[1] if audio_latents is not None else None,
+                device=device,
+            )
         )
 
         # 7. Denoising loop
@@ -962,7 +1026,8 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                         time=timestep,
                         visual_rope=visual_rope,
                         audio_rope=audio_rope,
-                        text_rope=text_rope,
+                        video_text_rope=video_text_rope,
+                        audio_text_rope=audio_text_rope,
                         attention_mask=prompt_attention_mask,
                         visual_token_type_ids=visual_token_type_ids,
                     )
@@ -977,15 +1042,16 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                             time=timestep,
                             visual_rope=visual_rope,
                             audio_rope=audio_rope,
-                            text_rope=negative_text_rope,
+                            video_text_rope=negative_video_text_rope,
+                            audio_text_rope=negative_audio_text_rope,
                             attention_mask=negative_prompt_attention_mask,
                             visual_token_type_ids=visual_token_type_ids,
                         )
                     if audio_latents is not None:
-                        video_pred = self._apply_guidance(model_pred[0], model_pred_uncond[0], guidance_scale)
-                        audio_pred = self._apply_guidance(model_pred[1], model_pred_uncond[1], guidance_scale)
+                        video_pred = self._apply_guidance(model_pred[0], model_pred_uncond[0], self.guidance_scale)
+                        audio_pred = self._apply_guidance(model_pred[1], model_pred_uncond[1], self.guidance_scale)
                     else:
-                        video_pred = self._apply_guidance(model_pred, model_pred_uncond, guidance_scale)
+                        video_pred = self._apply_guidance(model_pred, model_pred_uncond, self.guidance_scale)
                 elif audio_latents is not None:
                     video_pred, audio_pred = model_pred
                 else:
