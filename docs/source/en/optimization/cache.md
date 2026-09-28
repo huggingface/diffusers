@@ -75,6 +75,9 @@ successive denoising steps. When the accumulated indicator change remains below 
 transformer block stack and predicts its output from cached residuals. The indicator is computed from the raw vision
 latents, including clean conditioning frames for image-to-video generation.
 
+For Cosmos 3 Transfer, separate control-hint sequences are excluded from the indicator. Control-CFG branches compare
+the same target latents while retaining their own cached residuals. Control hints still condition the transformer.
+
 The implementation provides built-in adapters for the following models:
 
 - **Cosmos 3** is the primary optimized and benchmarked integration. It caches the complete decoder stack through a

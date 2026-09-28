@@ -109,6 +109,77 @@ class Cosmos3OmniTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelTesterMixin):
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_sea_cache_indicator_excludes_control_sequences(self, batched):
+        model = self.model_class(**self.get_init_dict())
+        target = torch.randn(2, 3, 2, 2)
+        control = torch.randn_like(target)
+        if batched:
+            target, control = target.unsqueeze(0), control.unsqueeze(0)
+        inputs = {
+            "vision_tokens": [control, target, control * 2],
+            "vision_noisy_frame_indexes": [torch.tensor([]), torch.tensor([1, 2]), torch.tensor([])],
+        }
+        raw_vision = sea_cache_module._prepare_cosmos3_raw_vision_metadata(model, (), inputs)
+
+        assert len(raw_vision) == 1
+        torch.testing.assert_close(raw_vision[0], target.squeeze(0) if batched else target)
+        assert inputs["vision_tokens"][0] is control
+        assert inputs["vision_tokens"][1] is target
+
+        inputs["vision_noisy_frame_indexes"] = [torch.tensor([])] * 3
+        assert sea_cache_module._prepare_cosmos3_raw_vision_metadata(model, (), inputs) is None
+
+    @pytest.mark.parametrize("residual_order", [0, 1])
+    def test_sea_cache_transfer_branches_share_indicator_with_separate_histories(self, residual_order):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model.enable_cache(SeaCacheConfig(threshold=100.0, residual_order=residual_order, cache_end_steps=0))
+        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+        target = torch.randn(1, 2, 2, 1, 1, device=torch_device)
+        control = torch.randn_like(target)
+        decisions = []
+
+        for step in range(6):
+            states = []
+            for context, with_control in (("cond", True), ("cond_no_control", False), ("uncond", True)):
+                inputs = self.get_dummy_inputs()
+                sequence_length = 6 if with_control else 4
+                inputs.update(
+                    sequence_length=sequence_length,
+                    position_ids=torch.zeros(3, sequence_length, dtype=torch.long, device=torch_device),
+                    vision_tokens=[control, target] if with_control else [target],
+                    vision_token_shapes=[(2, 1, 1)] * (2 if with_control else 1),
+                    vision_sequence_indexes=torch.arange(2, sequence_length, device=torch_device),
+                    vision_mse_loss_indexes=torch.tensor([sequence_length - 1], device=torch_device),
+                    vision_noisy_frame_indexes=(
+                        [
+                            torch.tensor([], dtype=torch.long, device=torch_device),
+                            torch.tensor([1], device=torch_device),
+                        ]
+                        if with_control
+                        else [torch.tensor([1], device=torch_device)]
+                    ),
+                )
+                with (
+                    torch.no_grad(),
+                    model.cache_context(context, step_index=step, sigma=0.9 - step * 0.1, num_inference_steps=6),
+                ):
+                    output = model(**inputs)
+                assert torch.isfinite(output.sample[-1]).all()
+                states.append(root_hook.state_manager._state_cache[context])
+
+            assert all(len(state.previous_indicator) == 1 for state in states)
+            for state in states[1:]:
+                torch.testing.assert_close(state.previous_indicator[0], states[0].previous_indicator[0])
+                assert state.gate_should_compute == states[0].gate_should_compute
+                assert state.history is not states[0].history
+            assert states[0].history[-1][2].shape != states[1].history[-1][2].shape
+            decisions.append(states[0].gate_should_compute)
+
+        assert any(decisions) and not all(decisions)
+        model._reset_stateful_cache()
+        assert all(not state.history and state.previous_indicator is None for state in states)
+
     def test_cosmos3_supports_sea_cache_without_changing_state_dict_keys(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         state_dict_keys = set(model.state_dict())

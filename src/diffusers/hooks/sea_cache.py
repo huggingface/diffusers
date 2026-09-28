@@ -326,7 +326,6 @@ def _prepare_cosmos3_raw_vision_metadata(
         return None
 
     raw_vision = []
-    has_noisy_vision = False
     for latent, noisy_frame_indexes in zip(vision_tokens, vision_noisy_frame_indexes):
         if not isinstance(latent, torch.Tensor) or not isinstance(noisy_frame_indexes, torch.Tensor):
             return None
@@ -340,10 +339,12 @@ def _prepare_cosmos3_raw_vision_metadata(
         noisy_frame_indexes = noisy_frame_indexes.flatten().to(device=latent.device, dtype=torch.long)
         if torch.any(noisy_frame_indexes < 0) or torch.any(noisy_frame_indexes >= latent.shape[1]):
             return None
-        has_noisy_vision = has_noisy_vision or noisy_frame_indexes.numel() > 0
-        raw_vision.append(latent)
+        # Control hints have no noisy frames. Keep them in the model inputs, but exclude them from the indicator
+        # so control-CFG branches compare the same target, including any clean conditioning frames within it.
+        if noisy_frame_indexes.numel() > 0:
+            raw_vision.append(latent)
 
-    return raw_vision if raw_vision and has_noisy_vision else None
+    return raw_vision or None
 
 
 def _prepare_wan_t2v_raw_vision_metadata(
