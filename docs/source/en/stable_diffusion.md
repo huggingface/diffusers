@@ -81,7 +81,7 @@ Faster inference:
 Less memory:
 
 - [Offloading](./optimization/memory#offloading) — Move inactive models or layers to the CPU with CPU, model, or group offloading.
-- [Quantization](./quantization/overview) — Load smaller weights to cut memory (and often speed up inference). [GGUF](./quantization/gguf) is a common starting point.
+- [Quantization](./quantization/overview) — Load smaller weights to cut memory (some backends also speed up inference). [GGUF](./quantization/gguf) is a common starting point.
 - [VAE slicing](./optimization/memory#vae-slicing) and [VAE tiling](./optimization/memory#vae-tiling) — Decode large batches or high-resolution images in pieces to lower peak memory.
 
 Both:
