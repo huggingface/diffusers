@@ -132,8 +132,10 @@ class MMAudioAttnBlock1D(nn.Module):
         batch_size, channels, length = x.shape
         qkv = self.qkv(x).reshape(batch_size, self.num_heads, -1, 3, length)
         query, key, value = normalize(qkv, dim=2).unbind(3)
-        # `(B, heads, D, T)` -> `(B, T, heads, D)` for the attention dispatcher.
-        query, key, value = (t.permute(0, 3, 1, 2) for t in (query, key, value))
+        # `(B, heads, D, T)` -> `(B, T, heads, D)` for the attention dispatcher. `D` is not contiguous after the
+        # permute (q/k/v are interleaved along the channel dim), which some attention backends (e.g. FlashAttention-3)
+        # require, so make the tensors contiguous here.
+        query, key, value = (t.permute(0, 3, 1, 2).contiguous() for t in (query, key, value))
         hidden_states = dispatch_attention_fn(query, key, value)
         hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, channels, length)
         return mp_sum(x, self.proj_out(hidden_states), t=0.3)
