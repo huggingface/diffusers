@@ -1130,6 +1130,7 @@ class TransformerDecoderBlock(nn.Module):
         Returns:
             Updated visual embeddings.
         """
+        dtype = visual_embed.dtype
         if self.use_text:
             self_attn_params, cross_attn_params, ff_params = torch.chunk(self.visual_modulation(time_embed), 3, dim=-1)
         else:
@@ -1152,6 +1153,7 @@ class TransformerDecoderBlock(nn.Module):
             device_type=visual_embed.device.type, dtype=torch.float32, enabled=visual_embed.device.type == "cuda"
         ):
             visual_embed = visual_embed + gate_t.index_select(0, time_embed_idx) * visual_out
+        visual_embed = visual_embed.to(dtype=dtype)
 
         # --- Cross-attention --- (skipped when text-free)
         # Norm -> modulate by (scale + 1, shift) -> CrossAttn -> gate
@@ -1170,6 +1172,7 @@ class TransformerDecoderBlock(nn.Module):
                 device_type=visual_embed.device.type, dtype=torch.float32, enabled=visual_embed.device.type == "cuda"
             ):
                 visual_embed = visual_embed + gate_t.index_select(0, time_embed_idx) * visual_out
+            visual_embed = visual_embed.to(dtype=dtype)
 
         # --- Feed-forward ---
         # Norm -> modulate by (scale + 1, shift) -> FF -> gate
@@ -1187,7 +1190,7 @@ class TransformerDecoderBlock(nn.Module):
             device_type=visual_embed.device.type, dtype=torch.float32, enabled=visual_embed.device.type == "cuda"
         ):
             visual_embed = visual_embed + gate_t.index_select(0, time_embed_idx) * visual_out
-        return visual_embed
+        return visual_embed.to(dtype=dtype)
 
 
 class Kandinsky6SRTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, AttentionMixin):
