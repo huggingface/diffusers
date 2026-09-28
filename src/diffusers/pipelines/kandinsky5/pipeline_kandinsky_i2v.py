@@ -185,7 +185,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         self.prompt_template = "\n".join(
             [
-                "<|im_start|>system\nYou are a promt engineer. Describe the video in detail.",
+                "<|im_start|>system\nYou are a prompt engineer. Describe the video in detail.",
                 "Describe how the camera moves or shakes, describe the zoom and view angle, whether it follows the objects.",
                 "Describe the location of the video, main characters or objects and their action.",
                 "Describe the dynamism of the video and presented actions.",
@@ -195,7 +195,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 "<|im_start|>user\n{}<|im_end|>",
             ]
         )
-        self.prompt_template_encode_start_idx = 129
+        self.prompt_template_encode_start_idx = 128
 
         self.vae_scale_factor_temporal = (
             self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
