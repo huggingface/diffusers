@@ -64,7 +64,7 @@
     - local: optimization/attention_backends
       title: Attention backends
     - local: optimization/memory
-      title: Memory and offloading
+      title: Reduce memory usage
     - local: optimization/speed-memory-optims
       title: Quantize, compile, and offload
     title: Inference
