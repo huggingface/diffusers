@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # Caching
 
-Caching reuses intermediate layer outputs across denoising steps to speed up inference. It uses more memory and doesn't need training. Enable a method on the transformer with a config.
+Caching reuses intermediate layer outputs across denoising steps to speed up inference. It uses more memory and doesn't need training. Enable a method with a config on a transformer that supports caching.
 
 ## Choose a cache method
 
