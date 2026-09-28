@@ -51,8 +51,13 @@ class AvgDown3D(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         pad_t = (self.factor_t - x.shape[2] % self.factor_t) % self.factor_t
-        pad = (0, 0, 0, 0, pad_t, 0)
-        x = F.pad(x, pad)
+        if pad_t:
+            # F.pad on dim 2 of a 5-D tensor returns zeros on MPS when H*W >= 65536
+            # (PyTorch MPS bug). torch.cat is equivalent and correct on all backends.
+            x = torch.cat(
+                [x.new_zeros(x.shape[0], x.shape[1], pad_t, x.shape[3], x.shape[4]), x],
+                dim=2,
+            )
         B, C, T, H, W = x.shape
         x = x.view(
             B,
