@@ -76,7 +76,7 @@ with attention_backend("_flash_3_hub"):
 ```
 
 > [!TIP]
-> Most attention backends work with `torch.compile`. Whether that speeds up your pipeline depends on the model and backend. See [Precision and compilation](./fp16).
+> Most attention backends work with `torch.compile`. Whether that speeds up your pipeline depends on the model and backend. See [Precision and compilation](./fp16#torchcompile).
 
 ## Trusting remote kernels
 
