@@ -24,7 +24,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils.accelerate_utils import apply_forward_hook
-from ..attention_dispatch import dispatch_attention_fn
+from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
@@ -136,7 +136,11 @@ class MMAudioAttnBlock1D(nn.Module):
         # permute (q/k/v are interleaved along the channel dim), which some attention backends (e.g. FlashAttention-3)
         # require, so make the tensors contiguous here.
         query, key, value = (t.permute(0, 3, 1, 2).contiguous() for t in (query, key, value))
-        hidden_states = dispatch_attention_fn(query, key, value)
+        # This block always attends with a single head over the full channel width (like the SD-VAE `AttnBlock`),
+        # so `head_dim` can be in the thousands. FlashAttention-family backends cap `head_dim` at 256, so force
+        # the native SDPA backend here regardless of whatever backend is globally active for the rest of the
+        # pipeline (e.g. via `transformer.set_attention_backend(...)`).
+        hidden_states = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
         hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, channels, length)
         return mp_sum(x, self.proj_out(hidden_states), t=0.3)
 
