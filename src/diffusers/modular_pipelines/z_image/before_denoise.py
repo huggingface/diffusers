@@ -258,7 +258,9 @@ class ZImageTextInputStep(ModularPipelineBlocks):
                 )
 
     @torch.no_grad()
-    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ZImageModularPipeline, state: PipelineState
+    ) -> tuple[ZImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -366,7 +368,9 @@ class ZImageAdditionalInputsStep(ModularPipelineBlocks):
 
         return inputs
 
-    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ZImageModularPipeline, state: PipelineState
+    ) -> tuple[ZImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Process image latent inputs (height/width calculation, patchify, and batch expansion)
@@ -467,7 +471,9 @@ class ZImagePrepareLatentsStep(ModularPipelineBlocks):
         return latents
 
     @torch.no_grad()
-    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ZImageModularPipeline, state: PipelineState
+    ) -> tuple[ZImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -524,7 +530,9 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ZImageModularPipeline, state: PipelineState
+    ) -> tuple[ZImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -580,7 +588,9 @@ class ZImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
             raise ValueError(f"Strength must be between 0.0 and 1.0, but got {block_state.strength}")
 
     @torch.no_grad()
-    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ZImageModularPipeline, state: PipelineState
+    ) -> tuple[ZImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -613,7 +623,9 @@ class ZImagePrepareLatentswithImageStep(ModularPipelineBlocks):
             InputParam("timesteps", required=True),
         ]
 
-    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ZImageModularPipeline, state: PipelineState
+    ) -> tuple[ZImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         latent_timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])

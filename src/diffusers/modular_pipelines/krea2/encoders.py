@@ -170,7 +170,9 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
         return hidden_states, attention_mask
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -262,7 +264,9 @@ class Krea2TurboTextEncoderStep(Krea2TextEncoderStep):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
