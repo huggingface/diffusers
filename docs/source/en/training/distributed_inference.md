@@ -440,6 +440,15 @@ Pass a [`TensorParallelConfig`] to the `parallel_config` argument of the model's
 
 Loading this way shards the checkpoint *while reading it*: each rank reads only its own slice of each sharded weight and places it straight onto its own device. Nothing full-size is ever materialized, so per-rank memory falls as `tp_degree` rises.
 
+Compared to loading the full model and then calling [`~ModelMixin.enable_parallelism`], it loads faster and uses less CPU memory per rank, with the gap growing as `tp_degree` rises. Numbers below are for a FLUX.1-shaped synthetic checkpoint (1.33B params, bf16).
+
+| tp_degree | method | load time | peak CPU/rank |
+|---|---|---|---|
+| 2 | `from_pretrained(parallel_config=...)` | 1.92s | 2.70GB |
+| 2 | `from_pretrained` + `enable_parallelism` | 3.06s | 4.08GB |
+| 4 | `from_pretrained(parallel_config=...)` | 1.45s | 2.20GB |
+| 4 | `from_pretrained` + `enable_parallelism` | 3.29s | 4.08GB |
+
 ```py
 import torch
 from torch import distributed as dist
