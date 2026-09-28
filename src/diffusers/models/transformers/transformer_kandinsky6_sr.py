@@ -26,7 +26,7 @@ from torch.nn.attention.flex_attention import BlockMask
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ..attention import AttentionMixin, AttentionModuleMixin
-from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
+from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import get_timestep_embedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
@@ -146,7 +146,15 @@ def sliding_tile_mask(
 
 
 class Kandinsky6SRAttnProcessor:
-    """Self-attention processor of the SR transformer: dense by default, NABLA sparse when `sparse_params` is set."""
+    """Self-attention processor of the SR transformer: dense by default, NABLA sparse when `sparse_params` is set.
+
+    Like [`Kandinsky5AttnProcessor`], the attention backend is chosen through the usual `_attention_backend`
+    (`set_attention_backend`), even in the NABLA sparse branch. Its sparsity is expressed as a `BlockMask`, which
+    only the `flex` backend can consume, so sparse checkpoints require `set_attention_backend("flex")`. That backend
+    also needs to run under `torch.compile` (e.g. `transformer.compile_repeated_blocks()`): uncompiled, PyTorch's
+    flex attention falls back to an eager implementation that materializes the full attention matrix, which does not
+    fit in memory at video resolutions.
+    """
 
     _attention_backend = None
     _parallel_config = None
@@ -167,30 +175,25 @@ class Kandinsky6SRAttnProcessor:
         key = apply_rotary(key, rotary_emb)
 
         if sparse_params is None:
-            hidden_states = dispatch_attention_fn(
-                query,
-                key,
-                value,
-                backend=self._attention_backend,
-                parallel_config=self._parallel_config,
-            )
+            attn_mask = None
         else:
             # The block statistics are computed from the `(B, heads, S, D)` layout the mask builder expects; the
-            # resulting `BlockMask` only runs on the flex backend.
-            block_mask = nabla_block_mask(
+            # resulting `BlockMask` only runs on the flex backend, so sparse checkpoints need
+            # `set_attention_backend("flex")` (see the class docstring).
+            attn_mask = nabla_block_mask(
                 query.transpose(1, 2),
                 key.transpose(1, 2),
                 sparse_params["sta_mask"],
                 thr=sparse_params["threshold"],
             )
-            hidden_states = dispatch_attention_fn(
-                query,
-                key,
-                value,
-                attn_mask=block_mask,
-                backend=AttentionBackendName.FLEX,
-                parallel_config=self._parallel_config,
-            )
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attn_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
         return attn.out_layer(hidden_states.flatten(2, 3))
 
 
