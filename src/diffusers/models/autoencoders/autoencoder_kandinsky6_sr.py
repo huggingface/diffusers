@@ -19,15 +19,15 @@ from __future__ import annotations
 import functools
 import math
 from dataclasses import dataclass
-from typing import Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from ...configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
+from ..modeling_utils import ModelMixin
 from .vae import DiagonalGaussianDistribution
 
 
@@ -40,7 +40,9 @@ class SafeConv3d(nn.Conv3d):
 
     def forward(self, x, write_to=None, transform=None):
         if transform is None:
-            transform = lambda x: x
+
+            def transform(x):
+                return x
 
         memory_count = x.numel() / (10**9)
         if memory_count > 2:
@@ -93,7 +95,7 @@ class CausalConv3d(nn.Module):
         self,
         chan_in,
         chan_out,
-        kernel_size: Union[int, Tuple[int, int, int]],
+        kernel_size: int | tuple[int, int, int],
         stride=(1, 1, 1),
         dilation=(1, 1, 1),
         padding_mode=None,
@@ -194,13 +196,13 @@ class CachedCausalConv3d(CausalConv3d):
 
         if cache["padding"] is None:
             first_frame = input_parallel[:, :, :1]
-            time_pad_shape = [i for i in first_frame.shape]
+            time_pad_shape = list(first_frame.shape)
             time_pad_shape[2] = self.time_pad
             padding = first_frame.expand(time_pad_shape)
         else:
             padding = cache["padding"]
 
-        out_size = [i for i in input_.shape]
+        out_size = list(input_.shape)
         out_size[1] = self.conv.out_channels
         if t_stride == 2:
             out_size[2] = (input_.size(2) + 1) // 2
@@ -271,10 +273,7 @@ class CachedCausalResnetBlock3D(nn.Module):
         self.conv1 = CachedCausalConv3d(
             chan_in=in_channels, chan_out=out_channels, kernel_size=3, padding_mode=padding_mode
         )
-        if temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(temb_channels, out_channels)
         self.norm2 = normalization(out_channels, zq_ch=zq_ch, add_conv=add_conv)
-        # self.dropout = torch.nn.Dropout(dropout)
         self.conv2 = CachedCausalConv3d(
             chan_in=out_channels, chan_out=out_channels, kernel_size=3, padding_mode=padding_mode
         )
@@ -293,8 +292,6 @@ class CachedCausalResnetBlock3D(nn.Module):
                 )
 
     def forward(self, x, temb, layer_cache, zq=None):
-        if x.size(2) == 17 and x.size(3) == 1080 and zq is not None:
-            torch.cuda.empty_cache()
         h = x
 
         if zq is None:
@@ -302,19 +299,8 @@ class CachedCausalResnetBlock3D(nn.Module):
         else:
             h = self.norm1(h, zq, cache=layer_cache["norm1"])
 
-        if x.size(2) == 17 and x.size(3) == 1080 and zq is not None:
-            torch.cuda.empty_cache()
-
         h = F.silu(h, inplace=True)
-        if x.size(2) == 17 and x.size(3) == 1080 and zq is not None:
-            torch.cuda.empty_cache()
-
         h = self.conv1(h, cache=layer_cache["conv1"])
-        if x.size(2) == 17 and x.size(3) == 1080 and zq is not None:
-            torch.cuda.empty_cache()
-
-        if temb is not None:
-            h = h + self.temb_proj(F.silu(temb))[:, :, None, None, None]
 
         if zq is None:
             h = self.norm2(h, cache=layer_cache["norm2"])
@@ -322,7 +308,6 @@ class CachedCausalResnetBlock3D(nn.Module):
             h = self.norm2(h, zq, cache=layer_cache["norm2"])
 
         h = F.silu(h, inplace=True)
-        # h = self.dropout(h)
         h = self.conv2(h, cache=layer_cache["conv2"])
 
         if self.in_channels != self.out_channels:
@@ -647,7 +632,6 @@ class CachedEncoder3D(nn.Module):
         self.down = nn.ModuleList()
         for i_level in range(self.num_resolutions):
             block = nn.ModuleList()
-            attn = nn.ModuleList()
 
             block_in = round(ch * in_ch_mult[i_level])
             block_out = round(ch * ch_mult[i_level])
@@ -669,7 +653,6 @@ class CachedEncoder3D(nn.Module):
                 block_in = block_out
             down = nn.Module()
             down.block = block
-            down.attn = attn
             if i_level != self.num_resolutions - 1:
                 if temporal_compress_start_level <= i_level < temporal_compress_level:
                     down.downsample = CachedPXSDownsample(
@@ -731,8 +714,6 @@ class CachedEncoder3D(nn.Module):
             if not self.skip_last_resolution or i_level != self.num_resolutions - 1:
                 for i_block in range(self.num_res_blocks):
                     h = self.down[i_level].block[i_block](h, temb, layer_cache=cache_dict[i_level][i_block])
-                    if len(self.down[i_level].attn) > 0:
-                        h = self.down[i_level].attn[i_block](h)
             if i_level != self.num_resolutions - 1:
                 h = self.down[i_level].downsample(h, cache=cache_dict[i_level]["down"])
 
@@ -746,9 +727,6 @@ class CachedEncoder3D(nn.Module):
         h = self.conv_out(h, cache=cache_dict["conv_out"])
 
         return h
-
-    def get_last_layer(self):
-        return self.conv_out.conv.weight
 
 
 class CachedDecoder3D(nn.Module):
@@ -824,7 +802,6 @@ class CachedDecoder3D(nn.Module):
         self.up = nn.ModuleList()
         for i_level in reversed(range(self.num_resolutions)):
             block = nn.ModuleList()
-            attn = nn.ModuleList()
             block_out = round(ch * ch_mult[i_level])
             for i_block in range(self.num_res_blocks + 1):
                 block.append(
@@ -842,7 +819,6 @@ class CachedDecoder3D(nn.Module):
                 block_in = block_out
             up = nn.Module()
             up.block = block
-            up.attn = attn
             if i_level != 0:
                 if (
                     self.num_resolutions - temporal_compress_start_level
@@ -875,9 +851,6 @@ class CachedDecoder3D(nn.Module):
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks + 1):
                 h = self.up[i_level].block[i_block](h, temb, layer_cache=cache_dict[i_level][i_block], zq=zq)
-
-                if len(self.up[i_level].attn) > 0:
-                    h = self.up[i_level].attn[i_block](h, zq)
             if i_level != 0:
                 h = self.up[i_level].upsample(h, cache_dict[i_level]["up"])
 
@@ -890,9 +863,6 @@ class CachedDecoder3D(nn.Module):
         h = self.conv_out(h, cache_dict["conv_out"])
 
         return h
-
-    def get_last_layer(self):
-        return self.conv_out.conv.weight
 
 
 @dataclass
@@ -943,13 +913,13 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         out_channels: int = 3,
         z_channels: int = 16,
         ch: int = 128,
-        ch_mult: Tuple[float, ...] = (1, 2, 4, 8),
-        decoder_ch: Union[int, None] = None,
-        decoder_ch_mult: Union[Tuple[float, ...], None] = None,
+        ch_mult: tuple[float, ...] = (1, 2, 4, 8),
+        decoder_ch: int | None = None,
+        decoder_ch_mult: tuple[float, ...] | None = None,
         num_res_blocks: int = 2,
         dropout: float = 0.0,
         resolution: int = 0,
-        padding_mode: Union[str, None] = None,
+        padding_mode: str | None = None,
         temporal_compress_times: int = 4,
         temporal_compress_start_level: int = 0,
         norm_type: str = "group_norm",
@@ -958,7 +928,7 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         fix_pxs: bool = False,
         skip_last_resolution: bool = False,
         give_pre_end: bool = False,
-        zq_ch: Union[int, None] = None,
+        zq_ch: int | None = None,
         add_conv: bool = False,
         scaling_factor: float = 1.0,
         spatial_factor: int = 16,
