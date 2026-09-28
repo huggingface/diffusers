@@ -12,34 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Output containers for the Kandinsky 6 Diffusers pipelines."""
-
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
+import PIL.Image
+import torch
 
 from ...utils import BaseOutput
 
 
 @dataclass
 class Kandinsky6TI2VAPipelineOutput(BaseOutput):
-    """Output of the K6 video-and-audio pipeline."""
+    r"""
+    Output class for [`Kandinsky6TI2VAPipeline`].
 
-    frames: Any
-    audio: list[np.ndarray] | None
+    Args:
+        frames (`torch.Tensor`, `np.ndarray`, or `list[list[PIL.Image.Image]]`):
+            The generated video. A nested list of length `batch_size` holding `num_frames` PIL images each, or a NumPy
+            array or torch tensor of shape `(batch_size, num_frames, height, width, channels)` / `(batch_size,
+            num_frames, channels, height, width)`. With `output_type="latent"`, the video latents of shape
+            `(batch_size, channels, num_latent_frames, latent_height, latent_width)`.
+        audio (`torch.Tensor` or `np.ndarray`, *optional*):
+            The generated waveforms of shape `(batch_size, num_samples)` in `[-1, 1]` at the audio VAE's sample rate,
+            or `None` when audio was not sampled. With `output_type="latent"`, the audio latents of shape `(batch_size,
+            channels, audio_length)`.
+    """
+
+    frames: torch.Tensor | np.ndarray | list[list[PIL.Image.Image]]
+    audio: torch.Tensor | np.ndarray | None = None
 
 
 @dataclass
 class Kandinsky6SRPipelineOutput(BaseOutput):
-    """Output of the K6 super-resolution pipeline."""
+    r"""
+    Output class for [`Kandinsky6SRPipeline`].
 
-    frames: Any
+    Args:
+        frames (`torch.Tensor`, `np.ndarray`, or `list[list[PIL.Image.Image]]`):
+            The super-resolved video. A nested list of length `batch_size` holding `num_frames` PIL images each, or a
+            NumPy array or torch tensor of shape `(batch_size, num_frames, height, width, channels)` / `(batch_size,
+            num_frames, channels, height, width)`.
+    """
 
-
-__all__ = [
-    "Kandinsky6SRPipelineOutput",
-    "Kandinsky6TI2VAPipelineOutput",
-]
+    frames: torch.Tensor | np.ndarray | list[list[PIL.Image.Image]]

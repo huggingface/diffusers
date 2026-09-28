@@ -141,10 +141,9 @@ def policy_rollout_fm(
 class PiflowScheduler(SchedulerMixin, ConfigMixin):
     """Few-step PiFlow scheduler for widened-output diffusion transformers.
 
-    PiFlow evaluates the denoising model at a small number of grid points and integrates a network-free policy
-    between those evaluations. The scheduler is intended for distilled Kandinsky 6 checkpoints, including the main
-    video/audio model and the video super-resolution model. Their model output contains `n_grid` predictions per
-    sample channel.
+    PiFlow evaluates the denoising model at a small number of grid points and integrates a network-free policy between
+    those evaluations. The scheduler is intended for distilled Kandinsky 6 checkpoints, including the main video/audio
+    model and the video super-resolution model. Their model output contains `n_grid` predictions per sample channel.
 
     This scheduler inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the
     generic methods implemented for all schedulers (loading, saving, etc.).
@@ -155,7 +154,6 @@ class PiflowScheduler(SchedulerMixin, ConfigMixin):
         shift (`float`, *optional*, defaults to 5.0): Flow-matching timestep shift.
         n_grid (`int`, *optional*, defaults to 10): Number of predictions in the
             widened model output.
-        nfe (`int`, *optional*): Number of model evaluations used at inference.
         eps (`float`, *optional*, defaults to 1e-6): Minimum timestep and policy denominator.
         final_step_size_scale (`float`, *optional*, defaults to 0.5): Relative
             size of the final raw-timestep segment.
@@ -165,7 +163,6 @@ class PiflowScheduler(SchedulerMixin, ConfigMixin):
 
     _compatibles = []
     order = 1
-    is_piflow = True
 
     @register_to_config
     def __init__(
@@ -173,7 +170,6 @@ class PiflowScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         shift: float = 5.0,
         n_grid: int = 10,
-        nfe: int | None = None,
         eps: float = 1e-6,
         final_step_size_scale: float = 0.5,
         num_policy_substeps: int = 128,

@@ -1,0 +1,11 @@
+{
+ "pro.transformer": 30136285268,
+ "pro.vae": 246478803,
+ "pro.audio_vae(MMAudioVAE)": 427632434,
+ "vsr.transformer": 1413231168,
+ "vsr.vae": 1738878243,
+ "vsr.latent_upscaler": 3654021952,
+ "vsrd.transformer": 1414263936,
+ "vsrd.vae": 1738878243,
+ "vsrd.latent_upscaler": 3654021952
+}

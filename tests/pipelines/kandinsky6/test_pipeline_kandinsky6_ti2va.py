@@ -14,7 +14,6 @@
 
 import numpy as np
 import PIL.Image
-import pytest
 import torch
 from transformers import (
     AutoProcessor,
@@ -30,6 +29,7 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     Kandinsky6TI2VAPipeline,
     Kandinsky6Transformer3DModel,
+    MMAudioVAE,
 )
 
 from ...testing_utils import torch_device
@@ -42,15 +42,17 @@ class Kandinsky6TI2VAPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "height", "width", "num_frames", "num_inference_steps", "guidance_scale"]
     )
     batch_input_params = frozenset(["prompt", "negative_prompt"])
-    # (channels, num_frames, height, width) for output_type="pt", matching `get_dummy_inputs()`'s
-    # (num_frames=5, height=16, width=16) at the tiny VAE's real 8x spatial / 4x temporal compression.
-    output_shape = (3, 5, 16, 16)
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
+    )
+    # (num_frames, channels, height, width) for output_type="pt", matching `get_dummy_inputs()`'s
+    # (num_frames=5, height=16, width=16) at the tiny VAE's 8x spatial / 4x temporal compression.
+    output_shape = (5, 3, 16, 16)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        # 3 down/up levels so the tiny VAE's *realized* spatial/temporal compression actually matches the
-        # declared spatial_compression_ratio=8 / temporal_compression_ratio=4 (2 levels only realizes 4x/2x) —
-        # the pipeline itself hardcodes `// 8` / `// 4` when sizing latents rather than reading these configs.
+        # 3 down/up levels so the tiny VAE's realized compression matches the declared
+        # spatial_compression_ratio=8 / temporal_compression_ratio=4 the pipeline reads.
         vae = AutoencoderKLHunyuanVideo(
             act_fn="silu",
             block_out_channels=[8, 8, 8],
@@ -75,11 +77,28 @@ class Kandinsky6TI2VAPipelineTesterConfig(BasePipelineTesterConfig):
             ],
         )
 
+        torch.manual_seed(0)
+        # A tiny sample rate keeps the audio latent sequence short (2 latent frames for 5 video frames).
+        audio_vae = MMAudioVAE(
+            mel_bins=8,
+            latent_channels=4,
+            hidden_channels=8,
+            channel_multipliers=(1, 2),
+            layers_per_block=1,
+            sample_rate=64,
+            n_fft=16,
+            hop_length=4,
+            vocoder_upsample_initial_channel=8,
+            vocoder_upsample_rates=(2, 2),
+            vocoder_upsample_kernel_sizes=(4, 4),
+            vocoder_resblock_kernel_sizes=(3,),
+            vocoder_resblock_dilation_sizes=((1, 3),),
+        )
+
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
 
-        # mrope_section must sum to (hidden_size / num_attention_heads) / 2 — matches the known-good
-        # hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration-compatible config used by Kandinsky5's
-        # own test suite (tests/pipelines/kandinsky5/test_kandinsky5.py).
+        # mrope_section must sum to (hidden_size / num_attention_heads) / 2, matching the
+        # hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration processor used below.
         qwen_hidden_size = 32
         torch.manual_seed(0)
         qwen_config = Qwen2_5_VLConfig(
@@ -152,11 +171,11 @@ class Kandinsky6TI2VAPipelineTesterConfig(BasePipelineTesterConfig):
             "transformer": transformer,
             "vae": vae,
             "text_encoder": text_encoder,
-            "audio_vae": None,
-            "scheduler": scheduler,
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "scheduler": scheduler,
+            "audio_vae": audio_vae,
         }
 
     def get_dummy_inputs(self):
@@ -170,12 +189,29 @@ class Kandinsky6TI2VAPipelineTesterConfig(BasePipelineTesterConfig):
             "width": 16,
             "num_frames": 5,
             "max_sequence_length": 16,
-            "sample_audio": False,
             "output_type": "pt",
         }
 
 
 class TestKandinsky6TI2VAPipeline(Kandinsky6TI2VAPipelineTesterConfig, PipelineTesterMixin):
+    def test_kandinsky6_ti2va_audio_output(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        output = pipe(**self.get_dummy_inputs())
+
+        # 5 frames at 24 fps and 64 Hz -> 2 audio latent frames -> 4 mel frames -> 16 samples
+        assert output.frames.shape == (1, *self.output_shape)
+        assert output.audio.shape == (1, 16)
+        assert not torch.isnan(output.audio).any()
+
+    def test_kandinsky6_ti2va_video_only(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs["sample_audio"] = False
+        output = pipe(**inputs)
+
+        assert output.frames.shape == (1, *self.output_shape)
+        assert output.audio is None
+
     def test_kandinsky6_ti2va_i2va(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs()
@@ -187,15 +223,9 @@ class TestKandinsky6TI2VAPipeline(Kandinsky6TI2VAPipelineTesterConfig, PipelineT
         assert not torch.isnan(output.frames.float()).any()
 
     def test_kandinsky6_ti2va_different_images(self):
-        # A freshly initialized (untrained) transformer zero-initializes every AdaLN modulation gate
-        # (`Kandinsky6Modulation.out_layer`), so at init every attention/feed-forward residual is gated to
-        # exactly zero: neither the text branch nor (with the default `tail_cond_first_frame` scheme) a
-        # reference image reaches the *kept* output frames yet, since that path is also self-attention
-        # (equally gated). `visual_cond_scheme="i2v"` is different: it overwrites frame 0's latent with the
-        # image encoding directly (`_apply_visual_conditioning`), and that frame is kept (not appended and
-        # dropped like `tail_cond_first_frame`), so it passes through two real (non-zero-init) linears —
-        # `visual_embeddings` and `out_layer` — around the identity (zero-gated) blocks. That's the one
-        # conditioning signal guaranteed to already produce different output on a fresh model.
+        # A freshly initialized transformer zero-initializes every AdaLN gate, so the text and reference-image paths
+        # through attention are identity at init. The `i2v` scheme instead writes the encoded image into frame 0,
+        # which passes through the real `visual_embeddings` and `out_layer` projections and must change the output.
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs()
         inputs["visual_cond_scheme"] = "i2v"
@@ -211,30 +241,16 @@ class TestKandinsky6TI2VAPipeline(Kandinsky6TI2VAPipelineTesterConfig, PipelineT
         max_diff = (output_black_image.float() - output_white_image.float()).abs().max()
         assert max_diff > 1e-6, "Outputs should be different for different reference images."
 
-    def test_kandinsky6_ti2va_num_images_per_prompt(self):
+    def test_kandinsky6_ti2va_num_videos_per_prompt(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs()
-        inputs["num_images_per_prompt"] = 2
+        inputs["num_videos_per_prompt"] = 2
 
         output = pipe(**inputs)
 
         assert output.frames.shape == (2, *self.output_shape)
+        assert output.audio.shape[0] == 2
 
 
 class TestKandinsky6TI2VAPipelineMemory(Kandinsky6TI2VAPipelineTesterConfig, MemoryTesterMixin):
-    # `Kandinsky6TimeEmbeddings`/`Kandinsky6Modulation` (in the transformer) read their `nn.Linear`
-    # weight/bias directly for a fp32-upcast `functional.linear` call rather than calling the submodule
-    # (see the `_supports_group_offloading = False` comment on `Kandinsky6Transformer3DModel`), so
-    # leaf-level offload hooks never see those weights. `enable_sequential_cpu_offload` hits the same gap
-    # and has no pipeline-level opt-out flag; confirmed this isn't an environment issue — Flux's identical
-    # tests pass on this same machine/backend.
-    _OFFLOAD_SKIP_REASON = (
-        "Kandinsky6TimeEmbeddings/Kandinsky6Modulation bypass leaf-level offload hooks by design; see "
-        "Kandinsky6Transformer3DModel._supports_group_offloading."
-    )
-
-    def test_sequential_cpu_offload_forward_pass(self, *args, **kwargs):
-        pytest.skip(self._OFFLOAD_SKIP_REASON)
-
-    def test_sequential_offload_forward_pass_twice(self, *args, **kwargs):
-        pytest.skip(self._OFFLOAD_SKIP_REASON)
+    pass

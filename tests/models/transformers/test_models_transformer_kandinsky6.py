@@ -17,12 +17,12 @@ import pytest
 import torch
 
 from diffusers import Kandinsky6Transformer3DModel
-from diffusers.models.transformers.transformer_kandinsky6 import Kandinsky6RoPE1D, Kandinsky6RoPE3D
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
+    BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -33,14 +33,14 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-class Kandinsky6TransformerTesterConfig:
+class Kandinsky6TransformerTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
         return Kandinsky6Transformer3DModel
 
     @property
     def pretrained_model_name_or_path(self):
-        return ""  # TODO: Set Hub repository ID
+        return "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers"
 
     @property
     def pretrained_model_kwargs(self):
@@ -48,13 +48,13 @@ class Kandinsky6TransformerTesterConfig:
 
     @property
     def main_input_name(self) -> str:
-        return "x_video"
+        return "hidden_states"
 
     @property
     def generator(self):
         return torch.Generator("cpu").manual_seed(0)
 
-    def get_init_dict(self) -> dict[str, int | list[int]]:
+    def get_init_dict(self) -> dict:
         return {
             "in_visual_dim": 4,
             "out_visual_dim": 4,
@@ -70,87 +70,70 @@ class Kandinsky6TransformerTesterConfig:
             "visual_cond": True,
             "in_audio_dim": 4,
             "out_audio_dim": 4,
+            "visual_token_type_num_embeddings": 2,
         }
 
-    def _build_dummy_inputs(
-        self, batch_size: int, num_frames: int, height: int, width: int, device
-    ) -> dict[str, torch.Tensor]:
+    def _build_dummy_inputs(self, batch_size: int, num_frames: int, height: int, width: int) -> dict:
         init_dict = self.get_init_dict()
-        head_dim = sum(init_dict["axes_dims"])
-        patch_t, patch_h, patch_w = init_dict["patch_size"]
-        vis_in_dim = 2 * init_dict["in_visual_dim"] + 1  # visual_cond=True prepends cond + mask channels
-        text_length = 6
-
-        x_video = randn_tensor(
-            (batch_size, num_frames, height, width, vis_in_dim), generator=self.generator, device=device
-        )
-        text_embed = randn_tensor(
-            (batch_size, text_length, init_dict["in_text_dim"]), generator=self.generator, device=device
-        )
-        pooled_text_embed = randn_tensor(
-            (batch_size, init_dict["in_text_dim2"]), generator=self.generator, device=device
-        )
-        # `self.generator` is always a CPU generator (see below); draw on CPU and move, like `randn_tensor` does
-        # internally, so this also works with an accelerator (e.g. MPS) `device`.
-        time = torch.randint(0, 1000, (batch_size,), generator=self.generator).float().to(device)
-
-        visual_shape = (num_frames // patch_t, height // patch_h, width // patch_w)
-        visual_rope = Kandinsky6RoPE3D(init_dict["axes_dims"]).to(device)(
-            visual_shape,
-            [torch.arange(size, device=device) for size in visual_shape],
-        )
-        video_text_rope = Kandinsky6RoPE1D(head_dim).to(device)(torch.arange(text_length, device=device))
-        audio_text_rope = Kandinsky6RoPE1D(head_dim).to(device)(torch.arange(text_length, device=device))
-
+        # `visual_cond=True` appends conditioning latents and a mask to the input channels
+        num_input_channels = 2 * init_dict["in_visual_dim"] + 1
         return {
-            "x_video": x_video,
-            "text_embed": text_embed,
-            "pooled_text_embed": pooled_text_embed,
-            "time": time,
-            "visual_rope": visual_rope,
-            "video_text_rope": video_text_rope,
-            "audio_text_rope": audio_text_rope,
+            "hidden_states": randn_tensor(
+                (batch_size, num_frames, height, width, num_input_channels),
+                generator=self.generator,
+                device=torch_device,
+            ),
+            "audio_hidden_states": randn_tensor(
+                (batch_size, 5, init_dict["in_audio_dim"]), generator=self.generator, device=torch_device
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, 6, init_dict["in_text_dim"]), generator=self.generator, device=torch_device
+            ),
+            "pooled_projections": randn_tensor(
+                (batch_size, init_dict["in_text_dim2"]), generator=self.generator, device=torch_device
+            ),
+            "timestep": torch.randint(0, 1000, (batch_size,), generator=self.generator).float().to(torch_device),
         }
 
-    def get_dummy_inputs(self, batch_size: int = 1, device=torch_device) -> dict[str, torch.Tensor]:
-        # Only `x_video` is passed (no `x_audio`): the fused block no-ops its audio branch when `aud is None`,
-        # so this still runs the real dual-stream block weights, while `forward` returns a single tensor
-        # (matching what the generic mixins below expect) instead of a `(video, audio)` tuple.
-        return self._build_dummy_inputs(batch_size, num_frames=2, height=4, width=4, device=device)
+    def get_dummy_inputs(self) -> dict:
+        return self._build_dummy_inputs(batch_size=1, num_frames=2, height=4, width=4)
 
     @property
     def input_shape(self) -> tuple[int, ...]:
-        # (num_frames, height, width, vis_in_dim), batch dimension excluded.
         return (2, 4, 4, 2 * 4 + 1)
 
     @property
     def output_shape(self) -> tuple[int, ...]:
-        # (num_frames, height, width, out_visual_dim), batch dimension excluded.
         return (2, 4, 4, 4)
 
 
 class TestKandinsky6TransformerModel(Kandinsky6TransformerTesterConfig, ModelTesterMixin):
-    pass
+    def test_video_only_forward(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
+        inputs.pop("audio_hidden_states")
+        with torch.no_grad():
+            output = model(**inputs)
+        assert output.sample.shape == (1, *self.output_shape)
+        assert output.audio_sample is None
+
+    def test_tail_conditioning_inputs(self):
+        # An appended reference frame reuses temporal rotary position 0 and carries token type 1.
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self._build_dummy_inputs(batch_size=1, num_frames=3, height=4, width=4)
+        inputs["visual_rope_pos"] = (
+            torch.tensor([0, 1, 0], device=torch_device),
+            torch.arange(2, device=torch_device),
+            torch.arange(2, device=torch_device),
+        )
+        inputs["visual_token_type_ids"] = torch.tensor([[0, 0, 1]], device=torch_device)
+        with torch.no_grad():
+            output = model(**inputs)
+        assert output.sample.shape == (1, 3, 4, 4, 4)
 
 
 class TestKandinsky6TransformerMemory(Kandinsky6TransformerTesterConfig, MemoryTesterMixin):
-    # `Kandinsky6TimeEmbeddings`/`Kandinsky6Modulation` bypass leaf-level offload hooks by design (see the
-    # `_supports_group_offloading = False` comment on the model); the classic accelerate cpu/disk offload
-    # hooks hit the exact same gap and have no model-level opt-out flag, so skip explicitly here instead.
-    _OFFLOAD_SKIP_REASON = (
-        "Kandinsky6TimeEmbeddings/Kandinsky6Modulation read their nn.Linear weight/bias directly for a "
-        "fp32-upcast functional.linear call rather than calling the submodule, so leaf-level offload hooks "
-        "never see (or move) those weights."
-    )
-
-    def test_cpu_offload(self, *args, **kwargs):
-        pytest.skip(self._OFFLOAD_SKIP_REASON)
-
-    def test_disk_offload_without_safetensors(self, *args, **kwargs):
-        pytest.skip(self._OFFLOAD_SKIP_REASON)
-
-    def test_disk_offload_with_safetensors(self, *args, **kwargs):
-        pytest.skip(self._OFFLOAD_SKIP_REASON)
+    pass
 
 
 class TestKandinsky6TransformerTorchCompile(Kandinsky6TransformerTesterConfig, TorchCompileTesterMixin):
@@ -158,8 +141,8 @@ class TestKandinsky6TransformerTorchCompile(Kandinsky6TransformerTesterConfig, T
     def different_shapes_for_compilation(self):
         return [(4, 4), (4, 8), (8, 8)]
 
-    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
-        return self._build_dummy_inputs(batch_size=1, num_frames=2, height=height, width=width, device=torch_device)
+    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict:
+        return self._build_dummy_inputs(batch_size=1, num_frames=2, height=height, width=width)
 
 
 class TestKandinsky6TransformerTraining(Kandinsky6TransformerTesterConfig, TrainingTesterMixin):
@@ -170,6 +153,6 @@ class TestKandinsky6TransformerAttention(Kandinsky6TransformerTesterConfig, Atte
     def test_fuse_unfuse_qkv_projections(self, *args, **kwargs):
         pytest.skip(
             "Kandinsky6Attention names its projections to_query/to_key/to_value/out_layer (matching the "
-            "native K6 checkpoint layout) rather than to_q/to_k/to_v/to_out, which "
+            "Kandinsky 5 layout) rather than to_q/to_k/to_v/to_out, which "
             "AttentionModuleMixin.fuse_projections hardcodes."
         )

@@ -1,36 +1,79 @@
-"""MMAudio VAE Diffusers component."""
+# Copyright 2025 The Kandinsky Team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""MMAudio mel-spectrogram VAE and BigVGAN vocoder used by the Kandinsky 6 TI2VA pipeline."""
 
 from __future__ import annotations
 
 import math
-from typing import Any, Literal, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from ...configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
-from torch import pow, sin
-from torch.nn import Conv1d, ConvTranspose1d, Parameter
-from torch.nn.utils.parametrizations import weight_norm
-from torch.nn.utils.parametrize import remove_parametrizations
-
-from .vae import DiagonalGaussianDistribution
-
-# The magnitude-preserving building blocks below (`normalize`, `mp_silu`, `mp_sum`, `MPConv1D`) implement
-# equations from Karras et al., "Analyzing and Improving the Training Dynamics of Diffusion Models"
-# (https://arxiv.org/abs/2312.02696): each layer is designed so that if its inputs have unit variance, its
-# output does too, which removes the need for the running activation-magnitude tracking earlier EDM variants
-# relied on. MMAudio's VAE reuses this design for its 1D convolutional blocks.
+from ..attention_dispatch import dispatch_attention_fn
+from ..modeling_outputs import AutoencoderKLOutput
+from ..modeling_utils import ModelMixin
+from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
-def normalize(x: torch.Tensor, dim: "list[int] | None" = None, eps: float = 1e-4) -> torch.Tensor:
-    """Rescale `x` to unit L2 norm over `dim` (default: every dimension but the first).
+# Activations of the magnitude-preserving blocks are clipped to this range.
+ACTIVATION_CLIP = 256.0
 
-    `eps` is scaled by `sqrt(norm.numel() / x.numel())` so it stays a meaningful floor relative to the
-    norm's typical magnitude regardless of how many elements are reduced over.
-    """
+
+def mel_filterbank(sample_rate: int, n_fft: int, num_mels: int, f_min: float, f_max: float) -> torch.Tensor:
+    """Slaney-scale mel filterbank of shape `(num_mels, n_fft // 2 + 1)` with Slaney area normalization, the
+    `librosa.filters.mel` default that the MMAudio front end was trained with."""
+
+    def hz_to_mel(freq: torch.Tensor) -> torch.Tensor:
+        linear_step = 200.0 / 3
+        min_log_hz = 1000.0
+        log_step = math.log(6.4) / 27.0
+        return torch.where(
+            freq >= min_log_hz, min_log_hz / linear_step + torch.log(freq / min_log_hz) / log_step, freq / linear_step
+        )
+
+    def mel_to_hz(mel: torch.Tensor) -> torch.Tensor:
+        linear_step = 200.0 / 3
+        min_log_hz = 1000.0
+        log_step = math.log(6.4) / 27.0
+        min_log_mel = min_log_hz / linear_step
+        return torch.where(
+            mel >= min_log_mel, min_log_hz * torch.exp(log_step * (mel - min_log_mel)), linear_step * mel
+        )
+
+    fft_freqs = torch.linspace(0, sample_rate / 2, 1 + n_fft // 2, dtype=torch.float64)
+    mel_limits = hz_to_mel(torch.tensor([f_min, f_max], dtype=torch.float64))
+    mel_freqs = mel_to_hz(torch.linspace(mel_limits[0], mel_limits[1], num_mels + 2, dtype=torch.float64))
+    freq_diff = torch.diff(mel_freqs)
+    ramps = mel_freqs[:, None] - fft_freqs[None, :]
+    lower = -ramps[:-2] / freq_diff[:-1, None]
+    upper = ramps[2:] / freq_diff[1:, None]
+    weights = torch.clamp(torch.minimum(lower, upper), min=0)
+    weights = weights * (2.0 / (mel_freqs[2 : num_mels + 2] - mel_freqs[:num_mels]))[:, None]
+    return weights.float()
+
+
+# The magnitude-preserving building blocks below follow Karras et al., "Analyzing and Improving the Training
+# Dynamics of Diffusion Models" (https://arxiv.org/abs/2312.02696): each layer keeps a unit-variance input
+# unit-variance, which MMAudio's VAE relies on instead of normalization layers.
+
+
+def normalize(x: torch.Tensor, dim: list[int] | None = None, eps: float = 1e-4) -> torch.Tensor:
+    """Rescale `x` to unit L2 norm over `dim` (default: every dimension but the first)."""
     if dim is None:
         dim = list(range(1, x.ndim))
     norm = torch.linalg.vector_norm(x, dim=dim, keepdim=True, dtype=torch.float32)
@@ -39,1267 +82,535 @@ def normalize(x: torch.Tensor, dim: "list[int] | None" = None, eps: float = 1e-4
 
 
 def mp_silu(x: torch.Tensor) -> torch.Tensor:
-    """SiLU rescaled by the standard deviation of `silu(z)` for `z ~ N(0, 1)`, so a unit-variance input
-    stays unit-variance after activation.
-    """
+    """SiLU rescaled so that a unit-variance input stays unit-variance."""
     return F.silu(x) / 0.596
 
 
 def mp_sum(a: torch.Tensor, b: torch.Tensor, t: float = 0.5) -> torch.Tensor:
-    """Interpolate between `a` and `b` and rescale by `1 / sqrt((1-t)^2 + t^2)`, the factor that keeps the
-    result unit-variance when `a` and `b` are unit-variance and uncorrelated.
-    """
+    """Interpolate `a` and `b` and rescale so that the result stays unit-variance."""
     return a.lerp(b, t) / math.sqrt((1 - t) ** 2 + t**2)
 
 
-class MPConv1D(torch.nn.Module):
-    """1D convolution (or, with `kernel_size=1` on a 2D input, a linear layer) whose weight is normalized to
-    unit norm per output channel and rescaled by `1 / sqrt(fan_in)`, so its output variance matches its
-    input variance regardless of `in_channels` or `kernel_size`.
+class MMAudioMPConv1d(nn.Conv1d):
+    """Magnitude-preserving 1D convolution with an optional per-call gain. The released weights are already
+    normalized to unit norm per output channel and scaled by `1 / sqrt(fan_in)`, so the weight is applied directly."""
 
-    The weight starts as plain random init and only becomes usable after `remove_weight_norm()` folds the
-    normalization into `self.weight` once; `forward` then applies that folded weight directly rather than
-    renormalizing on every call, matching how the converted checkpoint stores it.
-    """
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int) -> None:
+        super().__init__(in_channels, out_channels, kernel_size, padding=kernel_size // 2, bias=False)
 
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int):
-        super().__init__()
-        self.out_channels = out_channels
-        self.weight = torch.nn.Parameter(torch.randn(out_channels, in_channels, kernel_size))
-        self.weight_norm_removed = False
-
-    def forward(self, x: torch.Tensor, gain: float = 1) -> torch.Tensor:
-        if not self.weight_norm_removed:
-            raise RuntimeError("call remove_weight_norm() before inference")
-
-        w = self.weight * gain
-        return F.conv1d(x, w, padding=(w.shape[-1] // 2,))
-
-    def remove_weight_norm(self) -> "MPConv1D":
-        w = self.weight.to(torch.float32)
-        w = normalize(w)
-        w = w / math.sqrt(w[0].numel())
-        self.weight.data.copy_(w.to(self.weight.dtype))
-
-        self.weight_norm_removed = True
-        return self
+    def forward(self, x: torch.Tensor, gain: float | torch.Tensor = 1.0) -> torch.Tensor:
+        return F.conv1d(x, (self.weight * gain).to(x.dtype), padding=self.padding)
 
 
-class ResnetBlock1D(nn.Module):
-    def __init__(self, *, in_dim, out_dim=None, conv_shortcut=False, kernel_size=3, use_norm=True):
-        super().__init__()
-        self.in_dim = in_dim
-        out_dim = in_dim if out_dim is None else out_dim
-        self.out_dim = out_dim
-        self.use_conv_shortcut = conv_shortcut
-        self.use_norm = use_norm
-
-        self.conv1 = MPConv1D(in_dim, out_dim, kernel_size=kernel_size)
-        self.conv2 = MPConv1D(out_dim, out_dim, kernel_size=kernel_size)
-        if self.in_dim != self.out_dim:
-            if self.use_conv_shortcut:
-                self.conv_shortcut = MPConv1D(in_dim, out_dim, kernel_size=kernel_size)
-            else:
-                self.nin_shortcut = MPConv1D(in_dim, out_dim, kernel_size=1)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-
-        # pixel norm
-        if self.use_norm:
-            x = normalize(x, dim=1)
-
-        h = x
-        h = mp_silu(h)
-        h = self.conv1(h)
-
-        h = mp_silu(h)
-        h = self.conv2(h)
-
-        if self.in_dim != self.out_dim:
-            if self.use_conv_shortcut:
-                x = self.conv_shortcut(x)
-            else:
-                x = self.nin_shortcut(x)
-
-        return mp_sum(x, h, t=0.3)
-
-
-class AttnBlock1D(nn.Module):
-    def __init__(self, in_channels, num_heads=1):
+class MMAudioResnetBlock1D(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int = 3) -> None:
         super().__init__()
         self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.conv1 = MMAudioMPConv1d(in_channels, out_channels, kernel_size)
+        self.conv2 = MMAudioMPConv1d(out_channels, out_channels, kernel_size)
+        if in_channels != out_channels:
+            self.nin_shortcut = MMAudioMPConv1d(in_channels, out_channels, kernel_size=1)
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = normalize(x, dim=1)
+        hidden_states = self.conv1(mp_silu(x))
+        hidden_states = self.conv2(mp_silu(hidden_states))
+        if self.in_channels != self.out_channels:
+            x = self.nin_shortcut(x)
+        return mp_sum(x, hidden_states, t=0.3)
+
+
+class MMAudioAttnBlock1D(nn.Module):
+    def __init__(self, channels: int, num_heads: int = 1) -> None:
+        super().__init__()
         self.num_heads = num_heads
-        self.qkv = MPConv1D(in_channels, in_channels * 3, kernel_size=1)
-        self.proj_out = MPConv1D(in_channels, in_channels, kernel_size=1)
+        self.qkv = MMAudioMPConv1d(channels, channels * 3, kernel_size=1)
+        self.proj_out = MMAudioMPConv1d(channels, channels, kernel_size=1)
 
-    def forward(self, x):
-        h = x
-        y = self.qkv(h)
-        y = y.reshape(y.shape[0], self.num_heads, -1, 3, y.shape[-1])
-        q, k, v = normalize(y, dim=2).unbind(3)
-
-        q = q.permute(0, 1, 3, 2)
-        k = k.permute(0, 1, 3, 2)
-        v = v.permute(0, 1, 3, 2)
-
-        h = F.scaled_dot_product_attention(q, k, v)
-        h = h.permute(0, 1, 3, 2).reshape(h.shape[0], -1, h.shape[2])
-
-        h = self.proj_out(h)
-
-        return mp_sum(x, h, t=0.3)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, channels, length = x.shape
+        qkv = self.qkv(x).reshape(batch_size, self.num_heads, -1, 3, length)
+        query, key, value = normalize(qkv, dim=2).unbind(3)
+        # `(B, heads, D, T)` -> `(B, T, heads, D)` for the attention dispatcher.
+        query, key, value = (t.permute(0, 3, 1, 2) for t in (query, key, value))
+        hidden_states = dispatch_attention_fn(query, key, value)
+        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, channels, length)
+        return mp_sum(x, self.proj_out(hidden_states), t=0.3)
 
 
-class Upsample1D(nn.Module):
-    def __init__(self, in_channels, with_conv):
+class MMAudioUpsample1D(nn.Module):
+    def __init__(self, channels: int) -> None:
         super().__init__()
-        self.with_conv = with_conv
-        if self.with_conv:
-            self.conv = MPConv1D(in_channels, in_channels, kernel_size=3)
+        self.conv = MMAudioMPConv1d(channels, channels, kernel_size=3)
 
-    def forward(self, x):
-        x = F.interpolate(x, scale_factor=2.0, mode="nearest-exact")  # support 3D tensor(B,C,T)
-        if self.with_conv:
-            x = self.conv(x)
-        return x
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.conv(F.interpolate(x, scale_factor=2.0, mode="nearest-exact"))
 
 
-class Downsample1D(nn.Module):
-    def __init__(self, in_channels, with_conv):
+class MMAudioDownsample1D(nn.Module):
+    def __init__(self, channels: int) -> None:
         super().__init__()
-        self.with_conv = with_conv
-        if self.with_conv:
-            # no asymmetric padding in torch conv, must do it ourselves
-            self.conv1 = MPConv1D(in_channels, in_channels, kernel_size=1)
-            self.conv2 = MPConv1D(in_channels, in_channels, kernel_size=1)
+        self.conv1 = MMAudioMPConv1d(channels, channels, kernel_size=1)
+        self.conv2 = MMAudioMPConv1d(channels, channels, kernel_size=1)
 
-    def forward(self, x):
-
-        if self.with_conv:
-            x = self.conv1(x)
-
-        x = F.avg_pool1d(x, kernel_size=2, stride=2)
-
-        if self.with_conv:
-            x = self.conv2(x)
-
-        return x
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.conv2(F.avg_pool1d(self.conv1(x), kernel_size=2, stride=2))
 
 
-# fmt: off
-DATA_MEAN_128D = [
-    -3.3462, -2.6723, -2.4893, -2.3143, -2.2664, -2.3317, -2.1802, -2.4006, -2.2357, -2.4597,
-    -2.3717, -2.4690, -2.5142, -2.4919, -2.6610, -2.5047, -2.7483, -2.5926, -2.7462, -2.7033,
-    -2.7386, -2.8112, -2.7502, -2.9594, -2.7473, -3.0035, -2.8891, -2.9922, -2.9856, -3.0157,
-    -3.1191, -2.9893, -3.1718, -3.0745, -3.1879, -3.2310, -3.1424, -3.2296, -3.2791, -3.2782,
-    -3.2756, -3.3134, -3.3509, -3.3750, -3.3951, -3.3698, -3.4505, -3.4509, -3.5089, -3.4647,
-    -3.5536, -3.5788, -3.5867, -3.6036, -3.6400, -3.6747, -3.7072, -3.7279, -3.7283, -3.7795,
-    -3.8259, -3.8447, -3.8663, -3.9182, -3.9605, -3.9861, -4.0105, -4.0373, -4.0762, -4.1121,
-    -4.1488, -4.1874, -4.2461, -4.3170, -4.3639, -4.4452, -4.5282, -4.6297, -4.7019, -4.7960,
-    -4.8700, -4.9507, -5.0303, -5.0866, -5.1634, -5.2342, -5.3242, -5.4053, -5.4927, -5.5712,
-    -5.6464, -5.7052, -5.7619, -5.8410, -5.9188, -6.0103, -6.0955, -6.1673, -6.2362, -6.3120,
-    -6.3926, -6.4797, -6.5565, -6.6511, -6.8130, -6.9961, -7.1275, -7.2457, -7.3576, -7.4663,
-    -7.6136, -7.7469, -7.8815, -8.0132, -8.1515, -8.3071, -8.4722, -8.7418, -9.3975, -9.6628,
-    -9.7671, -9.8863, -9.9992, -10.0860, -10.1709, -10.5418, -11.2795, -11.3861
-]
+class MMAudioEncoder1D(nn.Module):
+    """Mel-spectrogram encoder: residual blocks over `channel_multipliers` levels, a single 2x temporal downsample
+    after the first level, and an attention block in the middle."""
 
-DATA_STD_128D = [
-    2.3804, 2.4368, 2.3772, 2.3145, 2.2803, 2.2510, 2.2316, 2.2083, 2.1996, 2.1835, 2.1769, 2.1659,
-    2.1631, 2.1618, 2.1540, 2.1606, 2.1571, 2.1567, 2.1612, 2.1579, 2.1679, 2.1683, 2.1634, 2.1557,
-    2.1668, 2.1518, 2.1415, 2.1449, 2.1406, 2.1350, 2.1313, 2.1415, 2.1281, 2.1352, 2.1219, 2.1182,
-    2.1327, 2.1195, 2.1137, 2.1080, 2.1179, 2.1036, 2.1087, 2.1036, 2.1015, 2.1068, 2.0975, 2.0991,
-    2.0902, 2.1015, 2.0857, 2.0920, 2.0893, 2.0897, 2.0910, 2.0881, 2.0925, 2.0873, 2.0960, 2.0900,
-    2.0957, 2.0958, 2.0978, 2.0936, 2.0886, 2.0905, 2.0845, 2.0855, 2.0796, 2.0840, 2.0813, 2.0817,
-    2.0838, 2.0840, 2.0917, 2.1061, 2.1431, 2.1976, 2.2482, 2.3055, 2.3700, 2.4088, 2.4372, 2.4609,
-    2.4731, 2.4847, 2.5072, 2.5451, 2.5772, 2.6147, 2.6529, 2.6596, 2.6645, 2.6726, 2.6803, 2.6812,
-    2.6899, 2.6916, 2.6931, 2.6998, 2.7062, 2.7262, 2.7222, 2.7158, 2.7041, 2.7485, 2.7491, 2.7451,
-    2.7485, 2.7233, 2.7297, 2.7233, 2.7145, 2.6958, 2.6788, 2.6439, 2.6007, 2.4786, 2.2469, 2.1877,
-    2.1392, 2.0717, 2.0107, 1.9676, 1.9140, 1.7102, 0.9101, 0.7164
-]
-# fmt: on
-
-
-class VAE(nn.Module):
     def __init__(
         self,
-        *,
-        data_dim: int,
-        embed_dim: int,
-        hidden_dim: int,
-    ):
+        mel_bins: int,
+        latent_channels: int,
+        hidden_channels: int,
+        channel_multipliers: tuple[int, ...],
+        layers_per_block: int,
+    ) -> None:
         super().__init__()
+        self.conv_in = MMAudioMPConv1d(mel_bins, hidden_channels, kernel_size=3)
 
-        if data_dim != 128:
-            raise ValueError(f"Only 44k audio VAE data is supported, got data_dim={data_dim}")
-        self.data_mean = nn.Buffer(torch.tensor(DATA_MEAN_128D, dtype=torch.float32))
-        self.data_std = nn.Buffer(torch.tensor(DATA_STD_128D, dtype=torch.float32))
-
-        self.data_mean = self.data_mean.view(1, -1, 1)
-        self.data_std = self.data_std.view(1, -1, 1)
-
-        self.encoder = Encoder1D(
-            dim=hidden_dim,
-            ch_mult=(1, 2, 4),
-            num_res_blocks=2,
-            attn_layers=[3],
-            down_layers=[0],
-            in_dim=data_dim,
-            embed_dim=embed_dim,
-        )
-        self.decoder = Decoder1D(
-            dim=hidden_dim,
-            ch_mult=(1, 2, 4),
-            num_res_blocks=2,
-            attn_layers=[3],
-            down_layers=[0],
-            in_dim=data_dim,
-            out_dim=data_dim,
-            embed_dim=embed_dim,
-        )
-
-        self.embed_dim = embed_dim
-        # self.quant_conv = nn.Conv1d(2 * embed_dim, 2 * embed_dim, 1)
-        # self.post_quant_conv = nn.Conv1d(embed_dim, embed_dim, 1)
-
-    def encode(self, x: torch.Tensor, normalize: bool = True) -> DiagonalGaussianDistribution:
-        if normalize:
-            x = self.normalize(x)
-        moments = self.encoder(x)
-        posterior = DiagonalGaussianDistribution(moments)
-        return posterior
-
-    def decode(self, z: torch.Tensor, unnormalize: bool = True) -> torch.Tensor:
-        dec = self.decoder(z)
-        if unnormalize:
-            dec = self.unnormalize(dec)
-        return dec
-
-    def normalize(self, x: torch.Tensor) -> torch.Tensor:
-        return (x - self.data_mean) / self.data_std
-
-    def unnormalize(self, x: torch.Tensor) -> torch.Tensor:
-        return x * self.data_std + self.data_mean
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        sample_posterior: bool = True,
-        rng: Optional[torch.Generator] = None,
-        normalize: bool = True,
-        unnormalize: bool = True,
-    ) -> tuple[torch.Tensor, DiagonalGaussianDistribution]:
-
-        posterior = self.encode(x, normalize=normalize)
-        if sample_posterior:
-            z = posterior.sample(rng)
-        else:
-            z = posterior.mode()
-        dec = self.decode(z, unnormalize=unnormalize)
-        return dec, posterior
-
-    def load_weights(self, src_dict) -> None:
-        self.load_state_dict(src_dict, strict=True)
-
-    @property
-    def device(self) -> torch.device:
-        return next(self.parameters()).device
-
-    def get_last_layer(self):
-        return self.decoder.conv_out.weight
-
-    def remove_weight_norm(self):
-        for name, m in self.named_modules():
-            if isinstance(m, MPConv1D):
-                m.remove_weight_norm()
-
-        return self
-
-
-class Encoder1D(nn.Module):
-    def __init__(
-        self,
-        *,
-        dim: int,
-        ch_mult: tuple[int] = (1, 2, 4, 8),
-        num_res_blocks: int,
-        attn_layers: list[int] = [],
-        down_layers: list[int] = [],
-        resamp_with_conv: bool = True,
-        in_dim: int,
-        embed_dim: int,
-        double_z: bool = True,
-        kernel_size: int = 3,
-        clip_act: float = 256.0,
-    ):
-        super().__init__()
-        self.dim = dim
-        self.num_layers = len(ch_mult)
-        self.num_res_blocks = num_res_blocks
-        self.in_channels = in_dim
-        self.clip_act = clip_act
-        self.down_layers = down_layers
-        self.attn_layers = attn_layers
-        self.conv_in = MPConv1D(in_dim, self.dim, kernel_size=kernel_size)
-
-        in_ch_mult = (1,) + tuple(ch_mult)
-        self.in_ch_mult = in_ch_mult
-        # downsampling
         self.down = nn.ModuleList()
-        for i_level in range(self.num_layers):
-            block = nn.ModuleList()
-            attn = nn.ModuleList()
-            block_in = dim * in_ch_mult[i_level]
-            block_out = dim * ch_mult[i_level]
-            for i_block in range(self.num_res_blocks):
-                block.append(ResnetBlock1D(in_dim=block_in, out_dim=block_out, kernel_size=kernel_size, use_norm=True))
+        block_in = hidden_channels
+        for level, multiplier in enumerate(channel_multipliers):
+            block_out = hidden_channels * multiplier
+            blocks = nn.ModuleList()
+            for _ in range(layers_per_block):
+                blocks.append(MMAudioResnetBlock1D(block_in, block_out))
                 block_in = block_out
-                if i_level in attn_layers:
-                    attn.append(AttnBlock1D(block_in))
             down = nn.Module()
-            down.block = block
-            down.attn = attn
-            if i_level in down_layers:
-                down.downsample = Downsample1D(block_in, resamp_with_conv)
+            down.block = blocks
+            if level == 0:
+                down.downsample = MMAudioDownsample1D(block_in)
             self.down.append(down)
 
-        # middle
         self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock1D(in_dim=block_in, out_dim=block_in, kernel_size=kernel_size, use_norm=True)
-        self.mid.attn_1 = AttnBlock1D(block_in)
-        self.mid.block_2 = ResnetBlock1D(in_dim=block_in, out_dim=block_in, kernel_size=kernel_size, use_norm=True)
+        self.mid.block_1 = MMAudioResnetBlock1D(block_in, block_in)
+        self.mid.attn_1 = MMAudioAttnBlock1D(block_in)
+        self.mid.block_2 = MMAudioResnetBlock1D(block_in, block_in)
 
-        # end
-        self.conv_out = MPConv1D(block_in, 2 * embed_dim if double_z else embed_dim, kernel_size=kernel_size)
-
+        self.conv_out = MMAudioMPConv1d(block_in, 2 * latent_channels, kernel_size=3)
         self.learnable_gain = nn.Parameter(torch.zeros([]))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.conv_in(x)
+        for down in self.down:
+            for block in down.block:
+                hidden_states = block(hidden_states).clamp(-ACTIVATION_CLIP, ACTIVATION_CLIP)
+            if hasattr(down, "downsample"):
+                hidden_states = down.downsample(hidden_states)
 
-        # downsampling
-        hs = [self.conv_in(x)]
-        for i_level in range(self.num_layers):
-            for i_block in range(self.num_res_blocks):
-                h = self.down[i_level].block[i_block](hs[-1])
-                if len(self.down[i_level].attn) > 0:
-                    h = self.down[i_level].attn[i_block](h)
-                h = h.clamp(-self.clip_act, self.clip_act)
-                hs.append(h)
-            if i_level in self.down_layers:
-                hs.append(self.down[i_level].downsample(hs[-1]))
-
-        # middle
-        h = hs[-1]
-        h = self.mid.block_1(h)
-        h = self.mid.attn_1(h)
-        h = self.mid.block_2(h)
-        h = h.clamp(-self.clip_act, self.clip_act)
-
-        # end
-        h = mp_silu(h)
-        h = self.conv_out(h, gain=(self.learnable_gain + 1))
-        return h
+        hidden_states = self.mid.block_1(hidden_states)
+        hidden_states = self.mid.attn_1(hidden_states)
+        hidden_states = self.mid.block_2(hidden_states).clamp(-ACTIVATION_CLIP, ACTIVATION_CLIP)
+        return self.conv_out(mp_silu(hidden_states), gain=self.learnable_gain + 1)
 
 
-class Decoder1D(nn.Module):
+class MMAudioDecoder1D(nn.Module):
+    """Mirror of [`MMAudioEncoder1D`]: the 2x temporal upsample sits after the second-to-last level."""
+
     def __init__(
         self,
-        *,
-        dim: int,
-        out_dim: int,
-        ch_mult: tuple[int] = (1, 2, 4, 8),
-        num_res_blocks: int,
-        attn_layers: list[int] = [],
-        down_layers: list[int] = [],
-        kernel_size: int = 3,
-        resamp_with_conv: bool = True,
-        in_dim: int,
-        embed_dim: int,
-        clip_act: float = 256.0,
-    ):
+        mel_bins: int,
+        latent_channels: int,
+        hidden_channels: int,
+        channel_multipliers: tuple[int, ...],
+        layers_per_block: int,
+    ) -> None:
         super().__init__()
-        self.ch = dim
-        self.num_layers = len(ch_mult)
-        self.num_res_blocks = num_res_blocks
-        self.in_channels = in_dim
-        self.clip_act = clip_act
-        self.down_layers = [i + 1 for i in down_layers]  # each downlayer add one
+        block_in = hidden_channels * channel_multipliers[-1]
+        self.conv_in = MMAudioMPConv1d(latent_channels, block_in, kernel_size=3)
 
-        # compute in_ch_mult, block_in and curr_res at lowest res
-        block_in = dim * ch_mult[self.num_layers - 1]
-
-        # z to block_in
-        self.conv_in = MPConv1D(embed_dim, block_in, kernel_size=kernel_size)
-
-        # middle
         self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock1D(in_dim=block_in, out_dim=block_in, use_norm=True)
-        self.mid.attn_1 = AttnBlock1D(block_in)
-        self.mid.block_2 = ResnetBlock1D(in_dim=block_in, out_dim=block_in, use_norm=True)
+        self.mid.block_1 = MMAudioResnetBlock1D(block_in, block_in)
+        self.mid.attn_1 = MMAudioAttnBlock1D(block_in)
+        self.mid.block_2 = MMAudioResnetBlock1D(block_in, block_in)
 
-        # upsampling
         self.up = nn.ModuleList()
-        for i_level in reversed(range(self.num_layers)):
-            block = nn.ModuleList()
-            attn = nn.ModuleList()
-            block_out = dim * ch_mult[i_level]
-            for i_block in range(self.num_res_blocks + 1):
-                block.append(ResnetBlock1D(in_dim=block_in, out_dim=block_out, use_norm=True))
+        for level in reversed(range(len(channel_multipliers))):
+            block_out = hidden_channels * channel_multipliers[level]
+            blocks = nn.ModuleList()
+            for _ in range(layers_per_block + 1):
+                blocks.append(MMAudioResnetBlock1D(block_in, block_out))
                 block_in = block_out
-                if i_level in attn_layers:
-                    attn.append(AttnBlock1D(block_in))
             up = nn.Module()
-            up.block = block
-            up.attn = attn
-            if i_level in self.down_layers:
-                up.upsample = Upsample1D(block_in, resamp_with_conv)
-            self.up.insert(0, up)  # prepend to get consistent order
+            up.block = blocks
+            if level == 1:
+                up.upsample = MMAudioUpsample1D(block_in)
+            self.up.insert(0, up)
 
-        # end
-        self.conv_out = MPConv1D(block_in, out_dim, kernel_size=kernel_size)
+        self.conv_out = MMAudioMPConv1d(block_in, mel_bins, kernel_size=3)
         self.learnable_gain = nn.Parameter(torch.zeros([]))
 
-    def forward(self, z):
-        # z to block_in
-        h = self.conv_in(z)
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.conv_in(z)
+        hidden_states = self.mid.block_1(hidden_states)
+        hidden_states = self.mid.attn_1(hidden_states)
+        hidden_states = self.mid.block_2(hidden_states).clamp(-ACTIVATION_CLIP, ACTIVATION_CLIP)
 
-        # middle
-        h = self.mid.block_1(h)
-        h = self.mid.attn_1(h)
-        h = self.mid.block_2(h)
-        h = h.clamp(-self.clip_act, self.clip_act)
-
-        # upsampling
-        for i_level in reversed(range(self.num_layers)):
-            for i_block in range(self.num_res_blocks + 1):
-                h = self.up[i_level].block[i_block](h)
-                if len(self.up[i_level].attn) > 0:
-                    h = self.up[i_level].attn[i_block](h)
-                h = h.clamp(-self.clip_act, self.clip_act)
-            if i_level in self.down_layers:
-                h = self.up[i_level].upsample(h)
-
-        h = mp_silu(h)
-        h = self.conv_out(h, gain=(self.learnable_gain + 1))
-        return h
+        for level in reversed(range(len(self.up))):
+            up = self.up[level]
+            for block in up.block:
+                hidden_states = block(hidden_states).clamp(-ACTIVATION_CLIP, ACTIVATION_CLIP)
+            if hasattr(up, "upsample"):
+                hidden_states = up.upsample(hidden_states)
+        return self.conv_out(mp_silu(hidden_states), gain=self.learnable_gain + 1)
 
 
-# Implementation adapted from https://github.com/EdwardDixon/snake under the MIT license.
-#   LICENSE is in incl_licenses directory.
+class MMAudioAutoencoder(nn.Module):
+    """Encoder/decoder pair over standardized log-mel spectrograms. `data_mean` and `data_std` hold the per-bin
+    statistics the checkpoint was trained with."""
 
-
-class Snake(nn.Module):
-    """
-    Implementation of a sine-based periodic activation function
-    Shape:
-        - Input: (B, C, T)
-        - Output: (B, C, T), same shape as the input
-    Parameters:
-        - alpha - trainable parameter
-    References:
-        - This activation function is from this paper by Liu Ziyin, Tilman Hartwig, Masahito Ueda:
-        https://arxiv.org/abs/2006.08195
-    Examples:
-        >>> a1 = snake(256)
-        >>> x = torch.randn(256)
-        >>> x = a1(x)
-    """
-
-    def __init__(self, in_features, alpha=1.0, alpha_trainable=True, alpha_logscale=False):
-        """
-        Initialization.
-        INPUT:
-            - in_features: shape of the input
-            - alpha: trainable parameter
-            alpha is initialized to 1 by default, higher values = higher-frequency.
-            alpha will be trained along with the rest of your model.
-        """
-        super(Snake, self).__init__()
-        self.in_features = in_features
-
-        # Initialize alpha
-        self.alpha_logscale = alpha_logscale
-        if self.alpha_logscale:  # Log scale alphas initialized to zeros
-            self.alpha = Parameter(torch.zeros(in_features) * alpha)
-        else:  # Linear scale alphas initialized to ones
-            self.alpha = Parameter(torch.ones(in_features) * alpha)
-
-        self.alpha.requires_grad = alpha_trainable
-
-        self.no_div_by_zero = 0.000000001
-
-    def forward(self, x):
-        """
-        Forward pass of the function.
-        Applies the function to the input elementwise.
-        Snake ∶= x + 1/a * sin^2 (xa)
-        """
-        alpha = self.alpha.unsqueeze(0).unsqueeze(-1)  # Line up with x to [B, C, T]
-        if self.alpha_logscale:
-            alpha = torch.exp(alpha)
-        x = x + (1.0 / (alpha + self.no_div_by_zero)) * pow(sin(x * alpha), 2)
-
-        return x
-
-
-class SnakeBeta(nn.Module):
-    """
-    A modified Snake function which uses separate parameters for the magnitude of the periodic components
-    Shape:
-        - Input: (B, C, T)
-        - Output: (B, C, T), same shape as the input
-    Parameters:
-        - alpha - trainable parameter that controls frequency
-        - beta - trainable parameter that controls magnitude
-    References:
-        - This activation function is a modified version based on this paper by Liu Ziyin, Tilman Hartwig, Masahito Ueda:
-        https://arxiv.org/abs/2006.08195
-    Examples:
-        >>> a1 = snakebeta(256)
-        >>> x = torch.randn(256)
-        >>> x = a1(x)
-    """
-
-    def __init__(self, in_features, alpha=1.0, alpha_trainable=True, alpha_logscale=False):
-        """
-        Initialization.
-        INPUT:
-            - in_features: shape of the input
-            - alpha - trainable parameter that controls frequency
-            - beta - trainable parameter that controls magnitude
-            alpha is initialized to 1 by default, higher values = higher-frequency.
-            beta is initialized to 1 by default, higher values = higher-magnitude.
-            alpha will be trained along with the rest of your model.
-        """
-        super(SnakeBeta, self).__init__()
-        self.in_features = in_features
-
-        # Initialize alpha
-        self.alpha_logscale = alpha_logscale
-        if self.alpha_logscale:  # Log scale alphas initialized to zeros
-            self.alpha = Parameter(torch.zeros(in_features) * alpha)
-            self.beta = Parameter(torch.zeros(in_features) * alpha)
-        else:  # Linear scale alphas initialized to ones
-            self.alpha = Parameter(torch.ones(in_features) * alpha)
-            self.beta = Parameter(torch.ones(in_features) * alpha)
-
-        self.alpha.requires_grad = alpha_trainable
-        self.beta.requires_grad = alpha_trainable
-
-        self.no_div_by_zero = 0.000000001
-
-    def forward(self, x):
-        """
-        Forward pass of the function.
-        Applies the function to the input elementwise.
-        SnakeBeta ∶= x + 1/b * sin^2 (xa)
-        """
-        alpha = self.alpha.unsqueeze(0).unsqueeze(-1)  # Line up with x to [B, C, T]
-        beta = self.beta.unsqueeze(0).unsqueeze(-1)
-        if self.alpha_logscale:
-            alpha = torch.exp(alpha)
-            beta = torch.exp(beta)
-        x = x + (1.0 / (beta + self.no_div_by_zero)) * pow(sin(x * alpha), 2)
-
-        return x
-
-
-# Adapted from https://github.com/junjun3518/alias-free-torch under the Apache License 2.0
-#   LICENSE is in incl_licenses directory.
-
-
-if "sinc" in dir(torch):
-    sinc = torch.sinc
-else:
-    # This code is adopted from adefossez's julius.core.sinc under the MIT License
-    # https://adefossez.github.io/julius/julius/core.html
-    #   LICENSE is in incl_licenses directory.
-    def sinc(x: torch.Tensor):
-        """
-        Implementation of sinc, i.e. sin(pi * x) / (pi * x)
-        __Warning__: Different to julius.sinc, the input is multiplied by `pi`!
-        """
-        return torch.where(
-            x == 0,
-            torch.tensor(1.0, device=x.device, dtype=x.dtype),
-            torch.sin(math.pi * x) / math.pi / x,
+    def __init__(
+        self,
+        mel_bins: int,
+        latent_channels: int,
+        hidden_channels: int,
+        channel_multipliers: tuple[int, ...],
+        layers_per_block: int,
+    ) -> None:
+        super().__init__()
+        self.register_buffer("data_mean", torch.zeros(1, mel_bins, 1))
+        self.register_buffer("data_std", torch.ones(1, mel_bins, 1))
+        self.encoder = MMAudioEncoder1D(
+            mel_bins, latent_channels, hidden_channels, channel_multipliers, layers_per_block
+        )
+        self.decoder = MMAudioDecoder1D(
+            mel_bins, latent_channels, hidden_channels, channel_multipliers, layers_per_block
         )
 
+    def encode(self, mel: torch.Tensor) -> torch.Tensor:
+        return self.encoder((mel - self.data_mean) / self.data_std)
 
-# This code is adopted from adefossez's julius.lowpass.LowPassFilters under the MIT License
-# https://adefossez.github.io/julius/julius/lowpass.html
-#   LICENSE is in incl_licenses directory.
-def kaiser_sinc_filter1d(cutoff, half_width, kernel_size):  # return filter [1,1,kernel_size]
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        return self.decoder(z) * self.data_std + self.data_mean
+
+
+# BigVGAN vocoder (https://github.com/NVIDIA/BigVGAN, MIT license) with the anti-aliased Snake activations of
+# https://github.com/junjun3518/alias-free-torch (Apache 2.0).
+
+
+def kaiser_sinc_filter1d(cutoff: float, half_width: float, kernel_size: int) -> torch.Tensor:
+    """Kaiser-windowed sinc low-pass filter of shape `(1, 1, kernel_size)` normalized to unit sum."""
     even = kernel_size % 2 == 0
     half_size = kernel_size // 2
 
-    # For kaiser window
-    delta_f = 4 * half_width
-    A = 2.285 * (half_size - 1) * math.pi * delta_f + 7.95
-    if A > 50.0:
-        beta = 0.1102 * (A - 8.7)
-    elif A >= 21.0:
-        beta = 0.5842 * (A - 21) ** 0.4 + 0.07886 * (A - 21.0)
+    attenuation = 2.285 * (half_size - 1) * math.pi * 4 * half_width + 7.95
+    if attenuation > 50.0:
+        beta = 0.1102 * (attenuation - 8.7)
+    elif attenuation >= 21.0:
+        beta = 0.5842 * (attenuation - 21) ** 0.4 + 0.07886 * (attenuation - 21.0)
     else:
         beta = 0.0
     window = torch.kaiser_window(kernel_size, beta=beta, periodic=False)
 
-    # ratio = 0.5/cutoff -> 2 * cutoff = 1 / ratio
-    if even:
-        time = torch.arange(-half_size, half_size) + 0.5
-    else:
-        time = torch.arange(kernel_size) - half_size
-    if cutoff == 0:
-        filter_ = torch.zeros_like(time)
-    else:
-        filter_ = 2 * cutoff * window * sinc(2 * cutoff * time)
-        """
-        Normalize filter to have sum = 1, otherwise we will have a small leakage of the constant component in the input signal.
-        """
-        filter_ /= filter_.sum()
-        filter = filter_.view(1, 1, kernel_size)
-
-    return filter
+    time = torch.arange(-half_size, half_size) + 0.5 if even else torch.arange(kernel_size) - half_size
+    filter_ = 2 * cutoff * window * torch.sinc(2 * cutoff * time)
+    filter_ = filter_ / filter_.sum()
+    return filter_.view(1, 1, kernel_size)
 
 
-class LowPassFilter1d(nn.Module):
-    def __init__(
-        self,
-        cutoff=0.5,
-        half_width=0.6,
-        stride: int = 1,
-        padding: bool = True,
-        padding_mode: str = "replicate",
-        kernel_size: int = 12,
-    ):
-        """
-        kernel_size should be even number for stylegan3 setup, in this implementation, odd number is also possible.
-        """
+class MMAudioSnakeBeta(nn.Module):
+    """`x + 1/b * sin^2(a * x)` with per-channel log-scale frequency `a` and magnitude `b`."""
+
+    def __init__(self, channels: int) -> None:
         super().__init__()
-        if cutoff < -0.0:
-            raise ValueError("Minimum cutoff must be larger than zero.")
-        if cutoff > 0.5:
-            raise ValueError("A cutoff above 0.5 does not make sense.")
-        self.kernel_size = kernel_size
-        self.even = kernel_size % 2 == 0
-        self.pad_left = kernel_size // 2 - int(self.even)
+        self.alpha = nn.Parameter(torch.zeros(channels))
+        self.beta = nn.Parameter(torch.zeros(channels))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        alpha = torch.exp(self.alpha)[None, :, None]
+        beta = torch.exp(self.beta)[None, :, None]
+        return x + (1.0 / (beta + 1e-9)) * torch.sin(x * alpha).pow(2)
+
+
+class MMAudioLowPassFilter1d(nn.Module):
+    def __init__(self, cutoff: float, half_width: float, stride: int, kernel_size: int) -> None:
+        super().__init__()
+        even = kernel_size % 2 == 0
+        self.pad_left = kernel_size // 2 - int(even)
         self.pad_right = kernel_size // 2
         self.stride = stride
-        self.padding = padding
-        self.padding_mode = padding_mode
-        filter = kaiser_sinc_filter1d(cutoff, half_width, kernel_size)
-        self.register_buffer("filter", filter)
+        self.register_buffer("filter", kaiser_sinc_filter1d(cutoff, half_width, kernel_size))
 
-    # Input [B, C, T]
-    def forward(self, x):
-        _, C, _ = x.shape
-
-        if self.padding:
-            x = F.pad(x, (self.pad_left, self.pad_right), mode=self.padding_mode)
-        out = F.conv1d(x, self.filter.expand(C, -1, -1), stride=self.stride, groups=C)
-
-        return out
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        channels = x.shape[1]
+        x = F.pad(x, (self.pad_left, self.pad_right), mode="replicate")
+        return F.conv1d(x, self.filter.expand(channels, -1, -1), stride=self.stride, groups=channels)
 
 
-# Adapted from https://github.com/junjun3518/alias-free-torch under the Apache License 2.0
-#   LICENSE is in incl_licenses directory.
-
-
-class UpSample1d(nn.Module):
-    def __init__(self, ratio=2, kernel_size=None):
+class MMAudioUpSample1d(nn.Module):
+    def __init__(self, ratio: int, kernel_size: int) -> None:
         super().__init__()
         self.ratio = ratio
-        self.kernel_size = int(6 * ratio // 2) * 2 if kernel_size is None else kernel_size
         self.stride = ratio
-        self.pad = self.kernel_size // ratio - 1
-        self.pad_left = self.pad * self.stride + (self.kernel_size - self.stride) // 2
-        self.pad_right = self.pad * self.stride + (self.kernel_size - self.stride + 1) // 2
-        filter = kaiser_sinc_filter1d(cutoff=0.5 / ratio, half_width=0.6 / ratio, kernel_size=self.kernel_size)
-        self.register_buffer("filter", filter)
+        self.pad = kernel_size // ratio - 1
+        self.pad_left = self.pad * self.stride + (kernel_size - self.stride) // 2
+        self.pad_right = self.pad * self.stride + (kernel_size - self.stride + 1) // 2
+        self.register_buffer("filter", kaiser_sinc_filter1d(0.5 / ratio, 0.6 / ratio, kernel_size))
 
-    # x: [B, C, T]
-    def forward(self, x):
-        _, C, _ = x.shape
-
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        channels = x.shape[1]
         x = F.pad(x, (self.pad, self.pad), mode="replicate")
-        x = self.ratio * F.conv_transpose1d(x, self.filter.expand(C, -1, -1), stride=self.stride, groups=C)
-        x = x[..., self.pad_left : -self.pad_right]
-
-        return x
-
-
-class DownSample1d(nn.Module):
-    def __init__(self, ratio=2, kernel_size=None):
-        super().__init__()
-        self.ratio = ratio
-        self.kernel_size = int(6 * ratio // 2) * 2 if kernel_size is None else kernel_size
-        self.lowpass = LowPassFilter1d(
-            cutoff=0.5 / ratio,
-            half_width=0.6 / ratio,
-            stride=ratio,
-            kernel_size=self.kernel_size,
+        x = self.ratio * F.conv_transpose1d(
+            x, self.filter.expand(channels, -1, -1), stride=self.stride, groups=channels
         )
-
-    def forward(self, x):
-        xx = self.lowpass(x)
-
-        return xx
+        return x[..., self.pad_left : -self.pad_right]
 
 
-# Adapted from https://github.com/junjun3518/alias-free-torch under the Apache License 2.0
-#   LICENSE is in incl_licenses directory.
-
-
-class Activation1d(nn.Module):
-    def __init__(
-        self,
-        activation,
-        up_ratio: int = 2,
-        down_ratio: int = 2,
-        up_kernel_size: int = 12,
-        down_kernel_size: int = 12,
-    ):
+class MMAudioDownSample1d(nn.Module):
+    def __init__(self, ratio: int, kernel_size: int) -> None:
         super().__init__()
-        self.up_ratio = up_ratio
-        self.down_ratio = down_ratio
-        self.act = activation
-        self.upsample = UpSample1d(up_ratio, up_kernel_size)
-        self.downsample = DownSample1d(down_ratio, down_kernel_size)
+        self.lowpass = MMAudioLowPassFilter1d(0.5 / ratio, 0.6 / ratio, stride=ratio, kernel_size=kernel_size)
 
-    # x: [B,C,T]
-    def forward(self, x):
-        x = self.upsample(x)
-        x = self.act(x)
-        x = self.downsample(x)
-
-        return x
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.lowpass(x)
 
 
-# Adapted from https://github.com/jik876/hifi-gan under the MIT license.
-#   LICENSE is in incl_licenses directory.
+class MMAudioActivation1d(nn.Module):
+    """Anti-aliased activation: 2x upsample, Snake-beta, 2x downsample."""
 
-
-class AttrDict(dict):
-    def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
-
-
-# Adapted from https://github.com/jik876/hifi-gan under the MIT license.
-#   LICENSE is in incl_licenses directory.
-
-
-def init_weights(m, mean=0.0, std=0.01):
-    classname = m.__class__.__name__
-    if classname.find("Conv") != -1:
-        m.weight.data.normal_(mean, std)
-
-
-def get_padding(kernel_size, dilation=1):
-    return int((kernel_size * dilation - dilation) / 2)
-
-
-# Copyright (c) 2024 NVIDIA CORPORATION.
-#   Licensed under the MIT license.
-
-# Adapted from https://github.com/jik876/hifi-gan under the MIT license.
-#   LICENSE is in incl_licenses directory.
-
-
-class AMPBlock1(torch.nn.Module):
-    """
-    AMPBlock applies Snake / SnakeBeta activation functions with trainable parameters that control periodicity, defined for each layer.
-    AMPBlock1 has additional self.convs2 that contains additional Conv1d layers with a fixed dilation=1 followed by each layer in self.convs1
-
-    Args:
-        h (AttrDict): Hyperparameters.
-        channels (int): Number of convolution channels.
-        kernel_size (int): Size of the convolution kernel. Default is 3.
-        dilation (tuple): Dilation rates for the convolutions. Each dilation layer has two convolutions. Default is (1, 3, 5).
-        activation (str): Activation function type. Should be either 'snake' or 'snakebeta'. Default is None.
-    """
-
-    def __init__(
-        self,
-        h: AttrDict,
-        channels: int,
-        kernel_size: int = 3,
-        dilation: tuple = (1, 3, 5),
-        activation: str = None,
-    ):
+    def __init__(self, channels: int, ratio: int = 2, kernel_size: int = 12) -> None:
         super().__init__()
+        self.act = MMAudioSnakeBeta(channels)
+        self.upsample = MMAudioUpSample1d(ratio, kernel_size)
+        self.downsample = MMAudioDownSample1d(ratio, kernel_size)
 
-        self.h = h
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.downsample(self.act(self.upsample(x)))
 
+
+class MMAudioAMPBlock(nn.Module):
+    """Anti-aliased multi-periodicity block: dilated convolutions each followed by a dilation-1 convolution."""
+
+    def __init__(self, channels: int, kernel_size: int, dilations: tuple[int, ...]) -> None:
+        super().__init__()
         self.convs1 = nn.ModuleList(
             [
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        stride=1,
-                        dilation=d,
-                        padding=get_padding(kernel_size, d),
-                    )
+                nn.Conv1d(
+                    channels,
+                    channels,
+                    kernel_size,
+                    dilation=dilation,
+                    padding=(kernel_size * dilation - dilation) // 2,
                 )
-                for d in dilation
+                for dilation in dilations
             ]
         )
-        self.convs1.apply(init_weights)
-
         self.convs2 = nn.ModuleList(
-            [
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        stride=1,
-                        dilation=1,
-                        padding=get_padding(kernel_size, 1),
-                    )
-                )
-                for _ in range(len(dilation))
-            ]
+            [nn.Conv1d(channels, channels, kernel_size, padding=(kernel_size - 1) // 2) for _ in dilations]
         )
-        self.convs2.apply(init_weights)
+        self.activations = nn.ModuleList([MMAudioActivation1d(channels) for _ in range(2 * len(dilations))])
 
-        self.num_layers = len(self.convs1) + len(self.convs2)  # Total number of conv layers
-
-        # Activation functions
-        if activation == "snake":
-            self.activations = nn.ModuleList(
-                [
-                    TorchActivation1d(activation=Snake(channels, alpha_logscale=h.snake_logscale))
-                    for _ in range(self.num_layers)
-                ]
-            )
-        elif activation == "snakebeta":
-            self.activations = nn.ModuleList(
-                [
-                    TorchActivation1d(activation=SnakeBeta(channels, alpha_logscale=h.snake_logscale))
-                    for _ in range(self.num_layers)
-                ]
-            )
-        else:
-            raise NotImplementedError(
-                "activation incorrectly specified. check the config file and look for 'activation'."
-            )
-
-    def forward(self, x):
-        acts1, acts2 = self.activations[::2], self.activations[1::2]
-        for c1, c2, a1, a2 in zip(self.convs1, self.convs2, acts1, acts2):
-            xt = a1(x)
-            xt = c1(xt)
-            xt = a2(xt)
-            xt = c2(xt)
-            x = xt + x
-
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        activations_1, activations_2 = self.activations[::2], self.activations[1::2]
+        for conv1, conv2, act1, act2 in zip(self.convs1, self.convs2, activations_1, activations_2):
+            x = conv2(act2(conv1(act1(x)))) + x
         return x
 
-    def remove_weight_norm(self):
-        for l in self.convs1:
-            remove_parametrizations(l, "weight")
-        for l in self.convs2:
-            remove_parametrizations(l, "weight")
 
-
-class AMPBlock2(torch.nn.Module):
-    """
-    AMPBlock applies Snake / SnakeBeta activation functions with trainable parameters that control periodicity, defined for each layer.
-    Unlike AMPBlock1, AMPBlock2 does not contain extra Conv1d layers with fixed dilation=1
-
-    Args:
-        h (AttrDict): Hyperparameters.
-        channels (int): Number of convolution channels.
-        kernel_size (int): Size of the convolution kernel. Default is 3.
-        dilation (tuple): Dilation rates for the convolutions. Each dilation layer has two convolutions. Default is (1, 3, 5).
-        activation (str): Activation function type. Should be either 'snake' or 'snakebeta'. Default is None.
-    """
+class MMAudioBigVGAN(nn.Module):
+    """BigVGAN-v2 vocoder turning a mel spectrogram into a waveform."""
 
     def __init__(
         self,
-        h: AttrDict,
-        channels: int,
-        kernel_size: int = 3,
-        dilation: tuple = (1, 3, 5),
-        activation: str = None,
-    ):
+        num_mels: int,
+        upsample_initial_channel: int,
+        upsample_rates: tuple[int, ...],
+        upsample_kernel_sizes: tuple[int, ...],
+        resblock_kernel_sizes: tuple[int, ...],
+        resblock_dilation_sizes: tuple[tuple[int, ...], ...],
+    ) -> None:
         super().__init__()
+        self.num_kernels = len(resblock_kernel_sizes)
+        self.conv_pre = nn.Conv1d(num_mels, upsample_initial_channel, 7, padding=3)
 
-        self.h = h
-
-        self.convs = nn.ModuleList(
-            [
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        stride=1,
-                        dilation=d,
-                        padding=get_padding(kernel_size, d),
-                    )
-                )
-                for d in dilation
-            ]
-        )
-        self.convs.apply(init_weights)
-
-        self.num_layers = len(self.convs)  # Total number of conv layers
-
-        # Activation functions
-        if activation == "snake":
-            self.activations = nn.ModuleList(
-                [
-                    TorchActivation1d(activation=Snake(channels, alpha_logscale=h.snake_logscale))
-                    for _ in range(self.num_layers)
-                ]
-            )
-        elif activation == "snakebeta":
-            self.activations = nn.ModuleList(
-                [
-                    TorchActivation1d(activation=SnakeBeta(channels, alpha_logscale=h.snake_logscale))
-                    for _ in range(self.num_layers)
-                ]
-            )
-        else:
-            raise NotImplementedError(
-                "activation incorrectly specified. check the config file and look for 'activation'."
-            )
-
-    def forward(self, x):
-        for c, a in zip(self.convs, self.activations):
-            xt = a(x)
-            xt = c(xt)
-            x = xt + x
-        return x
-
-    def remove_weight_norm(self):
-        for l in self.convs:
-            remove_parametrizations(l, "weight")
-
-
-TorchActivation1d = Activation1d
-
-
-class BigVGANv2(torch.nn.Module):
-    """
-    BigVGAN is a neural vocoder model that applies anti-aliased periodic activation for residual blocks (resblocks).
-
-    Args:
-        h (AttrDict): Hyperparameters.
-
-    Note:
-        - Ensure that the activation function is correctly specified in the hyperparameters (h.activation).
-    """
-
-    def __init__(self, h: AttrDict):
-        super().__init__()
-        self.h = h
-
-        self.num_kernels = len(h.resblock_kernel_sizes)
-        self.num_upsamples = len(h.upsample_rates)
-
-        # Pre-conv
-        self.conv_pre = weight_norm(Conv1d(h.num_mels, h.upsample_initial_channel, 7, 1, padding=3))
-
-        # Define which AMPBlock to use. BigVGAN uses AMPBlock1 as default
-        if h.resblock == "1":
-            resblock_class = AMPBlock1
-        elif h.resblock == "2":
-            resblock_class = AMPBlock2
-        else:
-            raise ValueError(f"Incorrect resblock class specified in hyperparameters. Got {h.resblock}")
-
-        # Transposed conv-based upsamplers. does not apply anti-aliasing
         self.ups = nn.ModuleList()
-        for i, (u, k) in enumerate(zip(h.upsample_rates, h.upsample_kernel_sizes)):
+        self.resblocks = nn.ModuleList()
+        channels = upsample_initial_channel
+        for rate, kernel_size in zip(upsample_rates, upsample_kernel_sizes):
             self.ups.append(
                 nn.ModuleList(
-                    [
-                        weight_norm(
-                            ConvTranspose1d(
-                                h.upsample_initial_channel // (2**i),
-                                h.upsample_initial_channel // (2 ** (i + 1)),
-                                k,
-                                u,
-                                padding=(k - u) // 2,
-                            )
-                        )
-                    ]
+                    [nn.ConvTranspose1d(channels, channels // 2, kernel_size, rate, padding=(kernel_size - rate) // 2)]
                 )
             )
+            channels //= 2
+            for block_kernel_size, dilations in zip(resblock_kernel_sizes, resblock_dilation_sizes):
+                self.resblocks.append(MMAudioAMPBlock(channels, block_kernel_size, tuple(dilations)))
 
-        # Residual blocks using anti-aliased multi-periodicity composition modules (AMP)
-        self.resblocks = nn.ModuleList()
-        for i in range(len(self.ups)):
-            ch = h.upsample_initial_channel // (2 ** (i + 1))
-            for j, (k, d) in enumerate(zip(h.resblock_kernel_sizes, h.resblock_dilation_sizes)):
-                self.resblocks.append(resblock_class(h, ch, k, d, activation=h.activation))
+        self.activation_post = MMAudioActivation1d(channels)
+        self.conv_post = nn.Conv1d(channels, 1, 7, padding=3, bias=False)
 
-        # Post-conv
-        activation_post = (
-            Snake(ch, alpha_logscale=h.snake_logscale)
-            if h.activation == "snake"
-            else (SnakeBeta(ch, alpha_logscale=h.snake_logscale) if h.activation == "snakebeta" else None)
-        )
-        if activation_post is None:
-            raise NotImplementedError(
-                "activation incorrectly specified. check the config file and look for 'activation'."
-            )
-
-        self.activation_post = TorchActivation1d(activation=activation_post)
-
-        # Whether to use bias for the final conv_post. Default to True for backward compatibility
-        self.use_bias_at_final = h.get("use_bias_at_final", True)
-        self.conv_post = weight_norm(Conv1d(ch, 1, 7, 1, padding=3, bias=self.use_bias_at_final))
-
-        # Weight initialization
-        for i in range(len(self.ups)):
-            self.ups[i].apply(init_weights)
-        self.conv_post.apply(init_weights)
-
-        # Final tanh activation. Defaults to True for backward compatibility
-        self.use_tanh_at_final = h.get("use_tanh_at_final", True)
-
-    def forward(self, x):
-        # Pre-conv
-        x = self.conv_pre(x)
-
-        for i in range(self.num_upsamples):
-            # Upsampling
-            for i_up in range(len(self.ups[i])):
-                x = self.ups[i][i_up](x)
-            # AMP blocks
-            xs = None
-            for j in range(self.num_kernels):
-                if xs is None:
-                    xs = self.resblocks[i * self.num_kernels + j](x)
-                else:
-                    xs += self.resblocks[i * self.num_kernels + j](x)
-            x = xs / self.num_kernels
-
-        # Post-conv
-        x = self.activation_post(x)
-        x = self.conv_post(x)
-        # Final tanh activation
-        if self.use_tanh_at_final:
-            x = torch.tanh(x)
-        else:
-            x = torch.clamp(x, min=-1.0, max=1.0)  # Bound the output to [-1, 1]
-
-        return x
-
-    def remove_weight_norm(self):
-        try:
-            # print("Removing weight norm...")
-            for l in self.ups:
-                for l_i in l:
-                    remove_parametrizations(l_i, "weight")
-            for l in self.resblocks:
-                l.remove_weight_norm()
-            remove_parametrizations(self.conv_pre, "weight")
-            remove_parametrizations(self.conv_post, "weight")
-        except ValueError:
-            print("[INFO] Model already removed weight norm. Skipping!")
-            pass
+    def forward(self, mel: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.conv_pre(mel)
+        for stage, up in enumerate(self.ups):
+            hidden_states = up[0](hidden_states)
+            blocks = self.resblocks[stage * self.num_kernels : (stage + 1) * self.num_kernels]
+            hidden_states = sum(block(hidden_states) for block in blocks) / self.num_kernels
+        hidden_states = self.conv_post(self.activation_post(hidden_states))
+        return torch.clamp(hidden_states, min=-1.0, max=1.0)
 
 
-def build_bigvgan_v2(vocoder_config: dict | AttrDict) -> BigVGANv2:
-    """Build an inference-ready BigVGAN-v2 from its serialized configuration."""
-    model = BigVGANv2(vocoder_config if isinstance(vocoder_config, AttrDict) else AttrDict(vocoder_config))
-    model.remove_weight_norm()
-    return model
+class MMAudioMelSpectrogram(nn.Module):
+    """Log-mel front end of the encoder. The filterbank and window are buffers so they follow the model's device."""
 
-
-# Reference: # https://github.com/bytedance/Make-An-Audio-2
-
-
-def dynamic_range_compression_torch(x, C=1, clip_val=1e-5, *, norm_fn):
-    return norm_fn(torch.clamp(x, min=clip_val) * C)
-
-
-def spectral_normalize_torch(magnitudes, norm_fn):
-    output = dynamic_range_compression_torch(magnitudes, norm_fn=norm_fn)
-    return output
-
-
-class MelConverter(nn.Module):
-    def __init__(
-        self,
-        *,
-        sampling_rate: float,
-        n_fft: int,
-        num_mels: int,
-        hop_size: int,
-        win_size: int,
-        fmin: float,
-        fmax: float,
-        norm_fn,
-    ):
+    def __init__(self, sample_rate: int, n_fft: int, num_mels: int, hop_length: int) -> None:
         super().__init__()
-        self.sampling_rate = sampling_rate
         self.n_fft = n_fft
-        self.num_mels = num_mels
-        self.hop_size = hop_size
-        self.win_size = win_size
-        self.fmin = fmin
-        self.fmax = fmax
-        self.norm_fn = norm_fn
+        self.hop_length = hop_length
+        self.register_buffer("mel_basis", mel_filterbank(sample_rate, n_fft, num_mels, 0.0, sample_rate / 2))
+        self.register_buffer("hann_window", torch.hann_window(n_fft))
 
-        try:
-            from librosa.filters import mel as librosa_mel_fn
-        except (ImportError, OSError) as exc:
-            raise RuntimeError(
-                "MMAudio audio features require librosa. Install it with `pip install librosa`."
-            ) from exc
-
-        mel = librosa_mel_fn(
-            sr=self.sampling_rate,
-            n_fft=self.n_fft,
-            n_mels=self.num_mels,
-            fmin=self.fmin,
-            fmax=self.fmax,
-        )
-        mel_basis = torch.from_numpy(mel).float()
-        hann_window = torch.hann_window(self.win_size)
-
-        self.register_buffer("mel_basis", mel_basis)
-        self.register_buffer("hann_window", hann_window)
-
-    @property
-    def device(self):
-        return self.mel_basis.device
-
-    def forward(self, waveform: torch.Tensor, center: bool = False) -> torch.Tensor:
-        waveform = waveform.clamp(min=-1.0, max=1.0).to(self.device)
-
-        waveform = torch.nn.functional.pad(
-            waveform.unsqueeze(1),
-            [int((self.n_fft - self.hop_size) / 2), int((self.n_fft - self.hop_size) / 2)],
-            mode="reflect",
-        )
-        waveform = waveform.squeeze(1)
-
-        spec = torch.stft(
+    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
+        waveform = waveform.clamp(min=-1.0, max=1.0)
+        padding = (self.n_fft - self.hop_length) // 2
+        waveform = F.pad(waveform.unsqueeze(1), (padding, padding), mode="reflect").squeeze(1)
+        spectrum = torch.stft(
             waveform,
             self.n_fft,
-            hop_length=self.hop_size,
-            win_length=self.win_size,
+            hop_length=self.hop_length,
+            win_length=self.n_fft,
             window=self.hann_window,
-            center=center,
+            center=False,
             pad_mode="reflect",
             normalized=False,
             onesided=True,
             return_complex=True,
         )
-
-        spec = torch.view_as_real(spec)
-        spec = torch.sqrt(spec.pow(2).sum(-1) + (1e-9)).float()
-        spec = torch.matmul(self.mel_basis, spec)
-        spec = spectral_normalize_torch(spec, self.norm_fn)
-
-        return spec
-
-
-def get_mel_converter(mode: Literal["44k"]) -> MelConverter:
-    """Create the 44.1 kHz mel-spectrogram converter used by MMAudio."""
-    return MelConverter(
-        sampling_rate=44_100,
-        n_fft=2048,
-        num_mels=128,
-        hop_size=512,
-        win_size=2048,
-        fmin=0,
-        fmax=44100 / 2,
-        norm_fn=torch.log,
-    )
-
-
-# Audio feature / VAE facade.
+        magnitude = torch.sqrt(torch.view_as_real(spectrum).pow(2).sum(-1) + 1e-9).float()
+        return torch.log(torch.clamp(torch.matmul(self.mel_basis, magnitude), min=1e-5))
 
 
 class MMAudioVAE(ModelMixin, ConfigMixin):
-    """Audio VAE and vocoder used to encode and decode audio latents.
+    r"""
+    Audio VAE of [`Kandinsky6TI2VAPipeline`]: a magnitude-preserving autoencoder over log-mel spectrograms (MMAudio,
+    https://arxiv.org/abs/2412.15322) followed by a BigVGAN-v2 vocoder.
 
-    The component converts waveforms to mel-spectrograms, encodes them into
-    latent representations, and decodes latents back to waveforms through a
-    BigVGAN vocoder.
+    `encode` turns a waveform into a latent distribution; `decode` turns latents into a waveform through the mel
+    decoder and the vocoder. One latent frame covers `hop_length * 2` samples.
 
     Args:
-        vocoder_config (`dict`): BigVGAN configuration.
-        mode (`str`, *optional*, defaults to ``"44k"``): Audio operating mode.
-        scaling_factor (`float`, *optional*, defaults to 1.0): Latent scaling factor.
-        sample_rate (`int`, *optional*, defaults to 44100): Audio sample rate.
-        downsample_factor (`int`, *optional*, defaults to 1024): Audio latent downsampling factor.
+        mel_bins (`int`, defaults to `128`):
+            Number of mel bins.
+        latent_channels (`int`, defaults to `40`):
+            Number of latent channels.
+        hidden_channels (`int`, defaults to `512`):
+            Base width of the autoencoder.
+        channel_multipliers (`tuple[int, ...]`, defaults to `(1, 2, 4)`):
+            Width multipliers of the autoencoder levels.
+        layers_per_block (`int`, defaults to `2`):
+            Residual blocks per encoder level; the decoder uses one more per level.
+        sample_rate (`int`, defaults to `44100`):
+            Waveform sample rate.
+        n_fft (`int`, defaults to `2048`):
+            FFT size of the mel front end.
+        hop_length (`int`, defaults to `512`):
+            Hop length of the mel front end, also the vocoder's total upsampling factor.
+        vocoder_upsample_initial_channel (`int`, defaults to `1536`):
+            Width of the vocoder's first layer.
+        vocoder_upsample_rates (`tuple[int, ...]`, defaults to `(8, 4, 2, 2, 2, 2)`):
+            Upsampling factors of the vocoder stages.
+        vocoder_upsample_kernel_sizes (`tuple[int, ...]`, defaults to `(16, 8, 4, 4, 4, 4)`):
+            Transposed-convolution kernel sizes of the vocoder stages.
+        vocoder_resblock_kernel_sizes (`tuple[int, ...]`, defaults to `(3, 7, 11)`):
+            Kernel sizes of the vocoder's residual blocks.
+        vocoder_resblock_dilation_sizes (`tuple[tuple[int, ...], ...]`, defaults to `((1, 3, 5), (1, 3, 5), (1, 3, 5))`):
+            Dilations of the vocoder's residual blocks.
+        scaling_factor (`float`, defaults to `0.417`):
+            Scale applied to the latents before they enter the diffusion transformer.
     """
 
-    _no_split_modules = ["VAE", "BigVGANv2"]
+    _no_split_modules = ["MMAudioResnetBlock1D", "MMAudioAttnBlock1D", "MMAudioAMPBlock"]
 
     @register_to_config
     def __init__(
         self,
-        *,
-        vocoder_config: dict[str, Any],
-        mode: str = "44k",
-        scaling_factor: float = 1.0,
+        mel_bins: int = 128,
+        latent_channels: int = 40,
+        hidden_channels: int = 512,
+        channel_multipliers: tuple[int, ...] = (1, 2, 4),
+        layers_per_block: int = 2,
         sample_rate: int = 44_100,
-        downsample_factor: int = 1_024,
+        n_fft: int = 2048,
+        hop_length: int = 512,
+        vocoder_upsample_initial_channel: int = 1536,
+        vocoder_upsample_rates: tuple[int, ...] = (8, 4, 2, 2, 2, 2),
+        vocoder_upsample_kernel_sizes: tuple[int, ...] = (16, 8, 4, 4, 4, 4),
+        vocoder_resblock_kernel_sizes: tuple[int, ...] = (3, 7, 11),
+        vocoder_resblock_dilation_sizes: tuple[tuple[int, ...], ...] = ((1, 3, 5), (1, 3, 5), (1, 3, 5)),
+        scaling_factor: float = 0.417,
     ) -> None:
         super().__init__()
-        self.mel_converter = get_mel_converter(mode)
-        self.vae: VAE = VAE(data_dim=128, embed_dim=40, hidden_dim=512).eval()
-        self.vae.remove_weight_norm()
-        self.vocoder = build_bigvgan_v2(vocoder_config).eval()
-        for param in self.parameters():
-            param.requires_grad = False
-        self.scaling_factor = float(scaling_factor)
-        self.sample_rate = int(sample_rate)
-        self.downsample_factor = int(downsample_factor)
+        if math.prod(vocoder_upsample_rates) != hop_length:
+            raise ValueError("the vocoder upsampling rates must multiply to `hop_length`")
 
-    def compile(self):
-        """Compile the decode and vocode methods with ``torch.compile``."""
-        self.decode = torch.compile(self.decode)
-        self.vocode = torch.compile(self.vocode)
-
-    def train(self, mode: bool = True) -> MMAudioVAE:
-        """Keep the inference-only audio component in evaluation mode."""
-        return super().train(False)
-
-    def encode_audio(self, x) -> DiagonalGaussianDistribution:
-        """Encode a waveform into an audio latent distribution."""
-        mel = self.mel_converter(x)
-        return self.vae.encode(mel)
-
-    def vocode(self, mel: torch.Tensor) -> torch.Tensor:
-        """Convert a decoded mel-spectrogram into a waveform."""
-        return self.vocoder(mel)
-
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        """Decode audio latents into a mel-spectrogram."""
-        return self.vae.decode(z)
-
-    @property
-    def device(self):
-        return next(self.parameters()).device
-
-    @property
-    def dtype(self):
-        return next(self.parameters()).dtype
+        self.mel_converter = MMAudioMelSpectrogram(sample_rate, n_fft, mel_bins, hop_length)
+        self.vae = MMAudioAutoencoder(
+            mel_bins, latent_channels, hidden_channels, channel_multipliers, layers_per_block
+        )
+        self.vocoder = MMAudioBigVGAN(
+            num_mels=mel_bins,
+            upsample_initial_channel=vocoder_upsample_initial_channel,
+            upsample_rates=vocoder_upsample_rates,
+            upsample_kernel_sizes=vocoder_upsample_kernel_sizes,
+            resblock_kernel_sizes=vocoder_resblock_kernel_sizes,
+            resblock_dilation_sizes=vocoder_resblock_dilation_sizes,
+        )
+        # The encoder downsamples the mel frames once by 2.
+        self.latent_hop_length = hop_length * 2
 
     @apply_forward_hook
-    def wrapped_decode(self, z):
-        """Decode latents and vocode them through the Diffusers forward hook."""
-        mel_decoded = self.decode(z.to(dtype=self.dtype))
-        return self.vocode(mel_decoded)
+    def encode(self, audio: torch.Tensor, return_dict: bool = True) -> AutoencoderKLOutput | tuple:
+        r"""
+        Encode a waveform into its latent distribution.
+
+        Args:
+            audio (`torch.Tensor` of shape `(batch_size, num_samples)`):
+                Mono waveform in `[-1, 1]` at `sample_rate`.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return an [`~models.modeling_outputs.AutoencoderKLOutput`] instead of a plain tuple.
+        """
+        mel = self.mel_converter(audio).to(self.dtype)
+        posterior = DiagonalGaussianDistribution(self.vae.encode(mel))
+        if not return_dict:
+            return (posterior,)
+        return AutoencoderKLOutput(latent_dist=posterior)
 
     @apply_forward_hook
-    def wrapped_encode(self, audio):
-        """Encode audio and return the mean latent through the forward hook."""
-        dist = self.encode_audio(audio.to(dtype=self.dtype))
-        return dist.mean
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple:
+        r"""
+        Decode latents into a waveform.
+
+        Args:
+            z (`torch.Tensor` of shape `(batch_size, latent_channels, num_latent_frames)`):
+                Latents, already divided by `scaling_factor`.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return a [`~models.autoencoder_kl.DecoderOutput`] instead of a plain tuple.
+
+        Returns:
+            The waveform of shape `(batch_size, 1, num_samples)` in `[-1, 1]`.
+        """
+        waveform = self.vocoder(self.vae.decode(z))
+        if not return_dict:
+            return (waveform,)
+        return DecoderOutput(sample=waveform)
+
+    def forward(
+        self,
+        sample: torch.Tensor,
+        sample_posterior: bool = False,
+        return_dict: bool = True,
+        generator: torch.Generator | None = None,
+    ) -> DecoderOutput | tuple:
+        posterior = self.encode(sample).latent_dist
+        z = posterior.sample(generator=generator) if sample_posterior else posterior.mode()
+        waveform = self.decode(z).sample
+        if not return_dict:
+            return (waveform,)
+        return DecoderOutput(sample=waveform)
 
 
 __all__ = ["MMAudioVAE"]

@@ -146,7 +146,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
         from .scheduling_euler_discrete import EulerDiscreteScheduler
         from .scheduling_flow_map_euler_discrete import FlowMapEulerDiscreteScheduler
-        from .scheduling_piflow import PiflowScheduler
         from .scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
         from .scheduling_flow_match_heun_discrete import FlowMatchHeunDiscreteScheduler
         from .scheduling_flow_match_lcm import FlowMatchLCMScheduler
@@ -159,6 +158,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_lcm import LCMScheduler
         from .scheduling_ltx_euler_ancestral_rf import LTXEulerAncestralRFScheduler
         from .scheduling_minimax_h3 import MiniMaxH3Scheduler
+        from .scheduling_piflow import PiflowScheduler
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
         from .scheduling_sasolver import SASolverScheduler

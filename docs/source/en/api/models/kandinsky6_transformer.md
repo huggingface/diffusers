@@ -12,14 +12,18 @@ specific language governing permissions and limitations under the License.
 
 # Kandinsky 6 Transformers
 
-Kandinsky 6 uses Diffusion Transformers (DiTs) for text-to-video and
-text-to-video-and-audio generation, as well as video super-resolution.
+Kandinsky 6 uses a multimodal diffusion transformer that denoises video and audio latents together for
+text/image-to-video-and-audio generation, and a text-free diffusion transformer for video super-resolution.
 
 ## Kandinsky6Transformer3DModel
 
 [[autodoc]] Kandinsky6Transformer3DModel
   - all
   - forward
+
+## Kandinsky6Transformer3DModelOutput
+
+[[autodoc]] models.transformers.transformer_kandinsky6.Kandinsky6Transformer3DModelOutput
 
 ## Kandinsky6SRTransformer3DModel
 

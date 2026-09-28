@@ -452,7 +452,6 @@ else:
         "Kandinsky6SRPipeline",
         "Kandinsky6SRPipelineOutput",
         "Kandinsky6TI2VAPipeline",
-        "Kandinsky6SRLatentUpscalerBank",
         "Kandinsky6TI2VAPipelineOutput",
     ]
     _import_structure["z_image"] = [
@@ -788,7 +787,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky6SRPipeline,
             Kandinsky6SRPipelineOutput,
             Kandinsky6TI2VAPipeline,
-            Kandinsky6SRLatentUpscalerBank,
             Kandinsky6TI2VAPipelineOutput,
         )
         from .krea2 import Krea2Pipeline

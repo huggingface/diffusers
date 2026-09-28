@@ -360,7 +360,7 @@
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
       - local: api/models/kandinsky6_transformer
-        title: Kandinsky6Transformer3DModel
+        title: Kandinsky 6 Transformers
       - local: api/models/krea2_transformer2d
         title: Krea2Transformer2DModel
       - local: api/models/latte_transformer3d

@@ -52,7 +52,6 @@ class PiflowSchedulerTest(unittest.TestCase):
         scheduler = self.scheduler_class(**self.get_default_config())
         self.assertEqual(scheduler.config.num_train_timesteps, 1000)
         self.assertEqual(scheduler.config.n_grid, 4)
-        self.assertTrue(scheduler.is_piflow)
 
     def test_invalid_n_grid_raises(self):
         with self.assertRaises(ValueError):

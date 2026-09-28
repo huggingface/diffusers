@@ -12,12 +12,17 @@ specific language governing permissions and limitations under the License.
 
 # PiflowScheduler
 
-`PiflowScheduler` is a few-step flow-matching scheduler for distilled
-Kandinsky 6 models (both TI2VA and SR).
+`PiflowScheduler` is the few-step scheduler of the distilled Kandinsky 6 checkpoints, both the
+text/image-to-video-and-audio model and the video super-resolution model. It implements
+[π-Flow](https://huggingface.co/papers/2510.14974): the transformer predicts `n_grid` denoised estimates per latent
+channel at a small number of grid points, and the scheduler integrates a network-free policy between them.
 
 ## PiflowScheduler
 
 [[autodoc]] PiflowScheduler
-  - all
   - set_timesteps
   - step
+
+## PiflowSchedulerOutput
+
+[[autodoc]] schedulers.scheduling_piflow.PiflowSchedulerOutput

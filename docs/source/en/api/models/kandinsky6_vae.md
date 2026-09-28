@@ -12,13 +12,19 @@ specific language governing permissions and limitations under the License.
 
 # Kandinsky 6 VAEs
 
-Kandinsky 6 uses a causal video VAE for super-resolution and an audio VAE
-with a vocoder for synchronized audio generation.
+Kandinsky 6 uses a causal 3D K-VAE for video super-resolution and the MMAudio mel-spectrogram VAE, paired with a
+BigVGAN vocoder, for synchronized audio generation.
 
 ## Kandinsky6SRVAE
 
 [[autodoc]] Kandinsky6SRVAE
-  - all
   - encode
   - decode
+  - all
 
+## MMAudioVAE
+
+[[autodoc]] MMAudioVAE
+  - encode
+  - decode
+  - all
