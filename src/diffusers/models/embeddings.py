@@ -1091,8 +1091,10 @@ def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, n
     Args:
     embed_dim: (`int`):
         The embedding dimension size, corresponding to hidden_size_head.
-    grid (`np.ndarray`):
-        The grid of the positional embedding.
+    len_h (`int`):
+        The height of the grid of the positional embedding.
+    len_w (`int`):
+        The width of the grid of the positional embedding.
     linear_factor (`float`):
         The linear factor of the positional embedding, which is used to scale the positional embedding in the linear
         layer.
