@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # Kandinsky 6 VAEs
 
 Kandinsky 6 uses a causal 3D K-VAE for video super-resolution and the MMAudio mel-spectrogram VAE, paired with a
-BigVGAN vocoder, for synchronized audio generation.
+separate BigVGAN [`~pipelines.kandinsky6.MMAudioVocoder`], for synchronized audio generation.
 
 ## Kandinsky6SRVAE
 
@@ -28,3 +28,8 @@ BigVGAN vocoder, for synchronized audio generation.
   - encode
   - decode
   - all
+
+## MMAudioVocoder
+
+[[autodoc]] pipelines.kandinsky6.MMAudioVocoder
+  - forward

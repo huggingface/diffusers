@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""MMAudio mel-spectrogram VAE and BigVGAN vocoder used by the Kandinsky 6 TI2VA pipeline."""
+"""MMAudio mel-spectrogram VAE used by the Kandinsky 6 TI2VA pipeline.
+
+The BigVGAN vocoder that turns this VAE's decoded mel spectrograms into waveforms is a separate, pipeline-local
+component, [`~pipelines.kandinsky6.MMAudioVocoder`].
+"""
 
 from __future__ import annotations
 
@@ -295,171 +299,6 @@ class MMAudioAutoencoder(nn.Module):
         return self.decoder(z) * self.data_std + self.data_mean
 
 
-# BigVGAN vocoder (https://github.com/NVIDIA/BigVGAN, MIT license) with the anti-aliased Snake activations of
-# https://github.com/junjun3518/alias-free-torch (Apache 2.0).
-
-
-def kaiser_sinc_filter1d(cutoff: float, half_width: float, kernel_size: int) -> torch.Tensor:
-    """Kaiser-windowed sinc low-pass filter of shape `(1, 1, kernel_size)` normalized to unit sum."""
-    even = kernel_size % 2 == 0
-    half_size = kernel_size // 2
-
-    attenuation = 2.285 * (half_size - 1) * math.pi * 4 * half_width + 7.95
-    if attenuation > 50.0:
-        beta = 0.1102 * (attenuation - 8.7)
-    elif attenuation >= 21.0:
-        beta = 0.5842 * (attenuation - 21) ** 0.4 + 0.07886 * (attenuation - 21.0)
-    else:
-        beta = 0.0
-    window = torch.kaiser_window(kernel_size, beta=beta, periodic=False)
-
-    time = torch.arange(-half_size, half_size) + 0.5 if even else torch.arange(kernel_size) - half_size
-    filter_ = 2 * cutoff * window * torch.sinc(2 * cutoff * time)
-    filter_ = filter_ / filter_.sum()
-    return filter_.view(1, 1, kernel_size)
-
-
-class MMAudioSnakeBeta(nn.Module):
-    """`x + 1/b * sin^2(a * x)` with per-channel log-scale frequency `a` and magnitude `b`."""
-
-    def __init__(self, channels: int) -> None:
-        super().__init__()
-        self.alpha = nn.Parameter(torch.zeros(channels))
-        self.beta = nn.Parameter(torch.zeros(channels))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        alpha = torch.exp(self.alpha)[None, :, None]
-        beta = torch.exp(self.beta)[None, :, None]
-        return x + (1.0 / (beta + 1e-9)) * torch.sin(x * alpha).pow(2)
-
-
-class MMAudioLowPassFilter1d(nn.Module):
-    def __init__(self, cutoff: float, half_width: float, stride: int, kernel_size: int) -> None:
-        super().__init__()
-        even = kernel_size % 2 == 0
-        self.pad_left = kernel_size // 2 - int(even)
-        self.pad_right = kernel_size // 2
-        self.stride = stride
-        self.register_buffer("filter", kaiser_sinc_filter1d(cutoff, half_width, kernel_size))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        channels = x.shape[1]
-        x = F.pad(x, (self.pad_left, self.pad_right), mode="replicate")
-        return F.conv1d(x, self.filter.expand(channels, -1, -1), stride=self.stride, groups=channels)
-
-
-class MMAudioUpSample1d(nn.Module):
-    def __init__(self, ratio: int, kernel_size: int) -> None:
-        super().__init__()
-        self.ratio = ratio
-        self.stride = ratio
-        self.pad = kernel_size // ratio - 1
-        self.pad_left = self.pad * self.stride + (kernel_size - self.stride) // 2
-        self.pad_right = self.pad * self.stride + (kernel_size - self.stride + 1) // 2
-        self.register_buffer("filter", kaiser_sinc_filter1d(0.5 / ratio, 0.6 / ratio, kernel_size))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        channels = x.shape[1]
-        x = F.pad(x, (self.pad, self.pad), mode="replicate")
-        x = self.ratio * F.conv_transpose1d(
-            x, self.filter.expand(channels, -1, -1), stride=self.stride, groups=channels
-        )
-        return x[..., self.pad_left : -self.pad_right]
-
-
-class MMAudioDownSample1d(nn.Module):
-    def __init__(self, ratio: int, kernel_size: int) -> None:
-        super().__init__()
-        self.lowpass = MMAudioLowPassFilter1d(0.5 / ratio, 0.6 / ratio, stride=ratio, kernel_size=kernel_size)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.lowpass(x)
-
-
-class MMAudioActivation1d(nn.Module):
-    """Anti-aliased activation: 2x upsample, Snake-beta, 2x downsample."""
-
-    def __init__(self, channels: int, ratio: int = 2, kernel_size: int = 12) -> None:
-        super().__init__()
-        self.act = MMAudioSnakeBeta(channels)
-        self.upsample = MMAudioUpSample1d(ratio, kernel_size)
-        self.downsample = MMAudioDownSample1d(ratio, kernel_size)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.downsample(self.act(self.upsample(x)))
-
-
-class MMAudioAMPBlock(nn.Module):
-    """Anti-aliased multi-periodicity block: dilated convolutions each followed by a dilation-1 convolution."""
-
-    def __init__(self, channels: int, kernel_size: int, dilations: tuple[int, ...]) -> None:
-        super().__init__()
-        self.convs1 = nn.ModuleList(
-            [
-                nn.Conv1d(
-                    channels,
-                    channels,
-                    kernel_size,
-                    dilation=dilation,
-                    padding=(kernel_size * dilation - dilation) // 2,
-                )
-                for dilation in dilations
-            ]
-        )
-        self.convs2 = nn.ModuleList(
-            [nn.Conv1d(channels, channels, kernel_size, padding=(kernel_size - 1) // 2) for _ in dilations]
-        )
-        self.activations = nn.ModuleList([MMAudioActivation1d(channels) for _ in range(2 * len(dilations))])
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        activations_1, activations_2 = self.activations[::2], self.activations[1::2]
-        for conv1, conv2, act1, act2 in zip(self.convs1, self.convs2, activations_1, activations_2):
-            x = conv2(act2(conv1(act1(x)))) + x
-        return x
-
-
-class MMAudioBigVGAN(nn.Module):
-    """BigVGAN-v2 vocoder turning a mel spectrogram into a waveform."""
-
-    def __init__(
-        self,
-        num_mels: int,
-        upsample_initial_channel: int,
-        upsample_rates: tuple[int, ...],
-        upsample_kernel_sizes: tuple[int, ...],
-        resblock_kernel_sizes: tuple[int, ...],
-        resblock_dilation_sizes: tuple[tuple[int, ...], ...],
-    ) -> None:
-        super().__init__()
-        self.num_kernels = len(resblock_kernel_sizes)
-        self.conv_pre = nn.Conv1d(num_mels, upsample_initial_channel, 7, padding=3)
-
-        self.ups = nn.ModuleList()
-        self.resblocks = nn.ModuleList()
-        channels = upsample_initial_channel
-        for rate, kernel_size in zip(upsample_rates, upsample_kernel_sizes):
-            self.ups.append(
-                nn.ModuleList(
-                    [nn.ConvTranspose1d(channels, channels // 2, kernel_size, rate, padding=(kernel_size - rate) // 2)]
-                )
-            )
-            channels //= 2
-            for block_kernel_size, dilations in zip(resblock_kernel_sizes, resblock_dilation_sizes):
-                self.resblocks.append(MMAudioAMPBlock(channels, block_kernel_size, tuple(dilations)))
-
-        self.activation_post = MMAudioActivation1d(channels)
-        self.conv_post = nn.Conv1d(channels, 1, 7, padding=3, bias=False)
-
-    def forward(self, mel: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.conv_pre(mel)
-        for stage, up in enumerate(self.ups):
-            hidden_states = up[0](hidden_states)
-            blocks = self.resblocks[stage * self.num_kernels : (stage + 1) * self.num_kernels]
-            hidden_states = sum(block(hidden_states) for block in blocks) / self.num_kernels
-        hidden_states = self.conv_post(self.activation_post(hidden_states))
-        return torch.clamp(hidden_states, min=-1.0, max=1.0)
-
-
 class MMAudioMelSpectrogram(nn.Module):
     """Log-mel front end of the encoder. The filterbank and window are buffers so they follow the model's device."""
 
@@ -493,10 +332,11 @@ class MMAudioMelSpectrogram(nn.Module):
 class MMAudioVAE(ModelMixin, ConfigMixin):
     r"""
     Audio VAE of [`Kandinsky6TI2VAPipeline`]: a magnitude-preserving autoencoder over log-mel spectrograms (MMAudio,
-    https://arxiv.org/abs/2412.15322) followed by a BigVGAN-v2 vocoder.
+    https://arxiv.org/abs/2412.15322).
 
-    `encode` turns a waveform into a latent distribution; `decode` turns latents into a waveform through the mel
-    decoder and the vocoder. One latent frame covers `hop_length * 2` samples.
+    `encode` turns a waveform into a latent distribution; `decode` turns latents back into a mel spectrogram, which
+    the pipeline-local [`~pipelines.kandinsky6.MMAudioVocoder`] then turns into a waveform. One latent frame covers
+    `hop_length * 2` samples.
 
     Args:
         mel_bins (`int`, defaults to `128`):
@@ -514,22 +354,13 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
         n_fft (`int`, defaults to `2048`):
             FFT size of the mel front end.
         hop_length (`int`, defaults to `512`):
-            Hop length of the mel front end, also the vocoder's total upsampling factor.
-        vocoder_upsample_initial_channel (`int`, defaults to `1536`):
-            Width of the vocoder's first layer.
-        vocoder_upsample_rates (`tuple[int, ...]`, defaults to `(8, 4, 2, 2, 2, 2)`):
-            Upsampling factors of the vocoder stages.
-        vocoder_upsample_kernel_sizes (`tuple[int, ...]`, defaults to `(16, 8, 4, 4, 4, 4)`):
-            Transposed-convolution kernel sizes of the vocoder stages.
-        vocoder_resblock_kernel_sizes (`tuple[int, ...]`, defaults to `(3, 7, 11)`):
-            Kernel sizes of the vocoder's residual blocks.
-        vocoder_resblock_dilation_sizes (`tuple[tuple[int, ...], ...]`, defaults to `((1, 3, 5), (1, 3, 5), (1, 3, 5))`):
-            Dilations of the vocoder's residual blocks.
+            Hop length of the mel front end. Must match the total upsampling factor of the
+            [`~pipelines.kandinsky6.MMAudioVocoder`] this VAE is paired with.
         scaling_factor (`float`, defaults to `0.417`):
             Scale applied to the latents before they enter the diffusion transformer.
     """
 
-    _no_split_modules = ["MMAudioResnetBlock1D", "MMAudioAttnBlock1D", "MMAudioAMPBlock"]
+    _no_split_modules = ["MMAudioResnetBlock1D", "MMAudioAttnBlock1D"]
 
     @register_to_config
     def __init__(
@@ -542,28 +373,12 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
         sample_rate: int = 44_100,
         n_fft: int = 2048,
         hop_length: int = 512,
-        vocoder_upsample_initial_channel: int = 1536,
-        vocoder_upsample_rates: tuple[int, ...] = (8, 4, 2, 2, 2, 2),
-        vocoder_upsample_kernel_sizes: tuple[int, ...] = (16, 8, 4, 4, 4, 4),
-        vocoder_resblock_kernel_sizes: tuple[int, ...] = (3, 7, 11),
-        vocoder_resblock_dilation_sizes: tuple[tuple[int, ...], ...] = ((1, 3, 5), (1, 3, 5), (1, 3, 5)),
         scaling_factor: float = 0.417,
     ) -> None:
         super().__init__()
-        if math.prod(vocoder_upsample_rates) != hop_length:
-            raise ValueError("the vocoder upsampling rates must multiply to `hop_length`")
-
         self.mel_converter = MMAudioMelSpectrogram(sample_rate, n_fft, mel_bins, hop_length)
         self.vae = MMAudioAutoencoder(
             mel_bins, latent_channels, hidden_channels, channel_multipliers, layers_per_block
-        )
-        self.vocoder = MMAudioBigVGAN(
-            num_mels=mel_bins,
-            upsample_initial_channel=vocoder_upsample_initial_channel,
-            upsample_rates=vocoder_upsample_rates,
-            upsample_kernel_sizes=vocoder_upsample_kernel_sizes,
-            resblock_kernel_sizes=vocoder_resblock_kernel_sizes,
-            resblock_dilation_sizes=vocoder_resblock_dilation_sizes,
         )
         # The encoder downsamples the mel frames once by 2.
         self.latent_hop_length = hop_length * 2
@@ -588,7 +403,7 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple:
         r"""
-        Decode latents into a waveform.
+        Decode latents into a mel spectrogram.
 
         Args:
             z (`torch.Tensor` of shape `(batch_size, latent_channels, num_latent_frames)`):
@@ -597,12 +412,13 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
                 Whether to return a [`~models.autoencoder_kl.DecoderOutput`] instead of a plain tuple.
 
         Returns:
-            The waveform of shape `(batch_size, 1, num_samples)` in `[-1, 1]`.
+            The mel spectrogram of shape `(batch_size, mel_bins, num_mel_frames)`, ready for
+            [`~pipelines.kandinsky6.MMAudioVocoder`].
         """
-        waveform = self.vocoder(self.vae.decode(z))
+        mel = self.vae.decode(z)
         if not return_dict:
-            return (waveform,)
-        return DecoderOutput(sample=waveform)
+            return (mel,)
+        return DecoderOutput(sample=mel)
 
     def forward(
         self,
@@ -613,7 +429,7 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
     ) -> DecoderOutput | tuple:
         posterior = self.encode(sample).latent_dist
         z = posterior.sample(generator=generator) if sample_posterior else posterior.mode()
-        waveform = self.decode(z).sample
+        mel = self.decode(z).sample
         if not return_dict:
-            return (waveform,)
-        return DecoderOutput(sample=waveform)
+            return (mel,)
+        return DecoderOutput(sample=mel)

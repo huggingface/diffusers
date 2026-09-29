@@ -30,6 +30,7 @@ from diffusers import (
     Kandinsky6TI2VAPipeline,
     Kandinsky6Transformer3DModel,
     MMAudioVAE,
+    MMAudioVocoder,
 )
 
 from ...testing_utils import torch_device
@@ -94,11 +95,17 @@ class Kandinsky6TI2VAPipelineTesterConfig(BasePipelineTesterConfig):
             sample_rate=64,
             n_fft=16,
             hop_length=4,
-            vocoder_upsample_initial_channel=8,
-            vocoder_upsample_rates=(2, 2),
-            vocoder_upsample_kernel_sizes=(4, 4),
-            vocoder_resblock_kernel_sizes=(3,),
-            vocoder_resblock_dilation_sizes=((1, 3),),
+        )
+
+        torch.manual_seed(0)
+        # `upsample_rates` must multiply to `audio_vae.config.hop_length` (4 = 2 * 2).
+        vocoder = MMAudioVocoder(
+            num_mels=8,
+            upsample_initial_channel=8,
+            upsample_rates=(2, 2),
+            upsample_kernel_sizes=(4, 4),
+            resblock_kernel_sizes=(3,),
+            resblock_dilation_sizes=((1, 3),),
         )
 
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
@@ -182,6 +189,7 @@ class Kandinsky6TI2VAPipelineTesterConfig(BasePipelineTesterConfig):
             "tokenizer_2": tokenizer_2,
             "scheduler": scheduler,
             "audio_vae": audio_vae,
+            "vocoder": vocoder,
         }
 
     def get_dummy_inputs(self):

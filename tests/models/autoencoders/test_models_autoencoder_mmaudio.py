@@ -61,11 +61,6 @@ class MMAudioVAETesterConfig(BaseModelTesterConfig):
             "sample_rate": 64,
             "n_fft": 16,
             "hop_length": 4,
-            "vocoder_upsample_initial_channel": 8,
-            "vocoder_upsample_rates": (2, 2),
-            "vocoder_upsample_kernel_sizes": (4, 4),
-            "vocoder_resblock_kernel_sizes": (3,),
-            "vocoder_resblock_dilation_sizes": ((1, 3),),
         }
 
     def get_dummy_inputs(self) -> dict:
@@ -78,7 +73,9 @@ class MMAudioVAETesterConfig(BaseModelTesterConfig):
 
     @property
     def output_shape(self) -> tuple[int, ...]:
-        return (1, 256)
+        # `decode`/`forward` return a mel spectrogram (`mel_bins`, num_mel_frames); the waveform is produced by the
+        # separate, pipeline-local `MMAudioVocoder`.
+        return (8, 64)
 
 
 class TestMMAudioVAEModel(MMAudioVAETesterConfig, ModelTesterMixin):

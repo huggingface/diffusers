@@ -454,6 +454,7 @@ else:
         "Kandinsky6SRPipelineOutput",
         "Kandinsky6TI2VAPipeline",
         "Kandinsky6TI2VAPipelineOutput",
+        "MMAudioVocoder",
     ]
     _import_structure["z_image"] = [
         "ZImageControlNetInpaintPipeline",
@@ -790,6 +791,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky6SRPipelineOutput,
             Kandinsky6TI2VAPipeline,
             Kandinsky6TI2VAPipelineOutput,
+            MMAudioVocoder,
         )
         from .krea2 import Krea2Pipeline
         from .latent_consistency_models import (

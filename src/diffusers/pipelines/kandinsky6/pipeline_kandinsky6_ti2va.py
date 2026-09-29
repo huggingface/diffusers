@@ -28,6 +28,7 @@ from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .modeling_vocoder import MMAudioVocoder
 from .pipeline_output import Kandinsky6TI2VAPipelineOutput
 
 
@@ -202,11 +203,15 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             Scheduler used with `transformer` to denoise the latents. Distilled checkpoints ship with a
             [`PiflowScheduler`] and must be run with `guidance_scale=1.0`.
         audio_vae ([`MMAudioVAE`], *optional*):
-            Audio VAE used to decode the generated audio latents. Only needed when `sample_audio=True`.
+            Audio VAE used to decode the generated audio latents into a mel spectrogram. Only needed when
+            `sample_audio=True`.
+        vocoder ([`MMAudioVocoder`], *optional*):
+            Vocoder used to turn the mel spectrogram `audio_vae` decodes into a waveform. Only needed when
+            `sample_audio=True`.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae->audio_vae"
-    _optional_components = ["audio_vae"]
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae->audio_vae->vocoder"
+    _optional_components = ["audio_vae", "vocoder"]
     _callback_tensor_inputs = ["latents", "audio_latents", "prompt_embeds", "negative_prompt_embeds"]
     _DEFAULT_NEGATIVE_PROMPT = (
         "Static, 2D cartoon, cartoon, 2d animation, paintings, images, "
@@ -223,6 +228,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         tokenizer_2: CLIPTokenizer,
         scheduler: FlowMatchEulerDiscreteScheduler | PiflowScheduler,
         audio_vae: MMAudioVAE | None = None,
+        vocoder: MMAudioVocoder | None = None,
     ) -> None:
         super().__init__()
         self.register_modules(
@@ -234,6 +240,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             tokenizer_2=tokenizer_2,
             scheduler=scheduler,
             audio_vae=audio_vae,
+            vocoder=vocoder,
         )
 
         self.vae_scale_factor_spatial = (
@@ -491,8 +498,8 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         if (negative_prompt_embeds is None) != (negative_pooled_prompt_embeds is None):
             raise ValueError("`negative_prompt_embeds` and `negative_pooled_prompt_embeds` must be provided together.")
 
-        if sample_audio and getattr(self, "audio_vae", None) is None:
-            raise ValueError("`sample_audio=True` requires an `audio_vae`.")
+        if sample_audio and (getattr(self, "audio_vae", None) is None or getattr(self, "vocoder", None) is None):
+            raise ValueError("`sample_audio=True` requires an `audio_vae` and a `vocoder`.")
         if visual_cond_scheme not in ("pretrain", "i2v", "tail_cond_first_frame"):
             raise ValueError(
                 f"`visual_cond_scheme` must be one of 'pretrain', 'i2v' or 'tail_cond_first_frame' but is {visual_cond_scheme!r}."
@@ -674,8 +681,8 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             negative_pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative CLIP pooled text embeddings.
             sample_audio (`bool`, *optional*):
-                Whether to generate synchronized audio. Defaults to `True` when the pipeline has an `audio_vae` and
-                `False` otherwise; `True` requires an `audio_vae`.
+                Whether to generate synchronized audio. Defaults to `True` when the pipeline has an `audio_vae` and a
+                `vocoder`, `False` otherwise; `True` requires both.
             expand_prompts (`bool`, defaults to `False`):
                 Whether to rewrite the prompts with [`~Kandinsky6TI2VAPipeline.expand_prompts`] before encoding.
             visual_cond_scheme (`str`, *optional*):
@@ -701,7 +708,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         """
         # 1. Check inputs. Raise error if not correct
         if sample_audio is None:
-            sample_audio = getattr(self, "audio_vae", None) is not None
+            sample_audio = getattr(self, "audio_vae", None) is not None and getattr(self, "vocoder", None) is not None
         if visual_cond_scheme is None:
             visual_cond_scheme = "tail_cond_first_frame" if image is not None else "pretrain"
         self.check_inputs(
@@ -919,7 +926,8 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             audio = None
             if sample_audio:
                 audio_latents = audio_latents.to(self.audio_vae.dtype) / self.audio_vae.config.scaling_factor
-                audio = self.audio_vae.decode(audio_latents, return_dict=False)[0][:, 0].float()
+                mel = self.audio_vae.decode(audio_latents, return_dict=False)[0]
+                audio = self.vocoder(mel.to(self.vocoder.dtype), return_dict=False)[0][:, 0].float()
                 if output_type == "np":
                     audio = audio.cpu().numpy()
 
