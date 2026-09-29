@@ -44,7 +44,7 @@ class Kandinsky6SRLatentUpscalerConv3d(nn.Conv3d):
 
 
 class Kandinsky6SRLatentUpscalerRMSNorm(nn.Module):
-    """Channel-first RMS normalization with a learnable gain."""
+    """Channel-first RMS normalization with a learnable gain, computed in float32."""
 
     def __init__(self, num_channels: int) -> None:
         super().__init__()
@@ -52,7 +52,8 @@ class Kandinsky6SRLatentUpscalerRMSNorm(nn.Module):
         self.gamma = nn.Parameter(torch.ones(num_channels, 1, 1, 1))
 
     def forward(self, hidden_states: Tensor) -> Tensor:
-        return functional.normalize(hidden_states, dim=1) * self.scale * self.gamma
+        normalized = functional.normalize(hidden_states.float(), dim=1).to(hidden_states.dtype)
+        return normalized * self.scale * self.gamma
 
 
 class Kandinsky6SRLatentUpscalerModulatedNorm(nn.Module):

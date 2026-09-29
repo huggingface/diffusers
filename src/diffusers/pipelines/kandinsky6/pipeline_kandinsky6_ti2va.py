@@ -24,12 +24,14 @@ from transformers import CLIPTextModel, CLIPTokenizer, Qwen2_5_VLForConditionalG
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLHunyuanVideo, Kandinsky6Transformer3DModel, MMAudioVAE
 from ...schedulers import FlowMatchEulerDiscreteScheduler, PiflowScheduler
-from ...utils import replace_example_docstring
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import Kandinsky6TI2VAPipelineOutput
 
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -717,6 +719,13 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
+        if num_frames % self.vae_scale_factor_temporal != 1:
+            logger.warning(
+                f"`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
+            )
+            num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+        num_frames = max(num_frames, 1)
+
         if isinstance(self.scheduler, PiflowScheduler) and guidance_scale != 1.0:
             raise ValueError("`PiflowScheduler` runs the distilled checkpoints and requires `guidance_scale=1.0`.")
 

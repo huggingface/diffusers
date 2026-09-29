@@ -49,6 +49,12 @@ class Kandinsky6TI2VAPipelineTesterConfig(BasePipelineTesterConfig):
     # (num_frames=5, height=16, width=16) at the tiny VAE's 8x spatial / 4x temporal compression.
     output_shape = (5, 3, 16, 16)
 
+    # `audio_vae` (`MMAudioVAE`) reads its own `data_std`/`data_mean` buffers directly in
+    # `MMAudioAutoencoder.decode` rather than through one of its leaf submodules, so leaf-level onload hooks on
+    # its children never onload them and decoding runs on a mix of onload/offload devices. Every other component
+    # offloads fine at leaf level, so exclude just this one rather than skipping the test.
+    group_offloading_leaf_level_exclude_modules = ["audio_vae"]
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         # 3 down/up levels so the tiny VAE's realized compression matches the declared

@@ -291,6 +291,12 @@ class Kandinsky6SRPipeline(DiffusionPipeline):
             video = frames.unflatten(0, (batch_size, num_frames)).permute(0, 2, 1, 3, 4)
         batch_size, _, num_frames, height, width = video.shape
 
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
         # 3. Tile grid at the input resolution; every tile is refined at the closest trained tile resolution
         base_height, base_width = min(self.transformer_tile_sizes, key=lambda hw: abs(hw[1] / hw[0] - width / height))
         snap = self.vae_scale_factor_spatial

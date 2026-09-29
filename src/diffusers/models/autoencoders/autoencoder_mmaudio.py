@@ -55,9 +55,9 @@ def mel_filterbank(sample_rate: int, n_fft: int, num_mels: int, f_min: float, f_
             mel >= min_log_mel, min_log_hz * torch.exp(log_step * (mel - min_log_mel)), linear_step * mel
         )
 
-    fft_freqs = torch.linspace(0, sample_rate / 2, 1 + n_fft // 2, dtype=torch.float64)
-    mel_limits = hz_to_mel(torch.tensor([f_min, f_max], dtype=torch.float64))
-    mel_freqs = mel_to_hz(torch.linspace(mel_limits[0], mel_limits[1], num_mels + 2, dtype=torch.float64))
+    fft_freqs = torch.linspace(0, sample_rate / 2, 1 + n_fft // 2, dtype=torch.float32)
+    mel_limits = hz_to_mel(torch.tensor([f_min, f_max], dtype=torch.float32))
+    mel_freqs = mel_to_hz(torch.linspace(mel_limits[0], mel_limits[1], num_mels + 2, dtype=torch.float32))
     freq_diff = torch.diff(mel_freqs)
     ramps = mel_freqs[:, None] - fft_freqs[None, :]
     lower = -ramps[:-2] / freq_diff[:-1, None]

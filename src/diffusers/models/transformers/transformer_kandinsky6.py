@@ -28,7 +28,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...hooks import MagCacheConfig
 from ...hooks.hooks import HookRegistry, ModelHook, StateManager
 from ...hooks.mag_cache import MagCacheState
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
@@ -435,7 +435,13 @@ _MASKED_ATTENTION_BACKENDS = {
 
 
 class Kandinsky6AttnProcessor:
-    """Diffusers attention processor used by the TI2VA transformer."""
+    """Diffusers attention processor used by the TI2VA transformer.
+
+    The NABLA sparse branch always dispatches on the `flex` backend, regardless of `_attention_backend`: its
+    `BlockMask` only the `flex` backend can consume, and `_attention_backend` can be transparently remapped to a
+    masked-attention variant (see the setter above) when `text_token_padding` is enabled, which would otherwise be
+    given a `BlockMask` it can't handle.
+    """
 
     _attention_backend = None
     _parallel_config = None
@@ -637,13 +643,10 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         sparse_params: dict[str, Any] | None = None,
         rope_q: Tensor | None = None,
         rope_kv: Tensor | None = None,
-        **kwargs: Any,
     ) -> Tensor:
         # Native K6 blocks pass ``(hidden, rope, mask_or_sparse)`` for
         # self-attention. Keep that call shape while exposing Diffusers'
         # encoder_hidden_states/rotary_emb keyword boundary.
-        if attn_mask is None:
-            attn_mask = kwargs.get("attention_mask")
         rotary_emb = rope_q if rope_q is not None else rotary_emb
         rotary_emb_kv = rope_kv if rope_kv is not None else rotary_emb
         return self.processor(
@@ -945,7 +948,6 @@ class Kandinsky6Transformer3DModel(
     ModelMixin,
     ConfigMixin,
     PeftAdapterMixin,
-    FromOriginalModelMixin,
     CacheMixin,
     AttentionMixin,
 ):

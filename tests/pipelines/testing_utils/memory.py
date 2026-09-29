@@ -312,7 +312,7 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
                     for module in component.modules()
                     if hasattr(module, "_diffusers_hook")
                 )
-            for component_name in ["vae", "vqvae", "image_encoder"]:
+            for component_name in ["vae", "vqvae", "image_encoder", "audio_vae", "latent_upscaler"]:
                 component = getattr(pipe, component_name, None)
                 if isinstance(component, torch.nn.Module):
                     component.to(torch_device)
