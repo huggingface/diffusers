@@ -14,8 +14,10 @@
 # limitations under the License.
 
 import torch
+import torch.nn.functional as F
 
 from diffusers import AutoencoderKLQwenImage21
+from diffusers.models.autoencoders.autoencoder_kl_qwenimage21 import QwenImage21AvgDown3D
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -65,6 +67,14 @@ class AutoencoderKLQwenImage21TesterConfig(BaseModelTesterConfig):
 
 class TestAutoencoderKLQwenImage21(AutoencoderKLQwenImage21TesterConfig, ModelTesterMixin):
     base_precision = 1e-2
+
+    def test_temporal_downsample_left_zero_padding(self):
+        downsample = QwenImage21AvgDown3D(in_channels=1, out_channels=1, factor_t=2)
+        sample = torch.tensor([2.0, 4.0, 6.0]).view(1, 1, 3, 1, 1)
+
+        output = downsample(sample)
+        expected = downsample(F.pad(sample, (0, 0, 0, 0, 1, 0)))
+        torch.testing.assert_close(output, expected)
 
     def test_spatial_compression_ratio_matches_architecture(self):
         """
