@@ -64,8 +64,9 @@ class SeaCacheConfig:
         power_exp (`float`, defaults to `3.0`):
             Exponent of the SEA clean-signal power prior. SeaCache uses `3.0` for video features.
         raw_vision_callback (`Callable`, *optional*):
-            Advanced model adapter returning raw vision latents with shape `(C, T, H, W)`. When omitted, a built-in
-            adapter is used if one is available.
+            Advanced model adapter returning the visual latents forming the generated output, each with shape `(C, T,
+            H, W)`. Include clean conditioning frames within the output trajectory, but exclude separate visual hints
+            that are not part of the output. When omitted, a built-in adapter is used if one is available.
 
     Example:
         ```python
@@ -339,8 +340,8 @@ def _prepare_cosmos3_raw_vision_metadata(
         noisy_frame_indexes = noisy_frame_indexes.flatten().to(device=latent.device, dtype=torch.long)
         if torch.any(noisy_frame_indexes < 0) or torch.any(noisy_frame_indexes >= latent.shape[1]):
             return None
-        # Control hints have no noisy frames. Keep them in the model inputs, but exclude them from the indicator
-        # so control-CFG branches compare the same target, including any clean conditioning frames within it.
+        # A sequence with noisy frames belongs to the generated output. Keep that sequence whole so clean conditioning
+        # frames remain in the indicator, but exclude separate clean hints that are not part of the output.
         if noisy_frame_indexes.numel() > 0:
             raw_vision.append(latent)
 
