@@ -134,7 +134,7 @@ class LTXLoopDenoiser(ModularPipelineBlocks):
             }
 
             context_name = getattr(guider_state_batch, components.guider._identifier_key, None)
-            with components.transformer.cache_context(context_name):
+            with components.transformer.cache_context(context_name, timestep=t):
                 guider_state_batch.noise_pred = components.transformer(
                     hidden_states=block_state.latent_model_input,
                     timestep=t.expand(block_state.latent_model_input.shape[0]).to(block_state.dtype),
@@ -361,7 +361,7 @@ class LTXImage2VideoLoopDenoiser(ModularPipelineBlocks):
             }
 
             context_name = getattr(guider_state_batch, components.guider._identifier_key, None)
-            with components.transformer.cache_context(context_name):
+            with components.transformer.cache_context(context_name, timestep=t):
                 guider_state_batch.noise_pred = components.transformer(
                     hidden_states=block_state.latent_model_input,
                     timestep=block_state.timestep_adjusted,
