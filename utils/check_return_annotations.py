@@ -16,11 +16,18 @@
 Check that these methods have a return type annotation:
 
 * `forward()` on every class in `src/diffusers/models`
-* `__call__()` on every pipeline in `src/diffusers/pipelines`, except the ones in `pipelines/deprecated`
+* `__call__()` on every pipeline in `src/diffusers/pipelines`
 * `__call__()` on every modular pipeline block in `src/diffusers/modular_pipelines`
 
 A class counts as a pipeline if it inherits from `DiffusionPipeline`, either directly or through another class. A class
 counts as a modular pipeline block if it inherits from `ModularPipelineBlocks` in the same way.
+
+Deprecated code is skipped:
+
+* anything in a folder named `deprecated`, such as `pipelines/deprecated`
+* pipelines that inherit from `DeprecatedPipelineMixin`
+* classes and methods whose `# Copied from` comment points to deprecated code, because they can't change unless the
+  deprecated code changes too
 
 A method is only checked on the class where it's written, not on classes that inherit it. Any annotation passes,
 including `-> None`.
@@ -43,18 +50,10 @@ SRC_DIR = REPO_ROOT / "src" / "diffusers"
 MODELS_DIR = SRC_DIR / "models"
 PIPELINES_DIR = SRC_DIR / "pipelines"
 MODULAR_DIR = SRC_DIR / "modular_pipelines"
-DEPRECATED_PIPELINES_DIR = PIPELINES_DIR / "deprecated"
 
 PIPELINE_BASE = "DiffusionPipeline"
+DEPRECATED_PIPELINE_BASE = "DeprecatedPipelineMixin"
 BLOCKS_BASE = "ModularPipelineBlocks"
-
-# Classes to skip, written as (file path from the repository root, class name). Only add a class here if its method
-# can't be annotated, and add a comment saying why.
-IGNORE: set[tuple[str, str]] = {
-    # This class is a copy of a class in `pipelines/deprecated` (see its `# Copied from` comment). Annotating it would
-    # mean changing the deprecated class too.
-    ("src/diffusers/models/unets/unet_stable_cascade.py", "SDCascadeLayerNorm"),
-}
 
 
 def _base_names(class_def: ast.ClassDef) -> list[str]:
@@ -75,18 +74,35 @@ def _find_method(class_def: ast.ClassDef, method_name: str) -> ast.FunctionDef |
     return None
 
 
-def _parse_classes(paths: list[Path]) -> list[tuple[Path, ast.ClassDef]]:
+def _parse_classes(paths: list[Path]) -> list[tuple[Path, ast.ClassDef, list[str]]]:
+    """Return every class in `paths`, along with its file and the lines of that file."""
     classes = []
     for path in paths:
         try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
         except (SyntaxError, UnicodeDecodeError):
             continue
-        classes.extend((path, node) for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
+        lines = source.splitlines()
+        classes.extend((path, node, lines) for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
     return classes
 
 
-def _subclass_checker(classes: list[tuple[Path, ast.ClassDef]]):
+def _is_deprecated_path(path: Path) -> bool:
+    """Return whether the file is inside a folder named `deprecated`."""
+    return "deprecated" in path.relative_to(SRC_DIR).parts[:-1]
+
+
+def _copied_from_deprecated(lines: list[str], node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Return whether the `# Copied from` comment right above a class or method points to deprecated code."""
+    first_line = min([decorator.lineno for decorator in node.decorator_list] + [node.lineno])
+    if first_line < 2:
+        return False
+    comment = lines[first_line - 2].strip()
+    return comment.startswith("# Copied from") and ".deprecated." in comment
+
+
+def _subclass_checker(classes: list[tuple[Path, ast.ClassDef, list[str]]]):
     """
     Return a function `is_subclass(name, base)` that tells whether the class `name` inherits from the class `base`,
     either directly or through other classes.
@@ -94,7 +110,7 @@ def _subclass_checker(classes: list[tuple[Path, ast.ClassDef]]):
     Classes are matched by name only, so two classes with the same name in different files are treated as one class.
     """
     bases_by_name: dict[str, set[str]] = defaultdict(set)
-    for _, class_def in classes:
+    for _, class_def, _ in classes:
         bases_by_name[class_def.name].update(_base_names(class_def))
 
     cache: dict[tuple[str, str], bool] = {}
@@ -122,11 +138,13 @@ def main() -> int:
     is_subclass = _subclass_checker(classes)
 
     errors = []
-    for path, class_def in classes:
+    for path, class_def, lines in classes:
+        if _is_deprecated_path(path):
+            continue
         if _is_under(path, MODELS_DIR):
             method_name = "forward"
-        elif _is_under(path, PIPELINES_DIR) and not _is_under(path, DEPRECATED_PIPELINES_DIR):
-            if not is_subclass(class_def.name, PIPELINE_BASE):
+        elif _is_under(path, PIPELINES_DIR):
+            if not is_subclass(class_def.name, PIPELINE_BASE) or is_subclass(class_def.name, DEPRECATED_PIPELINE_BASE):
                 continue
             method_name = "__call__"
         elif _is_under(path, MODULAR_DIR):
@@ -136,12 +154,13 @@ def main() -> int:
         else:
             continue
 
-        rel = path.relative_to(REPO_ROOT).as_posix()
-        if (rel, class_def.name) in IGNORE:
-            continue
         method = _find_method(class_def, method_name)
-        if method is not None and method.returns is None:
-            errors.append(f"{rel}:{method.lineno}: {class_def.name}.{method_name} has no return type annotation")
+        if method is None or method.returns is not None:
+            continue
+        if _copied_from_deprecated(lines, class_def) or _copied_from_deprecated(lines, method):
+            continue
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        errors.append(f"{rel}:{method.lineno}: {class_def.name}.{method_name} has no return type annotation")
 
     if errors:
         print("\n".join(errors))
