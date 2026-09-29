@@ -49,6 +49,7 @@ RUN uv pip install --system --break-system-packages --no-cache-dir \
     diffusers \
     accelerate \
     transformers \
+    "tokenizers>=0.14.0" \
     safetensors \
     sentencepiece \
     ftfy \

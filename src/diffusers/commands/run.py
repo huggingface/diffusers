@@ -96,6 +96,7 @@ _DEFAULT_REMOTE_DEPS = (
     "diffusers",
     "accelerate",
     "transformers",
+    "tokenizers>=0.14.0",
     "safetensors",
     "sentencepiece",  # required by several text-encoder tokenizers (T5, LLaMA, …)
     "ftfy",  # required by older CLIP text-encoder paths
