@@ -617,6 +617,3 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
         if not return_dict:
             return (waveform,)
         return DecoderOutput(sample=waveform)
-
-
-__all__ = ["MMAudioVAE"]

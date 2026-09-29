@@ -592,6 +592,3 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
         if not return_dict:
             return (decoded,)
         return DecoderOutput(sample=decoded)
-
-
-__all__ = ["Kandinsky6SRVAE"]

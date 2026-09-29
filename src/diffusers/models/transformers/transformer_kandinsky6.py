@@ -451,18 +451,6 @@ class Kandinsky6AttnProcessor:
         self._attention_backend = attention_backend
         self._parallel_config = parallel_config
 
-    @property
-    def _attention_backend(self):
-        return self.__attention_backend
-
-    @_attention_backend.setter
-    def _attention_backend(self, backend):
-        if self._masked and backend is not None:
-            name = getattr(backend, "value", backend).lower()
-            backend = _MASKED_ATTENTION_BACKENDS.get(name, name)
-            backend = AttentionBackendName(backend)
-        self.__attention_backend = backend
-
     def __call__(
         self,
         attn: Any,
