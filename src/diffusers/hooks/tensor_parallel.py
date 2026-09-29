@@ -50,6 +50,18 @@ class PackedRowwiseParallel:
         self.blocks = blocks
 
 
+def _packed_blocks(style: "PackedColwiseParallel | PackedRowwiseParallel", module, path: str) -> "list[int]":
+    """The blocks of a packed style: its own `blocks`, else the `_tp_packed_*_blocks` attribute on the Linear."""
+    attr = "_tp_packed_col_blocks" if isinstance(style, PackedColwiseParallel) else "_tp_packed_row_blocks"
+    blocks = style.blocks if style.blocks is not None else getattr(module, attr, None)
+    if not blocks:
+        raise ValueError(
+            f"'{path}' uses {type(style).__name__} but has no blocks: pass `blocks` to it, or set `{attr}` on the "
+            f"Linear in the model's `__init__`."
+        )
+    return blocks
+
+
 def _blocks_to_block_sizes(total_size: int, blocks: "list[int]") -> "list[int]":
     """Convert proportional block counts to absolute sizes.
 
@@ -141,11 +153,11 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
                 weight_spec = TPShardSpec(1, [submodule.weight.shape[1]])
                 bias_spec = TPShardSpec(None, None)
             elif isinstance(style, PackedColwiseParallel):
-                blocks = style.blocks if style.blocks is not None else submodule._tp_packed_col_blocks
+                blocks = _packed_blocks(style, submodule, path)
                 weight_spec = TPShardSpec(0, _blocks_to_block_sizes(submodule.weight.shape[0], blocks))
                 bias_spec = weight_spec
             elif isinstance(style, PackedRowwiseParallel):
-                blocks = style.blocks if style.blocks is not None else submodule._tp_packed_row_blocks
+                blocks = _packed_blocks(style, submodule, path)
                 weight_spec = TPShardSpec(1, _blocks_to_block_sizes(submodule.weight.shape[1], blocks))
                 bias_spec = TPShardSpec(None, None)
             else:
@@ -238,11 +250,9 @@ def _styles(relative_plan: dict) -> dict:
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
 
     def _make_packed_col(marker: PackedColwiseParallel) -> ColwiseParallel:
-        _blocks = marker.blocks
-
         class _PackedColwiseImpl(ColwiseParallel):
             def _partition_linear_fn(self, name, module, device_mesh):
-                blocks = _blocks if _blocks is not None else module._tp_packed_col_blocks
+                blocks = _packed_blocks(marker, module, name)
                 # Both weight (`[out, in]`) and bias (`[out]`) are sharded row-wise (dim 0) with the same per-block
                 # slicing so each rank's bias rows line up with its weight rows for the packed layout.
                 for param_name, param in module.named_parameters():
@@ -252,11 +262,9 @@ def _styles(relative_plan: dict) -> dict:
         return _PackedColwiseImpl()
 
     def _make_packed_row(marker: PackedRowwiseParallel) -> RowwiseParallel:
-        _blocks = marker.blocks
-
         class _PackedRowwiseImpl(RowwiseParallel):
             def _partition_linear_fn(self, name, module, device_mesh):
-                blocks = _blocks if _blocks is not None else module._tp_packed_row_blocks
+                blocks = _packed_blocks(marker, module, name)
                 # Only the weight (`[out, in]`) is sharded, column-wise (dim 1); the bias is added after the
                 # all-reduce, so every rank keeps it whole.
                 for param_name, param in module.named_parameters():
@@ -325,15 +333,30 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
 
 
 def _tp_degree(tp_config) -> int:
-    """The TP degree, read the same way `_resolve_parallel_config` will, for checks that run before the mesh is built."""
+    """The TP degree, read the same way `_resolve_parallel_config` will, for checks run before the mesh is built."""
     return tp_config.mesh.size() if tp_config.mesh is not None else tp_config.tp_degree
 
 
-def _check_tp_supported(model_name: str, tp_plan: "dict | None", num_heads: "int | None", tp_config) -> None:
-    """Reject a model class, or a `tp_degree`, that tensor parallelism cannot shard.
+def _check_tp_supported(
+    model_name: str,
+    tp_plan: "dict | None",
+    num_heads: "int | None",
+    tp_config,
+    *,
+    model: "torch.nn.Module | None" = None,
+    device_map=None,
+    hf_quantizer=None,
+    low_cpu_mem_usage: bool = True,
+    use_flashpack: bool = False,
+) -> None:
+    """Reject a model class, `tp_degree`, loading option, or model state that tensor parallelism cannot shard.
 
-    Needs only the class and its config, so both entry points run it before anything is loaded or sharded:
-    `enable_parallelism` on a model in memory, and `from_pretrained` before it reads the checkpoint.
+    Both entry points run it before anything is loaded or sharded. `from_pretrained` passes its loading options:
+    sharding on load needs a meta-initialized model and lazily sliceable safetensors files, and rather than silently
+    falling back to loading the full checkpoint — which would quietly give up the memory saving — each unsupported
+    option raises. `enable_parallelism` passes the `model` already in memory instead, whose parameters must be plain
+    parameters owned by the model itself: a quantized, offloaded, or adapter-wrapped model is rejected up front rather
+    than failing deep inside `parallelize_module` — or, worse, sharding successfully and producing wrong numbers.
     """
     if tp_plan is None:
         raise ValueError(
@@ -344,54 +367,65 @@ def _check_tp_supported(model_name: str, tp_plan: "dict | None", num_heads: "int
     if num_heads is not None and num_heads % tp_degree != 0:
         raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
 
-
-def _check_tp_model_state(model: torch.nn.Module) -> None:
-    """Reject a model whose parameters tensor parallelism cannot take over.
-
-    Tensor parallelism replaces every planned `weight` and `bias` with a `DTensor` shard. That only works on plain
-    parameters owned by the model itself, so a model whose parameters are quantized, held elsewhere by an offloading
-    hook, or wrapped by an adapter is rejected up front rather than failing deep inside `parallelize_module` — or,
-    worse, sharding successfully and producing wrong numbers.
-
-    `from_pretrained` rejects the same combinations earlier and with a message naming the offending argument; this is
-    the guard on the `enable_parallelism` path, where the model already exists and only its state can be read.
-    """
-    if getattr(model, "hf_quantizer", None) is not None or getattr(model, "is_quantized", False):
+    if device_map is not None:
         raise ValueError(
-            f"'{model.__class__.__name__}' is quantized, which cannot be combined with tensor parallelism: its "
-            "parameters are packed into a quantizer-specific layout that cannot be sharded into `DTensor`s. Load "
-            "the model unquantized to shard it."
+            "`device_map` cannot be combined with a tensor-parallel `parallel_config`: tensor parallelism "
+            "already places each rank's shard on that rank's device. Drop `device_map`."
+        )
+    if hf_quantizer is not None:
+        raise ValueError(
+            "`quantization_config` cannot be combined with a tensor-parallel `parallel_config`: quantized "
+            "parameters are packed into a quantizer-specific layout that cannot be sharded into `DTensor`s. "
+            "Load the model unquantized to shard it."
+        )
+    if not low_cpu_mem_usage:
+        raise ValueError(
+            "`low_cpu_mem_usage=False` cannot be combined with a tensor-parallel `parallel_config`: "
+            "streaming each rank's shard requires the model to be initialized on the meta device."
+        )
+    if use_flashpack:
+        raise ValueError(
+            "`use_flashpack=True` cannot be combined with a tensor-parallel `parallel_config`; FlashPack "
+            "checkpoints cannot be sliced per rank."
         )
 
-    from .group_offloading import _is_group_offload_enabled
-
-    if _is_group_offload_enabled(model):
-        raise ValueError(
-            f"'{model.__class__.__name__}' has group offloading enabled, which cannot be combined with tensor "
-            "parallelism: both decide where a parameter lives. Tensor parallelism already keeps only one shard of "
-            "each weight per rank, so offloading is not needed on top of it."
-        )
-
-    # `device_map` dispatch and accelerate's CPU offloading both leave an `_hf_hook` on every module they placed, and
-    # the weights they offloaded are `meta` tensors that `DTensor.from_local` cannot shard.
-    if getattr(model, "hf_device_map", None) is not None or any(
-        hasattr(module, "_hf_hook") for module in model.modules()
-    ):
-        raise ValueError(
-            f"'{model.__class__.__name__}' is placed by accelerate — through `device_map` or CPU offloading — which "
-            "cannot be combined with tensor parallelism: tensor parallelism already places each rank's shard on that "
-            "rank's device. Load the model without `device_map` and without offloading to shard it."
-        )
-
-    if is_peft_available():
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        if any(isinstance(module, BaseTunerLayer) for module in model.modules()):
+    if model is not None:
+        if getattr(model, "hf_quantizer", None) is not None or getattr(model, "is_quantized", False):
             raise ValueError(
-                f"'{model.__class__.__name__}' has adapter (LoRA) layers injected, which cannot be combined with "
-                "tensor parallelism: `_tp_plan` covers the base `Linear` layers only, so the adapter weights would "
-                "stay unsharded and the result would be wrong. Unload the adapter before sharding."
+                f"'{model.__class__.__name__}' is quantized, which cannot be combined with tensor parallelism: its "
+                "parameters are packed into a quantizer-specific layout that cannot be sharded into `DTensor`s. Load "
+                "the model unquantized to shard it."
             )
+
+        from .group_offloading import _is_group_offload_enabled
+
+        if _is_group_offload_enabled(model):
+            raise ValueError(
+                f"'{model.__class__.__name__}' has group offloading enabled, which cannot be combined with tensor "
+                "parallelism: both decide where a parameter lives. Tensor parallelism already keeps only one shard of "
+                "each weight per rank, so offloading is not needed on top of it."
+            )
+
+        # `device_map` dispatch and accelerate's CPU offloading both leave an `_hf_hook` on every module they placed,
+        # and the weights they offloaded are `meta` tensors that `DTensor.from_local` cannot shard.
+        if getattr(model, "hf_device_map", None) is not None or any(
+            hasattr(module, "_hf_hook") for module in model.modules()
+        ):
+            raise ValueError(
+                f"'{model.__class__.__name__}' is placed by accelerate — through `device_map` or CPU offloading — "
+                "which cannot be combined with tensor parallelism: tensor parallelism already places each rank's "
+                "shard on that rank's device. Load the model without `device_map` and without offloading to shard it."
+            )
+
+        if is_peft_available():
+            from peft.tuners.tuners_utils import BaseTunerLayer
+
+            if any(isinstance(module, BaseTunerLayer) for module in model.modules()):
+                raise ValueError(
+                    f"'{model.__class__.__name__}' has adapter (LoRA) layers injected, which cannot be combined with "
+                    "tensor parallelism: `_tp_plan` covers the base `Linear` layers only, so the adapter weights "
+                    "would stay unsharded and the result would be wrong. Unload the adapter before sharding."
+                )
 
 
 def apply_tensor_parallel(

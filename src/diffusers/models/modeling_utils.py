@@ -1240,9 +1240,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 # Nothing to shard, so take the ordinary loader rather than building 1-rank DTensors.
                 tp_config = None
         if tp_config is not None:
-            cls._check_tp_streaming_supported(
+            from ..hooks.tensor_parallel import _check_tp_supported
+
+            # Before the checkpoint files are resolved, so that e.g. `use_flashpack` fails with the real reason
+            # instead of a missing-file error. The weights-format check lives where the resolved file list is known.
+            _check_tp_supported(
+                cls.__name__,
+                cls._tp_plan,
+                config.get("num_attention_heads"),
                 tp_config,
-                num_attention_heads=config.get("num_attention_heads"),
                 device_map=device_map,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 use_flashpack=use_flashpack,
@@ -1680,52 +1686,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"Regional compilation failed because {repeated_blocks} classes are not found in the model. "
             )
 
-    @classmethod
-    def _check_tp_streaming_supported(
-        cls,
-        tp_config: TensorParallelConfig,
-        *,
-        num_attention_heads: int | None,
-        device_map,
-        low_cpu_mem_usage: bool,
-        use_flashpack: bool,
-        hf_quantizer,
-    ) -> None:
-        """Reject the `from_pretrained` options that cannot be combined with a tensor-parallel load.
-
-        Sharding on load needs a meta-initialized model and lazily sliceable safetensors files. Rather than silently
-        falling back to loading the full checkpoint and resharding it — which would quietly give up the memory saving
-        that is the whole point — each unsupported combination raises.
-
-        Called before the checkpoint files are resolved, so that e.g. `use_flashpack` fails with the real reason
-        instead of a missing-file error. The weights-format check lives at the point where the resolved file list is
-        known.
-        """
-        from ..hooks.tensor_parallel import _check_tp_supported
-
-        _check_tp_supported(cls.__name__, cls._tp_plan, num_attention_heads, tp_config)
-        if device_map is not None:
-            raise ValueError(
-                "`device_map` cannot be combined with a tensor-parallel `parallel_config`: tensor parallelism "
-                "already places each rank's shard on that rank's device. Drop `device_map`."
-            )
-        if hf_quantizer is not None:
-            raise ValueError(
-                "`quantization_config` cannot be combined with a tensor-parallel `parallel_config`: quantized "
-                "parameters are packed into a quantizer-specific layout that cannot be sharded into `DTensor`s. "
-                "Load the model unquantized to shard it."
-            )
-        if not low_cpu_mem_usage:
-            raise ValueError(
-                "`low_cpu_mem_usage=False` cannot be combined with a tensor-parallel `parallel_config`: "
-                "streaming each rank's shard requires the model to be initialized on the meta device."
-            )
-        if use_flashpack:
-            raise ValueError(
-                "`use_flashpack=True` cannot be combined with a tensor-parallel `parallel_config`; FlashPack "
-                "checkpoints cannot be sliced per rank."
-            )
-
     def _resolve_parallel_config(
         self, config: ParallelConfig | ContextParallelConfig | TensorParallelConfig
     ) -> ParallelConfig:
@@ -1798,19 +1758,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             config if isinstance(config, TensorParallelConfig) else getattr(config, "tensor_parallel_config", None)
         )
         if tp_config is not None:
-            from ..hooks.tensor_parallel import (
-                _check_tp_model_state,
-                _check_tp_supported,
-                _tp_degree,
-                resolve_tp_shard_specs,
-            )
+            from ..hooks.tensor_parallel import _check_tp_supported, _tp_degree, resolve_tp_shard_specs
 
             # Before `_resolve_parallel_config`, which records the config on the model: a model that fails these
             # checks is left untouched.
             _check_tp_supported(
-                self.__class__.__name__, self._tp_plan, getattr(self.config, "num_attention_heads", None), tp_config
+                self.__class__.__name__,
+                self._tp_plan,
+                getattr(self.config, "num_attention_heads", None),
+                tp_config,
+                model=self,
             )
-            _check_tp_model_state(self)
             resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))
 
         config = self._resolve_parallel_config(config)
