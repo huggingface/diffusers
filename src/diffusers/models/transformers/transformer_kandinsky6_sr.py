@@ -331,7 +331,7 @@ class Kandinsky6SROutLayer(nn.Module):
         )
 
 
-# Copied from diffusers.models.transformers.transformer_kandinsky6.RoPE3D with RoPE3D->Kandinsky6SRRoPE3D
+# Copied from diffusers.models.transformers.transformer_kandinsky6.Kandinsky6RoPE3D with Kandinsky6RoPE3D->Kandinsky6SRRoPE3D
 class Kandinsky6SRRoPE3D(nn.Module):
     """3-D Rotary Position Embedding — used for video spatial-temporal tokens (T, H, W)."""
 

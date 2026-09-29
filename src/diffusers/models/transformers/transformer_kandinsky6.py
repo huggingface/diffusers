@@ -136,7 +136,7 @@ def nabla_block_mask(
     )
 
 
-class RoPE1D(nn.Module):
+class Kandinsky6RoPE1D(nn.Module):
     """1-D Rotary Position Embedding — used for text and audio sequences."""
 
     def __init__(
@@ -161,7 +161,7 @@ class RoPE1D(nn.Module):
         return rope.view(*rope.shape[:-1], 2, 2).unsqueeze(-4)
 
 
-class RoPE3D(nn.Module):
+class Kandinsky6RoPE3D(nn.Module):
     """3-D Rotary Position Embedding — used for video spatial-temporal tokens (T, H, W)."""
 
     def __init__(
@@ -921,14 +921,6 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
                 gate,
             ).type_as(aud)
         return vis, aud
-
-
-class Kandinsky6RoPE1D(RoPE1D):
-    """Diffusers-exported name for the K6 one-dimensional RoPE."""
-
-
-class Kandinsky6RoPE3D(RoPE3D):
-    """Diffusers-exported name for the K6 three-dimensional RoPE."""
 
 
 class Kandinsky6Transformer3DModel(
