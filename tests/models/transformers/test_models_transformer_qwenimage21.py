@@ -380,3 +380,34 @@ class TestQwenImage21TransformerSingleFile(QwenImage21TransformerTesterConfig, S
     @property
     def torch_dtype(self):
         return torch.bfloat16
+
+
+class TestQwenImage21RopeComplexLess:
+    """The real-valued RoPE path for COMPLEX_LESS_ROPE_BACKENDS matches the complex reference."""
+
+    def _inputs(self):
+        img_shapes = [(1, 32, 32), (1, 16, 48)]
+        text_len = 77
+        mask = torch.zeros(text_len + sum(h * w for _, h, w in img_shapes), dtype=torch.bool)
+        mask[text_len:] = True
+        return img_shapes, mask
+
+    def test_real_fallback_matches_complex(self, monkeypatch):
+        from diffusers.models.transformers import transformer_qwenimage21 as t21
+
+        img_shapes, mask = self._inputs()
+        ref = t21.QwenImage21Rope(theta=10000, axes_dim=[16, 56, 56])(img_shapes, mask, torch.device("cpu"))
+        assert ref.is_complex()
+
+        monkeypatch.setattr(t21, "COMPLEX_LESS_ROPE_BACKENDS", ("cpu",))
+        cand = t21.QwenImage21Rope(theta=10000, axes_dim=[16, 56, 56])(img_shapes, mask, torch.device("cpu"))
+        assert cand.dtype == torch.float32 and cand.shape == ref.shape + (2,)
+
+        # The frequency selection crosses the boundary bit-exact.
+        torch.testing.assert_close(torch.view_as_real(ref), cand, rtol=0, atol=0)
+
+        # The rotation matches to within float32 multiply-add rounding.
+        x = torch.randn(1, mask.shape[0], 8, 128, generator=torch.Generator().manual_seed(0))
+        ref_out = t21.apply_rotary_emb_qwen(x, ref, use_real=False)
+        cand_out = t21.apply_rotary_emb_qwen_real(x, cand)
+        torch.testing.assert_close(ref_out, cand_out, rtol=1e-5, atol=1e-6)
