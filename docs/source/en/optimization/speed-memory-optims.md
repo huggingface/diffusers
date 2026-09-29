@@ -15,12 +15,12 @@ specific language governing permissions and limitations under the License.
 Quantization, [torch.compile](./fp16#torchcompile), and [offloading](./memory#offloading) can be combined to balance [inference speed](./fp16) and [memory usage](./memory). Quantization reduces the memory needed to store weights, torch.compile speeds up inference, and offloading keeps inactive layers or models on the CPU until they're needed. Other techniques trade one for the other. For example, [caching](./cache) speeds up inference but increases memory usage because it stores intermediate outputs.
 
 > [!TIP]
-> Refer to the [torch.compile](./fp16#torchcompile) guide to learn more about compilation. For example, [regional compilation](./fp16#regional-compilation) significantly reduces compilation time without giving up the speedup.
+> Refer to the [torch.compile](./fp16#torchcompile) guide to learn more about compilation. For example, [regional compilation](./fp16#regional-compilation) can significantly reduce compilation time while keeping a comparable speedup.
 
 The offloading method to combine with quantization depends on the workload.
 
-- For image generation, use [model offloading](./memory#model-offloading). Image models do less compute per layer, so with group offloading, the current layer often finishes before the next layer has transferred and the GPU waits on the CPU.
-- For video generation, use [group offloading](./memory#group-offloading). Video models are more compute-bound, so data transfer overlaps with computation.
+- For image generation, [model offloading](./memory#model-offloading) usually works best. Image models do less compute per layer, so with group offloading, the current layer often finishes before the next layer has transferred and the GPU waits on the CPU.
+- For video generation, [group offloading](./memory#group-offloading) usually works better. Video models are more compute-bound, so data transfer can overlap with computation.
 
 The table below shows the latency and memory usage of each combination on Flux.
 
@@ -115,7 +115,7 @@ pipeline(
 </hfoption>
 <hfoption id="group offloading">
 
-[Group offloading](./memory#group-offloading) moves the internal layers of a component, like the transformer, to the GPU only when they run. With `use_stream=True`, it uses [CUDA streams](./memory#cuda-stream) to prefetch the next layer while the current one runs. For compute-bound video models, this overlap makes group offloading faster than model offloading while also using less memory.
+[Group offloading](./memory#group-offloading) moves the internal layers of a component, like the transformer, to the GPU only when they run. With `use_stream=True`, it uses [CUDA streams](./memory#cuda-stream) to prefetch the next layer while the current one runs. For compute-bound video models, this overlap can make group offloading faster than model offloading while also using less memory.
 
 ```py
 # pip install ftfy

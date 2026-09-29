@@ -164,7 +164,7 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
 By default, Diffusers uses all available memory on each GPU. Components that don't fit on a GPU are placed on the CPU. If most of the pipeline ends up on the CPU, try a single GPU with one of the offloading methods below instead.
 
 - [`~DiffusionPipeline.enable_model_cpu_offload`] moves one whole model to the GPU at a time. It's faster, but each model must fit on a single GPU.
-- [`~DiffusionPipeline.enable_sequential_cpu_offload`] moves one submodule to the GPU at a time. It uses the least memory, but it's very slow.
+- [`~DiffusionPipeline.enable_sequential_cpu_offload`] moves one submodule to the GPU at a time. It uses the least GPU memory, but it's very slow.
 
 Before calling `.to()`, `enable_sequential_cpu_offload`, or `enable_model_cpu_offload` on a device-mapped pipeline, reset its device map with [`~DiffusionPipeline.reset_device_map`].
 
@@ -174,7 +174,7 @@ pipeline.reset_device_map()
 
 ## VAE slicing
 
-VAE slicing splits a batch of latents into single latents and decodes them one at a time. The decoded images are concatenated back into a batch at the end. Peak memory stays close to the cost of decoding one image regardless of batch size, which makes slicing useful when generating several images at once. It has no effect on single-image batches.
+VAE slicing splits a batch of latents into single latents and decodes them one at a time. The decoded images are concatenated back into a batch at the end. Peak decoding memory stays close to the cost of decoding one image, which makes slicing useful when generating several images at once. It has no effect on single-image batches.
 
 ```text
 Without slicing: one decode for the whole batch
@@ -213,7 +213,7 @@ print(f"Max memory allocated: {torch.cuda.max_memory_allocated() / 1024**3:.2f} 
 
 ## VAE tiling
 
-VAE tiling splits a latent into overlapping tiles and decodes each tile separately. The overlapping edges are blended together to stitch the tiles into the final image. Peak memory depends on the tile size instead of the full image size, which makes tiling useful for generating high-resolution images.
+VAE tiling splits a latent into overlapping tiles and decodes each tile separately. The overlapping edges are blended together to stitch the tiles into the final image. Peak decoding memory depends mostly on the tile size instead of the full image size, which makes tiling useful for generating high-resolution images.
 
 ```text
 1. Split the latent into tiles         2. Decode each tile       3. Blend the overlaps
@@ -262,7 +262,7 @@ Refer to the [Compiling and offloading quantized models](./speed-memory-optims) 
 
 ### Sequential CPU offloading
 
-Sequential CPU offloading keeps weights on the CPU and moves each submodule to the GPU only when it runs. The entire model is never on the GPU at once, so sequential offloading uses the least memory of the offloading methods. It's also the slowest because submodules are transferred between devices many times during inference, which often makes it impractical.
+Sequential CPU offloading keeps weights on the CPU and moves each submodule to the GPU only when it runs. The entire model is never on the GPU at once, so sequential offloading uses the least GPU memory of the offloading methods. It's also the slowest because submodules are transferred between devices many times during inference, which often makes it impractical.
 
 > [!WARNING]
 > Don't move the pipeline to CUDA before calling `enable_sequential_cpu_offload`, otherwise the memory savings are minimal. Refer to [issue #1934](https://github.com/huggingface/diffusers/issues/1934) for more details. Sequential offloading is stateful and installs hooks on the model.
@@ -322,7 +322,7 @@ Model offloading also helps when you call [`~StableDiffusionXLPipeline.encode_pr
 
 ### Group offloading
 
-Group offloading moves groups of internal layers ([torch.nn.ModuleList](https://pytorch.org/docs/stable/generated/torch.nn.ModuleList.html) or [torch.nn.Sequential](https://pytorch.org/docs/stable/generated/torch.nn.Sequential.html)) to the CPU. It uses less memory than [model offloading](#model-offloading) and it is faster than [sequential CPU offloading](#sequential-cpu-offloading) because it reduces communication overhead.
+Group offloading moves groups of internal layers ([torch.nn.ModuleList](https://pytorch.org/docs/stable/generated/torch.nn.ModuleList.html) or [torch.nn.Sequential](https://pytorch.org/docs/stable/generated/torch.nn.Sequential.html)) to the CPU. It usually uses less memory than [model offloading](#model-offloading) and runs faster than [sequential CPU offloading](#sequential-cpu-offloading) because it reduces communication overhead.
 
 > [!WARNING]
 > Group offloading may not work with models whose forward pass moves inputs to the weights' device, because that conflicts with how group offloading moves tensors.
@@ -394,7 +394,7 @@ export_to_video(video, "output.mp4", fps=8)
 
 #### CUDA stream
 
-Set `use_stream=True` on CUDA devices to prefetch the next layer onto the GPU while the current layer is still running. Overlapping data transfer and computation makes group offloading much faster than [sequential CPU offloading](#sequential-cpu-offloading). Streams pin tensors in CPU memory, so make sure you have about twice the model size in system RAM.
+Set `use_stream=True` on CUDA devices to prefetch the next layer onto the GPU while the current layer is still running. Overlapping data transfer and computation can make group offloading much faster than [sequential CPU offloading](#sequential-cpu-offloading). Streams create a pinned copy of each weight in CPU memory, so system RAM usage can reach about twice the model size.
 
 Set `record_stream=True` for more of a speedup at the cost of slightly increased memory usage. Refer to the [torch.Tensor.record_stream](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) docs to learn more.
 
@@ -485,7 +485,7 @@ apply_layerwise_casting(
 
 [torch.channels_last](https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html) changes how tensors are stored in memory from `(batch size, channels, height, width)` to `(batch size, height, width, channels)`. Storing each pixel's channels next to each other matches how many GPU kernels read memory, which mainly speeds up inference rather than reducing memory.
 
-channels_last only affects 4D tensors, so it benefits convolution-based models like UNets and VAEs. Not all operators support the channels-last format, and some models may run slower with it, so benchmark it on your model first.
+channels_last only affects 4D tensors, so it can benefit convolution-based models like UNets and VAEs. Not all operators support the channels-last format, and some models may run slower with it, so benchmark it on your model first.
 
 ```py
 import torch
