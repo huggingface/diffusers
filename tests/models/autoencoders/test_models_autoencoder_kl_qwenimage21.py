@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 import torch.nn.functional as F
 
@@ -65,9 +66,7 @@ class AutoencoderKLQwenImage21TesterConfig(BaseModelTesterConfig):
         return {"sample": image}
 
 
-class TestAutoencoderKLQwenImage21(AutoencoderKLQwenImage21TesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
-
+class TestQwenImage21AvgDown3D:
     def test_temporal_downsample_left_zero_padding(self):
         downsample = QwenImage21AvgDown3D(in_channels=1, out_channels=1, factor_t=2)
         sample = torch.tensor([2.0, 4.0, 6.0]).view(1, 1, 3, 1, 1)
@@ -75,6 +74,18 @@ class TestAutoencoderKLQwenImage21(AutoencoderKLQwenImage21TesterConfig, ModelTe
         output = downsample(sample)
         expected = downsample(F.pad(sample, (0, 0, 0, 0, 1, 0)))
         torch.testing.assert_close(output, expected)
+
+    @pytest.mark.skipif(not torch.backends.mps.is_available(), reason="the F.pad bug is specific to MPS")
+    def test_temporal_downsample_matches_cpu_on_mps(self):
+        torch.manual_seed(0)
+        downsample = QwenImage21AvgDown3D(in_channels=192, out_channels=384, factor_t=2, factor_s=2)
+        # 256 x 256 = 65,536 trailing elements: the size where temporal F.pad breaks on MPS
+        sample = torch.randn(1, 192, 1, 256, 256)
+        torch.testing.assert_close(downsample(sample.to("mps")).cpu(), downsample(sample))
+
+
+class TestAutoencoderKLQwenImage21(AutoencoderKLQwenImage21TesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
 
     def test_spatial_compression_ratio_matches_architecture(self):
         """
