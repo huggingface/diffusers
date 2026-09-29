@@ -553,8 +553,10 @@ Anything absent from the plan stays replicated on every rank, which is the right
 
 #### Constraints and verification
 
-- `tp_degree` must divide `config.num_attention_heads`. This is validated in [`~ModelMixin.enable_parallelism`].
+- `tp_degree` must divide `config.num_attention_heads`.
 - Every packed block must *individually* be divisible by `tp_degree`, not just their sum.
+
+Both are validated by [`~ModelMixin.from_pretrained`] and [`~ModelMixin.enable_parallelism`] before any weight is loaded or sharded.
 
 Validate a new plan numerically rather than by eye: generate with a fixed seed on a single device, then again under tensor parallelism, and compare the outputs. A misplaced `"colwise"`/`"rowwise"` usually still runs and produces a plausible but wrong image.
 
