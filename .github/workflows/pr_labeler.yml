@@ -4,12 +4,14 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened]
 
-permissions:
-  contents: read
-  pull-requests: write
+
+permissions: {}
 
 jobs:
   label:
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9  # v5
@@ -17,6 +19,10 @@ jobs:
           sync-labels: true
 
   missing-tests:
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -50,6 +56,9 @@ jobs:
           fi
 
   fixes-issue:
+    permissions:
+      issues: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Check for linked closing issues
@@ -85,6 +94,9 @@ jobs:
           fi
 
   size-label:
+    permissions:
+      issues: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Label PR by diff size
