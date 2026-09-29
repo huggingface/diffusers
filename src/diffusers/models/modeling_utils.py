@@ -1533,14 +1533,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
 
-        if tp_shard_specs is not None:
-            # The weights are already sharded, so this only registers the forward hooks. `_parallel_config`
-            # was recorded by `_resolve_parallel_config` before loading.
-            from ..hooks.tensor_parallel import apply_tensor_parallel
+        if parallel_config is not None:
+            if tp_shard_specs is not None:
+                # The weights are already sharded, so this only registers the forward hooks. `_parallel_config`
+                # was recorded by `_resolve_parallel_config` before loading.
+                from ..hooks.tensor_parallel import apply_tensor_parallel
 
-            apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
-        elif parallel_config is not None:
-            model.enable_parallelism(config=parallel_config)
+                apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
+            else:
+                model.enable_parallelism(config=parallel_config)
 
         if output_loading_info:
             return model, loading_info
