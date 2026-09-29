@@ -5,8 +5,6 @@ on:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
 
-permissions:
-  contents: read
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -25,8 +23,12 @@ env:
   #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
+permissions: {}
+
 jobs:
   setup_torch_cuda_pipeline_matrix:
+    permissions:
+      contents: read
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
     runs-on:
       group: aws-general-8-plus
@@ -58,6 +60,8 @@ jobs:
           path: reports
 
   run_nightly_tests_for_torch_pipelines:
+    permissions:
+      contents: read
     name: Nightly Torch Pipelines CUDA Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
@@ -110,6 +114,8 @@ jobs:
           path: reports
 
   run_nightly_tests_for_other_torch_modules:
+    permissions:
+      contents: read
     name: Nightly Torch CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -180,6 +186,8 @@ jobs:
         path: reports
 
   run_torch_compile_tests:
+    permissions:
+      contents: read
     name: PyTorch Compile CUDA tests
 
     runs-on:
@@ -223,6 +231,8 @@ jobs:
         path: reports
 
   run_big_gpu_torch_tests:
+    permissions:
+      contents: read
     name: Torch tests on big GPU
     strategy:
       fail-fast: false
@@ -275,6 +285,8 @@ jobs:
           path: reports
 
   torch_minimum_version_cuda_tests:
+    permissions:
+      contents: read
     name: Torch Minimum Version CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -332,6 +344,8 @@ jobs:
           path: reports
 
   run_nightly_quantization_tests:
+    permissions:
+      contents: read
     name: Torch quantization nightly tests
     strategy:
       fail-fast: false
@@ -402,6 +416,8 @@ jobs:
           path: reports
           
   run_nightly_pipeline_level_quantization_tests:
+    permissions:
+      contents: read
     name: Torch quantization nightly tests
     strategy:
       fail-fast: false
@@ -453,6 +469,8 @@ jobs:
           path: reports
 
   generate_consolidated_report:
+    permissions:
+      contents: read
     name: Generate Consolidated Test Report
     needs: [
       run_nightly_tests_for_torch_pipelines,
