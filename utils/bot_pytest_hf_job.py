@@ -39,7 +39,14 @@ exit "$status"
 
 def main():
     flavor = os.environ["PYTEST_FLAVOR"]
-    api = HfApi(token=os.environ["HF_TOKEN"])
+    namespace = os.environ["HF_JOBS_NAMESPACE"]
+    token = os.environ["HF_TOKEN"]
+    if not namespace:
+        raise SystemExit("HF_JOBS_NAMESPACE must be set before running HF Jobs")
+    if not token:
+        raise SystemExit("Set the DIFFUSERS_HF_JOBS_TOKEN repository secret before running HF Jobs")
+
+    api = HfApi(token=token)
     flavors = {
         hardware.name
         for hardware in api.list_jobs_hardware()
@@ -54,6 +61,7 @@ def main():
         image="diffusers/diffusers-pytorch-cuda",
         command=["bash", "-lc", COMMAND],
         flavor=flavor,
+        namespace=namespace,
         timeout="2h",
         name=f"diffusers-pr-{os.environ['PR_NUMBER']}-pytest",
         env={
@@ -75,19 +83,19 @@ def main():
     print(f"HF Job: {job.url}", flush=True)
 
     def cancel_job(signum, frame):
-        api.cancel_job(job_id=job.id)
+        api.cancel_job(job_id=job.id, namespace=namespace)
         raise SystemExit(128 + signum)
 
     signal.signal(signal.SIGINT, cancel_job)
     signal.signal(signal.SIGTERM, cancel_job)
 
     try:
-        finished = api.wait_for_job(job_id=job.id, poll_interval=20)
+        finished = api.wait_for_job(job_id=job.id, namespace=namespace, poll_interval=20)
     except Exception:
-        api.cancel_job(job_id=job.id)
+        api.cancel_job(job_id=job.id, namespace=namespace)
         raise
     try:
-        for line in api.fetch_job_logs(job_id=job.id, tail=200):
+        for line in api.fetch_job_logs(job_id=job.id, namespace=namespace, tail=200):
             print(line, flush=True)
     except Exception as error:
         print(f"Could not fetch HF Job logs: {error}", flush=True)

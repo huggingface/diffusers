@@ -13,7 +13,7 @@ on:
         type: string
         default: ''
     secrets:
-      DIFFUSERS_BOT_TOKEN:
+      HF_JOBS_TOKEN:
         required: false
 
 jobs:
@@ -169,7 +169,8 @@ jobs:
       - name: Run HF Job
         id: run
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_JOBS_TOKEN }}
+          HF_JOBS_NAMESPACE: ${{ vars.DIFFUSERS_HF_JOBS_NAMESPACE || 'diffusers-internal-dev' }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.issue.number }}
           PR_SHA: ${{ steps.pr.outputs.sha }}

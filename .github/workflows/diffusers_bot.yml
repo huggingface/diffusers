@@ -130,4 +130,4 @@ jobs:
       pytest_args: ${{ needs.authorize.outputs.pytest_args }}
       pytest_flavor: ${{ needs.authorize.outputs.pytest_flavor }}
     secrets:
-      DIFFUSERS_BOT_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
+      HF_JOBS_TOKEN: ${{ secrets.DIFFUSERS_HF_JOBS_TOKEN }}
