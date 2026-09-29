@@ -23,24 +23,9 @@ jobs:
           HF_TOKEN: ${{ secrets.ISSUE_LABELER_HF_TOKEN }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          ALLOWED_LABELS: ${{ vars.ISSUE_LABELER_ALLOWED_LABELS }}
         run: |
           LABELS=$(python utils/label_issues.py)
-          SAFE_LABELS=$(printf '%s' "$LABELS" | python -c "
-          import json, os, sys
-          allowed = {l.strip() for l in os.environ.get('ALLOWED_LABELS', '').split(',') if l.strip()}
-          try:
-              data = json.loads(sys.stdin.read())
-          except Exception:
-              data = []
-          if not isinstance(data, list):
-              data = []
-          out = sorted({l for l in data if isinstance(l, str) and l in allowed})
-          print(json.dumps(out, separators=(',', ':')))
-          ")
-          if [ -n "$SAFE_LABELS" ] && [ "$SAFE_LABELS" != "[]" ]; then
-            echo "labels=$SAFE_LABELS" >> "$GITHUB_OUTPUT"
-          fi
+          echo "labels=$LABELS" >> "$GITHUB_OUTPUT"
       - name: Apply labels
         if: steps.get-labels.outputs.labels != ''
         env:
