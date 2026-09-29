@@ -1377,7 +1377,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             parallel_config = model._resolve_parallel_config(parallel_config)
             tp_config = parallel_config.tensor_parallel_config
-            tp_shard_specs = resolve_tp_shard_specs(model, cls._tp_plan)
+            tp_shard_specs = resolve_tp_shard_specs(model, cls._tp_plan, tp_config._mesh.size())
             # Each rank opens every shard file but only reads its own slices, so threading the files buys
             # nothing and would have several threads calling `register_parameter` on the same modules.
             is_parallel_loading_enabled = False
@@ -1798,7 +1798,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             config if isinstance(config, TensorParallelConfig) else getattr(config, "tensor_parallel_config", None)
         )
         if tp_config is not None:
-            from ..hooks.tensor_parallel import _check_tp_model_state, _check_tp_supported
+            from ..hooks.tensor_parallel import (
+                _check_tp_model_state,
+                _check_tp_supported,
+                _tp_degree,
+                resolve_tp_shard_specs,
+            )
 
             # Before `_resolve_parallel_config`, which records the config on the model: a model that fails these
             # checks is left untouched.
@@ -1806,6 +1811,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 self.__class__.__name__, self._tp_plan, getattr(self.config, "num_attention_heads", None), tp_config
             )
             _check_tp_model_state(self)
+            resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))
 
         config = self._resolve_parallel_config(config)
 

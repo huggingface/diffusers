@@ -94,13 +94,6 @@ def _local_shard(tensor, dim: int, block_sizes: "list[int]", tp_mesh) -> torch.T
 
     parts, offset = [], 0
     for block_size in block_sizes:
-        # An uneven split is rejected rather than silently handed to `Shard`, which pads the tail
-        # and would break the paired colwise/rowwise matmul.
-        if block_size % tp_size != 0:
-            raise ValueError(
-                f"Cannot shard a block of size {block_size} across {tp_size} tensor-parallel ranks: "
-                f"{block_size} is not divisible by {tp_size}."
-            )
         chunk = block_size // tp_size
         index = [slice(None)] * ndim
         index[dim] = slice(offset + rank * chunk, offset + (rank + 1) * chunk)
@@ -111,11 +104,15 @@ def _local_shard(tensor, dim: int, block_sizes: "list[int]", tp_mesh) -> torch.T
     return local.contiguous()
 
 
-def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict) -> "dict[str, TPShardSpec]":
+def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int) -> "dict[str, TPShardSpec]":
     """Map every `_tp_plan`-covered parameter name to its `TPShardSpec`.
 
     Parameters absent from the result are untouched by tensor parallelism. Both `weight` and `bias` of each planned
     module are covered.
+
+    Raises if any sharded block is not divisible by `tp_degree`, so an uneven split is rejected before any weight is
+    read or sharded. Left to `Shard`, it would give the trailing ranks a smaller slice and break the paired
+    colwise/rowwise matmul.
 
     The plan is expanded by `_resolve_tp_plan` so there is a single implementation of the glob rules; the `id(module)
     -> name` map recovers qualified names from the submodules it returns. Going back through `_resolve_tp_plan` also
@@ -160,6 +157,14 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict) -> "dict[str, 
             specs[f"{path}.weight"] = weight_spec
             if submodule.bias is not None:
                 specs[f"{path}.bias"] = bias_spec
+
+    for name, spec in specs.items():
+        for block_size in spec.block_sizes or []:
+            if block_size % tp_degree != 0:
+                raise ValueError(
+                    f"Cannot shard '{name}' across {tp_degree} tensor-parallel ranks: a block of size {block_size} "
+                    f"along dim {spec.dim} is not divisible by {tp_degree}."
+                )
 
     return specs
 
@@ -226,8 +231,8 @@ def _styles(relative_plan: dict) -> dict:
     """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
 
     Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel` marker
-    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`, each subclassed to
-    reject a sharded dim that is not divisible by the TP degree.
+    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`. Divisibility by the TP
+    degree is checked earlier, by `resolve_tp_shard_specs`.
     """
     from torch.distributed.tensor import Replicate, distribute_tensor
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
@@ -266,44 +271,12 @@ def _styles(relative_plan: dict) -> dict:
 
         return _PackedRowwiseImpl()
 
-    # `distribute_tensor` accepts an indivisible shard dim and just gives the trailing ranks a smaller (or empty)
-    # slice, so an uneven split does not raise here — it surfaces much later as a shape or numerics error, because
-    # the attention head split and the paired colwise/rowwise Linear both assume equal shards. Reject it up front,
-    # matching what `_local_shard` already does for the packed styles.
-    def _make_checked_col(path: str) -> ColwiseParallel:
-        class _CheckedColwiseImpl(ColwiseParallel):
-            def _partition_linear_fn(self, name, module, device_mesh):
-                tp_size = device_mesh.size()
-                out_features = module.weight.shape[0]
-                if out_features % tp_size != 0:
-                    raise ValueError(
-                        f"Cannot colwise-shard '{path}' weight rows ({out_features}) across {tp_size} "
-                        f"tensor-parallel ranks: not divisible by {tp_size}."
-                    )
-                super()._partition_linear_fn(name, module, device_mesh)
-
-        return _CheckedColwiseImpl()
-
-    def _make_checked_row(path: str) -> RowwiseParallel:
-        class _CheckedRowwiseImpl(RowwiseParallel):
-            def _partition_linear_fn(self, name, module, device_mesh):
-                tp_size = device_mesh.size()
-                in_features = module.weight.shape[1]
-                if in_features % tp_size != 0:
-                    raise ValueError(
-                        f"Cannot rowwise-shard '{path}' weight columns ({in_features}) across {tp_size} "
-                        f"tensor-parallel ranks: not divisible by {tp_size}."
-                    )
-                super()._partition_linear_fn(name, module, device_mesh)
-
-        return _CheckedRowwiseImpl()
-
     resolved = {}
     for path, style in relative_plan.items():
         if style == "colwise":
-            resolved[path] = _make_checked_col(path)
+            resolved[path] = ColwiseParallel()
         elif style == "rowwise":
-            resolved[path] = _make_checked_row(path)
+            resolved[path] = RowwiseParallel()
         elif isinstance(style, PackedColwiseParallel):
             resolved[path] = _make_packed_col(style)
         elif isinstance(style, PackedRowwiseParallel):
@@ -351,6 +324,11 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
     return resolved
 
 
+def _tp_degree(tp_config) -> int:
+    """The TP degree, read the same way `_resolve_parallel_config` will, for checks that run before the mesh is built."""
+    return tp_config.mesh.size() if tp_config.mesh is not None else tp_config.tp_degree
+
+
 def _check_tp_supported(model_name: str, tp_plan: "dict | None", num_heads: "int | None", tp_config) -> None:
     """Reject a model class, or a `tp_degree`, that tensor parallelism cannot shard.
 
@@ -362,8 +340,7 @@ def _check_tp_supported(model_name: str, tp_plan: "dict | None", num_heads: "int
             f"`_tp_plan` must be set on the model class to use tensor parallelism. '{model_name}' does not define one."
         )
 
-    # The mesh is not built yet, so read the degree the same way `_resolve_parallel_config` will.
-    tp_degree = tp_config.mesh.size() if tp_config.mesh is not None else tp_config.tp_degree
+    tp_degree = _tp_degree(tp_config)
     if num_heads is not None and num_heads % tp_degree != 0:
         raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
 
@@ -452,10 +429,13 @@ def apply_tensor_parallel(
             parallelize_module(submodule, tp_mesh, _hooks_only_styles(relative_plan))
         return
 
+    # Also validates every planned shard, so an uneven split raises before any module is sharded.
+    specs = resolve_tp_shard_specs(model, tp_plan, tp_mesh.size())
+
     if backend == "neuron":
         from .tensor_parallel_neuron import _apply_tp_neuron
 
-        _apply_tp_neuron(model, tp_mesh, groups, resolve_tp_shard_specs(model, tp_plan))
+        _apply_tp_neuron(model, tp_mesh, groups, specs)
         return
 
     for submodule, relative_plan in groups:
