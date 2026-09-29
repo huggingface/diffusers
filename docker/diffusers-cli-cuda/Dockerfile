@@ -45,7 +45,7 @@ RUN python -c "import torch, torchvision, torchaudio"
 # `diffusers` comes from PyPI so the image ships a released version. A run that needs `main` (or any
 # other build) can install over it with `--dependencies` or point `--image` at a custom image.
 RUN uv pip install --system --break-system-packages --no-cache-dir \
-    "huggingface_hub[hf_xet]>=1.23" \
+    "huggingface_hub[hf_xet]>=1.32" \
     diffusers \
     accelerate \
     transformers \
@@ -58,5 +58,6 @@ RUN uv pip install --system --break-system-packages --no-cache-dir \
 
 # Smoke-test the console script the sandbox invokes, so a broken install fails the build.
 RUN diffusers-cli env
+RUN diffusers-cli run --help
 
 CMD ["/bin/bash"]
