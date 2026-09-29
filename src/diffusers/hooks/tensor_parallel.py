@@ -337,6 +337,37 @@ def _tp_degree(tp_config) -> int:
     return tp_config.mesh.size() if tp_config.mesh is not None else tp_config.tp_degree
 
 
+def _is_tensor_parallel(module: torch.nn.Module) -> bool:
+    """Whether `module` has been sharded with tensor parallelism."""
+    parallel_config = getattr(module, "_parallel_config", None)
+    return parallel_config is not None and parallel_config.tensor_parallel_config is not None
+
+
+def _raise_if_tensor_parallel(module: torch.nn.Module, action: str, reason: str, error_cls=ValueError) -> None:
+    """Reject an operation that cannot run on a model already sharded with tensor parallelism.
+
+    `action` completes "so it cannot ...", and `reason` says why or what to do instead.
+    """
+    if _is_tensor_parallel(module):
+        raise error_cls(
+            f"'{module.__class__.__name__}' is sharded with tensor parallelism, so it cannot {action}. {reason}"
+        )
+
+
+def _check_tp_weights_format(model_files: list) -> None:
+    """Reject non-safetensors weights for a tensor-parallel load, which needs to read one slice of each tensor.
+
+    Separate from `_check_tp_supported` because it needs the resolved checkpoint files, which `from_pretrained` only
+    knows later.
+    """
+    non_safetensors = [f for f in model_files if not str(f).endswith(".safetensors")]
+    if non_safetensors:
+        raise ValueError(
+            f"A tensor-parallel `parallel_config` requires safetensors weights, so that each rank can "
+            f"read only its own slice of each tensor. Got {non_safetensors}."
+        )
+
+
 def _check_tp_supported(
     model_name: str,
     tp_plan: "dict | None",

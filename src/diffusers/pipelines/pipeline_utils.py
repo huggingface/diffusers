@@ -2252,18 +2252,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         A tensor-parallel component's parameters are `DTensor` shards tied to that rank's device and process group;
         moving them to CPU and back, as the offload hooks do, is not supported.
         """
+        from ..hooks.tensor_parallel import _is_tensor_parallel, _raise_if_tensor_parallel
+
         components = self.components.values() if module is None else [module]
         components = [component for component in components if isinstance(component, torch.nn.Module)]
         for component in components:
-            parallel_config = getattr(component, "_parallel_config", None)
-            if parallel_config is not None and parallel_config.tensor_parallel_config is not None:
-                if raise_error:
-                    raise ValueError(
-                        f"You are trying to apply model/sequential CPU offloading to a pipeline whose "
-                        f"'{component.__class__.__name__}' is sharded with tensor parallelism. This is not supported: "
-                        f"tensor parallelism already keeps only one shard of each weight per rank, so offloading is "
-                        f"not needed on top of it."
-                    )
+            if raise_error:
+                _raise_if_tensor_parallel(
+                    component,
+                    "be CPU-offloaded (model or sequential)",
+                    "Tensor parallelism already keeps only one shard of each weight per rank, so offloading is not "
+                    "needed on top of it.",
+                )
+            if _is_tensor_parallel(component):
                 return True
         return False
 

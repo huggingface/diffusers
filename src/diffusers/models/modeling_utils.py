@@ -575,12 +575,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 "2. Or, run a forward pass with tiling disabled (can still use small dummy inputs)."
             )
             logger.warning(msg)
-        if self._parallel_config is not None and self._parallel_config.tensor_parallel_config is not None:
-            raise ValueError(
-                f"'{self.__class__.__name__}' is sharded with tensor parallelism, which cannot be combined with group "
-                "offloading: both decide where a parameter lives. Tensor parallelism already keeps only one shard of "
-                "each weight per rank, so offloading is not needed on top of it."
-            )
+        from ..hooks.tensor_parallel import _raise_if_tensor_parallel
+
+        _raise_if_tensor_parallel(
+            self,
+            "be group-offloaded",
+            "Both decide where a parameter lives, and tensor parallelism already keeps only one shard of each weight "
+            "per rank, so offloading is not needed on top of it.",
+        )
         if not self._supports_group_offloading:
             raise ValueError(
                 f"{self.__class__.__name__} does not support group offloading. Please make sure to set the boolean attribute "
@@ -733,11 +735,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
-        if self._parallel_config is not None and self._parallel_config.tensor_parallel_config is not None:
-            raise NotImplementedError(
-                f"Saving a tensor-parallel '{self.__class__.__name__}' is not supported yet: its parameters are sharded "
-                "across ranks. Save the model before sharding it instead."
-            )
+        from ..hooks.tensor_parallel import _raise_if_tensor_parallel
+
+        _raise_if_tensor_parallel(
+            self,
+            "be saved yet",
+            "Its parameters are sharded across ranks. Save the model before sharding it instead.",
+            error_cls=NotImplementedError,
+        )
 
         hf_quantizer = getattr(self, "hf_quantizer", None)
         if hf_quantizer is not None:
@@ -1372,14 +1377,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # checkpoint and resharding it afterwards.
         tp_shard_specs = None
         if tp_config is not None:
-            from ..hooks.tensor_parallel import resolve_tp_shard_specs
+            from ..hooks.tensor_parallel import _check_tp_weights_format, resolve_tp_shard_specs
 
-            non_safetensors = [f for f in resolved_model_file if not str(f).endswith(".safetensors")]
-            if non_safetensors:
-                raise ValueError(
-                    f"A tensor-parallel `parallel_config` requires safetensors weights, so that each rank can "
-                    f"read only its own slice of each tensor. Got {non_safetensors}."
-                )
+            _check_tp_weights_format(resolved_model_file)
 
             parallel_config = model._resolve_parallel_config(parallel_config)
             tp_config = parallel_config.tensor_parallel_config
