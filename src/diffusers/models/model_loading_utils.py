@@ -536,6 +536,28 @@ def _load_shard_files_with_threadpool(
     return offload_index, state_dict_index, mismatched_keys, error_msgs
 
 
+def _find_mismatched_keys(
+    state_dict,
+    model_state_dict,
+    loaded_keys,
+    ignore_mismatched_sizes,
+):
+    mismatched_keys = []
+    if ignore_mismatched_sizes:
+        for checkpoint_key in loaded_keys:
+            model_key = checkpoint_key
+            # If the checkpoint is sharded, we may not have the key here.
+            if checkpoint_key not in state_dict:
+                continue
+
+            if model_key in model_state_dict and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape:
+                mismatched_keys.append(
+                    (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
+                )
+                del state_dict[checkpoint_key]
+    return mismatched_keys
+
+
 def _load_state_dict_into_model(
     model_to_load, state_dict: OrderedDict, assign_to_params_buffers: bool = False
 ) -> list[str]:
