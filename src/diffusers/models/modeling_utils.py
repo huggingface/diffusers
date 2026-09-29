@@ -1386,6 +1386,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             tp_shard_specs = resolve_tp_shard_specs(model, cls._tp_plan, tp_config._mesh.size())
             # Each rank opens every shard file but only reads its own slices, so threading the files buys
             # nothing and would have several threads calling `register_parameter` on the same modules.
+            if is_parallel_loading_enabled:
+                logger.debug("Disabling parallel loading: a tensor-parallel load reads the shard files sequentially.")
             is_parallel_loading_enabled = False
 
         if use_flashpack:
