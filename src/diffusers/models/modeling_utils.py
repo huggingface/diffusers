@@ -1257,6 +1257,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 device_map=device_map,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 use_flashpack=use_flashpack,
+                use_safetensors=use_safetensors,
                 hf_quantizer=hf_quantizer,
             )
 
@@ -1353,6 +1354,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if not isinstance(resolved_model_file, list):
             resolved_model_file = [resolved_model_file]
 
+        if tp_config is not None:
+            from ..hooks.tensor_parallel import _check_tp_weights_format
+
+            # As soon as the resolved files are known, before the model is built.
+            _check_tp_weights_format(resolved_model_file)
+
         # set dtype to instantiate the model under:
         # 1. If torch_dtype is not None, we use that dtype
         # 2. If torch_dtype is float8, we don't use _set_default_torch_dtype and we downcast after loading the model
@@ -1377,9 +1384,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # checkpoint and resharding it afterwards.
         tp_shard_specs = None
         if tp_config is not None:
-            from ..hooks.tensor_parallel import _check_tp_weights_format, resolve_tp_shard_specs
-
-            _check_tp_weights_format(resolved_model_file)
+            from ..hooks.tensor_parallel import resolve_tp_shard_specs
 
             parallel_config = model._resolve_parallel_config(parallel_config)
             tp_config = parallel_config.tensor_parallel_config

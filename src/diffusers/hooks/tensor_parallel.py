@@ -379,6 +379,7 @@ def _check_tp_supported(
     hf_quantizer=None,
     low_cpu_mem_usage: bool = True,
     use_flashpack: bool = False,
+    use_safetensors: bool = True,
 ) -> None:
     """Reject a model class, `tp_degree`, loading option, or model state that tensor parallelism cannot shard.
 
@@ -418,6 +419,11 @@ def _check_tp_supported(
         raise ValueError(
             "`use_flashpack=True` cannot be combined with a tensor-parallel `parallel_config`; FlashPack "
             "checkpoints cannot be sliced per rank."
+        )
+    if not use_safetensors:
+        raise ValueError(
+            "`use_safetensors=False` cannot be combined with a tensor-parallel `parallel_config`: each rank reads "
+            "only its own slice of each tensor, which needs safetensors weights."
         )
 
     if model is not None:
