@@ -646,7 +646,7 @@ if __name__ == "__main__":
 
     repo = Repo(PATH_TO_REPO)
     diff_with_last_commit = args.diff_with_last_commit
-    if not diff_with_last_commit and not repo.head.is_detached and repo.head.ref == repo.refs.main:
+    if not diff_with_last_commit and not repo.head.is_detached and repo.head.ref.name == "main":
         print("main branch detected, fetching tests against last commit.")
         diff_with_last_commit = True
 
