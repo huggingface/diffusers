@@ -83,7 +83,10 @@ with attention_backend("_flash_3_hub"):
 
 Hub backends need the [Kernels](https://github.com/huggingface/kernels) library first, and then Diffusers fetches the Hub kernel on first use.
 
-Hub attention backends download compute kernels with the [Kernels](https://github.com/huggingface/kernels) library and run them locally. The Hub attention names (`_flash_3_hub`, `flash_hub`, `sage_hub`, and the other `*_hub` backends) resolve to the [kernels-community](https://huggingface.co/kernels-community) organization. That organization is a trusted publisher in Kernels, so Diffusers loads those attention kernels without setting `DIFFUSERS_TRUST_REMOTE_KERNELS`.
+Hub attention backends download compute kernels with the [Kernels](https://github.com/huggingface/kernels) library and run them locally. Most Hub attention names (`_flash_3_hub`, `flash_hub`, and the other `*_hub` backends) resolve to the [kernels-community](https://huggingface.co/kernels-community) organization. That organization is a trusted publisher in Kernels, so Diffusers loads those attention kernels without setting `DIFFUSERS_TRUST_REMOTE_KERNELS`.
+
+> [!NOTE]
+> The SageAttention Hub backends (`sage_hub` and `sage_blackwell_hub`) load from the [SageAttention](https://huggingface.co/SageAttention) organization instead. Set `DIFFUSERS_TRUST_REMOTE_KERNELS=true` to use them.
 
 Other kernel-backed features such as [GGUF](../quantization/gguf) and [Nunchaku Lite](../quantization/nunchaku) can pull kernels from publishers outside kernels-community. Those paths stay blocked unless you opt in with `DIFFUSERS_TRUST_REMOTE_KERNELS`. When set, Diffusers forwards `trust_remote_code=True` to Kernels so untrusted publishers can load too.
 
@@ -150,7 +153,8 @@ Refer to the table below for a complete list of available attention backends and
 | `_flash_3_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-3 from Hub kernels | `kernels>=0.12` |
 | `_flash_3_varlen_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention-3 from Hub kernels | `kernels>=0.12` |
 | `sage` | [SageAttention](https://github.com/thu-ml/SageAttention) | Quantized attention (INT8 QK) | `sageattention>=2.1.1` |
-| `sage_hub` | [SageAttention](https://github.com/thu-ml/SageAttention) | Quantized attention (INT8 QK) from Hub kernels | `kernels>=0.12` |
+| `sage_hub` | [SageAttention](https://github.com/thu-ml/SageAttention) | Quantized attention (INT8 QK) from Hub kernels | `kernels>=0.12`, `DIFFUSERS_TRUST_REMOTE_KERNELS=true` |
+| `sage_blackwell_hub` | [SageAttention](https://github.com/thu-ml/SageAttention) | SageAttention3 FP4 attention for SM120 Blackwell GPUs from Hub kernels | `kernels>=0.12`, `DIFFUSERS_TRUST_REMOTE_KERNELS=true` |
 | `sage_varlen` | [SageAttention](https://github.com/thu-ml/SageAttention) | Variable length SageAttention | `sageattention>=2.1.1` |
 | `_sage_qk_int8_pv_fp8_cuda` | [SageAttention](https://github.com/thu-ml/SageAttention) | INT8 QK + FP8 PV (CUDA) | `sageattention>=2.1.1` |
 | `_sage_qk_int8_pv_fp8_cuda_sm90` | [SageAttention](https://github.com/thu-ml/SageAttention) | INT8 QK + FP8 PV (SM90) | `sageattention>=2.1.1`; SM90 |
