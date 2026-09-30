@@ -108,7 +108,7 @@ Each entry calls `pipeline.load_lora_weights(<lora_id>, adapter_name=<name>)`. A
 - `--cpu-offload {model, group}` — `model` uses `enable_model_cpu_offload`, `group` uses
   `enable_group_offload(offload_type="leaf_level", use_stream=True)`. Use `group` to fit a 9B+ model on a single
   A100. Onload target device comes from `--device-map` (must be a plain device string in this case).
-- `--attention-backend {default, flash_hub, flash_varlen_hub, flash_4_hub, sage_hub}` — hub-hosted kernels,
+- `--attention-backend {default, flash_hub, flash_varlen_hub, flash_4_hub, sage_hub, sage_blackwell_hub}` — hub-hosted kernels,
   auto-downloaded on first use. Failures (kernel not available, CUDA arch mismatch, network) raise a clear
   `SystemExit` listing the alternatives instead of silently reverting to the default. Only supported on
   transformer-based pipelines; UNet pipelines get a `logger.warning` and the flag is ignored.
