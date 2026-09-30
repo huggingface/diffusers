@@ -54,6 +54,7 @@ import argparse
 import ast
 import collections
 import json
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -62,13 +63,20 @@ from git import Repo
 
 
 PATH_TO_REPO = Path(__file__).parent.parent.resolve()
+sys.path.insert(0, str(PATH_TO_REPO))
+from tests.conftest import NON_CORE_MARKERS, marker_decorators  # noqa: E402
+
+
 PATH_TO_DIFFUSERS = PATH_TO_REPO / "src/diffusers"
 PATH_TO_TESTS = PATH_TO_REPO / "tests"
 
 # `tests/models` and `tests/pipelines` compose one test class per feature mixin, and each mixin carries a
 # pytest marker (see the `is_*` decorators in tests/testing_utils.py). Each group below becomes its own
 # matrix job, selected with `pytest -m <expr>`, but only when a selected file composes a mixin carrying
-# one of the group's markers; `core` is everything no group and no CPU-skipped marker claims.
+# one of the group's markers. `core` is every test carrying none of `NON_CORE_MARKERS` (tests/conftest.py
+# derives that set from the decorators and marks those tests at collection time). Non-core markers with no
+# group here are gated on an accelerator or multi-GPU, so they get no CPU job rather than spinning up a
+# runner to skip everything.
 SPLIT_BY_FEATURE = {"models", "pipelines"}
 FEATURE_GROUPS = {
     "lora": ["lora"],
@@ -79,11 +87,13 @@ FEATURE_GROUPS = {
     # Needs only an HF token (gated checkpoints), which the CPU job provides; skips on fork PRs.
     "single_file": ["single_file"],
 }
-# Gated on an accelerator or multi-GPU, so every test skips on the CPU runner. Excluded from `core` and
-# given no job rather than spinning up a runner to skip everything.
-CPU_SKIPPED_MARKERS = ["quantization", "compile", "training", "context_parallel", "tensor_parallel"]
 FEATURE_MARKERS = [m for markers in FEATURE_GROUPS.values() for m in markers]
-CORE_MARKERS = "not (" + " or ".join(FEATURE_MARKERS + CPU_SKIPPED_MARKERS) + ")"
+_unknown = sorted(set(FEATURE_MARKERS) - NON_CORE_MARKERS)
+if _unknown:
+    raise ValueError(
+        f"FEATURE_GROUPS markers {_unknown} have no `is_*` decorator in tests/testing_utils.py, so their tests "
+        "would also run in `core`. Add the decorator or drop the group."
+    )
 # ============================================================
 # Generic helpers
 # ============================================================
@@ -482,25 +492,6 @@ def _base_names(node: ast.ClassDef) -> List[str]:
     ]
 
 
-def _marker_decorators() -> Dict[str, str]:
-    """Map decorator function name → pytest marker, from `def is_x(test_case): return pytest.mark.<m>(test_case)`."""
-    tree = ast.parse((PATH_TO_TESTS / "testing_utils.py").read_text(encoding="utf-8"))
-    decorators = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("is_"):
-            continue
-        for ret in ast.walk(node):
-            if isinstance(ret, ast.Return) and isinstance(ret.value, ast.Call):
-                func = ret.value.func
-                if (
-                    isinstance(func, ast.Attribute)
-                    and isinstance(func.value, ast.Attribute)
-                    and func.value.attr == "mark"
-                ):
-                    decorators[node.name] = func.attr
-    return decorators
-
-
 def _mixin_markers(bucket: str, decorators: Dict[str, str]) -> Dict[str, List[str]]:
     """Map mixin class name → markers it carries, from the `@is_*` decorators on classes in
     `tests/<bucket>/testing_utils/`. Markers are inherited through pytest, so a mixin also carries those of
@@ -541,7 +532,7 @@ def _class_markers(test_file: str, mixin_markers: Dict[str, List[str]]) -> List[
 def _feature_groups_for(paths: List[str], mixin_markers: Dict[str, List[str]]) -> List[str]:
     """Names of the feature groups (including `core`) that at least one test class in `paths` would land in."""
     class_markers = [m for p in paths for m in _class_markers(p, mixin_markers)]
-    non_core = set(FEATURE_MARKERS + CPU_SKIPPED_MARKERS)
+    non_core = NON_CORE_MARKERS
     groups = []
     if any(not m & non_core for m in class_markers):
         groups.append("core")
@@ -554,7 +545,7 @@ def _feature_groups_for(paths: List[str], mixin_markers: Dict[str, List[str]]) -
 
 def _matrix_entries(test_map: Dict[str, List[str]]) -> List[Dict[str, str]]:
     """Expand buckets into CI matrix entries: `{"name", "paths", "markers"}`, one job each."""
-    decorators = _marker_decorators()
+    decorators = marker_decorators()
     entries = []
     for bucket, paths in sorted(test_map.items()):
         joined = " ".join(paths)
@@ -562,7 +553,7 @@ def _matrix_entries(test_map: Dict[str, List[str]]) -> List[Dict[str, str]]:
             entries.append({"name": bucket, "paths": joined, "markers": ""})
             continue
         for group in _feature_groups_for(paths, _mixin_markers(bucket, decorators)):
-            expr = CORE_MARKERS if group == "core" else " or ".join(FEATURE_GROUPS[group])
+            expr = "core" if group == "core" else " or ".join(FEATURE_GROUPS[group])
             entries.append({"name": f"{bucket}-{group}", "paths": joined, "markers": expr})
     return entries
 

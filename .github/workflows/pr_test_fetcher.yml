@@ -103,7 +103,7 @@ jobs:
 
     - name: Run all selected tests on CPU
       run: |
-        pytest -n 2 --dist=loadfile -v -m "${{ matrix.markers }}" --make-reports=${{ matrix.name }}_tests_cpu ${{ matrix.paths }}
+        pytest -n 2 --dist=loadfile -m "${{ matrix.markers }}" --make-reports=${{ matrix.name }}_tests_cpu ${{ matrix.paths }}
 
     - name: Failure short reports
       if: ${{ failure() }}
