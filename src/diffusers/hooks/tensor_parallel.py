@@ -473,10 +473,19 @@ def apply_tensor_parallel(
 ) -> None:
     """Apply tensor parallel on a model from its flat `_tp_plan`.
 
-    Set `weights_already_sharded` when the planned parameters are already `DTensor` shards, as they are after a
-    streaming `from_pretrained` load; only the forward hooks are then registered. This is passed explicitly rather than
-    detected, because a planned parameter missing from the checkpoint would still be a meta tensor and would make
-    detection say "not sharded" for a model that is in fact half-sharded.
+    Args:
+        model (`torch.nn.Module`):
+            The model to shard in place.
+        config (`TensorParallelConfig`):
+            The tensor-parallel config. Its device mesh must already be set up with `config.setup(...)`.
+        tp_plan (`dict`):
+            A flat mapping of module-name globs to a `"colwise"`/`"rowwise"` style (or a packed variant), usually the
+            model's `_tp_plan`.
+        weights_already_sharded (`bool`, defaults to `False`):
+            Whether the planned parameters are already `DTensor` shards, as they are after a streaming
+            `from_pretrained` load. If `True`, only the forward hooks are registered. This is passed explicitly rather
+            than detected, because a planned parameter missing from the checkpoint would still be a meta tensor and
+            would make detection say "not sharded" for a model that is in fact half-sharded.
     """
     tp_mesh = config._mesh
     if tp_mesh is None:
