@@ -12,8 +12,9 @@ on:
       - "src/diffusers/loaders/lora_base.py"
       - "src/diffusers/loaders/lora_pipeline.py"
       - "src/diffusers/loaders/peft.py"
-      - "tests/pipelines/test_pipelines_common.py"
+      - "tests/pipelines/testing_utils/**.py"
       - "tests/models/test_modeling_common.py"
+      - "tests/models/testing_utils/**.py"
       - "examples/**/*.py"
   workflow_dispatch:
 
@@ -93,7 +94,7 @@ jobs:
     runs-on:
       group: aws-general-8-plus
     container:
-      image: diffusers/diffusers-pytorch-cpu
+      image: diffusers/diffusers-pytorch-cpu:latest
     outputs:
       pipeline_test_matrix: ${{ steps.fetch_pipeline_matrix.outputs.pipeline_test_matrix }}
     steps:
@@ -134,7 +135,7 @@ jobs:
     runs-on:
       group: aws-g4dn-2xlarge
     container:
-      image: diffusers/diffusers-pytorch-cuda
+      image: diffusers/diffusers-pytorch-cuda:latest
       options: --shm-size "16gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
@@ -200,7 +201,7 @@ jobs:
     runs-on:
       group: aws-g4dn-2xlarge
     container:
-      image: diffusers/diffusers-pytorch-cuda
+      image: diffusers/diffusers-pytorch-cuda:latest
       options: --shm-size "16gb" --ipc host --gpus all
     defaults:
       run:
@@ -272,7 +273,7 @@ jobs:
       group: aws-g4dn-2xlarge
 
     container:
-      image: diffusers/diffusers-pytorch-cuda
+      image: diffusers/diffusers-pytorch-cuda:latest
       options: --gpus all --shm-size "16gb" --ipc host
     steps:
     - name: Checkout diffusers

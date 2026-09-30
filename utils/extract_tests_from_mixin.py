@@ -43,9 +43,11 @@ def generate_pattern_for_mixins(mixin_classes: List[Type]) -> str:
 if __name__ == "__main__":
     mixin_classes = []
     if args.type == "pipeline":
-        from tests.pipelines.test_pipelines_common import PipelineTesterMixin
+        # The pipeline tester suite is split across several mixins under `tests/pipelines/testing_utils`,
+        # so aggregate their test methods to reconstruct the full coverage.
+        from tests.pipelines.testing_utils import MemoryTesterMixin, PipelineTesterMixin
 
-        mixin_classes = [PipelineTesterMixin]
+        mixin_classes = [PipelineTesterMixin, MemoryTesterMixin]
 
     elif args.type == "models":
         # The model tester suite is split across several mixins under `tests/models/testing_utils`,
