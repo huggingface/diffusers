@@ -507,6 +507,7 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
         sigma_conditioning: float = 0.0001,
+        num_latent_conditional_frames: int = 1,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -573,6 +574,9 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
             sigma_conditioning (`float`, defaults to `0.0001`):
                 The sigma value used for scaling conditioning latents. Ideally, it should not be changed or should be
                 set to a small value close to zero.
+            num_latent_conditional_frames (`int`, defaults to `1`):
+                Number of latent conditional frames to use for Video2World conditioning. Must be 1 or 2.
+                With the default VAE, this conditions on the last 1 or 5 input video frames, respectively.
 
         Examples:
 
@@ -652,7 +656,21 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
         if image is not None:
             video = self.video_processor.preprocess(image, height, width).unsqueeze(2)
         else:
+            if num_latent_conditional_frames not in [1, 2]:
+                raise ValueError(
+                    f"`num_latent_conditional_frames` must be 1 or 2, but got {num_latent_conditional_frames}"
+                )
+
             video = self.video_processor.preprocess_video(video, height, width)
+
+            frames_to_extract = 4 * (num_latent_conditional_frames - 1) + 1
+            if video.shape[2] < frames_to_extract:
+                raise ValueError(
+                    f"Input video has only {video.shape[2]} frames but Video2World requires at least "
+                    f"{frames_to_extract} frames for conditioning."
+                )
+
+            video = video[:, :, -frames_to_extract:]
         video = video.to(device=device, dtype=vae_dtype)
 
         num_channels_latents = self.transformer.config.in_channels - 1

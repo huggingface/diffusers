@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import PIL.Image
+import pytest
 import torch
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
@@ -48,7 +49,15 @@ class Cosmos2VideoToWorldPipelineTesterConfig(BasePipelineTesterConfig):
     output_shape = (9, 3, 32, 32)
     # Cosmos2 video-to-world is a video pipeline: it exposes `num_videos_per_prompt`, not `num_images_per_prompt`.
     optional_input_params = frozenset(
-        ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
+        [
+            "num_inference_steps",
+            "num_videos_per_prompt",
+            "generator",
+            "latents",
+            "output_type",
+            "return_dict",
+            "num_latent_conditional_frames",
+        ]
     )
 
     def get_dummy_components(self):
@@ -134,6 +143,42 @@ class TestCosmos2VideoToWorldPipeline(
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
+
+    @pytest.mark.parametrize(
+        ("num_latent_conditional_frames", "num_input_frames"),
+        [(None, 1), (2, 5)],
+    )
+    def test_video_conditioning_uses_last_frames(self, num_latent_conditional_frames, num_input_frames):
+        pipe = self.get_pipeline()
+
+        video = [PIL.Image.new("RGB", (32, 32), color=(i * 20, 0, 0)) for i in range(9)]
+
+        inputs = self.get_dummy_inputs()
+        inputs.pop("image")
+        inputs["video"] = video
+
+        if num_latent_conditional_frames is not None:
+            inputs["num_latent_conditional_frames"] = num_latent_conditional_frames
+
+        inputs["generator"] = self.get_generator(0)
+        output_full_video = pipe(**inputs).frames
+
+        inputs["video"] = video[-num_input_frames:]
+        inputs["generator"] = self.get_generator(0)
+        output_conditioning_frames = pipe(**inputs).frames
+
+        assert_tensors_close(output_full_video, output_conditioning_frames, atol=1e-4)
+
+    def test_video_conditioning_rejects_invalid_num_latent_frames(self):
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        inputs.pop("image")
+        inputs["video"] = [PIL.Image.new("RGB", (32, 32)) for _ in range(9)]
+        inputs["num_latent_conditional_frames"] = 3
+
+        with pytest.raises(ValueError, match="must be 1 or 2"):
+            pipe(**inputs)
 
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-2):
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
