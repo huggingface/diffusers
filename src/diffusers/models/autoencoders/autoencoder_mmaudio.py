@@ -1,4 +1,4 @@
-# Copyright 2025 The Kandinsky Team and The HuggingFace Team. All rights reserved.
+# Copyright 2026 The Kandinsky Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Adapted from the MMAudio VAE reference implementation (MIT license, Copyright (c) 2024 Sony Research Inc.):
+# https://github.com/hkchengrex/MMAudio/tree/main/mmaudio/ext/autoencoder
 
 """MMAudio mel-spectrogram VAE used by the Kandinsky 6 TI2VA pipeline.
 

@@ -1,4 +1,4 @@
-# Copyright 2025 The Kandinsky Team and The HuggingFace Team. All rights reserved.
+# Copyright 2026 The Kandinsky Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Adapted from the BigVGAN-v2 vocoder MMAudio bundles at
+# https://github.com/hkchengrex/MMAudio/tree/main/mmaudio/ext/bigvgan_v2, itself adapted from
+# https://github.com/NVIDIA/BigVGAN (MIT license), with the anti-aliased Snake activations of
+# https://github.com/junjun3518/alias-free-torch (Apache License 2.0).
 
 """BigVGAN vocoder that turns the mel spectrograms decoded by [`MMAudioVAE`] into waveforms."""
 

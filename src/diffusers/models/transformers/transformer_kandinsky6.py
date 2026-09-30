@@ -67,8 +67,8 @@ def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
 def apply_scale_shift(normed: Tensor, x: Tensor, scale: Tensor, shift: Tensor) -> Tensor:
     """Apply an AdaLN-style scale/shift affine to an already-normalized tensor, in fp32, cast back to ``x.dtype``.
 
-    Callers compute ``normed`` themselves (e.g. ``self.some_norm(x.float())``) so the norm-layer call stays visible
-    in `forward` instead of being hidden inside this helper.
+    Callers compute ``normed`` themselves (e.g. ``self.some_norm(x.float())``) so the norm-layer call stays visible in
+    `forward` instead of being hidden inside this helper.
     """
     if x.ndim > 2 and scale.ndim == 2:
         shape = (scale.shape[0],) + (1,) * (x.ndim - 2) + (scale.shape[-1],)
@@ -754,8 +754,8 @@ class Kandinsky6Transformer3DModel(
         visual_token_type_num_embeddings (`int`, *optional*, defaults to 0): Number of visual token type embeddings.
 
     Released checkpoints set `text_token_padding`, `ca_rope`, `cross_gates`, and `fix_modulation` to `True` (see each
-    checkpoint's `transformer/config.json`); the `False` defaults only describe an architecture variant this repo
-    does not ship weights for.
+    checkpoint's `transformer/config.json`); the `False` defaults only describe an architecture variant this repo does
+    not ship weights for.
     """
 
     _repeated_blocks = [

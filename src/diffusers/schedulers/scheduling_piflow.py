@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# DISCLAIMER: This file is strongly influenced by the π-Flow reference implementation at
+# https://github.com/Lakonik/LakonLab (https://huggingface.co/papers/2510.14974)
+
 """Diffusers scheduler for distilled Kandinsky 6 PiFlow checkpoints."""
 
 from dataclasses import dataclass

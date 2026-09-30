@@ -55,8 +55,8 @@ def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
 def apply_scale_shift(normed: Tensor, x: Tensor, scale: Tensor, shift: Tensor) -> Tensor:
     """Apply an AdaLN-style scale/shift affine to an already-normalized tensor, in fp32, cast back to ``x.dtype``.
 
-    Callers compute ``normed`` themselves (e.g. ``self.some_norm(x.float())``) so the norm-layer call stays visible
-    in `forward` instead of being hidden inside this helper.
+    Callers compute ``normed`` themselves (e.g. ``self.some_norm(x.float())``) so the norm-layer call stays visible in
+    `forward` instead of being hidden inside this helper.
     """
     if x.ndim > 2 and scale.ndim == 2:
         shape = (scale.shape[0],) + (1,) * (x.ndim - 2) + (scale.shape[-1],)

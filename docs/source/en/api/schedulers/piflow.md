@@ -17,6 +17,8 @@ text/image-to-video-and-audio model and the video super-resolution model. It imp
 [π-Flow](https://huggingface.co/papers/2510.14974): the transformer predicts `n_grid` denoised estimates per latent
 channel at a small number of grid points, and the scheduler integrates a network-free policy between them.
 
+The reference implementation can be found at [Lakonik/LakonLab](https://github.com/Lakonik/LakonLab).
+
 ## PiflowScheduler
 
 [[autodoc]] PiflowScheduler
