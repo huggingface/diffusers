@@ -15,9 +15,16 @@
 
 import random
 
-import pytest
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -28,13 +35,14 @@ from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_instru
     StableDiffusionXLInstructPix2PixPipeline,
 )
 
-from ...testing_utils import floats_tensor, torch_device
+from ...testing_utils import assert_tensors_close, floats_tensor, torch_device
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    IPAdapterTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -108,6 +116,30 @@ class StableDiffusionXLInstructPix2PixPipelineTesterConfig(BasePipelineTesterCon
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
+        torch.manual_seed(0)
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=32,
+            image_size=224,
+            projection_dim=32,
+            intermediate_size=37,
+            num_attention_heads=4,
+            num_channels=3,
+            num_hidden_layers=5,
+            patch_size=14,
+        )
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
+
+        feature_extractor = CLIPImageProcessor(
+            crop_size=224,
+            do_center_crop=True,
+            do_normalize=True,
+            do_resize=True,
+            image_mean=[0.48145466, 0.4578275, 0.40821073],
+            image_std=[0.26862954, 0.26130258, 0.27577711],
+            resample=3,
+            size=224,
+        )
+
         components = {
             "unet": unet,
             "scheduler": scheduler,
@@ -116,6 +148,8 @@ class StableDiffusionXLInstructPix2PixPipelineTesterConfig(BasePipelineTesterCon
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "image_encoder": image_encoder,
+            "feature_extractor": feature_extractor,
         }
         return components
 
@@ -142,12 +176,54 @@ class TestStableDiffusionXLInstructPix2PixPipeline(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
-    @pytest.mark.skip("Every `_optional_component` is needed to encode the prompt this pipeline requires.")
-    def test_save_load_optional_components(self):
-        pass
+    def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
+        # `_optional_components` also lists the tokenizers and the text encoders, but the standard dummy inputs
+        # pass a `prompt`, so those have to stay. Restrict the test to the components that can be dropped.
+        droppable_components = ["image_encoder", "feature_extractor"]
+
+        pipe = self.get_pipeline().to(torch_device)
+        for optional_component in droppable_components:
+            setattr(pipe, optional_component, None)
+
+        torch.manual_seed(0)
+        output = pipe(**self.get_dummy_inputs())[0]
+
+        pipe.save_pretrained(tmp_path, safe_serialization=False)
+        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path)
+        pipe_loaded.to(torch_device)
+        pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in droppable_components:
+            assert getattr(pipe_loaded, optional_component) is None, (
+                f"`{optional_component}` did not stay set to None after loading."
+            )
+
+        torch.manual_seed(0)
+        output_loaded = pipe_loaded(**self.get_dummy_inputs())[0]
+
+        assert_tensors_close(
+            output_loaded,
+            output,
+            atol=expected_max_difference,
+            msg="Output changed after dropping optional components.",
+        )
 
 
 class TestStableDiffusionXLInstructPix2PixPipelineMemory(
     StableDiffusionXLInstructPix2PixPipelineTesterConfig, MemoryTesterMixin
 ):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SDXL pix2pix pipeline."""
+
+
+class TestStableDiffusionXLInstructPix2PixPipelineIPAdapter(
+    StableDiffusionXLInstructPix2PixPipelineTesterConfig, IPAdapterTesterMixin
+):
+    """IP-Adapter tests for the SDXL InstructPix2Pix pipeline."""
+
+    def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):
+        # Unlike the other UNet pipelines, InstructPix2Pix runs a three-way CFG batch ordered
+        # [cond, negative, negative], so pre-computed embeddings carry three chunks instead of two.
+        return torch.randn((3, 1, cross_attention_dim), device=torch_device)
+
+    def _get_dummy_faceid_image_embeds(self, cross_attention_dim: int = 32):
+        return torch.randn((3, 1, 1, cross_attention_dim), device=torch_device)
