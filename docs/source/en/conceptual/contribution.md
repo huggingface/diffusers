@@ -345,7 +345,7 @@ By adding a new model, pipeline, or scheduler you might enable a new powerful us
 
 #### When new model or pipeline support is released
 
-New model / pipeline support can warrant a new release only if it is well coordinated with the Diffusers team in advance.
+A new model or pipeline may be included in a release if you coordinate the integration with the Diffusers team in advance. [add how to coordinate with team here]
 
 A release does not happen automatically when a model or pipeline pull request is merged. Maintainers first check that the integration is complete and that the release tests pass.
 
