@@ -21,14 +21,14 @@ forward dependency graph for the repo, invert it to a reverse map (file → test
 it), and select the impacted tests.
 
 There is no automatic full-suite trigger. If a change is in territory the import graph can't see
-correctly (dynamic dispatch via auto-mappings, lazy `_import_structure`, etc.), apply the `run-all-tests`
-PR label or pass `--force_full_suite` to bypass selection.
+correctly (dynamic dispatch via auto-mappings, lazy `_import_structure`, etc.), pass `--force_full_suite`
+to bypass selection.
 
 Pipeline-specific note: diffusers' `__init__.py` files use the `_import_structure = {...}` lazy-loading
 pattern paired with an `if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:` block containing real
-`from .submodule import Class` statements. AST extraction sees the TYPE_CHECKING imports (since
-`ast.walk` descends into `If` / `Try` blocks regardless of runtime conditions), so the import graph
-mirrors the actual public API.
+`from .submodule import Class` statements. The import walker descends into `If` / `Try` blocks regardless
+of runtime conditions, so it sees the TYPE_CHECKING imports and the import graph mirrors the actual public
+API.
 
 Stage 1 — diff: list modified Python files (vs. merge-base with main, or the previous commit on main).
     Docstring/comment-only changes are filtered out by content comparison.
@@ -38,6 +38,8 @@ Stage 3 — select: for each modified file, look up `reverse_map[file]` to get i
 Stage 4 — bucket: group tests by top-level `tests/` folder for the CI matrix. `tests/models` and
     `tests/pipelines` are split further into one job per feature mixin (via the pytest markers the
     mixins carry) so a large selection fans out instead of serialising in one job.
+Stage 5 — report: print the import chain that selected each test (kept as a CI artifact) and write a
+    markdown job summary of how many tests each modified file triggers.
 
 Usage:
 
@@ -149,7 +151,7 @@ def get_diff(repo: Repo, base_commit, commits) -> List[str]:
                 code_diff.extend(paths)
             elif not diff_is_docstring_only(repo, commit, d.b_path):
                 code_diff.append(d.b_path)
-    return code_diff
+    return list(dict.fromkeys(code_diff))
 
 
 def get_modified_python_files(diff_with_last_commit: bool = False) -> List[str]:
@@ -164,15 +166,6 @@ def get_modified_python_files(diff_with_last_commit: bool = False) -> List[str]:
         commits = repo.merge_base(upstream_main, repo.head)
     print(f"Diffing HEAD ({repo.head.commit}) against {base_label}: {[str(c) for c in commits]}")
     return get_diff(repo, repo.head.commit, commits)
-
-
-def get_all_tests() -> List[str]:
-    """Top-level entries under `tests/` (folders + `tests/test_*.py`), used to expand a full-suite selection."""
-    return sorted(
-        f"tests/{p.name}"
-        for p in PATH_TO_TESTS.iterdir()
-        if "__pycache__" not in p.name and (p.is_dir() or p.name.startswith("test_"))
-    )
 
 
 # ============================================================
@@ -282,7 +275,7 @@ def get_module_dependencies(module_file: str, cache: Dict[str, List[Tuple[str, L
 
     dependencies: List[str] = []
     queue: List[Tuple[str, List[str]]] = list(cache[module_file])
-    seen_inits: set = set()
+    seen: set = set()
 
     while queue:
         target, symbols = queue.pop(0)
@@ -291,17 +284,21 @@ def get_module_dependencies(module_file: str, cache: Dict[str, List[Tuple[str, L
             dependencies.append(target)
             continue
 
-        # Avoid cycles through inits importing each other.
-        if target in seen_inits:
+        # A symbol arriving at an init it already passed through means inits import each other in a cycle;
+        # keep the init as the dep instead of looping. Tracked per (init, symbol) so a second statement
+        # importing other symbols from the same package still resolves them to their defining modules.
+        unseen = [s for s in symbols if (target, s) not in seen]
+        if len(unseen) < len(symbols):
             dependencies.append(target)
+        if not unseen:
             continue
-        seen_inits.add(target)
+        seen.update((target, s) for s in unseen)
 
         if target not in cache:
             cache[target] = _extract_imports(target)
         init_imports = cache[target]
 
-        unresolved = list(symbols)
+        unresolved = unseen
         for sub_target, sub_names in init_imports:
             matched = [s for s in unresolved if s in sub_names]
             if matched:
@@ -334,19 +331,26 @@ def _merged_nested_deps(m: str, direct_deps: Dict[str, List[str]]) -> bool:
     return merged
 
 
-def create_reverse_dependency_map() -> Dict[str, List[str]]:
-    """Build the reverse dependency map: file → list of files that transitively depend on it.
-
-    1. Compute direct deps for every .py under `src/diffusers/` and `tests/`.
-    2. Transitively close (skipping inits during recursion to avoid pulling in the universe via the root init).
-    3. Invert.
-    """
+def create_direct_dependency_map() -> Dict[str, List[str]]:
+    """Direct (one-hop) deps of every .py under `src/diffusers/` and `tests/`: file → files it imports."""
     cache: Dict[str, List[Tuple[str, List[str]]]] = {}
     all_modules = [
         str(p.relative_to(PATH_TO_REPO))
         for p in list(PATH_TO_DIFFUSERS.glob("**/*.py")) + list(PATH_TO_TESTS.glob("**/*.py"))
     ]
-    direct_deps: Dict[str, List[str]] = {m: get_module_dependencies(m, cache) for m in all_modules}
+    return {m: get_module_dependencies(m, cache) for m in all_modules}
+
+
+def create_reverse_dependency_map(direct_deps: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    """Build the reverse dependency map: file → list of files that transitively depend on it.
+
+    1. Transitively close the direct deps (skipping inits during recursion to avoid pulling in the universe
+       via the root init).
+    2. Invert.
+    """
+    all_modules = list(direct_deps)
+    one_hop_deps = direct_deps
+    direct_deps = {m: list(deps) for m, deps in direct_deps.items()}
 
     # Each pass propagates dependency info one level deeper. Loop until a full pass adds nothing.
     changed = True
@@ -363,7 +367,7 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
 
     # For inits, do the forward direction: editing an init impacts everything it re-exports.
     for init in [m for m in all_modules if m.endswith("__init__.py")]:
-        deps = get_module_dependencies(init, cache)
+        deps = one_hop_deps[init]
         impacted = set(deps)
         for d in deps:
             if not d.endswith("__init__.py"):
@@ -371,6 +375,88 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
         reverse_map[init] = sorted(impacted - {init})
 
     return dict(reverse_map)
+
+
+def _import_chain(test_file: str, modified_files: List[str], direct_deps: Dict[str, List[str]]) -> Optional[List[str]]:
+    """Shortest import chain from a modified file to `test_file`, or None if there is none.
+
+    Walks `test_file`'s imports outward with the same rules as the transitive closure: an `__init__.py`
+    reached as a dependency is not expanded further. A modified init is reached through the modules it
+    re-exports, mirroring the forward direction `create_reverse_dependency_map` applies to inits.
+    """
+    targets = {f: f for f in modified_files}
+    for f in modified_files:
+        if f.endswith("__init__.py"):
+            for d in direct_deps.get(f, []):
+                if not d.endswith("__init__.py"):
+                    targets.setdefault(d, f)
+
+    parents: Dict[str, Optional[str]] = {test_file: None}
+    queue = collections.deque([test_file])
+    while queue:
+        node = queue.popleft()
+        if node in targets:
+            chain = [] if targets[node] == node else [targets[node]]
+            while node is not None:
+                chain.append(node)
+                node = parents[node]
+            return chain
+        if node.endswith("__init__.py") and node != test_file:
+            continue
+        for d in direct_deps.get(node, []):
+            if d not in parents:
+                parents[d] = node
+                queue.append(d)
+    return None
+
+
+def _print_selection_report(test_files: List[str], modified_files: List[str], direct_deps: Dict[str, List[str]]):
+    """Print, for every selected test, the import chain from the modified file that pulled it in."""
+    print(f"\nSelected {len(test_files)} test files from {len(modified_files)} modified Python files.")
+    print("Each entry shows the import chain from a modified file to the test (modified file first):\n")
+    for test_file in test_files:
+        chain = _import_chain(test_file, modified_files, direct_deps)
+        if chain == [test_file]:
+            reason = "modified directly"
+        elif chain is None:
+            reason = "no direct import chain found; selected through the reverse map"
+        else:
+            reason = " -> ".join(chain[:-1])
+        print(f"{test_file}\n    {reason}")
+
+
+def _tests_triggered_by(f: str, reverse_map: Dict[str, List[str]]) -> int:
+    """Number of test files a change to `f` selects, counting `f` itself when it is a test."""
+    triggered = {t for t in reverse_map.get(f, []) if _is_test_file(t)}
+    if _is_test_file(f):
+        triggered.add(f)
+    return len(triggered)
+
+
+def _write_summary(
+    summary_file: str, modified_files: List[str], test_files: List[str], reverse_map: Dict[str, List[str]]
+):
+    """Write a short markdown report for the CI job summary: how many tests each modified file triggers.
+
+    A file with outsized reach is the cue for a maintainer to open the per-test import chains in the artifact.
+    """
+    lines = [
+        "## Test fetcher",
+        "",
+        f"Selected {len(test_files)} test files from {len(modified_files)} modified Python files. "
+        "The import chain that selected each test is in the `test_fetched` artifact.",
+        "",
+        "| Modified file | Tests it triggers |",
+        "|---|---|",
+    ]
+    # A modified file that pulls in nothing beyond itself adds no information; only files with reach get a row.
+    triggered = {f: _tests_triggered_by(f, reverse_map) for f in modified_files}
+    for f in sorted(modified_files, key=lambda f: (-triggered[f], f)):
+        if triggered[f] > (1 if _is_test_file(f) else 0):
+            lines.append(f"| `{f}` | {triggered[f]} |")
+    lines.append(f"| **Distinct tests selected** | **{len(test_files)}** |")
+
+    Path(summary_file).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # ============================================================
@@ -462,7 +548,8 @@ def _feature_groups_for(paths: List[str], mixin_markers: Dict[str, List[str]]) -
     for group, markers in FEATURE_GROUPS.items():
         if any(m & set(markers) for m in class_markers):
             groups.append(group)
-    return groups
+    # Function-style test files declare no class, so no marker: they are core tests.
+    return groups or ["core"]
 
 
 def _matrix_entries(test_map: Dict[str, List[str]]) -> List[Dict[str, str]]:
@@ -490,10 +577,11 @@ def _is_test_file(path: str) -> bool:
     return path.startswith("tests/") and Path(path).name.startswith("test_")
 
 
-def fetch_tests_to_run(json_output_file: str, diff_with_last_commit: bool):
-    """Determine the tests to run from the diff and write `test_map.json`."""
+def fetch_tests_to_run(json_output_file: str, summary_file: str, diff_with_last_commit: bool):
+    """Determine the tests to run from the diff, write `test_map.json` and the markdown job summary."""
     modified_files = get_modified_python_files(diff_with_last_commit=diff_with_last_commit)
-    reverse_map = create_reverse_dependency_map()
+    direct_deps = create_direct_dependency_map()
+    reverse_map = create_reverse_dependency_map(direct_deps)
 
     # Each modified file contributes itself (if it's a test) plus tests transitively impacted by it.
     selected = set()
@@ -503,6 +591,8 @@ def fetch_tests_to_run(json_output_file: str, diff_with_last_commit: bool):
         selected.update(t for t in reverse_map.get(f, []) if _is_test_file(t))
 
     test_files_to_run = sorted(p for p in selected if (PATH_TO_REPO / p).exists())
+    _print_selection_report(test_files_to_run, modified_files, direct_deps)
+    _write_summary(summary_file, modified_files, test_files_to_run, reverse_map)
     _write_matrix(json_output_file, test_files_to_run)
 
 
@@ -532,6 +622,12 @@ if __name__ == "__main__":
         help="Where to store the list of matrix entries (name / paths / markers) consumed by CI.",
     )
     parser.add_argument(
+        "--summary_output_file",
+        type=str,
+        default="test_fetcher_summary.md",
+        help="Where to store the markdown report appended to the CI job summary.",
+    )
+    parser.add_argument(
         "--diff_with_last_commit",
         action="store_true",
         help="Diff against the previous commit instead of main (use on main branch jobs)",
@@ -555,7 +651,7 @@ if __name__ == "__main__":
         diff_with_last_commit = True
 
     try:
-        fetch_tests_to_run(args.json_output_file, diff_with_last_commit)
+        fetch_tests_to_run(args.json_output_file, args.summary_output_file, diff_with_last_commit)
     except Exception as e:
         import traceback
 

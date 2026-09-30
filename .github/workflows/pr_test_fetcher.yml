@@ -43,6 +43,11 @@ jobs:
     - name: Fetch Tests
       run: |
         python utils/tests_fetcher.py | tee test_preparation.txt
+    - name: Report selection in job summary
+      run: |
+        if [ -f test_fetcher_summary.md ]; then
+            cat test_fetcher_summary.md >> $GITHUB_STEP_SUMMARY
+        fi
     - name: Report fetched tests
       uses: actions/upload-artifact@v6
       with:
