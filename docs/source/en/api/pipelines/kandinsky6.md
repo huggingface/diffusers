@@ -77,6 +77,23 @@ sr_pipe.enable_model_cpu_offload()
 upscaled = sr_pipe(video=output.frames[0], resolution_scale=2.25, num_inference_steps=2).frames[0]
 ```
 
+## Memory optimization
+
+Refer to the [Reduce memory usage](../../optimization/memory) guide for the general set of techniques. Both
+[`Kandinsky6TI2VAPipeline`] and [`Kandinsky6SRPipeline`] support [model offloading](../../optimization/memory#model-offloading)
+(used above) and, for a smaller footprint at the cost of speed, [sequential CPU offloading](../../optimization/memory#cpu-offloading):
+
+```python
+pipe.enable_sequential_cpu_offload()
+```
+
+[`Kandinsky6TI2VAPipeline`]'s video VAE also supports [tiled decoding](../../optimization/memory#vae-tiling) for high
+resolutions or long videos:
+
+```python
+pipe.vae.enable_tiling()
+```
+
 ## Kandinsky6TI2VAPipeline
 
 [[autodoc]] Kandinsky6TI2VAPipeline

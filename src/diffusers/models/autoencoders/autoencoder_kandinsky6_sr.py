@@ -36,7 +36,7 @@ SEGMENT_FRAMES = 16
 CONV_CHUNK_ELEMENTS = 2 * 10**9
 
 
-class Kandinsky6SRConv3d(nn.Conv3d):
+class Kandinsky6SRSafeConv3d(nn.Conv3d):
     """`Conv3d` that splits very large inputs along the time axis and convolves them chunk by chunk.
 
     Each chunk is padded with the last `kernel_size - 1` frames of the previous chunk before convolving, so the result
@@ -73,6 +73,12 @@ class Kandinsky6SRCausalConv3d(nn.Module):
     Height and width are zero-padded symmetrically. Along time the first segment is padded by repeating its first frame
     `kernel_size - 1` times; later segments are padded with the frames the previous segment left behind in
     `cache["padding"]`, so a video processed segment by segment matches a single pass.
+
+    This caching is not an optional performance knob: it is what lets `Kandinsky6SRVAE.encode`/`decode` process an
+    arbitrarily long video in bounded-memory segments (see `SEGMENT_FRAMES`) while reproducing the exact output of a
+    single non-causal pass. Without it, each segment would need the raw frames the previous segment already consumed in
+    order to rebuild correct padding, which means keeping the whole video in memory anyway and defeats the reason
+    segmentation exists.
     """
 
     def __init__(
@@ -96,13 +102,13 @@ class Kandinsky6SRCausalConv3d(nn.Module):
         self.time_pad = time_kernel_size - 1
         self.time_kernel_size = time_kernel_size
         self.time_stride = stride[0]
-        self.conv = Kandinsky6SRConv3d(in_channels, out_channels, kernel_size, stride=stride)
+        self.conv = Kandinsky6SRSafeConv3d(in_channels, out_channels, kernel_size, stride=stride)
 
     @staticmethod
     def make_cache() -> dict:
         return {"padding": None}
 
-    def forward(self, hidden_states: torch.Tensor, cache: dict) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, cache: dict) -> tuple[torch.Tensor, dict]:
         batch_size, _, num_frames, height, width = hidden_states.shape
         hidden_states = F.pad(hidden_states, (self.width_pad, self.width_pad, self.height_pad, self.height_pad))
 
@@ -129,19 +135,28 @@ class Kandinsky6SRCausalConv3d(nn.Module):
         if offset_out < output_frames:
             output[:, :, offset_out:] = self.conv(hidden_states[:, :, offset_in:])
 
-        # Carry the frames the next segment's first window still needs.
+        # The frames the next segment's first window still needs. Returned rather than written into `cache` in
+        # place, so this stays correct under `torch.utils.checkpoint`'s backward-time recompute (see
+        # `Kandinsky6SRResnetBlock3D`): the recompute reads the same, never-mutated `cache` argument as the
+        # original call.
         pad_offset = (
             offset_in + stride * math.trunc((num_frames - offset_in - self.time_kernel_size) / stride) + stride
         )
         if pad_offset < 0:
-            cache["padding"] = torch.cat([padding[:, :, pad_offset:], hidden_states], dim=2)
+            new_padding = torch.cat([padding[:, :, pad_offset:], hidden_states], dim=2)
         else:
-            cache["padding"] = hidden_states[:, :, pad_offset:].clone()
-        return output
+            new_padding = hidden_states[:, :, pad_offset:].clone()
+        return output, {"padding": new_padding}
 
 
 class Kandinsky6SRRMSNorm(nn.Module):
-    """RMS normalization over the channel axis of a `(B, C, T, H, W)` tensor, computed in float32."""
+    """RMS normalization over the channel axis of a `(B, C, T, H, W)` tensor, computed in float32.
+
+    Same idea as `WanRMS_norm` (`autoencoder_kl_wan.py`) / `QwenImageRMS_norm` (`autoencoder_kl_qwenimage.py`), but not
+    a verbatim copy of either, so it is not marked `# Copied from`: it is hardcoded to the channel-first 5D layout used
+    throughout this VAE instead of taking `channel_first`/`images` flags, always upcasts to float32 rather than only
+    for fp16/bf16/fp8 inputs, and has no learnable bias term.
+    """
 
     def __init__(self, num_channels: int) -> None:
         super().__init__()
@@ -154,8 +169,14 @@ class Kandinsky6SRRMSNorm(nn.Module):
 
 
 class Kandinsky6SRSpatialNorm3D(nn.Module):
-    """RMS norm modulated by the latent `zq`, the same conditioning other video VAEs in the library use to inject the
-    latent back into the decoder, adapted to causal segment-by-segment decoding.
+    """Spatial normalization conditioned on the latent `zq` (https://huggingface.co/papers/2209.09002), used here so
+    the decoder can inject the latent back in at every resnet block. Structurally this plays the same role as
+    `SpatialNorm` (`attention_processor.py`) / `CogVideoXSpatialNorm3D` (`autoencoder_kl_cogvideox.py`) — normalize the
+    features, then scale and shift by convolutions of the upsampled `zq`, threading a `cache` argument through
+    `forward` functionally (read, never written in place) the same way `CogVideoXSpatialNorm3D` threads its
+    `conv_cache` — but it is not a `# Copied from` of either: it normalizes with `Kandinsky6SRRMSNorm` instead of
+    `GroupNorm` (matching the plain-RMSNorm blocks elsewhere in this VAE), and interpolates `zq` in channel chunks to
+    bound peak memory.
 
     `zq` is nearest-upsampled to the feature grid. In the first segment the first frame is upsampled separately,
     because the temporal upsampler turns `T + 1` latent frames into `2T + 1` pixel frames.
@@ -164,14 +185,14 @@ class Kandinsky6SRSpatialNorm3D(nn.Module):
     def __init__(self, num_channels: int, zq_channels: int) -> None:
         super().__init__()
         self.norm_layer = Kandinsky6SRRMSNorm(num_channels)
-        self.conv_y = Kandinsky6SRConv3d(zq_channels, num_channels, kernel_size=1)
-        self.conv_b = Kandinsky6SRConv3d(zq_channels, num_channels, kernel_size=1)
+        self.conv_y = Kandinsky6SRSafeConv3d(zq_channels, num_channels, kernel_size=1)
+        self.conv_b = Kandinsky6SRSafeConv3d(zq_channels, num_channels, kernel_size=1)
 
     @staticmethod
     def make_cache() -> dict:
         return {"is_first_segment": True}
 
-    def forward(self, hidden_states: torch.Tensor, zq: torch.Tensor, cache: dict) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, zq: torch.Tensor, cache: dict) -> tuple[torch.Tensor, dict]:
         if cache["is_first_segment"]:
             zq_first = F.interpolate(zq[:, :, :1], size=hidden_states[:, :, :1].shape[-3:], mode="nearest")
             if zq.size(2) > 1:
@@ -186,7 +207,6 @@ class Kandinsky6SRSpatialNorm3D(nn.Module):
                 zq = torch.cat([zq_first, zq_rest], dim=2)
             else:
                 zq = zq_first
-            cache["is_first_segment"] = False
         else:
             zq = torch.cat(
                 [
@@ -195,11 +215,20 @@ class Kandinsky6SRSpatialNorm3D(nn.Module):
                 ],
                 dim=1,
             )
-        return self.norm_layer(hidden_states) * self.conv_y(zq) + self.conv_b(zq)
+        output = self.norm_layer(hidden_states) * self.conv_y(zq) + self.conv_b(zq)
+        return output, {"is_first_segment": False}
 
 
 class Kandinsky6SRResnetBlock3D(nn.Module):
-    """Causal residual block; decoder blocks modulate their norms with the latent `zq`."""
+    """Causal residual block; decoder blocks modulate their norms with the latent `zq`.
+
+    `forward` never mutates the `cache` it is given: `conv1`/`conv2` (`Kandinsky6SRCausalConv3d`) and, for decoder
+    blocks, `norm1`/`norm2` (`Kandinsky6SRSpatialNorm3D`) each return a new cache value instead of writing into the one
+    they were passed, the same functional-cache convention `autoencoder_kl_cogvideox.py` uses. That is what makes it
+    safe to wrap this block in `torch.utils.checkpoint` (see `Kandinsky6SREncoder3D`/`Kandinsky6SRDecoder3D`): the
+    backward-time recompute reads the same, never-mutated `cache` argument the original call did, so it retraces the
+    same branch and produces the same activations and gradients.
+    """
 
     def __init__(self, in_channels: int, out_channels: int, zq_channels: int | None = None) -> None:
         super().__init__()
@@ -214,7 +243,7 @@ class Kandinsky6SRResnetBlock3D(nn.Module):
         self.conv1 = Kandinsky6SRCausalConv3d(in_channels, out_channels, kernel_size=3)
         self.conv2 = Kandinsky6SRCausalConv3d(out_channels, out_channels, kernel_size=3)
         if in_channels != out_channels:
-            self.nin_shortcut = Kandinsky6SRConv3d(in_channels, out_channels, kernel_size=1)
+            self.nin_shortcut = Kandinsky6SRSafeConv3d(in_channels, out_channels, kernel_size=1)
 
     def make_cache(self) -> dict:
         cache = {"conv1": self.conv1.make_cache(), "conv2": self.conv2.make_cache()}
@@ -223,26 +252,43 @@ class Kandinsky6SRResnetBlock3D(nn.Module):
             cache["norm2"] = self.norm2.make_cache()
         return cache
 
-    def forward(self, hidden_states: torch.Tensor, cache: dict, zq: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self, hidden_states: torch.Tensor, cache: dict, zq: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, dict]:
         residual = hidden_states
-        hidden_states = self.norm1(hidden_states) if zq is None else self.norm1(hidden_states, zq, cache["norm1"])
-        hidden_states = self.conv1(F.silu(hidden_states), cache["conv1"])
-        hidden_states = self.norm2(hidden_states) if zq is None else self.norm2(hidden_states, zq, cache["norm2"])
-        hidden_states = self.conv2(F.silu(hidden_states), cache["conv2"])
+        new_cache = {}
+        if zq is None:
+            hidden_states = self.norm1(hidden_states)
+        else:
+            hidden_states, new_cache["norm1"] = self.norm1(hidden_states, zq, cache["norm1"])
+        hidden_states, new_cache["conv1"] = self.conv1(F.silu(hidden_states), cache["conv1"])
+        if zq is None:
+            hidden_states = self.norm2(hidden_states)
+        else:
+            hidden_states, new_cache["norm2"] = self.norm2(hidden_states, zq, cache["norm2"])
+        hidden_states, new_cache["conv2"] = self.conv2(F.silu(hidden_states), cache["conv2"])
         if self.in_channels != self.out_channels:
             residual = self.nin_shortcut(residual)
-        return residual + hidden_states
+        return residual + hidden_states, new_cache
 
 
 class Kandinsky6SRDownsample(nn.Module):
-    """Spatial 2x downsample (strided conv plus pixel-unshuffle average) with an optional causal temporal 2x."""
+    """Spatial 2x downsample (strided conv plus pixel-unshuffle average) with an optional causal temporal 2x.
+
+    Implemented from scratch rather than reusing `KVAECachedPXSDownsample` (`autoencoder_kl_kvae_video.py`), the
+    closest existing causal, stateful down/upsample block in the library: that class is a private helper of a different
+    Kandinsky VAE (not a shared, importable utility) and uses its own cache convention — a `list` of per-conv dicts
+    mutated in place — rather than this file's dict-keyed cache that `forward` returns functionally instead of mutating
+    (see `Kandinsky6SRCausalConv3d`), so reusing it as-is would mean threading two incompatible cache conventions
+    through the same model. See `Kandinsky6SRUpsample` for the upsampling counterpart.
+    """
 
     def __init__(self, in_channels: int, compress_time: bool) -> None:
         super().__init__()
         out_channels = 2 * in_channels
         self.compress_time = compress_time
         self.unshuffle = nn.PixelUnshuffle(2)
-        self.spatial_conv = Kandinsky6SRConv3d(
+        self.spatial_conv = Kandinsky6SRSafeConv3d(
             in_channels, out_channels, kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=(0, 1, 1)
         )
         if compress_time:
@@ -252,7 +298,7 @@ class Kandinsky6SRDownsample(nn.Module):
                     Kandinsky6SRCausalConv3d(out_channels, out_channels, kernel_size=(2, 1, 1), stride=(2, 1, 1)),
                 ]
             )
-        self.linear = Kandinsky6SRConv3d(out_channels, out_channels, kernel_size=1)
+        self.linear = Kandinsky6SRSafeConv3d(out_channels, out_channels, kernel_size=1)
 
     def make_cache(self) -> dict:
         if not self.compress_time:
@@ -284,21 +330,26 @@ class Kandinsky6SRDownsample(nn.Module):
             pooled = F.avg_pool1d(sequence, kernel_size=2, stride=2)
         pooled = pooled.reshape(batch_size, height, width, channels, -1).permute(0, 3, 4, 1, 2)
 
-        conv_out = self.temporal_conv[0](hidden_states, cache["temporal_conv"][0])
-        conv_out = self.temporal_conv[1](conv_out, cache["temporal_conv"][1])
+        conv_out, cache["temporal_conv"][0] = self.temporal_conv[0](hidden_states, cache["temporal_conv"][0])
+        conv_out, cache["temporal_conv"][1] = self.temporal_conv[1](conv_out, cache["temporal_conv"][1])
         return self.linear(conv_out + pooled)
 
 
 class Kandinsky6SRUpsample(nn.Module):
-    """Spatial 2x nearest upsample with a convolutional residual, preceded by an optional causal temporal 2x."""
+    """Spatial 2x nearest upsample with a convolutional residual, preceded by an optional causal temporal 2x.
+
+    Bespoke for the same reason as `Kandinsky6SRDownsample`: the closest existing precedent, `KVAECachedPXSUpsample`
+    (`autoencoder_kl_kvae_video.py`), is a private helper of a different Kandinsky VAE with its own, incompatible cache
+    convention, not a shared utility this file can import and reuse.
+    """
 
     def __init__(self, channels: int, compress_time: bool) -> None:
         super().__init__()
         self.compress_time = compress_time
-        self.spatial_conv = Kandinsky6SRConv3d(channels, channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.spatial_conv = Kandinsky6SRSafeConv3d(channels, channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
         if compress_time:
             self.temporal_conv = Kandinsky6SRCausalConv3d(channels, channels, kernel_size=(3, 1, 1))
-        self.linear = Kandinsky6SRConv3d(channels, channels, kernel_size=1)
+        self.linear = Kandinsky6SRSafeConv3d(channels, channels, kernel_size=1)
 
     def make_cache(self) -> dict:
         return {"temporal_conv": self.temporal_conv.make_cache()} if self.compress_time else {}
@@ -310,7 +361,8 @@ class Kandinsky6SRUpsample(nn.Module):
             repeated = hidden_states.repeat_interleave(2, dim=2)
             if cache["temporal_conv"]["padding"] is None:
                 repeated = repeated[:, :, 1:]
-            hidden_states = self.temporal_conv(repeated, cache["temporal_conv"]) + repeated
+            conv_out, cache["temporal_conv"] = self.temporal_conv(repeated, cache["temporal_conv"])
+            hidden_states = conv_out + repeated
 
         hidden_states = F.interpolate(hidden_states, scale_factor=(1, 2, 2), mode="nearest")
         hidden_states = hidden_states + self.spatial_conv(hidden_states)
@@ -318,6 +370,8 @@ class Kandinsky6SRUpsample(nn.Module):
 
 
 class Kandinsky6SREncoder3D(nn.Module):
+    _supports_gradient_checkpointing = True
+
     def __init__(
         self,
         in_channels: int,
@@ -354,6 +408,8 @@ class Kandinsky6SREncoder3D(nn.Module):
         self.norm_out = Kandinsky6SRRMSNorm(block_in)
         self.conv_out = Kandinsky6SRCausalConv3d(block_in, 2 * latent_channels, kernel_size=3)
 
+        self.gradient_checkpointing = False
+
     def make_cache(self) -> dict:
         return {
             "conv_in": self.conv_in.make_cache(),
@@ -370,19 +426,38 @@ class Kandinsky6SREncoder3D(nn.Module):
         }
 
     def forward(self, hidden_states: torch.Tensor, cache: dict) -> torch.Tensor:
-        hidden_states = self.conv_in(hidden_states, cache["conv_in"])
+        hidden_states, cache["conv_in"] = self.conv_in(hidden_states, cache["conv_in"])
         for down, level_cache in zip(self.down, cache["down"]):
-            for block, block_cache in zip(down.block, level_cache["block"]):
-                hidden_states = block(hidden_states, block_cache)
+            for i, block in enumerate(down.block):
+                block_cache = level_cache["block"][i]
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
+                    hidden_states, level_cache["block"][i] = self._gradient_checkpointing_func(
+                        block, hidden_states, block_cache
+                    )
+                else:
+                    hidden_states, level_cache["block"][i] = block(hidden_states, block_cache)
             if hasattr(down, "downsample"):
                 hidden_states = down.downsample(hidden_states, level_cache["downsample"])
-        hidden_states = self.mid.block_1(hidden_states, cache["mid_1"])
-        hidden_states = self.mid.block_2(hidden_states, cache["mid_2"])
+
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            hidden_states, cache["mid_1"] = self._gradient_checkpointing_func(
+                self.mid.block_1, hidden_states, cache["mid_1"]
+            )
+            hidden_states, cache["mid_2"] = self._gradient_checkpointing_func(
+                self.mid.block_2, hidden_states, cache["mid_2"]
+            )
+        else:
+            hidden_states, cache["mid_1"] = self.mid.block_1(hidden_states, cache["mid_1"])
+            hidden_states, cache["mid_2"] = self.mid.block_2(hidden_states, cache["mid_2"])
+
         hidden_states = F.silu(self.norm_out(hidden_states))
-        return self.conv_out(hidden_states, cache["conv_out"])
+        hidden_states, cache["conv_out"] = self.conv_out(hidden_states, cache["conv_out"])
+        return hidden_states
 
 
 class Kandinsky6SRDecoder3D(nn.Module):
+    _supports_gradient_checkpointing = True
+
     def __init__(
         self,
         out_channels: int,
@@ -423,6 +498,8 @@ class Kandinsky6SRDecoder3D(nn.Module):
         self.norm_out = Kandinsky6SRSpatialNorm3D(block_in, latent_channels)
         self.conv_out = Kandinsky6SRCausalConv3d(block_in, out_channels, kernel_size=3)
 
+        self.gradient_checkpointing = False
+
     def make_cache(self) -> dict:
         return {
             "conv_in": self.conv_in.make_cache(),
@@ -440,17 +517,36 @@ class Kandinsky6SRDecoder3D(nn.Module):
         }
 
     def forward(self, latents: torch.Tensor, cache: dict) -> torch.Tensor:
-        hidden_states = self.conv_in(latents, cache["conv_in"])
-        hidden_states = self.mid.block_1(hidden_states, cache["mid_1"], zq=latents)
-        hidden_states = self.mid.block_2(hidden_states, cache["mid_2"], zq=latents)
+        hidden_states, cache["conv_in"] = self.conv_in(latents, cache["conv_in"])
+
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            hidden_states, cache["mid_1"] = self._gradient_checkpointing_func(
+                self.mid.block_1, hidden_states, cache["mid_1"], latents
+            )
+            hidden_states, cache["mid_2"] = self._gradient_checkpointing_func(
+                self.mid.block_2, hidden_states, cache["mid_2"], latents
+            )
+        else:
+            hidden_states, cache["mid_1"] = self.mid.block_1(hidden_states, cache["mid_1"], zq=latents)
+            hidden_states, cache["mid_2"] = self.mid.block_2(hidden_states, cache["mid_2"], zq=latents)
+
         for level in reversed(range(len(self.up))):
             up, level_cache = self.up[level], cache["up"][level]
-            for block, block_cache in zip(up.block, level_cache["block"]):
-                hidden_states = block(hidden_states, block_cache, zq=latents)
+            for i, block in enumerate(up.block):
+                block_cache = level_cache["block"][i]
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
+                    hidden_states, level_cache["block"][i] = self._gradient_checkpointing_func(
+                        block, hidden_states, block_cache, latents
+                    )
+                else:
+                    hidden_states, level_cache["block"][i] = block(hidden_states, block_cache, zq=latents)
             if hasattr(up, "upsample"):
                 hidden_states = up.upsample(hidden_states, level_cache["upsample"])
-        hidden_states = F.silu(self.norm_out(hidden_states, latents, cache["norm_out"]))
-        return self.conv_out(hidden_states, cache["conv_out"])
+
+        hidden_states, cache["norm_out"] = self.norm_out(hidden_states, latents, cache["norm_out"])
+        hidden_states = F.silu(hidden_states)
+        hidden_states, cache["conv_out"] = self.conv_out(hidden_states, cache["conv_out"])
+        return hidden_states
 
 
 class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
@@ -460,6 +556,11 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
     Videos are processed in temporal segments of 16 pixel frames (plus the leading frame). The causal convolutions
     carry their padding state between segments, so the segmentation only bounds peak memory and does not change the
     result.
+
+    Supports gradient checkpointing (see [`~ModelMixin.enable_gradient_checkpointing`]): every
+    [`Kandinsky6SRResnetBlock3D`] in the encoder and decoder is checkpointed, since its `cache` argument is threaded
+    functionally (read, never mutated in place — see [`Kandinsky6SRCausalConv3d`]), so recomputing it during backward
+    reproduces the exact same forward pass.
 
     Args:
         in_channels (`int`, defaults to `3`):
@@ -484,6 +585,7 @@ class Kandinsky6SRVAE(ModelMixin, ConfigMixin):
     """
 
     _no_split_modules = ["Kandinsky6SREncoder3D", "Kandinsky6SRDecoder3D"]
+    _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(

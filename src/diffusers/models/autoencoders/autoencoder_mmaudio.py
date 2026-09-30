@@ -87,6 +87,8 @@ def normalize(x: torch.Tensor, dim: list[int] | None = None, eps: float = 1e-4) 
 
 def mp_silu(x: torch.Tensor) -> torch.Tensor:
     """SiLU rescaled so that a unit-variance input stays unit-variance."""
+    # 0.596 is the (empirically measured) standard deviation of SiLU(z) for z ~ N(0, 1), i.e. the EDM2-style
+    # magnitude-preserving rescaling constant for this nonlinearity (see Karras et al. reference above).
     return F.silu(x) / 0.596
 
 
@@ -334,8 +336,8 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
     Audio VAE of [`Kandinsky6TI2VAPipeline`]: a magnitude-preserving autoencoder over log-mel spectrograms (MMAudio,
     https://arxiv.org/abs/2412.15322).
 
-    `encode` turns a waveform into a latent distribution; `decode` turns latents back into a mel spectrogram, which
-    the pipeline-local [`~pipelines.kandinsky6.MMAudioVocoder`] then turns into a waveform. One latent frame covers
+    `encode` turns a waveform into a latent distribution; `decode` turns latents back into a mel spectrogram, which the
+    pipeline-local [`~pipelines.kandinsky6.MMAudioVocoder`] then turns into a waveform. One latent frame covers
     `hop_length * 2` samples.
 
     Args:

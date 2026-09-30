@@ -149,11 +149,11 @@ class Kandinsky6SRAttnProcessor:
     """Self-attention processor of the SR transformer: dense by default, NABLA sparse when `sparse_params` is set.
 
     Like [`Kandinsky5AttnProcessor`], the attention backend is chosen through the usual `_attention_backend`
-    (`set_attention_backend`), even in the NABLA sparse branch. Its sparsity is expressed as a `BlockMask`, which
-    only the `flex` backend can consume, so sparse checkpoints require `set_attention_backend("flex")`. That backend
-    also needs to run under `torch.compile` (e.g. `transformer.compile_repeated_blocks()`): uncompiled, PyTorch's
-    flex attention falls back to an eager implementation that materializes the full attention matrix, which does not
-    fit in memory at video resolutions.
+    (`set_attention_backend`), even in the NABLA sparse branch. Its sparsity is expressed as a `BlockMask`, which only
+    the `flex` backend can consume, so sparse checkpoints require `set_attention_backend("flex")`. That backend also
+    needs to run under `torch.compile` (e.g. `transformer.compile_repeated_blocks()`): uncompiled, PyTorch's flex
+    attention falls back to an eager implementation that materializes the full attention matrix, which does not fit in
+    memory at video resolutions.
     """
 
     _attention_backend = None

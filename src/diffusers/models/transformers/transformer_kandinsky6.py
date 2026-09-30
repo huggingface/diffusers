@@ -25,9 +25,6 @@ from torch import Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...hooks import MagCacheConfig
-from ...hooks.hooks import HookRegistry, ModelHook, StateManager
-from ...hooks.mag_cache import MagCacheState
 from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
@@ -203,221 +200,6 @@ class Kandinsky6RoPE3D(nn.Module):
         return rope.unsqueeze(-4)  # (T, H, W, 1, total_dim, 2, 2)
 
 
-# Diffusers MagCache adapter for the K6 multimodal transformer.
-#
-# Diffusers provides the public :class:`MagCacheConfig` and the stateful hook
-# infrastructure. K6's fused visual blocks carry video and audio streams
-# together, so the stock hook needs a small adapter to preserve both tensors
-# when a block is skipped. The adapter keeps the Diffusers ``enable_cache`` /
-# ``disable_cache`` API and uses the Diffusers MagCache state and configuration.
-
-
-_HEAD_HOOK = "kandinsky6_mag_cache_head"
-_BLOCK_HOOK = "kandinsky6_mag_cache_block"
-
-
-def _streams_from_args(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Tensor | None, Tensor | None]:
-    video = kwargs.get("vis", args[0] if args else None)
-    audio = kwargs.get("aud", args[1] if len(args) > 1 else None)
-    return video, audio
-
-
-def _add_residual(
-    video: Tensor | None,
-    audio: Tensor | None,
-    residual: Tensor | tuple[Tensor | None, Tensor | None],
-) -> Tensor | tuple[Tensor | None, Tensor | None]:
-    if audio is None:
-        if not isinstance(residual, Tensor):
-            raise RuntimeError("K6 MagCache residual does not match a video-only block")
-        return video + residual if video is not None else video
-    if not isinstance(residual, tuple):
-        raise RuntimeError("K6 MagCache residual does not contain an audio stream")
-    video_residual, audio_residual = residual
-    return (
-        video + video_residual if video is not None and video_residual is not None else video,
-        audio + audio_residual if audio_residual is not None else audio,
-    )
-
-
-def _residual(
-    output: Tensor | tuple[Tensor | None, Tensor | None],
-    input_video: Tensor | None,
-    input_audio: Tensor | None,
-) -> Tensor | tuple[Tensor | None, Tensor | None]:
-    output_video, output_audio = _streams_from_args((output,), {}) if isinstance(output, Tensor) else output
-    if input_audio is None:
-        if output_video is None or input_video is None:
-            return output_video
-        return output_video - input_video
-    return (
-        output_video - input_video if output_video is not None and input_video is not None else None,
-        output_audio - input_audio if output_audio is not None else None,
-    )
-
-
-def _should_compute(state: MagCacheState, config: MagCacheConfig, *, lane: int, num_steps: int) -> bool:
-    if config.calibrate:
-        return True
-
-    ratio_index = state.step_index * 2 + lane
-    if config.mag_ratios is None or ratio_index >= len(config.mag_ratios):
-        current_scale = 1.0
-    else:
-        current_scale = float(config.mag_ratios[ratio_index])
-
-    retention_step = int(config.retention_ratio * num_steps + 0.5)
-    if state.step_index < retention_step:
-        return True
-
-    state.accumulated_ratio *= current_scale
-    state.accumulated_steps += 1
-    state.accumulated_err += abs(1.0 - state.accumulated_ratio)
-    if (
-        state.previous_residual is not None
-        and state.accumulated_err <= config.threshold
-        and state.accumulated_steps <= config.max_skip_steps
-    ):
-        return False
-
-    state.accumulated_ratio = 1.0
-    state.accumulated_steps = 0
-    state.accumulated_err = 0.0
-    return True
-
-
-def _advance(state: MagCacheState, config: MagCacheConfig, num_steps: int) -> None:
-    state.step_index += 1
-    if state.step_index < num_steps:
-        return
-    state.step_index = 0
-    state.accumulated_ratio = 1.0
-    state.accumulated_steps = 0
-    state.accumulated_err = 0.0
-    state.previous_residual = None
-    state.head_block_input = None
-    state.should_compute = True
-    state.calibration_ratios = []
-
-
-class _Kandinsky6MagCacheHeadHook(ModelHook):
-    _is_stateful = True
-
-    def __init__(self, state_manager: StateManager, config: MagCacheConfig, num_steps: int):
-        super().__init__()
-        self.state_manager = state_manager
-        self.config = config
-        self.num_steps = num_steps
-
-    @torch.compiler.disable
-    def new_forward(self, module: nn.Module, *args, **kwargs):
-        if self.state_manager._current_context is None:
-            self.state_manager.set_context("inference")
-        state: MagCacheState = self.state_manager.get_state()
-        video, audio = _streams_from_args(args, kwargs)
-        state.head_block_input = (video, audio)
-        lane = 1 if self.state_manager._current_context in {"uncond", "negative"} else 0
-        state.should_compute = _should_compute(state, self.config, lane=lane, num_steps=self.num_steps)
-
-        if not state.should_compute:
-            if state.previous_residual is None:
-                raise RuntimeError("K6 MagCache requested a skip before a residual was computed")
-            return _add_residual(video, audio, state.previous_residual)
-        return self.fn_ref.original_forward(*args, **kwargs)
-
-    def reset_state(self, module: nn.Module):
-        self.state_manager.reset()
-        return module
-
-
-class _Kandinsky6MagCacheBlockHook(ModelHook):
-    def __init__(self, state_manager: StateManager, config: MagCacheConfig, num_steps: int, is_tail: bool):
-        super().__init__()
-        self.state_manager = state_manager
-        self.config = config
-        self.num_steps = num_steps
-        self.is_tail = is_tail
-
-    @torch.compiler.disable
-    def new_forward(self, module: nn.Module, *args, **kwargs):
-        if self.state_manager._current_context is None:
-            self.state_manager.set_context("inference")
-        state: MagCacheState = self.state_manager.get_state()
-        video, audio = _streams_from_args(args, kwargs)
-
-        if not state.should_compute:
-            if self.is_tail:
-                _advance(state, self.config, self.num_steps)
-            return video if audio is None else (video, audio)
-
-        output = self.fn_ref.original_forward(*args, **kwargs)
-        if self.is_tail:
-            input_video, input_audio = state.head_block_input
-            state.previous_residual = _residual(output, input_video, input_audio)
-            _advance(state, self.config, self.num_steps)
-        return output
-
-    def reset_state(self, module: nn.Module):
-        self.state_manager.reset()
-        return module
-
-
-def _apply_kandinsky6_mag_cache(module: nn.Module, config: MagCacheConfig) -> None:
-    blocks = getattr(module, "visual_transformer_blocks", None)
-    if not isinstance(blocks, nn.ModuleList) or len(blocks) == 0:
-        raise ValueError("K6 MagCache requires a non-empty transformer.visual_transformer_blocks ModuleList")
-
-    registry = HookRegistry.check_if_exists_or_initialize(module)
-    registry.remove_hook(_HEAD_HOOK, recurse=True)
-    registry.remove_hook(_BLOCK_HOOK, recurse=True)
-    state_manager = StateManager(MagCacheState, (), {})
-    # K6 stores conditional and unconditional coefficients interleaved. The
-    # Diffusers pipeline sets separate cache contexts for the two CFG passes.
-    num_steps = config.num_inference_steps // 2
-
-    head_registry = HookRegistry.check_if_exists_or_initialize(blocks[0])
-    head_registry.register_hook(
-        _Kandinsky6MagCacheHeadHook(state_manager, config, num_steps),
-        _HEAD_HOOK,
-    )
-    for block in blocks[1:-1]:
-        block_registry = HookRegistry.check_if_exists_or_initialize(block)
-        block_registry.register_hook(
-            _Kandinsky6MagCacheBlockHook(state_manager, config, num_steps, is_tail=False),
-            _BLOCK_HOOK,
-        )
-    if len(blocks) > 1:
-        tail_registry = HookRegistry.check_if_exists_or_initialize(blocks[-1])
-        tail_registry.register_hook(
-            _Kandinsky6MagCacheBlockHook(state_manager, config, num_steps, is_tail=True),
-            _BLOCK_HOOK,
-        )
-
-
-class Kandinsky6MagCacheMixin(CacheMixin):
-    """Expose Diffusers' cache API for K6's dual-stream visual blocks."""
-
-    def enable_cache(self, config) -> None:
-        if not isinstance(config, MagCacheConfig):
-            return super().enable_cache(config)
-        if self.is_cache_enabled:
-            raise ValueError(f"Caching has already been enabled with {type(self._cache_config)}")
-        if config.num_inference_steps % 2 != 0:
-            raise ValueError(
-                "K6 MagCacheConfig.num_inference_steps must count interleaved CFG forwards (an even number)"
-            )
-        _apply_kandinsky6_mag_cache(self, config)
-        self._cache_config = config
-
-    def disable_cache(self) -> None:
-        if not isinstance(self._cache_config, MagCacheConfig):
-            return super().disable_cache()
-        registry = HookRegistry.check_if_exists_or_initialize(self)
-        registry.remove_hook(_HEAD_HOOK, recurse=True)
-        registry.remove_hook(_BLOCK_HOOK, recurse=True)
-        self._cache_config = None
-
-
 # Diffusers-style K6 transformer components.
 #
 # The classes use the same inner-module vocabulary as the Diffusers Kandinsky5
@@ -437,10 +219,8 @@ _MASKED_ATTENTION_BACKENDS = {
 class Kandinsky6AttnProcessor:
     """Diffusers attention processor used by the TI2VA transformer.
 
-    The NABLA sparse branch always dispatches on the `flex` backend, regardless of `_attention_backend`: its
-    `BlockMask` only the `flex` backend can consume, and `_attention_backend` can be transparently remapped to a
-    masked-attention variant (see the setter above) when `text_token_padding` is enabled, which would otherwise be
-    given a `BlockMask` it can't handle.
+    The NABLA sparse branch always dispatches on the `flex` backend, regardless of `_attention_backend`, since its
+    `BlockMask` only the `flex` backend can consume.
     """
 
     _attention_backend = None
@@ -602,7 +382,6 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         num_channels: int,
         head_dim: int,
         kv_dim: int | None = None,
-        text_token_padding: bool = False,
         processor: Kandinsky6AttnProcessor | None = None,
     ):
         super().__init__()
@@ -616,11 +395,7 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         self.query_norm = nn.RMSNorm(head_dim)
         self.key_norm = nn.RMSNorm(head_dim)
         self.out_layer = nn.Linear(num_channels, num_channels)
-        self.text_token_padding = text_token_padding
         self.set_processor(processor or self._default_processor_cls())
-        if self.text_token_padding:
-            self.processor._masked = True
-            self.processor._attention_backend = AttentionBackendName.NATIVE
 
     def forward(
         self,
@@ -707,12 +482,11 @@ class Kandinsky6TransformerEncoderBlock(nn.Module):
         time_dim: int,
         ff_dim: int,
         head_dim: int,
-        text_token_padding: bool = False,
     ):
         super().__init__()
         self.text_modulation = Kandinsky6Modulation(time_dim, model_dim, 6)
         self.self_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
-        self.self_attention = Kandinsky6Attention(model_dim, head_dim, text_token_padding=text_token_padding)
+        self.self_attention = Kandinsky6Attention(model_dim, head_dim)
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.feed_forward = Kandinsky6FeedForward(model_dim, ff_dim)
 
@@ -748,7 +522,6 @@ class Kandinsky6TransformerDecoderBlock(nn.Module):
         time_dim: int,
         ff_dim: int,
         head_dim: int,
-        text_token_padding: bool = False,
     ):
         super().__init__()
         self.visual_modulation = Kandinsky6Modulation(time_dim, model_dim, 9)
@@ -759,7 +532,6 @@ class Kandinsky6TransformerDecoderBlock(nn.Module):
             model_dim,
             head_dim,
             kv_dim=model_dim,
-            text_token_padding=text_token_padding,
         )
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.feed_forward = Kandinsky6FeedForward(model_dim, ff_dim)
@@ -778,16 +550,10 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
         time_dim_a: int,
         ff_dim_a: int,
         head_dim_a: int,
-        text_token_padding: bool = False,
-        ca_rope: bool = False,
-        cross_gates: bool = False,
-        fix_modulation: bool = False,
     ):
         super().__init__()
-        self.videoT = Kandinsky6TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim, text_token_padding)
-        self.audioT = Kandinsky6TransformerDecoderBlock(
-            model_dim_a, time_dim_a, ff_dim_a, head_dim_a, text_token_padding
-        )
+        self.videoT = Kandinsky6TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim)
+        self.audioT = Kandinsky6TransformerDecoderBlock(model_dim_a, time_dim_a, ff_dim_a, head_dim_a)
         self.va_cross_attention = Kandinsky6Attention(
             model_dim,
             head_dim,
@@ -798,23 +564,10 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
             head_dim_a,
             kv_dim=model_dim,
         )
-        self.va_modulation = Kandinsky6Modulation(
-            time_dim,
-            model_dim if not cross_gates else model_dim * 2 + model_dim_a,
-            1 if cross_gates else 3,
-        )
-        self.av_modulation = Kandinsky6Modulation(
-            time_dim_a,
-            model_dim_a if not cross_gates else model_dim_a * 2 + model_dim,
-            1 if cross_gates else 3,
-        )
+        self.va_modulation = Kandinsky6Modulation(time_dim, model_dim, 3)
+        self.av_modulation = Kandinsky6Modulation(time_dim_a, model_dim_a, 3)
         self.va_normalization = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.av_normalization = nn.LayerNorm(model_dim_a, elementwise_affine=False)
-        self.ca_rope = ca_rope
-        self.cross_gates = cross_gates
-        self.fix_modulation = fix_modulation
-        self.model_dim = model_dim
-        self.model_dim_a = model_dim_a
 
     def forward(
         self,
@@ -870,39 +623,23 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
             aud = apply_gate_sum(aud, aud_out_t, gate_a).type_as(aud)
 
             if vis is not None:
-                t_va_mod = t_a if not self.fix_modulation else t_v
-                t_av_mod = t_v if not self.fix_modulation else t_a
-                va_params = self.va_modulation(t_va_mod)
-                av_params = self.av_modulation(t_av_mod)
-                if self.cross_gates:
-                    va_shift, va_scale, va_gate = torch.split(
-                        va_params, [self.model_dim, self.model_dim, self.model_dim_a], dim=-1
-                    )
-                    av_shift, av_scale, av_gate = torch.split(
-                        av_params, [self.model_dim_a, self.model_dim_a, self.model_dim], dim=-1
-                    )
-                else:
-                    va_shift, va_scale, va_gate = torch.chunk(va_params, 3, dim=-1)
-                    av_shift, av_scale, av_gate = torch.chunk(av_params, 3, dim=-1)
+                va_params = self.va_modulation(t_a)
+                av_params = self.av_modulation(t_v)
+                va_shift, va_scale, va_gate = torch.chunk(va_params, 3, dim=-1)
+                av_shift, av_scale, av_gate = torch.chunk(av_params, 3, dim=-1)
                 vis = apply_gate_sum(vis, vis_out_t, gate_v).type_as(vis)
                 vis_for_va = apply_scale_shift_norm(self.va_normalization, vis, va_scale, va_shift)
                 aud_for_av = apply_scale_shift_norm(self.av_normalization, aud, av_scale, av_shift)
-                rq_v = vis_rope if self.ca_rope else None
-                rk_a = aud_rope if self.ca_rope else None
                 vis_from_aud = self.va_cross_attention(
                     vis_for_va,
                     encoder_hidden_states=aud_pre_ca,
-                    rope_q=rq_v,
-                    rope_kv=rk_a,
                 )
                 aud_from_vis = self.av_cross_attention(
                     aud_for_av,
                     encoder_hidden_states=vis_pre_ca,
-                    rope_q=rk_a,
-                    rope_kv=rq_v,
                 )
-                vis = apply_gate_sum(vis, vis_from_aud, va_gate if not self.cross_gates else av_gate).type_as(vis)
-                aud = apply_gate_sum(aud, aud_from_vis, av_gate if not self.cross_gates else va_gate).type_as(aud)
+                vis = apply_gate_sum(vis, vis_from_aud, va_gate).type_as(vis)
+                aud = apply_gate_sum(aud, aud_from_vis, av_gate).type_as(aud)
         elif vis is not None:
             vis = apply_gate_sum(vis, vis_out_t, gate_v).type_as(vis)
 
@@ -924,7 +661,6 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
 
 
 class Kandinsky6Transformer3DModel(
-    Kandinsky6MagCacheMixin,
     ModelMixin,
     ConfigMixin,
     PeftAdapterMixin,
@@ -958,14 +694,9 @@ class Kandinsky6Transformer3DModel(
         ff_dim_a (`int`, *optional*): Audio feed-forward hidden dimension. Defaults to `ff_dim`.
         axes_dims_a (`tuple[int, int, int]`, *optional*): Audio RoPE dimensions. Defaults to `axes_dims`.
         audio_freqs_scaling (`float`, *optional*, defaults to 1.0): Audio RoPE frequency scaling.
-        text_token_padding (`bool`, *optional*, defaults to False): Whether text sequences are padded.
         scale_factor (`tuple[float, float, float]`, *optional*, defaults to `(1.0, 2.0, 2.0)`): Per-axis
             `(t, h, w)` RoPE frequency scaling applied to the video positions.
-        ca_rope (`bool`, *optional*, defaults to False): Whether to use cross-modal audio RoPE.
-        cross_gates (`bool`, *optional*, defaults to False): Whether to use cross-modal residual gates.
-        fix_modulation (`bool`, *optional*, defaults to False): Whether to use the fixed modulation variant.
         visual_token_type_num_embeddings (`int`, *optional*, defaults to 0): Number of visual token type embeddings.
-        magcache (`dict`, *optional*): MagCache configuration.
     """
 
     _repeated_blocks = [
@@ -1001,20 +732,14 @@ class Kandinsky6Transformer3DModel(
         ff_dim_a: int | None = None,
         axes_dims_a: tuple | None = None,
         audio_freqs_scaling: float = 1.0,
-        text_token_padding: bool = False,
         scale_factor: tuple | list[float] = (1.0, 2.0, 2.0),
-        ca_rope: bool = False,
-        cross_gates: bool = False,
-        fix_modulation: bool = False,
         visual_token_type_num_embeddings: int = 0,
-        magcache: dict[str, Any] | None = None,
     ) -> None:
         super().__init__()
         self.patch_size = patch_size
         self.visual_cond = visual_cond
         self.in_visual_dim = in_visual_dim
         self.in_audio_dim = in_audio_dim
-        self.text_token_padding = text_token_padding
         self.scale_factor = tuple(float(value) for value in scale_factor)
         self.visual_token_type_num_embeddings = int(visual_token_type_num_embeddings or 0)
         head_dim = sum(axes_dims)
@@ -1045,12 +770,7 @@ class Kandinsky6Transformer3DModel(
             setattr(
                 self,
                 f"{prefix}_text_transformer_blocks",
-                nn.ModuleList(
-                    [
-                        Kandinsky6TransformerEncoderBlock(md, td, fd, hd, text_token_padding)
-                        for _ in range(num_text_blocks)
-                    ]
-                ),
+                nn.ModuleList([Kandinsky6TransformerEncoderBlock(md, td, fd, hd) for _ in range(num_text_blocks)]),
             )
         self.visual_transformer_blocks = nn.ModuleList(
             [
@@ -1063,10 +783,6 @@ class Kandinsky6Transformer3DModel(
                     time_dim_a,
                     ff_dim_a,
                     head_dim_a,
-                    text_token_padding,
-                    ca_rope,
-                    cross_gates,
-                    fix_modulation,
                 )
                 for _ in range(num_visual_blocks)
             ]
