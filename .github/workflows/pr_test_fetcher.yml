@@ -41,7 +41,10 @@ jobs:
         diffusers-cli env
         echo $(git --version)
     - name: Fetch Tests
+      # The checkout step only marks the workspace safe in a temporary git config, so git processes the
+      # fetcher spawns in the container would otherwise refuse the repo as dubiously owned.
       run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         python utils/tests_fetcher.py | tee test_preparation.txt
     - name: Report selection in job summary
       run: |
