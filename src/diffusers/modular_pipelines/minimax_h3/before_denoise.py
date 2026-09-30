@@ -17,7 +17,7 @@ import torch
 
 from ...schedulers import MiniMaxH3Scheduler
 from ...utils import logging
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import (
@@ -441,7 +441,10 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
             components.video_tag,
             block_state.keyframe_anchors,
         )
-        block_state.position_ids = position_ids.to(device)
+        # The grid is built in fp64 to reproduce the released coordinates exactly, but MPS, NPU and Neuron have no
+        # fp64; the transformer's rope casts to fp32 anyway, so downcasting here is all the transfer needs.
+        position_ids_dtype = maybe_adjust_dtype_for_device(position_ids.dtype, device)
+        block_state.position_ids = position_ids.to(device, position_ids_dtype)
         block_state.token_tags = token_tags.to(device)
         block_state.video_indices = video_indices.to(device)
         block_state.audio_indices = audio_indices.to(device)
@@ -765,7 +768,10 @@ class MiniMaxH3Ref2VAPrepareLayoutStep(ModularPipelineBlocks):
             components.audio_tag,
             components.video_tag,
         )
-        block_state.position_ids = position_ids.to(device)
+        # The grid is built in fp64 to reproduce the released coordinates exactly, but MPS, NPU and Neuron have no
+        # fp64; the transformer's rope casts to fp32 anyway, so downcasting here is all the transfer needs.
+        position_ids_dtype = maybe_adjust_dtype_for_device(position_ids.dtype, device)
+        block_state.position_ids = position_ids.to(device, position_ids_dtype)
         block_state.token_tags = token_tags.to(device)
         block_state.video_indices = video_indices.to(device)
         block_state.audio_indices = audio_indices.to(device)

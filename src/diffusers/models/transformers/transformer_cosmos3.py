@@ -23,6 +23,7 @@ from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
+from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
@@ -370,7 +371,7 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         return residual_und + mlp_out_und, residual_gen + mlp_out_gen
 
 
-class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, AttentionMixin):
+class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, AttentionMixin, CacheMixin):
     _supports_gradient_checkpointing = True
     _no_split_modules = ["Cosmos3VLTextMoTDecoderLayer"]
     _repeated_blocks = ["Cosmos3VLTextMoTDecoderLayer"]
@@ -646,6 +647,22 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             unpacked.append(output)
         return unpacked
 
+    def _run_decoder_stack(
+        self,
+        und_seq: torch.Tensor,
+        gen_seq: torch.Tensor,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        for decoder_layer in self.layers:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                und_seq, gen_seq = self._gradient_checkpointing_func(
+                    decoder_layer.__call__, und_seq, gen_seq, rotary_emb
+                )
+            else:
+                und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb)
+
+        return self.norm(und_seq), self.norm_moe_gen(gen_seq)
+
     # -------------------------------------------------------------------------
     # forward: full per-step pass — encode text/vision/sound/action → run layers →
     # decode vision/sound/action. Pipeline calls this once per CFG pass.
@@ -798,15 +815,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         if self._cp_shard_fn is not None:
             und_seq, gen_seq, rotary_emb = self._cp_shard_fn(und_seq, gen_seq, rotary_emb)
 
-        for decoder_layer in self.layers:
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
-                und_seq, gen_seq = self._gradient_checkpointing_func(
-                    decoder_layer.__call__, und_seq, gen_seq, rotary_emb
-                )
-            else:
-                und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb)
-        und_out = self.norm(und_seq)
-        gen_out = self.norm_moe_gen(gen_seq)
+        und_out, gen_out = self._run_decoder_stack(und_seq, gen_seq, rotary_emb)
 
         # Optional context-parallelism gather seam: re-gather the full per-pathway
         # sequence on every rank (and drop the padding) before the global-index decode
