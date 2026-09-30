@@ -112,6 +112,156 @@ def _attention_backward_parity_worker(rank, world_size, master_port, cp_dict, at
             dist.destroy_process_group()
 
 
+def _ulysses_anything_parity_worker(rank, world_size, master_port, attention_backend):
+    device_type = torch_device.split(":")[0]
+    if device_type == "cpu":
+        backend, device = "cpu:gloo", torch.device("cpu")
+    else:
+        device_config = DEVICE_CONFIG[device_type]
+        backend = device_config["backend"]
+        device_config["module"].set_device(rank)
+        device = torch.device(f"{device_type}:{rank}")
+
+    dist.init_process_group(
+        backend=backend,
+        init_method=f"tcp://127.0.0.1:{master_port}",
+        rank=rank,
+        world_size=world_size,
+    )
+    try:
+        mesh = dist.device_mesh.init_device_mesh(device_type, (1, world_size), mesh_dim_names=("ring", "ulysses"))
+        config = ContextParallelConfig(ulysses_degree=world_size, ulysses_anything=True)
+        config.setup(rank, world_size, device, mesh)
+        parallel_config = ParallelConfig(context_parallel_config=config)
+        dtype = torch.float32 if attention_backend == "native" else torch.bfloat16
+        tolerance = 1e-5 if dtype == torch.float32 else 2e-2
+
+        cases = [
+            (8, 8, 4, None, False),
+            (9, 9, 4, None, False),
+            (9, 7, 4, None, False),
+            (9, 7, 7, None, False),
+            (10, 8, 7, None, False),
+            (9, 7, 7, None, False),
+            (9, 9, 4, "bool", True),
+            (9, 7, 7, "bool", False),
+            (3, 2, 7, None, False),
+        ]
+        if attention_backend == "native":
+            cases.append((9, 9, 7, "additive", True))
+
+        pending_backwards = []
+        for query_length, key_length, num_heads, mask_type, local_mask in cases:
+            torch.manual_seed(777)
+            query = torch.randn(2, query_length, num_heads, 64, device=device, dtype=dtype)
+            key, value = (torch.randn(2, key_length, num_heads, 64, device=device, dtype=dtype) for _ in range(2))
+            grad_out = torch.randn_like(query)
+            mask = None
+            if mask_type is not None:
+                mask = torch.ones(2, 1, 1, key_length, device=device, dtype=torch.bool)
+                mask[0, ..., -1] = False
+                mask[1, ..., 0] = False
+                if mask_type == "additive":
+                    mask = torch.zeros_like(mask, dtype=dtype).masked_fill(~mask, -float("inf"))
+
+            query_ref, key_ref, value_ref = (tensor.float().requires_grad_() for tensor in (query, key, value))
+            ref_out = F.scaled_dot_product_attention(
+                query_ref.transpose(1, 2), key_ref.transpose(1, 2), value_ref.transpose(1, 2), attn_mask=mask
+            ).transpose(1, 2)
+            ref_grads = torch.autograd.grad(ref_out, (query_ref, key_ref, value_ref), grad_out.float())
+
+            query_local, key_local, value_local = (
+                tensor.tensor_split(world_size, dim=1)[rank].detach().clone().requires_grad_()
+                for tensor in (query, key, value)
+            )
+            mask_local = mask.tensor_split(world_size, dim=-1)[rank] if local_mask else mask
+            return_lse = attention_backend != "native"
+            with attention_backend_ctx(attention_backend):
+                out = dispatch_attention_fn(
+                    query_local,
+                    key_local,
+                    value_local,
+                    attn_mask=mask_local,
+                    attention_kwargs={"return_lse": return_lse},
+                    parallel_config=parallel_config,
+                )
+            if return_lse:
+                out, lse = out
+                scores = query_ref.transpose(1, 2) @ key_ref.transpose(1, 2).transpose(-1, -2) / query.shape[-1] ** 0.5
+                if mask is not None:
+                    scores = scores.masked_fill(~mask, -float("inf"))
+                expected_lse = scores.logsumexp(dim=-1).transpose(1, 2).tensor_split(world_size, dim=1)[rank]
+                torch.testing.assert_close(lse, expected_lse, atol=tolerance, rtol=tolerance)
+                assert not lse.requires_grad
+            torch.testing.assert_close(
+                out.float(), ref_out.tensor_split(world_size, dim=1)[rank], atol=tolerance, rtol=tolerance
+            )
+            pending_backwards.append(
+                (
+                    out,
+                    grad_out.tensor_split(world_size, dim=1)[rank],
+                    (query_local, key_local, value_local),
+                    [grad.tensor_split(world_size, dim=1)[rank] for grad in ref_grads],
+                )
+            )
+
+            with torch.no_grad(), attention_backend_ctx(attention_backend):
+                inference_out = dispatch_attention_fn(
+                    query_local, key_local, value_local, attn_mask=mask_local, parallel_config=parallel_config
+                )
+            torch.testing.assert_close(inference_out, out)
+
+        # Each outstanding forward must keep its own partition lengths, even if some ranks' lengths repeat.
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profile:
+            for out, grad_out, inputs, expected_grads in reversed(pending_backwards):
+                out.backward(grad_out)
+                for tensor, grad_ref in zip(inputs, expected_grads):
+                    torch.testing.assert_close(tensor.grad.float(), grad_ref, atol=tolerance, rtol=tolerance)
+        operations = [event.key for event in profile.key_averages()]
+        assert any("all_to_all" in name for name in operations), operations
+        assert not any("allgather" in name or "all_gather" in name for name in operations), operations
+
+        query_local, key_local, value_local = (torch.randn(2, 4, 4, 64, device=device, dtype=dtype) for _ in range(3))
+        per_head_mask = torch.ones(2, 4, 1, 4 * world_size, device=device, dtype=torch.bool)
+        with pytest.raises(ValueError, match="per-head"), attention_backend_ctx(attention_backend):
+            dispatch_attention_fn(
+                query_local, key_local, value_local, attn_mask=per_head_mask, parallel_config=parallel_config
+            )
+    finally:
+        dist.destroy_process_group()
+
+
+@is_attention
+@is_context_parallel
+class TestUlyssesAnythingAttentionBackward:
+    @pytest.mark.parametrize("world_size", [2, 4])
+    @pytest.mark.parametrize(
+        "attention_backend",
+        [
+            "native",
+            pytest.param(
+                "_flash_3_varlen_hub",
+                marks=pytest.mark.skipif(
+                    torch_device != "cuda" or not is_kernels_available(),
+                    reason="FlashAttention 3 requires CUDA and kernels.",
+                ),
+            ),
+        ],
+    )
+    def test_uneven_sequence_and_head_gradients(self, world_size, attention_backend):
+        """Uneven sequence/head partitions preserve outputs and all three input gradients."""
+        if not dist.is_available():
+            pytest.skip("torch.distributed is not available.")
+        if torch_device != "cpu" and DEVICE_CONFIG[torch_device.split(":")[0]]["module"].device_count() < world_size:
+            pytest.skip(f"Requires {world_size} devices.")
+        mp.spawn(
+            _ulysses_anything_parity_worker,
+            args=(world_size, _find_free_port(), attention_backend),
+            nprocs=world_size,
+            join=True,
+        )
+
+
 @is_attention
 @is_context_parallel
 @require_torch_multi_accelerator
