@@ -127,7 +127,7 @@ Configure how the CLI loads model weights and custom pipeline code.
   `enable_auto_cpu_offload` as `memory_reserve_margin` (default `3GB`). Raise it when a large canvas runs out
   of memory mid-forward. The offloader keeps components resident while they fit, so on a high-VRAM card the
   default margin can leave too little room for the activations of a long video.
-- `--attention-backend` — Hub-hosted attention kernels, auto-downloaded on first use. Choices are `default` plus the Hub backends registered in Diffusers (for example `flash_hub`, `flash_varlen_hub`, `flash_4_hub`, `sage_hub`). Run `diffusers-cli run --help` for the current list. It only supports Transformer-based pipelines only, and is ignored with a warning on legacy UNet pipelines. See [Attention backends](../optimization/attention_backends).
+- `--attention-backend` — Hub-hosted attention kernels, auto-downloaded on first use. Choices are `default` plus the Hub backends registered in Diffusers (for example `flash_hub`, `flash_varlen_hub`, `flash_4_hub`, `sage_hub`, `sage_blackwell_hub`). Run `diffusers-cli run --help` for the current list. It only supports Transformer-based pipelines only, and is ignored with a warning on legacy UNet pipelines. See [Attention backends](../optimization/attention_backends).
 - `--vae-tiling` / `--vae-slicing` — lower VAE decode VRAM. See
   [VAE tiling](../optimization/memory#vae-tiling) and [VAE slicing](../optimization/memory#vae-slicing).
 - `--compile [JSON]` — compile denoiser modules with [torch.compile](../optimization/fp16#torchcompile). The
@@ -236,8 +236,13 @@ the media itself. Written images are always PNG, videos MP4, audio WAV.
 
 ### Remote execution (`--remote`)
 
-Run the same call inside a [Hugging Face Sandbox](https://huggingface.co/docs/huggingface_hub/en/guides/sandbox), an isolated cloud VM the CLI drives over HTTP. It uploads inputs, installs deps, runs the pipeline, downloads
-outputs, then terminates the sandbox. Requires a current `huggingface_hub` with Sandbox support (Diffusers depends on `huggingface-hub>=1.32`).
+Run the same call inside a [Hugging Face Sandbox](https://huggingface.co/docs/huggingface_hub/en/guides/sandbox)
+— an isolated cloud VM the CLI drives over HTTP: it uploads inputs, runs the pipeline, downloads outputs, then
+terminates the sandbox. Requires `huggingface_hub>=1.23`.
+
+The sandbox boots from [`diffusers/diffusers-cli-cuda`](https://hub.docker.com/r/diffusers/diffusers-cli-cuda), a
+prebuilt image that already ships torch, CUDA, and the CLI's dependencies, so a cold run starts generating instead
+of installing first.
 
 ```bash
 diffusers-cli run \
@@ -250,11 +255,12 @@ Remote flags:
 
 - `--flavor <name>` — sandbox hardware (for example, `a10g-small`, `h200`, `rtx-pro-6000`).
 - `--timeout <duration>` — max wallclock for the run command inside the sandbox (default `10m`).
-- `--dependencies <pkg>` — extra pip deps (repeatable). Useful for pinning a diffusers branch tarball or
-  adding pipeline-specific extras.
+- `--dependencies <pkg>` — extra pip deps (repeatable), installed on top of the image. Useful for pinning a
+  diffusers branch tarball or adding pipeline-specific extras.
 - `--namespace <name>` — create the sandbox under a different HF org/account.
 - `--image <ref>` — override the sandbox image. Must ship torch + CUDA compatible with your `--flavor`'s
-  driver.
+  driver. The CLI then installs its own dependencies on top on every cold sandbox, which the default image
+  avoids.
 - `--volume <bucket-id>[:<mount-path>]` — mount an [HF storage bucket](https://huggingface.co/docs/hub/en/storage-buckets)
   into the sandbox as a read-write directory (repeatable). Default mount path is
   `/mnt/buckets/<bucket-id>`. Reference mounted files from `--pipeline-kwargs` like any other local path.
