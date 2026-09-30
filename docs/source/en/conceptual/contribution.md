@@ -349,7 +349,7 @@ A new model or pipeline may be included in a release if you coordinate the integ
 
 A release does not happen automatically when a model or pipeline pull request is merged. Before a release, maintainers first check that the integration is complete and that release tests pass.
 
-New model or pipeline support normally goes into the next minor release. We merge the integration into `main` and create the release branch from `main`. The release therefore contains all changes merged since the previous release, rather than only the model or pipeline integration.
+New model or pipeline support normally goes into the next minor release. The integration is merged into `main` and the release branch is created from it. The release contains all changes merged since the previous release, rather than only the model or pipeline integration.
 
 Release notes highlight the new model or pipeline and also summarize the other changes included in the release. Patch releases are normally reserved for fixes to an existing release.
 
