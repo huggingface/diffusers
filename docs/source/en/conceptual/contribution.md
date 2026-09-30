@@ -347,7 +347,7 @@ By adding a new model, pipeline, or scheduler you might enable a new powerful us
 
 A new model or pipeline may be included in a release if you coordinate the integration with the Diffusers team in advance. [add how to coordinate with team here]
 
-A release does not happen automatically when a model or pipeline pull request is merged. Maintainers first check that the integration is complete and that the release tests pass.
+A release does not happen automatically when a model or pipeline pull request is merged. Before a release, maintainers first check that the integration is complete and that release tests pass.
 
 New model or pipeline support normally goes into the next minor release. We merge the integration into `main` and create the release branch from `main`. The release therefore contains all changes merged since the previous release, rather than only the model or pipeline integration.
 
