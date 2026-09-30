@@ -47,6 +47,7 @@ LTX2_WORKFLOWS = {
         ("denoise.prepare_audio_latents", "LTX2PrepareAudioLatentsStep"),
         ("denoise.prepare_coords", "LTX2PrepareCoordsStep"),
         ("denoise.denoise", "LTX2DenoiseStep"),
+        ("denoise.unpack", "LTX2UnpackLatentsStep"),
         ("decode.video_decode", "LTX2VaeDecoderStep"),
         ("decode.audio_decode", "LTX2AudioDecoderStep"),
     ],
@@ -62,6 +63,7 @@ LTX2_WORKFLOWS = {
         ("denoise.prepare_audio_latents", "LTX2PrepareAudioLatentsStep"),
         ("denoise.prepare_coords", "LTX2PrepareCoordsStep"),
         ("denoise.denoise", "LTX2Image2VideoDenoiseStep"),
+        ("denoise.unpack", "LTX2UnpackLatentsStep"),
         ("decode.video_decode", "LTX2VaeDecoderStep"),
         ("decode.audio_decode", "LTX2AudioDecoderStep"),
     ],
@@ -76,7 +78,8 @@ LTX2_WORKFLOWS = {
         ("denoise.prepare_audio_latents", "LTX2ConditionPrepareAudioLatentsStep"),
         ("denoise.prepare_coords", "LTX2ConditionPrepareCoordsStep"),
         ("denoise.denoise", "LTX2ConditionDenoiseStep"),
-        ("decode.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
+        ("denoise.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
+        ("denoise.unpack", "LTX2UnpackLatentsStep"),
         ("decode.video_decode", "LTX2VaeDecoderStep"),
         ("decode.audio_decode", "LTX2AudioDecoderStep"),
     ],
@@ -91,7 +94,8 @@ LTX2_WORKFLOWS = {
         ("denoise.prepare_audio_latents", "LTX2ConditionPrepareAudioLatentsStep"),
         ("denoise.prepare_coords", "LTX2ConditionPrepareCoordsStep"),
         ("denoise.denoise", "LTX2ConditionDenoiseStep"),
-        ("decode.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
+        ("denoise.trim_condition_tokens", "LTX2TrimConditionTokensStep"),
+        ("denoise.unpack", "LTX2UnpackLatentsStep"),
         ("decode.video_decode", "LTX2VaeDecoderStep"),
         ("decode.audio_decode", "LTX2AudioDecoderStep"),
     ],
@@ -105,7 +109,7 @@ class LTX2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = LTX2AutoBlocks
     pretrained_model_name_or_path = LTX2_REPO_ID
     batch_params = frozenset(["prompt"])
-    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt"])
     expected_workflow_blocks = LTX2_WORKFLOWS
     output_name = "videos"
 

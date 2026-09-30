@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any
-
 import torch
 
 from ...configuration_utils import FrozenDict
@@ -62,8 +60,11 @@ def _unpack_latents(
 def _denormalize_audio_latents(
     latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor
 ) -> torch.Tensor:
-    latents_mean = latents_mean.to(latents.device, latents.dtype)
-    latents_std = latents_std.to(latents.device, latents.dtype)
+    # Denormalizes audio latents of shape [B, C, L, M]. The statistics are stored per (channel, mel bin), flattened in
+    # the order the packed `[B, L, C * M]` layout uses, so they broadcast as [1, C, 1, M] here.
+    num_channels, num_mel_bins = latents.shape[1], latents.shape[3]
+    latents_mean = latents_mean.view(1, num_channels, 1, num_mel_bins).to(latents.device, latents.dtype)
+    latents_std = latents_std.view(1, num_channels, 1, num_mel_bins).to(latents.device, latents.dtype)
     return (latents * latents_std) + latents_mean
 
 
@@ -85,14 +86,98 @@ def _unpack_audio_latents(
     return latents
 
 
+class LTX2UnpackLatentsStep(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Unpacks the denoised video and audio latents from the transformer's token layout back into the "
+            "`[B, C, F, H, W]` / `[B, C, L, M]` form the VAE encoders emit (still normalized). Closes every core "
+            "denoise group, so the decode and upsample blocks that follow take the same form the encoders produce "
+            "and need no geometry inputs."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Denoised video latents, packed and normalized, of shape [B, S, C].",
+            ),
+            InputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Denoised audio latents, packed and normalized, of shape [B, L, C * M].",
+            ),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
+            InputParam(
+                "num_frames",
+                type_hint=int,
+                required=True,
+                description="The number of frames in the generated video.",
+            ),
+            InputParam(
+                "audio_num_frames",
+                type_hint=int,
+                required=True,
+                description="Number of audio latent frames, used to unpack the audio latents.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="Video latents of shape [B, C, F, H, W] (normalized, not packed).",
+            ),
+            OutputParam(
+                "audio_latents",
+                type_hint=torch.Tensor,
+                description="Audio latents of shape [B, C, L, M] (normalized, not packed).",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+        latents = _unpack_latents(
+            block_state.latents,
+            latent_num_frames,
+            latent_height,
+            latent_width,
+            components.transformer_spatial_patch_size,
+            components.transformer_temporal_patch_size,
+        )
+        block_state.latents = latents
+
+        latent_mel_bins = components.audio_latent_mel_bins
+        block_state.audio_latents = _unpack_audio_latents(
+            block_state.audio_latents, block_state.audio_num_frames, num_mel_bins=latent_mel_bins
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class LTX2TrimConditionTokensStep(ModularPipelineBlocks):
     model_name = "ltx2"
 
     @property
     def description(self) -> str:
         return (
-            "Drops the appended keyframe-condition tokens from the denoised latents, leaving only the "
-            "generated-video tokens for the decoders."
+            "Drops the appended keyframe-condition tokens from the denoised packed latents, leaving only the "
+            "generated-video tokens. Runs ahead of `LTX2UnpackLatentsStep`, which needs the plain video token grid."
         )
 
     @property
@@ -131,10 +216,10 @@ class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Step that unpacks and decodes the denoised video latents with the LTX-2 diffusion decoder (or returns "
-            "latents). Swap this in for `LTX2VaeDecoderStep` on checkpoints that ship the diffusion decoder, which "
-            "from LTX-2.5 on is the native default. The decoder denoises rather than deterministically decoding, so "
-            "it draws its own noise from `generator` and takes no decode timestep."
+            "Decodes the video latents with the LTX-2 diffusion decoder. Swap this in for `LTX2VaeDecoderStep` on "
+            "checkpoints that ship the diffusion decoder, which from LTX-2.5 on is the native default. The decoder "
+            "denoises rather than deterministically decoding, so it draws its own noise from `generator` and takes "
+            "no decode timestep."
         )
 
     @property
@@ -150,17 +235,16 @@ class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> list[tuple[str, Any]]:
+    def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("latents", required=True),
-            InputParam.template("output_type", default="pil"),
-            InputParam.template("height", default=512),
-            InputParam.template("width", default=704),
             InputParam(
-                "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
+                "latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Video latents of shape [B, C, F, H, W] (normalized, not packed).",
             ),
+            InputParam.template("output_type", default="pil"),
             InputParam.template("generator"),
-            InputParam.template("dtype", required=True),
         ]
 
     @property
@@ -172,29 +256,10 @@ class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         decoder = components.diffusion_decoder
 
-        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
-        latent_height = block_state.height // components.vae_spatial_compression_ratio
-        latent_width = block_state.width // components.vae_spatial_compression_ratio
-
-        latents = _unpack_latents(
-            block_state.latents,
-            latent_num_frames,
-            latent_height,
-            latent_width,
-            components.transformer_spatial_patch_size,
-            components.transformer_temporal_patch_size,
-        )
-
-        if block_state.output_type == "latent":
-            block_state.videos = _denormalize_latents(
-                latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
-            )
-            self.set_block_state(state, block_state)
-            return components, state
-
-        latents = latents.to(block_state.dtype)
+        # Denormalize in the loop's float32 before casting to the decoder dtype -- the same order as running the
+        # pipeline with `output_type="latent"` and decoding with `LTX2VideoDiffusionDecodePipeline`.
         latents = _denormalize_latents(
-            latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
+            block_state.latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
         )
         latents = latents.to(decoder.dtype)
         # It samples the noise it denoises, so pass the generator to keep decoding reproducible.
@@ -210,7 +275,7 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that unpacks and decodes the denoised video latents into videos (or returns latents)."
+        return "Decodes the video latents with the video VAE into the output video."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -225,21 +290,15 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> list[tuple[str, Any]]:
+    def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("latents", required=True),
-            InputParam.template("output_type", default="pil"),
-            InputParam.template("height", default=512),
-            InputParam.template("width", default=704),
             InputParam(
-                "num_frames",
-                type_hint=int,
-                default=None,
-                description=(
-                    "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                    "(see `LTX2AutoDurationStep`)."
-                ),
+                "latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Video latents of shape [B, C, F, H, W] (normalized, not packed).",
             ),
+            InputParam.template("output_type", default="pil"),
             InputParam(
                 "decode_timestep", default=0.0, description="The timestep at which the VAE decodes the final latents."
             ),
@@ -262,34 +321,9 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         vae = components.vae
 
-        latents = block_state.latents
-        height = block_state.height
-        width = block_state.width
-        num_frames = block_state.num_frames
-
-        latent_num_frames = (num_frames - 1) // components.vae_temporal_compression_ratio + 1
-        latent_height = height // components.vae_spatial_compression_ratio
-        latent_width = width // components.vae_spatial_compression_ratio
-
-        latents = _unpack_latents(
-            latents,
-            latent_num_frames,
-            latent_height,
-            latent_width,
-            components.transformer_spatial_patch_size,
-            components.transformer_temporal_patch_size,
-        )
-
-        if block_state.output_type == "latent":
-            block_state.videos = _denormalize_latents(
-                latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
-            )
-            self.set_block_state(state, block_state)
-            return components, state
-
         # LTX-2 applies the optional decode-time noise on the *normalized* latents, then denormalizes
         # (the reverse of LTX-1's decoder order).
-        latents = latents.to(block_state.dtype)
+        latents = block_state.latents.to(block_state.dtype)
         if not vae.config.timestep_conditioning:
             timestep = None
         else:
@@ -328,10 +362,7 @@ class LTX2AudioDecoderStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return (
-            "Step that unpacks and decodes the denoised audio latents into a waveform via the audio VAE and vocoder "
-            "(or returns the unpacked audio latents when `output_type='latent'`)."
-        )
+        return "Decodes the audio latents with the audio VAE into a mel spectrogram and vocodes it into a waveform."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -343,16 +374,14 @@ class LTX2AudioDecoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> list[tuple[str, Any]]:
+    def inputs(self) -> list[InputParam]:
         return [
-            InputParam("audio_latents", type_hint=torch.Tensor, required=True, description="Denoised audio latents."),
             InputParam(
-                "audio_num_frames",
-                type_hint=int,
+                "audio_latents",
+                type_hint=torch.Tensor,
                 required=True,
-                description="Number of audio latent frames, used to unpack the audio latent sequence.",
+                description="Audio latents of shape [B, C, L, M] (normalized, not packed).",
             ),
-            InputParam.template("output_type", default="pil"),
         ]
 
     @property
@@ -366,22 +395,12 @@ class LTX2AudioDecoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         audio_vae = components.audio_vae
 
-        num_mel_bins = audio_vae.config.mel_bins
-        latent_mel_bins = num_mel_bins // components.audio_vae_mel_compression_ratio
-
         audio_latents = _denormalize_audio_latents(
             block_state.audio_latents, components.audio_latents_mean, components.audio_latents_std
         )
-        audio_latents = _unpack_audio_latents(
-            audio_latents, block_state.audio_num_frames, num_mel_bins=latent_mel_bins
-        )
-
-        if block_state.output_type == "latent":
-            block_state.audio = audio_latents
-        else:
-            audio_latents = audio_latents.to(audio_vae.dtype)
-            generated_mel_spectrograms = audio_vae.decode(audio_latents, return_dict=False)[0]
-            block_state.audio = components.vocoder(generated_mel_spectrograms)
+        audio_latents = audio_latents.to(audio_vae.dtype)
+        generated_mel_spectrograms = audio_vae.decode(audio_latents, return_dict=False)[0]
+        block_state.audio = components.vocoder(generated_mel_spectrograms)
 
         self.set_block_state(state, block_state)
         return components, state
