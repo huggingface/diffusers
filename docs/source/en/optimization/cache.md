@@ -15,17 +15,17 @@ Caching reuses intermediate layer outputs across denoising steps to speed up inf
 
 ## Choose a cache method
 
-Pick a method depending on how much config you will set, and the fit you need.
+Pick a method depending on how much config you will set, and the fit you need. Each method balances speed, memory, and how closely outputs match the uncached run differently. Compare outputs with and without the cache on your own prompts before relying on a method.
 
-| Method | Use when | Tradeoff |
-|--------|----------|----------|
-| Text KV Cache | NucleusMoE image only, need exact text K/V reuse across steps | Lossless |
-| SeaCache | Video transformers that already have a SeaCache path | Approximate, settings often do not transfer across models |
-| FirstBlockCache | Want one main speed/quality knob on a registered transformer | Approximate |
-| MagCache | Have magnitude ratios for your checkpoint and scheduler, or will calibrate first | Approximate, ratios are checkpoint and scheduler specific |
-| TaylorSeer | Want to predict later activations from earlier steps | Approximate |
-| PAB | Video, willing to tune attention reuse (block and timestep skip ranges per attention kind) | Approximate |
-| FasterCache | Like PAB, plus optional CFG-branch skipping | Approximate, experimental |
+| Method | Use when | Notes |
+|--------|----------|-------|
+| Text KV Cache | NucleusMoE image, reuse text K/V projections across steps | Currently hooks NucleusMoE image blocks |
+| SeaCache | Cosmos 3 video generation | Settings often don't transfer across models |
+| FirstBlockCache | Want one main speed/quality knob on a registered transformer | One `threshold` controls how often steps are skipped |
+| MagCache | Have magnitude ratios for your checkpoint and scheduler, or will calibrate first | Ratios are checkpoint and scheduler specific |
+| TaylorSeer | Want to predict later activations from earlier steps | Higher `max_order` uses more memory |
+| PAB | Video, willing to tune attention reuse (block and timestep skip ranges per attention kind) | Skip ranges need tuning per model |
+| FasterCache | Like PAB, plus optional CFG-branch skipping | Experimental |
 
 ## Pyramid Attention Broadcast
 
@@ -95,7 +95,7 @@ pipe.transformer.enable_cache(SeaCacheConfig(threshold=0.2, max_consecutive_cach
 
 SeaCache may change outputs. Call `pipe.transformer.disable_cache()` when you need every step to run the full transformer. The same enable call works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and [`Cosmos3DistilledModularPipeline`].
 
-To integrate another video transformer, use `CacheMixin`, register the block layout in `TransformerBlockRegistry`, enter a `cache_context` on every call with `step_index`, `sigma`, and `num_inference_steps`, and pass a `raw_vision_callback` when no built-in adapter exists. Tune parameters per model and scheduler.
+To use SeaCache with another video transformer, follow [Add caching to a new model](#add-caching-to-a-new-model). SeaCache also needs `step_index`, `sigma`, and `num_inference_steps` in every `cache_context`, and a `raw_vision_callback` when no built-in adapter exists. Tune parameters per model and scheduler.
 
 ## FirstBlockCache
 
@@ -187,7 +187,7 @@ image = pipe("A cat playing chess", num_inference_steps=4).images[0]
 
 ## Text KV Cache
 
-[`TextKVCacheConfig`] enables exact (lossless) reuse of text key and value projections across denoising steps. It is for NucleusMoE image only (`NucleusMoEImageTransformerBlock`, the architecture [`apply_text_kv_cache`] hooks). Enable it with `enable_cache`.
+[`TextKVCacheConfig`] computes the text key and value projections once and reuses them at every denoising step instead of recomputing them. [`apply_text_kv_cache`] only currently hooks `NucleusMoEImageTransformerBlock`. Enable it with `enable_cache`.
 
 ```python
 import torch
@@ -202,3 +202,29 @@ pipe.transformer.enable_cache(TextKVCacheConfig())
 
 image = pipe("A cat holding a sign that says hello world", num_inference_steps=50).images[0]
 ```
+
+## Add caching to a new model
+
+Cache methods attach to a model through hooks, and the hooks depend on the model class, its transformer blocks, and the pipeline's denoising loop. Set up all three before calling `enable_cache` on a new model.
+
+1. Inherit from [`CacheMixin`] in the transformer class. It adds `enable_cache`, `disable_cache`, and `cache_context`.
+2. Register the output layout of the transformer block in `_register_transformer_blocks_metadata` in `hooks/_helpers.py`. Methods that skip or reuse whole blocks, such as FirstBlockCache, MagCache, and SeaCache, use it to find the hidden states in the block's outputs.
+
+    ```py
+    TransformerBlockRegistry.register(
+        model_class=MyTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
+        ),
+    )
+    ```
+
+3. Wrap each transformer call in the pipeline's denoising loop with `cache_context`. Use separate names, such as `"cond"` and `"uncond"`, when classifier-free guidance runs the conditional and unconditional branches as separate calls, so each branch keeps its own cache state.
+
+    ```py
+    with self.transformer.cache_context("cond"):
+        noise_pred = self.transformer(hidden_states=latents, timestep=timestep, ...)[0]
+    ```
+
+PAB and FasterCache also need `current_timestep_callback` so the hooks can read the current timestep. Check the output quality on the new model, because cache settings tuned for one model often don't transfer to another.
