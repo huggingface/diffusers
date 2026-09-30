@@ -345,7 +345,7 @@ By adding a new model, pipeline, or scheduler you might enable a new powerful us
 
 #### When new model or pipeline support is released
 
-A new model or pipeline may be included in a release if you coordinate the integration with the Diffusers team in advance. [add how to coordinate with team here]
+A new model or pipeline may be included in a release if you coordinate the integration with the Diffusers team in advance. Feel free to reach out to us, either via an issue on the Diffusers repository or by emailing to `diffusers@huggingface.co`.
 
 A release does not happen automatically when a model or pipeline pull request is merged. Before a release, maintainers first check that the integration is complete and that release tests pass.
 
