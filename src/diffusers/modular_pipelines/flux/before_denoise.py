@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -194,7 +194,9 @@ class FluxSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -283,7 +285,9 @@ class FluxImg2ImgSetTimestepsStep(ModularPipelineBlocks):
         return timesteps, num_inference_steps - t_start
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -395,7 +399,9 @@ class FluxPrepareLatentsStep(ModularPipelineBlocks):
         return latents
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.height = block_state.height or components.default_height
         block_state.width = block_state.width or components.default_width
@@ -470,14 +476,16 @@ class FluxImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
     def check_inputs(image_latents, latents):
         if image_latents.shape[0] != latents.shape[0]:
             raise ValueError(
-                f"`image_latents` must have have same batch size as `latents`, but got {image_latents.shape[0]} and {latents.shape[0]}"
+                f"`image_latents` must have same batch size as `latents`, but got {image_latents.shape[0]} and {latents.shape[0]}"
             )
 
         if image_latents.ndim != 3:
             raise ValueError(f"`image_latents` must have 3 dimensions (patchified), but got {image_latents.ndim}")
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(image_latents=block_state.image_latents, latents=block_state.latents)
@@ -530,7 +538,9 @@ class FluxRoPEInputsStep(ModularPipelineBlocks):
             ),
         ]
 
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         prompt_embeds = block_state.prompt_embeds
@@ -582,7 +592,9 @@ class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
             ),
         ]
 
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         prompt_embeds = block_state.prompt_embeds

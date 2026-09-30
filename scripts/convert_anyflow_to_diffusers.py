@@ -57,13 +57,21 @@ VARIANTS = {
     "AnyFlow-FAR-Wan2.1-1.3B-Diffusers": {
         "base_model": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
         "transformer_cls": AnyFlowFARTransformer3DModel,
-        "transformer_kwargs": {"full_chunk_limit": 3, "compressed_patch_size": [1, 4, 4]},
+        "transformer_kwargs": {
+            "full_chunk_limit": 3,
+            "compressed_patch_size": [1, 4, 4],
+            "chunk_partition": [1, 3, 3, 3, 3, 3, 3, 2],
+        },
         "pipeline_cls": AnyFlowFARPipeline,
     },
     "AnyFlow-FAR-Wan2.1-14B-Diffusers": {
         "base_model": "Wan-AI/Wan2.1-T2V-14B-Diffusers",
         "transformer_cls": AnyFlowFARTransformer3DModel,
-        "transformer_kwargs": {"full_chunk_limit": 3, "compressed_patch_size": [1, 4, 4]},
+        "transformer_kwargs": {
+            "full_chunk_limit": 3,
+            "compressed_patch_size": [1, 4, 4],
+            "chunk_partition": [1, 3, 3, 3, 3, 3, 3, 2],
+        },
         "pipeline_cls": AnyFlowFARPipeline,
     },
     "AnyFlow-Wan2.1-T2V-1.3B-Diffusers": {

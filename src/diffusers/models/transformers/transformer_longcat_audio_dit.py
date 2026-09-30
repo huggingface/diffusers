@@ -563,6 +563,11 @@ class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
                 Latent conditioning concatenated to `hidden_states`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`LongCatAudioDiTTransformerOutput`] instead of a plain tuple.
+
+        Returns:
+            [`LongCatAudioDiTTransformerOutput`] or `tuple`:
+                If `return_dict` is True, a [`LongCatAudioDiTTransformerOutput`] is returned, otherwise a plain `tuple`
+                is returned.
         """
         dtype = hidden_states.dtype
         encoder_hidden_states = encoder_hidden_states.to(dtype)

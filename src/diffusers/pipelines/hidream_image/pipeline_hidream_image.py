@@ -30,7 +30,7 @@ from ...image_processor import VaeImageProcessor
 from ...loaders import HiDreamImageLoraLoaderMixin
 from ...models import AutoencoderKL, HiDreamImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
-from ...utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HiDreamImagePipelineOutput
@@ -516,59 +516,6 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
             negative_pooled_prompt_embeds,
         )
 
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_tiling()
-
     def check_inputs(
         self,
         prompt,
@@ -757,7 +704,7 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 128,
         **kwargs,
-    ):
+    ) -> HiDreamImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -859,21 +806,6 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
             [`~pipelines.hidream_image.HiDreamImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is a list with the generated. images.
         """
-
-        prompt_embeds = kwargs.get("prompt_embeds", None)
-        negative_prompt_embeds = kwargs.get("negative_prompt_embeds", None)
-
-        if prompt_embeds is not None:
-            deprecation_message = "The `prompt_embeds` argument is deprecated. Please use `prompt_embeds_t5` and `prompt_embeds_llama3` instead."
-            deprecate("prompt_embeds", "0.35.0", deprecation_message)
-            prompt_embeds_t5 = prompt_embeds[0]
-            prompt_embeds_llama3 = prompt_embeds[1]
-
-        if negative_prompt_embeds is not None:
-            deprecation_message = "The `negative_prompt_embeds` argument is deprecated. Please use `negative_prompt_embeds_t5` and `negative_prompt_embeds_llama3` instead."
-            deprecate("negative_prompt_embeds", "0.35.0", deprecation_message)
-            negative_prompt_embeds_t5 = negative_prompt_embeds[0]
-            negative_prompt_embeds_llama3 = negative_prompt_embeds[1]
 
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
@@ -1004,6 +936,7 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
                     encoder_hidden_states_t5=prompt_embeds_t5,
                     encoder_hidden_states_llama3=prompt_embeds_llama3,
                     pooled_embeds=pooled_prompt_embeds,
+                    attention_kwargs=self.attention_kwargs,
                     return_dict=False,
                 )[0]
                 noise_pred = -noise_pred

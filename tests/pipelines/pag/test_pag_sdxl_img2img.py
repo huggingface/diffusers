@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,11 +14,10 @@
 # limitations under the License.
 
 import gc
-import inspect
 import random
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -49,39 +48,33 @@ from ...testing_utils import (
     torch_device,
 )
 from ..pipeline_params import (
-    IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..test_pipelines_common import (
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    FromPipeTesterMixin,
     IPAdapterTesterMixin,
-    PipelineFromPipeTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineTesterMixin,
+    MemoryTesterMixin,
 )
+from .testing_utils import PAGPipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class StableDiffusionXLPAGImg2ImgPipelineFastTests(
-    PipelineTesterMixin,
-    IPAdapterTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineFromPipeTesterMixin,
-    unittest.TestCase,
-):
+class StableDiffusionXLPAGImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionXLPAGImg2ImgPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS.union({"pag_scale", "pag_adaptive_scale"}) - {"height", "width"}
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_VARIATION_PARAMS.union(
+        {"pag_scale", "pag_adaptive_scale"}
+    ) - {"height", "width"}
+    batch_input_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
         {"add_text_embeds", "add_time_ids", "add_neg_time_ids"}
     )
-
-    supports_dduf = False
+    # The output resolution follows the 32x32 input image.
+    output_shape = (3, 32, 32)
 
     #  based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_img2img_pipeline.get_dummy_components
     def get_dummy_components(
@@ -183,103 +176,66 @@ class StableDiffusionXLPAGImg2ImgPipelineFastTests(
         }
         return components
 
-    # based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_img2img_pipeline.StableDiffusionXLImg2ImgPipelineFastTests
+    # based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipelineTesterConfig
     # add `pag_scale` to the inputs
-    def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+    def get_dummy_inputs(self):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device)
         image = image / 2 + 0.5
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "image": image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "pag_scale": 3.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "strength": 0.8,
         }
-        return inputs
 
-    def test_pag_disable_enable(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components(requires_aesthetics_score=True)
 
-        # base pipeline
-        pipe_sd = StableDiffusionXLImg2ImgPipeline(**components)
-        pipe_sd = pipe_sd.to(device)
-        pipe_sd.set_progress_bar_config(disable=None)
+class TestStableDiffusionXLPAGImg2ImgPipeline(StableDiffusionXLPAGImg2ImgPipelineTesterConfig, PAGPipelineTesterMixin):
+    base_pipeline_class = StableDiffusionXLImg2ImgPipeline
+    # The expected slice below was recorded against the aesthetics-score configuration.
+    pag_component_kwargs = {"requires_aesthetics_score": True}
+    # fmt: off
+    expected_pag_slice = torch.tensor([0.4566, 0.4907, 0.4374, 0.6633, 0.5626, 0.4494, 0.5771, 0.6011, 0.5245])
+    # fmt: on
 
-        inputs = self.get_dummy_inputs(device)
-        del inputs["pag_scale"]
-        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
-            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
-        )
-        out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
-
-        # pag disabled with pag_scale=0.0
-        pipe_pag = self.pipeline_class(**components)
-        pipe_pag = pipe_pag.to(device)
-        pipe_pag.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["pag_scale"] = 0.0
-        out_pag_disabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
-
-        # pag enabled
-        pipe_pag = self.pipeline_class(**components, pag_applied_layers=["mid", "up", "down"])
-        pipe_pag = pipe_pag.to(device)
-        pipe_pag.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        out_pag_enabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
-
-        assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
-        assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
-
-    def test_pag_inference(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components(requires_aesthetics_score=True)
-
-        pipe_pag = self.pipeline_class(**components, pag_applied_layers=["mid", "up", "down"])
-        pipe_pag = pipe_pag.to(device)
-        pipe_pag.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = pipe_pag(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (
-            1,
-            32,
-            32,
-            3,
-        ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
-        expected_slice = np.array([0.4613, 0.4902, 0.4406, 0.6788, 0.5611, 0.4529, 0.5893, 0.5975, 0.5226])
-
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
-
-    @unittest.skip("We test this functionality elsewhere already.")
+    @pytest.mark.skip("We test this functionality elsewhere already.")
     def test_save_load_optional_components(self):
         pass
 
 
+class TestStableDiffusionXLPAGImg2ImgPipelineMemory(
+    StableDiffusionXLPAGImg2ImgPipelineTesterConfig, MemoryTesterMixin
+):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SDXL PAG img2img pipeline."""
+
+
+class TestStableDiffusionXLPAGImg2ImgPipelineIPAdapter(
+    StableDiffusionXLPAGImg2ImgPipelineTesterConfig, IPAdapterTesterMixin
+):
+    """IP-Adapter tests for the SDXL PAG img2img pipeline."""
+
+
+class TestStableDiffusionXLPAGImg2ImgPipelineFromPipe(
+    StableDiffusionXLPAGImg2ImgPipelineTesterConfig, FromPipeTesterMixin
+):
+    """`from_pipe` round-trip tests against `StableDiffusionXLPipeline`."""
+
+
 @slow
 @require_torch_accelerator
-class StableDiffusionXLPAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
+class TestStableDiffusionXLPAGImg2ImgPipelineIntegration:
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

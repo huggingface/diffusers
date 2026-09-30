@@ -25,7 +25,7 @@ from ...utils import (
     apply_lora_scale,
     logging,
 )
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
 from ..attention import AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
@@ -64,7 +64,6 @@ def _get_qkv_projections(attn: "BriaFiboAttention", hidden_states, encoder_hidde
     return _get_projections(attn, hidden_states, encoder_hidden_states)
 
 
-# Copied from diffusers.models.transformers.transformer_flux.FluxAttnProcessor with FluxAttnProcessor->BriaFiboAttnProcessor, FluxAttention->BriaFiboAttention
 class BriaFiboAttnProcessor:
     _attention_backend = None
     _parallel_config = None
@@ -222,8 +221,7 @@ class BriaFiboEmbedND(torch.nn.Module):
         cos_out = []
         sin_out = []
         pos = ids.float()
-        is_mps = ids.device.type == "mps"
-        freqs_dtype = torch.float32 if is_mps else torch.float64
+        freqs_dtype = maybe_adjust_dtype_for_device(torch.float64, ids.device)
         for i in range(n_axes):
             cos, sin = get_1d_rotary_pos_embed(
                 self.axes_dim[i],
@@ -298,7 +296,7 @@ class BriaFiboTextProjection(nn.Module):
         super().__init__()
         self.linear = nn.Linear(in_features=in_features, out_features=hidden_size, bias=False)
 
-    def forward(self, caption):
+    def forward(self, caption) -> torch.Tensor:
         hidden_states = self.linear(caption)
         return hidden_states
 
@@ -400,7 +398,7 @@ class BriaFiboTimesteps(nn.Module):
         self.scale = scale
         self.time_theta = time_theta
 
-    def forward(self, timesteps):
+    def forward(self, timesteps) -> torch.Tensor:
         t_emb = get_timestep_embedding(
             timesteps,
             self.num_channels,
@@ -421,7 +419,7 @@ class BriaFiboTimestepProjEmbeddings(nn.Module):
         )
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
-    def forward(self, timestep, dtype):
+    def forward(self, timestep, dtype) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=dtype))  # (N, D)
         return timesteps_emb
@@ -443,6 +441,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
     """
 
     _supports_gradient_checkpointing = True
+    _repeated_blocks = ["BriaFiboTransformerBlock", "BriaFiboSingleTransformerBlock"]
 
     @register_to_config
     def __init__(
@@ -470,7 +469,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         self.time_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim, time_theta=time_theta)
 
         if guidance_embeds:
-            self.guidance_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim)
+            self.guidance_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim, time_theta=time_theta)
 
         self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.inner_dim)
         self.x_embedder = torch.nn.Linear(self.config.in_channels, self.inner_dim)
@@ -563,7 +562,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
 
         temb = self.time_embed(timestep, dtype=hidden_states.dtype)
 
-        if guidance:
+        if guidance is not None:
             temb += self.guidance_embed(guidance, dtype=hidden_states.dtype)
 
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)

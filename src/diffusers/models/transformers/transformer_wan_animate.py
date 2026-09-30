@@ -809,7 +809,7 @@ class WanTimeTextImageEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: torch.Tensor | None = None,
         timestep_seq_len: int | None = None,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
         timestep = self.timesteps_proj(timestep)
         if timestep_seq_len is not None:
             timestep = timestep.unflatten(0, (-1, timestep_seq_len))
@@ -1192,6 +1192,12 @@ class WanAnimateTransformer3DModel(
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] whose `sample` is the
+                denoised video latent is returned, otherwise a plain `tuple` whose first element is that tensor is
+                returned.
         """
 
         # Check that shapes match up

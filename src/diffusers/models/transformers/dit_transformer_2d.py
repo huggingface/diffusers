@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -152,7 +152,7 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
         class_labels: torch.LongTensor | None = None,
         cross_attention_kwargs: dict[str, Any] = None,
         return_dict: bool = True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`DiTTransformer2DModel`] forward method.
 

@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import HeliosModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -72,21 +73,23 @@ class HeliosDecodeStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         vae = components.vae
+        device = components._execution_device
+        decode_dtype = vae.dtype
 
         latents_mean = (
-            torch.tensor(vae.config.latents_mean).view(1, vae.config.z_dim, 1, 1, 1).to(vae.device, vae.dtype)
+            torch.tensor(vae.config.latents_mean).view(1, vae.config.z_dim, 1, 1, 1).to(device, decode_dtype)
         )
         latents_std = 1.0 / torch.tensor(vae.config.latents_std).view(1, vae.config.z_dim, 1, 1, 1).to(
-            vae.device, vae.dtype
+            device, decode_dtype
         )
 
         history_video = None
         for chunk_latents in block_state.latent_chunks:
-            current_latents = chunk_latents.to(vae.dtype) / latents_std + latents_mean
+            current_latents = chunk_latents.to(device=device, dtype=decode_dtype) / latents_std + latents_mean
             current_video = vae.decode(current_latents, return_dict=False)[0]
 
             if history_video is None:

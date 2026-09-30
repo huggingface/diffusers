@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,10 +18,26 @@ import gc
 import pytest
 import torch
 
-from diffusers.hooks import FasterCacheConfig, FirstBlockCacheConfig, PyramidAttentionBroadcastConfig
+from diffusers.hooks import (
+    FasterCacheConfig,
+    FirstBlockCacheConfig,
+    MagCacheConfig,
+    PyramidAttentionBroadcastConfig,
+    SeaCacheConfig,
+    TaylorSeerCacheConfig,
+)
+from diffusers.hooks._helpers import TransformerBlockMetadata, TransformerBlockRegistry
 from diffusers.hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
 from diffusers.hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
+from diffusers.hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
 from diffusers.hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
+from diffusers.hooks.sea_cache import (
+    _SEA_CACHE_BLOCK_HOOK,
+    _SEA_CACHE_LEADER_BLOCK_HOOK,
+    _SEA_CACHE_POST_NORM_HOOK,
+    _SEA_CACHE_ROOT_HOOK,
+)
+from diffusers.hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
 from diffusers.models.cache_utils import CacheMixin
 
 from ...testing_utils import assert_tensors_close, backend_empty_cache, is_cache, torch_device
@@ -426,6 +442,194 @@ class FirstBlockCacheTesterMixin(FirstBlockCacheConfigMixin, CacheTesterMixin):
 
 
 @is_cache
+class SeaCacheConfigMixin:
+    """
+    Base mixin providing SeaCache config.
+
+    Expected class attributes:
+        - model_class: The model class to test (must use CacheMixin)
+    """
+
+    SEA_CACHE_CONFIG = {
+        "threshold": 100.0,
+        "retention_steps": 0,
+        "cache_end_steps": 0,
+    }
+
+    def _get_cache_config(self):
+        # scheduler coordinates are attached per call as `cache_context` metadata (see `_sea_cache_runtime`)
+        self._sea_cache_runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 3}
+        return SeaCacheConfig(**self.SEA_CACHE_CONFIG)
+
+    def _get_hook_names(self):
+        return [
+            _SEA_CACHE_ROOT_HOOK,
+            _SEA_CACHE_LEADER_BLOCK_HOOK,
+            _SEA_CACHE_BLOCK_HOOK,
+            _SEA_CACHE_POST_NORM_HOOK,
+        ]
+
+
+@is_cache
+class SeaCacheTesterMixin(SeaCacheConfigMixin, CacheTesterMixin):
+    """
+    Mixin class for testing SeaCache on models.
+
+    Expected methods to be implemented by subclasses:
+        - get_init_dict(): Returns dict of arguments to initialize the model
+        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Pytest mark: cache
+        Use `pytest -m "not cache"` to skip these tests
+    """
+
+    @staticmethod
+    def _unwrap_cache_output(output):
+        while isinstance(output, (list, tuple)):
+            output = output[0]
+        return output
+
+    def _get_modified_cache_inputs(self):
+        inputs = self.get_dummy_inputs()
+        value = inputs[self.cache_input_key]
+        if isinstance(value, torch.Tensor):
+            inputs[self.cache_input_key] = value + 0.1
+        else:
+            inputs[self.cache_input_key] = [tensor + 0.1 for tensor in value]
+        return inputs
+
+    @torch.no_grad()
+    def _test_cache_inference(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model.enable_cache(self._get_cache_config())
+
+        with model.cache_context("sea_cache_test", **self._sea_cache_runtime):
+            model(**self.get_dummy_inputs(), return_dict=False)
+
+        self._sea_cache_runtime.update(step_index=1, sigma=0.6)
+        modified_inputs = self._get_modified_cache_inputs()
+        with model.cache_context("sea_cache_test", **self._sea_cache_runtime):
+            output_with_cache = self._unwrap_cache_output(model(**modified_inputs, return_dict=False))
+
+        assert output_with_cache is not None
+        assert not torch.isnan(output_with_cache).any()
+
+        model.disable_cache()
+        output_without_cache = self._unwrap_cache_output(model(**modified_inputs, return_dict=False))
+        assert not torch.allclose(output_without_cache, output_with_cache, atol=1e-5)
+
+    @torch.no_grad()
+    def _test_cache_context_manager(self, atol=1e-5, rtol=0):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model.enable_cache(self._get_cache_config())
+        inputs = self.get_dummy_inputs()
+
+        with model.cache_context("context_1", **self._sea_cache_runtime):
+            output_ctx1 = self._unwrap_cache_output(model(**inputs, return_dict=False))
+        with model.cache_context("context_2", **self._sea_cache_runtime):
+            output_ctx2 = self._unwrap_cache_output(model(**inputs, return_dict=False))
+
+        assert_tensors_close(
+            output_ctx1,
+            output_ctx2,
+            atol=atol,
+            rtol=rtol,
+            msg="First pass in different cache contexts should produce the same output.",
+        )
+        model.disable_cache()
+
+    @torch.no_grad()
+    def _test_reset_stateful_cache(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model.enable_cache(self._get_cache_config())
+
+        with model.cache_context("sea_cache_test", **self._sea_cache_runtime):
+            model(**self.get_dummy_inputs(), return_dict=False)
+        model._reset_stateful_cache()
+        model.disable_cache()
+
+    @torch.no_grad()
+    def _test_single_stream_cache_inference(self):
+        class SingleStreamBlock(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.calls = 0
+
+            def forward(self, hidden_states):
+                self.calls += 1
+                return hidden_states * 2 + 1
+
+        class SingleStreamTransformer(torch.nn.Module, CacheMixin):
+            def __init__(self):
+                super().__init__()
+                self.transformer_blocks = torch.nn.ModuleList([SingleStreamBlock(), SingleStreamBlock()])
+
+            def forward(self, hidden_states, raw_vision):
+                for block in self.transformer_blocks:
+                    hidden_states = block(hidden_states)
+                return hidden_states
+
+        TransformerBlockRegistry.register(
+            SingleStreamBlock,
+            TransformerBlockMetadata(return_hidden_states_index=0),
+        )
+        runtime = {"step_index": 0, "sigma": 0.9, "num_inference_steps": 2}
+        model = SingleStreamTransformer().eval()
+        model.enable_cache(
+            SeaCacheConfig(
+                threshold=100.0,
+                residual_order=0,
+                retention_steps=0,
+                cache_end_steps=0,
+                raw_vision_callback=lambda module, args, kwargs: [kwargs["raw_vision"]],
+            )
+        )
+
+        hidden_states = torch.zeros(1, 2, 3)
+        raw_vision = torch.ones(2, 1, 2, 2)
+        with model.cache_context("single_stream", **runtime):
+            model(hidden_states=hidden_states, raw_vision=raw_vision)
+
+        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+        assert root_hook.state_manager._state_cache["single_stream"].history[-1][1] is None
+        assert [block.calls for block in model.transformer_blocks] == [1, 1]
+
+        runtime.update(step_index=1, sigma=0.6)
+        with model.cache_context("single_stream", **runtime):
+            output = model(hidden_states=hidden_states + 0.25, raw_vision=raw_vision + 0.01)
+
+        assert [block.calls for block in model.transformer_blocks] == [1, 1]
+        torch.testing.assert_close(output, torch.full_like(output, 3.25))
+
+    @require_cache_mixin
+    def test_sea_cache_enable_disable_state(self):
+        self._test_cache_enable_disable_state()
+
+    @require_cache_mixin
+    def test_sea_cache_double_enable_raises_error(self):
+        self._test_cache_double_enable_raises_error()
+
+    @require_cache_mixin
+    def test_sea_cache_hooks_registered(self):
+        self._test_cache_hooks_registered()
+
+    @require_cache_mixin
+    def test_sea_cache_inference(self):
+        self._test_cache_inference()
+
+    @require_cache_mixin
+    def test_sea_cache_context_manager(self):
+        self._test_cache_context_manager()
+
+    @require_cache_mixin
+    def test_sea_cache_reset_stateful_cache(self):
+        self._test_reset_stateful_cache()
+
+    def test_sea_cache_single_stream_inference(self):
+        self._test_single_stream_cache_inference()
+
+
+@is_cache
 class FasterCacheConfigMixin:
     """
     Base mixin providing FasterCache config.
@@ -553,4 +757,193 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
 
     @require_cache_mixin
     def test_faster_cache_reset_stateful_cache(self):
+        self._test_reset_stateful_cache()
+
+
+@is_cache
+class MagCacheConfigMixin:
+    """
+    Base mixin providing MagCache config.
+
+    Expected class attributes:
+        - model_class: The model class to test (must use CacheMixin)
+    """
+
+    # Default MagCache config - can be overridden by subclasses.
+    # Uses neutral ratios [1.0, 1.0] and a high threshold so the second
+    # inference step is always skipped, which is required by _test_cache_inference.
+    MAG_CACHE_CONFIG = {
+        "num_inference_steps": 2,
+        "retention_ratio": 0.0,
+        "threshold": 100.0,
+        "mag_ratios": [1.0, 1.0],
+    }
+
+    def _get_cache_config(self):
+        return MagCacheConfig(**self.MAG_CACHE_CONFIG)
+
+    def _get_hook_names(self):
+        return [_MAG_CACHE_LEADER_BLOCK_HOOK, _MAG_CACHE_BLOCK_HOOK]
+
+
+@is_cache
+class MagCacheTesterMixin(MagCacheConfigMixin, CacheTesterMixin):
+    """
+    Mixin class for testing MagCache on models.
+
+    Expected class attributes:
+        - model_class: The model class to test (must use CacheMixin)
+
+    Expected methods to be implemented by subclasses:
+        - get_init_dict(): Returns dict of arguments to initialize the model
+        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Pytest mark: cache
+        Use `pytest -m "not cache"` to skip these tests
+    """
+
+    @require_cache_mixin
+    def test_mag_cache_enable_disable_state(self):
+        self._test_cache_enable_disable_state()
+
+    @require_cache_mixin
+    def test_mag_cache_double_enable_raises_error(self):
+        self._test_cache_double_enable_raises_error()
+
+    @require_cache_mixin
+    def test_mag_cache_hooks_registered(self):
+        self._test_cache_hooks_registered()
+
+    @require_cache_mixin
+    def test_mag_cache_inference(self):
+        self._test_cache_inference()
+
+    @require_cache_mixin
+    def test_mag_cache_context_manager(self):
+        self._test_cache_context_manager()
+
+    @require_cache_mixin
+    def test_mag_cache_reset_stateful_cache(self):
+        self._test_reset_stateful_cache()
+
+
+@is_cache
+class TaylorSeerCacheConfigMixin:
+    """
+    Base mixin providing TaylorSeerCache config.
+
+    Expected class attributes:
+        - model_class: The model class to test (must use CacheMixin)
+    """
+
+    # Default TaylorSeerCache config - can be overridden by subclasses.
+    # Uses a low cache_interval and disable_cache_before_step=0 so the second
+    # inference step is always predicted, which is required by _test_cache_inference.
+    TAYLORSEER_CACHE_CONFIG = {
+        "cache_interval": 3,
+        "disable_cache_before_step": 1,
+        "max_order": 1,
+    }
+
+    def _get_cache_config(self):
+        return TaylorSeerCacheConfig(**self.TAYLORSEER_CACHE_CONFIG)
+
+    def _get_hook_names(self):
+        return [_TAYLORSEER_CACHE_HOOK]
+
+
+@is_cache
+class TaylorSeerCacheTesterMixin(TaylorSeerCacheConfigMixin, CacheTesterMixin):
+    """
+    Mixin class for testing TaylorSeerCache on models.
+
+    Expected class attributes:
+        - model_class: The model class to test (must use CacheMixin)
+
+    Expected methods to be implemented by subclasses:
+        - get_init_dict(): Returns dict of arguments to initialize the model
+        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Pytest mark: cache
+        Use `pytest -m "not cache"` to skip these tests
+    """
+
+    @torch.no_grad()
+    def _test_cache_inference(self):
+        """Test that model can run inference with TaylorSeer cache enabled (requires cache_context)."""
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        model = self.model_class(**init_dict).to(torch_device)
+        model.eval()
+
+        config = self._get_cache_config()
+        model.enable_cache(config)
+
+        # TaylorSeer requires cache_context to be set for inference
+        with model.cache_context("taylorseer_test"):
+            # First pass populates the cache
+            _ = model(**inputs_dict, return_dict=False)[0]
+
+            # Create modified inputs for second pass
+            inputs_dict_step2 = inputs_dict.copy()
+            if self.cache_input_key in inputs_dict_step2:
+                inputs_dict_step2[self.cache_input_key] = inputs_dict_step2[self.cache_input_key] + torch.randn_like(
+                    inputs_dict_step2[self.cache_input_key]
+                )
+
+            # Second pass - TaylorSeer should use cached Taylor series predictions
+            output_with_cache = model(**inputs_dict_step2, return_dict=False)[0]
+
+        assert output_with_cache is not None, "Model output should not be None with cache enabled."
+        assert not torch.isnan(output_with_cache).any(), "Model output contains NaN with cache enabled."
+
+        # Run same inputs without cache to compare
+        model.disable_cache()
+        output_without_cache = model(**inputs_dict_step2, return_dict=False)[0]
+
+        # Cached output should be different from non-cached output (due to approximation)
+        assert not torch.allclose(output_without_cache, output_with_cache, atol=1e-5), (
+            "Cached output should be different from non-cached output due to cache approximation."
+        )
+
+    @torch.no_grad()
+    def _test_reset_stateful_cache(self):
+        """Test that _reset_stateful_cache resets the TaylorSeer cache state (requires cache_context)."""
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        model = self.model_class(**init_dict).to(torch_device)
+        model.eval()
+
+        config = self._get_cache_config()
+        model.enable_cache(config)
+
+        with model.cache_context("taylorseer_test"):
+            _ = model(**inputs_dict, return_dict=False)[0]
+
+        model._reset_stateful_cache()
+
+        model.disable_cache()
+
+    @require_cache_mixin
+    def test_taylorseer_cache_enable_disable_state(self):
+        self._test_cache_enable_disable_state()
+
+    @require_cache_mixin
+    def test_taylorseer_cache_double_enable_raises_error(self):
+        self._test_cache_double_enable_raises_error()
+
+    @require_cache_mixin
+    def test_taylorseer_cache_hooks_registered(self):
+        self._test_cache_hooks_registered()
+
+    @require_cache_mixin
+    def test_taylorseer_cache_inference(self):
+        self._test_cache_inference()
+
+    @require_cache_mixin
+    def test_taylorseer_cache_context_manager(self):
+        self._test_cache_context_manager()
+
+    @require_cache_mixin
+    def test_taylorseer_cache_reset_stateful_cache(self):
         self._test_reset_stateful_cache()

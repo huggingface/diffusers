@@ -25,14 +25,13 @@ from ...models import AutoencoderKL, ChromaTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
-    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import ChromaPipelineOutput
 
@@ -400,7 +399,7 @@ class ChromaImg2ImgPipeline(
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
-        image = image.to(device=device, dtype=dtype)
+        image = image.to(device=get_module_execution_device(self.image_encoder), dtype=dtype)
         image_embeds = self.image_encoder(image).image_embeds
         image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         return image_embeds
@@ -539,59 +538,6 @@ class ChromaImg2ImgPipeline(
 
         return latents
 
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_tiling()
-
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
@@ -727,7 +673,7 @@ class ChromaImg2ImgPipeline(
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> ChromaPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -752,7 +698,7 @@ class ChromaImg2ImgPipeline(
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to 3.5):
+            guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting

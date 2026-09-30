@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import Lumina2Transformer2DModel
 
-transformer = Lumina2Transformer2DModel.from_pretrained("Alpha-VLLM/Lumina-Image-2.0", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = Lumina2Transformer2DModel.from_pretrained("Alpha-VLLM/Lumina-Image-2.0", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## Lumina2Transformer2DModel

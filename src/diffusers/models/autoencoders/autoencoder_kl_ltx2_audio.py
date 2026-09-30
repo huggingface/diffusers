@@ -802,6 +802,10 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
                 deterministic.
+
+        Returns:
+            [`DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`DecoderOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         posterior = self.encode(sample).latent_dist
         if sample_posterior:

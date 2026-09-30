@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ from torch import nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import logging
+from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -55,7 +56,7 @@ class ResidualAttentionMlp(nn.Module):
         self.gelu = QuickGELU()
         self.c_proj = nn.Linear(d_model * 4, d_model)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.c_fc(x)
         x = self.gelu(x)
         x = self.c_proj(x)
@@ -75,7 +76,7 @@ class ResidualAttentionBlock(nn.Module):
         self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
         return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.attention(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
         return x
@@ -620,12 +621,9 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            is_npu = sample.device.type == "npu"
-            if isinstance(timestep, float):
-                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
-            else:
-                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
+            dtype = maybe_adjust_dtype_for_device(
+                torch.float64 if isinstance(timestep, float) else torch.int64, sample.device
+            )
             timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)

@@ -35,8 +35,8 @@ import torch
 from diffusers import ZImageImg2ImgPipeline
 from diffusers.utils import load_image
 
-pipe = ZImageImg2ImgPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe = ZImageImg2ImgPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 init_image = load_image(url).resize((1024, 1024))
@@ -46,7 +46,7 @@ image = pipe(
     prompt,
     image=init_image,
     strength=0.6,
-    num_inference_steps=9,
+    num_inference_steps=8,
     guidance_scale=0.0,
     generator=torch.Generator("cuda").manual_seed(42),
 ).images[0]
@@ -64,8 +64,8 @@ from PIL import Image
 from diffusers import ZImageInpaintPipeline
 from diffusers.utils import load_image
 
-pipe = ZImageInpaintPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe = ZImageInpaintPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 init_image = load_image(url).resize((1024, 1024))
@@ -81,7 +81,7 @@ image = pipe(
     image=init_image,
     mask_image=mask_image,
     strength=1.0,
-    num_inference_steps=9,
+    num_inference_steps=8,
     guidance_scale=0.0,
     generator=torch.Generator("cuda").manual_seed(42),
 ).images[0]

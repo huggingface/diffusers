@@ -33,7 +33,6 @@ from ..utils import (
     delete_adapter_layers,
     get_adapter_name,
     is_peft_available,
-    is_peft_version,
     logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
@@ -171,11 +170,6 @@ class PeftAdapterMixin:
         metadata = kwargs.pop("metadata", None)
         allow_pickle = False
 
-        if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
         state_dict, metadata = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
@@ -273,23 +267,14 @@ class PeftAdapterMixin:
             is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
                 _pipeline
             )
-            peft_kwargs = {}
-            if is_peft_version(">=", "0.13.1"):
-                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+            peft_kwargs = {"low_cpu_mem_usage": low_cpu_mem_usage}
 
             if hotswap or (self._prepare_lora_hotswap_kwargs is not None):
-                if is_peft_version(">", "0.14.0"):
-                    from peft.utils.hotswap import (
-                        check_hotswap_configs_compatible,
-                        hotswap_adapter_from_state_dict,
-                        prepare_model_for_compiled_hotswap,
-                    )
-                else:
-                    msg = (
-                        "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
-                        "from source."
-                    )
-                    raise ImportError(msg)
+                from peft.utils.hotswap import (
+                    check_hotswap_configs_compatible,
+                    hotswap_adapter_from_state_dict,
+                    prepare_model_for_compiled_hotswap,
+                )
 
             if hotswap:
 

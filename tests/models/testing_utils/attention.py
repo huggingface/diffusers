@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _CUDA_AVAILABLE = torch.cuda.is_available()
+# Every build variant of `kernels-community/sage-blackwell` declares `archs: ["12.0a"]`, so the
+# kernel only loads on SM120 (consumer/workstation Blackwell). `a` targets are architecture
+# specific, so neither SM100 nor SM121 is covered.
+_IS_SM120 = _CUDA_AVAILABLE and torch.cuda.get_device_capability() == (12, 0)
 
 _PARAM_NATIVE_CUDNN = pytest.param(
     AttentionBackendName._NATIVE_CUDNN,
@@ -70,12 +74,76 @@ _PARAM_FLASH_3_HUB = pytest.param(
     ],
 )
 
+_PARAM_FLASH_VARLEN_HUB = pytest.param(
+    AttentionBackendName.FLASH_VARLEN_HUB,
+    id="flash_varlen_hub",
+    marks=[
+        pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is required for flash_varlen_hub backend."),
+        pytest.mark.skipif(
+            not is_kernels_available(),
+            reason="`kernels` package is required for flash_varlen_hub backend. Install with `pip install kernels`.",
+        ),
+    ],
+)
+
+_PARAM_FLASH_3_VARLEN_HUB = pytest.param(
+    AttentionBackendName._FLASH_3_VARLEN_HUB,
+    id="flash_3_varlen_hub",
+    marks=[
+        pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is required for _flash_3_varlen_hub backend."),
+        pytest.mark.skipif(
+            not is_kernels_available(),
+            reason="`kernels` package is required for _flash_3_varlen_hub backend. Install with `pip install kernels`.",
+        ),
+    ],
+)
+
+_PARAM_SAGE_HUB = pytest.param(
+    AttentionBackendName.SAGE_HUB,
+    id="sage_hub",
+    marks=[
+        pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is required for sage_hub backend."),
+        pytest.mark.skipif(
+            not is_kernels_available(),
+            reason="`kernels` package is required for sage_hub backend. Install with `pip install kernels`.",
+        ),
+    ],
+)
+
+_PARAM_SAGE_BLACKWELL_HUB = pytest.param(
+    AttentionBackendName.SAGE_BLACKWELL_HUB,
+    id="sage_blackwell_hub",
+    marks=[
+        pytest.mark.skipif(
+            not _IS_SM120, reason="An SM120 Blackwell GPU is required for the sage_blackwell_hub backend."
+        ),
+        pytest.mark.skipif(
+            not is_kernels_available(),
+            reason="`kernels` package is required for sage_blackwell_hub backend. Install with `pip install kernels`.",
+        ),
+    ],
+)
+
 # All backends under test.
-_ALL_BACKEND_PARAMS = [_PARAM_NATIVE_CUDNN, _PARAM_FLASH_HUB, _PARAM_FLASH_3_HUB]
+_ALL_BACKEND_PARAMS = [
+    _PARAM_NATIVE_CUDNN,
+    _PARAM_FLASH_HUB,
+    _PARAM_FLASH_3_HUB,
+    _PARAM_FLASH_VARLEN_HUB,
+    _PARAM_FLASH_3_VARLEN_HUB,
+    _PARAM_SAGE_HUB,
+    _PARAM_SAGE_BLACKWELL_HUB,
+]
 
 # Backends that perform non-deterministic operations and therefore cannot run when
 # torch.use_deterministic_algorithms(True) is active (e.g. after enable_full_determinism()).
 _NON_DETERMINISTIC_BACKENDS = {AttentionBackendName._NATIVE_CUDNN}
+
+# Backends whose kernel cannot be traced into a single graph. Sage dispatches on the compute
+# capability on every call (`torch.cuda.device_count()` returns a non-Tensor, which Dynamo
+# rejects) and its arch-specific paths reach a Triton quantizer and torch ops that have no
+# registered fake implementations.
+_NO_FULLGRAPH_COMPILE_BACKENDS = {AttentionBackendName.SAGE_HUB, AttentionBackendName.SAGE_BLACKWELL_HUB}
 
 
 def _skip_if_backend_requires_nondeterminism(backend):
@@ -267,6 +335,8 @@ class AttentionBackendTesterMixin:
         Use `pytest -m "not attention"` to skip these tests.
     """
 
+    unsupported_attn_backends: list[str] = []
+
     def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
@@ -280,6 +350,8 @@ class AttentionBackendTesterMixin:
     def test_set_attention_backend_matches_context_manager(self, backend):
         """set_attention_backend() and the attention_backend() context manager must yield identical outputs."""
         _skip_if_backend_requires_nondeterminism(backend)
+        if backend.value in self.unsupported_attn_backends:
+            pytest.skip(f"{backend.value} is not supported for this model.")
 
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -318,6 +390,8 @@ class AttentionBackendTesterMixin:
     def test_output_close_to_native(self, backend, atol=1e-2, rtol=1e-2):
         """All backends should produce model output numerically close to the native SDPA reference."""
         _skip_if_backend_requires_nondeterminism(backend)
+        if backend.value in self.unsupported_attn_backends:
+            pytest.skip(f"{backend.value} is not supported for this model.")
 
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -378,8 +452,13 @@ class AttentionBackendTesterMixin:
         as opposed to `model.compile`).
         """
         _skip_if_backend_requires_nondeterminism(backend)
+        if backend.value in self.unsupported_attn_backends:
+            pytest.skip(f"{backend.value} is not supported for this model.")
         if getattr(self.model_class, "_repeated_blocks", None) is None:
             pytest.skip("Skipping tests as regional compilation is not supported.")
+
+        if backend in _NO_FULLGRAPH_COMPILE_BACKENDS:
+            pytest.skip(f"Backend '{backend.value}' does not support fullgraph compilation.")
 
         if backend == AttentionBackendName.NATIVE and not is_torch_version(">=", "2.9.0"):
             pytest.xfail(

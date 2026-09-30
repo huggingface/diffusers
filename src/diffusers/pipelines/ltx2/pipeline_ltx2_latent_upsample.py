@@ -33,7 +33,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline
-        >>> from diffusers.pipelines.ltx2.export_utils import encode_video
+        >>> from diffusers.utils import encode_video
         >>> from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
         >>> from diffusers.utils import load_image
 
@@ -171,7 +171,7 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
         tensor.
 
         Args:
-            latent (`torch.Tensor`):
+            latents (`torch.Tensor`):
                 Input latents to normalize
             reference_latents (`torch.Tensor`):
                 The reference latents providing style statistics.
@@ -280,7 +280,7 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str | None = "pil",
         return_dict: bool = True,
-    ):
+    ) -> LTXPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

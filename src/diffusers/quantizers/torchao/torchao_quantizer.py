@@ -18,6 +18,7 @@ https://github.com/huggingface/transformers/blob/3a8eb74668e9c2cc563b2f5c62fac17
 """
 
 import importlib
+import json
 import re
 import types
 from typing import TYPE_CHECKING, Any
@@ -26,6 +27,7 @@ from packaging import version
 
 from ...utils import (
     get_module_from_name,
+    is_safetensors_available,
     is_torch_available,
     is_torch_version,
     is_torchao_available,
@@ -41,36 +43,23 @@ logger = logging.get_logger(__name__)
 if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
 
+if is_safetensors_available():
+    from safetensors import safe_open
+
 
 if is_torch_available():
     import torch
     import torch.nn as nn
 
-    if is_torch_version(">=", "2.5"):
-        SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION = (
-            # At the moment, only int8 is supported for integer quantization dtypes.
-            # In Torch 2.6, int1-int7 will be introduced, so this can be visited in the future
-            # to support more quantization methods, such as intx_weight_only.
-            torch.int8,
-            torch.float8_e4m3fn,
-            torch.float8_e5m2,
-            torch.uint1,
-            torch.uint2,
-            torch.uint3,
-            torch.uint4,
-            torch.uint5,
-            torch.uint6,
-            torch.uint7,
-        )
-    else:
-        SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION = (
-            torch.int8,
-            torch.float8_e4m3fn,
-            torch.float8_e5m2,
-        )
-
 if is_torchao_available():
-    from torchao.quantization import quantize_
+    from torchao.quantization import FqnToConfig, quantize_
+
+    if is_torchao_version(">=", "0.16.0"):
+        from torchao.prototype.safetensors.safetensors_support import (
+            flatten_tensor_state_dict,
+            unflatten_tensor_state_dict,
+        )
+        from torchao.prototype.safetensors.safetensors_utils import is_metadata_torchao
 
 
 def _update_torch_safe_globals():
@@ -133,6 +122,41 @@ def fuzzy_match_size(config_name: str) -> str | None:
     return None
 
 
+def _fqn_to_config_weight_sizes(config: "FqnToConfig") -> tuple[set[str | None], bool]:
+    """
+    Summarize the configs an `FqnToConfig` holds, for the memory estimates that assume one weight size model-wide.
+
+    Returns the size digits (as `fuzzy_match_size` reports them) of every config it maps to, along with whether the
+    config leaves modules unquantized -- either mapped to `None`, or unmatched with no `_default` to fall back on.
+    """
+    fqn_to_config = config.fqn_to_config
+    size_digits = {fuzzy_match_size(type(c).__name__) for c in fqn_to_config.values() if c is not None}
+    leaves_modules_unquantized = "_default" not in fqn_to_config or any(c is None for c in fqn_to_config.values())
+    return size_digits, leaves_modules_unquantized
+
+
+def _resolve_fqn_to_config(config: "FqnToConfig", module_fqn: str, param_fqn: str):
+    """
+    Pick the config an `FqnToConfig` assigns to a single parameter.
+
+    `create_quantized_param` quantizes one module at a time, so `quantize_` only ever sees a lone `nn.Linear` whose fqn
+    is `""` and whose parameters are named `weight`/`bias`. Full-path patterns therefore never match on their own, and
+    the config silently falls through to `_default`.
+    """
+    fqn_to_config = config.fqn_to_config
+
+    for fqn in (param_fqn, module_fqn):
+        if fqn in fqn_to_config:
+            return fqn_to_config[fqn]
+
+    for fqn in (param_fqn, module_fqn):
+        for pattern, pattern_config in fqn_to_config.items():
+            if pattern.startswith("re:") and re.fullmatch(pattern[3:], fqn):
+                return pattern_config
+
+    return fqn_to_config.get("_default", None)
+
+
 def _linear_extra_repr(self):
     from torchao.utils import TorchAOBaseTensor
 
@@ -150,9 +174,13 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
     requires_calibration = False
     required_packages = ["torchao"]
+    use_keep_in_fp32_modules = True
 
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
+
+        self._metadata = {}
+        self._pending_flattened_state_dict = {}
 
     def validate_environment(self, *args, **kwargs):
         if not is_torchao_available():
@@ -212,6 +240,15 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         from accelerate.utils import CustomDtype
 
         quant_type = self.quantization_config.quant_type
+        if isinstance(quant_type, FqnToConfig):
+            size_digits, leaves_modules_unquantized = _fqn_to_config_weight_sizes(quant_type)
+            if leaves_modules_unquantized:
+                # Modules the config skips keep `target_dtype`, so shrinking the estimate for every parameter would
+                # under-estimate the model and let `infer_auto_device_map` overfill a device.
+                return target_dtype
+            # Only claim int4 when nothing the config maps to is wider than that.
+            return CustomDtype.INT4 if size_digits == {"4"} else torch.int8
+
         config_name = quant_type.__class__.__name__
         size_digit = fuzzy_match_size(config_name)
 
@@ -220,21 +257,85 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         else:
             return torch.int8
 
-        if isinstance(target_dtype, SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION):
-            return target_dtype
-
-        # We need one of the supported dtypes to be selected in order for accelerate to determine
-        # the total size of modules/parameters for auto device placement.
-        possible_device_maps = ["auto", "balanced", "balanced_low_0", "sequential"]
-        raise ValueError(
-            f"You have set `device_map` as one of {possible_device_maps} on a TorchAO quantized model but a suitable target dtype "
-            f"could not be inferred. The supported target_dtypes are: {SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION}. If you think the "
-            f"dtype you are using should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
-        )
-
     def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         max_memory = {key: val * 0.9 for key, val in max_memory.items()}
         return max_memory
+
+    def get_state_dict_and_metadata(self, state_dict: dict[str, Any], safe_serialization: bool = False):
+        """
+        We flatten the state dict of tensor subclasses so that it is compatible with the safetensors format.
+        """
+        if not safe_serialization or not is_torchao_available() or not is_torchao_version(">=", "0.16.0"):
+            return state_dict, {}
+
+        flattened_state_dict = flatten_tensor_state_dict(state_dict)
+        if isinstance(flattened_state_dict, tuple):
+            return flattened_state_dict
+
+        return flattened_state_dict, {}
+
+    def maybe_update_loaded_keys(self, loaded_keys: list[str], checkpoint_files: list[str]) -> list[str]:
+        self.set_metadata(checkpoint_files)
+        if self._metadata:
+            return list(self.get_weight_names())
+        return loaded_keys
+
+    def set_metadata(self, checkpoint_files: list[str]):
+        self._metadata = {}
+        self._pending_flattened_state_dict = {}
+
+        if not is_safetensors_available() or not is_torchao_version(">=", "0.16.0"):
+            return
+
+        if len(checkpoint_files) == 0:
+            return
+
+        if not all(
+            isinstance(checkpoint, str) and checkpoint.endswith(".safetensors") for checkpoint in checkpoint_files
+        ):
+            return
+
+        metadata = {}
+        for checkpoint in checkpoint_files:
+            with safe_open(checkpoint, framework="pt") as f:
+                metadata.update(f.metadata() or {})
+
+        self._metadata = metadata if is_metadata_torchao(metadata) else {}
+
+    @property
+    def metadata(self):
+        return self._metadata
+
+    def maybe_update_state_dict(self, state_dict: dict[str, Any]) -> dict[str, Any]:
+        if not self._metadata or not is_torchao_version(">=", "0.16.0") or not is_metadata_torchao(self._metadata):
+            return state_dict
+
+        merged_state_dict = {**self._pending_flattened_state_dict, **state_dict}
+        # Tensors at the model root (e.g. Wan's `scale_shift_table`) have no module prefix and are never
+        # flattened tensor-subclass parts; torchao's unflatten helper cannot parse their names, so route
+        # them (and their metadata entries) around the reconstruction.
+        root_tensors = {k: v for k, v in merged_state_dict.items() if "." not in k}
+        merged_state_dict = {k: v for k, v in merged_state_dict.items() if "." in k}
+        metadata = self._metadata
+        tensor_names = json.loads(metadata["tensor_names"])
+        if any("." not in name for name in tensor_names):
+            metadata = {**metadata, "tensor_names": json.dumps([name for name in tensor_names if "." in name])}
+        reconstructed_state_dict, self._pending_flattened_state_dict = unflatten_tensor_state_dict(
+            merged_state_dict, metadata
+        )
+        reconstructed_state_dict.update(root_tensors)
+
+        return reconstructed_state_dict
+
+    @property
+    def supports_parallel_loading(self) -> bool:
+        # Safetensors reconstruction can carry leftover flattened tensor pieces from one shard to the next.
+        return not self._metadata
+
+    def get_weight_names(self):
+        if not self._metadata:
+            return set()
+        return set(json.loads(self._metadata["tensor_names"]))
 
     def check_if_quantized_param(
         self,
@@ -280,8 +381,25 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                 module.extra_repr = types.MethodType(_linear_extra_repr, module)
         else:
             # As we perform quantization here, the repr of linear layers is set by TorchAO, so we don't have to do it ourselves
-            module._parameters[tensor_name] = torch.nn.Parameter(param_value).to(device=target_device)
-            quantize_(module, self.quantization_config.get_apply_tensor_subclass())
+            module._parameters[tensor_name] = torch.nn.Parameter(param_value.to(device=target_device))
+
+            retrieved_config = self.quantization_config.get_apply_tensor_subclass()
+            if isinstance(retrieved_config, FqnToConfig):
+                module_fqn = param_name.rsplit(".", 1)[0] if "." in param_name else ""
+                retrieved_config = _resolve_fqn_to_config(retrieved_config, module_fqn, param_name)
+                if retrieved_config is None:
+                    # This module is either explicitly excluded or unmatched with no `_default`, so it stays unquantized.
+                    return
+                if isinstance(retrieved_config, FqnToConfig):
+                    # `quantize_` matches an `FqnToConfig` against the fqns of the module it is handed, which here is a
+                    # lone `nn.Linear`. The resolution above is what keeps fqn targeting working, so a config that is
+                    # still an `FqnToConfig` at this point would quantize nothing at all rather than erroring.
+                    raise ValueError(
+                        f"Nested `FqnToConfig` entries are not supported (resolved from `{param_name}`). Map each fqn "
+                        f"to a quantization config, or to `None` to leave the matching modules unquantized."
+                    )
+            # `retrieved_config` is a plain config by this point, so `quantize_` can use its default `filter_fn`.
+            quantize_(module, retrieved_config)
 
     def get_cuda_warm_up_factor(self):
         """
@@ -299,6 +417,12 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         - Use a division factor of 4 for int8 weights
         """
         quant_type = self.quantization_config.quant_type
+        if isinstance(quant_type, FqnToConfig):
+            # Pre-allocating more than the model ends up using can OOM the warmup itself, so assume the narrowest
+            # weights this config can produce. Modules it leaves unquantized only make the estimate safer.
+            size_digits, _ = _fqn_to_config_weight_sizes(quant_type)
+            return 8 if "4" in size_digits else 4
+
         config_name = quant_type.__class__.__name__
         size_digit = fuzzy_match_size(config_name)
 
@@ -337,14 +461,19 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     def _process_model_after_weight_loading(self, model: "ModelMixin"):
         return model
 
-    def is_serializable(self, safe_serialization=None):
-        # TODO(aryan): needs to be tested
-        if safe_serialization:
+    @property
+    def supports_safetensors_serialization(self):
+        if not is_torchao_version(">=", "0.16.0"):
             logger.warning(
-                "torchao quantized model does not support safe serialization, please set `safe_serialization` to False."
+                "TorchAO quantized model is not serializable with safe serialization without safetensors support "
+                "from the installed torchao version."
             )
             return False
 
+        return True
+
+    @property
+    def is_serializable(self):
         _is_torchao_serializable = version.parse(importlib.metadata.version("huggingface_hub")) >= version.parse(
             "0.25.0"
         )

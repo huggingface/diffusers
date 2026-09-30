@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ from ...pipelines.flux2.image_processor import Flux2ImageProcessor
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import Flux2ModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -97,7 +98,7 @@ class Flux2UnpackLatentsStep(ModularPipelineBlocks):
         return torch.stack(x_list, dim=0)
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         latents = block_state.latents
@@ -162,7 +163,7 @@ class Flux2DecodeStep(ModularPipelineBlocks):
         return latents
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         vae = components.vae
 

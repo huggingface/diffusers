@@ -58,7 +58,7 @@ class HunyuanImageResnetBlock(nn.Module):
         else:
             self.conv_shortcut = None
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         # Apply shortcut connection
         residual = x
 
@@ -95,7 +95,7 @@ class HunyuanImageAttentionBlock(nn.Module):
         self.to_v = nn.Conv2d(in_channels, in_channels, 1)
         self.proj = nn.Conv2d(in_channels, in_channels, 1)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         identity = x
         x = self.norm(x)
 
@@ -681,6 +681,11 @@ class AutoencoderKLHunyuanImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromO
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
                 deterministic.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
         """
         posterior = self.encode(sample).latent_dist
         if sample_posterior:

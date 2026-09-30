@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
 
@@ -402,7 +402,9 @@ class StableDiffusionXLPipeline(
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(get_module_execution_device(text_encoder)), output_hidden_states=True
+                )
 
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 if pooled_prompt_embeds is None and prompt_embeds[0].ndim == 2:
@@ -463,7 +465,7 @@ class StableDiffusionXLPipeline(
                 )
 
                 negative_prompt_embeds = text_encoder(
-                    uncond_input.input_ids.to(device),
+                    uncond_input.input_ids.to(get_module_execution_device(text_encoder)),
                     output_hidden_states=True,
                 )
 
@@ -857,7 +859,7 @@ class StableDiffusionXLPipeline(
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
-    ):
+    ) -> StableDiffusionXLPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -1095,7 +1097,8 @@ class StableDiffusionXLPipeline(
         )
 
         # 4. Prepare timesteps
-        if XLA_AVAILABLE:
+        is_neuron_device = device.type == "neuron"
+        if XLA_AVAILABLE or is_neuron_device:
             timestep_device = "cpu"
         else:
             timestep_device = device
@@ -1190,6 +1193,8 @@ class StableDiffusionXLPipeline(
             ).to(device=device, dtype=latents.dtype)
 
         self._num_timesteps = len(timesteps)
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -1197,16 +1202,18 @@ class StableDiffusionXLPipeline(
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
+                # [Neuron] pre-cast timestep to float32 on device. Neuron XLA does not support
+                # int64 ops; the compiled UNet graph requires a float32 timestep input on-device.
+                t_unet = t.to(torch.float32).to(device) if is_neuron_device else t
                 noise_pred = self.unet(
                     latent_model_input,
-                    t,
+                    t_unet,
                     encoder_hidden_states=prompt_embeds,
                     timestep_cond=timestep_cond,
                     cross_attention_kwargs=self.cross_attention_kwargs,
@@ -1279,6 +1286,7 @@ class StableDiffusionXLPipeline(
             else:
                 latents = latents / self.vae.config.scaling_factor
 
+            latents = latents.to(get_module_execution_device(self.vae))
             image = self.vae.decode(latents, return_dict=False)[0]
 
             # cast back to fp16 if needed

@@ -25,7 +25,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, logging
 from ..attention import AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -47,7 +47,11 @@ def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     assert dim % 2 == 0
     scale = torch.arange(0, dim, 2, dtype=torch.float32, device=pos.device) / dim
     omega = 1.0 / (theta**scale)
-    out = torch.einsum("...n,d->...nd", pos, omega)
+    # Disable autocast so the position-id einsum runs in float32: under an ambient autocast it would run in
+    # bfloat16, which cannot represent consecutive integers past 256, so position ids beyond that point would
+    # collapse onto the same frequency and degrade the rotary embedding.
+    with torch.autocast(device_type=pos.device.type, enabled=False):
+        out = torch.einsum("...n,d->...nd", pos, omega)
     return out.float()
 
 
@@ -260,7 +264,7 @@ class ErnieImageSharedAdaLNBlock(nn.Module):
         rotary_pos_emb,
         temb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
         attention_mask: torch.Tensor | None = None,
-    ):
+    ) -> torch.Tensor:
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = temb
         residual = x
         x = self.adaLN_sa_ln(x)
@@ -289,7 +293,7 @@ class ErnieImageAdaLNContinuous(nn.Module):
         return x
 
 
-class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
     _repeated_blocks = ["ErnieImageSharedAdaLNBlock"]
 
@@ -349,7 +353,7 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         text_bth: torch.Tensor,
         text_lens: torch.Tensor,
         return_dict: bool = True,
-    ):
+    ) -> ErnieImageTransformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`ErnieImageTransformer2DModel`] forward method.
 
@@ -366,6 +370,11 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+
+        Returns:
+            If `return_dict` is True, a
+            [`~models.transformers.transformer_ernie_image.ErnieImageTransformer2DModelOutput`] is returned, otherwise
+            a `tuple` where the first element is the sample tensor.
         """
         device, dtype = hidden_states.device, hidden_states.dtype
         B, C, H, W = hidden_states.shape

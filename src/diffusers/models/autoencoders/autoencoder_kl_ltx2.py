@@ -40,7 +40,7 @@ class PerChannelRMSNorm(nn.Module):
     def __init__(self, channel_dim: int = 1, eps: float = 1e-8) -> None:
         """
         Args:
-            dim: Dimension along which to compute the RMS (typically channels).
+            channel_dim: Dimension along which to compute the RMS (typically channels).
             eps: Small constant added for numerical stability.
         """
         super().__init__()
@@ -1558,6 +1558,11 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
                 deterministic.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
         """
         x = sample
         posterior = self.encode(x, causal=encoder_causal).latent_dist

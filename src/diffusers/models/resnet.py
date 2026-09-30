@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 # `TemporalConvLayer` Copyright 2025 Alibaba DAMO-VILAB, The ModelScope Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -692,7 +692,7 @@ class SpatioTemporalResBlock(nn.Module):
         hidden_states: torch.Tensor,
         temb: torch.Tensor | None = None,
         image_only_indicator: torch.Tensor | None = None,
-    ):
+    ) -> torch.Tensor:
         num_frames = image_only_indicator.shape[-1]
         hidden_states = self.spatial_res_block(hidden_states, temb)
 

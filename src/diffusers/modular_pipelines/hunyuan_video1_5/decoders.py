@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ from ...pipelines.hunyuan_video1_5.image_processor import HunyuanVideo15ImagePro
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import HunyuanVideo15ModularPipeline
 
 
 logger = logging.get_logger(__name__)
@@ -59,7 +60,7 @@ class HunyuanVideo15VaeDecoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[HunyuanVideo15ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         latents = block_state.latents.to(components.vae.dtype) / components.vae.config.scaling_factor

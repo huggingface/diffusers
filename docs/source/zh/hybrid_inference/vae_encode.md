@@ -140,7 +140,7 @@ from diffusers.utils.remote_utils import remote_decode, remote_encode
 
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
     vae=None,
 ).to("cuda")

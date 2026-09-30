@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -131,7 +131,9 @@ class LTXTextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -196,7 +198,9 @@ class LTXSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -288,7 +292,9 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -353,7 +359,9 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

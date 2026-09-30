@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,10 +19,10 @@ from diffusers import MotifVideoTransformer3DModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..test_modeling_common import LoraHotSwappingForModelTesterMixin
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,

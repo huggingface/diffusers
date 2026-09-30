@@ -24,7 +24,7 @@ from ...loaders import Flux2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, maybe_adjust_dtype_for_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import Flux2ImageProcessor
 from .pipeline_output import Flux2PipelineOutput
@@ -241,8 +241,9 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             all_input_ids.append(inputs["input_ids"])
             all_attention_masks.append(inputs["attention_mask"])
 
-        input_ids = torch.cat(all_input_ids, dim=0).to(device)
-        attention_mask = torch.cat(all_attention_masks, dim=0).to(device)
+        model_device = get_module_execution_device(text_encoder)
+        input_ids = torch.cat(all_input_ids, dim=0).to(model_device)
+        attention_mask = torch.cat(all_attention_masks, dim=0).to(model_device)
 
         # Forward pass through the model
         output = text_encoder(
@@ -405,8 +406,9 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         x_list = []
         for data, pos in zip(x, x_ids):
             _, ch = data.shape  # noqa: F841
-            h_ids = pos[:, 1].to(torch.int64)
-            w_ids = pos[:, 2].to(torch.int64)
+            idx_dtype = maybe_adjust_dtype_for_device(torch.int64, data.device)
+            h_ids = pos[:, 1].to(idx_dtype)
+            w_ids = pos[:, 2].to(idx_dtype)
 
             # Use provided height/width to avoid DtoH sync from torch.max().item()
             h = height if height is not None else torch.max(h_ids) + 1
@@ -519,7 +521,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     ):
         image_latents = []
         for image in images:
-            image = image.to(device=device, dtype=dtype)
+            image = image.to(device=get_module_execution_device(self.vae), dtype=dtype)
             imagge_latent = self._encode_vae_image(image=image, generator=generator)
             image_latents.append(imagge_latent)  # (1, 128, 32, 32)
 
@@ -538,6 +540,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latents = image_latents.unsqueeze(0)  # (1, N*1024, 128)
 
         image_latents = image_latents.repeat(batch_size, 1, 1)
+        image_latents = image_latents.to(device)
         image_latent_ids = image_latent_ids.repeat(batch_size, 1, 1)
         image_latent_ids = image_latent_ids.to(device)
 
@@ -631,7 +634,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
         text_encoder_out_layers: tuple[int] = (9, 18, 27),
-    ):
+    ) -> Flux2PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -826,7 +829,8 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         # 7. Denoising loop
         # We set the index here to remove DtoH sync, helpful especially during compilation.
         # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
-        self.scheduler.set_begin_index(0)
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -913,6 +917,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         if output_type == "latent":
             image = latents
         else:
+            latents = latents.to(get_module_execution_device(self.vae))
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 

@@ -690,6 +690,10 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
                 deterministic.
+
+        Returns:
+            [`DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`DecoderOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         latents = self.encode(sample, return_dict=False, generator=generator)[0]
         decoded = self.decode(latents, return_dict=False)[0]

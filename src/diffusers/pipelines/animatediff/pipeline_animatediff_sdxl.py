@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ...video_processor import VideoProcessor
 from ..free_init_utils import FreeInitMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
@@ -101,8 +101,8 @@ EXAMPLE_DOC_STRING = """
         ... ).to("cuda")
 
         >>> # enable memory savings
-        >>> pipe.enable_vae_slicing()
-        >>> pipe.enable_vae_tiling()
+        >>> pipe.vae.enable_slicing()
+        >>> pipe.vae.enable_tiling()
 
         >>> output = pipe(
         ...     prompt="a panda surfing in the ocean, realistic, high quality",
@@ -446,7 +446,9 @@ class AnimateDiffSDXLPipeline(
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(get_module_execution_device(text_encoder)), output_hidden_states=True
+                )
 
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 if pooled_prompt_embeds is None and prompt_embeds[0].ndim == 2:
@@ -507,7 +509,7 @@ class AnimateDiffSDXLPipeline(
                 )
 
                 negative_prompt_embeds = text_encoder(
-                    uncond_input.input_ids.to(device),
+                    uncond_input.input_ids.to(get_module_execution_device(text_encoder)),
                     output_hidden_states=True,
                 )
 
@@ -903,7 +905,7 @@ class AnimateDiffSDXLPipeline(
         clip_skip: int | None = None,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> AnimateDiffPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

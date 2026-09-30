@@ -520,9 +520,10 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
 
         Examples:
 
-        Returns: [`~pipelines.ImagePipelineOutput`] or `tuple`:
-            If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is returned
-            where the first element is a list with the generated images.
+        Returns:
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
@@ -606,6 +607,9 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
         )
 
         # 6. Denoising loop
+        # We set the index here to remove DtoH sync, helpful especially during compilation.
+        # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
+        self.scheduler.set_begin_index(0)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -658,8 +662,7 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
             if needs_upcasting:
                 self.upcast_vae()
-                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.vae.decode(latents.to(self.vae.dtype) / self.vae.config.scaling_factor, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models

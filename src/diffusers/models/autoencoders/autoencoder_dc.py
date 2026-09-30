@@ -711,6 +711,11 @@ class AutoencoderDC(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
             sample (`torch.Tensor`): Input sample.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
         """
         encoded = self.encode(sample, return_dict=False)[0]
         decoded = self.decode(encoded, return_dict=False)[0]

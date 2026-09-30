@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -936,7 +936,7 @@ class MidBlockTemporalDecoder(nn.Module):
         self,
         hidden_states: torch.Tensor,
         image_only_indicator: torch.Tensor,
-    ):
+    ) -> torch.Tensor:
         hidden_states = self.resnets[0](
             hidden_states,
             image_only_indicator=image_only_indicator,

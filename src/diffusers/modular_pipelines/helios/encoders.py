@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -160,7 +160,9 @@ class HeliosTextEncoderStep(ModularPipelineBlocks):
                 )
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         prompt = block_state.prompt
@@ -248,7 +250,9 @@ class HeliosImageVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         vae = components.vae
@@ -336,7 +340,9 @@ class HeliosVideoVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         vae = components.vae

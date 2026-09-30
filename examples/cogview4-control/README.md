@@ -102,7 +102,7 @@ from PIL import Image
 import numpy as np
 import torch 
 
-pipe = CogView4ControlPipeline.from_pretrained("THUDM/CogView4-6B", torch_dtype=torch.bfloat16).to("cuda")
+pipe = CogView4ControlPipeline.from_pretrained("THUDM/CogView4-6B", dtype=torch.bfloat16).to("cuda")
 pipe.load_lora_weights("...") # change this.
 
 open_pose = OpenposeDetector.from_pretrained("lllyasviel/Annotators")
@@ -171,7 +171,7 @@ import torch
 
 transformer = CogView4Transformer2DModel.from_pretrained("...") # change this.
 pipe = CogView4ControlPipeline.from_pretrained(
-  "THUDM/CogView4-6B",  transformer=transformer, torch_dtype=torch.bfloat16
+  "THUDM/CogView4-6B",  transformer=transformer, dtype=torch.bfloat16
 ).to("cuda")
 
 open_pose = OpenposeDetector.from_pretrained("lllyasviel/Annotators")

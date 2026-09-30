@@ -26,7 +26,7 @@ from ...loaders import WanLoraLoaderMixin
 from ...models import AnyFlowTransformer3DModel, AutoencoderKLWan
 from ...schedulers import FlowMapEulerDiscreteScheduler
 from ...utils import is_ftfy_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import AnyFlowPipelineOutput
@@ -80,11 +80,11 @@ def prompt_clean(text):
 class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     Bidirectional text-to-video generation pipeline for AnyFlow flow-map-distilled checkpoints, introduced in
-    [AnyFlow](https://huggingface.co/papers/2605.13724) by Yuchao Gu, Guian Fang et al.
+    [AnyFlow](https://huggingface.co/papers/2605.13724).
 
     AnyFlow learns arbitrary-interval transitions :math:`z_t \to z_r` rather than the fixed :math:`z_t \to z_0` mapping
     of consistency models, so a single distilled checkpoint can be evaluated at 1, 2, 4, 8, 16... NFE without
-    retraining. This pipeline operates over the full video tensor in one bidirectional pass; for frame-level
+    retraining. This pipeline operates over the full video tensor in one bidirectional pass; for chunk-wise
     autoregressive (causal) generation use ``AnyFlowFARPipeline``.
 
     Sampling is plain Euler in mean-velocity form (``z_r = z_t - (t - r) * u``) with no re-noising. The released NVIDIA
@@ -161,7 +161,8 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
+        model_device = get_module_execution_device(self.text_encoder)
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), mask.to(model_device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
         prompt_embeds = torch.stack(
@@ -405,7 +406,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         use_mean_velocity: bool = True,
-    ):
+    ) -> AnyFlowPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

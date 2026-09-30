@@ -42,7 +42,7 @@ class MochiModulatedRMSNorm(nn.Module):
         self.eps = eps
         self.norm = RMSNorm(0, eps, False)
 
-    def forward(self, hidden_states, scale=None):
+    def forward(self, hidden_states, scale=None) -> torch.Tensor:
         hidden_states_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
 
@@ -433,6 +433,10 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+
+        Returns:
+            `torch.Tensor`:
+                The denoised output tensor of shape `(batch_size, out_channels, num_frames, height, width)`.
         """
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p = self.config.patch_size

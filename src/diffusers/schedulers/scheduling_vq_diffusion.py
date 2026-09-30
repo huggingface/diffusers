@@ -30,7 +30,7 @@ class VQDiffusionSchedulerOutput(BaseOutput):
 
     Args:
         prev_sample (`torch.LongTensor` of shape `(batch size, num latent pixels)`):
-            Computed sample x_{t-1} of previous timestep. `prev_sample` should be used as next model input in the
+            The computed sample at the previous timestep. `prev_sample` should be used as the next model input in the
             denoising loop.
     """
 
@@ -39,18 +39,17 @@ class VQDiffusionSchedulerOutput(BaseOutput):
 
 def index_to_log_onehot(x: torch.LongTensor, num_classes: int) -> torch.Tensor:
     """
-    Convert batch of vector of class indices into batch of log onehot vectors
+    Convert a batch of class index vectors into a batch of log one-hot vectors.
 
     Args:
         x (`torch.LongTensor` of shape `(batch size, vector length)`):
-            Batch of class indices
-
+            The batch of class indices.
         num_classes (`int`):
-            number of classes to be used for the onehot vectors
+            The number of classes used for the one-hot vectors.
 
     Returns:
         `torch.Tensor` of shape `(batch size, num classes, vector length)`:
-            Log onehot vectors
+            The log one-hot vectors.
     """
     x_onehot = F.one_hot(x, num_classes)
     x_onehot = x_onehot.permute(0, 2, 1)
@@ -60,7 +59,17 @@ def index_to_log_onehot(x: torch.LongTensor, num_classes: int) -> torch.Tensor:
 
 def gumbel_noised(logits: torch.Tensor, generator: torch.Generator | None) -> torch.Tensor:
     """
-    Apply gumbel noise to `logits`
+    Apply Gumbel noise to the input logits.
+
+    Args:
+        logits (`torch.Tensor`):
+            The logits to which Gumbel noise is added.
+        generator (`torch.Generator` or `None`):
+            A random number generator for reproducible noise generation, or `None` to use the default generator.
+
+    Returns:
+        `torch.Tensor`:
+            The logits with Gumbel noise added.
     """
     uniform = torch.rand(logits.shape, device=logits.device, generator=generator)
     gumbel_noise = -torch.log(-torch.log(uniform + 1e-30) + 1e-30)
@@ -68,11 +77,25 @@ def gumbel_noised(logits: torch.Tensor, generator: torch.Generator | None) -> to
     return noised
 
 
-def alpha_schedules(num_diffusion_timesteps: int, alpha_cum_start=0.99999, alpha_cum_end=0.000009):
+def alpha_schedules(
+    num_diffusion_timesteps: int, alpha_cum_start: float = 0.99999, alpha_cum_end: float = 0.000009
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Cumulative and non-cumulative alpha schedules.
+    Create cumulative and non-cumulative alpha schedules for the diffusion process.
 
-    See section 4.1.
+    The schedules follow the formulation in section 4.1 of the VQ-Diffusion paper.
+
+    Args:
+        num_diffusion_timesteps (`int`):
+            The number of diffusion timesteps.
+        alpha_cum_start (`float`, defaults to `0.99999`):
+            The starting cumulative alpha value.
+        alpha_cum_end (`float`, defaults to `0.000009`):
+            The ending cumulative alpha value.
+
+    Returns:
+        `tuple[np.ndarray, np.ndarray]`:
+            A tuple containing the non-cumulative and cumulative alpha schedules, respectively.
     """
     att = (
         np.arange(0, num_diffusion_timesteps) / (num_diffusion_timesteps - 1) * (alpha_cum_end - alpha_cum_start)
@@ -84,11 +107,25 @@ def alpha_schedules(num_diffusion_timesteps: int, alpha_cum_start=0.99999, alpha
     return at, att
 
 
-def gamma_schedules(num_diffusion_timesteps: int, gamma_cum_start=0.000009, gamma_cum_end=0.99999):
+def gamma_schedules(
+    num_diffusion_timesteps: int, gamma_cum_start: float = 0.000009, gamma_cum_end: float = 0.99999
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Cumulative and non-cumulative gamma schedules.
+    Create cumulative and non-cumulative gamma schedules for the diffusion process.
 
-    See section 4.1.
+    The schedules follow the formulation in section 4.1 of the VQ-Diffusion paper.
+
+    Args:
+        num_diffusion_timesteps (`int`):
+            The number of diffusion timesteps.
+        gamma_cum_start (`float`, defaults to `0.000009`):
+            The starting cumulative gamma value.
+        gamma_cum_end (`float`, defaults to `0.99999`):
+            The ending cumulative gamma value.
+
+    Returns:
+        `tuple[np.ndarray, np.ndarray]`:
+            A tuple containing the non-cumulative and cumulative gamma schedules, respectively.
     """
     ctt = (
         np.arange(0, num_diffusion_timesteps) / (num_diffusion_timesteps - 1) * (gamma_cum_end - gamma_cum_start)
@@ -113,15 +150,15 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         num_vec_classes (`int`):
             The number of classes of the vector embeddings of the latent pixels. Includes the class for the masked
             latent pixel.
-        num_train_timesteps (`int`, defaults to 100):
+        num_train_timesteps (`int`, defaults to `100`):
             The number of diffusion steps to train the model.
-        alpha_cum_start (`float`, defaults to 0.99999):
+        alpha_cum_start (`float`, defaults to `0.99999`):
             The starting cumulative alpha value.
-        alpha_cum_end (`float`, defaults to 0.00009):
+        alpha_cum_end (`float`, defaults to `0.000009`):
             The ending cumulative alpha value.
-        gamma_cum_start (`float`, defaults to 0.00009):
+        gamma_cum_start (`float`, defaults to `0.000009`):
             The starting cumulative gamma value.
-        gamma_cum_end (`float`, defaults to 0.99999):
+        gamma_cum_end (`float`, defaults to `0.99999`):
             The ending cumulative gamma value.
     """
 
@@ -136,7 +173,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         alpha_cum_end: float = 0.000009,
         gamma_cum_start: float = 0.000009,
         gamma_cum_end: float = 0.99999,
-    ):
+    ) -> None:
         self.num_embed = num_vec_classes
 
         # By convention, the index for the mask class is the last class index
@@ -174,7 +211,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
 
-    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -199,31 +236,31 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: torch.long,
+        timestep: int | torch.Tensor,
         sample: torch.LongTensor,
         generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> VQDiffusionSchedulerOutput | tuple:
+    ) -> VQDiffusionSchedulerOutput | tuple[torch.LongTensor]:
         """
         Predict the sample from the previous timestep by the reverse transition distribution. See
-        [`~VQDiffusionScheduler.q_posterior`] for more details about how the distribution is computer.
+        [`~VQDiffusionScheduler.q_posterior`] for more details about how the distribution is computed.
 
         Args:
-            log_p_x_0: (`torch.Tensor` of shape `(batch size, num classes - 1, num latent pixels)`):
+            model_output (`torch.Tensor` of shape `(batch size, num classes - 1, num latent pixels)`):
                 The log probabilities for the predicted classes of the initial latent pixels. Does not include a
                 prediction for the masked class as the initial unnoised image cannot be masked.
-            t (`torch.long`):
+            timestep (`int` or `torch.Tensor`):
                 The timestep that determines which transition matrices are used.
-            x_t (`torch.LongTensor` of shape `(batch size, num latent pixels)`):
-                The classes of each latent pixel at time `t`.
-            generator (`torch.Generator`, or `None`):
+            sample (`torch.LongTensor` of shape `(batch size, num latent pixels)`):
+                The classes of each latent pixel at the current timestep.
+            generator (`torch.Generator`, *optional*):
                 A random number generator for the noise applied to `p(x_{t-1} | x_t)` before it is sampled from.
-            return_dict (`bool`, *optional*, defaults to `True`):
+            return_dict (`bool`, defaults to `True`):
                 Whether or not to return a [`~schedulers.scheduling_vq_diffusion.VQDiffusionSchedulerOutput`] or
                 `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_vq_diffusion.VQDiffusionSchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_vq_diffusion.VQDiffusionSchedulerOutput`] or `tuple[torch.LongTensor]`:
                 If return_dict is `True`, [`~schedulers.scheduling_vq_diffusion.VQDiffusionSchedulerOutput`] is
                 returned, otherwise a tuple is returned where the first element is the sample tensor.
         """
@@ -241,7 +278,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         return VQDiffusionSchedulerOutput(prev_sample=x_t_min_1)
 
-    def q_posterior(self, log_p_x_0, x_t, t):
+    def q_posterior(self, log_p_x_0: torch.Tensor, x_t: torch.LongTensor, t: int | torch.Tensor) -> torch.Tensor:
         """
         Calculates the log probabilities for the predicted classes of the image at timestep `t-1`:
 
@@ -255,7 +292,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
                 prediction for the masked class as the initial unnoised image cannot be masked.
             x_t (`torch.LongTensor` of shape `(batch size, num latent pixels)`):
                 The classes of each latent pixel at time `t`.
-            t (`torch.Long`):
+            t (`int` or `torch.Tensor`):
                 The timestep that determines which transition matrix is used.
 
         Returns:
@@ -353,14 +390,14 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         return log_p_x_t_min_1
 
     def log_Q_t_transitioning_to_known_class(
-        self, *, t: torch.int, x_t: torch.LongTensor, log_onehot_x_t: torch.Tensor, cumulative: bool
-    ):
+        self, *, t: int | torch.Tensor, x_t: torch.LongTensor, log_onehot_x_t: torch.Tensor, cumulative: bool
+    ) -> torch.Tensor:
         """
         Calculates the log probabilities of the rows from the (cumulative or non-cumulative) transition matrix for each
         latent pixel in `x_t`.
 
         Args:
-            t (`torch.Long`):
+            t (`int` or `torch.Tensor`):
                 The timestep that determines which transition matrix is used.
             x_t (`torch.LongTensor` of shape `(batch size, num latent pixels)`):
                 The classes of each latent pixel at time `t`.
@@ -371,12 +408,12 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
                 `True`, the cumulative transition matrix `0`->`t` is used.
 
         Returns:
-            `torch.Tensor` of shape `(batch size, num classes - 1, num latent pixels)`:
+            `torch.Tensor`:
                 Each _column_ of the returned matrix is a _row_ of log probabilities of the complete probability
-                transition matrix.
+                transition matrix. The tensor has shape `(batch size, num classes - 1, num latent pixels)` when
+                `cumulative` is `True` and shape `(batch size, num classes, num latent pixels)` otherwise.
 
-                When non cumulative, returns `self.num_classes - 1` rows because the initial latent pixel cannot be
-                masked.
+                When cumulative, the tensor has one fewer row because the initial latent pixel cannot be masked.
 
                 Where:
                 - `q_n` is the probability distribution for the forward process of the `n`th latent pixel.
@@ -451,7 +488,20 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         return log_Q_t
 
-    def apply_cumulative_transitions(self, q, t):
+    def apply_cumulative_transitions(self, q: torch.Tensor, t: int | torch.Tensor) -> torch.Tensor:
+        """
+        Apply the cumulative transition matrix at a timestep to log probabilities over non-mask classes.
+
+        Args:
+            q (`torch.Tensor` of shape `(batch size, num classes - 1, num latent pixels)`):
+                The log probabilities over the non-mask latent pixel classes.
+            t (`int` or `torch.Tensor`):
+                The timestep that determines which cumulative transition matrix is used.
+
+        Returns:
+            `torch.Tensor` of shape `(batch size, num classes, num latent pixels)`:
+                The transitioned log probabilities with the mask class probabilities appended.
+        """
         bsz = q.shape[0]
         a = self.log_cumprod_at[t]
         b = self.log_cumprod_bt[t]

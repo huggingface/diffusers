@@ -535,6 +535,10 @@ class LTXVideoTransformer3DModel(
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+
+        Returns:
+            `torch.Tensor`:
+                The denoised output tensor of shape `(batch_size, sequence_length, out_channels)`.
         """
         image_rotary_emb = self.rope(hidden_states, num_frames, height, width, rope_interpolation_scale, video_coords)
 

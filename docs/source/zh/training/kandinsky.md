@@ -77,7 +77,7 @@ accelerate launch train_text_to_image_prior.py \
 
 ### Min-SNR 加权
 
-[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略可以通过重新平衡损失来帮助训练，实现更快的收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，但 Min-SNR 与两种预测类型都兼容。此加权策略仅由 PyTorch 支持，在 Flax 训练脚本中不可用。
+[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略可以通过重新平衡损失来帮助训练，实现更快的收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，但 Min-SNR 与两种预测类型都兼容。
 
 添加 `--snr_gamma` 参数并将其设置为推荐值 5.0：
 
@@ -107,10 +107,10 @@ tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_pa
 
 with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
     image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", torch_dtype=weight_dtype
+        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", dtype=weight_dtype
     ).eval()
     text_encoder = CLIPTextModelWithProjection.from_pretrained(
-        args.pretrained_prior_model_name_or_path, subfolder="text_encoder", torch_dtype=weight_dtype
+        args.pretrained_prior_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype
     ).eval()
 ```
 
@@ -163,10 +163,10 @@ ffusers/blob/6e68c71503682c8693cb5b06a4da4911dfd655ee/examples/kandinsky2_2/text
 ```py
 with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
     vae = VQModel.from_pretrained(
-        args.pretrained_decoder_model_name_or_path, subfolder="movq", torch_dtype=weight_dtype
+        args.pretrained_decoder_model_name_or_path, subfolder="movq", dtype=weight_dtype
     ).eval()
     image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", torch_dtype=weight_dtype
+        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", dtype=weight_dtype
     ).eval()
 unet = UNet2DConditionModel.from_pretrained(args.pretrained_decoder_model_name_or_path, subfolder="unet")
 ```
@@ -263,9 +263,9 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_decoder.py \
 from diffusers import AutoPipelineForText2Image, DiffusionPipeline
 import torch
 
-prior_pipeline = DiffusionPipeline.from_pretrained(output_dir, torch_dtype=torch.float16)
+prior_pipeline = DiffusionPipeline.from_pretrained(output_dir, dtype=torch.float16)
 prior_components = {"prior_" + k: v for k,v in prior_pipeline.components.items()}
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, dtype=torch.float16)
 
 pipe.enable_model_cpu_offload()
 prompt="A robot naruto, 4k photo"
@@ -282,7 +282,7 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt).images[0]
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt="A robot naruto, 4k photo"
@@ -296,7 +296,7 @@ from diffusers import AutoPipelineForText2Image, UNet2DConditionModel
 
 unet = UNet2DConditionModel.from_pretrained("path/to/saved/model" + "/checkpoint-<N>/unet")
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 image = pipeline(prompt="A robot naruto, 4k photo").images[0]

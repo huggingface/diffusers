@@ -1,4 +1,4 @@
-.PHONY: deps_table_update modified_only_fixup extra_style_checks quality style fixup fix-copies test test-examples codex claude clean-ai
+.PHONY: deps_table_update modified_only_fixup extra_style_checks quality style fixup fix-copies test test-examples
 
 # make sure to test the local checkout in scripts and not the pre-installed one (don't use quotes!)
 export PYTHONPATH = src
@@ -37,6 +37,7 @@ repo-consistency:
 	python utils/check_repo.py
 	python utils/check_inits.py
 	python utils/check_forward_call_docstrings.py
+	python utils/check_return_annotations.py
 
 # this target runs checks on all files
 
@@ -45,6 +46,7 @@ quality:
 	ruff format --check $(check_dirs) setup.py
 	doc-builder style src/diffusers docs/source --max_len 119 --check_only
 	python utils/check_doc_toc.py
+	python utils/check_ai.py
 
 # Format source code automatically and check is there are any problems left that need manual fixing
 
@@ -79,6 +81,10 @@ modular-autodoctrings:
 check-forward-call-docstrings:
 	python utils/check_forward_call_docstrings.py
 
+# Verify forward() / __call__() have return type annotations
+check-return-annotations:
+	python utils/check_return_annotations.py
+
 # Run tests for the library
 
 test:
@@ -104,20 +110,3 @@ post-release:
 post-patch:
 	python utils/release.py --post_release --patch
 
-# AI agent symlinks
-
-codex:
-	ln -snf .ai/AGENTS.md AGENTS.md
-	mkdir -p .agents
-	rm -rf .agents/skills
-	ln -snf ../.ai/skills .agents/skills
-
-claude:
-	ln -snf .ai/AGENTS.md CLAUDE.md
-	mkdir -p .claude
-	rm -rf .claude/skills
-	ln -snf ../.ai/skills .claude/skills
-
-clean-ai:
-	rm -f AGENTS.md CLAUDE.md
-	rm -rf .agents/skills .claude/skills

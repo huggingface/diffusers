@@ -40,7 +40,7 @@ from diffusers.utils import export_to_video
 
 pipeline = HunyuanVideo15Pipeline.from_pretrained(
     "HunyuanVideo-1.5-Diffusers-480p_t2v",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 # model-offloading and tiling

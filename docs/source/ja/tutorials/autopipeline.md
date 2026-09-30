@@ -29,7 +29,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 prompt = "peasant and dragon combat, wood cutting style, viking era, bevel with rune"
 
@@ -57,7 +57,7 @@ from io import BytesIO
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
 ).to("cuda")
 prompt = "a portrait of a dog wearing a pearl earring"
@@ -84,7 +84,7 @@ from diffusers.utils import load_image
 import torch
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 
 img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
@@ -109,7 +109,7 @@ from diffusers import AutoPipelineForImage2Image
 import torch
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "openai/shap-e-img2img", torch_dtype=torch.float16, use_safetensors=True
+    "openai/shap-e-img2img", dtype=torch.float16, use_safetensors=True
 )
 "ValueError: AutoPipeline can't find a pipeline linked to ShapEImg2ImgPipeline for None"
 ```
@@ -125,7 +125,7 @@ from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 import torch
 
 pipeline_text2img = AutoPipelineForText2Image.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True
 )
 print(type(pipeline_text2img))
 "<class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'>"
@@ -146,7 +146,7 @@ import torch
 
 pipeline_text2img = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
     requires_safety_checker=False,
 ).to("cuda")

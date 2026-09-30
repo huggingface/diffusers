@@ -34,12 +34,12 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class TextToImage(ExamplesTestsAccelerate):
+class TestTextToImage(ExamplesTestsAccelerate):
     def test_text_to_image(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/text_to_image/train_text_to_image.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --dataset_name hf-internal-testing/dummy_image_text_data
                 --resolution 64
                 --center_crop
@@ -56,11 +56,11 @@ class TextToImage(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+            assert os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors"))
+            assert os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json"))
 
     def test_text_to_image_checkpointing(self):
-        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-torch"
         prompt = "a prompt"
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -93,10 +93,7 @@ class TextToImage(ExamplesTestsAccelerate):
             pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-4"}
 
             # check can run an intermediate checkpoint
             unet = UNet2DConditionModel.from_pretrained(tmpdir, subfolder="checkpoint-2/unet")
@@ -136,13 +133,10 @@ class TextToImage(ExamplesTestsAccelerate):
 
             # no checkpoint-2 -> check old checkpoints do not exist
             # check new checkpoints exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-5"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-5"}
 
     def test_text_to_image_checkpointing_use_ema(self):
-        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-torch"
         prompt = "a prompt"
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -176,10 +170,7 @@ class TextToImage(ExamplesTestsAccelerate):
             pipe(prompt, num_inference_steps=2)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-4"}
 
             # check can run an intermediate checkpoint
             unet = UNet2DConditionModel.from_pretrained(tmpdir, subfolder="checkpoint-2/unet")
@@ -220,13 +211,10 @@ class TextToImage(ExamplesTestsAccelerate):
 
             # no checkpoint-2 -> check old checkpoints do not exist
             # check new checkpoints exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-5"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-5"}
 
     def test_text_to_image_checkpointing_checkpoints_total_limit(self):
-        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-torch"
         prompt = "a prompt"
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -262,10 +250,10 @@ class TextToImage(ExamplesTestsAccelerate):
 
             # check checkpoint directories exist
             # checkpoint-2 should have been deleted
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_text_to_image_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-torch"
         prompt = "a prompt"
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -298,10 +286,7 @@ class TextToImage(ExamplesTestsAccelerate):
             pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-2", "checkpoint-4"}
 
             # resume and we should try to checkpoint at 6, where we'll have to remove
             # checkpoint-2 and checkpoint-4 instead of just a single previous checkpoint
@@ -333,13 +318,10 @@ class TextToImage(ExamplesTestsAccelerate):
             pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-6", "checkpoint-8"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-6", "checkpoint-8"}
 
 
-class TextToImageSDXL(ExamplesTestsAccelerate):
+class TestTextToImageSDXL(ExamplesTestsAccelerate):
     def test_text_to_image_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -361,5 +343,5 @@ class TextToImageSDXL(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors")))
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+            assert os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.safetensors"))
+            assert os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json"))

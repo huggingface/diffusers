@@ -15,6 +15,7 @@
 import torch
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import ErnieImageLoraLoaderMixin
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
 
@@ -63,11 +64,10 @@ class ErnieImagePachifier(ConfigMixin):
         )
 
 
-class ErnieImageModularPipeline(ModularPipeline):
+class ErnieImageModularPipeline(ModularPipeline, ErnieImageLoraLoaderMixin):
     """
     A ModularPipeline for ErnieImage.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "ErnieImageAutoBlocks"

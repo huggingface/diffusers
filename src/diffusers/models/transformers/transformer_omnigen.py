@@ -150,7 +150,7 @@ class OmniGenSuScaledRotaryEmbedding(nn.Module):
         self.long_factor = rope_scaling["long_factor"]
         self.original_max_position_embeddings = original_max_position_embeddings
 
-    def forward(self, hidden_states, position_ids):
+    def forward(self, hidden_states, position_ids) -> tuple[torch.Tensor, torch.Tensor]:
         seq_len = torch.max(position_ids) + 1
         if seq_len > self.original_max_position_embeddings:
             ext_factors = torch.tensor(self.long_factor, dtype=torch.float32, device=hidden_states.device)
@@ -437,6 +437,11 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise
+                a plain `tuple` is returned.
         """
         batch_size, num_channels, height, width = hidden_states.shape
         p = self.config.patch_size

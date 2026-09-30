@@ -122,7 +122,7 @@ import torch
 
 ckpt_id = "black-forest-labs/FLUX.1-dev"
 pipeline = FluxPipeline.from_pretrained(
-    ckpt_id, text_encoder=None, text_encoder_2=None, torch_dtype=torch.float16
+    ckpt_id, text_encoder=None, text_encoder_2=None, dtype=torch.float16
 )
 pipeline.load_lora_weights("yarn_art_lora_flux_nf4", weight_name="pytorch_lora_weights.safetensors")
 pipeline.fuse_lora()
@@ -147,10 +147,10 @@ nf4_config = BitsAndBytesConfig(
 transformer = FluxTransformer2DModel.from_pretrained(
     "fused_transformer",
     quantization_config=nf4_config,
-    torch_dtype=bnb_4bit_compute_dtype,
+    dtype=bnb_4bit_compute_dtype,
 )
 pipeline = AutoPipelineForText2Image.from_pretrained(
-    ckpt_id, transformer=transformer, torch_dtype=bnb_4bit_compute_dtype
+    ckpt_id, transformer=transformer, dtype=bnb_4bit_compute_dtype
 )
 pipeline.enable_model_cpu_offload()
 

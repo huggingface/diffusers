@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_prx"] = ["PRXPipeline"]
+    _import_structure["pipeline_prx_pixel"] = ["PRXPixelPipeline"]
 
 # Wrap T5GemmaEncoder to pass config.encoder (T5GemmaModuleConfig) instead of the
 # composite T5GemmaConfig, which lacks flat attributes expected by T5GemmaEncoder.__init__.
@@ -57,6 +58,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_output import PRXPipelineOutput
         from .pipeline_prx import PRXPipeline
+        from .pipeline_prx_pixel import PRXPixelPipeline
 
 else:
     import sys

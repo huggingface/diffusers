@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -396,7 +396,7 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         return_dict: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> StableCascadePriorPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 
