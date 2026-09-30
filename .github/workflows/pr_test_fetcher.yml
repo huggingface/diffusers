@@ -30,7 +30,7 @@ jobs:
       matrix: ${{ steps.set_matrix.outputs.matrix }}
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         fetch-depth: 0
     - name: Install dependencies
@@ -52,7 +52,7 @@ jobs:
             cat test_fetcher_summary.md >> $GITHUB_STEP_SUMMARY
         fi
     - name: Report fetched tests
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: test_fetched
         path: test_preparation.txt
@@ -88,7 +88,7 @@ jobs:
         shell: bash
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         fetch-depth: 2
 
@@ -114,7 +114,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
           name: ${{ matrix.name }}_test_reports
           path: reports
@@ -143,7 +143,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         fetch-depth: 2
 
@@ -169,7 +169,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports
