@@ -51,13 +51,17 @@ def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
     return torch.exp(-math.log(max_period) * torch.arange(start=0, end=dim, dtype=torch.float32) / dim)
 
 
-# Copied from diffusers.models.transformers.transformer_kandinsky6.apply_scale_shift_norm
-def apply_scale_shift_norm(norm, x: Tensor, scale: Tensor, shift: Tensor) -> Tensor:
-    """AdaLN-style affine in fp32, cast back to ``x.dtype``."""
+# Copied from diffusers.models.transformers.transformer_kandinsky6.apply_scale_shift
+def apply_scale_shift(normed: Tensor, x: Tensor, scale: Tensor, shift: Tensor) -> Tensor:
+    """Apply an AdaLN-style scale/shift affine to an already-normalized tensor, in fp32, cast back to ``x.dtype``.
+
+    Callers compute ``normed`` themselves (e.g. ``self.some_norm(x.float())``) so the norm-layer call stays visible
+    in `forward` instead of being hidden inside this helper.
+    """
     if x.ndim > 2 and scale.ndim == 2:
         shape = (scale.shape[0],) + (1,) * (x.ndim - 2) + (scale.shape[-1],)
         scale, shift = scale.reshape(shape), shift.reshape(shape)
-    return (norm(x.float()) * (scale.float() + 1.0) + shift.float()).to(dtype=x.dtype)
+    return (normed * (scale.float() + 1.0) + shift.float()).to(dtype=x.dtype)
 
 
 # Copied from diffusers.models.transformers.transformer_kandinsky6.apply_gate_sum
@@ -312,8 +316,8 @@ class Kandinsky6SROutLayer(nn.Module):
     def forward(self, visual_embed: Tensor, time_embed: Tensor) -> Tensor:
         shift, scale = torch.chunk(self.modulation(time_embed), 2, dim=-1)
         condition_shape = (scale.shape[0],) + (1,) * (visual_embed.ndim - 2) + (scale.shape[-1],)
-        x = apply_scale_shift_norm(
-            self.norm,
+        x = apply_scale_shift(
+            self.norm(visual_embed.float()),
             visual_embed,
             scale.reshape(condition_shape),
             shift.reshape(condition_shape),
@@ -397,7 +401,7 @@ class Kandinsky6SRTransformerBlock(nn.Module):
         hidden_states = apply_gate_sum(
             hidden_states,
             self.self_attention(
-                apply_scale_shift_norm(self.self_attention_norm, hidden_states, scale, shift),
+                apply_scale_shift(self.self_attention_norm(hidden_states.float()), hidden_states, scale, shift),
                 rotary_emb,
                 sparse_params,
             ),
@@ -406,7 +410,9 @@ class Kandinsky6SRTransformerBlock(nn.Module):
         shift, scale, gate = torch.chunk(feed_forward_params, 3, dim=-1)
         return apply_gate_sum(
             hidden_states,
-            self.feed_forward(apply_scale_shift_norm(self.feed_forward_norm, hidden_states, scale, shift)),
+            self.feed_forward(
+                apply_scale_shift(self.feed_forward_norm(hidden_states.float()), hidden_states, scale, shift)
+            ),
             gate,
         )
 

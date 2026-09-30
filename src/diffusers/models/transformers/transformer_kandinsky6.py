@@ -64,12 +64,16 @@ def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
     return torch.exp(-math.log(max_period) * torch.arange(start=0, end=dim, dtype=torch.float32) / dim)
 
 
-def apply_scale_shift_norm(norm, x: Tensor, scale: Tensor, shift: Tensor) -> Tensor:
-    """AdaLN-style affine in fp32, cast back to ``x.dtype``."""
+def apply_scale_shift(normed: Tensor, x: Tensor, scale: Tensor, shift: Tensor) -> Tensor:
+    """Apply an AdaLN-style scale/shift affine to an already-normalized tensor, in fp32, cast back to ``x.dtype``.
+
+    Callers compute ``normed`` themselves (e.g. ``self.some_norm(x.float())``) so the norm-layer call stays visible
+    in `forward` instead of being hidden inside this helper.
+    """
     if x.ndim > 2 and scale.ndim == 2:
         shape = (scale.shape[0],) + (1,) * (x.ndim - 2) + (scale.shape[-1],)
         scale, shift = scale.reshape(shape), shift.reshape(shape)
-    return (norm(x.float()) * (scale.float() + 1.0) + shift.float()).to(dtype=x.dtype)
+    return (normed * (scale.float() + 1.0) + shift.float()).to(dtype=x.dtype)
 
 
 def apply_gate_sum(x: Tensor, out: Tensor, gate: Tensor) -> Tensor:
@@ -441,8 +445,8 @@ class Kandinsky6OutLayer(nn.Module):
     def forward(self, visual_embed: Tensor, time_embed: Tensor) -> Tensor:
         shift, scale = torch.chunk(self.modulation(time_embed), 2, dim=-1)
         condition_shape = (scale.shape[0],) + (1,) * (visual_embed.ndim - 2) + (scale.shape[-1],)
-        x = apply_scale_shift_norm(
-            self.norm,
+        x = apply_scale_shift(
+            self.norm(visual_embed.float()),
             visual_embed,
             scale.reshape(condition_shape),
             shift.reshape(condition_shape),
@@ -471,7 +475,7 @@ class Kandinsky6OutLayerAudio(nn.Module):
 
     def forward(self, audio_embed: Tensor, time_embed: Tensor) -> Tensor:
         shift, scale = torch.chunk(self.modulation(time_embed), 2, dim=-1)
-        x = apply_scale_shift_norm(self.norm, audio_embed, scale, shift)
+        x = apply_scale_shift(self.norm(audio_embed.float()), audio_embed, scale, shift)
         # The reference audio head normalizes a second time after the AdaLN affine; the released weights were
         # trained this way, so the double norm is kept for parity even though the video head has none.
         x = self.norm(x)
@@ -502,7 +506,7 @@ class Kandinsky6TransformerEncoderBlock(nn.Module):
         x = apply_gate_sum(
             x,
             self.self_attention(
-                apply_scale_shift_norm(self.self_attention_norm, x, scale, shift),
+                apply_scale_shift(self.self_attention_norm(x.float()), x, scale, shift),
                 rotary_emb=rope,
                 attn_mask=attn_mask,
             ),
@@ -510,7 +514,7 @@ class Kandinsky6TransformerEncoderBlock(nn.Module):
         )
         shift, scale, gate = torch.chunk(ff_params, 3, dim=-1)
         return apply_gate_sum(
-            x, self.feed_forward(apply_scale_shift_norm(self.feed_forward_norm, x, scale, shift)), gate
+            x, self.feed_forward(apply_scale_shift(self.feed_forward_norm(x.float()), x, scale, shift)), gate
         )
 
 
@@ -615,14 +619,14 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
             vis = apply_gate_sum(
                 vis,
                 self.videoT.self_attention(
-                    apply_scale_shift_norm(self.videoT.self_attention_norm, vis, scale, shift),
+                    apply_scale_shift(self.videoT.self_attention_norm(vis.float()), vis, scale, shift),
                     rotary_emb=vis_rope,
                     sparse_params=sparse_params,
                 ),
                 gate,
             ).type_as(vis)
             shift, scale, gate_v = torch.chunk(ca_p, 3, dim=-1)
-            vis_pre_ca = apply_scale_shift_norm(self.videoT.cross_attention_norm, vis, scale, shift)
+            vis_pre_ca = apply_scale_shift(self.videoT.cross_attention_norm(vis.float()), vis, scale, shift)
             vis_out_t = self.videoT.cross_attention(
                 vis_pre_ca,
                 encoder_hidden_states=text_v,
@@ -635,13 +639,13 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
             aud = apply_gate_sum(
                 aud,
                 self.audioT.self_attention(
-                    apply_scale_shift_norm(self.audioT.self_attention_norm, aud, scale, shift),
+                    apply_scale_shift(self.audioT.self_attention_norm(aud.float()), aud, scale, shift),
                     rotary_emb=aud_rope,
                 ),
                 gate,
             ).type_as(aud)
             shift, scale, gate_a = torch.chunk(ca_p, 3, dim=-1)
-            aud_pre_ca = apply_scale_shift_norm(self.audioT.cross_attention_norm, aud, scale, shift)
+            aud_pre_ca = apply_scale_shift(self.audioT.cross_attention_norm(aud.float()), aud, scale, shift)
             aud_out_t = self.audioT.cross_attention(
                 aud_pre_ca,
                 encoder_hidden_states=text_a,
@@ -665,8 +669,8 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
                     va_shift, va_scale, va_gate = torch.chunk(va_params, 3, dim=-1)
                     av_shift, av_scale, av_gate = torch.chunk(av_params, 3, dim=-1)
                 vis = apply_gate_sum(vis, vis_out_t, gate_v).type_as(vis)
-                vis_for_va = apply_scale_shift_norm(self.va_normalization, vis, va_scale, va_shift)
-                aud_for_av = apply_scale_shift_norm(self.av_normalization, aud, av_scale, av_shift)
+                vis_for_va = apply_scale_shift(self.va_normalization(vis.float()), vis, va_scale, va_shift)
+                aud_for_av = apply_scale_shift(self.av_normalization(aud.float()), aud, av_scale, av_shift)
                 rq_v = vis_rope if self.ca_rope else None
                 rk_a = aud_rope if self.ca_rope else None
                 vis_from_aud = self.va_cross_attention(
@@ -690,14 +694,18 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
             shift, scale, gate = torch.chunk(ff_p, 3, dim=-1)
             vis = apply_gate_sum(
                 vis,
-                self.videoT.feed_forward(apply_scale_shift_norm(self.videoT.feed_forward_norm, vis, scale, shift)),
+                self.videoT.feed_forward(
+                    apply_scale_shift(self.videoT.feed_forward_norm(vis.float()), vis, scale, shift)
+                ),
                 gate,
             ).type_as(vis)
         if aud is not None:
             shift, scale, gate = torch.chunk(ff_p_a, 3, dim=-1)
             aud = apply_gate_sum(
                 aud,
-                self.audioT.feed_forward(apply_scale_shift_norm(self.audioT.feed_forward_norm, aud, scale, shift)),
+                self.audioT.feed_forward(
+                    apply_scale_shift(self.audioT.feed_forward_norm(aud.float()), aud, scale, shift)
+                ),
                 gate,
             ).type_as(aud)
         return vis, aud
