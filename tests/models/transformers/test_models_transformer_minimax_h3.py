@@ -19,7 +19,7 @@ from diffusers import MiniMaxH3Transformer3DModel
 from diffusers.models.transformers.transformer_minimax_h3 import MiniMaxH3TransformerOutput
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import enable_full_determinism, require_torch_multi_gpu, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -189,3 +189,28 @@ class TestMiniMaxH3TransformerContextParallel(MiniMaxH3TransformerTesterConfig, 
 
 class TestMiniMaxH3TransformerLoRA(MiniMaxH3TransformerTesterConfig, LoraTesterMixin):
     """LoRA tests for the MiniMax-H3 transformer."""
+
+
+class TestMiniMaxH3TransformerMultiGPU(MiniMaxH3TransformerTesterConfig):
+    """Multi-GPU tests for the MiniMax-H3 transformer."""
+
+    @require_torch_multi_gpu
+    def test_cross_device_text_encoder_forward(self):
+        """The documented multi-GPU setup places the text encoder on a different device than the transformer; make
+        sure `encoder_hidden_states` and `position_ids` are moved to the transformer's device before use."""
+        model = self.model_class(**self.get_init_dict()).to("cuda:0").eval()
+        inputs = self.get_dummy_inputs()
+
+        # Simulate text-encoder-on-cuda:1, transformer-on-cuda:0.
+        cross_device_inputs = dict(inputs)
+        cross_device_inputs["encoder_hidden_states"] = cross_device_inputs["encoder_hidden_states"].to("cuda:1")
+        cross_device_inputs["position_ids"] = cross_device_inputs["position_ids"].to("cuda:1")
+
+        with torch.no_grad():
+            baseline_output = model(**inputs)
+            cross_device_output = model(**cross_device_inputs)
+
+        assert cross_device_output.sample.device == torch.device("cuda:0")
+        assert cross_device_output.audio_sample.device == torch.device("cuda:0")
+        torch.testing.assert_close(cross_device_output.sample, baseline_output.sample)
+        torch.testing.assert_close(cross_device_output.audio_sample, baseline_output.audio_sample)
