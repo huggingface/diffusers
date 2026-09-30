@@ -51,7 +51,9 @@ class Cosmos3VisionLoopPrepareStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         device = components._execution_device
         block_state.vision_tokens = [block_state.latents.to(device=device, dtype=components.transformer.dtype)]
         block_state.vision_timesteps = torch.full(
@@ -95,7 +97,9 @@ class Cosmos3SoundLoopPrepareStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         device = components._execution_device
         block_state.sound_tokens = [block_state.sound_latents.to(device=device, dtype=components.transformer.dtype)]
         block_state.sound_timesteps = torch.full(
@@ -141,7 +145,9 @@ class Cosmos3ActionLoopPrepareStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         device = components._execution_device
         block_state.action_tokens = [block_state.action_latents.to(device=device, dtype=components.transformer.dtype)]
         block_state.action_timesteps = torch.full(
@@ -189,7 +195,9 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         denoiser_input_fields = block_state.denoiser_input_fields
         loop_input_fields = block_state.as_dict()
         has_sound = "sound_tokens" in loop_input_fields
@@ -297,7 +305,9 @@ class Cosmos3VisionLoopSchedulerStep(ModularPipelineBlocks):
         return [OutputParam.template("latents")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         block_state.latents = components.scheduler.step(
             block_state.velocity_vision.unsqueeze(0), t, block_state.latents.unsqueeze(0), return_dict=False
         )[0].squeeze(0)
@@ -348,7 +358,9 @@ class Cosmos3DistilledVisionLoopSchedulerStep(ModularPipelineBlocks):
         return [OutputParam.template("latents")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         velocity_vision = block_state.velocity_vision.float()
         latents = block_state.latents.float()
 
@@ -404,7 +416,9 @@ class Cosmos3SoundLoopSchedulerStep(ModularPipelineBlocks):
         return [OutputParam("sound_latents", type_hint=torch.Tensor, description="Updated sound latents.")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         block_state.sound_latents = block_state.sound_scheduler.step(
             block_state.velocity_sound.unsqueeze(0), t, block_state.sound_latents.unsqueeze(0), return_dict=False
         )[0].squeeze(0)
@@ -455,7 +469,9 @@ class Cosmos3ActionLoopSchedulerStep(ModularPipelineBlocks):
         return [OutputParam("action_latents", type_hint=torch.Tensor, description="Updated action latents.")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         has_noisy_action = block_state.action_condition_mask.sum() < block_state.action_condition_mask.numel()
         if has_noisy_action:
             block_state.action_latents = block_state.action_scheduler.step(
@@ -515,7 +531,9 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         mixed_precision = Cosmos3MixedPrecisionConfig.resolve(
             components.transformer,
@@ -686,7 +704,9 @@ class Cosmos3TransferLoopPrepareStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         device = components._execution_device
         dtype = components.transformer.dtype
         block_state.vision_tokens_full = [c.to(device=device, dtype=dtype) for c in block_state.control_latents] + [
@@ -798,7 +818,9 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         return preds_vision[-1]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         # active-at: a None interval is always active; otherwise the timestep must fall within [lo, hi].
         guidance_interval = block_state.guidance_interval
         guidance_active = guidance_interval is None or (
@@ -915,7 +937,9 @@ class Cosmos3TransferLoopSchedulerStep(ModularPipelineBlocks):
         return [OutputParam("latents", type_hint=torch.Tensor, description="Updated target latents for this chunk.")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         block_state.latents = components.scheduler.step(
             block_state.velocity.unsqueeze(0), t, block_state.latents.unsqueeze(0), return_dict=False
         )[0].squeeze(0)

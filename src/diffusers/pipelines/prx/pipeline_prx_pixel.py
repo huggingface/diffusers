@@ -426,7 +426,7 @@ class PRXPixelPipeline(DiffusionPipeline):
         use_resolution_binning: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> PRXPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

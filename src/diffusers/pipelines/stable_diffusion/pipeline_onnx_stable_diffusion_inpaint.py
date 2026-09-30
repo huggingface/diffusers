@@ -339,7 +339,7 @@ class OnnxStableDiffusionInpaintPipeline(DeprecatedPipelineMixin, DiffusionPipel
         return_dict: bool = True,
         callback: Callable[[int, int, np.ndarray], None] | None = None,
         callback_steps: int = 1,
-    ):
+    ) -> StableDiffusionPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

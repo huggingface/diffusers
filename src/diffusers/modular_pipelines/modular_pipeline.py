@@ -777,7 +777,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         raise NotImplementedError(f"Subclass {self.__class__.__name__} must implement the `select_block` method.")
 
     @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         trigger_kwargs = {name: state.get(name) for name in self.block_trigger_inputs if name is not None}
         block_name = self.select_block(**trigger_kwargs)
 
@@ -1149,7 +1149,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return self.intermediate_outputs
 
     @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         for block_name, block in self.sub_blocks.items():
             try:
                 pipeline, state = block(pipeline, state)
@@ -1533,7 +1533,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 raise
         return components, state
 
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         raise NotImplementedError("`__call__` method needs to be implemented by the subclass")
 
     @property

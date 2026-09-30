@@ -214,7 +214,9 @@ class AnimaTextConditioningStep(ModularPipelineBlocks):
         return prompt_embeds.to(dtype=output_dtype, device=device)
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         conditioning_dtype = components.text_conditioner.dtype
@@ -300,7 +302,9 @@ class AnimaTextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -363,7 +367,9 @@ class AnimaImageInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         latent_height, latent_width = block_state.image_latents.shape[-2:]
@@ -454,7 +460,9 @@ class AnimaPrepareLatentsStep(ModularPipelineBlocks):
         return randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.height = block_state.height or components.default_height
@@ -520,7 +528,9 @@ class AnimaSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -598,7 +608,9 @@ class AnimaImg2ImgSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -685,7 +697,9 @@ class AnimaImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
