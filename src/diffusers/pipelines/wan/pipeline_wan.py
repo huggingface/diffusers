@@ -24,7 +24,7 @@ from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import WanPipelineOutput
@@ -182,7 +182,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
+        model_device = get_module_execution_device(self.text_encoder)
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), mask.to(model_device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
         prompt_embeds = torch.stack(
@@ -611,7 +612,12 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 else:
                     timestep = t.expand(latents.shape[0])
 
-                with current_model.cache_context("cond"):
+                cache_context_kwargs = {
+                    "step_index": i,
+                    "sigma": float(self.scheduler.sigmas[i]),
+                    "num_inference_steps": self._num_timesteps,
+                }
+                with current_model.cache_context("cond", **cache_context_kwargs):
                     noise_pred = current_model(
                         hidden_states=latent_model_input,
                         timestep=timestep,
@@ -621,7 +627,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     )[0]
 
                 if self.do_classifier_free_guidance:
-                    with current_model.cache_context("uncond"):
+                    with current_model.cache_context("uncond", **cache_context_kwargs):
                         noise_uncond = current_model(
                             hidden_states=latent_model_input,
                             timestep=timestep,
@@ -654,7 +660,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._current_timestep = None
 
         if not output_type == "latent":
-            latents = latents.to(self.vae.dtype)
+            latents = latents.to(get_module_execution_device(self.vae), dtype=self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)

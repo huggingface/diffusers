@@ -7,8 +7,6 @@ on:
         description: 'Name of the Docker image'
         required: true
 
-permissions:
-  contents: read
 
 env:
   IS_GITHUB_CI: "1"
@@ -19,8 +17,12 @@ env:
   MKL_NUM_THREADS: 8
   RUN_SLOW: yes
 
+permissions: {}
+
 jobs:
   ssh_runner:
+    permissions:
+      contents: read
     name: "SSH"
     runs-on:
       group: aws-highmemory-32-plus

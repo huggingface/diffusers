@@ -46,7 +46,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import empty_device_cache, randn_tensor
+from ...utils.torch_utils import empty_device_cache, get_module_execution_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
 
@@ -420,7 +420,9 @@ class StableDiffusionXLImg2ImgPipeline(
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(get_module_execution_device(text_encoder)), output_hidden_states=True
+                )
 
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 if pooled_prompt_embeds is None and prompt_embeds[0].ndim == 2:
@@ -481,7 +483,7 @@ class StableDiffusionXLImg2ImgPipeline(
                 )
 
                 negative_prompt_embeds = text_encoder(
-                    uncond_input.input_ids.to(device),
+                    uncond_input.input_ids.to(get_module_execution_device(text_encoder)),
                     output_hidden_states=True,
                 )
 

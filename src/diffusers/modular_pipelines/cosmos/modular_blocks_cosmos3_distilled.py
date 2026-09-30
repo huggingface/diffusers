@@ -188,7 +188,7 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
               Width of the generated video or image in pixels.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          use_system_prompt (`bool`, *optional*, defaults to True):
+          use_system_prompt (`bool | NoneType`, *optional*):
               Whether to prepend the Cosmos3 system prompt.
           add_resolution_template (`bool`, *optional*, defaults to True):
               Whether to add resolution metadata to the prompt.

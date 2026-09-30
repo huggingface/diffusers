@@ -96,13 +96,11 @@ class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTester
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_save_pretrained_dtype(self, tmp_path, dtype):
-        # `_keep_in_fp32_modules` pins every module: the released checkpoint is float32 and decoding through
-        # downcast weights degrades (the bfloat16 audio VAE decodes roughly 20 dB too quiet), so a requested
-        # `torch_dtype` cast at load time must be refused and the weights must stay float32.
+        # The requested dtype reaches the decoder; only `_keep_in_fp32_modules` stays float32.
         model = self.model_class(**self.get_init_dict())
         model.save_pretrained(tmp_path)
         new_model = self.model_class.from_pretrained(tmp_path, torch_dtype=dtype)
-        assert new_model.dtype == torch.float32
+        assert new_model.dtype == dtype
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_pretrained_dtype_alias(self, tmp_path, dtype):
@@ -110,7 +108,16 @@ class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTester
         model = self.model_class(**self.get_init_dict())
         model.save_pretrained(tmp_path)
         new_model = self.model_class.from_pretrained(tmp_path, dtype=dtype)
-        assert new_model.dtype == torch.float32
+        assert new_model.dtype == dtype
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_decode_in_low_precision(self, tmp_path, dtype):
+        # Decode is mixed precision with no autocast, so every dtype seam has to hold on its own.
+        self.model_class(**self.get_init_dict()).save_pretrained(tmp_path)
+        model = self.model_class.from_pretrained(tmp_path, dtype=dtype).eval()
+        with torch.no_grad():
+            decoded = model.decode(torch.randn(1, 4, 7, HEIGHT // 4, WIDTH // 4), return_dict=False)[0]
+        assert decoded.dtype == dtype
 
     @pytest.mark.skip(
         "`forward` runs through the `apply_forward_hook`-decorated `encode` and `decode`, and that decorator's "

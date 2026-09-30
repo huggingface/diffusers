@@ -12,28 +12,28 @@
   sections:
   - isExpanded: false
     sections:
-    - local: using-diffusers/weighted_prompts
-      title: Prompting
     - local: using-diffusers/loading
       title: DiffusionPipeline
     - local: tutorials/autopipeline
       title: AutoPipeline
-    - local: using-diffusers/custom_pipeline_overview
-      title: Community pipelines and components
-    - local: using-diffusers/callback
-      title: Pipeline callbacks
-    - local: using-diffusers/reusing_seeds
-      title: Reproducibility
-    - local: using-diffusers/schedulers
-      title: Schedulers
-    - local: using-diffusers/guiders
-      title: Guiders
     - local: using-diffusers/automodel
       title: AutoModel
     - local: using-diffusers/other-formats
       title: Model formats
+    - local: using-diffusers/schedulers
+      title: Schedulers
+    - local: using-diffusers/weighted_prompts
+      title: Prompting
+    - local: using-diffusers/reusing_seeds
+      title: Reproducibility
+    - local: using-diffusers/callback
+      title: Pipeline callbacks
+    - local: using-diffusers/custom_pipeline_overview
+      title: Community pipelines and components
     - local: using-diffusers/push_to_hub
       title: Sharing pipelines and models
+    - local: using-diffusers/legacy_checkpoints
+      title: Legacy checkpoints
     title: Using diffusion pipelines
   - isExpanded: false
     sections:
@@ -43,12 +43,10 @@
       title: IP-Adapter
     - local: using-diffusers/controlnet
       title: ControlNet
-    - local: using-diffusers/t2i_adapter
-      title: T2I-Adapter
     - local: using-diffusers/dreambooth
       title: DreamBooth
-    - local: using-diffusers/textual_inversion_inference
-      title: Textual inversion
+    - local: using-diffusers/legacy_adapters
+      title: Legacy adapters
     title: Adapters and personalization
   title: Inference
 - isExpanded: true
@@ -155,6 +153,8 @@
     title: AutoPipelineBlocks
   - local: modular_diffusers/modular_pipeline
     title: ModularPipeline
+  - local: using-diffusers/guiders
+    title: Guiders
   - local: modular_diffusers/components_manager
     title: ComponentsManager
   - local: modular_diffusers/auto_docstring
@@ -405,6 +405,8 @@
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
         title: PriorTransformer
+      - local: api/models/qwenimage21_transformer2d
+        title: QwenImage21Transformer2DModel
       - local: api/models/qwenimage_transformer2d
         title: QwenImageTransformer2DModel
       - local: api/models/sana_transformer2d
@@ -489,6 +491,8 @@
         title: AutoencoderKLMochi
       - local: api/models/autoencoderkl_qwenimage
         title: AutoencoderKLQwenImage
+      - local: api/models/autoencoderkl_qwenimage21
+        title: AutoencoderKLQwenImage21
       - local: api/models/autoencoder_kl_wan
         title: AutoencoderKLWan
       - local: api/models/autoencoder_rae
@@ -637,6 +641,8 @@
         title: PRX
       - local: api/pipelines/prx_pixel
         title: PRX Pixel
+      - local: api/pipelines/qwenimage21
+        title: Qwen-Image 2.1
       - local: api/pipelines/qwenimage
         title: QwenImage
       - local: api/pipelines/sana
