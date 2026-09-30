@@ -257,6 +257,41 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
 
                     assert sample.dtype == torch.float16
 
+    def test_default_dtype_float64(self):
+        """The unit entry of ``rks`` must take the sample's dtype, not the default dtype.
+
+        ``torch.ones(())`` takes the default dtype, so under
+        ``torch.set_default_dtype(torch.float64)`` the stacked ``R`` was promoted
+        to float64 while ``b`` stayed float32 and ``torch.linalg.solve`` raised.
+        """
+        default_dtype = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            for order in [1, 2, 3]:
+                for solver_type in ["bh1", "bh2"]:
+                    for prediction_type in ["epsilon", "sample", "v_prediction"]:
+                        scheduler_class = self.scheduler_classes[0]
+                        scheduler_config = self.get_scheduler_config(
+                            prediction_type=prediction_type,
+                            solver_order=order,
+                            solver_type=solver_type,
+                        )
+                        scheduler = scheduler_class(**scheduler_config)
+
+                        num_inference_steps = 10
+                        model = self.dummy_model()
+                        sample = self.dummy_sample_deter.to(torch.float64)
+                        scheduler.set_timesteps(num_inference_steps)
+
+                        for i, t in enumerate(scheduler.timesteps):
+                            residual = model(sample, t)
+                            sample = scheduler.step(residual, t, sample).prev_sample
+
+                        assert sample.dtype == torch.float64
+                        assert torch.isfinite(sample).all()
+        finally:
+            torch.set_default_dtype(default_dtype)
+
     def test_full_loop_with_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
