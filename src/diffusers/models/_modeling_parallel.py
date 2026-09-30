@@ -214,10 +214,10 @@ class ParallelConfig:
     _mesh: torch.distributed.device_mesh.DeviceMesh = None
 
     def __post_init__(self):
-        if self.context_parallel_config is not None and self.tensor_parallel_config is not None:
+        if self.context_parallel_config is None and self.tensor_parallel_config is None:
             raise ValueError(
-                "Combining context parallelism and tensor parallelism in a single `ParallelConfig` is not supported. "
-                "Please specify only one of `context_parallel_config` or `tensor_parallel_config`."
+                "A `ParallelConfig` must specify at least one of `context_parallel_config` or "
+                "`tensor_parallel_config`."
             )
 
     def setup(
@@ -233,9 +233,14 @@ class ParallelConfig:
         self._device = device
         self._mesh = mesh
         if self.context_parallel_config is not None:
+            # `ContextParallelConfig.setup` selects its own "ring" and "ulysses" dimensions out of `mesh`.
             self.context_parallel_config.setup(rank, world_size, device, mesh)
         if self.tensor_parallel_config is not None:
-            self.tensor_parallel_config.setup(rank, world_size, device, mesh)
+            # `TensorParallelConfig.setup` reads `tp_degree` off `mesh.size()`, so when the mesh is shared with
+            # context parallelism it must be handed the "tp" dimension alone rather than the whole mesh.
+            dim_names = (mesh.mesh_dim_names or ()) if mesh is not None else ()
+            tp_mesh = mesh["tp"] if "tp" in dim_names and len(dim_names) > 1 else mesh
+            self.tensor_parallel_config.setup(rank, world_size, device, tp_mesh)
 
 
 @dataclass(frozen=True)
