@@ -17,12 +17,36 @@ separate BigVGAN [`~pipelines.kandinsky6.MMAudioVocoder`], for synchronized audi
 
 ## Kandinsky6SRVAE
 
+The causal 3D K-VAE used by [`Kandinsky6SRPipeline`]. It processes arbitrarily long videos in bounded-memory
+segments while reproducing the exact output of a single, non-segmented pass.
+
+```python
+import torch
+from diffusers import Kandinsky6SRVAE
+
+vae = Kandinsky6SRVAE.from_pretrained(
+    "kandinskylab/Kandinsky-6.0-VSR-5s-Diffusers", subfolder="vae", torch_dtype=torch.bfloat16
+)
+```
+
 [[autodoc]] Kandinsky6SRVAE
   - encode
   - decode
   - all
 
 ## MMAudioVAE
+
+The mel-spectrogram VAE used by [`Kandinsky6TI2VAPipeline`] when `sample_audio=True`. Its `decode` output is a mel
+spectrogram; pass it through [`~pipelines.kandinsky6.MMAudioVocoder`] to get a waveform.
+
+```python
+import torch
+from diffusers import MMAudioVAE
+
+audio_vae = MMAudioVAE.from_pretrained(
+    "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers", subfolder="audio_vae", torch_dtype=torch.bfloat16
+)
+```
 
 [[autodoc]] MMAudioVAE
   - encode

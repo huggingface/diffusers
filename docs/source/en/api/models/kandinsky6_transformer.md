@@ -17,6 +17,17 @@ text/image-to-video-and-audio generation, and a text-free diffusion transformer 
 
 ## Kandinsky6Transformer3DModel
 
+The multimodal transformer used by [`Kandinsky6TI2VAPipeline`].
+
+```python
+import torch
+from diffusers import Kandinsky6Transformer3DModel
+
+transformer = Kandinsky6Transformer3DModel.from_pretrained(
+    "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16
+)
+```
+
 [[autodoc]] Kandinsky6Transformer3DModel
   - all
   - forward
@@ -26,6 +37,17 @@ text/image-to-video-and-audio generation, and a text-free diffusion transformer 
 [[autodoc]] models.transformers.transformer_kandinsky6.Kandinsky6Transformer3DModelOutput
 
 ## Kandinsky6SRTransformer3DModel
+
+The text-free transformer used by [`Kandinsky6SRPipeline`] to refine one tile of the upscaled video at a time.
+
+```python
+import torch
+from diffusers import Kandinsky6SRTransformer3DModel
+
+transformer = Kandinsky6SRTransformer3DModel.from_pretrained(
+    "kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16
+)
+```
 
 [[autodoc]] Kandinsky6SRTransformer3DModel
   - all

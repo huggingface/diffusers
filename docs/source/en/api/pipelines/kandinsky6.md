@@ -18,7 +18,11 @@ transformer: video and audio latents are denoised together through fused blocks 
 modalities, each conditioned on its own Qwen2.5-VL text branch and a CLIP pooled embedding. A separate
 super-resolution model upscales the generated video tile by tile in the latent space of a causal 3D K-VAE.
 
-The distilled checkpoints use the few-step [`PiflowScheduler`] and must be run with `guidance_scale=1.0`.
+> [!TIP]
+> Check out the [Kandinsky Lab](https://huggingface.co/kandinskylab) organization on the Hub for the full set of
+> official checkpoints, including flow-matching and distilled variants of both the base and super-resolution models.
+>
+> Distilled checkpoints ship with the few-step [`PiflowScheduler`] and must be run with `guidance_scale=1.0`.
 
 ## Available models
 
@@ -93,6 +97,25 @@ resolutions or long videos:
 ```python
 pipe.vae.enable_tiling()
 ```
+
+## Notes
+
+- `height` and `width` must be divisible by the video VAE's spatial compression ratio times the transformer's patch
+  size — `16` with the default [`Kandinsky6TI2VAPipeline`] configuration (`AutoencoderKLHunyuanVideo` at a
+  compression ratio of `8`, `patch_size=(1, 2, 2)`). `480x864`, used in the example above, satisfies this.
+- [`Kandinsky6SRPipeline`]'s input `video` must have `1 + k * vae_scale_factor_temporal` frames for some integer `k`
+  (a temporal compression ratio of `4` with the default K-VAE configuration, so `121` frames works but `120` doesn't)
+  — trim or pad a video that doesn't already satisfy this before upscaling it.
+- `visual_cond_scheme` is inferred automatically from whether `image` is passed (`"tail_cond_first_frame"` when it
+  is, `"pretrain"` otherwise). Only set it explicitly together with a matching `image`: passing
+  `visual_cond_scheme="i2v"` or `"tail_cond_first_frame"` without `image` doesn't raise an error, it silently falls
+  back to text-only generation.
+- `expand_prompts=True` reuses the already-loaded Qwen2.5-VL text encoder for an extra generation pass before
+  denoising, so it adds latency but no extra model weights.
+- Compile the repeated transformer blocks for faster repeated inference:
+  ```python
+  pipe.transformer.compile_repeated_blocks(fullgraph=True)
+  ```
 
 ## Kandinsky6TI2VAPipeline
 
