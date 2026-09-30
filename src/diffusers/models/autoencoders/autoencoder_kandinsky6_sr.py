@@ -77,8 +77,8 @@ class Kandinsky6SRCausalConv3d(nn.Module):
     This caching is not an optional performance knob: it is what lets `Kandinsky6SRVAE.encode`/`decode` process an
     arbitrarily long video in bounded-memory segments (see `SEGMENT_FRAMES`) while reproducing the exact output of a
     single non-causal pass. Without it, each segment would need the raw frames the previous segment already consumed in
-    order to rebuild correct padding, which means keeping the whole video in memory anyway and defeats the reason
-    segmentation exists.
+    order to rebuild correct padding — a lookback window that grows with network depth, rather than the bounded,
+    constant-size cache this class carries instead — which defeats the point of processing the video in segments.
     """
 
     def __init__(

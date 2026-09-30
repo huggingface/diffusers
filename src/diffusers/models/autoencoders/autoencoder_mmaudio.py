@@ -87,8 +87,9 @@ def normalize(x: torch.Tensor, dim: list[int] | None = None, eps: float = 1e-4) 
 
 def mp_silu(x: torch.Tensor) -> torch.Tensor:
     """SiLU rescaled so that a unit-variance input stays unit-variance."""
-    # 0.596 is the (empirically measured) standard deviation of SiLU(z) for z ~ N(0, 1), i.e. the EDM2-style
-    # magnitude-preserving rescaling constant for this nonlinearity (see Karras et al. reference above).
+    # 0.596 is the (empirically measured) RMS of SiLU(z) for z ~ N(0, 1), i.e. sqrt(E[SiLU(z)^2]) rather than its
+    # standard deviation (SiLU(z) has nonzero mean), matching the EDM2 magnitude-preserving convention of keeping
+    # E[x^2] = 1 rather than mean-subtracted variance = 1 (see Karras et al. reference above).
     return F.silu(x) / 0.596
 
 

@@ -382,6 +382,7 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         num_channels: int,
         head_dim: int,
         kv_dim: int | None = None,
+        text_token_padding: bool = False,
         processor: Kandinsky6AttnProcessor | None = None,
     ):
         super().__init__()
@@ -395,7 +396,11 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         self.query_norm = nn.RMSNorm(head_dim)
         self.key_norm = nn.RMSNorm(head_dim)
         self.out_layer = nn.Linear(num_channels, num_channels)
+        self.text_token_padding = text_token_padding
         self.set_processor(processor or self._default_processor_cls())
+        if self.text_token_padding:
+            self.processor._masked = True
+            self.processor._attention_backend = AttentionBackendName.NATIVE
 
     def forward(
         self,
@@ -482,11 +487,12 @@ class Kandinsky6TransformerEncoderBlock(nn.Module):
         time_dim: int,
         ff_dim: int,
         head_dim: int,
+        text_token_padding: bool = False,
     ):
         super().__init__()
         self.text_modulation = Kandinsky6Modulation(time_dim, model_dim, 6)
         self.self_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
-        self.self_attention = Kandinsky6Attention(model_dim, head_dim)
+        self.self_attention = Kandinsky6Attention(model_dim, head_dim, text_token_padding=text_token_padding)
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.feed_forward = Kandinsky6FeedForward(model_dim, ff_dim)
 
@@ -522,6 +528,7 @@ class Kandinsky6TransformerDecoderBlock(nn.Module):
         time_dim: int,
         ff_dim: int,
         head_dim: int,
+        text_token_padding: bool = False,
     ):
         super().__init__()
         self.visual_modulation = Kandinsky6Modulation(time_dim, model_dim, 9)
@@ -532,6 +539,7 @@ class Kandinsky6TransformerDecoderBlock(nn.Module):
             model_dim,
             head_dim,
             kv_dim=model_dim,
+            text_token_padding=text_token_padding,
         )
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.feed_forward = Kandinsky6FeedForward(model_dim, ff_dim)
@@ -550,10 +558,16 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
         time_dim_a: int,
         ff_dim_a: int,
         head_dim_a: int,
+        text_token_padding: bool = False,
+        ca_rope: bool = False,
+        cross_gates: bool = False,
+        fix_modulation: bool = False,
     ):
         super().__init__()
-        self.videoT = Kandinsky6TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim)
-        self.audioT = Kandinsky6TransformerDecoderBlock(model_dim_a, time_dim_a, ff_dim_a, head_dim_a)
+        self.videoT = Kandinsky6TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim, text_token_padding)
+        self.audioT = Kandinsky6TransformerDecoderBlock(
+            model_dim_a, time_dim_a, ff_dim_a, head_dim_a, text_token_padding
+        )
         self.va_cross_attention = Kandinsky6Attention(
             model_dim,
             head_dim,
@@ -564,10 +578,23 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
             head_dim_a,
             kv_dim=model_dim,
         )
-        self.va_modulation = Kandinsky6Modulation(time_dim, model_dim, 3)
-        self.av_modulation = Kandinsky6Modulation(time_dim_a, model_dim_a, 3)
+        self.va_modulation = Kandinsky6Modulation(
+            time_dim,
+            model_dim if not cross_gates else model_dim * 2 + model_dim_a,
+            1 if cross_gates else 3,
+        )
+        self.av_modulation = Kandinsky6Modulation(
+            time_dim_a,
+            model_dim_a if not cross_gates else model_dim_a * 2 + model_dim,
+            1 if cross_gates else 3,
+        )
         self.va_normalization = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.av_normalization = nn.LayerNorm(model_dim_a, elementwise_affine=False)
+        self.ca_rope = ca_rope
+        self.cross_gates = cross_gates
+        self.fix_modulation = fix_modulation
+        self.model_dim = model_dim
+        self.model_dim_a = model_dim_a
 
     def forward(
         self,
@@ -623,23 +650,39 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
             aud = apply_gate_sum(aud, aud_out_t, gate_a).type_as(aud)
 
             if vis is not None:
-                va_params = self.va_modulation(t_a)
-                av_params = self.av_modulation(t_v)
-                va_shift, va_scale, va_gate = torch.chunk(va_params, 3, dim=-1)
-                av_shift, av_scale, av_gate = torch.chunk(av_params, 3, dim=-1)
+                t_va_mod = t_a if not self.fix_modulation else t_v
+                t_av_mod = t_v if not self.fix_modulation else t_a
+                va_params = self.va_modulation(t_va_mod)
+                av_params = self.av_modulation(t_av_mod)
+                if self.cross_gates:
+                    va_shift, va_scale, va_gate = torch.split(
+                        va_params, [self.model_dim, self.model_dim, self.model_dim_a], dim=-1
+                    )
+                    av_shift, av_scale, av_gate = torch.split(
+                        av_params, [self.model_dim_a, self.model_dim_a, self.model_dim], dim=-1
+                    )
+                else:
+                    va_shift, va_scale, va_gate = torch.chunk(va_params, 3, dim=-1)
+                    av_shift, av_scale, av_gate = torch.chunk(av_params, 3, dim=-1)
                 vis = apply_gate_sum(vis, vis_out_t, gate_v).type_as(vis)
                 vis_for_va = apply_scale_shift_norm(self.va_normalization, vis, va_scale, va_shift)
                 aud_for_av = apply_scale_shift_norm(self.av_normalization, aud, av_scale, av_shift)
+                rq_v = vis_rope if self.ca_rope else None
+                rk_a = aud_rope if self.ca_rope else None
                 vis_from_aud = self.va_cross_attention(
                     vis_for_va,
                     encoder_hidden_states=aud_pre_ca,
+                    rope_q=rq_v,
+                    rope_kv=rk_a,
                 )
                 aud_from_vis = self.av_cross_attention(
                     aud_for_av,
                     encoder_hidden_states=vis_pre_ca,
+                    rope_q=rk_a,
+                    rope_kv=rq_v,
                 )
-                vis = apply_gate_sum(vis, vis_from_aud, va_gate).type_as(vis)
-                aud = apply_gate_sum(aud, aud_from_vis, av_gate).type_as(aud)
+                vis = apply_gate_sum(vis, vis_from_aud, va_gate if not self.cross_gates else av_gate).type_as(vis)
+                aud = apply_gate_sum(aud, aud_from_vis, av_gate if not self.cross_gates else va_gate).type_as(aud)
         elif vis is not None:
             vis = apply_gate_sum(vis, vis_out_t, gate_v).type_as(vis)
 
@@ -696,7 +739,15 @@ class Kandinsky6Transformer3DModel(
         audio_freqs_scaling (`float`, *optional*, defaults to 1.0): Audio RoPE frequency scaling.
         scale_factor (`tuple[float, float, float]`, *optional*, defaults to `(1.0, 2.0, 2.0)`): Per-axis
             `(t, h, w)` RoPE frequency scaling applied to the video positions.
+        text_token_padding (`bool`, *optional*, defaults to False): Whether text sequences are padded.
+        ca_rope (`bool`, *optional*, defaults to False): Whether to use cross-modal audio RoPE.
+        cross_gates (`bool`, *optional*, defaults to False): Whether to use cross-modal residual gates.
+        fix_modulation (`bool`, *optional*, defaults to False): Whether to use the fixed modulation variant.
         visual_token_type_num_embeddings (`int`, *optional*, defaults to 0): Number of visual token type embeddings.
+
+    Released checkpoints set `text_token_padding`, `ca_rope`, `cross_gates`, and `fix_modulation` to `True` (see each
+    checkpoint's `transformer/config.json`); the `False` defaults only describe an architecture variant this repo
+    does not ship weights for.
     """
 
     _repeated_blocks = [
@@ -733,6 +784,10 @@ class Kandinsky6Transformer3DModel(
         axes_dims_a: tuple | None = None,
         audio_freqs_scaling: float = 1.0,
         scale_factor: tuple | list[float] = (1.0, 2.0, 2.0),
+        text_token_padding: bool = False,
+        ca_rope: bool = False,
+        cross_gates: bool = False,
+        fix_modulation: bool = False,
         visual_token_type_num_embeddings: int = 0,
     ) -> None:
         super().__init__()
@@ -740,6 +795,7 @@ class Kandinsky6Transformer3DModel(
         self.visual_cond = visual_cond
         self.in_visual_dim = in_visual_dim
         self.in_audio_dim = in_audio_dim
+        self.text_token_padding = text_token_padding
         self.scale_factor = tuple(float(value) for value in scale_factor)
         self.visual_token_type_num_embeddings = int(visual_token_type_num_embeddings or 0)
         head_dim = sum(axes_dims)
@@ -770,7 +826,12 @@ class Kandinsky6Transformer3DModel(
             setattr(
                 self,
                 f"{prefix}_text_transformer_blocks",
-                nn.ModuleList([Kandinsky6TransformerEncoderBlock(md, td, fd, hd) for _ in range(num_text_blocks)]),
+                nn.ModuleList(
+                    [
+                        Kandinsky6TransformerEncoderBlock(md, td, fd, hd, text_token_padding)
+                        for _ in range(num_text_blocks)
+                    ]
+                ),
             )
         self.visual_transformer_blocks = nn.ModuleList(
             [
@@ -783,6 +844,10 @@ class Kandinsky6Transformer3DModel(
                     time_dim_a,
                     ff_dim_a,
                     head_dim_a,
+                    text_token_padding,
+                    ca_rope,
+                    cross_gates,
+                    fix_modulation,
                 )
                 for _ in range(num_visual_blocks)
             ]
