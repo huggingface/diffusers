@@ -28,9 +28,8 @@ from diffusers.loaders.peft import PeftAdapterMixin
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils import is_transformers_version
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import require_accelerate
 
-from ..testing_utils import CaptureLogger, require_peft_backend
+from ..testing_utils import CaptureLogger, require_accelerate, require_peft_backend
 
 
 if is_peft_available():

@@ -471,9 +471,7 @@ def _func_optionally_disable_offloading(_pipeline):
                 if not hasattr(module, "_hf_hook"):
                     continue
                 hooks = getattr(module._hf_hook, "hooks", (module._hf_hook,))
-                is_model_cpu_offload = is_model_cpu_offload or any(
-                    isinstance(hook, CpuOffload) for hook in hooks
-                )
+                is_model_cpu_offload = is_model_cpu_offload or any(isinstance(hook, CpuOffload) for hook in hooks)
                 is_sequential_cpu_offload = is_sequential_cpu_offload or any(
                     isinstance(hook, AlignDevicesHook) and hook.offload for hook in hooks
                 )
