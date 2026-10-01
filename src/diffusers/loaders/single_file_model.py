@@ -42,6 +42,7 @@ from .single_file_utils import (
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
+    convert_krea2_transformer_checkpoint_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
     convert_ltx2_audio_vae_to_diffusers,
@@ -197,6 +198,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "QwenImage21Transformer2DModel": {
         "checkpoint_mapping_fn": convert_qwen_image21_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Krea2Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_krea2_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "Flux2Transformer2DModel": {
