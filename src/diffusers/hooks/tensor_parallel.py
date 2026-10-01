@@ -465,54 +465,6 @@ def _check_tp_supported(
                 )
 
 
-def _pre_shard_and_parallelize(
-    model: torch.nn.Module,
-    tp_mesh: "torch.distributed.device_mesh.DeviceMesh",
-    groups: list,
-    specs: "dict[str, TPShardSpec]",
-    device: torch.device,
-) -> None:
-    """Slice every planned parameter on CPU and move only this rank's shard to `device`, then register the hooks.
-
-    The default path lets `parallelize_module` distribute the weights, which materializes each full weight on every
-    rank before scattering it, so peak memory per rank is the size of the whole weight even though only a shard
-    survives. Slicing first and handing `DTensor.from_local` just this rank's piece keeps the full tensor off the
-    accelerator, which is what allows sharding a model larger than one device's memory.
-
-    `device` is the only backend-specific input. Unlike the default path this does not broadcast from a single rank, so
-    every rank must already hold the same weights — true after loading a checkpoint, not after a random init.
-
-    Model weights must be on CPU when this is called.
-    """
-    import torch.nn as nn
-    from torch.distributed.tensor import DTensor, Replicate, Shard
-    from torch.distributed.tensor.parallel import parallelize_module
-
-    for name, spec in specs.items():
-        path, _, param_name = name.rpartition(".")
-        module = model.get_submodule(path)
-        param = getattr(module, param_name)
-
-        if spec.dim is None:
-            # A rowwise bias is added after the all-reduce, so every rank needs the whole vector.
-            local, placement = param.data, Replicate()
-        else:
-            local, placement = _local_shard(param.data, spec.dim, spec.block_sizes, tp_mesh), Shard(spec.dim)
-
-        module.register_parameter(
-            param_name,
-            nn.Parameter(
-                DTensor.from_local(local.to(device), tp_mesh, [placement]),
-                requires_grad=param.requires_grad,
-            ),
-        )
-
-    # `parallelize_module` is now a no-op for weight distribution (they are already DTensors) but still registers the
-    # input/output hooks required for the forward pass.
-    for block, relative_plan in groups:
-        parallelize_module(block, tp_mesh, _hooks_only_styles(relative_plan))
-
-
 def apply_tensor_parallel(
     model: torch.nn.Module,
     config: TensorParallelConfig,
@@ -546,12 +498,7 @@ def apply_tensor_parallel(
             f"or from the active accelerator when the mesh is built from `tp_degree`."
         )
 
-    if tp_mesh.device_type == "neuron":
-        backend = "neuron"
-    elif tp_mesh.device_type == "tpu":
-        backend = "tpu"
-    else:
-        backend = "default"
+    backend = "neuron" if tp_mesh.device_type == "neuron" else "default"
     groups = _resolve_tp_plan(model, tp_plan)
     logger.debug(f"Applying tensor parallel (backend={backend}) over {len(groups)} module group(s) on mesh {tp_mesh}.")
 
@@ -569,14 +516,6 @@ def apply_tensor_parallel(
         from .tensor_parallel_neuron import _apply_tp_neuron
 
         _apply_tp_neuron(model, tp_mesh, groups, specs)
-        return
-
-    if backend == "tpu":
-        # Pre-shard rather than let `parallelize_module` distribute: it materializes each full weight on every chip
-        # before scattering it, which exhausts HBM for a large diffusion transformer. Address the chip as "tpu" with
-        # no index — "tpu:rank" would mean chip `rank` from this process's view, but each torchrun worker only has
-        # access to its own assigned chip.
-        _pre_shard_and_parallelize(model, tp_mesh, groups, specs, torch.device("tpu"))
         return
 
     for submodule, relative_plan in groups:
