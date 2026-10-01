@@ -864,7 +864,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         callback_steps: int | None = 1,
         cross_attention_kwargs: dict[str, Any] | None = None,
         output_type: str | None = "np",
-    ):
+    ) -> AudioPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

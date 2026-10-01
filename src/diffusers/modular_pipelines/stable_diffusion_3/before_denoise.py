@@ -190,7 +190,9 @@ class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -285,7 +287,9 @@ class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
         return timesteps, num_inference_steps - t_start
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -372,7 +376,9 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
         batch_size = block_state.batch_size * block_state.num_images_per_prompt
@@ -446,7 +452,9 @@ class StableDiffusion3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         latent_timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])
         block_state.initial_noise = block_state.latents
