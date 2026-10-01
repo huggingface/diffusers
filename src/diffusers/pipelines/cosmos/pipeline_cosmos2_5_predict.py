@@ -566,7 +566,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         max_sequence_length: int = 512,
         conditional_frame_timestep: float = 0.0001,
         num_latent_conditional_frames: int = 2,
-    ):
+    ) -> CosmosPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation. Supports three modes:
 

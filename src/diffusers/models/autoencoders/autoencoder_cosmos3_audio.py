@@ -53,7 +53,7 @@ class Snake1d(nn.Module):
         self.beta.requires_grad = True
         self.logscale = logscale
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         shape = hidden_states.shape
 
         alpha = self.alpha if not self.logscale else torch.exp(self.alpha)
@@ -250,7 +250,7 @@ class Cosmos3AudioResidualUnit(nn.Module):
         self.snake2 = Snake1d(dimension)
         self.conv2 = weight_norm(nn.Conv1d(dimension, dimension, kernel_size=1))
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         """
         Forward pass through the residual unit.
 
@@ -300,7 +300,7 @@ class Cosmos3AudioDecoderBlock(nn.Module):
         self.res_unit2 = Cosmos3AudioResidualUnit(output_dim, dilation=3)
         self.res_unit3 = Cosmos3AudioResidualUnit(output_dim, dilation=9)
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         hidden_state = self.snake1(hidden_state)
         hidden_state = self.conv_t1(hidden_state)
         hidden_state = self.res_unit1(hidden_state)
@@ -345,7 +345,7 @@ class Cosmos3AudioDecoder(nn.Module):
         self.snake1 = Snake1d(output_dim)
         self.conv2 = weight_norm(nn.Conv1d(channels, audio_channels, kernel_size=7, padding=3, bias=False))
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         hidden_state = self.conv1(hidden_state)
 
         for layer in self.block:

@@ -62,7 +62,7 @@ class TimestepEmbedder(nn.Module):
                 embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
             return embedding
 
-    def forward(self, t):
+    def forward(self, t) -> torch.Tensor:
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         weight_dtype = self.mlp[0].weight.dtype
         compute_dtype = getattr(self.mlp[0], "compute_dtype", None)
@@ -166,7 +166,7 @@ class FeedForward(nn.Module):
     def _forward_silu_gating(self, x1, x3):
         return F.silu(x1) * x3
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         return self.w2(self._forward_silu_gating(self.w1(x), self.w3(x)))
 
 
@@ -238,7 +238,7 @@ class ZImageTransformerBlock(nn.Module):
         noise_mask: torch.Tensor | None = None,
         adaln_noisy: torch.Tensor | None = None,
         adaln_clean: torch.Tensor | None = None,
-    ):
+    ) -> torch.Tensor:
         if self.modulation:
             seq_len = x.shape[1]
 
@@ -390,7 +390,7 @@ class ZImageControlTransformerBlock(nn.Module):
         attn_mask: torch.Tensor,
         freqs_cis: torch.Tensor,
         adaln_input: torch.Tensor | None = None,
-    ):
+    ) -> torch.Tensor:
         # Control
         if self.block_id == 0:
             c = self.before_proj(c) + x
@@ -660,7 +660,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         conditioning_scale: float = 1.0,
         patch_size=2,
         f_patch_size=1,
-    ):
+    ) -> dict[int, torch.Tensor]:
         r"""
         Args:
             x (`list` of `torch.Tensor`):
@@ -677,6 +677,10 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 Spatial patch size used to tokenize the latent.
             f_patch_size (`int`, *optional*, defaults to `1`):
                 Temporal (frame) patch size used to tokenize the latent.
+
+        Returns:
+            `dict[int, torch.Tensor]`: The ControlNet block samples, scaled by `conditioning_scale` and keyed by the
+            index of the transformer layer each one is added to.
         """
         if (
             self.t_scale is None

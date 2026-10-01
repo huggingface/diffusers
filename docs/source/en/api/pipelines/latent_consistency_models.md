@@ -458,7 +458,7 @@ image
 
 ### T2I-Adapter
 
-[T2I-Adapter](../../using-diffusers/t2i_adapter) is an even more lightweight adapter than ControlNet, that provides an additional input to condition a pretrained model with. It is faster than ControlNet but the results may be slightly worse.
+[T2I-Adapter](../../using-diffusers/legacy_adapters#t2i-adapter) is an even more lightweight adapter than ControlNet, that provides an additional input to condition a pretrained model with. It is faster than ControlNet but the results may be slightly worse.
 
 You can find additional T2I-Adapter checkpoints trained on other inputs in [TencentArc's](https://hf.co/TencentARC) repository.
 

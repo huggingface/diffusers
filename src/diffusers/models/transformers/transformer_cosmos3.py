@@ -144,7 +144,7 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
             freqs_t[..., idx] = freqs[dim, ..., idx]
         return freqs_t
 
-    def forward(self, position_ids, device, dtype):
+    def forward(self, position_ids, device, dtype) -> tuple[torch.Tensor, torch.Tensor]:
         if position_ids.ndim == 2:
             position_ids = position_ids[None, ...].expand(3, position_ids.shape[0], -1)  # [3,B,N]
         inv_freq_expanded = (
@@ -188,7 +188,7 @@ class Cosmos3VLTextMLP(nn.Module):
         self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
         self.act_fn = nn.SiLU() if hidden_act == "silu" else None
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         if self.hidden_act == "relu2":
             return self.down_proj(torch.relu(self.up_proj(x)).square())
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
