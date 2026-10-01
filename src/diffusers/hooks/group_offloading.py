@@ -675,8 +675,12 @@ def apply_group_offloading(
             stream = torch.cuda.Stream()
         elif hasattr(torch, "xpu") and torch.xpu.is_available():
             stream = torch.Stream()
+        elif hasattr(torch, "npu") and torch.npu.is_available():
+            stream = torch.npu.Stream()
         else:
-            raise ValueError("Using streams for data transfer requires a CUDA device, or an Intel XPU device.")
+            raise ValueError(
+                "Using streams for data transfer requires a CUDA device, an Intel XPU device, or an Ascend NPU device."
+            )
 
     if not use_stream and record_stream:
         raise ValueError("`record_stream` cannot be True when `use_stream=False`.")
