@@ -306,8 +306,8 @@ def _tensor_parallel_from_pretrained_worker(
     """Worker for `from_pretrained(..., parallel_config=...)`, i.e. sharding while reading the checkpoint.
 
     Each rank loads only its own slice of every `_tp_plan` parameter straight into a `DTensor` and runs a forward
-    pass. Rank 0 reports its output and the local/global shapes of one sharded weight so the caller can check both the
-    numerics and that sharding actually happened.
+    pass. Rank 0 checks that exactly the parameters `_tp_plan` covers were loaded as `DTensor`s, each with the
+    placement and local shape its shard spec implies, and reports its output so the caller can check the numerics.
     """
     try:
         os.environ["MASTER_ADDR"] = "localhost"
@@ -319,7 +319,9 @@ def _tensor_parallel_from_pretrained_worker(
         dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
         device_config["module"].set_device(rank)
 
-        from torch.distributed.tensor import DTensor
+        from torch.distributed.tensor import DTensor, Replicate, Shard
+
+        from diffusers.hooks.tensor_parallel import resolve_tp_shard_specs
 
         model = model_class.from_pretrained(
             checkpoint_dir, parallel_config=TensorParallelConfig(tp_degree=world_size)
@@ -333,12 +335,31 @@ def _tensor_parallel_from_pretrained_worker(
             output = output.full_tensor()
 
         if rank == 0:
-            sharded = {k: v for k, v in model.state_dict().items() if isinstance(v, DTensor)}
-            assert sharded, "No parameter was sharded into a DTensor by the streaming load."
-            name, param = next(iter(sharded.items()))
+            specs = resolve_tp_shard_specs(model, model_class._tp_plan, world_size)
+            state_dict = model.state_dict()
+
+            # A planned parameter the streaming load left as a full tensor would still compute the right output, so
+            # the numerics check alone would not catch it.
+            for name, spec in specs.items():
+                param = state_dict[name]
+                assert isinstance(param, DTensor), (
+                    f"'{name}' is covered by `_tp_plan` but was not loaded as a DTensor."
+                )
+                placement = Replicate() if spec.dim is None else Shard(spec.dim)
+                assert param.placements == (placement,), (
+                    f"'{name}' has placements {param.placements}, not {placement}."
+                )
+                expected_local_shape = list(param.shape)
+                if spec.dim is not None:
+                    expected_local_shape[spec.dim] //= world_size
+                assert list(param.to_local().shape) == expected_local_shape, (
+                    f"'{name}' has local shape {list(param.to_local().shape)}, not {expected_local_shape}."
+                )
+
+            unplanned = sorted(k for k, v in state_dict.items() if isinstance(v, DTensor) and k not in specs)
+            assert not unplanned, f"Parameters not covered by `_tp_plan` were loaded as DTensors: {unplanned}"
+
             return_dict["status"] = "success"
-            return_dict["num_sharded"] = len(sharded)
-            return_dict["shard_example"] = (name, list(param.to_local().shape), list(param.shape))
             return_dict["output"] = output.float().cpu().tolist()
 
     except Exception as e:
@@ -457,11 +478,6 @@ class TensorParallelTesterMixin:
         )
         assert return_dict.get("status") == "success", (
             f"Tensor parallel `from_pretrained` failed: {return_dict.get('error', 'Unknown error')}"
-        )
-
-        name, local_shape, global_shape = return_dict["shard_example"]
-        assert local_shape != global_shape, (
-            f"'{name}' has local shape {local_shape} equal to its global shape, so it was not sharded."
         )
 
         # Sharded matmuls + all-reduce reorder the summation, so allow a small tolerance over the reference.
