@@ -49,7 +49,9 @@ class HunyuanVideo15LoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[HunyuanVideo15ModularPipeline, BlockState]:
         block_state.latent_model_input = torch.cat(
             [block_state.latents, block_state.cond_latents_concat, block_state.mask_concat], dim=1
         )
@@ -131,7 +133,7 @@ class HunyuanVideo15LoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[HunyuanVideo15ModularPipeline, BlockState]:
         timestep = t.expand(block_state.latent_model_input.shape[0]).to(block_state.latent_model_input.dtype)
 
         # Step 1: Collect model inputs
@@ -185,7 +187,9 @@ class HunyuanVideo15LoopAfterDenoiser(ModularPipelineBlocks):
         return "Step within the denoising loop that updates the latents"
 
     @torch.no_grad()
-    def __call__(self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[HunyuanVideo15ModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred, t, block_state.latents, return_dict=False
@@ -220,7 +224,9 @@ class HunyuanVideo15DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, state: PipelineState
+    ) -> tuple[HunyuanVideo15ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.num_warmup_steps = max(
@@ -335,7 +341,7 @@ class HunyuanVideo15Image2VideoLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[HunyuanVideo15ModularPipeline, BlockState]:
         timestep = t.expand(block_state.latent_model_input.shape[0]).to(block_state.latent_model_input.dtype)
 
         # MeanFlow timestep_r (lines 855-862)

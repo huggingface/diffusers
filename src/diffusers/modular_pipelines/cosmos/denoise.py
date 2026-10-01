@@ -51,7 +51,9 @@ class Cosmos3VisionLoopPrepareStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         device = components._execution_device
         block_state.vision_tokens = [block_state.latents.to(device=device, dtype=components.transformer.dtype)]
         block_state.vision_timesteps = torch.full(
@@ -95,7 +97,9 @@ class Cosmos3SoundLoopPrepareStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         device = components._execution_device
         block_state.sound_tokens = [block_state.sound_latents.to(device=device, dtype=components.transformer.dtype)]
         block_state.sound_timesteps = torch.full(
@@ -141,7 +145,9 @@ class Cosmos3ActionLoopPrepareStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         device = components._execution_device
         block_state.action_tokens = [block_state.action_latents.to(device=device, dtype=components.transformer.dtype)]
         block_state.action_timesteps = torch.full(
@@ -159,7 +165,10 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+        return [
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -186,7 +195,9 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         denoiser_input_fields = block_state.denoiser_input_fields
         loop_input_fields = block_state.as_dict()
         has_sound = "sound_tokens" in loop_input_fields
@@ -220,7 +231,15 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
             transformer_kwargs = {
                 name: value for name, value in transformer_kwargs.items() if name in transformer_args
             }
-            preds_vision, preds_sound, preds_action = components.transformer(**transformer_kwargs, return_dict=False)
+            with components.transformer.cache_context(
+                pass_name,
+                step_index=i,
+                sigma=float(components.scheduler.sigmas[i]),
+                num_inference_steps=components.scheduler.num_inference_steps,
+            ):
+                preds_vision, preds_sound, preds_action = components.transformer(
+                    **transformer_kwargs, return_dict=False
+                )
             velocities[pass_name] = components._mask_velocity_predictions(
                 preds_vision,
                 preds_sound,
@@ -232,8 +251,14 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
             )
 
         cond_velocity_vision, cond_velocity_sound, cond_velocity_action = velocities["cond"]
+        cond_velocity_vision = cond_velocity_vision.float()
+        cond_velocity_sound = cond_velocity_sound.float() if cond_velocity_sound is not None else None
+        cond_velocity_action = cond_velocity_action.float() if cond_velocity_action is not None else None
         if do_cfg:
             uncond_velocity_vision, uncond_velocity_sound, uncond_velocity_action = velocities["uncond"]
+            uncond_velocity_vision = uncond_velocity_vision.float()
+            uncond_velocity_sound = uncond_velocity_sound.float() if uncond_velocity_sound is not None else None
+            uncond_velocity_action = uncond_velocity_action.float() if uncond_velocity_action is not None else None
             block_state.velocity_vision = uncond_velocity_vision + block_state.guidance_scale * (
                 cond_velocity_vision - uncond_velocity_vision
             )
@@ -280,7 +305,9 @@ class Cosmos3VisionLoopSchedulerStep(ModularPipelineBlocks):
         return [OutputParam.template("latents")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         block_state.latents = components.scheduler.step(
             block_state.velocity_vision.unsqueeze(0), t, block_state.latents.unsqueeze(0), return_dict=False
         )[0].squeeze(0)
@@ -331,12 +358,17 @@ class Cosmos3DistilledVisionLoopSchedulerStep(ModularPipelineBlocks):
         return [OutputParam.template("latents")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
+        velocity_vision = block_state.velocity_vision.float()
+        latents = block_state.latents.float()
+
         # Pass the generator so the scheduler's stochastic (SDE) re-noising is seedable/reproducible.
         block_state.latents = components.scheduler.step(
-            block_state.velocity_vision.unsqueeze(0),
+            velocity_vision.unsqueeze(0),
             t,
-            block_state.latents.unsqueeze(0),
+            latents.unsqueeze(0),
             generator=block_state.generator,
             return_dict=False,
         )[0].squeeze(0)
@@ -384,7 +416,9 @@ class Cosmos3SoundLoopSchedulerStep(ModularPipelineBlocks):
         return [OutputParam("sound_latents", type_hint=torch.Tensor, description="Updated sound latents.")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         block_state.sound_latents = block_state.sound_scheduler.step(
             block_state.velocity_sound.unsqueeze(0), t, block_state.sound_latents.unsqueeze(0), return_dict=False
         )[0].squeeze(0)
@@ -435,7 +469,9 @@ class Cosmos3ActionLoopSchedulerStep(ModularPipelineBlocks):
         return [OutputParam("action_latents", type_hint=torch.Tensor, description="Updated action latents.")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         has_noisy_action = block_state.action_condition_mask.sum() < block_state.action_condition_mask.numel()
         if has_noisy_action:
             block_state.action_latents = block_state.action_scheduler.step(
@@ -495,7 +531,9 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         mixed_precision = Cosmos3MixedPrecisionConfig.resolve(
             components.transformer,
@@ -666,7 +704,9 @@ class Cosmos3TransferLoopPrepareStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         device = components._execution_device
         dtype = components.transformer.dtype
         block_state.vision_tokens_full = [c.to(device=device, dtype=dtype) for c in block_state.control_latents] + [
@@ -691,7 +731,10 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+        return [
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -754,25 +797,30 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         return [OutputParam("velocity", type_hint=torch.Tensor, description="Predicted (masked) transfer velocity.")]
 
     @staticmethod
-    def _forward(components, static, vision_tokens, vision_timesteps):
-        preds_vision, _, _ = components.transformer(
-            input_ids=static["input_ids"],
-            text_indexes=static["text_indexes"],
-            position_ids=static["position_ids"],
-            und_len=static["und_len"],
-            sequence_length=static["sequence_length"],
-            vision_tokens=vision_tokens,
-            vision_token_shapes=static["vision_token_shapes"],
-            vision_sequence_indexes=static["vision_sequence_indexes"],
-            vision_mse_loss_indexes=static["vision_mse_loss_indexes"],
-            vision_timesteps=vision_timesteps,
-            vision_noisy_frame_indexes=static["vision_noisy_frame_indexes"],
-            return_dict=False,
-        )
+    def _forward(components, static, vision_tokens, vision_timesteps, context_name, step, sigma, num_inference_steps):
+        with components.transformer.cache_context(
+            context_name, step_index=step, sigma=sigma, num_inference_steps=num_inference_steps
+        ):
+            preds_vision, _, _ = components.transformer(
+                input_ids=static["input_ids"],
+                text_indexes=static["text_indexes"],
+                position_ids=static["position_ids"],
+                und_len=static["und_len"],
+                sequence_length=static["sequence_length"],
+                vision_tokens=vision_tokens,
+                vision_token_shapes=static["vision_token_shapes"],
+                vision_sequence_indexes=static["vision_sequence_indexes"],
+                vision_mse_loss_indexes=static["vision_mse_loss_indexes"],
+                vision_timesteps=vision_timesteps,
+                vision_noisy_frame_indexes=static["vision_noisy_frame_indexes"],
+                return_dict=False,
+            )
         return preds_vision[-1]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         # active-at: a None interval is always active; otherwise the timestep must fall within [lo, hi].
         guidance_interval = block_state.guidance_interval
         guidance_active = guidance_interval is None or (
@@ -793,7 +841,14 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         uncond_full_static = denoiser_input_fields["uncond_full_static"]
 
         cond_full = self._forward(
-            components, cond_full_static, block_state.vision_tokens_full, block_state.vision_timesteps
+            components,
+            cond_full_static,
+            block_state.vision_tokens_full,
+            block_state.vision_timesteps,
+            "cond",
+            step=i,
+            sigma=float(components.scheduler.sigmas[i]),
+            num_inference_steps=components.scheduler.num_inference_steps,
         )
 
         cond_no_control = None
@@ -803,6 +858,10 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 cond_no_control_static,
                 block_state.vision_tokens_target,
                 block_state.vision_timesteps,
+                "cond_no_control",
+                step=i,
+                sigma=float(components.scheduler.sigmas[i]),
+                num_inference_steps=components.scheduler.num_inference_steps,
             )
 
         uncond_full = None
@@ -812,7 +871,15 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 uncond_full_static,
                 block_state.vision_tokens_full,
                 block_state.vision_timesteps,
+                "uncond",
+                step=i,
+                sigma=float(components.scheduler.sigmas[i]),
+                num_inference_steps=components.scheduler.num_inference_steps,
             )
+
+        cond_full = cond_full.float()
+        cond_no_control = cond_no_control.float() if cond_no_control is not None else None
+        uncond_full = uncond_full.float() if uncond_full is not None else None
 
         if needs_control_cfg and needs_text_cfg:
             control_cond = cond_no_control + step_control * (cond_full - cond_no_control)
@@ -870,7 +937,9 @@ class Cosmos3TransferLoopSchedulerStep(ModularPipelineBlocks):
         return [OutputParam("latents", type_hint=torch.Tensor, description="Updated target latents for this chunk.")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Cosmos3OmniModularPipeline, BlockState]:
         block_state.latents = components.scheduler.step(
             block_state.velocity.unsqueeze(0), t, block_state.latents.unsqueeze(0), return_dict=False
         )[0].squeeze(0)

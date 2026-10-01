@@ -882,11 +882,15 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         num_chunks = state.get("num_chunks")
         state.set("output_chunks", [])
         state.set("previous_output", None)
         for chunk_id in range(num_chunks):
+            if chunk_id > 0:
+                components.transformer._reset_stateful_cache()
             state.set("chunk_id", chunk_id)
             for _, block in self.sub_blocks.items():
                 components, state = block(components, state)

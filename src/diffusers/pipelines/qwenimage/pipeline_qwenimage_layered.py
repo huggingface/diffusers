@@ -562,7 +562,7 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
         resolution: int = 640,
         cfg_normalize: bool = False,
         use_en_prompt: bool = False,
-    ):
+    ) -> QwenImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

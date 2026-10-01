@@ -148,7 +148,9 @@ class UVit2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
         self.gradient_checkpointing = False
 
     @apply_lora_scale("cross_attention_kwargs")
-    def forward(self, input_ids, encoder_hidden_states, pooled_text_emb, micro_conds, cross_attention_kwargs=None):
+    def forward(
+        self, input_ids, encoder_hidden_states, pooled_text_emb, micro_conds, cross_attention_kwargs=None
+    ) -> torch.Tensor:
         r"""
         Args:
             input_ids (`torch.LongTensor`):
@@ -161,6 +163,10 @@ class UVit2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
                 Micro-conditioning values that are embedded and combined with `pooled_text_emb`.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor`.
+
+        Returns:
+            `torch.Tensor`: The logits over the codebook for each image token, of shape `(batch_size, codebook_size,
+            height, width)`.
         """
         encoder_hidden_states = self.encoder_proj(encoder_hidden_states)
         encoder_hidden_states = self.encoder_proj_layer_norm(encoder_hidden_states)
@@ -246,7 +252,7 @@ class UVit2DConvEmbed(nn.Module):
         self.layer_norm = RMSNorm(in_channels, eps, elementwise_affine)
         self.conv = nn.Conv2d(in_channels, block_out_channels, kernel_size=1, bias=bias)
 
-    def forward(self, input_ids):
+    def forward(self, input_ids) -> torch.Tensor:
         embeddings = self.embeddings(input_ids)
         embeddings = self.layer_norm(embeddings)
         embeddings = embeddings.permute(0, 3, 1, 2)
@@ -333,7 +339,7 @@ class UVitBlock(nn.Module):
         else:
             self.upsample = None
 
-    def forward(self, x, pooled_text_emb, encoder_hidden_states, cross_attention_kwargs):
+    def forward(self, x, pooled_text_emb, encoder_hidden_states, cross_attention_kwargs) -> torch.Tensor:
         if self.downsample is not None:
             x = self.downsample(x)
 
@@ -374,7 +380,7 @@ class ConvNextBlock(nn.Module):
         self.channelwise_dropout = nn.Dropout(hidden_dropout)
         self.cond_embeds_mapper = nn.Linear(hidden_size, channels * 2, use_bias)
 
-    def forward(self, x, cond_embeds):
+    def forward(self, x, cond_embeds) -> torch.Tensor:
         x_res = x
 
         x = self.depthwise(x)
@@ -413,7 +419,7 @@ class ConvMlmLayer(nn.Module):
         self.layer_norm = RMSNorm(in_channels, layer_norm_eps, ln_elementwise_affine)
         self.conv2 = nn.Conv2d(in_channels, codebook_size, kernel_size=1, bias=use_bias)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         hidden_states = self.conv1(hidden_states)
         hidden_states = self.layer_norm(hidden_states.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
         logits = self.conv2(hidden_states)
