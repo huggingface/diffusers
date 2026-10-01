@@ -2900,6 +2900,7 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
 
     if has_lora_dot_format:
         dot_keys = list(state_dict.keys())
+        dot_key_set = set(dot_keys)
         for k in dot_keys:
             if lora_dot_down_key not in k:
                 continue
@@ -2908,17 +2909,40 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
 
             base = k[: -len(lora_dot_down_key)]
 
-            # Skip combined "qkv" projection — individual to.q/k/v keys are also present.
+            # Fused "qkv" LoRA, e.g. `lora_unet_layers_0_attention_qkv.lora_down.weight` from
+            # kohya-style trainers that wrap Z-Image's original module tree (the layout
+            # https://github.com/utensils/mold/blob/main/crates/mold-inference/src/zimage/lora.rs
+            # documents as "Kohya / sd-scripts"). Split it into to_q/to_k/to_v like
+            # `convert_z_image_fused_attention`; next to split keys (Anime-Z) it is redundant.
             if base.endswith(".qkv"):
-                state_dict.pop(k)
-                state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
-                state_dict.pop(base + ".alpha", None)
+                block = base[: -len(".qkv")]
+                down_weight = state_dict.pop(k)
+                up_weight = state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
+                has_split_keys = any(
+                    f"{block}.{form}{lora_dot_down_key}" in dot_key_set
+                    for proj in "qkv"
+                    for form in (f"to.{proj}", f"to_{proj}")
+                )
+                if has_split_keys or up_weight is None:
+                    state_dict.pop(base + ".alpha", None)
+                    continue
+                scale_down, scale_up = get_alpha_scales(down_weight, base + ".alpha")
+                for proj, up_chunk in zip("qkv", up_weight.chunk(3, dim=0)):
+                    converted_state_dict[f"{block}.to_{proj}.lora_A.weight"] = down_weight * scale_down
+                    converted_state_dict[f"{block}.to_{proj}.lora_B.weight"] = up_chunk * scale_up
                 continue
 
-            # Skip bare "out.lora.*" — "to_out.0.lora.*" covers the same projection.
+            # Bare "out": redundant next to "to_out.0" keys, otherwise it IS to_out.0
+            # (normalize_out_key already renamed its alpha to "to_out.0.alpha").
             if re.search(r"\.out$", base) and ".to_out" not in base:
-                state_dict.pop(k)
-                state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
+                block = base[: -len(".out")]
+                down_weight = state_dict.pop(k)
+                up_weight = state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
+                if f"{block}.to_out.0{lora_dot_down_key}" in dot_key_set or up_weight is None:
+                    continue
+                scale_down, scale_up = get_alpha_scales(down_weight, f"{block}.to_out.0.alpha")
+                converted_state_dict[f"{block}.to_out.0.lora_A.weight"] = down_weight * scale_down
+                converted_state_dict[f"{block}.to_out.0.lora_B.weight"] = up_weight * scale_up
                 continue
 
             # Normalise "to.q/k/v" → "to_q/k/v" for the diffusers output key.

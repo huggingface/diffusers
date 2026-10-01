@@ -98,7 +98,9 @@ class FluxTextInputStep(ModularPipelineBlocks):
                 )
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         # TODO: consider adding negative embeddings?
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
@@ -187,7 +189,9 @@ class FluxAdditionalInputsStep(ModularPipelineBlocks):
             OutputParam(name="image_width", type_hint=int, description="The width of the image latents"),
         ]
 
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Process image latent inputs (height/width calculation, patchify, and batch expansion)
@@ -246,7 +250,9 @@ class FluxAdditionalInputsStep(ModularPipelineBlocks):
 class FluxKontextAdditionalInputsStep(FluxAdditionalInputsStep):
     model_name = "flux-kontext"
 
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Process image latent inputs (height/width calculation, patchify, and batch expansion)
@@ -334,7 +340,9 @@ class FluxKontextSetResolutionStep(ModularPipelineBlocks):
         if width is not None and width % (vae_scale_factor * 2) != 0:
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         height = block_state.height or components.default_height

@@ -159,6 +159,7 @@ CHECKPOINT_KEY_NAMES = {
         "vae.per_channel_statistics.mean-of-means",
         "audio_vae.per_channel_statistics.mean-of-means",
     ],
+    "qwen-image-2.1": ["model.diffusion_model.txt_in.text_norm.weight", "txt_in.text_norm.weight"],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -243,6 +244,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "z-image-turbo-controlnet-2.0": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.0"},
     "z-image-turbo-controlnet-2.1": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.1"},
     "ltx2-dev": {"pretrained_model_name_or_path": "Lightricks/LTX-2"},
+    "qwen-image-2.1": {"pretrained_model_name_or_path": "Qwen/Qwen-Image-2.1"},
     "minimax-h3": {"pretrained_model_name_or_path": "MiniMaxAI/MiniMax-H3"},
 }
 
@@ -785,6 +787,9 @@ def infer_diffusers_model_type(checkpoint):
             model_type = "wan-t2v-14B"
         else:
             model_type = "wan-i2v-14B"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["qwen-image-2.1"]):
+        model_type = "qwen-image-2.1"
 
     elif CHECKPOINT_KEY_NAMES["wan_vae"] in checkpoint:
         # All Wan models use the same VAE so we can use the same default model repo to fetch the config
@@ -4310,5 +4315,23 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
             if special_key not in key:
                 continue
             handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def convert_qwen_image21_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {}
+
+    for key in list(checkpoint.keys()):
+        new_key = key.replace("model.diffusion_model.", "")
+        value = checkpoint.pop(key)
+
+        # ComfyUI fuses the SwiGLU gate and up projections into a single GEMM, gate rows first.
+        if new_key.endswith("img_mlp.gate_up.weight"):
+            gate, up = value.chunk(2, dim=0)
+            converted_state_dict[new_key.replace("gate_up", "gate_layer")] = gate
+            converted_state_dict[new_key.replace("gate_up", "proj")] = up
+        else:
+            converted_state_dict[new_key] = value
 
     return converted_state_dict
