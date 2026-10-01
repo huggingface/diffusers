@@ -363,6 +363,16 @@ class Kandinsky6SRUpsample(nn.Module):
 
 
 class Kandinsky6SREncoder3D(nn.Module):
+    """Causal encoder: `conv_in`, downsampling resnet levels, a resnet bottleneck, then `norm_out`/`conv_out`.
+
+    `forward` only returns `hidden_states`, not `cache`: each submodule still returns its own updated cache value
+    rather than mutating the one it was given (see `Kandinsky6SRCausalConv3d`), but this method writes every one of
+    those return values back into the matching key of the `cache` dict it received, e.g.
+    `hidden_states, cache["conv_out"] = self.conv_out(hidden_states, cache["conv_out"])`. Because the caller
+    (`Kandinsky6SRVAE.encode`) passes the same `cache` dict to every segment, that key assignment is what carries
+    the padding state from one segment to the next — `cache` does not need to be returned for this to work.
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -447,6 +457,15 @@ class Kandinsky6SREncoder3D(nn.Module):
 
 
 class Kandinsky6SRDecoder3D(nn.Module):
+    """Causal decoder: `conv_in`, a `zq`-conditioned resnet bottleneck, upsampling resnet levels, then
+    `norm_out`/`conv_out`.
+
+    Like `Kandinsky6SREncoder3D.forward`, this only returns the decoded tensor, not `cache`: writing each
+    submodule's returned cache value back into the matching key of the `cache` dict it received (e.g.
+    `hidden_states, cache["conv_out"] = self.conv_out(hidden_states, cache["conv_out"])`) is enough, since
+    `Kandinsky6SRVAE.decode` passes that same dict to every segment.
+    """
+
     def __init__(
         self,
         out_channels: int,

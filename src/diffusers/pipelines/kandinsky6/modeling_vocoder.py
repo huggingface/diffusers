@@ -47,9 +47,9 @@ def kaiser_sinc_filter1d(cutoff: float, half_width: float, kernel_size: int) -> 
     window = torch.kaiser_window(kernel_size, beta=beta, periodic=False)
 
     time = torch.arange(-half_size, half_size) + 0.5 if even else torch.arange(kernel_size) - half_size
-    filter_ = 2 * cutoff * window * torch.sinc(2 * cutoff * time)
-    filter_ = filter_ / filter_.sum()
-    return filter_.view(1, 1, kernel_size)
+    filter = 2 * cutoff * window * torch.sinc(2 * cutoff * time)
+    filter = filter / filter.sum()
+    return filter.view(1, 1, kernel_size)
 
 
 class MMAudioSnakeBeta(nn.Module):

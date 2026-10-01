@@ -522,12 +522,14 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         width: int,
         device: torch.device,
         dtype: torch.dtype,
+        num_videos_per_prompt: int = 1,
         generator: torch.Generator | None = None,
     ) -> torch.Tensor:
         r"""
         Encodes the reference image(s) into first-frame latents of shape `(batch_size, latent_height, latent_width,
         latent_channels)`, scaled by the VAE `scaling_factor`. PIL images are resized and center-cropped to `height x
-        width`; tensors and arrays must already have that size.
+        width`; tensors and arrays must already have that size. The latents are repeated `num_videos_per_prompt`
+        times along the batch dimension.
         """
         is_pil = isinstance(image, PIL.Image.Image) or (
             isinstance(image, list) and isinstance(image[0], PIL.Image.Image)
@@ -537,7 +539,8 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         )
         image = image.to(device=device, dtype=self.vae.dtype).unsqueeze(2)
         latents = retrieve_latents(self.vae.encode(image), generator=generator) * self.vae.config.scaling_factor
-        return latents[:, :, 0].permute(0, 2, 3, 1).to(dtype)
+        latents = latents[:, :, 0].permute(0, 2, 3, 1).to(dtype)
+        return latents.repeat_interleave(num_videos_per_prompt, dim=0)
 
     def prepare_latents(
         self,
@@ -776,8 +779,9 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         # 4. Encode the reference image
         first_frame_latents = None
         if image is not None:
-            first_frame_latents = self.encode_image(image, height, width, device, dtype, generator)
-            first_frame_latents = first_frame_latents.repeat_interleave(num_videos_per_prompt, dim=0)
+            first_frame_latents = self.encode_image(
+                image, height, width, device, dtype, num_videos_per_prompt, generator
+            )
 
         # 5. Prepare timesteps. Audio uses a second scheduler instance so that both modalities keep their own step
         # counter.

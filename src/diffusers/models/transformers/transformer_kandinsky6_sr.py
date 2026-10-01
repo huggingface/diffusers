@@ -565,6 +565,3 @@ class Kandinsky6SRTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
-
-
-__all__ = ["Kandinsky6SRTransformer3DModel"]

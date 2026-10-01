@@ -31,6 +31,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils.accelerate_utils import apply_forward_hook
+from ..attention import AttentionModuleMixin
 from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
@@ -131,16 +132,12 @@ class MMAudioResnetBlock1D(nn.Module):
         return mp_sum(x, hidden_states, t=0.3)
 
 
-class MMAudioAttnBlock1D(nn.Module):
-    def __init__(self, channels: int, num_heads: int = 1) -> None:
-        super().__init__()
-        self.num_heads = num_heads
-        self.qkv = MMAudioMPConv1d(channels, channels * 3, kernel_size=1)
-        self.proj_out = MMAudioMPConv1d(channels, channels, kernel_size=1)
+class MMAudioAttnProcessor:
+    """Attention processor used by [`MMAudioAttnBlock1D`]."""
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def __call__(self, attn: "MMAudioAttnBlock1D", x: torch.Tensor) -> torch.Tensor:
         batch_size, channels, length = x.shape
-        qkv = self.qkv(x).reshape(batch_size, self.num_heads, -1, 3, length)
+        qkv = attn.qkv(x).reshape(batch_size, attn.num_heads, -1, 3, length)
         query, key, value = normalize(qkv, dim=2).unbind(3)
         # `(B, heads, D, T)` -> `(B, T, heads, D)` for the attention dispatcher. `D` is not contiguous after the
         # permute (q/k/v are interleaved along the channel dim), which some attention backends (e.g. FlashAttention-3)
@@ -152,7 +149,22 @@ class MMAudioAttnBlock1D(nn.Module):
         # pipeline (e.g. via `transformer.set_attention_backend(...)`).
         hidden_states = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
         hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, channels, length)
-        return mp_sum(x, self.proj_out(hidden_states), t=0.3)
+        return attn.proj_out(hidden_states)
+
+
+class MMAudioAttnBlock1D(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = MMAudioAttnProcessor
+    _available_processors = [MMAudioAttnProcessor]
+
+    def __init__(self, channels: int, num_heads: int = 1, processor: MMAudioAttnProcessor | None = None) -> None:
+        super().__init__()
+        self.num_heads = num_heads
+        self.qkv = MMAudioMPConv1d(channels, channels * 3, kernel_size=1)
+        self.proj_out = MMAudioMPConv1d(channels, channels, kernel_size=1)
+        self.set_processor(processor or self._default_processor_cls())
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return mp_sum(x, self.processor(self, x), t=0.3)
 
 
 class MMAudioUpsample1D(nn.Module):
