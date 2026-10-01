@@ -104,17 +104,19 @@ class Kandinsky6SRLatentUpscalerUpsample(nn.Module):
         return self.linear(hidden_states + self.spatial_conv(hidden_states))
 
 
-class Kandinsky6SRLatentUpscalerOutputHead(nn.Module):
+class Kandinsky6SRLatentUpscalerOutputHead(nn.Sequential):
     """`modulated norm -> SiLU -> conv3x3x3` projection back to the latent channels, threading `zq` into the norm."""
 
     def __init__(self, in_channels: int, out_channels: int, zq_channels: int) -> None:
-        super().__init__()
-        self.norm = Kandinsky6SRLatentUpscalerModulatedNorm(in_channels, zq_channels)
-        self.activation = nn.SiLU()
-        self.conv = Kandinsky6SRLatentUpscalerConv3d(in_channels, out_channels, kernel_size=3)
+        super().__init__(
+            Kandinsky6SRLatentUpscalerModulatedNorm(in_channels, zq_channels),
+            nn.SiLU(),
+            Kandinsky6SRLatentUpscalerConv3d(in_channels, out_channels, kernel_size=3),
+        )
 
     def forward(self, hidden_states: Tensor, zq: Tensor) -> Tensor:
-        return self.conv(self.activation(self.norm(hidden_states, zq)))
+        norm, activation, conv = self
+        return conv(activation(norm(hidden_states, zq)))
 
 
 def _residual_stack(num_blocks: int, in_channels: int, out_channels: int, zq_channels: int) -> nn.ModuleList:
@@ -145,21 +147,21 @@ class Kandinsky6SRLatentUpscalerX2Branch(nn.Module):
         self.finisher = nn.Module()
         self.finisher.spatial_conv = nn.Conv3d(width_1, width_1, kernel_size=(1, 3, 3), padding=(0, 1, 1))
         self.finisher.linear = nn.Conv3d(width_1, width_1, kernel_size=1)
-        self.mid_blocks = _residual_stack(num_mid_blocks, width_1, width_2, in_channels)
-        self.upsample = Kandinsky6SRLatentUpscalerUpsample(width_2)
-        self.blocks = _residual_stack(num_post_blocks, width_2, width_3, in_channels)
-        self.output_proj = Kandinsky6SRLatentUpscalerOutputHead(width_3, in_channels, in_channels)
+        self.private_mid_blocks = _residual_stack(num_mid_blocks, width_1, width_2, in_channels)
+        self.private_upsample = Kandinsky6SRLatentUpscalerUpsample(width_2)
+        self.private_blocks = _residual_stack(num_post_blocks, width_2, width_3, in_channels)
+        self.private_output_proj = Kandinsky6SRLatentUpscalerOutputHead(width_3, in_channels, in_channels)
 
     def forward(self, hidden_states: Tensor, zq: Tensor) -> Tensor:
         for block in self.adapter:
             hidden_states = block(hidden_states, zq)
         hidden_states = self.finisher.linear(hidden_states + self.finisher.spatial_conv(hidden_states))
-        for block in self.mid_blocks:
+        for block in self.private_mid_blocks:
             hidden_states = block(hidden_states, zq)
-        hidden_states = self.upsample(hidden_states)
-        for block in self.blocks:
+        hidden_states = self.private_upsample(hidden_states)
+        for block in self.private_blocks:
             hidden_states = block(hidden_states, zq)
-        return self.output_proj(hidden_states, zq)
+        return self.private_output_proj(hidden_states, zq)
 
 
 class Kandinsky6SRLatentUpscaler(nn.Module):
