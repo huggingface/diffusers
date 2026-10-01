@@ -138,7 +138,9 @@ class Krea2TextInputsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         prompt_batch, seq_len, num_layers, dim = block_state.prompt_embeds.shape
@@ -233,7 +235,9 @@ class Krea2TurboTextInputsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         prompt_batch, seq_len, num_layers, dim = block_state.prompt_embeds.shape
@@ -317,7 +321,9 @@ class Krea2PrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -415,7 +421,9 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
         return [OutputParam(name="timesteps", type_hint=torch.Tensor, description="The denoising timesteps.")]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -491,7 +499,9 @@ class Krea2TurboSetTimestepsStep(ModularPipelineBlocks):
         return [OutputParam(name="timesteps", type_hint=torch.Tensor, description="The denoising timesteps.")]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -575,7 +585,9 @@ class Krea2PreparePositionIdsStep(ModularPipelineBlocks):
         return torch.cat([text_ids, image_ids], dim=0)
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device

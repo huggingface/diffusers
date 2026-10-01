@@ -24,6 +24,7 @@ from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import WanModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -54,7 +55,7 @@ class WanVaceTrimReferenceLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.latents = block_state.latents[:, :, block_state.num_reference_images :]
@@ -107,7 +108,7 @@ class WanVaeDecoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         vae_dtype = components.vae.dtype
 

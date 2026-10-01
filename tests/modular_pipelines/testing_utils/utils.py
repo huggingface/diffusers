@@ -21,7 +21,7 @@ import pytest
 import torch
 from huggingface_hub import hf_hub_download
 
-from ...testing_utils import torch_device
+from diffusers.utils.torch_utils import TorchDeviceBackend
 
 
 def backend_memory_allocated(device: str) -> int:
@@ -37,15 +37,13 @@ def backend_memory_allocated(device: str) -> int:
 
 def patch_free_memory(free_bytes: int, total_bytes: int = 80 * 1024):
     """
-    Simulate `free_bytes` of free device memory on whichever backend module (cuda/xpu/...) backs `torch_device`.
+    Simulate `free_bytes` of free device memory on whichever backend backs `torch_device`.
 
-    `mem_get_info` returns `(free, total)` and is the single point where `AutoOffloadStrategy` learns how much memory
-    is available, so patching it makes offloading decisions deterministic instead of dependent on the real free memory
-    of the test hardware (an 80GB GPU never runs low on a handful of KB-sized models).
+    `TorchDeviceBackend.mem_get_info` returns `(free, total)` and is the single point where `AutoOffloadStrategy` learns how
+    much memory is available, so patching it makes offloading decisions deterministic instead of dependent on the real
+    free memory of the test hardware (an 80GB GPU never runs low on a handful of KB-sized models).
     """
-    device_type = torch.device(torch_device).type
-    device_module = getattr(torch, device_type, torch.cuda)
-    return mock.patch.object(device_module, "mem_get_info", return_value=(free_bytes, total_bytes))
+    return mock.patch.object(TorchDeviceBackend, "mem_get_info", return_value=(free_bytes, total_bytes))
 
 
 def get_specified_components(path_or_repo_id, cache_dir=None):

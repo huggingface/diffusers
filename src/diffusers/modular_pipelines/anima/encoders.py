@@ -235,7 +235,9 @@ class AnimaTextEncoderStep(ModularPipelineBlocks):
         }
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -379,7 +381,9 @@ class AnimaImg2ImgVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device

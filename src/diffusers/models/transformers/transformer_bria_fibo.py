@@ -296,7 +296,7 @@ class BriaFiboTextProjection(nn.Module):
         super().__init__()
         self.linear = nn.Linear(in_features=in_features, out_features=hidden_size, bias=False)
 
-    def forward(self, caption):
+    def forward(self, caption) -> torch.Tensor:
         hidden_states = self.linear(caption)
         return hidden_states
 
@@ -398,7 +398,7 @@ class BriaFiboTimesteps(nn.Module):
         self.scale = scale
         self.time_theta = time_theta
 
-    def forward(self, timesteps):
+    def forward(self, timesteps) -> torch.Tensor:
         t_emb = get_timestep_embedding(
             timesteps,
             self.num_channels,
@@ -419,7 +419,7 @@ class BriaFiboTimestepProjEmbeddings(nn.Module):
         )
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
-    def forward(self, timestep, dtype):
+    def forward(self, timestep, dtype) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=dtype))  # (N, D)
         return timesteps_emb
