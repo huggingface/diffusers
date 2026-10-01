@@ -76,6 +76,10 @@ windows.
 sr_pipe = Kandinsky6SRPipeline.from_pretrained(
     "kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers", torch_dtype=torch.bfloat16
 )
+# The SR transformer's default config runs NABLA sparse attention (like Kandinsky 5's `nabla`
+# checkpoints), which only the `flex` backend can execute.
+sr_pipe.transformer.set_attention_backend("flex")
+sr_pipe.transformer.compile_repeated_blocks(fullgraph=True)
 sr_pipe.enable_model_cpu_offload()
 
 upscaled = sr_pipe(video=output.frames[0], resolution_scale=2.25, num_inference_steps=2).frames[0]

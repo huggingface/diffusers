@@ -350,7 +350,6 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         num_channels: int,
         head_dim: int,
         kv_dim: int | None = None,
-        text_token_padding: bool = False,
         processor: Kandinsky6AttnProcessor | None = None,
     ):
         super().__init__()
@@ -364,10 +363,7 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         self.query_norm = nn.RMSNorm(head_dim)
         self.key_norm = nn.RMSNorm(head_dim)
         self.out_layer = nn.Linear(num_channels, num_channels)
-        self.text_token_padding = text_token_padding
         self.set_processor(processor or self._default_processor_cls())
-        if self.text_token_padding:
-            self.processor._attention_backend = AttentionBackendName.NATIVE
 
     def forward(
         self,
@@ -454,12 +450,11 @@ class Kandinsky6TransformerEncoderBlock(nn.Module):
         time_dim: int,
         ff_dim: int,
         head_dim: int,
-        text_token_padding: bool = False,
     ):
         super().__init__()
         self.text_modulation = Kandinsky6Modulation(time_dim, model_dim, 6)
         self.self_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
-        self.self_attention = Kandinsky6Attention(model_dim, head_dim, text_token_padding=text_token_padding)
+        self.self_attention = Kandinsky6Attention(model_dim, head_dim)
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.feed_forward = Kandinsky6FeedForward(model_dim, ff_dim)
 
@@ -495,7 +490,6 @@ class Kandinsky6TransformerDecoderBlock(nn.Module):
         time_dim: int,
         ff_dim: int,
         head_dim: int,
-        text_token_padding: bool = False,
     ):
         super().__init__()
         self.visual_modulation = Kandinsky6Modulation(time_dim, model_dim, 9)
@@ -506,7 +500,6 @@ class Kandinsky6TransformerDecoderBlock(nn.Module):
             model_dim,
             head_dim,
             kv_dim=model_dim,
-            text_token_padding=text_token_padding,
         )
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.feed_forward = Kandinsky6FeedForward(model_dim, ff_dim)
@@ -525,18 +518,13 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
         time_dim_a: int,
         ff_dim_a: int,
         head_dim_a: int,
-        text_token_padding: bool = False,
         ca_rope: bool = False,
         cross_gates: bool = False,
         fix_modulation: bool = False,
     ):
         super().__init__()
-        self.video_dec_block = Kandinsky6TransformerDecoderBlock(
-            model_dim, time_dim, ff_dim, head_dim, text_token_padding
-        )
-        self.audio_dec_block = Kandinsky6TransformerDecoderBlock(
-            model_dim_a, time_dim_a, ff_dim_a, head_dim_a, text_token_padding
-        )
+        self.video_dec_block = Kandinsky6TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim)
+        self.audio_dec_block = Kandinsky6TransformerDecoderBlock(model_dim_a, time_dim_a, ff_dim_a, head_dim_a)
         self.va_cross_attention = Kandinsky6Attention(
             model_dim,
             head_dim,
@@ -712,7 +700,9 @@ class Kandinsky6Transformer3DModel(
         audio_freqs_scaling (`float`, *optional*, defaults to 1.0): Audio RoPE frequency scaling.
         scale_factor (`tuple[float, float, float]`, *optional*, defaults to `(1.0, 2.0, 2.0)`): Per-axis
             `(t, h, w)` RoPE frequency scaling applied to the video positions.
-        text_token_padding (`bool`, *optional*, defaults to False): Whether text sequences are padded.
+        text_token_padding (`bool`, *optional*, defaults to False): Checkpoint metadata recording whether the
+            reference model's text sequences are padded. `forward` always accepts an optional `encoder_attention_mask`
+            regardless of this flag; whether one is actually passed is entirely up to the caller.
         ca_rope (`bool`, *optional*, defaults to False): Whether to use cross-modal audio RoPE.
         cross_gates (`bool`, *optional*, defaults to False): Whether to use cross-modal residual gates.
         fix_modulation (`bool`, *optional*, defaults to False): Whether to use the fixed modulation variant.
@@ -799,12 +789,7 @@ class Kandinsky6Transformer3DModel(
             setattr(
                 self,
                 f"{prefix}_text_transformer_blocks",
-                nn.ModuleList(
-                    [
-                        Kandinsky6TransformerEncoderBlock(md, td, fd, hd, text_token_padding)
-                        for _ in range(num_text_blocks)
-                    ]
-                ),
+                nn.ModuleList([Kandinsky6TransformerEncoderBlock(md, td, fd, hd) for _ in range(num_text_blocks)]),
             )
         self.visual_transformer_blocks = nn.ModuleList(
             [
@@ -817,7 +802,6 @@ class Kandinsky6Transformer3DModel(
                     time_dim_a,
                     ff_dim_a,
                     head_dim_a,
-                    text_token_padding,
                     ca_rope,
                     cross_gates,
                     fix_modulation,

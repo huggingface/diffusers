@@ -53,6 +53,10 @@ EXAMPLE_DOC_STRING = """
         >>> sr_pipe = Kandinsky6SRPipeline.from_pretrained(
         ...     "kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers", torch_dtype=torch.bfloat16
         ... )
+        >>> # The transformer's default config runs NABLA sparse attention, which only the `flex` backend can
+        >>> # execute; compiling avoids the eager fallback's much higher memory use at video resolutions.
+        >>> sr_pipe.transformer.set_attention_backend("flex")
+        >>> sr_pipe.transformer.compile_repeated_blocks(fullgraph=True)
         >>> sr_pipe.enable_model_cpu_offload()
         >>> output = sr_pipe(video=video, resolution_scale=2.25, num_inference_steps=2)
         >>> export_to_video(output.frames[0], "output_sr.mp4", fps=24)

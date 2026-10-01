@@ -43,6 +43,9 @@ from diffusers import Kandinsky6SRTransformer3DModel
 transformer = Kandinsky6SRTransformer3DModel.from_pretrained(
     "kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16
 )
+# The default config (`nabla_threshold=0.8`) runs NABLA sparse attention, like Kandinsky 5's `nabla`
+# checkpoints — only the `flex` backend can execute it.
+transformer.set_attention_backend("flex")
 ```
 
 [[autodoc]] Kandinsky6SRTransformer3DModel

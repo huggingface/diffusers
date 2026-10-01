@@ -394,7 +394,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         prompt: str | list[str],
         image: PIL.Image.Image | list[PIL.Image.Image] | None = None,
         max_sequence_length: int = 1024,
-        generator: torch.Generator | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
     ) -> str | list[str]:
         r"""
         Rewrites short prompts into detailed video+audio prompts with the Qwen2.5-VL text encoder, grounding them on
@@ -407,20 +407,22 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                 Reference image(s) of an image-to-video call.
             max_sequence_length (`int`, defaults to `1024`):
                 Maximum number of generated tokens per prompt.
-            generator (`torch.Generator`, *optional*):
-                Seeds the sampled expansion. `generate` draws from the global RNG, so the global RNG is seeded from
-                this generator's seed; later `randn_tensor` calls keep using `generator` directly.
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
+                Seeds the sampled expansion; a list must match `prompt`'s length, one generator per item. `generate`
+                draws from the global RNG, so the global RNG is seeded from this generator's seed; later
+                `randn_tensor` calls keep using `generator` directly.
 
         Returns:
             `str` or `list[str]`: The expanded prompt(s).
         """
         if isinstance(prompt, list):
             images = image if isinstance(image, list) else [image] * len(prompt)
+            generators = generator if isinstance(generator, list) else [generator] * len(prompt)
             return [
                 self.expand_prompts(
-                    item, image=item_image, max_sequence_length=max_sequence_length, generator=generator
+                    item, image=item_image, max_sequence_length=max_sequence_length, generator=item_generator
                 )
-                for item, item_image in zip(prompt, images, strict=True)
+                for item, item_image, item_generator in zip(prompt, images, generators, strict=True)
             ]
         if image is not None and not isinstance(image, PIL.Image.Image):
             raise ValueError("`expand_prompts` expects `image` as a `PIL.Image.Image`")
