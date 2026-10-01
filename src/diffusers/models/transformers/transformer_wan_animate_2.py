@@ -544,7 +544,7 @@ class Head(nn.Module):
         # modulation
         self.modulation = nn.Parameter(torch.randn(1, 2, dim) / dim**0.5)
 
-    def forward(self, x, e):
+    def forward(self, x, e) -> torch.Tensor:
         shift, scale = (self.modulation + e.float().unsqueeze(1)).chunk(2, dim=1)
         x = self.head((self.norm(x.float()) * (1 + scale) + shift).type_as(x))
         return x
@@ -562,7 +562,7 @@ class MLPProj(torch.nn.Module):
             torch.nn.LayerNorm(out_dim),
         )
 
-    def forward(self, image_embeds):
+    def forward(self, image_embeds) -> torch.Tensor:
         clip_extra_context_tokens = self.proj(image_embeds)
         return clip_extra_context_tokens
 

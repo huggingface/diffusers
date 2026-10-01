@@ -295,7 +295,7 @@ class MoEGate(nn.Module):
 
         self._force_inference_output = _force_inference_output
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         bsz, seq_len, h = hidden_states.shape
         ### compute gating score
         hidden_states = hidden_states.view(-1, h)
@@ -362,7 +362,7 @@ class MOEFeedForwardSwiGLU(nn.Module):
         )
         self.num_activated_experts = num_activated_experts
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         wtype = x.dtype
         identity = x
         orig_shape = x.shape
@@ -409,7 +409,7 @@ class TextProjection(nn.Module):
         super().__init__()
         self.linear = nn.Linear(in_features=in_features, out_features=hidden_size, bias=False)
 
-    def forward(self, caption):
+    def forward(self, caption) -> torch.Tensor:
         hidden_states = self.linear(caption)
         return hidden_states
 

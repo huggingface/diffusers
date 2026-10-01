@@ -356,7 +356,7 @@ class PatchEmbed(nn.Module):
         spatial_pos_embed = spatial_pos_embed.reshape(1, -1, spatial_pos_embed.shape[-1])
         return spatial_pos_embed
 
-    def forward(self, latent):
+    def forward(self, latent) -> torch.Tensor:
         if self.pos_embed_max_size is not None:
             height, width = latent.shape[-2:]
         else:
@@ -408,7 +408,7 @@ class LuminaPatchEmbed(nn.Module):
             bias=bias,
         )
 
-    def forward(self, x, freqs_cis):
+    def forward(self, x, freqs_cis) -> tuple[torch.Tensor, torch.Tensor, list[tuple[int, int]], torch.Tensor]:
         """
         Patchifies and embeds the input tensor(s).
 
@@ -517,7 +517,7 @@ class CogVideoXPatchEmbed(nn.Module):
 
         return joint_pos_embedding
 
-    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
+    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor) -> torch.Tensor:
         r"""
         Args:
             text_embeds (`torch.Tensor`):
@@ -1057,7 +1057,7 @@ class TimestepEmbedding(nn.Module):
         else:
             self.post_act = get_activation(post_act_fn)
 
-    def forward(self, sample, condition=None):
+    def forward(self, sample, condition=None) -> torch.Tensor:
         if condition is not None:
             sample = sample + self.cond_proj(condition)
         sample = self.linear_1(sample)
@@ -1109,7 +1109,7 @@ class GaussianFourierProjection(nn.Module):
             self.weight = self.W
             del self.W
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         if self.log:
             x = torch.log(x)
 
@@ -1143,7 +1143,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
         pe[0, :, 1::2] = torch.cos(position * div_term)
         self.register_buffer("pe", pe)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         _, seq_length, _ = x.shape
         x = x + self.pe[:, :seq_length]
         return x
@@ -1191,7 +1191,7 @@ class ImagePositionalEmbeddings(nn.Module):
         self.height_emb = nn.Embedding(self.height, embed_dim)
         self.width_emb = nn.Embedding(self.width, embed_dim)
 
-    def forward(self, index):
+    def forward(self, index) -> torch.Tensor:
         emb = self.emb(index)
 
         height_emb = self.height_emb(torch.arange(self.height, device=index.device).view(1, self.height))
@@ -1242,7 +1242,7 @@ class LabelEmbedding(nn.Module):
         labels = torch.where(drop_ids, self.num_classes, labels)
         return labels
 
-    def forward(self, labels: torch.LongTensor, force_drop_ids=None):
+    def forward(self, labels: torch.LongTensor, force_drop_ids=None) -> torch.Tensor:
         use_dropout = self.dropout_prob > 0
         if (self.training and use_dropout) or (force_drop_ids is not None):
             labels = self.token_drop(labels, force_drop_ids)
@@ -1264,7 +1264,7 @@ class TextImageProjection(nn.Module):
         self.image_embeds = nn.Linear(image_embed_dim, self.num_image_text_embeds * cross_attention_dim)
         self.text_proj = nn.Linear(text_embed_dim, cross_attention_dim)
 
-    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
+    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor) -> torch.Tensor:
         batch_size = text_embeds.shape[0]
 
         # image
@@ -1290,7 +1290,7 @@ class ImageProjection(nn.Module):
         self.image_embeds = nn.Linear(image_embed_dim, self.num_image_text_embeds * cross_attention_dim)
         self.norm = nn.LayerNorm(cross_attention_dim)
 
-    def forward(self, image_embeds: torch.Tensor):
+    def forward(self, image_embeds: torch.Tensor) -> torch.Tensor:
         batch_size = image_embeds.shape[0]
 
         # image
@@ -1308,7 +1308,7 @@ class IPAdapterFullImageProjection(nn.Module):
         self.ff = FeedForward(image_embed_dim, cross_attention_dim, mult=1, activation_fn="gelu")
         self.norm = nn.LayerNorm(cross_attention_dim)
 
-    def forward(self, image_embeds: torch.Tensor):
+    def forward(self, image_embeds: torch.Tensor) -> torch.Tensor:
         return self.norm(self.ff(image_embeds))
 
 
@@ -1322,7 +1322,7 @@ class IPAdapterFaceIDImageProjection(nn.Module):
         self.ff = FeedForward(image_embed_dim, cross_attention_dim * num_tokens, mult=mult, activation_fn="gelu")
         self.norm = nn.LayerNorm(cross_attention_dim)
 
-    def forward(self, image_embeds: torch.Tensor):
+    def forward(self, image_embeds: torch.Tensor) -> torch.Tensor:
         x = self.ff(image_embeds)
         x = x.reshape(-1, self.num_tokens, self.cross_attention_dim)
         return self.norm(x)
@@ -1336,7 +1336,7 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
         self.class_embedder = LabelEmbedding(num_classes, embedding_dim, class_dropout_prob)
 
-    def forward(self, timestep, class_labels, hidden_dtype=None):
+    def forward(self, timestep, class_labels, hidden_dtype=None) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
@@ -1355,7 +1355,7 @@ class CombinedTimestepTextProjEmbeddings(nn.Module):
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
         self.text_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
 
-    def forward(self, timestep, pooled_projection):
+    def forward(self, timestep, pooled_projection) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=pooled_projection.dtype))  # (N, D)
 
@@ -1375,7 +1375,7 @@ class CombinedTimestepGuidanceTextProjEmbeddings(nn.Module):
         self.guidance_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
         self.text_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
 
-    def forward(self, timestep, guidance, pooled_projection):
+    def forward(self, timestep, guidance, pooled_projection) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=pooled_projection.dtype))  # (N, D)
 
@@ -1435,7 +1435,7 @@ class HunyuanDiTAttentionPool(nn.Module):
         self.c_proj = nn.Linear(embed_dim, output_dim or embed_dim)
         self.num_heads = num_heads
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         x = x.permute(1, 0, 2)  # NLC -> LNC
         x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)  # (L+1)NC
         x = x + self.positional_embedding[:, None, :].to(x.dtype)  # (L+1)NC
@@ -1498,7 +1498,7 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
             act_fn="silu_fp32",
         )
 
-    def forward(self, timestep, encoder_hidden_states, image_meta_size, style, hidden_dtype=None):
+    def forward(self, timestep, encoder_hidden_states, image_meta_size, style, hidden_dtype=None) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, 256)
 
@@ -1542,7 +1542,7 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
             ),
         )
 
-    def forward(self, timestep, caption_feat, caption_mask):
+    def forward(self, timestep, caption_feat, caption_mask) -> torch.Tensor:
         # timestep embedding:
         time_freq = self.time_proj(timestep)
         time_embed = self.timestep_embedder(time_freq.to(dtype=caption_feat.dtype))
@@ -1582,7 +1582,7 @@ class MochiCombinedTimestepCaptionEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
         hidden_dtype: torch.dtype | None = None,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         time_proj = self.time_proj(timestep)
         time_emb = self.timestep_embedder(time_proj.to(dtype=hidden_dtype))
 
@@ -1601,7 +1601,7 @@ class TextTimeEmbedding(nn.Module):
         self.proj = nn.Linear(encoder_dim, time_embed_dim)
         self.norm2 = nn.LayerNorm(time_embed_dim)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         hidden_states = self.norm1(hidden_states)
         hidden_states = self.pool(hidden_states)
         hidden_states = self.proj(hidden_states)
@@ -1616,7 +1616,7 @@ class TextImageTimeEmbedding(nn.Module):
         self.text_norm = nn.LayerNorm(time_embed_dim)
         self.image_proj = nn.Linear(image_embed_dim, time_embed_dim)
 
-    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
+    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor) -> torch.Tensor:
         # text
         time_text_embeds = self.text_proj(text_embeds)
         time_text_embeds = self.text_norm(time_text_embeds)
@@ -1633,7 +1633,7 @@ class ImageTimeEmbedding(nn.Module):
         self.image_proj = nn.Linear(image_embed_dim, time_embed_dim)
         self.image_norm = nn.LayerNorm(time_embed_dim)
 
-    def forward(self, image_embeds: torch.Tensor):
+    def forward(self, image_embeds: torch.Tensor) -> torch.Tensor:
         # image
         time_image_embeds = self.image_proj(image_embeds)
         time_image_embeds = self.image_norm(time_image_embeds)
@@ -1663,7 +1663,7 @@ class ImageHintTimeEmbedding(nn.Module):
             nn.Conv2d(256, 4, 3, padding=1),
         )
 
-    def forward(self, image_embeds: torch.Tensor, hint: torch.Tensor):
+    def forward(self, image_embeds: torch.Tensor, hint: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # image
         time_image_embeds = self.image_proj(image_embeds)
         time_image_embeds = self.image_norm(time_image_embeds)
@@ -1684,7 +1684,7 @@ class AttentionPooling(nn.Module):
         self.num_heads = num_heads
         self.dim_per_head = embed_dim // self.num_heads
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         bs, length, width = x.size()
 
         def shape(x):
@@ -1875,7 +1875,7 @@ class GLIGENTextBoundingboxProjection(nn.Module):
         image_masks=None,
         phrases_embeddings=None,
         image_embeddings=None,
-    ):
+    ) -> torch.Tensor:
         masks = masks.unsqueeze(-1)
 
         # embedding position (it may includes padding as placeholder)
@@ -1938,7 +1938,7 @@ class PixArtAlphaCombinedTimestepSizeEmbeddings(nn.Module):
             self.resolution_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
             self.aspect_ratio_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
 
-    def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
+    def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
@@ -1976,7 +1976,7 @@ class PixArtAlphaTextProjection(nn.Module):
             raise ValueError(f"Unknown activation function: {act_fn}")
         self.linear_2 = nn.Linear(in_features=hidden_size, out_features=out_features, bias=True)
 
-    def forward(self, caption):
+    def forward(self, caption) -> torch.Tensor:
         hidden_states = self.linear_1(caption)
         hidden_states = self.act_1(hidden_states)
         hidden_states = self.linear_2(hidden_states)
@@ -2007,7 +2007,7 @@ class IPAdapterPlusImageProjectionBlock(nn.Module):
             FeedForward(embed_dims, embed_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
         )
 
-    def forward(self, x, latents, residual):
+    def forward(self, x, latents, residual) -> torch.Tensor:
         encoder_hidden_states = self.ln0(x)
         latents = self.ln1(latents)
         encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
@@ -2346,7 +2346,7 @@ class MultiIPAdapterImageProjection(nn.Module):
         """Number of IP-Adapters loaded."""
         return len(self.image_projection_layers)
 
-    def forward(self, image_embeds: list[torch.Tensor]):
+    def forward(self, image_embeds: list[torch.Tensor]) -> list[torch.Tensor]:
         projected_image_embeds = []
 
         # currently, we accept `image_embeds` as

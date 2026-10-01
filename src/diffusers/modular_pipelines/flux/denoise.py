@@ -92,7 +92,7 @@ class FluxLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: FluxModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[FluxModularPipeline, BlockState]:
         noise_pred = components.transformer(
             hidden_states=block_state.latents,
             timestep=t.flatten() / 1000,
@@ -174,7 +174,7 @@ class FluxKontextLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: FluxModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[FluxModularPipeline, BlockState]:
         latents = block_state.latents
         latent_model_input = latents
         image_latents = block_state.image_latents
@@ -219,7 +219,9 @@ class FluxLoopAfterDenoiser(ModularPipelineBlocks):
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: FluxModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[FluxModularPipeline, BlockState]:
         # Perform scheduler step using the predicted output
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
@@ -270,7 +272,9 @@ class FluxDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.num_warmup_steps = max(
