@@ -383,6 +383,11 @@ def _load_lora_into_text_encoder(
         # convert state dict
         state_dict = convert_state_dict_to_peft(state_dict)
 
+        # CLIPTextModel is flattened in recent transformers versions, while older
+        # LoRA checkpoints can still contain the 'text_model.' prefix.
+        if not hasattr(text_encoder, "text_model"):
+            state_dict = {k.removeprefix("text_model."): v for k, v in state_dict.items()}
+
         for name, _ in text_encoder.named_modules():
             if name.endswith((".q_proj", ".k_proj", ".v_proj", ".out_proj", ".fc1", ".fc2")):
                 rank_key = f"{name}.lora_B.weight"

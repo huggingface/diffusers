@@ -443,7 +443,7 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
                 "use_prompt_embeddings": False,
                 "perturbed_attn": True,
                 # The only transformer-level deltas from 2.3: the video FFN drops its bias (audio_ff_bias and
-                # use_prompt_adaln_single keep their True defaults for this checkpoint), and 2.5.1+ carries a
+                # use_prompt_adaln_single keep their True defaults for this checkpoint), and 2.5 carries a
                 # learned keyframe absolute-position embedding.
                 "ff_bias": False,
                 "use_keyframes_abs_pos_embedding": True,
@@ -1222,7 +1222,7 @@ def get_ltx2_spatial_latent_upsampler_config(version: str):
             "rational_spatial_scale": 2.0,
             "use_rational_resampler": True,
         }
-    elif version == "2.3":
+    elif version in ("2.3", "2.5"):
         config = {
             "in_channels": 128,
             "mid_channels": 1024,
@@ -1238,9 +1238,21 @@ def get_ltx2_spatial_latent_upsampler_config(version: str):
     return config
 
 
-def convert_ltx2_spatial_latent_upsampler(
-    original_state_dict: dict[str, Any], config: dict[str, Any], dtype: torch.dtype
-):
+def get_ltx2_temporal_latent_upsampler_config(version: str):
+    if version != "2.5":
+        raise ValueError(f"Unsupported version: {version}")
+    # The temporal x2 upsampler is narrower than its spatial sibling and pixel-shuffles along time only.
+    return {
+        "in_channels": 128,
+        "mid_channels": 512,
+        "num_blocks_per_stage": 4,
+        "dims": 3,
+        "spatial_upsample": False,
+        "temporal_upsample": True,
+    }
+
+
+def convert_ltx2_latent_upsampler(original_state_dict: dict[str, Any], config: dict[str, Any], dtype: torch.dtype):
     with init_empty_weights():
         latent_upsampler = LTX2LatentUpsamplerModel(**config)
 
@@ -1380,6 +1392,12 @@ def get_args():
         ),
     )
     parser.add_argument(
+        "--temporal_latent_upsampler_filename",
+        default="ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors",
+        type=none_or_str,
+        help="Temporal x2 latent upsampler filename (LTX-2.5, used by the DFR pipeline's temporal refine rounds)",
+    )
+    parser.add_argument(
         "--latent_upsampler_filename",
         default="ltx-2-spatial-upscaler-x2-1.0.safetensors",
         type=none_or_str,
@@ -1410,6 +1428,11 @@ def get_args():
     parser.add_argument("--vocoder", action="store_true", help="Whether to convert the vocoder model")
     parser.add_argument("--text_encoder", action="store_true", help="Whether to conver the text encoder")
     parser.add_argument("--latent_upsampler", action="store_true", help="Whether to convert the latent upsampler")
+    parser.add_argument(
+        "--temporal_latent_upsampler",
+        action="store_true",
+        help="Whether to convert the temporal x2 latent upsampler (LTX-2.5)",
+    )
     parser.add_argument(
         "--full_pipeline",
         action="store_true",
@@ -1608,13 +1631,24 @@ def main(args):
             repo_id=args.original_state_dict_repo_id, filename=args.latent_upsampler_filename
         )
         latent_upsampler_config = get_ltx2_spatial_latent_upsampler_config(args.version)
-        latent_upsampler = convert_ltx2_spatial_latent_upsampler(
+        latent_upsampler = convert_ltx2_latent_upsampler(
             original_latent_upsampler_ckpt,
             latent_upsampler_config,
             dtype=vae_dtype,
         )
         if not args.full_pipeline and not args.upsample_pipeline:
             latent_upsampler.save_pretrained(os.path.join(args.output_path, "latent_upsampler"))
+
+    if args.temporal_latent_upsampler:
+        original_temporal_upsampler_ckpt = load_hub_or_local_checkpoint(
+            repo_id=args.original_state_dict_repo_id, filename=args.temporal_latent_upsampler_filename
+        )
+        temporal_latent_upsampler = convert_ltx2_latent_upsampler(
+            original_temporal_upsampler_ckpt,
+            get_ltx2_temporal_latent_upsampler_config(args.version),
+            dtype=vae_dtype,
+        )
+        temporal_latent_upsampler.save_pretrained(os.path.join(args.output_path, "temporal_latent_upsampler"))
 
     if args.full_pipeline:
         is_distilled_ckpt = "distilled" in args.combined_filename

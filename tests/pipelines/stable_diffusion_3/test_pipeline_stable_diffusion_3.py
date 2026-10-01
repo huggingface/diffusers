@@ -1,7 +1,7 @@
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import (
     AutoConfig,
@@ -15,22 +15,25 @@ from transformers import (
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_big_accelerator,
     slow,
     torch_device,
 )
-from ..test_pipelines_common import (
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
     PipelineTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,
 )
 
 
-class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class StableDiffusion3PipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusion3Pipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
             "prompt",
             "height",
@@ -41,9 +44,8 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "negative_prompt_embeds",
         ]
     )
-    batch_params = frozenset(["prompt", "negative_prompt"])
-    test_layerwise_casting = True
-    test_group_offloading = True
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -118,48 +120,39 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "feature_extractor": None,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestStableDiffusion3Pipeline(StableDiffusion3PipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(torch_device)
-        image = pipe(**inputs).images[0]
+        image = pipe(**self.get_dummy_inputs()).images[0]
         generated_slice = image.flatten()
-        generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
 
         # fmt: off
-        expected_slice = np.array([0.5034, 0.4693, 0.4877, 0.5052, 0.2697, 0.4615, 0.5329, 0.4330, 0.6825, 0.5969, 0.3924, 0.5542, 0.5454, 0.4295, 0.4178, 0.4805])
+        expected_slice = torch.tensor([0.5034, 0.5052, 0.5329, 0.3051, 0.3103, 0.2199, 0.2012, 0.2736, 0.4372, 0.5862, 0.5706, 0.5178, 0.5872, 0.5969, 0.5454, 0.4805])
         # fmt: on
 
-        self.assertTrue(
-            np.allclose(generated_slice, expected_slice, atol=1e-3), "Output does not match expected slice."
-        )
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3, msg="Output does not match expected slice.")
 
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+    def test_fused_qkv_projections(self, base_pipe_output):
+        # The unfused reference is the class-cached `base_pipe_output`, so the runs below reseed the global RNG to
+        # reproduce it and the only remaining difference comes from the projection fusion itself.
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        original_image_slice = image[0, -3:, -3:, -1]
+        original_image_slice = base_pipe_output[0, -1, -3:, -3:]
 
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
@@ -171,32 +164,27 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             pipe.transformer, pipe.transformer.original_attn_processors
         ), "Something wrong with the attention processors concerning the fused QKV projections."
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
+        torch.manual_seed(0)
+        image_slice_fused = pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
 
         pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
+        torch.manual_seed(0)
+        image_slice_disabled = pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
+        assert torch.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
             "Fusion of QKV projections shouldn't affect the outputs."
         )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
+        assert torch.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
             "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
         )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+        assert torch.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
             "Original outputs should match when fused QKV projections are disabled."
         )
 
     def test_skip_guidance_layers(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
 
         output_full = pipe(**inputs)[0]
 
@@ -204,11 +192,8 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         inputs_with_skip["skip_guidance_layers"] = [0]
         output_skip = pipe(**inputs_with_skip)[0]
 
-        self.assertFalse(
-            np.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
-        )
-
-        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
+        assert not torch.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        assert output_full.shape == output_skip.shape, "Outputs should have the same shape"
 
         inputs["num_images_per_prompt"] = 2
         output_full = pipe(**inputs)[0]
@@ -217,34 +202,30 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         inputs_with_skip["skip_guidance_layers"] = [0]
         output_skip = pipe(**inputs_with_skip)[0]
 
-        self.assertFalse(
-            np.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
-        )
+        assert not torch.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        assert output_full.shape == output_skip.shape, "Outputs should have the same shape"
 
-        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
+
+class TestStableDiffusion3PipelineMemory(StableDiffusion3PipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SD3 pipeline."""
 
 
 @slow
 @require_big_accelerator
-class StableDiffusion3PipelineSlowTests(unittest.TestCase):
+class TestStableDiffusion3PipelineSlow:
     pipeline_class = StableDiffusion3Pipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
+        generator = torch.Generator(device="cpu").manual_seed(seed)
 
         return {
             "prompt": "A photo of a cat",

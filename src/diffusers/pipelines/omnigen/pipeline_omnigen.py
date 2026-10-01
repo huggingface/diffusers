@@ -116,9 +116,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class OmniGenPipeline(
-    DiffusionPipeline,
-):
+class OmniGenPipeline(DiffusionPipeline):
     r"""
     The OmniGen pipeline for multimodal-to-image generation.
 
@@ -295,7 +293,7 @@ class OmniGenPipeline(
         return_dict: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> ImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -358,6 +356,10 @@ class OmniGenPipeline(
         Returns: [`~pipelines.ImagePipelineOutput`] or `tuple`:
             If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is returned
             where the first element is a list with the generated images.
+
+        Returns:
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
         height = height or self.default_sample_size * self.vae_scale_factor

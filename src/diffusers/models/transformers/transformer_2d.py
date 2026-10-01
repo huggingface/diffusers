@@ -332,7 +332,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         attention_mask: torch.Tensor | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         return_dict: bool = True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`Transformer2DModel`] forward method.
 

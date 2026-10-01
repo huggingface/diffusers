@@ -24,7 +24,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Union, get_args, get_origin, get_type_hints
 
-import httpx
 import numpy as np
 import PIL.Image
 import requests
@@ -42,6 +41,7 @@ from huggingface_hub.utils import (
     HfHubHTTPError,
     LocalEntryNotFoundError,
     OfflineModeIsEnabled,
+    httpx,
     validate_hf_hub_args,
 )
 from packaging import version
@@ -59,6 +59,7 @@ from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
+    TRANSFORMERS_COMPONENT_AUX_FILES,
     BaseOutput,
     PushToHubMixin,
     _get_detailed_type,
@@ -75,7 +76,12 @@ from ..utils import (
     numpy_to_pil,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
-from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import (
+    _check_legacy_sharding_variant_format,
+    _resolve_revision,
+    load_or_create_model_card,
+    populate_model_card,
+)
 from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
 
 
@@ -87,7 +93,6 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
-    TRANSFORMERS_COMPONENT_AUX_FILES,
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
@@ -1182,6 +1187,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 automatically detect the available accelerator and use.
         """
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
+        self._maybe_raise_error_if_tensor_parallel_active()
 
         is_pipeline_device_mapped = self._is_pipeline_device_mapped()
         if is_pipeline_device_mapped:
@@ -1300,6 +1306,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 automatically detect the available accelerator and use.
         """
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
+        self._maybe_raise_error_if_tensor_parallel_active()
 
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
@@ -1592,6 +1599,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if "dduf_file" in kwargs:
             raise ValueError(_DDUF_REMOVAL_MESSAGE)
+
+        # Resolve the revision only once
+        revision = _resolve_revision(
+            pretrained_model_name,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
 
         allow_pickle = True if (use_safetensors is None or use_safetensors is False) else False
         use_safetensors = use_safetensors if use_safetensors is not None else True
@@ -2227,6 +2243,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     )
                 return True
         return False
+
+    def _maybe_raise_error_if_tensor_parallel_active(self) -> None:
+        """Raise if any component is sharded with tensor parallelism, which CPU offloading cannot be applied on top of.
+
+        A tensor-parallel component's parameters are `DTensor` shards tied to that rank's device and process group;
+        moving them to CPU and back, as the offload hooks do, is not supported.
+        """
+        from ..hooks.tensor_parallel import _raise_if_tensor_parallel
+
+        for component in self.components.values():
+            if isinstance(component, torch.nn.Module):
+                _raise_if_tensor_parallel(
+                    component,
+                    "be CPU-offloaded (model or sequential)",
+                    "Tensor parallelism already keeps only one shard of each weight per rank, so offloading is not "
+                    "needed on top of it.",
+                )
 
     def _is_pipeline_device_mapped(self):
         # We support passing `device_map="cuda"`, for example. This is helpful, in case
