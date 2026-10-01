@@ -13,7 +13,12 @@ from diffusers import (
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+    TaylorSeerCacheTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -40,13 +45,13 @@ class FluxControlNetInpaintPipelineTesterConfig(BasePipelineTesterConfig):
     batch_input_params = frozenset(["prompt", "image", "mask_image", "control_image"])
     output_shape = (3, 32, 32)
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
         transformer = FluxTransformer2DModel(
             patch_size=1,
             in_channels=8,
-            num_layers=1,
-            num_single_layers=1,
+            num_layers=num_layers,
+            num_single_layers=num_single_layers,
             attention_head_dim=16,
             num_attention_heads=2,
             joint_attention_dim=32,
@@ -205,3 +210,9 @@ class TestFluxControlNetInpaintPipeline(FluxControlNetInpaintPipelineTesterConfi
 
 class TestFluxControlNetInpaintPipelineMemory(FluxControlNetInpaintPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux ControlNet inpaint pipeline."""
+
+
+class TestFluxControlNetInpaintPipelineTaylorSeerCache(
+    FluxControlNetInpaintPipelineTesterConfig, TaylorSeerCacheTesterMixin
+):
+    """TaylorSeer cache tests for the Flux ControlNet inpaint pipeline."""

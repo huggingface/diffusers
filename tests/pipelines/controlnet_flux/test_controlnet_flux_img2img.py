@@ -15,6 +15,7 @@ from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
     PipelineTesterMixin,
+    TaylorSeerCacheTesterMixin,
     check_qkv_fused_layers_exist,
 )
 
@@ -38,13 +39,13 @@ class FluxControlNetImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
     batch_input_params = frozenset(["prompt", "image", "control_image"])
     output_shape = (3, 32, 32)
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
         transformer = FluxTransformer2DModel(
             patch_size=1,
             in_channels=4,
-            num_layers=1,
-            num_single_layers=1,
+            num_layers=num_layers,
+            num_single_layers=num_single_layers,
             attention_head_dim=16,
             num_attention_heads=2,
             joint_attention_dim=32,
@@ -235,3 +236,9 @@ class TestFluxControlNetImg2ImgPipeline(FluxControlNetImg2ImgPipelineTesterConfi
 
 class TestFluxControlNetImg2ImgPipelineMemory(FluxControlNetImg2ImgPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux ControlNet img2img pipeline."""
+
+
+class TestFluxControlNetImg2ImgPipelineTaylorSeerCache(
+    FluxControlNetImg2ImgPipelineTesterConfig, TaylorSeerCacheTesterMixin
+):
+    """TaylorSeer cache tests for the Flux ControlNet img2img pipeline."""

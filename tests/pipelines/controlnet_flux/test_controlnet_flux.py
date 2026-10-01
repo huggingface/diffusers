@@ -41,7 +41,12 @@ from ...testing_utils import (
     torch_device,
 )
 from ..flux.testing_utils import FluxIPAdapterTesterMixin
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+    TaylorSeerCacheTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -55,13 +60,13 @@ class FluxControlNetPipelineTesterConfig(BasePipelineTesterConfig):
     batch_input_params = frozenset(["prompt"])
     output_shape = (3, 32, 32)
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
         transformer = FluxTransformer2DModel(
             patch_size=1,
             in_channels=16,
-            num_layers=1,
-            num_single_layers=1,
+            num_layers=num_layers,
+            num_single_layers=num_single_layers,
             attention_head_dim=16,
             num_attention_heads=2,
             joint_attention_dim=32,
@@ -206,6 +211,10 @@ class TestFluxControlNetPipelineIPAdapter(FluxControlNetPipelineTesterConfig, Fl
 
 class TestFluxControlNetPipelineMemory(FluxControlNetPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux ControlNet pipeline."""
+
+
+class TestFluxControlNetPipelineTaylorSeerCache(FluxControlNetPipelineTesterConfig, TaylorSeerCacheTesterMixin):
+    """TaylorSeer cache tests for the Flux ControlNet pipeline."""
 
 
 @nightly
