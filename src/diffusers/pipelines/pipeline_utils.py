@@ -59,6 +59,7 @@ from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
+    TRANSFORMERS_COMPONENT_AUX_FILES,
     BaseOutput,
     PushToHubMixin,
     _get_detailed_type,
@@ -92,7 +93,6 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
-    TRANSFORMERS_COMPONENT_AUX_FILES,
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
