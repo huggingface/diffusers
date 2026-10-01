@@ -1187,6 +1187,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 automatically detect the available accelerator and use.
         """
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
+        self._maybe_raise_error_if_tensor_parallel_active()
 
         is_pipeline_device_mapped = self._is_pipeline_device_mapped()
         if is_pipeline_device_mapped:
@@ -1305,6 +1306,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 automatically detect the available accelerator and use.
         """
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
+        self._maybe_raise_error_if_tensor_parallel_active()
 
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
@@ -2241,6 +2243,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     )
                 return True
         return False
+
+    def _maybe_raise_error_if_tensor_parallel_active(self) -> None:
+        """Raise if any component is sharded with tensor parallelism, which CPU offloading cannot be applied on top of.
+
+        A tensor-parallel component's parameters are `DTensor` shards tied to that rank's device and process group;
+        moving them to CPU and back, as the offload hooks do, is not supported.
+        """
+        from ..hooks.tensor_parallel import _raise_if_tensor_parallel
+
+        for component in self.components.values():
+            if isinstance(component, torch.nn.Module):
+                _raise_if_tensor_parallel(
+                    component,
+                    "be CPU-offloaded (model or sequential)",
+                    "Tensor parallelism already keeps only one shard of each weight per rank, so offloading is not "
+                    "needed on top of it.",
+                )
 
     def _is_pipeline_device_mapped(self):
         # We support passing `device_map="cuda"`, for example. This is helpful, in case
