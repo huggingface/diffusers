@@ -16,6 +16,7 @@ from ..testing_utils import (
     MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
+    TaylorSeerCacheTesterMixin,
 )
 from .testing_utils import FluxIPAdapterTesterMixin
 
@@ -186,3 +187,7 @@ class TestFluxKontextPipelineFasterCache(FluxKontextPipelineTesterConfig, Faster
         "attention_weight_callback": lambda _: 0.5,
         "is_guidance_distilled": True,
     }
+
+
+class TestFluxKontextPipelineTaylorSeerCache(FluxKontextPipelineTesterConfig, TaylorSeerCacheTesterMixin):
+    """TaylorSeer cache tests for the Flux Kontext pipeline."""
