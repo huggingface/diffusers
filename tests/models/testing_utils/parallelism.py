@@ -23,6 +23,7 @@ import torch.multiprocessing as mp
 
 from diffusers.models._modeling_parallel import ContextParallelConfig, TensorParallelConfig
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
 
 from ...testing_utils import (
     is_attention,
@@ -32,6 +33,7 @@ from ...testing_utils import (
     require_torch_multi_accelerator,
     torch_device,
 )
+from .common import calculate_expected_num_shards, compute_module_persistent_sizes
 from .utils import _maybe_cast_to_bf16
 
 
@@ -394,7 +396,7 @@ class TensorParallelTesterMixin:
     def test_tensor_parallel_batch_inputs(self):
         self.test_tensor_parallel_inference(batch_size=2)
 
-    def _tp_checkpoint_and_reference(self, tmp_path, world_size):
+    def _tp_checkpoint_and_reference(self, tmp_path, world_size, sharded):
         """Write a checkpoint for the sharded loaders to read, and record its single-device output.
 
         Returns `(checkpoint_dir, cpu_inputs, reference_output)`, or skips when the model cannot be sharded
@@ -416,15 +418,24 @@ class TensorParallelTesterMixin:
             reference = model(**inputs_dict, return_dict=False)[0].float().cpu()
 
         checkpoint_dir = str(tmp_path / "checkpoint")
-        model.save_pretrained(checkpoint_dir)
+        max_shard_size = int(compute_module_persistent_sizes(model)[""] * 0.75) if sharded else "5GB"
+        model.save_pretrained(checkpoint_dir, max_shard_size=max_shard_size)
+
+        if sharded:
+            index_path = os.path.join(checkpoint_dir, SAFE_WEIGHTS_INDEX_NAME)
+            assert os.path.exists(index_path)
+            expected_num_shards = calculate_expected_num_shards(index_path)
+            actual_num_shards = len([file for file in os.listdir(checkpoint_dir) if file.endswith(".safetensors")])
+            assert actual_num_shards == expected_num_shards > 1
 
         inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
         return checkpoint_dir, inputs_dict, reference
 
-    def test_tensor_parallel_from_pretrained(self, tmp_path):
+    @pytest.mark.parametrize("sharded", [False, True], ids=["unsharded", "sharded"])
+    def test_tensor_parallel_from_pretrained(self, tmp_path, sharded):
         """`from_pretrained(..., parallel_config=...)` shards while reading and matches the single-device reference."""
         world_size = 2
-        checkpoint_dir, inputs_dict, reference = self._tp_checkpoint_and_reference(tmp_path, world_size)
+        checkpoint_dir, inputs_dict, reference = self._tp_checkpoint_and_reference(tmp_path, world_size, sharded)
 
         manager = mp.Manager()
         return_dict = manager.dict()
