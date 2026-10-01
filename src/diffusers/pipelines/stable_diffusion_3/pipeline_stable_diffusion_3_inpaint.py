@@ -955,7 +955,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 256,
         mu: float | None = None,
-    ):
+    ) -> StableDiffusion3PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
