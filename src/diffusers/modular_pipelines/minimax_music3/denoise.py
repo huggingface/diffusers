@@ -74,7 +74,9 @@ class MiniMaxMusic3ChunkConditionStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxMusic3ModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: MiniMaxMusic3ModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[MiniMaxMusic3ModularPipeline, BlockState]:
         device = components._execution_device
 
         chunk_start = block_state.chunk_starts[k]
@@ -111,7 +113,9 @@ class MiniMaxMusic3ChunkPrepareLatentsStep(ModularPipelineBlocks):
         return [InputParam.template("generator")]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxMusic3ModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: MiniMaxMusic3ModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[MiniMaxMusic3ModularPipeline, BlockState]:
         device = components._execution_device
 
         latents = randn_tensor(
@@ -148,7 +152,9 @@ class MiniMaxMusic3ChunkSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxMusic3ModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: MiniMaxMusic3ModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[MiniMaxMusic3ModularPipeline, BlockState]:
         device = components._execution_device
 
         sigmas = np.linspace(1.0, 1.0 / block_state.num_inference_steps, block_state.num_inference_steps)
@@ -194,7 +200,9 @@ class MiniMaxMusic3ChunkDenoiseInner(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxMusic3ModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: MiniMaxMusic3ModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[MiniMaxMusic3ModularPipeline, BlockState]:
         latents = block_state.latents
         timesteps = block_state.timesteps
         overlap = block_state.overlap
@@ -246,7 +254,9 @@ class MiniMaxMusic3ChunkUpdateStep(ModularPipelineBlocks):
         )
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxMusic3ModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: MiniMaxMusic3ModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[MiniMaxMusic3ModularPipeline, BlockState]:
         latents = block_state.latents
         if block_state.overlap > 0:
             latents[..., : block_state.overlap] = block_state.previous_latent[..., : block_state.overlap]
@@ -292,7 +302,9 @@ class MiniMaxMusic3ChunkLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxMusic3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxMusic3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxMusic3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.latent_chunks = []

@@ -78,7 +78,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str | None = "pil",
         return_dict: bool = True,
-    ) -> tuple | ImagePipelineOutput:
+    ) -> ImagePipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

@@ -169,7 +169,7 @@ class QwenImage21CausalConv3d(nn.Conv2d):
         self._padding = (self.padding[1], self.padding[1], self.padding[0], self.padding[0])
         self.padding = (0, 0)
 
-    def forward(self, x, cache_x=None):
+    def forward(self, x, cache_x=None) -> torch.Tensor:
         padding = list(self._padding)
         if cache_x is not None:
             raise ValueError(
@@ -206,7 +206,7 @@ class QwenImage21RMS_norm(nn.Module):
         self.gamma = nn.Parameter(torch.ones(shape))
         self.bias = nn.Parameter(torch.zeros(shape)) if bias else 0.0
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         needs_fp32_normalize = x.dtype in (torch.float16, torch.bfloat16) or any(
             t in str(x.dtype) for t in ("float4_", "float8_")
         )
@@ -229,7 +229,7 @@ class QwenImage21Upsample(nn.Upsample):
         torch.Tensor: Upsampled tensor with the same data type as the input.
     """
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         return super().forward(x.float()).type_as(x)
 
 
@@ -278,7 +278,7 @@ class QwenImage21Resample(nn.Module):
         else:
             self.resample = nn.Identity()
 
-    def forward(self, x, feat_cache=None, feat_idx=None):
+    def forward(self, x, feat_cache=None, feat_idx=None) -> torch.Tensor:
         if feat_idx is None:
             feat_idx = [0]
         b, c, t, h, w = x.size()
@@ -355,7 +355,7 @@ class QwenImage21ResidualBlock(nn.Module):
         self.conv2 = QwenImage21CausalConv3d(out_dim, out_dim, 3, padding=1)
         self.conv_shortcut = QwenImage21CausalConv3d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
 
-    def forward(self, x, feat_cache=None, feat_idx=None):
+    def forward(self, x, feat_cache=None, feat_idx=None) -> torch.Tensor:
         if feat_idx is None:
             feat_idx = [0]
         # Apply shortcut connection
@@ -418,7 +418,7 @@ class QwenImage21AttentionBlock(nn.Module):
         self.to_qkv = nn.Conv2d(dim, dim * 3, 1)
         self.proj = nn.Conv2d(dim, dim, 1)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         identity = x
         batch_size, channels, time, height, width = x.size()
 
@@ -470,7 +470,7 @@ class QwenImage21MidBlock(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, x, feat_cache=None, feat_idx=None):
+    def forward(self, x, feat_cache=None, feat_idx=None) -> torch.Tensor:
         if feat_idx is None:
             feat_idx = [0]
         # First residual block
@@ -512,7 +512,7 @@ class QwenImage21ResidualDownBlock(nn.Module):
         else:
             self.downsampler = None
 
-    def forward(self, x, feat_cache=None, feat_idx=None):
+    def forward(self, x, feat_cache=None, feat_idx=None) -> torch.Tensor:
         if feat_idx is None:
             feat_idx = [0]
         x_copy = x.clone()
@@ -603,7 +603,7 @@ class QwenImage21Encoder3d(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, x, feat_cache=None, feat_idx=None):
+    def forward(self, x, feat_cache=None, feat_idx=None) -> torch.Tensor:
         if feat_idx is None:
             feat_idx = [0]
         if feat_cache is not None:
@@ -700,7 +700,7 @@ class QwenImage21ResidualUpBlock(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, x, feat_cache=None, feat_idx=None, first_chunk=False):
+    def forward(self, x, feat_cache=None, feat_idx=None, first_chunk=False) -> torch.Tensor:
         if feat_idx is None:
             feat_idx = [0]
         """
@@ -775,7 +775,7 @@ class QwenImage21UpBlock(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, x, feat_cache=None, feat_idx=None, first_chunk=None):
+    def forward(self, x, feat_cache=None, feat_idx=None, first_chunk=None) -> torch.Tensor:
         if feat_idx is None:
             feat_idx = [0]
         """
@@ -889,7 +889,7 @@ class QwenImage21Decoder3d(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, x, feat_cache=None, feat_idx=None, first_chunk=False):
+    def forward(self, x, feat_cache=None, feat_idx=None, first_chunk=False) -> torch.Tensor:
         if feat_idx is None:
             feat_idx = [0]
         ## conv1

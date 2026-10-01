@@ -148,7 +148,9 @@ class LTXTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -235,7 +237,9 @@ class LTXVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
