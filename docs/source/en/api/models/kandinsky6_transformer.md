@@ -32,10 +32,6 @@ transformer = Kandinsky6Transformer3DModel.from_pretrained(
   - all
   - forward
 
-## Kandinsky6Transformer3DModelOutput
-
-[[autodoc]] models.transformers.transformer_kandinsky6.Kandinsky6Transformer3DModelOutput
-
 ## Kandinsky6SRTransformer3DModel
 
 The text-free transformer used by [`Kandinsky6SRPipeline`] to refine one tile of the upscaled video at a time.

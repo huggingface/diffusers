@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 from typing import Any
 
 import torch
@@ -26,28 +25,12 @@ from torch.nn.attention.flex_attention import BlockMask
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import BaseOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
 from ..cache_utils import CacheMixin
-from ..embeddings import get_timestep_embedding
+from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin, get_parameter_dtype
-
-
-@dataclass
-class Kandinsky6Transformer3DModelOutput(BaseOutput):
-    r"""
-    Output of [`Kandinsky6Transformer3DModel`].
-
-    Args:
-        sample (`torch.Tensor` of shape `(batch_size, num_frames, height, width, out_visual_dim)`):
-            The predicted video velocity, in the unpatchified `(B, T, H, W, C)` latent layout.
-        audio_sample (`torch.Tensor` of shape `(batch_size, audio_length, out_audio_dim)`, *optional*):
-            The predicted audio velocity. `None` when no `audio_hidden_states` were passed.
-    """
-
-    sample: torch.Tensor
-    audio_sample: torch.Tensor | None = None
+from .transformer_ltx2 import AudioVisualModelOutput
 
 
 def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
@@ -114,7 +97,8 @@ def nabla_block_mask(
     thr: float = 0.9,
     block_size: int = 64,
 ) -> BlockMask:
-    """Build a dynamic NABLA block mask from query/key statistics and an STA prior."""
+    """Build a dynamic NABLA block mask from query/key statistics and an STA (Sliding-Tile Attention, see
+    https://huggingface.co/papers/2502.04507) prior."""
     B, h, S, D = q.shape
     s1 = S // block_size
     qa = q.reshape(B, h, s1, block_size, D).mean(-2)
@@ -153,12 +137,12 @@ class Kandinsky6RoPE1D(nn.Module):
         self.max_period = max_period
         self.freqs_scaling = freqs_scaling
         freq = get_freqs(dim // 2, max_period) * freqs_scaling
-        self.register_buffer("args", torch.outer(torch.arange(max_pos, dtype=freq.dtype), freq), persistent=False)
+        self.register_buffer("angles", torch.outer(torch.arange(max_pos, dtype=freq.dtype), freq), persistent=False)
 
     def forward(self, pos: Tensor) -> Tensor:
         # RoPE tables are fp32; keep trig in fp32.
-        args = self.args[pos]  # (seq_len, dim//2)
-        rope = torch.stack([torch.cos(args), -torch.sin(args), torch.sin(args), torch.cos(args)], dim=-1)
+        angles = self.angles[pos]  # (seq_len, dim//2)
+        rope = torch.stack([torch.cos(angles), -torch.sin(angles), torch.sin(angles), torch.cos(angles)], dim=-1)
         return rope.view(*rope.shape[:-1], 2, 2).unsqueeze(-4)
 
 
@@ -177,7 +161,9 @@ class Kandinsky6RoPE3D(nn.Module):
         self.max_period = max_period
         for i, (d, mp) in enumerate(zip(axes_dims, max_pos)):
             freq = get_freqs(d // 2, max_period)
-            self.register_buffer(f"args_{i}", torch.outer(torch.arange(mp, dtype=freq.dtype), freq), persistent=False)
+            self.register_buffer(
+                f"angles_{i}", torch.outer(torch.arange(mp, dtype=freq.dtype), freq), persistent=False
+            )
 
     def forward(
         self,
@@ -186,38 +172,22 @@ class Kandinsky6RoPE3D(nn.Module):
     ) -> Tensor:
         # `pos` holds one index tensor per axis; the grid size is implied by their lengths.
         num_frames, height, width = (int(axis_pos.shape[0]) for axis_pos in pos)
-        args_t = self.args_0[pos[0]] / scale_factor[0]  # (T, d//2)
-        args_h = self.args_1[pos[1]] / scale_factor[1]  # (H, d//2)
-        args_w = self.args_2[pos[2]] / scale_factor[2]  # (W, d//2)
+        angles_t = self.angles_0[pos[0]] / scale_factor[0]  # (T, d//2)
+        angles_h = self.angles_1[pos[1]] / scale_factor[1]  # (H, d//2)
+        angles_w = self.angles_2[pos[2]] / scale_factor[2]  # (W, d//2)
 
-        args = torch.cat(
+        angles = torch.cat(
             [
-                args_t.view(num_frames, 1, 1, -1).expand(num_frames, height, width, -1),
-                args_h.view(1, height, 1, -1).expand(num_frames, height, width, -1),
-                args_w.view(1, 1, width, -1).expand(num_frames, height, width, -1),
+                angles_t.view(num_frames, 1, 1, -1).expand(num_frames, height, width, -1),
+                angles_h.view(1, height, 1, -1).expand(num_frames, height, width, -1),
+                angles_w.view(1, 1, width, -1).expand(num_frames, height, width, -1),
             ],
             dim=-1,
         )
-        cos, sin = torch.cos(args), torch.sin(args)
+        cos, sin = torch.cos(angles), torch.sin(angles)
         rope = torch.stack([cos, -sin, sin, cos], dim=-1)  # (T, H, W, total_dim, 4)
         rope = rope.view(*rope.shape[:-1], 2, 2)  # (T, H, W, total_dim, 2, 2)
         return rope.unsqueeze(-4)  # (T, H, W, 1, total_dim, 2, 2)
-
-
-# Diffusers-style K6 transformer components.
-#
-# The classes use the same inner-module vocabulary as the Diffusers Kandinsky5
-# transformer (for example ``in_layer``, ``modulation``, ``self_attention`` and
-# ``feed_forward``). Checkpoint conversion maps the native K6 names to this
-# public Diffusers layout.
-
-
-_MASKED_ATTENTION_BACKENDS = {
-    "flash": "flash_varlen",
-    "_flash_3": "_flash_varlen_3",
-    "sage": "sage_varlen",
-    "native": "native",
-}
 
 
 class Kandinsky6AttnProcessor:
@@ -231,7 +201,6 @@ class Kandinsky6AttnProcessor:
     _parallel_config = None
 
     def __init__(self, attention_backend=None, parallel_config=None):
-        self._masked = False
         self._attention_backend = attention_backend
         self._parallel_config = parallel_config
 
@@ -297,24 +266,19 @@ class Kandinsky6AttnProcessor:
 class Kandinsky6TimeEmbeddings(nn.Module):
     """Sinusoidal timestep embedding with a K6-compatible parameter layout."""
 
-    def __init__(self, model_dim: int, time_dim: int, max_period: float = 10000.0):
+    def __init__(self, model_dim: int, time_dim: int):
         super().__init__()
         if model_dim % 2:
             raise ValueError("model_dim must be even")
-        self.model_dim = model_dim
-        self.max_period = max_period
-        self.in_layer = nn.Linear(model_dim, time_dim)
-        self.activation = nn.SiLU()
-        self.out_layer = nn.Linear(time_dim, time_dim)
+        self.time_proj = Timesteps(num_channels=model_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=model_dim, time_embed_dim=time_dim, act_fn="silu")
 
     def forward(self, timestep: Tensor) -> Tensor:
         # The sinusoidal embedding is float32; `_keep_in_fp32_modules` keeps these layers float32 under
         # `from_pretrained(torch_dtype=...)`, and the cast aligns the input with whatever dtype they hold.
-        embed = get_timestep_embedding(
-            timestep, self.model_dim, flip_sin_to_cos=True, downscale_freq_shift=0, max_period=self.max_period
-        )
-        embed = embed.to(get_parameter_dtype(self.in_layer))
-        return self.out_layer(self.activation(self.in_layer(embed)))
+        embed = self.time_proj(timestep)
+        embed = embed.to(get_parameter_dtype(self.timestep_embedder))
+        return self.timestep_embedder(embed)
 
 
 class Kandinsky6TextEmbeddings(nn.Module):
@@ -403,7 +367,6 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         self.text_token_padding = text_token_padding
         self.set_processor(processor or self._default_processor_cls())
         if self.text_token_padding:
-            self.processor._masked = True
             self.processor._attention_backend = AttentionBackendName.NATIVE
 
     def forward(
@@ -568,8 +531,10 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
         fix_modulation: bool = False,
     ):
         super().__init__()
-        self.videoT = Kandinsky6TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim, text_token_padding)
-        self.audioT = Kandinsky6TransformerDecoderBlock(
+        self.video_dec_block = Kandinsky6TransformerDecoderBlock(
+            model_dim, time_dim, ff_dim, head_dim, text_token_padding
+        )
+        self.audio_dec_block = Kandinsky6TransformerDecoderBlock(
             model_dim_a, time_dim_a, ff_dim_a, head_dim_a, text_token_padding
         )
         self.va_cross_attention = Kandinsky6Attention(
@@ -614,39 +579,39 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
     ) -> tuple[Tensor | None, Tensor | None]:
         t_v, t_a = time_embed
         if vis is not None:
-            sa_p, ca_p, ff_p = torch.chunk(self.videoT.visual_modulation(t_v), 3, dim=-1)
+            sa_p, ca_p, ff_p = torch.chunk(self.video_dec_block.visual_modulation(t_v), 3, dim=-1)
             shift, scale, gate = torch.chunk(sa_p, 3, dim=-1)
             vis = apply_gate_sum(
                 vis,
-                self.videoT.self_attention(
-                    apply_scale_shift(self.videoT.self_attention_norm(vis.float()), vis, scale, shift),
+                self.video_dec_block.self_attention(
+                    apply_scale_shift(self.video_dec_block.self_attention_norm(vis.float()), vis, scale, shift),
                     rotary_emb=vis_rope,
                     sparse_params=sparse_params,
                 ),
                 gate,
             ).type_as(vis)
             shift, scale, gate_v = torch.chunk(ca_p, 3, dim=-1)
-            vis_pre_ca = apply_scale_shift(self.videoT.cross_attention_norm(vis.float()), vis, scale, shift)
-            vis_out_t = self.videoT.cross_attention(
+            vis_pre_ca = apply_scale_shift(self.video_dec_block.cross_attention_norm(vis.float()), vis, scale, shift)
+            vis_out_t = self.video_dec_block.cross_attention(
                 vis_pre_ca,
                 encoder_hidden_states=text_v,
                 attn_mask=attn_mask,
             )
 
         if aud is not None:
-            sa_p, ca_p, ff_p_a = torch.chunk(self.audioT.visual_modulation(t_a), 3, dim=-1)
+            sa_p, ca_p, ff_p_a = torch.chunk(self.audio_dec_block.visual_modulation(t_a), 3, dim=-1)
             shift, scale, gate = torch.chunk(sa_p, 3, dim=-1)
             aud = apply_gate_sum(
                 aud,
-                self.audioT.self_attention(
-                    apply_scale_shift(self.audioT.self_attention_norm(aud.float()), aud, scale, shift),
+                self.audio_dec_block.self_attention(
+                    apply_scale_shift(self.audio_dec_block.self_attention_norm(aud.float()), aud, scale, shift),
                     rotary_emb=aud_rope,
                 ),
                 gate,
             ).type_as(aud)
             shift, scale, gate_a = torch.chunk(ca_p, 3, dim=-1)
-            aud_pre_ca = apply_scale_shift(self.audioT.cross_attention_norm(aud.float()), aud, scale, shift)
-            aud_out_t = self.audioT.cross_attention(
+            aud_pre_ca = apply_scale_shift(self.audio_dec_block.cross_attention_norm(aud.float()), aud, scale, shift)
+            aud_out_t = self.audio_dec_block.cross_attention(
                 aud_pre_ca,
                 encoder_hidden_states=text_a,
                 attn_mask=attn_mask,
@@ -694,8 +659,8 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
             shift, scale, gate = torch.chunk(ff_p, 3, dim=-1)
             vis = apply_gate_sum(
                 vis,
-                self.videoT.feed_forward(
-                    apply_scale_shift(self.videoT.feed_forward_norm(vis.float()), vis, scale, shift)
+                self.video_dec_block.feed_forward(
+                    apply_scale_shift(self.video_dec_block.feed_forward_norm(vis.float()), vis, scale, shift)
                 ),
                 gate,
             ).type_as(vis)
@@ -703,8 +668,8 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
             shift, scale, gate = torch.chunk(ff_p_a, 3, dim=-1)
             aud = apply_gate_sum(
                 aud,
-                self.audioT.feed_forward(
-                    apply_scale_shift(self.audioT.feed_forward_norm(aud.float()), aud, scale, shift)
+                self.audio_dec_block.feed_forward(
+                    apply_scale_shift(self.audio_dec_block.feed_forward_norm(aud.float()), aud, scale, shift)
                 ),
                 gate,
             ).type_as(aud)
@@ -875,7 +840,7 @@ class Kandinsky6Transformer3DModel(
         visual_token_type_ids: Tensor | None = None,
         sparse_params: dict | None = None,
         return_dict: bool = True,
-    ) -> Kandinsky6Transformer3DModelOutput | tuple[Tensor, ...]:
+    ) -> AudioVisualModelOutput | tuple[Tensor, ...]:
         r"""
         Args:
             hidden_states (`torch.Tensor` of shape `(batch_size, num_frames, height, width, in_channels)`):
@@ -899,12 +864,17 @@ class Kandinsky6Transformer3DModel(
                 Per-frame token type ids, embedded through `visual_token_type_embeddings`. Requires
                 `visual_token_type_num_embeddings > 0`.
             sparse_params (`dict`, *optional*):
-                NABLA sparse-attention configuration for the video self-attention.
+                NABLA sparse-attention configuration for the video self-attention, dispatched through the `flex`
+                attention backend regardless of `transformer.set_attention_backend(...)`. This trades the regular
+                SDPA backend's dense attention for a block-sparse pattern that scales better to longer sequences, at
+                the cost of FlexAttention's one-time kernel-autotuning overhead on the first call. None of the
+                currently released checkpoints were trained with NABLA; this is forward-looking support for a future,
+                longer-duration (e.g. 10s) model.
             return_dict (`bool`, defaults to `True`):
-                Whether to return a [`Kandinsky6Transformer3DModelOutput`] instead of a plain tuple.
+                Whether to return an [`AudioVisualModelOutput`] instead of a plain tuple.
 
         Returns:
-            [`Kandinsky6Transformer3DModelOutput`] or `tuple`:
+            [`AudioVisualModelOutput`] or `tuple`:
                 The predicted video velocity in the `(B, T, H, W, out_visual_dim)` layout and, when
                 `audio_hidden_states` was given, the predicted audio velocity of shape `(B, audio_length,
                 out_audio_dim)`.
@@ -985,13 +955,4 @@ class Kandinsky6Transformer3DModel(
 
         if not return_dict:
             return (video_out,) if audio_out is None else (video_out, audio_out)
-        return Kandinsky6Transformer3DModelOutput(sample=video_out, audio_sample=audio_out)
-
-
-__all__ = [
-    "Kandinsky6Transformer3DModel",
-    "Kandinsky6Transformer3DModelOutput",
-    "Kandinsky6TransformerEncoderBlock",
-    "Kandinsky6TransformerDecoderBlock",
-    "Kandinsky6FusedTransformerDecoderBlock",
-]
+        return AudioVisualModelOutput(sample=video_out, audio_sample=audio_out)

@@ -275,12 +275,7 @@ class Kandinsky6SRResnetBlock3D(nn.Module):
 class Kandinsky6SRDownsample(nn.Module):
     """Spatial 2x downsample (strided conv plus pixel-unshuffle average) with an optional causal temporal 2x.
 
-    Implemented from scratch rather than reusing `KVAECachedPXSDownsample` (`autoencoder_kl_kvae_video.py`), the
-    closest existing causal, stateful down/upsample block in the library: that class is a private helper of a different
-    Kandinsky VAE (not a shared, importable utility) and uses its own cache convention — a `list` of per-conv dicts
-    mutated in place — rather than this file's dict-keyed cache that `forward` returns functionally instead of mutating
-    (see `Kandinsky6SRCausalConv3d`), so reusing it as-is would mean threading two incompatible cache conventions
-    through the same model. See `Kandinsky6SRUpsample` for the upsampling counterpart.
+    See `Kandinsky6SRUpsample` for the upsampling counterpart.
     """
 
     def __init__(self, in_channels: int, compress_time: bool) -> None:
@@ -338,9 +333,7 @@ class Kandinsky6SRDownsample(nn.Module):
 class Kandinsky6SRUpsample(nn.Module):
     """Spatial 2x nearest upsample with a convolutional residual, preceded by an optional causal temporal 2x.
 
-    Bespoke for the same reason as `Kandinsky6SRDownsample`: the closest existing precedent, `KVAECachedPXSUpsample`
-    (`autoencoder_kl_kvae_video.py`), is a private helper of a different Kandinsky VAE with its own, incompatible cache
-    convention, not a shared utility this file can import and reuse.
+    See `Kandinsky6SRDownsample` for the downsampling counterpart.
     """
 
     def __init__(self, channels: int, compress_time: bool) -> None:
@@ -370,8 +363,6 @@ class Kandinsky6SRUpsample(nn.Module):
 
 
 class Kandinsky6SREncoder3D(nn.Module):
-    _supports_gradient_checkpointing = True
-
     def __init__(
         self,
         in_channels: int,
@@ -456,8 +447,6 @@ class Kandinsky6SREncoder3D(nn.Module):
 
 
 class Kandinsky6SRDecoder3D(nn.Module):
-    _supports_gradient_checkpointing = True
-
     def __init__(
         self,
         out_channels: int,

@@ -27,7 +27,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
-from ..embeddings import get_timestep_embedding
+from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 
@@ -107,7 +107,8 @@ def nabla_block_mask(
     thr: float = 0.9,
     block_size: int = 64,
 ) -> BlockMask:
-    """Build a dynamic NABLA block mask from query/key statistics and an STA prior."""
+    """Build a dynamic NABLA block mask from query/key statistics and an STA (Sliding-Tile Attention, see
+    https://huggingface.co/papers/2502.04507) prior."""
     B, h, S, D = q.shape
     s1 = S // block_size
     qa = q.reshape(B, h, s1, block_size, D).mean(-2)
@@ -233,24 +234,19 @@ class Kandinsky6SRAttention(nn.Module, AttentionModuleMixin):
 class Kandinsky6SRTimeEmbeddings(nn.Module):
     """Sinusoidal timestep embedding with a K6-compatible parameter layout."""
 
-    def __init__(self, model_dim: int, time_dim: int, max_period: float = 10000.0):
+    def __init__(self, model_dim: int, time_dim: int):
         super().__init__()
         if model_dim % 2:
             raise ValueError("model_dim must be even")
-        self.model_dim = model_dim
-        self.max_period = max_period
-        self.in_layer = nn.Linear(model_dim, time_dim)
-        self.activation = nn.SiLU()
-        self.out_layer = nn.Linear(time_dim, time_dim)
+        self.time_proj = Timesteps(num_channels=model_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=model_dim, time_embed_dim=time_dim, act_fn="silu")
 
     def forward(self, timestep: Tensor) -> Tensor:
         # The sinusoidal embedding is float32; `_keep_in_fp32_modules` keeps these layers float32 under
         # `from_pretrained(torch_dtype=...)`, and the cast aligns the input with whatever dtype they hold.
-        embed = get_timestep_embedding(
-            timestep, self.model_dim, flip_sin_to_cos=True, downscale_freq_shift=0, max_period=self.max_period
-        )
-        embed = embed.to(get_parameter_dtype(self.in_layer))
-        return self.out_layer(self.activation(self.in_layer(embed)))
+        embed = self.time_proj(timestep)
+        embed = embed.to(get_parameter_dtype(self.timestep_embedder))
+        return self.timestep_embedder(embed)
 
 
 # Copied from diffusers.models.transformers.transformer_kandinsky6.Kandinsky6VisualEmbeddings with Kandinsky6->Kandinsky6SR
@@ -351,7 +347,9 @@ class Kandinsky6SRRoPE3D(nn.Module):
         self.max_period = max_period
         for i, (d, mp) in enumerate(zip(axes_dims, max_pos)):
             freq = get_freqs(d // 2, max_period)
-            self.register_buffer(f"args_{i}", torch.outer(torch.arange(mp, dtype=freq.dtype), freq), persistent=False)
+            self.register_buffer(
+                f"angles_{i}", torch.outer(torch.arange(mp, dtype=freq.dtype), freq), persistent=False
+            )
 
     def forward(
         self,
@@ -360,19 +358,19 @@ class Kandinsky6SRRoPE3D(nn.Module):
     ) -> Tensor:
         # `pos` holds one index tensor per axis; the grid size is implied by their lengths.
         num_frames, height, width = (int(axis_pos.shape[0]) for axis_pos in pos)
-        args_t = self.args_0[pos[0]] / scale_factor[0]  # (T, d//2)
-        args_h = self.args_1[pos[1]] / scale_factor[1]  # (H, d//2)
-        args_w = self.args_2[pos[2]] / scale_factor[2]  # (W, d//2)
+        angles_t = self.angles_0[pos[0]] / scale_factor[0]  # (T, d//2)
+        angles_h = self.angles_1[pos[1]] / scale_factor[1]  # (H, d//2)
+        angles_w = self.angles_2[pos[2]] / scale_factor[2]  # (W, d//2)
 
-        args = torch.cat(
+        angles = torch.cat(
             [
-                args_t.view(num_frames, 1, 1, -1).expand(num_frames, height, width, -1),
-                args_h.view(1, height, 1, -1).expand(num_frames, height, width, -1),
-                args_w.view(1, 1, width, -1).expand(num_frames, height, width, -1),
+                angles_t.view(num_frames, 1, 1, -1).expand(num_frames, height, width, -1),
+                angles_h.view(1, height, 1, -1).expand(num_frames, height, width, -1),
+                angles_w.view(1, 1, width, -1).expand(num_frames, height, width, -1),
             ],
             dim=-1,
         )
-        cos, sin = torch.cos(args), torch.sin(args)
+        cos, sin = torch.cos(angles), torch.sin(angles)
         rope = torch.stack([cos, -sin, sin, cos], dim=-1)  # (T, H, W, total_dim, 4)
         rope = rope.view(*rope.shape[:-1], 2, 2)  # (T, H, W, total_dim, 2, 2)
         return rope.unsqueeze(-4)  # (T, H, W, 1, total_dim, 2, 2)
