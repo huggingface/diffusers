@@ -27,12 +27,7 @@ from diffusers.models.embeddings import ImageProjection
 from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    is_tensor_parallel,
-    require_torch_neuron,
-    torch_device,
-)
+from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
 from ..testing_utils import (
     AttentionBackendTesterMixin,
     AttentionTesterMixin,

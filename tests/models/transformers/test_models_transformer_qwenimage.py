@@ -24,12 +24,7 @@ from diffusers import QwenImageTransformer2DModel
 from diffusers.models.transformers.transformer_qwenimage import compute_text_seq_len_from_mask
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    is_tensor_parallel,
-    require_torch_neuron,
-    torch_device,
-)
+from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
 from ..testing_utils import (
     AttentionBackendTesterMixin,
     AttentionTesterMixin,

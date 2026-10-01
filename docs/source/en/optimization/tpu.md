@@ -126,7 +126,7 @@ image.save("output.png")
 
 ## Tensor parallelism
 
-Shard a transformer too large for one chip across several with [`~ModelMixin.enable_parallelism`]. Pass a `TensorParallelConfig` with a TPU `DeviceMesh`. For general TP details, (`_tp_plan`, colwise/rowwise), see the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide. Set `backend="tpu_dist"` and `DeviceMesh("tpu", ...)` here to enable tensor parallelism.
+Shard a transformer too large for one chip across several by passing a [`TensorParallelConfig`] to the `parallel_config` argument of [`~ModelMixin.from_pretrained`]. Each rank reads only its own slice of every sharded weight, so the full model is never materialized. For general TP details (`_tp_plan`, colwise/rowwise), see the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide. On TPU, initialize the process group with `backend="tpu_dist"` and build the mesh with `DeviceMesh("tpu", ...)`.
 
 ```python
 import torch
@@ -134,12 +134,21 @@ import torch.distributed as dist
 import torch_tpu  # noqa: F401
 from torch.distributed.device_mesh import DeviceMesh
 
-from diffusers import DiffusionPipeline, TensorParallelConfig
+from diffusers import DiffusionPipeline, Flux2Transformer2DModel, TensorParallelConfig
 
 dist.init_process_group(backend="tpu_dist")
 tp_mesh = DeviceMesh("tpu", list(range(dist.get_world_size())))
 
-pipe = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.2-dev", torch_dtype=torch.bfloat16)
-pipe.transformer.enable_parallelism(config=TensorParallelConfig(mesh=tp_mesh))
-pipe.transformer.to("tpu")
+transformer = Flux2Transformer2DModel.from_pretrained(
+    "black-forest-labs/FLUX.2-dev",
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16,
+    parallel_config=TensorParallelConfig(mesh=tp_mesh),
+)
+pipe = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.2-dev", transformer=transformer, torch_dtype=torch.bfloat16
+)
+# The transformer is already sharded across the chips; move the remaining components individually.
+pipe.text_encoder.to("tpu")
+pipe.vae.to("tpu")
 ```

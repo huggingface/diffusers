@@ -75,11 +75,6 @@ def randn_tensor(
     rand_device = device
     batch_size = shape[0]
 
-    # TPU RNG has an unaligned DUS (dynamic-update-slice) bug — generate on CPU
-    # and move to TPU via the existing .to(device) call at the end.
-    if device is not None and device.type == "tpu":
-        rand_device = torch.device("cpu")
-
     layout = layout or torch.strided
     device = device or torch.device("cpu")
 
@@ -262,11 +257,9 @@ class TorchDeviceBackend:
             empty_cache()
 
     def manual_seed(self, seed: int) -> None:
-        # `torch.manual_seed` seeds every device, so it is the correct fallback for backends without their own. TPU
-        # has its own, but `randn_tensor` draws TPU latents on the CPU (see there), so the CPU generator is the one
-        # to seed.
+        # `torch.manual_seed` seeds every device, so it is the correct fallback for backends without their own.
         manual_seed = getattr(self.module, "manual_seed", None)
-        if manual_seed is None or self.device.type == "tpu":
+        if manual_seed is None:
             torch.manual_seed(seed)
             return
         manual_seed(seed)
@@ -361,7 +354,7 @@ def backend_max_memory_allocated(device: str):
 
 
 def backend_supports_training(device: str):
-    return str(device).split(":")[0] not in ("mps", "neuron", "tpu")
+    return str(device).split(":")[0] not in ("mps", "neuron")
 
 
 def enable_full_determinism():

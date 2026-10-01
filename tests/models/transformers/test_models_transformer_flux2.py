@@ -28,12 +28,7 @@ from diffusers.models.transformers.transformer_flux2 import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    is_tensor_parallel,
-    require_torch_neuron,
-    torch_device,
-)
+from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
