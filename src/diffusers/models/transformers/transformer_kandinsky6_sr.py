@@ -27,7 +27,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
-from ..embeddings import TimestepEmbedding, Timesteps
+from ..embeddings import get_timestep_embedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 
@@ -234,19 +234,24 @@ class Kandinsky6SRAttention(nn.Module, AttentionModuleMixin):
 class Kandinsky6SRTimeEmbeddings(nn.Module):
     """Sinusoidal timestep embedding with a K6-compatible parameter layout."""
 
-    def __init__(self, model_dim: int, time_dim: int):
+    def __init__(self, model_dim: int, time_dim: int, max_period: float = 10000.0):
         super().__init__()
         if model_dim % 2:
             raise ValueError("model_dim must be even")
-        self.time_proj = Timesteps(num_channels=model_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.timestep_embedder = TimestepEmbedding(in_channels=model_dim, time_embed_dim=time_dim, act_fn="silu")
+        self.model_dim = model_dim
+        self.max_period = max_period
+        self.in_layer = nn.Linear(model_dim, time_dim)
+        self.activation = nn.SiLU()
+        self.out_layer = nn.Linear(time_dim, time_dim)
 
     def forward(self, timestep: Tensor) -> Tensor:
         # The sinusoidal embedding is float32; `_keep_in_fp32_modules` keeps these layers float32 under
         # `from_pretrained(torch_dtype=...)`, and the cast aligns the input with whatever dtype they hold.
-        embed = self.time_proj(timestep)
-        embed = embed.to(get_parameter_dtype(self.timestep_embedder))
-        return self.timestep_embedder(embed)
+        embed = get_timestep_embedding(
+            timestep, self.model_dim, flip_sin_to_cos=True, downscale_freq_shift=0, max_period=self.max_period
+        )
+        embed = embed.to(get_parameter_dtype(self.in_layer))
+        return self.out_layer(self.activation(self.in_layer(embed)))
 
 
 # Copied from diffusers.models.transformers.transformer_kandinsky6.Kandinsky6VisualEmbeddings with Kandinsky6->Kandinsky6SR
