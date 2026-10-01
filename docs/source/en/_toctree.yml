@@ -70,14 +70,14 @@
     title: Inference
   - isExpanded: false
     sections:
-    - local: optimization/pruna
-      title: Pruna
     - local: optimization/cache_dit
       title: CacheDiT
-    - local: optimization/xdit
-      title: xDiT
     - local: optimization/para_attn
       title: ParaAttention
+    - local: optimization/pruna
+      title: Pruna
+    - local: optimization/xdit
+      title: xDiT
     title: Community methods
   - isExpanded: false
     sections:
