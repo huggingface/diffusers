@@ -149,6 +149,15 @@ pipe = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.2-dev", transformer=transformer, torch_dtype=torch.bfloat16
 )
 # The transformer is already sharded across the chips; move the remaining components individually. The ~45GB
-# text encoder doesn't fit on one chip, so leave it on CPU or shard it as described in the eager mode section.
+# text encoder doesn't fit on one chip, so leave it on CPU (or shard it as described in the eager mode section)
+# and encode the prompt there.
 pipe.vae.to("tpu")
+with torch.no_grad():
+    prompt_embeds, _ = pipe.encode_prompt(
+        prompt="a golden retriever surfing a wave, photorealistic", device=torch.device("cpu")
+    )
+
+image = pipe(prompt_embeds=prompt_embeds.to("tpu"), num_inference_steps=28).images[0]
+if dist.get_rank() == 0:
+    image.save("output.png")
 ```
