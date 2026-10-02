@@ -14,6 +14,8 @@
 
 from typing import Callable
 
+import numpy as np
+import PIL.Image
 import torch
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -321,7 +323,7 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         return_dict: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> ImagePipelineOutput | list[PIL.Image.Image] | np.ndarray | torch.Tensor:
         """
         Function invoked when calling the pipeline for generation.
 

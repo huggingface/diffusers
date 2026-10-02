@@ -85,7 +85,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         output_type: str | None = "pil",
         return_dict: bool = True,
         **kwargs,
-    ) -> tuple | ImagePipelineOutput:
+    ) -> ImagePipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
