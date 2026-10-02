@@ -455,7 +455,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         width,
         num_frames,
         image,
-        visual_cond_scheme,
         sample_audio,
         prompt_embeds=None,
         pooled_prompt_embeds=None,
@@ -501,19 +500,12 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
 
         if sample_audio and (getattr(self, "audio_vae", None) is None or getattr(self, "vocoder", None) is None):
             raise ValueError("`sample_audio=True` requires an `audio_vae` and a `vocoder`.")
-        if visual_cond_scheme not in ("pretrain", "i2v", "tail_cond_first_frame"):
-            raise ValueError(
-                f"`visual_cond_scheme` must be one of 'pretrain', 'i2v' or 'tail_cond_first_frame' but is {visual_cond_scheme!r}."
-            )
         if image is not None:
             if not self.transformer.config.visual_cond:
                 raise ValueError("Image conditioning requires a transformer with `visual_cond=True`.")
-            if (
-                visual_cond_scheme == "tail_cond_first_frame"
-                and self.transformer.config.visual_token_type_num_embeddings < 2
-            ):
+            if self.transformer.config.visual_token_type_num_embeddings < 2:
                 raise ValueError(
-                    "`tail_cond_first_frame` requires a transformer with `visual_token_type_num_embeddings >= 2`."
+                    "Image conditioning requires a transformer with `visual_token_type_num_embeddings >= 2`."
                 )
 
     def encode_image(
@@ -634,7 +626,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         negative_pooled_prompt_embeds: torch.Tensor | None = None,
         sample_audio: bool | None = None,
         expand_prompts: bool = False,
-        visual_cond_scheme: str | None = None,
         max_sequence_length: int = 1024,
         output_type: str = "pil",
         return_dict: bool = True,
@@ -689,9 +680,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                 `vocoder`, `False` otherwise; `True` requires both.
             expand_prompts (`bool`, defaults to `False`):
                 Whether to rewrite the prompts with [`~Kandinsky6TI2VAPipeline.expand_prompts`] before encoding.
-            visual_cond_scheme (`str`, *optional*):
-                How the reference image conditions the video: `"tail_cond_first_frame"` (default with `image`),
-                `"i2v"`, or `"pretrain"` (default without `image`).
             max_sequence_length (`int`, defaults to `1024`):
                 Maximum number of prompt tokens after the chat template.
             output_type (`str`, defaults to `"pil"`):
@@ -713,8 +701,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         if sample_audio is None:
             sample_audio = getattr(self, "audio_vae", None) is not None and getattr(self, "vocoder", None) is not None
-        if visual_cond_scheme is None:
-            visual_cond_scheme = "tail_cond_first_frame" if image is not None else "pretrain"
         self.check_inputs(
             prompt=prompt,
             negative_prompt=negative_prompt,
@@ -722,7 +708,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             width=width,
             num_frames=num_frames,
             image=image,
-            visual_cond_scheme=visual_cond_scheme,
             sample_audio=sample_audio,
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
@@ -736,9 +721,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             )
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
-
-        if isinstance(self.scheduler, PiflowScheduler) and guidance_scale != 1.0:
-            raise ValueError("`PiflowScheduler` runs the distilled checkpoints and requires `guidance_scale=1.0`.")
 
         self._guidance_scale = guidance_scale
         self._current_timestep = None
@@ -819,9 +801,9 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         else:
             audio_latents = None
 
-        # The `tail_cond_first_frame` scheme appends the clean reference frame as an extra, masked frame that reuses
-        # the first frame's rotary position and carries token type `1`.
-        tail_cond = image is not None and visual_cond_scheme == "tail_cond_first_frame"
+        # Image conditioning appends the clean reference frame as an extra, masked frame that reuses the first
+        # frame's rotary position and carries token type `1`.
+        tail_cond = image is not None
         visual_token_type_ids = None
         visual_rope_pos = None
         if tail_cond:
@@ -848,22 +830,16 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                 self._current_timestep = t
                 timestep = t.expand(batch_size)
 
-                # Visual conditioning channels: [latent | conditioning latent | mask]. The reference frame either
-                # fills the conditioning channels (`pretrain`) or overwrites a latent frame (`i2v`, tail).
+                # Visual conditioning channels: [latent | conditioning latent | mask]. The conditioning-latent
+                # channel is unused (always zero) and only kept to match the transformer's fixed input width; the
+                # reference frame itself is appended as an extra, masked tail frame (see `tail_cond` above).
                 latent_model_input = latents
                 if self.transformer.config.visual_cond:
                     cond_latents = torch.zeros_like(latents)
                     cond_mask = torch.zeros((*latents.shape[:-1], 1), dtype=latents.dtype, device=device)
                     if first_frame_latents is not None:
-                        if visual_cond_scheme == "pretrain":
-                            cond_latents[:, 0] = first_frame_latents
-                            cond_mask[:, 0] = 1
-                        elif visual_cond_scheme == "i2v":
-                            latents[:, 0] = first_frame_latents
-                            cond_mask[:, 0] = 1
-                        else:
-                            latents[:, -1] = first_frame_latents
-                            cond_mask[:, -1] = 1
+                        latents[:, -1] = first_frame_latents
+                        cond_mask[:, -1] = 1
                     latent_model_input = torch.cat([latents, cond_latents, cond_mask], dim=-1)
 
                 with self.transformer.cache_context("cond"):
@@ -914,9 +890,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
 
         self._current_timestep = None
 
-        # 8. Keep the injected reference frame clean and drop the appended tail frame
-        if first_frame_latents is not None and visual_cond_scheme == "i2v":
-            latents[:, 0] = first_frame_latents
+        # 8. Drop the appended tail frame used for reference-image conditioning
         if tail_cond:
             latents = latents[:, :-1]
 

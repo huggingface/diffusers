@@ -28,7 +28,7 @@ from ...loaders import PeftAdapterMixin
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
 from ..cache_utils import CacheMixin
-from ..embeddings import get_timestep_embedding
+from ..embeddings import Timesteps
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 from .transformer_ltx2 import AudioVisualModelOutput
 
@@ -266,12 +266,11 @@ class Kandinsky6AttnProcessor:
 class Kandinsky6TimeEmbeddings(nn.Module):
     """Sinusoidal timestep embedding with a K6-compatible parameter layout."""
 
-    def __init__(self, model_dim: int, time_dim: int, max_period: float = 10000.0):
+    def __init__(self, model_dim: int, time_dim: int):
         super().__init__()
         if model_dim % 2:
             raise ValueError("model_dim must be even")
-        self.model_dim = model_dim
-        self.max_period = max_period
+        self.time_proj = Timesteps(model_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.in_layer = nn.Linear(model_dim, time_dim)
         self.activation = nn.SiLU()
         self.out_layer = nn.Linear(time_dim, time_dim)
@@ -279,9 +278,7 @@ class Kandinsky6TimeEmbeddings(nn.Module):
     def forward(self, timestep: Tensor) -> Tensor:
         # The sinusoidal embedding is float32; `_keep_in_fp32_modules` keeps these layers float32 under
         # `from_pretrained(torch_dtype=...)`, and the cast aligns the input with whatever dtype they hold.
-        embed = get_timestep_embedding(
-            timestep, self.model_dim, flip_sin_to_cos=True, downscale_freq_shift=0, max_period=self.max_period
-        )
+        embed = self.time_proj(timestep)
         embed = embed.to(get_parameter_dtype(self.in_layer))
         return self.out_layer(self.activation(self.in_layer(embed)))
 

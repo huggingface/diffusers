@@ -149,7 +149,7 @@ class Kandinsky6SRCausalConv3d(nn.Module):
         return output
 
 
-class Kandinsky6SRRMSNorm(nn.Module):
+class Kandinsky6VAERMSNorm(nn.Module):
     """RMS normalization over the channel axis of a `(B, C, T, H, W)` tensor, computed in float32.
 
     Same idea as `WanRMS_norm` (`autoencoder_kl_wan.py`) / `QwenImageRMS_norm` (`autoencoder_kl_qwenimage.py`), but not
@@ -174,7 +174,7 @@ class Kandinsky6SRSpatialNorm3D(nn.Module):
     `SpatialNorm` (`attention_processor.py`) / `CogVideoXSpatialNorm3D` (`autoencoder_kl_cogvideox.py`) — normalize the
     features, then scale and shift by convolutions of the upsampled `zq`, carrying a `cache` dict across segments the
     same way `CogVideoXSpatialNorm3D` threads its `conv_cache` — but it is not a `# Copied from` of either: it
-    normalizes with `Kandinsky6SRRMSNorm` instead of `GroupNorm` (matching the plain-RMSNorm blocks elsewhere in this
+    normalizes with `Kandinsky6VAERMSNorm` instead of `GroupNorm` (matching the plain-RMSNorm blocks elsewhere in this
     VAE), and interpolates `zq` in channel chunks to bound peak memory.
 
     `zq` is nearest-upsampled to the feature grid. In the first segment the first frame is upsampled separately,
@@ -183,7 +183,7 @@ class Kandinsky6SRSpatialNorm3D(nn.Module):
 
     def __init__(self, num_channels: int, zq_channels: int) -> None:
         super().__init__()
-        self.norm_layer = Kandinsky6SRRMSNorm(num_channels)
+        self.norm_layer = Kandinsky6VAERMSNorm(num_channels)
         self.conv_y = Kandinsky6SRSafeConv3d(zq_channels, num_channels, kernel_size=1)
         self.conv_b = Kandinsky6SRSafeConv3d(zq_channels, num_channels, kernel_size=1)
 
@@ -231,8 +231,8 @@ class Kandinsky6SRResnetBlock3D(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
         if zq_channels is None:
-            self.norm1 = Kandinsky6SRRMSNorm(in_channels)
-            self.norm2 = Kandinsky6SRRMSNorm(out_channels)
+            self.norm1 = Kandinsky6VAERMSNorm(in_channels)
+            self.norm2 = Kandinsky6VAERMSNorm(out_channels)
         else:
             self.norm1 = Kandinsky6SRSpatialNorm3D(in_channels, zq_channels)
             self.norm2 = Kandinsky6SRSpatialNorm3D(out_channels, zq_channels)
@@ -396,7 +396,7 @@ class Kandinsky6SREncoder3D(nn.Module):
         self.mid = nn.Module()
         self.mid.block_1 = Kandinsky6SRResnetBlock3D(block_in, block_in)
         self.mid.block_2 = Kandinsky6SRResnetBlock3D(block_in, block_in)
-        self.norm_out = Kandinsky6SRRMSNorm(block_in)
+        self.norm_out = Kandinsky6VAERMSNorm(block_in)
         self.conv_out = Kandinsky6SRCausalConv3d(block_in, 2 * latent_channels, kernel_size=3)
 
     def make_cache(self) -> dict:

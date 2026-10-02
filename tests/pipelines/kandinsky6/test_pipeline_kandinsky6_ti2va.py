@@ -237,18 +237,12 @@ class TestKandinsky6TI2VAPipeline(Kandinsky6TI2VAPipelineTesterConfig, PipelineT
         assert not torch.isnan(output.frames.float()).any()
 
     def test_kandinsky6_ti2va_different_images(self):
-        # A freshly initialized transformer zero-initializes every AdaLN gate, so the text and reference-image paths
-        # through attention are identity at init. The `i2v` scheme instead writes the encoded image into frame 0,
-        # which passes through the real `visual_embeddings` and `out_layer` projections and must change the output.
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs()
-        inputs["visual_cond_scheme"] = "i2v"
-
         inputs["image"] = PIL.Image.fromarray(np.zeros((16, 16, 3), dtype=np.uint8))
         output_black_image = pipe(**inputs).frames
 
         inputs = self.get_dummy_inputs()
-        inputs["visual_cond_scheme"] = "i2v"
         inputs["image"] = PIL.Image.fromarray(np.full((16, 16, 3), 255, dtype=np.uint8))
         output_white_image = pipe(**inputs).frames
 

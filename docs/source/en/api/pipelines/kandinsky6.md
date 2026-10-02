@@ -110,10 +110,6 @@ pipe.vae.enable_tiling()
 - [`Kandinsky6SRPipeline`]'s input `video` must have `1 + k * vae_scale_factor_temporal` frames for some integer `k`
   (a temporal compression ratio of `4` with the default K-VAE configuration, so `121` frames works but `120` doesn't)
   — trim or pad a video that doesn't already satisfy this before upscaling it.
-- `visual_cond_scheme` is inferred automatically from whether `image` is passed (`"tail_cond_first_frame"` when it
-  is, `"pretrain"` otherwise). Only set it explicitly together with a matching `image`: passing
-  `visual_cond_scheme="i2v"` or `"tail_cond_first_frame"` without `image` doesn't raise an error, it silently falls
-  back to text-only generation.
 - `expand_prompts=True` reuses the already-loaded Qwen2.5-VL text encoder for an extra generation pass before
   denoising, so it adds latency but no extra model weights.
 - Compile the repeated transformer blocks for faster repeated inference:
