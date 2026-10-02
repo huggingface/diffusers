@@ -228,5 +228,3 @@ Boolean gate. If `False` (default), calling that method raises `ValueError`. All
 7. **Tensor contiguity.** - Non-contiguous tensors can degrade performance. Therefore, try to maintain contiguity
 of the tensors whenever possible. A non-contiguous tensor is usually produced because of the operations. A common
 example is a `flatten()` followed by a `transpose()`. This sequence is known to produce non-contiguous layouts. So, prefer calling `contiguous()` on the output tensor to maintain performance.
-
-8. **Keeping dead keys or legacy names "because the checkpoint has them".** Diffusers Hub checkpoints normally store converted weights. The conversion script (or `from_single_file` weight map) owns remapping. Don't leave unused key aliases or legacy branches in the model "for the original checkpoint" unless the reviewer explicitly agreed. Mapping belongs in conversion/single-file loaders, not as dead code in `forward`.
