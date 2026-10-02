@@ -47,7 +47,7 @@ def main() -> int:
 
     for path in sorted(AI_DIR.rglob("*.md")):
         where = path.relative_to(AI_DIR.parent)
-        prose = CODE_FENCE.sub("", path.read_text())
+        prose = CODE_FENCE.sub("", path.read_text(encoding="utf-8"))
 
         for link in LINK.findall(prose):
             target = link.split("#")[0]
@@ -72,7 +72,7 @@ def main() -> int:
                 source = REFERENCES_DIR / guide
                 if not source.exists():
                     continue
-                for sibling in sorted(set(re.findall(r"\]\(([\w-]+\.md)\)", source.read_text()))):
+                for sibling in sorted(set(re.findall(r"\]\(([\w-]+\.md)\)", source.read_text(encoding="utf-8")))):
                     if sibling not in cited and (REFERENCES_DIR / sibling).exists():
                         problems.append(
                             f"{where}: 'references/{guide}' links to '{sibling}', which the skill does not cite — "
@@ -81,7 +81,7 @@ def main() -> int:
 
     for skill_md in sorted(AI_DIR.glob("skills/*/SKILL.md")):
         where = skill_md.relative_to(AI_DIR.parent)
-        text = skill_md.read_text()
+        text = skill_md.read_text(encoding="utf-8")
 
         declared = FRONTMATTER_NAME.search(text)
         if declared is None:
