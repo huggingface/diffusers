@@ -12,28 +12,27 @@ specific language governing permissions and limitations under the License.
 
 # Compiling and offloading quantized models
 
-Optimizing models often involves trade-offs between [inference speed](./fp16) and [memory-usage](./memory). For instance, while [caching](./cache) can boost inference speed, it also increases memory consumption since it needs to store the outputs of intermediate attention layers. A more balanced optimization strategy combines quantizing a model, [torch.compile](./fp16#torchcompile) and various [offloading methods](./memory#offloading).
+Quantization, [torch.compile](./fp16#torchcompile), and [offloading](./memory#offloading) can be combined to balance [inference speed](./fp16) and [memory usage](./memory). Quantization reduces the memory needed to store weights, torch.compile speeds up inference, and offloading keeps inactive layers or models on the CPU until they're needed. Other techniques trade one for the other. For example, [caching](./cache) speeds up inference but increases memory usage because it stores intermediate outputs.
 
 > [!TIP]
-> Check the [torch.compile](./fp16#torchcompile) guide to learn more about compilation and how they can be applied here. For example, regional compilation can significantly reduce compilation time without giving up any speedups. 
+> Refer to the [torch.compile](./fp16#torchcompile) guide to learn more about compilation. For example, [regional compilation](./fp16#regional-compilation) can significantly reduce compilation time while keeping a comparable speedup.
 
-For image generation, combining quantization and [model offloading](./memory#model-offloading) can often give the best trade-off between quality, speed, and memory. Group offloading is not as effective for image generation because it is usually not possible to *fully* overlap data transfer if the compute kernel finishes faster. This results in some communication overhead between the CPU and GPU.
+The offloading method to combine with quantization depends on the workload.
 
-For video generation, combining quantization and [group-offloading](./memory#group-offloading) tends to be better because video models are more compute-bound. 
+- For image generation, [model offloading](./memory#model-offloading) usually works best. Image models do less compute per layer, so with group offloading, the current layer often finishes before the next layer has transferred and the GPU waits on the CPU.
+- For video generation, [group offloading](./memory#group-offloading) usually works better. Video models are more compute-bound, so data transfer can overlap with computation.
 
-The table below provides a comparison of optimization strategy combinations and their impact on latency and memory-usage for Flux.
+The table below shows the latency and memory usage of each combination on Flux.
 
-| combination | latency (s) | memory-usage (GB) |
+| Combination | Latency (s) | Memory usage (GB) |
 |---|---|---|
 | quantization  | 32.602 | 14.9453 |
 | quantization, torch.compile  | 25.847 | 14.9448 |
 | quantization, torch.compile, model CPU offloading | 32.312 | 12.2369 |
 
-<small>These results are benchmarked on Flux with a RTX 4090. The transformer and text_encoder components are quantized. Refer to the <a href="https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d">benchmarking script</a> if you're interested in evaluating your own model.</small>
+<small>Benchmarked on Flux with an RTX 4090, with the `transformer` and `text_encoder_2` (T5) components quantized. Use the <a href="https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d">benchmarking script</a> to evaluate your own model.</small>
 
-This guide will show you how to compile and offload a quantized model with [bitsandbytes](../quantization/bitsandbytes#torchcompile). Make sure you are using [PyTorch nightly](https://pytorch.org/get-started/locally/) and the latest version of bitsandbytes.
-
-While we use bitsandbytes in this example, other quantization backends such as [TorchAO](../quantization/torchao.md) also support these features.
+The examples below use [bitsandbytes](../quantization/bitsandbytes#torchcompile), but other quantization backends, such as [TorchAO](../quantization/torchao), also support compilation and offloading. Install the latest version of bitsandbytes. [PyTorch nightly](https://pytorch.org/get-started/locally/) is also recommended.
 
 ```bash
 pip install -U bitsandbytes
@@ -41,9 +40,9 @@ pip install -U bitsandbytes
 
 ## Quantization and torch.compile
 
-Start by [quantizing](../quantization/overview) a model to reduce the memory required for storage and [compiling](./fp16#torchcompile) it to accelerate inference.
+[Quantize](../quantization/overview) a model to reduce the memory needed to store its weights, then [compile](./fp16#torchcompile) it to speed up inference.
 
-Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) `capture_dynamic_output_shape_ops = True` to handle dynamic outputs when compiling bitsandbytes models.
+Set `torch._dynamo.config.capture_dynamic_output_shape_ops = True` so [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) can compile bitsandbytes ops whose output shapes depend on the input.
 
 ```py
 import torch
@@ -67,23 +66,21 @@ pipeline = DiffusionPipeline.from_pretrained(
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
 pipeline.transformer.compile(mode="max-autotune", fullgraph=True)
-pipeline("""
-    cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
-    highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
-"""
+pipeline(
+    "cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain"
 ).images[0]
 ```
 
 ## Quantization, torch.compile, and offloading
 
-In addition to quantization and torch.compile, try offloading if you need to reduce memory-usage further. Offloading moves various layers or model components from the CPU to the GPU as needed for computations.
+Add offloading to quantization and torch.compile to reduce memory usage further. Offloading keeps layers or model components on the CPU and moves them to the GPU only when they're needed.
 
-Configure the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) `cache_size_limit` during offloading to avoid excessive recompilation and set `capture_dynamic_output_shape_ops = True` to handle dynamic outputs when compiling bitsandbytes models.
+Raise the [Dynamo](https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html) `cache_size_limit` to avoid excessive recompilation with offloading, and set `capture_dynamic_output_shape_ops = True` to compile bitsandbytes ops whose output shapes depend on the input.
 
 <hfoptions id="offloading">
 <hfoption id="model CPU offloading">
 
-[Model CPU offloading](./memory#model-offloading) moves an individual pipeline component, like the transformer model, to the GPU when it is needed for computation. Otherwise, it is offloaded to the CPU.
+[Model offloading](./memory#model-offloading) moves a whole pipeline component, like the transformer, to the GPU only when it's needed for computation. Otherwise, the component stays on the CPU.
 
 ```py
 import torch
@@ -103,7 +100,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")  # or "mps", "xpu", "cpu"
+)
 
 # model CPU offloading
 pipeline.enable_model_cpu_offload()
@@ -118,18 +115,15 @@ pipeline(
 </hfoption>
 <hfoption id="group offloading">
 
-[Group offloading](./memory#group-offloading) moves the internal layers of an individual pipeline component, like the transformer model, to the GPU for computation and offloads it when it's not required. At the same time, it uses the [CUDA stream](./memory#cuda-stream) feature to prefetch the next layer for execution.
-
-By overlapping computation and data transfer, it is faster than model CPU offloading while also saving memory. 
+[Group offloading](./memory#group-offloading) moves the internal layers of a component, like the transformer, to the GPU only when they run. With `use_stream=True`, it uses [CUDA streams](./memory#cuda-stream) to prefetch the next layer while the current one runs. For compute-bound video models, this overlap can make group offloading faster than model offloading while also using less memory.
 
 ```py
 # pip install ftfy
 import torch
-from diffusers import AutoModel, DiffusionPipeline
+from diffusers import DiffusionPipeline
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
 from diffusers.quantizers import PipelineQuantizationConfig
-from transformers import UMT5EncoderModel
 
 torch._dynamo.config.cache_size_limit = 1000
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -141,14 +135,11 @@ pipeline_quant_config = PipelineQuantizationConfig(
     components_to_quantize=["transformer", "text_encoder"],
 )
 
-text_encoder = UMT5EncoderModel.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16
-)
 pipeline = DiffusionPipeline.from_pretrained(
     "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")  # or "mps", "xpu", "cpu"
+)
 
 # group offloading
 onload_device = torch.device("cuda")
@@ -203,3 +194,9 @@ export_to_video(output, "output.mp4", fps=16)
 
 </hfoption>
 </hfoptions>
+
+## Next steps
+
+- Learn more about each offloading method in the [Reduce memory usage](./memory) guide.
+- Speed up inference further with the [torch.compile](./fp16#torchcompile) guide.
+- Compare quantization backends in the [quantization overview](../quantization/overview).
