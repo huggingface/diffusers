@@ -21,8 +21,8 @@ from torch import Tensor, nn
 from torch.nn import functional
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.autoencoders.vae import DecoderOutput
-from ...models.modeling_utils import ModelMixin
+from ..autoencoders.vae import DecoderOutput
+from ..modeling_utils import ModelMixin
 
 
 class Kandinsky6SRLatentUpscalerConv3d(nn.Conv3d):

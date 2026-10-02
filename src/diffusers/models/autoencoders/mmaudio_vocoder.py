@@ -28,8 +28,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.autoencoders.vae import DecoderOutput
-from ...models.modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin
+from .vae import DecoderOutput
 
 
 def kaiser_sinc_filter1d(cutoff: float, half_width: float, kernel_size: int) -> torch.Tensor:

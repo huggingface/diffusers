@@ -33,4 +33,5 @@ from .autoencoder_vidtok import AutoencoderVidTok
 from .consistency_decoder_vae import ConsistencyDecoderVAE
 from .ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel
 from .minimax_music3_vocoder import MiniMaxMusic3Vocoder
+from .mmaudio_vocoder import MMAudioVocoder
 from .vq_model import VQModel

@@ -63,6 +63,7 @@ if is_torch_available():
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.ltx2_diffusion_decoder"] = ["LTX2VideoDiffusionDecoderModel"]
     _import_structure["autoencoders.minimax_music3_vocoder"] = ["MiniMaxMusic3Vocoder"]
+    _import_structure["autoencoders.mmaudio_vocoder"] = ["MMAudioVocoder"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
     _import_structure["condition_embedders.condition_embedder_anima"] = ["AnimaTextConditioner"]
@@ -87,6 +88,7 @@ if is_torch_available():
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
+    _import_structure["latent_upscaler.latent_upscaler_kandinsky6_sr"] = ["Kandinsky6SRLatentUpscalerBank"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.ace_step_transformer"] = ["AceStepTransformer1DModel"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
@@ -213,6 +215,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2VideoDiffusionDecoderModel,
             MiniMaxMusic3Vocoder,
             MMAudioVAE,
+            MMAudioVocoder,
             VQModel,
         )
         from .cache_utils import CacheMixin
@@ -238,6 +241,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetModel,
         )
         from .embeddings import ImageProjection
+        from .latent_upscaler import Kandinsky6SRLatentUpscalerBank
         from .modeling_utils import ModelMixin
         from .transformers import (
             AceStepTransformer1DModel,

@@ -20,13 +20,12 @@ import PIL.Image
 import torch
 import torch.nn.functional as F
 
-from ...models import Kandinsky6SRTransformer3DModel, Kandinsky6SRVAE
+from ...models import Kandinsky6SRLatentUpscalerBank, Kandinsky6SRTransformer3DModel, Kandinsky6SRVAE
 from ...schedulers import FlowMatchEulerDiscreteScheduler, PiflowScheduler
 from ...utils import replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from .modeling_latent_upscaler import Kandinsky6SRLatentUpscalerBank
 from .pipeline_output import Kandinsky6SRPipelineOutput
 
 

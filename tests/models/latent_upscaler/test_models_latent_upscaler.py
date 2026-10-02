@@ -15,16 +15,16 @@
 
 import torch
 
-from diffusers.pipelines.kandinsky6 import Kandinsky6SRLatentUpscalerBank
+from diffusers import Kandinsky6SRLatentUpscalerBank
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...models.testing_utils import (
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
 )
-from ...testing_utils import enable_full_determinism, torch_device
 
 
 enable_full_determinism()

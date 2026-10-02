@@ -16,11 +16,11 @@ import torch
 
 from diffusers import (
     FlowMatchEulerDiscreteScheduler,
+    Kandinsky6SRLatentUpscalerBank,
     Kandinsky6SRPipeline,
     Kandinsky6SRTransformer3DModel,
     Kandinsky6SRVAE,
 )
-from diffusers.pipelines.kandinsky6 import Kandinsky6SRLatentUpscalerBank
 
 from ...testing_utils import torch_device
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin

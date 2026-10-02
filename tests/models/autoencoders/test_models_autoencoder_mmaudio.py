@@ -74,7 +74,7 @@ class MMAudioVAETesterConfig(BaseModelTesterConfig):
     @property
     def output_shape(self) -> tuple[int, ...]:
         # `decode`/`forward` return a mel spectrogram (`mel_bins`, num_mel_frames); the waveform is produced by the
-        # separate, pipeline-local `MMAudioVocoder`.
+        # separate `MMAudioVocoder`.
         return (8, 64)
 
 

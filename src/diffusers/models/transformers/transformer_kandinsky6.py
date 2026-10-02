@@ -854,10 +854,10 @@ class Kandinsky6Transformer3DModel(
                 `visual_token_type_num_embeddings > 0`.
             sparse_params (`dict`, *optional*):
                 NABLA sparse-attention configuration for the video self-attention, dispatched through the `flex`
-                attention backend regardless of `transformer.set_attention_backend(...)`. This trades the regular
-                SDPA backend's dense attention for a block-sparse pattern that scales better to longer sequences, at
-                the cost of FlexAttention's one-time kernel-autotuning overhead on the first call. None of the
-                currently released checkpoints were trained with NABLA; this is forward-looking support for a future,
+                attention backend regardless of `transformer.set_attention_backend(...)`. This trades the regular SDPA
+                backend's dense attention for a block-sparse pattern that scales better to longer sequences, at the
+                cost of FlexAttention's one-time kernel-autotuning overhead on the first call. None of the currently
+                released checkpoints were trained with NABLA; this is forward-looking support for a future,
                 longer-duration (e.g. 10s) model.
             return_dict (`bool`, defaults to `True`):
                 Whether to return an [`AudioVisualModelOutput`] instead of a plain tuple.

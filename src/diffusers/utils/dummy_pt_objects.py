@@ -1590,6 +1590,21 @@ class Kandinsky5Transformer3DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class Kandinsky6SRLatentUpscalerBank(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class Kandinsky6SRTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1861,6 +1876,21 @@ class MiniMaxMusic3Vocoder(metaclass=DummyObject):
 
 
 class MMAudioVAE(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class MMAudioVocoder(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

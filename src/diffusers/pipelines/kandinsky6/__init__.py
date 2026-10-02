@@ -21,8 +21,6 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modeling_latent_upscaler"] = ["Kandinsky6SRLatentUpscalerBank"]
-    _import_structure["modeling_vocoder"] = ["MMAudioVocoder"]
     _import_structure["pipeline_kandinsky6_sr"] = ["Kandinsky6SRPipeline"]
     _import_structure["pipeline_kandinsky6_ti2va"] = ["Kandinsky6TI2VAPipeline"]
     _import_structure["pipeline_output"] = ["Kandinsky6SRPipelineOutput", "Kandinsky6TI2VAPipelineOutput"]
@@ -34,8 +32,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .modeling_latent_upscaler import Kandinsky6SRLatentUpscalerBank
-        from .modeling_vocoder import MMAudioVocoder
         from .pipeline_kandinsky6_sr import Kandinsky6SRPipeline
         from .pipeline_kandinsky6_ti2va import Kandinsky6TI2VAPipeline
         from .pipeline_output import Kandinsky6SRPipelineOutput, Kandinsky6TI2VAPipelineOutput

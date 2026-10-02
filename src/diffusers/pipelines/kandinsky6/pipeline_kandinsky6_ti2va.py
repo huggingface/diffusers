@@ -22,13 +22,12 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLProcessor
 
 from ...image_processor import PipelineImageInput
-from ...models import AutoencoderKLHunyuanVideo, Kandinsky6Transformer3DModel, MMAudioVAE
+from ...models import AutoencoderKLHunyuanVideo, Kandinsky6Transformer3DModel, MMAudioVAE, MMAudioVocoder
 from ...schedulers import FlowMatchEulerDiscreteScheduler, PiflowScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from .modeling_vocoder import MMAudioVocoder
 from .pipeline_output import Kandinsky6TI2VAPipelineOutput
 
 
@@ -409,8 +408,8 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                 Maximum number of generated tokens per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 Seeds the sampled expansion; a list must match `prompt`'s length, one generator per item. `generate`
-                draws from the global RNG, so the global RNG is seeded from this generator's seed; later
-                `randn_tensor` calls keep using `generator` directly.
+                draws from the global RNG, so the global RNG is seeded from this generator's seed; later `randn_tensor`
+                calls keep using `generator` directly.
 
         Returns:
             `str` or `list[str]`: The expanded prompt(s).
@@ -530,8 +529,8 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         r"""
         Encodes the reference image(s) into first-frame latents of shape `(batch_size, latent_height, latent_width,
         latent_channels)`, scaled by the VAE `scaling_factor`. PIL images are resized and center-cropped to `height x
-        width`; tensors and arrays must already have that size. The latents are repeated `num_videos_per_prompt`
-        times along the batch dimension.
+        width`; tensors and arrays must already have that size. The latents are repeated `num_videos_per_prompt` times
+        along the batch dimension.
         """
         is_pil = isinstance(image, PIL.Image.Image) or (
             isinstance(image, list) and isinstance(image[0], PIL.Image.Image)

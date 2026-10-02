@@ -17,8 +17,8 @@
 
 """MMAudio mel-spectrogram VAE used by the Kandinsky 6 TI2VA pipeline.
 
-The BigVGAN vocoder that turns this VAE's decoded mel spectrograms into waveforms is a separate, pipeline-local
-component, [`~pipelines.kandinsky6.MMAudioVocoder`].
+The BigVGAN vocoder that turns this VAE's decoded mel spectrograms into waveforms is a separate component,
+[`MMAudioVocoder`].
 """
 
 from __future__ import annotations
@@ -352,9 +352,8 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
     Audio VAE of [`Kandinsky6TI2VAPipeline`]: a magnitude-preserving autoencoder over log-mel spectrograms (MMAudio,
     https://arxiv.org/abs/2412.15322).
 
-    `encode` turns a waveform into a latent distribution; `decode` turns latents back into a mel spectrogram, which the
-    pipeline-local [`~pipelines.kandinsky6.MMAudioVocoder`] then turns into a waveform. One latent frame covers
-    `hop_length * 2` samples.
+    `encode` turns a waveform into a latent distribution; `decode` turns latents back into a mel spectrogram, which
+    [`MMAudioVocoder`] then turns into a waveform. One latent frame covers `hop_length * 2` samples.
 
     Args:
         mel_bins (`int`, defaults to `128`):
@@ -372,8 +371,8 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
         n_fft (`int`, defaults to `2048`):
             FFT size of the mel front end.
         hop_length (`int`, defaults to `512`):
-            Hop length of the mel front end. Must match the total upsampling factor of the
-            [`~pipelines.kandinsky6.MMAudioVocoder`] this VAE is paired with.
+            Hop length of the mel front end. Must match the total upsampling factor of the [`MMAudioVocoder`] this VAE
+            is paired with.
         scaling_factor (`float`, defaults to `0.417`):
             Scale applied to the latents before they enter the diffusion transformer.
     """
@@ -430,8 +429,7 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
                 Whether to return a [`~models.autoencoder_kl.DecoderOutput`] instead of a plain tuple.
 
         Returns:
-            The mel spectrogram of shape `(batch_size, mel_bins, num_mel_frames)`, ready for
-            [`~pipelines.kandinsky6.MMAudioVocoder`].
+            The mel spectrogram of shape `(batch_size, mel_bins, num_mel_frames)`, ready for [`MMAudioVocoder`].
         """
         mel = self.vae.decode(z)
         if not return_dict:

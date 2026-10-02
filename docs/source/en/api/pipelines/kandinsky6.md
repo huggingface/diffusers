@@ -135,7 +135,7 @@ pipe.vae.enable_tiling()
 
 ## Kandinsky6SRLatentUpscalerBank
 
-[[autodoc]] pipelines.kandinsky6.modeling_latent_upscaler.Kandinsky6SRLatentUpscalerBank
+[[autodoc]] Kandinsky6SRLatentUpscalerBank
   - forward
 
 ## Kandinsky6TI2VAPipelineOutput

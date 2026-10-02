@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # Kandinsky 6 VAEs
 
 Kandinsky 6 uses a causal 3D K-VAE for video super-resolution and the MMAudio mel-spectrogram VAE, paired with a
-separate BigVGAN [`~pipelines.kandinsky6.MMAudioVocoder`], for synchronized audio generation.
+separate BigVGAN [`MMAudioVocoder`], for synchronized audio generation.
 
 ## Kandinsky6SRVAE
 
@@ -37,7 +37,7 @@ vae = Kandinsky6SRVAE.from_pretrained(
 ## MMAudioVAE
 
 The mel-spectrogram VAE used by [`Kandinsky6TI2VAPipeline`] when `sample_audio=True`. Its `decode` output is a mel
-spectrogram; pass it through [`~pipelines.kandinsky6.MMAudioVocoder`] to get a waveform.
+spectrogram; pass it through [`MMAudioVocoder`] to get a waveform.
 
 The reference implementation can be found at [hkchengrex/MMAudio](https://github.com/hkchengrex/MMAudio) (MIT
 license).
@@ -62,5 +62,5 @@ Adapted from the BigVGAN-v2 vocoder MMAudio bundles, itself from
 [NVIDIA/BigVGAN](https://github.com/NVIDIA/BigVGAN) (MIT license), with the anti-aliased Snake activations of
 [alias-free-torch](https://github.com/junjun3518/alias-free-torch) (Apache License 2.0).
 
-[[autodoc]] pipelines.kandinsky6.MMAudioVocoder
+[[autodoc]] MMAudioVocoder
   - forward
