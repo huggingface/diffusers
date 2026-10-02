@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""TPU entry point for the generic TP-correctness worker (see `_tp_worker_common.py`).
+"""Generic torchrun worker: assert a model's TPU tensor-parallel output matches its single-chip reference.
 
-Model-agnostic. The model under test is supplied as a ``module:function`` spec reference on the command line; the
-referenced factory returns ``(model_class, init_dict, inputs)`` with CPU tensors, so all model-specific test data lives
+Model-agnostic. The model under test is supplied as a `module:function` spec reference on the command line; the
+referenced factory returns `(model_class, init_dict, inputs)` with CPU tensors, so all model-specific test data lives
 with the launching test rather than here.
 
-Launched as a subprocess by a ``@require_torch_tpu`` test (and runnable directly for debugging)::
+Launched as a subprocess by `TensorParallelTPUTesterMixin` (and runnable directly for debugging)::
 
     eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
     torchrun --nproc_per_node=4 _tpu_tp_worker.py \\
@@ -29,6 +29,8 @@ Exit code 0 means the TP path is numerically equivalent to the unsharded model; 
 """
 
 import argparse
+import copy
+import importlib
 import os
 import sys
 import traceback
@@ -38,36 +40,73 @@ import traceback
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+import torch
 import torch.distributed as dist
 import torch_tpu  # noqa: F401 — registers "tpu" device and "tpu_dist" backend
+from torch.distributed.device_mesh import DeviceMesh
 from torch_tpu._internal import sync as tpu_sync
 
-from tests.models.transformers._tp_worker_common import run_tp_correctness_worker
+from diffusers import TensorParallelConfig
+
+
+def _synchronize():
+    tpu_sync.synchronize(None, wait=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description="TPU tensor-parallel correctness worker.")
     parser.add_argument(
         "spec",
-        help="`module:function` reference returning (model_class, init_dict, tpu_inputs) for the model under test.",
+        help="`module:function` reference returning (model_class, init_dict, cpu_inputs) for the model under test.",
     )
+    parser.add_argument("--atol", type=float, default=1e-3)
+    parser.add_argument("--rtol", type=float, default=1e-3)
     args = parser.parse_args()
+    module_name, _, fn_name = args.spec.partition(":")
+    model_class, init_dict, inputs = getattr(importlib.import_module(module_name), fn_name)()
 
     dist.init_process_group(backend="tpu_dist")
-    # The reference runs on the TPU (not CPU) so both the reference and the TP pass use the same Flash Attention
-    # kernel; the only difference between them is sharding, not numerical implementation. TPU Flash Attention has
-    # bf16-level numerics, so the tolerance is wider than fp32 — but a wrong shard plan produces grossly different
-    # output and is caught comfortably within this bound.
-    run_tp_correctness_worker(
-        args.spec,
-        mesh_device_type="tpu",
-        to_device="tpu",
-        backend_label="TPU",
-        synchronize=lambda: tpu_sync.synchronize(None, wait=True),
-        reference_on_device=True,
-        atol=0.1,
-        rtol=0.1,
-    )
+    rank = dist.get_rank()
+    tp_size = dist.get_world_size()
+
+    # TPU runs fp32 matmuls in bf16 by default, which would put the reference and the TP output ~1e-2 apart and force a
+    # tolerance loose enough to hide a sharding bug. At the highest precision they agree to ~1e-7 for most models.
+    torch.set_float32_matmul_precision("highest")
+
+    # Identical weights on every rank (same seed).
+    torch.manual_seed(0)
+    model = model_class(**init_dict).eval()
+
+    # Single-chip (unsharded) reference on the TPU rather than the CPU, so the reference and the TP pass run the same
+    # kernels and only the sharding differs.
+    ref_model = copy.deepcopy(model).to("tpu")
+    inputs_on_device = {k: v.to("tpu") if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+    with torch.no_grad():
+        ref_output = ref_model(**inputs_on_device, return_dict=False)[0]
+    _synchronize()
+    ref_output = ref_output.float().cpu()
+    del ref_model
+
+    model.enable_parallelism(config=TensorParallelConfig(mesh=DeviceMesh("tpu", list(range(tp_size)))))
+    model = model.to("tpu")
+    with torch.no_grad():
+        tp_output = model(**inputs_on_device, return_dict=False)[0]
+    _synchronize()
+    tp_output = tp_output.float().cpu()
+
+    if rank == 0:
+        assert tp_output.shape == ref_output.shape, f"shape mismatch: {tp_output.shape} vs {ref_output.shape}"
+        assert torch.isfinite(tp_output).all(), "TP output contains non-finite values"
+        max_abs = (tp_output - ref_output).abs().max().item()
+        denom = ref_output.abs().max().item() + 1e-6
+        print(
+            f"[rank0] tp_size={tp_size} output_shape={tuple(tp_output.shape)} "
+            f"max_abs_diff={max_abs:.4e} max_rel_diff={max_abs / denom:.4e}"
+        )
+        torch.testing.assert_close(tp_output, ref_output, atol=args.atol, rtol=args.rtol)
+        print("[rank0] PASS: TPU tensor-parallel output matches single-device reference.")
+
+    dist.barrier()
     dist.destroy_process_group()
 
 

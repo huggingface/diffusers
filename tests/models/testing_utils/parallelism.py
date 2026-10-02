@@ -484,20 +484,24 @@ class TensorParallelTesterMixin:
         torch.testing.assert_close(reference, torch.tensor(return_dict["output"]), atol=1e-3, rtol=1e-3)
 
 
-def _run_tp_worker_subprocess(worker_filename: str, spec: str, world_size: int, timeout_s: int = 900) -> None:
+def _run_tp_worker_subprocess(
+    worker_filename: str, spec: str, world_size: int, timeout_s: int = 900, extra_args: "list[str] | None" = None
+) -> None:
     """Launch a `torchrun` TP-correctness worker subprocess and assert it exits cleanly.
 
     Args:
         worker_filename: Name of the worker script, resolved relative to `tests/models/transformers/` (e.g.
             `"_tpu_tp_worker.py"`).
-        spec: `module:function` reference forwarded to the worker, see `_tp_worker_common.run_tp_correctness_worker`.
+        spec: `module:function` reference forwarded to the worker, returning `(model_class, init_dict, cpu_inputs)`.
         world_size: Number of ranks to launch (`torchrun --nproc_per_node`).
         timeout_s: Seconds to wait for the subprocess before failing the test. The worker itself only needs a couple
             of minutes even from a cold compile; this generously bounds it so a real hang (e.g. a distributed-runtime
             barrier timeout) fails the test loudly instead of stalling the run.
+        extra_args: Further command-line arguments forwarded to the worker.
     """
     worker = os.path.join(os.path.dirname(__file__), "..", "transformers", worker_filename)
     cmd = [sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={world_size}", worker, spec]
+    cmd += extra_args or []
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
     except subprocess.TimeoutExpired as e:
@@ -519,9 +523,10 @@ class TensorParallelTPUTesterMixin:
     for Neuron — it cannot use `TensorParallelTesterMixin`'s `torch.multiprocessing.spawn`/NCCL path above and instead
     launches a subprocess worker script and checks its exit code.
 
-    Subclasses set `TP_SPEC` to a `module:function` reference (see
-    `_tp_worker_common.run_tp_correctness_worker`'s `spec` argument) and, only if the model spec's head count
-    doesn't divide 4, override `WORLD_SIZE`.
+    Subclasses set `TP_SPEC` to a `module:function` reference returning `(model_class, init_dict, cpu_inputs)` and,
+    only if the model spec's head count doesn't divide 4, override `WORLD_SIZE`. `TP_ATOL` / `TP_RTOL` bound the
+    difference from the single-chip reference; override them only for a model whose TPU numerics depend on the shard
+    shapes.
 
     `WORLD_SIZE` defaults to 4 rather than an arbitrary rank count: `torch_tpu`'s per-generation topology table
     (`torch_tpu._internal.utils.hardware`) only enumerates whole-pod-slice chip counts (1/4/8 for v6e, for example),
@@ -543,6 +548,8 @@ class TensorParallelTPUTesterMixin:
     # stalling the run.
     TIMEOUT_S = 900
     TP_SPEC: str = ""
+    TP_ATOL = 1e-3
+    TP_RTOL = 1e-3
 
     def skip_if_unsupported(self):
         """Skip unless the host has exactly `WORLD_SIZE` TPU chips.
@@ -573,7 +580,11 @@ class TensorParallelTPUTesterMixin:
     def test_tensor_parallel_tpu_inference(self):
         self.skip_if_unsupported()
         _run_tp_worker_subprocess(
-            "_tpu_tp_worker.py", self.TP_SPEC, world_size=self.WORLD_SIZE, timeout_s=self.TIMEOUT_S
+            "_tpu_tp_worker.py",
+            self.TP_SPEC,
+            world_size=self.WORLD_SIZE,
+            timeout_s=self.TIMEOUT_S,
+            extra_args=[f"--atol={self.TP_ATOL}", f"--rtol={self.TP_RTOL}"],
         )
 
 

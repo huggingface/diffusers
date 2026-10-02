@@ -178,35 +178,14 @@ def make_neuron_tp_spec():
 
 
 def make_tpu_tp_spec():
-    """Model spec consumed by the generic TPU TP worker (``_tpu_tp_worker.py``).
-
-    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all Flux2-specific test data lives in this file
-    while the worker stays model-agnostic.
-
-    Overrides ``num_attention_heads`` to 4 (instead of reusing the shared tester config's 2) so the TP degree divides
-    the head count on a whole-pod-slice TPU host: `torch_tpu`'s per-generation topology table
-    (``torch_tpu._internal.utils.hardware``) only enumerates whole-slice chip counts (1/4/8 for v6e, for example), not
-    arbitrary sub-slices of a larger single host, and ``TestFlux2TransformerTensorParallelTPU`` shards across
-    ``WORLD_SIZE`` ranks to match. Every other field still comes from the shared config so the rest of the spec
-    doesn't drift from the other Flux2 tests.
-    """
+    """Model spec for `_tpu_tp_worker.py`, with 4 heads so the 4 TPU ranks of `TensorParallelTPUTesterMixin` divide them."""
     config = Flux2TransformerTesterConfig()
     init_dict = {**config.get_init_dict(), "num_attention_heads": 4}
     return Flux2Transformer2DModel, init_dict, config.get_dummy_inputs(device="cpu")
 
 
 class TestFlux2TransformerTensorParallelTPU(TensorParallelTPUTesterMixin):
-    """Tensor Parallel inference test for Flux2 Transformer on TPU.
-
-    TPU TP runs through ``torchrun`` with the ``"tpu_dist"`` distributed backend, so it cannot use the
-    ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker with
-    the Flux2 model spec (``make_tpu_tp_spec``) via ``TensorParallelTPUTesterMixin``; the worker asserts the sharded
-    output matches a single-device reference, and the test checks its exit code.
-
-    ``make_tpu_tp_spec`` overrides ``num_attention_heads`` to 4 so that ``TensorParallelTPUTesterMixin``'s default
-    4-rank ``WORLD_SIZE`` divides the head count — unlike the CUDA/XPU ``TensorParallelTesterMixin``, which hardcodes
-    ``world_size = 2`` to match `Flux2TransformerTesterConfig`'s 2 heads.
-    """
+    """Tensor Parallel inference test for Flux2 Transformer on TPU."""
 
     TP_SPEC = "tests.models.transformers.test_models_transformer_flux2:make_tpu_tp_spec"
 
