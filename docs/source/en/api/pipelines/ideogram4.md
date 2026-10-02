@@ -40,6 +40,56 @@ image = pipe(prompt, height=1024, width=1024, generator=torch.Generator("cuda").
 image.save("ideogram4.png")
 ```
 
+## Modular image-to-image and inpainting
+
+The [`Ideogram4ModularPipeline`] automatically selects text-to-image, image-to-image, or inpainting blocks from the
+inputs. Pass `image` to run image-to-image generation, and pass both `image` and `mask_image` to run inpainting. White
+mask pixels are repainted and black pixels preserve the source image.
+
+```python
+import torch
+from diffusers import ModularPipeline
+from diffusers.utils import load_image
+
+pipe = ModularPipeline.from_pretrained("ideogram-ai/ideogram-4-nf4")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")
+
+source = load_image(
+    "https://github.com/lucasruan1618/Image_storage/blob/main/Input/cute_cat.png?raw=true"
+).convert("RGB")
+image = pipe(
+    prompt="A watercolor painting of a cat",
+    image=source,
+    strength=0.7,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("ideogram4_img2img.png")
+```
+
+For inpainting, provide a mask at the same logical resolution as the source image. `padding_mask_crop` is also
+supported for higher-resolution work on a cropped masked region.
+
+```python
+from diffusers.utils import load_image
+
+source = load_image(
+    "https://github.com/lucasruan1618/Image_storage/blob/main/Input/cute_cat.png?raw=true"
+).convert("RGB")
+mask = load_image(
+    "https://github.com/lucasruan1618/Image_storage/blob/main/Input/mask_cat.png?raw=true"
+).convert("L")
+
+image = pipe(
+    prompt="A cat wearing a red wizard hat",
+    image=source,
+    mask_image=mask,
+    strength=0.9,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("ideogram4_inpaint.png")
+```
+
 ## Prompt upsampling
 
 Ideogram 4 is trained on a structured JSON caption rather than a free-form prompt, so a short prompt is best
@@ -115,3 +165,7 @@ image.save("ideogram4_upsampled.png")
 ## Ideogram4PipelineOutput
 
 [[autodoc]] pipelines.ideogram4.pipeline_output.Ideogram4PipelineOutput
+
+## Ideogram4ModularPipeline
+
+[[autodoc]] Ideogram4ModularPipeline
