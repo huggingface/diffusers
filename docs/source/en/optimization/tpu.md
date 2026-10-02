@@ -148,7 +148,7 @@ transformer = Flux2Transformer2DModel.from_pretrained(
 pipe = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.2-dev", transformer=transformer, torch_dtype=torch.bfloat16
 )
-# The transformer is already sharded across the chips; move the remaining components individually.
-pipe.text_encoder.to("tpu")
+# The transformer is already sharded across the chips; move the remaining components individually. The ~45GB
+# text encoder doesn't fit on one chip, so leave it on CPU or shard it as described in the eager mode section.
 pipe.vae.to("tpu")
 ```
