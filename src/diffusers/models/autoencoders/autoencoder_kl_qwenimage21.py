@@ -56,8 +56,9 @@ class QwenImage21AvgDown3D(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         pad_t = (self.factor_t - x.shape[2] % self.factor_t) % self.factor_t
-        pad = (0, 0, 0, 0, pad_t, 0)
-        x = F.pad(x, pad)
+        if pad_t:
+            padding = x.new_zeros((x.shape[0], x.shape[1], pad_t, *x.shape[3:]))
+            x = torch.cat([padding, x], dim=2)
         B, C, T, H, W = x.shape
         x = x.view(
             B,
