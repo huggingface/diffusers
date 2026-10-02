@@ -17,6 +17,7 @@ from ..testing_utils import (
     MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
+    TaylorSeerCacheTesterMixin,
 )
 from .testing_utils import FluxIPAdapterTesterMixin
 
@@ -182,6 +183,12 @@ class TestFluxKontextInpaintPipelineIPAdapter(FluxKontextInpaintPipelineTesterCo
 
 class TestFluxKontextInpaintPipelineMemory(FluxKontextInpaintPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux Kontext inpaint pipeline."""
+
+
+class TestFluxKontextInpaintPipelineTaylorSeerCache(
+    FluxKontextInpaintPipelineTesterConfig, TaylorSeerCacheTesterMixin
+):
+    """TaylorSeer cache tests for the Flux Kontext inpaint pipeline."""
 
 
 class TestFluxKontextInpaintPipelinePyramidAttentionBroadcast(
