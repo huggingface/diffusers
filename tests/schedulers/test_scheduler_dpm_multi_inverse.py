@@ -271,3 +271,27 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+    def test_rejects_stochastic_algorithm_types(self):
+        # Inversion uses increasing sigmas, so h = lambda_t - lambda_s is negative.
+        # The SDE variance terms are only real for h > 0 and produce NaN under inversion.
+        for algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
+            with self.assertRaises(ValueError) as ctx:
+                DPMSolverMultistepInverseScheduler(algorithm_type=algorithm_type)
+            message = str(ctx.exception)
+            self.assertIn("DPMSolverMultistepInverseScheduler", message)
+            self.assertIn(algorithm_type, message)
+            self.assertIn("deterministic", message)
+
+        for algorithm_type in ["dpmsolver", "dpmsolver++"]:
+            scheduler = DPMSolverMultistepInverseScheduler(
+                num_train_timesteps=1000,
+                beta_start=0.00085,
+                beta_end=0.012,
+                algorithm_type=algorithm_type,
+            )
+            scheduler.set_timesteps(10)
+            sample = torch.randn(1, 4, 8, 8)
+            model_output = torch.randn(1, 4, 8, 8)
+            prev = scheduler.step(model_output, scheduler.timesteps[0], sample).prev_sample
+            self.assertFalse(torch.isnan(prev).any())
