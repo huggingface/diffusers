@@ -975,14 +975,16 @@ def make_doc_string(
         aligned_desc = "\n".join("  " + line.rstrip() for line in desc_lines)
         output += aligned_desc + "\n\n"
 
-    # Add components section if provided
+    # Add components section if provided. Keep the blank lines between entries: this string becomes the class
+    # docstring, which `doc-builder style` reflows, and it merges adjacent description-less single lines (e.g.
+    # `video_processor (`VideoProcessor`)`) onto one line unless a blank line separates them.
     if expected_components and len(expected_components) > 0:
-        components_str = format_components(expected_components, indent_level=2, add_empty_lines=False)
+        components_str = format_components(expected_components, indent_level=2, add_empty_lines=True)
         output += components_str + "\n\n"
 
-    # Add configs section if provided
+    # Add configs section if provided (blank lines between entries for the same doc-builder reason as above)
     if expected_configs and len(expected_configs) > 0:
-        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
+        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=True)
         output += configs_str + "\n\n"
 
     # Add inputs section
