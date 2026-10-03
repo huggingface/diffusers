@@ -165,8 +165,18 @@ class Kandinsky6SRLatentUpscalerX2Branch(nn.Module):
 class Kandinsky6SRLatentUpscaler(nn.Module):
     """One latent upscaler of the bank: a two-stage 2x+2x cascade for `scale=4`, or its single-stage x2 variant.
 
-    Both share the same widths. The x4 model runs `input_proj -> pre_blocks -> upsample_1 -> mid_blocks -> upsample_2
-    -> post_blocks -> output_proj`; the x2 model runs its own stem and the [`Kandinsky6SRLatentUpscalerX2Branch`] tail.
+    Both share the same widths and the same `input_proj -> pre_blocks -> upsample_1 -> mid_blocks -> upsample_2 ->
+    post_blocks -> output_proj` backbone (plus an auxiliary `mid_output_head`, a deep-supervision head the
+    checkpoint trains with zero loss weight -- see below). The x2 model additionally runs the
+    [`Kandinsky6SRLatentUpscalerX2Branch`] tail; the x4 model's `forward` is just its backbone.
+
+    Released checkpoints train the x2 entry's backbone jointly with its [`Kandinsky6SRLatentUpscalerX2Branch`]
+    tail (the `x2_adapter_sources` config field names which backbone activations the tail's `adapter` reads from),
+    but `forward` here only runs the tail, matching this class's behavior before the backbone was known to exist:
+    the backbone and `mid_output_head` are declared so their trained weights load from the checkpoint instead of
+    raising "unused weights"/leaving parameters meta/randomly-initialized, but neither is wired into `forward`, so
+    numerically this is unchanged from before. Wiring the backbone into the x2 tail's forward pass needs the
+    original training code to confirm the exact tap points first -- guessing would risk silently wrong output.
     """
 
     def __init__(
@@ -185,15 +195,20 @@ class Kandinsky6SRLatentUpscaler(nn.Module):
         self.scale = scale
         width_1, width_2, width_3 = stage_channels
 
-        if scale == 4:
-            self.input_proj = nn.Sequential(Kandinsky6SRLatentUpscalerConv3d(in_channels, width_1, kernel_size=3))
-            self.pre_blocks = _residual_stack(num_pre_blocks, width_1, width_1, in_channels)
-            self.upsample_1 = Kandinsky6SRLatentUpscalerUpsample(width_1)
-            self.mid_blocks = _residual_stack(num_mid_blocks, width_1, width_2, in_channels)
-            self.upsample_2 = Kandinsky6SRLatentUpscalerUpsample(width_2)
-            self.post_blocks = _residual_stack(num_post_blocks, width_2, width_3, in_channels)
-            self.output_proj = Kandinsky6SRLatentUpscalerOutputHead(width_3, in_channels, in_channels)
-        else:
+        self.input_proj = nn.Sequential(Kandinsky6SRLatentUpscalerConv3d(in_channels, width_1, kernel_size=3))
+        self.pre_blocks = _residual_stack(num_pre_blocks, width_1, width_1, in_channels)
+        self.upsample_1 = Kandinsky6SRLatentUpscalerUpsample(width_1)
+        self.mid_blocks = _residual_stack(num_mid_blocks, width_1, width_2, in_channels)
+        self.mid_output_head = nn.Sequential(
+            Kandinsky6SRLatentUpscalerRMSNorm(width_2),
+            nn.SiLU(),
+            Kandinsky6SRLatentUpscalerConv3d(width_2, in_channels, kernel_size=3),
+        )
+        self.upsample_2 = Kandinsky6SRLatentUpscalerUpsample(width_2)
+        self.post_blocks = _residual_stack(num_post_blocks, width_2, width_3, in_channels)
+        self.output_proj = Kandinsky6SRLatentUpscalerOutputHead(width_3, in_channels, in_channels)
+
+        if scale == 2:
             self.mid_input_proj = nn.Sequential(Kandinsky6SRLatentUpscalerConv3d(in_channels, width_1, kernel_size=3))
             self.x2_branch = Kandinsky6SRLatentUpscalerX2Branch(
                 in_channels, stage_channels, num_x2_adapter_blocks, num_mid_blocks, num_post_blocks
