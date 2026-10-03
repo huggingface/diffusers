@@ -15,6 +15,8 @@
 
 import os
 import socket
+import subprocess
+import sys
 
 import pytest
 import torch
@@ -31,6 +33,7 @@ from ...testing_utils import (
     is_kernels_available,
     is_tensor_parallel,
     require_torch_multi_accelerator,
+    require_torch_tpu,
     torch_device,
 )
 from .common import calculate_expected_num_shards, compute_module_persistent_sizes
@@ -303,8 +306,8 @@ def _tensor_parallel_from_pretrained_worker(
     """Worker for `from_pretrained(..., parallel_config=...)`, i.e. sharding while reading the checkpoint.
 
     Each rank loads only its own slice of every `_tp_plan` parameter straight into a `DTensor` and runs a forward
-    pass. Rank 0 reports its output and the local/global shapes of one sharded weight so the caller can check both the
-    numerics and that sharding actually happened.
+    pass. Rank 0 checks that exactly the parameters `_tp_plan` covers were loaded as `DTensor`s, each with the
+    placement and local shape its shard spec implies, and reports its output so the caller can check the numerics.
     """
     try:
         os.environ["MASTER_ADDR"] = "localhost"
@@ -316,7 +319,9 @@ def _tensor_parallel_from_pretrained_worker(
         dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
         device_config["module"].set_device(rank)
 
-        from torch.distributed.tensor import DTensor
+        from torch.distributed.tensor import DTensor, Replicate, Shard
+
+        from diffusers.hooks.tensor_parallel import resolve_tp_shard_specs
 
         model = model_class.from_pretrained(
             checkpoint_dir, parallel_config=TensorParallelConfig(tp_degree=world_size)
@@ -330,12 +335,31 @@ def _tensor_parallel_from_pretrained_worker(
             output = output.full_tensor()
 
         if rank == 0:
-            sharded = {k: v for k, v in model.state_dict().items() if isinstance(v, DTensor)}
-            assert sharded, "No parameter was sharded into a DTensor by the streaming load."
-            name, param = next(iter(sharded.items()))
+            specs = resolve_tp_shard_specs(model, model_class._tp_plan, world_size)
+            state_dict = model.state_dict()
+
+            # A planned parameter the streaming load left as a full tensor would still compute the right output, so
+            # the numerics check alone would not catch it.
+            for name, spec in specs.items():
+                param = state_dict[name]
+                assert isinstance(param, DTensor), (
+                    f"'{name}' is covered by `_tp_plan` but was not loaded as a DTensor."
+                )
+                placement = Replicate() if spec.dim is None else Shard(spec.dim)
+                assert param.placements == (placement,), (
+                    f"'{name}' has placements {param.placements}, not {placement}."
+                )
+                expected_local_shape = list(param.shape)
+                if spec.dim is not None:
+                    expected_local_shape[spec.dim] //= world_size
+                assert list(param.to_local().shape) == expected_local_shape, (
+                    f"'{name}' has local shape {list(param.to_local().shape)}, not {expected_local_shape}."
+                )
+
+            unplanned = sorted(k for k, v in state_dict.items() if isinstance(v, DTensor) and k not in specs)
+            assert not unplanned, f"Parameters not covered by `_tp_plan` were loaded as DTensors: {unplanned}"
+
             return_dict["status"] = "success"
-            return_dict["num_sharded"] = len(sharded)
-            return_dict["shard_example"] = (name, list(param.to_local().shape), list(param.shape))
             return_dict["output"] = output.float().cpu().tolist()
 
     except Exception as e:
@@ -456,13 +480,112 @@ class TensorParallelTesterMixin:
             f"Tensor parallel `from_pretrained` failed: {return_dict.get('error', 'Unknown error')}"
         )
 
-        name, local_shape, global_shape = return_dict["shard_example"]
-        assert local_shape != global_shape, (
-            f"'{name}' has local shape {local_shape} equal to its global shape, so it was not sharded."
-        )
-
         # Sharded matmuls + all-reduce reorder the summation, so allow a small tolerance over the reference.
         torch.testing.assert_close(reference, torch.tensor(return_dict["output"]), atol=1e-3, rtol=1e-3)
+
+
+def _run_tp_worker_subprocess(
+    worker_filename: str, spec: str, world_size: int, timeout_s: int = 900, extra_args: "list[str] | None" = None
+) -> None:
+    """Launch a `torchrun` TP-correctness worker subprocess and assert it exits cleanly.
+
+    Args:
+        worker_filename: Name of the worker script, resolved relative to `tests/models/transformers/` (e.g.
+            `"_tpu_tp_worker.py"`).
+        spec: `module:function` reference forwarded to the worker, returning `(model_class, init_dict, cpu_inputs)`.
+        world_size: Number of ranks to launch (`torchrun --nproc_per_node`).
+        timeout_s: Seconds to wait for the subprocess before failing the test. The worker itself only needs a couple
+            of minutes even from a cold compile; this generously bounds it so a real hang (e.g. a distributed-runtime
+            barrier timeout) fails the test loudly instead of stalling the run.
+        extra_args: Further command-line arguments forwarded to the worker.
+    """
+    worker = os.path.join(os.path.dirname(__file__), "..", "transformers", worker_filename)
+    cmd = [sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={world_size}", worker, spec]
+    cmd += extra_args or []
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired as e:
+        raise AssertionError(
+            f"TP worker did not finish within {timeout_s}s (likely stuck on a distributed-runtime barrier).\n"
+            f"--- stdout ---\n{e.stdout}\n--- stderr ---\n{e.stderr}"
+        ) from e
+    assert result.returncode == 0, (
+        f"TP worker failed (exit {result.returncode}).\n--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+    )
+
+
+@is_tensor_parallel
+@require_torch_tpu
+class TensorParallelTPUTesterMixin:
+    """Mixin for a tensor-parallel correctness test on TPU, run via `_tpu_tp_worker.py`.
+
+    TPU TP runs through `torchrun` with the `"tpu_dist"` distributed backend, so — like `TestFlux2TransformerTensorParallelNeuron`
+    for Neuron — it cannot use `TensorParallelTesterMixin`'s `torch.multiprocessing.spawn`/NCCL path above and instead
+    launches a subprocess worker script and checks its exit code.
+
+    Subclasses set `TP_SPEC` to a `module:function` reference returning `(model_class, init_dict, cpu_inputs)` and,
+    only if the model spec's head count doesn't divide 4, override `WORLD_SIZE`. `TP_ATOL` / `TP_RTOL` bound the
+    difference from the single-chip reference; override them only for a model whose TPU numerics depend on the shard
+    shapes.
+
+    `WORLD_SIZE` defaults to 4 rather than an arbitrary rank count: `torch_tpu`'s per-generation topology table
+    (`torch_tpu._internal.utils.hardware`) only enumerates whole-pod-slice chip counts (1/4/8 for v6e, for example),
+    not arbitrary sub-slices of a larger single host. A rank count with no matching whole-slice topology has
+    nothing to advertise and the PJRT client never completes its start-session barrier — the test would hang for
+    the barrier's full multi-minute timeout instead of failing. 4 is the smallest whole-slice count every current
+    TPU generation defines (see `_V4_TOPOLOGY` / `_V5E_TOPOLOGY` / `_V6E_TOPOLOGY` / `_V7_TOPOLOGY` in
+    `torch_tpu._internal.utils.hardware`). `skip_if_unsupported` below still checks the actual host up front and
+    skips fast instead of hanging when it doesn't have exactly that many chips.
+
+    Requires `TORCH_TPU_TOPOLOGY` and `TORCH_TPU_SLICEBUILDER_ADDRESSES` to be set. Source them via::
+
+        eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
+    """
+
+    WORLD_SIZE = 4
+    # The worker itself only needs a couple of minutes even from a cold XLA compile; this generously bounds the
+    # subprocess so a real hang (e.g. a barrier timeout this skip failed to catch) fails the test loudly instead of
+    # stalling the run.
+    TIMEOUT_S = 900
+    TP_SPEC: str = ""
+    TP_ATOL = 1e-3
+    TP_RTOL = 1e-3
+
+    def skip_if_unsupported(self):
+        """Skip unless the host has exactly `WORLD_SIZE` TPU chips.
+
+        A topology *string* existing for a chip count (`hardware.get_tpu_topology`) isn't enough to guarantee the
+        PJRT client can actually form that session: a sub-slice of a larger single host (e.g. claiming 2 of a
+        4-chip v6e-4's chips via `TORCH_TPU_TOPOLOGY`/`TORCH_TPU_SLICEBUILDER_ADDRESSES`) can still fail with a
+        low-level `START_SESSION` GRPC error, since the runtime's session setup is tied to the host's actual
+        provisioned slice, not just a topology label. The only combination verified to work is running with exactly
+        as many ranks as the host has chips.
+        """
+        from torch_tpu._internal.utils import hardware
+
+        try:
+            device_count = hardware.get_tpu_device_count()
+        except Exception as e:  # pragma: no cover - defensive, hardware detection is best-effort
+            pytest.skip(f"Could not determine local TPU chip count: {e}")
+            return
+
+        if device_count != self.WORLD_SIZE:
+            pytest.skip(
+                f"This host exposes {device_count} TPU chip(s), but this test requires exactly "
+                f"{self.WORLD_SIZE} (a TPU single-host tensor-parallel job must use all chips on the host; "
+                f"sub-slicing a larger host is not reliably supported by the runtime). Run this test on a host "
+                f"with exactly {self.WORLD_SIZE} TPU chips."
+            )
+
+    def test_tensor_parallel_tpu_inference(self):
+        self.skip_if_unsupported()
+        _run_tp_worker_subprocess(
+            "_tpu_tp_worker.py",
+            self.TP_SPEC,
+            world_size=self.WORLD_SIZE,
+            timeout_s=self.TIMEOUT_S,
+            extra_args=[f"--atol={self.TP_ATOL}", f"--rtol={self.TP_RTOL}"],
+        )
 
 
 @is_context_parallel

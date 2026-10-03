@@ -53,6 +53,7 @@ from ..testing_utils import (
     SingleFileTesterMixin,
     TaylorSeerCacheTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -274,6 +275,19 @@ class TestFluxTransformerContextParallelAttnBackends(
 
 class TestFluxTransformerTensorParallel(FluxTransformerTesterConfig, TensorParallelTesterMixin):
     """Tensor Parallel inference tests for Flux Transformer (CUDA/XPU multi-accelerator)."""
+
+
+def make_tpu_tp_spec():
+    """Model spec for `_tpu_tp_worker.py`, with 4 heads so the 4 TPU ranks of `TensorParallelTPUTesterMixin` divide them."""
+    config = FluxTransformerTesterConfig()
+    init_dict = {**config.get_init_dict(), "num_attention_heads": 4}
+    return FluxTransformer2DModel, init_dict, config.get_dummy_inputs(device="cpu")
+
+
+class TestFluxTransformerTensorParallelTPU(TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for Flux Transformer on TPU."""
+
+    TP_SPEC = "tests.models.transformers.test_models_transformer_flux:make_tpu_tp_spec"
 
 
 def make_neuron_tp_spec():

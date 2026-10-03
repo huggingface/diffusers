@@ -37,6 +37,7 @@ from ..testing_utils import (
     MemoryTesterMixin,
     ModelTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -305,6 +306,22 @@ class TestQwenImageTransformerContextParallelAttnBackends(
 
 class TestQwenImageTransformerTensorParallel(QwenImageTransformerTesterConfig, TensorParallelTesterMixin):
     """Tensor Parallel inference tests for QwenImage Transformer (CUDA/XPU multi-accelerator)."""
+
+
+def make_tpu_tp_spec():
+    """Model spec for `_tpu_tp_worker.py`; the shared config's 4 heads already divide the 4 TPU ranks."""
+    config = QwenImageTransformerTesterConfig()
+    return QwenImageTransformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+class TestQwenImageTransformerTensorParallelTPU(TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for QwenImage Transformer on TPU."""
+
+    TP_SPEC = "tests.models.transformers.test_models_transformer_qwenimage:make_tpu_tp_spec"
+    # On TPU the sharded and unsharded QwenImage outputs differ by ~1e-2 even at the highest matmul precision. The
+    # same comparison on CPU agrees to ~1e-7, so the gap is TPU numerics depending on the shard shapes, not the plan.
+    TP_ATOL = 2e-2
+    TP_RTOL = 2e-2
 
 
 def make_neuron_tp_spec():
