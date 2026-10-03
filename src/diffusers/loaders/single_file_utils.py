@@ -3723,6 +3723,13 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
 
 def convert_cosmos_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    
+    for k in list(checkpoint.keys()):
+        if "llm_adapter" in k:
+            _ = checkpoint.pop(k)
+        else:
+            checkpoint[k.removeprefix("model.diffusion_model.")] = checkpoint.pop(k)
+
     converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
 
     def remove_keys_(key: str, state_dict):
