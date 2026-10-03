@@ -25,9 +25,9 @@ from torch.nn.attention.flex_attention import BlockMask
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ..attention import AttentionMixin, AttentionModuleMixin
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
-from ..embeddings import get_timestep_embedding
+from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 
@@ -234,24 +234,19 @@ class Kandinsky6SRAttention(nn.Module, AttentionModuleMixin):
 class Kandinsky6SRTimeEmbeddings(nn.Module):
     """Sinusoidal timestep embedding with a K6-compatible parameter layout."""
 
-    def __init__(self, model_dim: int, time_dim: int, max_period: float = 10000.0):
+    def __init__(self, model_dim: int, time_dim: int):
         super().__init__()
         if model_dim % 2:
             raise ValueError("model_dim must be even")
-        self.model_dim = model_dim
-        self.max_period = max_period
-        self.in_layer = nn.Linear(model_dim, time_dim)
-        self.activation = nn.SiLU()
-        self.out_layer = nn.Linear(time_dim, time_dim)
+        self.time_proj = Timesteps(model_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(model_dim, time_dim, act_fn="silu")
 
     def forward(self, timestep: Tensor) -> Tensor:
         # The sinusoidal embedding is float32; `_keep_in_fp32_modules` keeps these layers float32 under
         # `from_pretrained(torch_dtype=...)`, and the cast aligns the input with whatever dtype they hold.
-        embed = get_timestep_embedding(
-            timestep, self.model_dim, flip_sin_to_cos=True, downscale_freq_shift=0, max_period=self.max_period
-        )
-        embed = embed.to(get_parameter_dtype(self.in_layer))
-        return self.out_layer(self.activation(self.in_layer(embed)))
+        embed = self.time_proj(timestep)
+        embed = embed.to(get_parameter_dtype(self.timestep_embedder))
+        return self.timestep_embedder(embed)
 
 
 # Copied from diffusers.models.transformers.transformer_kandinsky6.Kandinsky6VisualEmbeddings with Kandinsky6->Kandinsky6SR
@@ -287,20 +282,6 @@ class Kandinsky6SRModulation(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.out_layer(self.activation(x.to(get_parameter_dtype(self.out_layer))))
-
-
-# Copied from diffusers.models.transformers.transformer_kandinsky6.Kandinsky6FeedForward with Kandinsky6->Kandinsky6SR
-class Kandinsky6SRFeedForward(nn.Module):
-    """K6 bias-free GELU feed-forward network."""
-
-    def __init__(self, dim: int, ff_dim: int):
-        super().__init__()
-        self.in_layer = nn.Linear(dim, ff_dim, bias=False)
-        self.activation = nn.GELU()
-        self.out_layer = nn.Linear(ff_dim, dim, bias=False)
-
-    def forward(self, x: Tensor) -> Tensor:
-        return self.out_layer(self.activation(self.in_layer(x)))
 
 
 # Copied from diffusers.models.transformers.transformer_kandinsky6.Kandinsky6OutLayer with Kandinsky6->Kandinsky6SR
@@ -390,7 +371,7 @@ class Kandinsky6SRTransformerBlock(nn.Module):
         self.self_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.self_attention = Kandinsky6SRAttention(model_dim, head_dim)
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
-        self.feed_forward = Kandinsky6SRFeedForward(model_dim, ff_dim)
+        self.feed_forward = FeedForward(model_dim, inner_dim=ff_dim, activation_fn="gelu", bias=False)
 
     def forward(
         self,
