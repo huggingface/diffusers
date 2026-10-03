@@ -379,6 +379,8 @@
         title: Krea2Transformer2DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
+      - local: api/models/llada_image_transformer2d
+        title: LLaDA-Image
       - local: api/models/longcat_image_transformer2d
         title: LongCatImageTransformer2DModel
       - local: api/models/ltx2_video_transformer3d
@@ -617,6 +619,8 @@
         title: Latent Diffusion
       - local: api/pipelines/ledits_pp
         title: LEDITS++
+      - local: api/pipelines/llada_image
+        title: LLaDA-Image
       - local: api/pipelines/longcat_image
         title: LongCat-Image
       - local: api/pipelines/lumina2
