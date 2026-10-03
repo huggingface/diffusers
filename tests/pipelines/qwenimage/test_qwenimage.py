@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
@@ -194,6 +195,27 @@ class TestQwenImagePipelineMemory(QwenImagePipelineTesterConfig, MemoryTesterMix
 
 class TestQwenImagePipelineLoRA(QwenImagePipelineTesterConfig, LoraTesterMixin):
     """LoRA tests for the QwenImage pipeline."""
+
+    @pytest.mark.parametrize("alpha", [None, 4, 8])
+    def test_lora_state_dict_folds_alpha_into_lora_A_lora_B(self, alpha):
+        """A per-module `.alpha` in a lora_A/lora_B checkpoint must scale the LoRA delta by `alpha / rank`."""
+        rank = 4
+        to_q = self.get_dummy_components()["transformer"].transformer_blocks[0].attn.to_q
+        generator = torch.Generator("cpu").manual_seed(0)
+        lora_A = torch.randn(rank, to_q.in_features, generator=generator)
+        lora_B = torch.randn(to_q.out_features, rank, generator=generator)
+
+        key = "diffusion_model.transformer_blocks.0.attn.to_q"
+        state_dict = {f"{key}.lora_A.weight": lora_A, f"{key}.lora_B.weight": lora_B}
+        if alpha is not None:
+            state_dict[f"{key}.alpha"] = torch.tensor(float(alpha))
+        converted = self.pipeline_class.lora_state_dict(state_dict)
+
+        prefix = "transformer.transformer_blocks.0.attn.to_q"
+        assert set(converted) == {f"{prefix}.lora_A.weight", f"{prefix}.lora_B.weight"}
+        scale = 1.0 if alpha is None else alpha / rank
+        delta = converted[f"{prefix}.lora_B.weight"] @ converted[f"{prefix}.lora_A.weight"]
+        assert_tensors_close(delta, scale * (lora_B @ lora_A), atol=1e-6, rtol=1e-6)
 
 
 class TestQwenImagePipelineLoRAMemory(QwenImagePipelineTesterConfig, LoraMemoryTesterMixin):
