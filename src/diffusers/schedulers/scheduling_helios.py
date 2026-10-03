@@ -22,6 +22,7 @@ import torch
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..schedulers.scheduling_utils import SchedulerMixin
 from ..utils import BaseOutput, deprecate
+from ..utils.torch_utils import maybe_adjust_dtype_for_device
 
 
 @dataclass
@@ -235,8 +236,17 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
             ratios = np.linspace(stage_sigmas[0].item(), stage_sigmas[-1].item(), num_inference_steps)
             sigmas = torch.from_numpy(ratios)
 
-        self.timesteps = torch.from_numpy(timesteps).to(device=device)
-        self.sigmas = torch.cat([sigmas, torch.zeros(1)]).to(device=device)
+        timesteps = torch.from_numpy(timesteps)
+        sigmas = torch.cat([sigmas, torch.zeros(1)])
+        if device is not None:
+            # In the multi-stage branch both arrays come from np.linspace, so they are
+            # float64, which mps (and npu/neuron) cannot hold. Cast before moving.
+            device = torch.device(device)
+            timesteps = timesteps.to(maybe_adjust_dtype_for_device(timesteps.dtype, device))
+            sigmas = sigmas.to(maybe_adjust_dtype_for_device(sigmas.dtype, device))
+
+        self.timesteps = timesteps.to(device=device)
+        self.sigmas = sigmas.to(device=device)
 
         self._step_index = None
         self.reset_scheduler_history()
