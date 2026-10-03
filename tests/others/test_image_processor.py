@@ -15,9 +15,10 @@
 
 import numpy as np
 import PIL.Image
+import pytest
 import torch
 
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import VaeImageProcessor, is_valid_image_imagelist
 
 
 class TestImageProcessor:
@@ -306,3 +307,10 @@ class TestImageProcessor:
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+    def test_vae_image_processor_rejects_empty_list(self):
+        """An empty list used to pass is_valid_image_imagelist (all([]) is True) and then IndexError on image[0]."""
+        image_processor = VaeImageProcessor(do_resize=False)
+        assert is_valid_image_imagelist([]) is False
+        with pytest.raises(ValueError, match="empty list of images"):
+            image_processor.preprocess([])

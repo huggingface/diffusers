@@ -165,3 +165,9 @@ class TestVideoProcessor:
                 (self.to_np(input) * 255.0).round().astype("uint8") if output_type == "pil" else self.to_np(input)
             )
             assert np.abs(input_np - out_np).max() < 1e-6, f"Decoded output does not match input for {output_type=}"
+
+    def test_video_processor_rejects_empty_list(self):
+        """An empty list used to IndexError on video[0] before format validation."""
+        video_processor = VideoProcessor(do_resize=False)
+        with pytest.raises(ValueError, match="empty list of videos"):
+            video_processor.preprocess_video([])
