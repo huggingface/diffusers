@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> import numpy as np
 
         >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16
         ... )
         >>> pipe_prior.to("cuda")
 
@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
         >>> image_emb, zero_image_emb = pipe_prior(prompt, return_dict=False)
 
         >>> pipe = KandinskyV22InpaintPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-2-decoder-inpaint", dtype=torch.float16
         ... )
         >>> pipe.to("cuda")
 

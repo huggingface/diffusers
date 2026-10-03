@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> pipe = FluxControlPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.1-Canny-dev", torch_dtype=torch.bfloat16
+        ...     "black-forest-labs/FLUX.1-Canny-dev", dtype=torch.bfloat16
         ... ).to("cuda")
 
         >>> prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."

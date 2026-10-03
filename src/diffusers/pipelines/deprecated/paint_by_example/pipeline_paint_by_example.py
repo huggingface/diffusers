@@ -494,7 +494,7 @@ class PaintByExamplePipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableD
 
         >>> pipe = PaintByExamplePipeline.from_pretrained(
         ...     "Fantasy-Studio/Paint-by-Example",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ... )
         >>> pipe = pipe.to("cuda")
 

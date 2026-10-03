@@ -46,7 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import Krea2Pipeline
 
         >>> # Load from a local directory produced by the Krea 2 conversion (no hub repo yet).
-        >>> pipe = Krea2Pipeline.from_pretrained("path/to/krea2-diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = Krea2Pipeline.from_pretrained("path/to/krea2-diffusers", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "a fox in the snow"
         >>> # Base (midtrain) checkpoint defaults. For the few-step distilled (TDM) checkpoint use

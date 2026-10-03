@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import AuraFlowPipeline
 
-        >>> pipe = AuraFlowPipeline.from_pretrained("fal/AuraFlow", torch_dtype=torch.float16)
+        >>> pipe = AuraFlowPipeline.from_pretrained("fal/AuraFlow", dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> image = pipe(prompt).images[0]

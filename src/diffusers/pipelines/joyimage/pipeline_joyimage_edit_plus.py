@@ -45,7 +45,7 @@ Examples:
     >>> from diffusers.utils import load_image
 
     >>> model_id = "jdopensource/JoyAI-Image-Edit-Plus-Diffusers"
-    >>> pipe = JoyImageEditPlusPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+    >>> pipe = JoyImageEditPlusPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
     >>> pipe.to("cuda")
 
     >>> images = [

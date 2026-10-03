@@ -50,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video
 
         >>> # Models: "THUDM/CogVideoX-2b" or "THUDM/CogVideoX-5b"
-        >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16).to("cuda")
+        >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", dtype=torch.float16).to("cuda")
         >>> prompt = (
         ...     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
         ...     "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "

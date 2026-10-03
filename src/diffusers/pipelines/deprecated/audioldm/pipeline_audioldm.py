@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> import scipy
 
         >>> repo_id = "cvssp/audioldm-s-full-v2"
-        >>> pipe = AudioLDMPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+        >>> pipe = AudioLDMPipeline.from_pretrained(repo_id, dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "Techno music with a strong, upbeat tempo and high melodic riffs"

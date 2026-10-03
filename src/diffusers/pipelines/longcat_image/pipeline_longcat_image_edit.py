@@ -50,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import LongCatImageEditPipeline
 
         >>> pipe = LongCatImageEditPipeline.from_pretrained(
-        ...     "meituan-longcat/LongCat-Image-Edit", torch_dtype=torch.bfloat16
+        ...     "meituan-longcat/LongCat-Image-Edit", dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 

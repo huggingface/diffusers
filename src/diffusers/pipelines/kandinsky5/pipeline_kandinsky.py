@@ -74,7 +74,7 @@ EXAMPLE_DOC_STRING = """
         >>> # kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-10s-Diffusers
 
         >>> model_id = "kandinskylab/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
-        >>> pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen."

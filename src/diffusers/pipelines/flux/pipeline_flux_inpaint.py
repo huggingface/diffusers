@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import FluxInpaintPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = FluxInpaintPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+        >>> pipe = FluxInpaintPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
         >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"

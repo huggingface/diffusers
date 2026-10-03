@@ -44,7 +44,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import OmniGenPipeline
 
-        >>> pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1-diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1-diffusers", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A cat holding a sign that says hello world"

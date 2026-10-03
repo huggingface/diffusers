@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableAudioPipeline
 
         >>> repo_id = "stabilityai/stable-audio-open-1.0"
-        >>> pipe = StableAudioPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+        >>> pipe = StableAudioPipeline.from_pretrained(repo_id, dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> # define the prompts

@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = AutoPipelineForImage2Image.from_pretrained(
         ...     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     enable_pag=True,
         ... )
         >>> pipe = pipe.to("cuda")

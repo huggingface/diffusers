@@ -48,10 +48,10 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> controlnet = FluxControlNetModel.from_pretrained(
-        ...     "InstantX/FLUX.1-dev-controlnet-canny", torch_dtype=torch.float16
+        ...     "InstantX/FLUX.1-dev-controlnet-canny", dtype=torch.float16
         ... )
         >>> pipe = FluxControlNetInpaintPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.1-schnell", controlnet=controlnet, torch_dtype=torch.float16
+        ...     "black-forest-labs/FLUX.1-schnell", controlnet=controlnet, dtype=torch.float16
         ... )
         >>> pipe.to("cuda")
 

@@ -59,7 +59,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableDiffusionAttendAndExcitePipeline
 
         >>> pipe = StableDiffusionAttendAndExcitePipeline.from_pretrained(
-        ...     "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+        ...     "CompVis/stable-diffusion-v1-4", dtype=torch.float16
         ... ).to("cuda")
 
 

@@ -71,7 +71,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AudioLDM2Pipeline
 
         >>> repo_id = "cvssp/audioldm2"
-        >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+        >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> # define the prompts
@@ -101,7 +101,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AudioLDM2Pipeline
 
         >>> repo_id = "anhnct/audioldm2_gigaspeech"
-        >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+        >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> # define the prompts
@@ -398,7 +398,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         >>> from diffusers import AudioLDM2Pipeline
 
         >>> repo_id = "cvssp/audioldm2"
-        >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+        >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> # Get text embedding vectors

@@ -86,7 +86,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AceStepPipeline
 
         >>> pipe = AceStepPipeline.from_pretrained(
-        ...     "ACE-Step/acestep-v15-xl-turbo-diffusers", torch_dtype=torch.bfloat16
+        ...     "ACE-Step/acestep-v15-xl-turbo-diffusers", dtype=torch.bfloat16
         ... )
         >>> pipe = pipe.to("cuda")
 

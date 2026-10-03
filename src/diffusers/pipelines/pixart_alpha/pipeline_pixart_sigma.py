@@ -111,7 +111,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # You can replace the checkpoint id with "PixArt-alpha/PixArt-Sigma-XL-2-512-MS" too.
         >>> pipe = PixArtSigmaPipeline.from_pretrained(
-        ...     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS", torch_dtype=torch.float16
+        ...     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS", dtype=torch.float16
         ... )
         >>> # Enable memory optimizations.
         >>> # pipe.enable_model_cpu_offload()

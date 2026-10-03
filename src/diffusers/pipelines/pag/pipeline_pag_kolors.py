@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
         ...     "Kwai-Kolors/Kolors-diffusers",
         ...     variant="fp16",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     enable_pag=True,
         ...     pag_applied_layers=["down.block_2.attentions_1", "up.block_0.attentions_1"],
         ... )

@@ -43,9 +43,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenDecoderPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
-        ...     "warp-ai/wuerstchen-prior", torch_dtype=torch.float16
+        ...     "warp-ai/wuerstchen-prior", dtype=torch.float16
         ... ).to("cuda")
-        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain("warp-ai/wuerstchen", torch_dtype=torch.float16).to(
+        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain("warp-ai/wuerstchen", dtype=torch.float16).to(
         ...     "cuda"
         ... )
 
